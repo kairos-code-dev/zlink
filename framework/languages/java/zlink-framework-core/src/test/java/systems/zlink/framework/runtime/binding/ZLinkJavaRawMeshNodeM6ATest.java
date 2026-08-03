@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.binding;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,6 +35,20 @@ import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
+    @Test
+    void ephemeralBindPublishesTheActualListenerEndpoint() {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            node.setRoutingId(RoutingId.from("jvm-ephemeral-endpoint"));
+            node.setBind("tcp://127.0.0.1:0");
+            node.start();
+
+            String endpoint = node.status().localEndpoint();
+            assertTrue(endpoint.startsWith("tcp://127.0.0.1:"));
+            assertTrue(!endpoint.endsWith(":0"), endpoint);
+        }
+    }
+
     @Test
     void manualObjectClientPairIsNotRequiredButWeightZeroServerMembershipConnects()
         throws Exception {
@@ -678,6 +693,7 @@ final class ZLinkJavaRawMeshNodeM6ATest {
                      Message packet = Message.from("reply");
                      Message payload = Message.from(new byte[] {9, 8, 7})) {
                     assertEquals(RecordKind.NODE_REQUEST, record.receive().kind());
+                    assertNotNull(record.receive().applicationCorrelation());
                     record.reply(List.of(packet, payload));
                 }
             });

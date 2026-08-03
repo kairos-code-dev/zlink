@@ -124,7 +124,6 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
         }
         ZLinkMeshNodeMonitoringProjection placement =
             placementProjection.apply(meshName, status.routingId());
-        Map<String, Integer> localServerWeights = node.channelWeights();
         List<ZLinkMeshChannelSnapshot> channels = channelNames.apply(meshName).stream()
             .distinct()
             .sorted()
@@ -137,12 +136,19 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
                         int index = peerChannels.names().indexOf(channelName);
                         return index >= 0 && peerChannels.weights().get(index) > 0;
                     })
-                    .count()
-                    + (localServerWeights.getOrDefault(channelName, 0) > 0 ? 1 : 0);
+                    .count();
                 return new ZLinkMeshChannelSnapshot(
                     channelName, readyMembers > 0, Math.toIntExact(readyMembers));
-            })
+                })
             .toList();
+        boolean hasAdmittedPeer = peers.stream().anyMatch(peer ->
+            peer.state()
+                == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.ADMITTED);
+        if (state == ZLinkTopologyState.READY
+            && hasAdmittedPeer
+            && channels.stream().anyMatch(channel -> !channel.isReady())) {
+            state = ZLinkTopologyState.DEGRADED;
+        }
         boolean placementAvailable =
             placement.objectRole() == ZLinkMeshNodeObjectRole.SERVER
                 && localPlacementReady

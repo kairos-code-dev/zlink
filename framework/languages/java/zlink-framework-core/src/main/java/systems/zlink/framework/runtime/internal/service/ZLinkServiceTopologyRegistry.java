@@ -192,23 +192,19 @@ public final class ZLinkServiceTopologyRegistry {
     }
 
     public synchronized Optional<Peer> selectChannel(String channelName) {
-        if (channelName == null || channelName.isBlank()) {
-            throw new IllegalArgumentException("channelName is required");
-        }
-        List<WeightedPeer> eligible = new ArrayList<>();
-        for (Peer peer : peers()) {
-            for (ZLinkServiceNodeDescriptor.Channel channel
-                : peer.descriptor().channels()) {
-                if (channel.name().equals(channelName)
-                    && channel.weight() > 0
-                    && peer.descriptor().state()
-                        == ZLinkServiceNodeDescriptor.State.SERVING) {
-                    eligible.add(new WeightedPeer(peer, channel.weight()));
-                    break;
-                }
-            }
-        }
-        return select("channel:" + channelName, eligible);
+        return select(
+            "channel:" + requireChannelName(channelName),
+            eligibleChannelTargets(channelName));
+    }
+
+    /**
+     * Checks RouteMesh channel readiness without advancing the weighted
+     * selection cursor. The local descriptor is intentionally not a
+     * candidate: RouteMesh selection uses only remote Server memberships
+     * published through admitted peer descriptors.
+     */
+    public synchronized boolean hasSelectableChannel(String channelName) {
+        return !eligibleChannelTargets(channelName).isEmpty();
     }
 
     public synchronized Optional<Peer> selectPlacement() {
@@ -240,6 +236,31 @@ public final class ZLinkServiceTopologyRegistry {
             }
         }
         throw new IllegalStateException("weighted selection did not select a peer");
+    }
+
+    private List<WeightedPeer> eligibleChannelTargets(String channelName) {
+        String requiredChannelName = requireChannelName(channelName);
+        List<WeightedPeer> eligible = new ArrayList<>();
+        for (Peer peer : peers()) {
+            for (ZLinkServiceNodeDescriptor.Channel channel
+                : peer.descriptor().channels()) {
+                if (channel.name().equals(requiredChannelName)
+                    && channel.weight() > 0
+                    && peer.descriptor().state()
+                        == ZLinkServiceNodeDescriptor.State.SERVING) {
+                    eligible.add(new WeightedPeer(peer, channel.weight()));
+                    break;
+                }
+            }
+        }
+        return eligible;
+    }
+
+    private static String requireChannelName(String channelName) {
+        if (channelName == null || channelName.isBlank()) {
+            throw new IllegalArgumentException("channelName is required");
+        }
+        return channelName;
     }
 
     public record Peer(

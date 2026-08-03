@@ -50,7 +50,14 @@ final class ZLinkOneWayCalls {
     }
 
     static CompletionStage<Void> oneWayStatus(int status) {
-        RuntimeException failure = switch (status) {
+        RuntimeException failure = failureForStatus(status);
+        return failure == null
+            ? CompletableFuture.completedFuture(null)
+            : CompletableFuture.failedFuture(failure);
+    }
+
+    static RuntimeException failureForStatus(int status) {
+        return switch (status) {
             case SUBMITTED -> null;
             case TIMED_OUT, BACKPRESSURED -> new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
@@ -67,9 +74,6 @@ final class ZLinkOneWayCalls {
             default -> throw new IllegalArgumentException(
                 "unknown one-way admission status: " + status);
         };
-        return failure == null
-            ? CompletableFuture.completedFuture(null)
-            : CompletableFuture.failedFuture(failure);
     }
 
     static CompletionStage<Void> adaptOneWay(CompletionStage<Void> submission) {

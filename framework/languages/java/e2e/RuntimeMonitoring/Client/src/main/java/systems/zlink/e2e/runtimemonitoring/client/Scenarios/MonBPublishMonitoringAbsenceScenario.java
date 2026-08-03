@@ -55,7 +55,8 @@ public final class MonBPublishMonitoringAbsenceScenario {
         MonitoringScenarioContext.ensure(
             snapshot.contains("\"peers\"")
                 && snapshot.contains("\"channels\"")
-                && snapshot.contains("\"drain\""),
+                && snapshot.contains("\"placementAvailable\"")
+                && snapshot.contains("\"hostState\""),
             scenario + " generic RouteMesh monitoring fields are missing");
         assertForbiddenTextAbsent(snapshot, scenario + " snapshot");
 
@@ -87,7 +88,7 @@ public final class MonBPublishMonitoringAbsenceScenario {
         }
 
         assertClassFileLiteralsAbsent(
-            "systems/zlink/framework/runtime/metrics/ZLinkRuntimeMetrics.class");
+            "systems/zlink/framework/runtime/internal/metrics/ZLinkRuntimeMetrics.class");
         assertClassFileLiteralsAbsent(
             "systems/zlink/framework/runtime/channels/ZLinkRouteMeshRuntimeOptionsRuntime.class");
     }

@@ -14,6 +14,23 @@ chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
 e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
 echo "start_order=${e2e_start_order}"
+
+if [[ "${SCENARIO}" == "all" && "${ZLINK_RUNTIME_MONITORING_AGGREGATE_CHILD:-0}" != "1" ]]; then
+  aggregate_status=0
+  for scenario in MON-A1 MON-A2 MON-A3 MON-A4A MON-A4B MON-A5 MON-B1 MON-B2 MON-D1A MON-D1B; do
+    echo "[runtime-monitoring] scenario=${scenario} start_order=${e2e_start_order}"
+    if ! ZLINK_RUNTIME_MONITORING_AGGREGATE_CHILD=1 \
+      "${BASH_SOURCE[0]}" "${scenario}" --start-order "${e2e_start_order}"; then
+      aggregate_status=1
+    fi
+  done
+  if [[ "${aggregate_status}" != "0" ]]; then
+    exit "${aggregate_status}"
+  fi
+  echo "monitoring e2e result=passed"
+  exit 0
+fi
+
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"

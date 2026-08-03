@@ -24,8 +24,7 @@ public final class MonA4AvailabilityTransitionScenario {
         context.waitForPort(serviceB, true, scenario + " replacement did not start");
         context.awaitRuntimeSnapshot(
             serviceA,
-            snapshot -> snapshot.peers().stream()
-                .anyMatch(peer -> "READY".equals(peer.state())),
+            MonitoringScenarioContext::routeMeshTargetReady,
             scenario + " replacement did not become ready");
         var reply = context.runtimeRequest(
             serviceA,
@@ -50,8 +49,7 @@ public final class MonA4AvailabilityTransitionScenario {
         context.waitForPort(serviceB, true, scenario + " replacement did not start");
         context.awaitRuntimeSnapshot(
             serviceA,
-            snapshot -> snapshot.peers().stream()
-                .anyMatch(peer -> "READY".equals(peer.state())),
+            MonitoringScenarioContext::routeMeshTargetReady,
             scenario + " replacement did not become ready");
         var reply = context.runtimeRequest(
             serviceA,

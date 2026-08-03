@@ -8,8 +8,13 @@ import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.configuration.ZLinkDispatchErrorSurface;
+import systems.zlink.framework.configuration.ZLinkDispatchMessageKind;
+import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
+import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.internal.binding.spot.Dispatch;
 import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
+import systems.zlink.framework.runtime.internal.binding.spot.ReceiveRecord;
 import systems.zlink.framework.runtime.internal.binding.spot.ReplyToken;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
@@ -25,6 +30,7 @@ import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
+import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerScanner;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandler;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
@@ -50,6 +56,7 @@ public final class ZLinkMeshApplicationDispatcher
     private final String meshName;
     private final ZLinkMeshDrainCoordinator drains;
     private final ZLinkInboundDispatchBudget inboundDispatchBudget;
+    private final ZLinkMessageFlowTracer flow;
     private AutoCloseable inboundCapacityRegistration;
     private final Map<String, Namespace> namespaces = new HashMap<>();
 
@@ -120,6 +127,10 @@ public final class ZLinkMeshApplicationDispatcher
         this.drains = drains;
         this.inboundDispatchBudget = Objects.requireNonNull(
             inboundDispatchBudget, "inboundDispatchBudget");
+        this.flow = new ZLinkMessageFlowTracer(
+            framework.dispatchOptions(),
+            handlerFactory,
+            framework.handlerExecutor());
         this.replies = Objects.requireNonNull(replies, "replies");
         this.invoker = new ZLinkChannelHandlerInvoker(
             Objects.requireNonNull(serializer, "serializer"),
@@ -314,6 +325,10 @@ public final class ZLinkMeshApplicationDispatcher
             closeRecord(record, claim, lease);
             return;
         }
+        traceFlow(
+            ZLinkMessageFlowOutcome.RECEIVED,
+            record,
+            packetName);
         try {
             CompletionStage<Void> queued = namespace.sendQueue.enqueue(() -> {
                 lease.handlerStarted();
@@ -332,8 +347,15 @@ public final class ZLinkMeshApplicationDispatcher
                             payload,
                             metadata,
                             contentType));
-                return invocation.whenComplete((ignored, error) ->
-                    closeRecord(record, claim, lease));
+                return invocation.whenComplete((ignored, error) -> {
+                    if (error == null) {
+                        traceFlow(
+                            ZLinkMessageFlowOutcome.DISPATCHED,
+                            record,
+                            packetName);
+                    }
+                    closeRecord(record, claim, lease);
+                });
             });
             queued.whenComplete((ignored, error) -> {
                 if (error != null) {
@@ -363,6 +385,10 @@ public final class ZLinkMeshApplicationDispatcher
             reject(record, "MeshNode request handler is not registered: " + packetName, claim, lease);
             return;
         }
+        traceFlow(
+            ZLinkMessageFlowOutcome.RECEIVED,
+            record,
+            packetName);
         try {
             CompletionStage<Void> queued = namespace.requestQueue.enqueue(() -> {
                 return inboundDispatchBudget.acquireCompletionPermit()
@@ -388,6 +414,10 @@ public final class ZLinkMeshApplicationDispatcher
                                 try {
                                     if (error == null) {
                                         replyAndClose(record, token, List.of(reply));
+                                        traceFlow(
+                                            ZLinkMessageFlowOutcome.REPLIED,
+                                            record,
+                                            packetName);
                                     } else {
                                         replyError(record, token, error);
                                     }
@@ -522,6 +552,33 @@ public final class ZLinkMeshApplicationDispatcher
             case CHANNEL_SEND, CHANNEL_REQUEST -> namespaces.get(channelName);
             default -> null;
         };
+    }
+
+    private void traceFlow(
+        ZLinkMessageFlowOutcome outcome,
+        ZLinkMeshDispatchRecord record,
+        String packetName) {
+        if (!flow.enabled(outcome)) {
+            return;
+        }
+        ReceiveRecord receive = record.receive();
+        ZLinkDispatchMessageKind kind = switch (receive.kind()) {
+            case NODE_REQUEST, CHANNEL_REQUEST -> ZLinkDispatchMessageKind.REQUEST;
+            default -> ZLinkDispatchMessageKind.SEND;
+        };
+        Long correlation = receive.applicationCorrelation();
+        flow.trace(new ZLinkMessageFlowEvent(
+            outcome,
+            ZLinkDispatchErrorSurface.ROUTE_MESH_CHANNEL,
+            kind,
+            packetName,
+            receive.channelName(),
+            null,
+            correlation == null ? null : Long.toUnsignedString(correlation),
+            receive.sourceNodeRid() == null ? null : receive.sourceNodeRid().toString(),
+            null,
+            null,
+            null));
     }
 
     private static Namespace routeNamespace(

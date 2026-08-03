@@ -40,6 +40,14 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         return serviceBEndpoint;
     }
 
+    public static boolean routeMeshTargetReady(Contracts.RuntimeSnapshot snapshot) {
+        return snapshot.ready()
+            && snapshot.channels().stream().anyMatch(channel ->
+                Contracts.SPOT_CHANNEL.equals(channel.channelName())
+                    && channel.ready()
+                    && channel.readyTargetCount() > 0);
+    }
+
     public Contracts.WorkRes request(String value) {
         Contracts.WorkRes reply = trigger.post("/request")
             .body(new Contracts.WorkReq(value))
@@ -71,6 +79,21 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .toCompletableFuture()
             .join()
             .body();
+    }
+
+    public void runtimeRequestExpectTargetNotFound(String baseUrl, String value) {
+        RawHttpResponse response = ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(10))
+            .post("/runtime/request")
+            .body(new Contracts.WorkReq(value))
+            .submitRaw()
+            .toCompletableFuture()
+            .join();
+        ensure(
+            response.status() == 500
+                && response.body().contains("REQUEST_TARGET_NOT_FOUND"),
+            "RouteMesh no-target request did not return REQUEST_TARGET_NOT_FOUND: "
+                + response.status() + ": " + response.body());
     }
 
     public ValidationResult validation(String name) {

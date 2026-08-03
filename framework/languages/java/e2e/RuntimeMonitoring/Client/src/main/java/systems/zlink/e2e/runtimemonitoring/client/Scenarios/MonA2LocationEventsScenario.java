@@ -11,8 +11,7 @@ public final class MonA2LocationEventsScenario {
     public static void run(MonitoringScenarioContext context) {
         Contracts.RuntimePeer first = context.awaitRuntimeSnapshot(
                 context.serviceEndpoint(),
-                snapshot -> snapshot.peers().stream()
-                    .anyMatch(peer -> "READY".equals(peer.state())),
+                MonitoringScenarioContext::routeMeshTargetReady,
                 "MON-A2 initial peer was not ready")
             .peers().stream()
             .filter(peer -> "READY".equals(peer.state()))
@@ -34,9 +33,10 @@ public final class MonA2LocationEventsScenario {
             "MON-A2 service-b did not restart");
         Contracts.RuntimePeer restarted = context.awaitRuntimeSnapshot(
                 context.serviceEndpoint(),
-                snapshot -> snapshot.peers().stream().anyMatch(peer ->
-                    "READY".equals(peer.state())
-                        && !peer.nodeRid().equals(first.nodeRid())),
+                snapshot -> MonitoringScenarioContext.routeMeshTargetReady(snapshot)
+                    && snapshot.peers().stream().anyMatch(peer ->
+                        "READY".equals(peer.state())
+                            && !peer.nodeRid().equals(first.nodeRid())),
                 "MON-A2 restarted peer did not return to Ready")
             .peers().stream()
             .filter(peer ->

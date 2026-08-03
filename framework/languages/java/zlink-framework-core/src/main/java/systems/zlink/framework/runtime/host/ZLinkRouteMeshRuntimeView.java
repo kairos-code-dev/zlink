@@ -40,6 +40,7 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
         List<MeshPeerEntry> nativePeers = List.copyOf(node.peers());
         ZLinkTopologyState state = topologyState(nativeStatus.state());
         ZLinkFrameworkRuntimeState hostState = runtime.status().state();
+        boolean locationStoreHealthy = locationStoreHealthy();
         if (hostState != ZLinkFrameworkRuntimeState.SERVING) {
             state = switch (hostState) {
                 case PREPARING -> ZLinkTopologyState.STARTING;
@@ -50,6 +51,9 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
                 case ERROR -> ZLinkTopologyState.FAILED;
             };
         }
+        if (state == ZLinkTopologyState.READY && !locationStoreHealthy) {
+            state = ZLinkTopologyState.DEGRADED;
+        }
         if (state == ZLinkTopologyState.READY
             && nativePeers.stream().anyMatch(
                 ZLinkRouteMeshRuntimeView::requiredPeerUnavailable)) {
@@ -58,7 +62,6 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
         ZLinkMeshNodeMonitoringProjection placement =
             runtime.monitoringMeshNodeProjection(
                 meshName, nativeStatus.routingId());
-        Map<String, Integer> localServerWeights = node.channelWeights();
         List<ZLinkMeshChannelSnapshot> channels =
             runtime.monitoringMeshNodeChannelNames(meshName).stream()
                 .distinct()
@@ -74,16 +77,21 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
                             return index >= 0
                                 && peerChannels.weights().get(index) > 0;
                         })
-                        .count()
-                        + (localServerWeights.getOrDefault(channelName, 0) > 0
-                            ? 1
-                            : 0);
+                        .count();
                     return new ZLinkMeshChannelSnapshot(
                         channelName,
                         readyTargets > 0,
                         Math.toIntExact(readyTargets));
                 })
                 .toList();
+        boolean hasAdmittedPeer = nativePeers.stream().anyMatch(peer ->
+            peer.state()
+                == systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState.ADMITTED);
+        if (state == ZLinkTopologyState.READY
+            && hasAdmittedPeer
+            && channels.stream().anyMatch(channel -> !channel.isReady())) {
+            state = ZLinkTopologyState.DEGRADED;
+        }
         boolean placementAvailable =
             state == ZLinkTopologyState.READY
                 && placement.objectRole() == ZLinkMeshNodeObjectRole.SERVER
@@ -110,6 +118,8 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
                     : Optional.of(
                         state == ZLinkTopologyState.STOPPING
                             ? ZLinkTopologyReason.DRAINING
+                            : !locationStoreHealthy
+                                ? ZLinkTopologyReason.LOCATION_UNAVAILABLE
                             : state != ZLinkTopologyState.READY
                                 ? ZLinkTopologyReason.RUNTIME_NOT_READY
                                 : ZLinkTopologyReason.CAPACITY_EXCEEDED)),
@@ -150,6 +160,20 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
                 "RouteMesh is not configured: " + meshName);
         }
         return node;
+    }
+
+    private boolean locationStoreHealthy() {
+        try {
+            return runtime.monitoringLocationRuntimeQuery()
+                .getStatus()
+                .toCompletableFuture()
+                .join()
+                .storeHealthy();
+        } catch (ZLinkConfigurationException notConfigured) {
+            return true;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
     }
 
     private static ZLinkMeshPeerSnapshot peer(MeshPeerEntry peer) {

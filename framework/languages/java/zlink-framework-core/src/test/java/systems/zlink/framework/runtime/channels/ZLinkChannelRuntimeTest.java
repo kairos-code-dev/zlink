@@ -133,6 +133,36 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void meshChannelRequestReturnsTargetNotFoundBeforeTheRequestTimeout() throws Exception {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofSeconds(2));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.channelTargetClassification =
+            Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(),
+            handlers())) {
+            runtime.registerSpotRouterNode("play", backend.spotNode);
+
+            ExecutionException error = org.junit.jupiter.api.Assertions.assertThrows(
+                ExecutionException.class,
+                () -> runtime.requestToChannel(
+                        "play",
+                        new TestRequest("no-target"))
+                    .submit(TestReply.class)
+                    .toCompletableFuture()
+                    .get(1, TimeUnit.SECONDS));
+
+            assertEquals(
+                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                ((ZLinkFrameworkException) error.getCause()).kind());
+            assertEquals(0, backend.spotNode.requestAttempts);
+        }
+    }
+
+    @Test
     void clientBuilderConnectsEveryConfiguredEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("work")
@@ -1698,6 +1728,7 @@ final class ZLinkChannelRuntimeTest {
         private int requestAttempts;
         private int requestFailuresRemaining;
         private SubmitResult requestFailureResult = SubmitResult.NOT_CONNECTED;
+        private Optional<Integer> channelTargetClassification = Optional.empty();
         private final ArrayDeque<Integer> localNodeStatuses =
             new ArrayDeque<>();
         private java.util.function.Consumer<ZLinkBackendAdmissionKey> admissionReady =
@@ -1736,6 +1767,9 @@ final class ZLinkChannelRuntimeTest {
                 ? 0
                 : localNodeStatuses.removeFirst();
             return java.util.Optional.of(status);
+        }
+        @Override public Optional<Integer> classifyChannelTarget(String channelName) {
+            return channelTargetClassification;
         }
         void signalLocalNodeReady() {
             admissionReady.accept(ZLinkBackendAdmissionKey.node(routingId()));

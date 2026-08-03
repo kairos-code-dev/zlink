@@ -33,8 +33,7 @@ public final class MonD1FailureRecoveryScenario {
             context.waitForPort(serviceB, true, scenario + " cycle " + cycle + " did not restart");
             context.awaitRuntimeSnapshot(
                 serviceA,
-                snapshot -> snapshot.peers().stream()
-                    .anyMatch(peer -> "READY".equals(peer.state())),
+                MonitoringScenarioContext::routeMeshTargetReady,
                 scenario + " cycle " + cycle + " did not become ready");
             context.post(serviceA, "/admin/drain");
             var reply = context.runtimeRequest(

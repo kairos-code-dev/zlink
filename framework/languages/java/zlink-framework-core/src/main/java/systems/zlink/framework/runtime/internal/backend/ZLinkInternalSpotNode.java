@@ -58,6 +58,16 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         return java.util.Optional.empty();
     }
 
+    /**
+     * Classifies a RouteMesh ChannelName before a request or send is built.
+     * Implementations return an admission status only when the channel has no
+     * selectable target; an empty result preserves the normal transport path.
+     */
+    default java.util.Optional<Integer> classifyChannelTarget(
+        String channelName) {
+        return java.util.Optional.empty();
+    }
+
     ZLinkBackendSpotRouteBridge createRouteBridge();
 
     ZLinkBackendSpot createSpot();

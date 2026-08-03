@@ -12,25 +12,22 @@ public final class MonA3SpotEventsScenario {
     public static void run(MonitoringScenarioContext context) {
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyTargetCount() >= 2,
-            "MON-A3 initial ready member count did not reach two");
+            snapshot -> channel(snapshot).readyTargetCount() >= 1,
+            "MON-A3 initial ready member count did not reach one");
         int evidenceBaseline = context.evidenceEntryCount(context.serviceEndpoint());
 
         context.post(context.serviceBEndpoint(), "/runtime/weight/zero");
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyTargetCount() == 1,
+            snapshot -> channel(snapshot).readyTargetCount() == 0,
             "MON-A3 zero-weight peer remained selectable");
-        Contracts.WorkRes zeroWeightReply =
-            context.runtimeRequest(context.serviceEndpoint(), "zero-weight");
-        MonitoringScenarioContext.ensure(
-            "svc-a".equals(zeroWeightReply.providerRid()),
-            "MON-A3 zero-weight service-b handled a new request");
+        context.runtimeRequestExpectTargetNotFound(
+            context.serviceEndpoint(), "zero-weight");
 
         context.post(context.serviceBEndpoint(), "/runtime/weight/restore");
         context.awaitRuntimeSnapshot(
             context.serviceEndpoint(),
-            snapshot -> channel(snapshot).readyTargetCount() >= 2,
+            snapshot -> channel(snapshot).readyTargetCount() >= 1,
             "MON-A3 restored peer did not become selectable");
 
         boolean reachedServiceB = false;

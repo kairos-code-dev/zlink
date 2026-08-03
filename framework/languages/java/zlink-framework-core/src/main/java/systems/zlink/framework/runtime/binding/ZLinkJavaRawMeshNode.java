@@ -586,6 +586,14 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         RouterSocket opened = port.openRouter(routingId);
         try {
             opened.bind(bindEndpoint);
+            String boundEndpoint = opened.options().lastEndpoint();
+            if (boundEndpoint != null && !boundEndpoint.isBlank()) {
+                // Location discovery must advertise the actual listener when
+                // the caller requested an ephemeral port. Otherwise a peer
+                // selected as the connection initiator dials :0 and the
+                // RouteMesh never reaches channel admission.
+                bindEndpoint = boundEndpoint;
+            }
             // Register the single Framework-owned receive/completion poller
             // after the socket is configured and before the mesh can submit
             // any request. This is the same lifecycle boundary as the .NET
@@ -1064,15 +1072,32 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         Duration timeout) {
-        Optional<RoutingId> target = topology.selectChannel(requireChannel(channelName))
+        String selectedChannel = requireChannel(channelName);
+        Optional<RoutingId> target = topology.selectChannel(selectedChannel)
             .map(peer -> peer.descriptor().nodeRoutingId());
-        return target.isPresent() && request(
+        streamTrace("request-channel-select channel=" + selectedChannel
+            + " target=" + target.map(RoutingId::toString).orElse("none")
+            + " peerCount=" + (topology == null ? 0 : topology.peers().size()));
+        boolean submitted = target.isPresent() && request(
             target.orElseThrow(),
             metadata,
             parts,
             callback,
             timeout,
-            channelName);
+            selectedChannel);
+        streamTrace("request-channel-submit channel=" + selectedChannel
+            + " target=" + target.map(RoutingId::toString).orElse("none")
+            + " submitted=" + submitted);
+        return submitted;
+    }
+
+    Optional<Integer> classifyChannelTarget(String channelName) {
+        String selectedChannel = requireChannel(channelName);
+        ZLinkServiceTopologyRegistry currentTopology = topology;
+        return currentTopology != null
+                && currentTopology.hasSelectableChannel(selectedChannel)
+            ? Optional.empty()
+            : Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
     }
 
     boolean sendSpot(
@@ -2889,8 +2914,20 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             operations.register(timeout);
         operation.completion().whenComplete((reply, failure) -> {
             if (failure == null) {
+                if (channelName != null) {
+                    streamTrace("request-channel-complete channel="
+                        + channelName + " target=" + target
+                        + " result=" + reply.result());
+                }
                 callback.handle(reply);
                 return;
+            }
+            if (channelName != null) {
+                streamTrace("request-channel-complete channel="
+                    + channelName + " target=" + target
+                    + " result=" + (failure instanceof java.util.concurrent.TimeoutException
+                        ? ZLinkBackendRequestResult.TIMED_OUT
+                        : ZLinkBackendRequestResult.INTERNAL_ERROR));
             }
             callback.handle(new ZLinkBackendReceived(
                 failure instanceof java.util.concurrent.TimeoutException
@@ -3329,6 +3366,14 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         } else {
             return;
         }
+        if (kind == RecordKind.CHANNEL_REQUEST
+            || kind == RecordKind.CHANNEL_SEND) {
+            streamTrace("channel-application-received kind=" + kind
+                + " channel=" + channelName
+                + " source=" + inbound.source()
+                + " requestSequence=" + inbound.requestSequence()
+                + " correlation=" + correlation);
+        }
         int payloadOffset = (flags & ServiceWireConstants.FLAG_METADATA) == 0
             ? 1
             : 2;
@@ -3379,6 +3424,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             channelName,
             null,
             payload.contentType(),
+            correlation,
             metadata,
             0,
             0,
@@ -3418,18 +3464,26 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         String owner = channelName == null
             ? "node:" + routingId
             : "channel:" + channelName;
-        if (currentMailbox == null
-            || !currentMailbox.tryEnqueue(new ZLinkServiceMailbox.Record(
+        boolean enqueued = currentMailbox != null
+            && currentMailbox.tryEnqueue(new ZLinkServiceMailbox.Record(
                 owner,
                 ZLinkServiceMailbox.Domain.APPLICATION,
                 frames,
                 inbound.source().toBytes(),
                 null,
-                envelopeId))) {
+                envelopeId));
+        if (!enqueued) {
+            streamTrace("channel-application-mailbox-rejected channel="
+                + channelName + " source=" + inbound.source()
+                + " correlation=" + correlation
+                + " mailbox=" + (currentMailbox != null));
             dispatch.close();
             return;
         }
         dispatchEnvelopes.put(envelopeId, dispatch);
+        streamTrace("channel-application-mailbox-enqueued channel="
+            + channelName + " source=" + inbound.source()
+            + " correlation=" + correlation + " envelope=" + envelopeId);
         drainApplicationMailbox();
     }
 
@@ -5101,8 +5155,23 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                             if (dispatch != null) {
                                 boolean accepted = false;
                                 try {
+                                    streamTrace("channel-application-dispatch-start channel="
+                                        + dispatch.receive().channelName()
+                                        + " source=" + dispatch.receive().sourceNodeRid()
+                                        + " envelope=" + envelopeId);
                                     receiver.accept(dispatch);
                                     accepted = true;
+                                    streamTrace("channel-application-dispatch-accepted channel="
+                                        + dispatch.receive().channelName()
+                                        + " source=" + dispatch.receive().sourceNodeRid()
+                                        + " envelope=" + envelopeId);
+                                } catch (RuntimeException failure) {
+                                    streamTrace("channel-application-dispatch-rejected channel="
+                                        + dispatch.receive().channelName()
+                                        + " source=" + dispatch.receive().sourceNodeRid()
+                                        + " envelope=" + envelopeId
+                                        + " error=" + failure.getClass().getSimpleName());
+                                    throw failure;
                                 } finally {
                                     if (!accepted) {
                                         dispatch.close();

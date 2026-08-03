@@ -40,7 +40,7 @@ public final class MonA1SocketEventsScenario {
         MonitoringScenarioContext.ensure(
             current.channels().stream().anyMatch(channel ->
                 Contracts.SPOT_CHANNEL.equals(channel.channelName())
-                    && channel.readyTargetCount() >= 2
+                    && channel.readyTargetCount() >= 1
                     && channel.ready()),
             "MON-A1 ready channel membership is incomplete");
         MonitoringScenarioContext.ensure(

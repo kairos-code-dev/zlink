@@ -55,7 +55,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
             assertEquals(ZLinkPeerState.READY, first.peers().getFirst().state());
             assertEquals(1, first.channels().size());
             assertTrue(first.channels().getFirst().isReady());
-            assertEquals(2, first.channels().getFirst().readyTargetCount());
+            assertEquals(1, first.channels().getFirst().readyTargetCount());
             assertEquals(first.sequence() + 1, second.sequence());
             assertEquals(first.peers(), List.copyOf(first.peers()));
         }
@@ -73,6 +73,23 @@ final class ZLinkRouteMeshRuntimeServiceTest {
             node.peerState = MeshPeerState.CLOSED;
             var notConnected = runtime.snapshot("mesh").peers().getFirst();
             assertEquals(ZLinkPeerState.NOT_CONNECTED, notConnected.state());
+        }
+    }
+
+    @Test
+    void snapshotDegradesWhenARegisteredChannelHasNoReadyTarget() {
+        FakeNode node = new FakeNode();
+        node.channelWeight = 0;
+        node.peerChannelWeight = 0;
+        try (var runtime = runtime(node)) {
+            var snapshot = runtime.snapshot("mesh");
+
+            assertEquals(ZLinkTopologyState.DEGRADED, snapshot.state());
+            assertFalse(snapshot.isReady());
+            assertEquals(0, snapshot.channels().getFirst().readyTargetCount());
+            assertEquals(
+                ZLinkTopologyReason.CAPACITY_EXCEEDED,
+                snapshot.placement().unavailableReason().orElseThrow());
         }
     }
 
@@ -352,6 +369,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
         private final RoutingId local = RoutingId.from("local");
         private volatile long maxMessageSize;
         private volatile int channelWeight = 7;
+        private volatile int peerChannelWeight = 3;
         private volatile int placementWeight = 100;
         private volatile MeshPeerState peerState = MeshPeerState.ADMITTED;
         private final MeshNodeStatus status = new MeshNodeStatus(
@@ -449,7 +467,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
 
         @Override
         public PeerChannels peerChannels(RoutingId peerRid, long lifecycleGeneration) {
-            return new PeerChannels(List.of("channel"), List.of(3));
+            return new PeerChannels(List.of("channel"), List.of(peerChannelWeight));
         }
 
         @Override

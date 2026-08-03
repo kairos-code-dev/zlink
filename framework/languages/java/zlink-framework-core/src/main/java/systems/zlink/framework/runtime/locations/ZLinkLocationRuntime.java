@@ -164,18 +164,33 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return CompletableFuture.completedFuture(false);
         }
         return stores.ownerLeaseStore().renewOwnerLease(token, ownerLeaseTtl)
+            .thenCompose(result -> {
+                if (result instanceof systems.zlink.framework.runtime.internal.locations
+                    .ZLinkOwnerLeaseRenewed renewed) {
+                    recordSuccessfulRenewal(renewed.storeNow());
+                    nextOwnerLeaseRenewalNanos =
+                        System.nanoTime() + heartbeatInterval.toNanos();
+                    return CompletableFuture.completedFuture(true);
+                }
+
+                // A lease can expire while the store is unavailable. The old
+                // token cannot be renewed after recovery, so claim a fresh
+                // generation before reporting the runtime as healthy again.
+                recordFailure("owner lease renewal was stale");
+                return claimOwnerLease().handle((ignored, failure) -> {
+                    if (failure != null) {
+                        recordFailure(failureMessage(failure));
+                        return false;
+                    }
+                    return true;
+                });
+            })
             .handle((result, failure) -> {
                 if (failure != null) {
-                    recordFailure(failure.getMessage());
+                    recordFailure(failureMessage(failure));
                     return false;
                 }
-                if (!(result instanceof systems.zlink.framework.runtime.internal.locations.ZLinkOwnerLeaseRenewed renewed)) {
-                    recordFailure("owner lease renewal was stale");
-                    return false;
-                }
-                recordSuccessfulRenewal(renewed.storeNow());
-                nextOwnerLeaseRenewalNanos = System.nanoTime() + heartbeatInterval.toNanos();
-                return true;
+                return result;
             });
     }
 
@@ -237,7 +252,22 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
 
     private void recordFailure(String message) {
         ownerLeaseHealthy = false;
-        lastError = message;
+        lastError = message == null || message.isBlank()
+            ? "owner lease operation failed"
+            : message;
+    }
+
+    private static String failureMessage(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof java.util.concurrent.CompletionException
+            || current instanceof java.util.concurrent.ExecutionException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return message == null || message.isBlank()
+            ? current.getClass().getSimpleName()
+            : message;
     }
 
     private static String requireText(String value, String name) {

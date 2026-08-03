@@ -12,6 +12,7 @@ import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteClient;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
@@ -95,16 +96,25 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                 write(exchange, json.writeValueAsString(new AdminResult("weight-updated", 100)));
             });
             server.createContext("/runtime/request", exchange -> {
-                Contracts.WorkReq request =
-                    json.readValue(exchange.getRequestBody(), Contracts.WorkReq.class);
-                Contracts.WorkRes response = routeClient.requestToChannel(
-                        Contracts.SPOT_CHANNEL,
-                        request)
-                    .timeout(java.time.Duration.ofSeconds(5))
-                    .submit(Contracts.WorkRes.class)
-                    .toCompletableFuture()
-                    .join();
-                write(exchange, json.writeValueAsString(response));
+                try {
+                    Contracts.WorkReq request =
+                        json.readValue(exchange.getRequestBody(), Contracts.WorkReq.class);
+                    Contracts.WorkRes response = routeClient.requestToChannel(
+                            Contracts.SPOT_CHANNEL,
+                            request)
+                        .timeout(java.time.Duration.ofSeconds(5))
+                        .submit(Contracts.WorkRes.class)
+                        .toCompletableFuture()
+                        .join();
+                    write(exchange, json.writeValueAsString(response));
+                } catch (Throwable error) {
+                    Throwable cause = error.getCause() == null ? error : error.getCause();
+                    cause.printStackTrace(System.err);
+                    String failure = cause instanceof ZLinkFrameworkException frameworkError
+                        ? frameworkError.kind().name() + ": " + frameworkError.getMessage()
+                        : cause.getClass().getName() + ": " + cause.getMessage();
+                    write(exchange, 500, failure);
+                }
             });
             server.createContext("/admin/drain", exchange -> {
                 setWeight(0, "drain");

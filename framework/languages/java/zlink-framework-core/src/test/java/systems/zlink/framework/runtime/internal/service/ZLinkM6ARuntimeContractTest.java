@@ -17,7 +17,13 @@ final class ZLinkM6ARuntimeContractTest {
     @Test
     void topologyFencesStaleConnectionsAndSelectsOnlyServingPositiveWeight() {
         var topology = new ZLinkServiceTopologyRegistry(
-            descriptor("mesh", "local", 1, 1, List.of(), 100));
+            descriptor(
+                "mesh",
+                "local",
+                1,
+                1,
+                List.of(new ZLinkServiceNodeDescriptor.Channel("orders", 100)),
+                100));
         var first = descriptor(
             "mesh",
             "peer-a",
@@ -37,6 +43,7 @@ final class ZLinkM6ARuntimeContractTest {
             ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
             topology.admit(first, "pipe-old"));
         assertTrue(topology.selectChannel("orders").isEmpty());
+        assertFalse(topology.hasSelectableChannel("orders"));
         assertEquals(
             ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
             topology.admit(updated, "pipe-current"));

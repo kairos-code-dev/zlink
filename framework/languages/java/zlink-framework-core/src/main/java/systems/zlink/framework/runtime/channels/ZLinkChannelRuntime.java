@@ -1448,7 +1448,7 @@ public final class ZLinkChannelRuntime
 
     static void trace(String message) {
         if (STREAM_TRACE) {
-            LOGGER.fine("[zlink-java-stream-trace] " + message);
+            LOGGER.warning("[zlink-java-stream-trace] " + message);
         }
     }
 

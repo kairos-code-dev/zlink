@@ -195,6 +195,11 @@ final class ZLinkJavaRawSpotNode
     }
 
     @Override
+    public Optional<Integer> classifyChannelTarget(String channelName) {
+        return owner.classifyChannelTarget(channelName);
+    }
+
+    @Override
     public boolean sendToNode(
         RoutingId targetNodeRid,
         List<Message> parts,

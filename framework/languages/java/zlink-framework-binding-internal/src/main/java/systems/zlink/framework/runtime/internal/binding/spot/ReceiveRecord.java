@@ -15,6 +15,7 @@ import systems.zlink.contracts.core.RoutingId;
  * @param sourceActor the source actor reference, if any
  * @param operationId the correlated operation id, if any
  * @param operationKind the correlated operation kind
+ * @param applicationCorrelation the application request correlation, if any
  * @param replyToken a reply token for request records, if any
  * @param channelName the channel name, if applicable
  * @param topic the topic, if applicable
@@ -30,6 +31,7 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
                             RoutingId sourceSpotId, long sourceBindingGeneration,
                             ActorRef sourceActor,
                             OperationId operationId, OperationKind operationKind,
+                            Long applicationCorrelation,
                             ReplyToken replyToken, String channelName, String topic,
                             String contentType,
                             byte[] applicationMetadata, MeshRecordPayload kindData,
@@ -61,6 +63,7 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
             sourceActor,
             operationId,
             operationKind,
+            null,
             replyToken,
             channelName,
             topic,
@@ -100,6 +103,48 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
             sourceActor,
             operationId,
             operationKind,
+            null,
+            replyToken,
+            channelName,
+            topic,
+            contentType,
+            applicationMetadata,
+            null,
+            terminalResult,
+            failureErrno,
+            partOffset,
+            partCount);
+    }
+
+    /** Creates an application record with its wire request correlation. */
+    public ReceiveRecord(
+        RecordKind kind,
+        int domain,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSpotId,
+        ActorRef sourceActor,
+        OperationId operationId,
+        OperationKind operationKind,
+        ReplyToken replyToken,
+        String channelName,
+        String topic,
+        String contentType,
+        Long applicationCorrelation,
+        byte[] applicationMetadata,
+        int terminalResult,
+        int failureErrno,
+        int partOffset,
+        int partCount) {
+        this(
+            kind,
+            domain,
+            sourceNodeRid,
+            sourceSpotId,
+            0L,
+            sourceActor,
+            operationId,
+            operationKind,
+            applicationCorrelation,
             replyToken,
             channelName,
             topic,

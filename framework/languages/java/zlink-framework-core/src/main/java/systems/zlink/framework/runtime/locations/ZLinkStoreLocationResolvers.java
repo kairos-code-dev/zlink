@@ -112,7 +112,7 @@ public final class ZLinkStoreLocationResolvers
         ZLinkAutoConnectType type,
         String meshName,
         ZLinkLocationRole role) {
-        return listMeshNodes(meshName, null, new java.util.ArrayList<>())
+        return listLiveMeshNodes(meshName)
             .thenApply(nodes -> nodes.stream().map(node -> new ZLinkAutoConnectPeer(
                 type,
                 node.meshName(),
@@ -135,6 +135,26 @@ public final class ZLinkStoreLocationResolvers
                 node.updatedAt(),
                 node.objectRole(),
                 !node.channelWeights().isEmpty())).toList());
+    }
+
+    private CompletionStage<List<ZLinkMeshNodeDescriptor>> listLiveMeshNodes(
+        String meshName) {
+        return listMeshNodes(meshName, null, new java.util.ArrayList<>())
+            .thenCompose(nodes -> {
+                List<CompletableFuture<Boolean>> liveness = nodes.stream()
+                    .map(node -> liveRows.ownerLeaseRemaining(
+                            node.ownerId(), node.leaseGeneration())
+                        .thenApply(remaining -> remaining != null)
+                        .toCompletableFuture())
+                    .toList();
+                return CompletableFuture.allOf(
+                        liveness.toArray(CompletableFuture[]::new))
+                    .thenApply(ignored -> java.util.stream.IntStream
+                        .range(0, nodes.size())
+                        .filter(index -> liveness.get(index).join())
+                        .mapToObj(nodes::get)
+                        .toList());
+            });
     }
 
     private CompletionStage<List<ZLinkMeshNodeDescriptor>> listMeshNodes(

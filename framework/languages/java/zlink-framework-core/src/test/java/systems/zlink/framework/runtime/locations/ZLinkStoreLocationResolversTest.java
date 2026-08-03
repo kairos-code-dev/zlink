@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -88,6 +90,73 @@ final class ZLinkStoreLocationResolversTest {
 
         assertNull(
             resolvers.resolveSpot("room-a").toCompletableFuture().join());
+    }
+
+    @Test
+    void autoConnectPeerDiscoveryExcludesExpiredMeshOwnerLeases() {
+        ZLinkMeshNodeDescriptor live = meshNodeDescriptor(
+            "mesh", RoutingId.from("live"), "live-owner");
+        ZLinkMeshNodeDescriptor expired = meshNodeDescriptor(
+            "mesh", RoutingId.from("expired"), "expired-owner");
+        ZLinkLocationRepository store = (ZLinkLocationRepository)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {ZLinkLocationRepository.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "listMeshNodes" -> CompletableFuture.completedFuture(
+                        new ZLinkLocationPage<>(List.of(live, expired), null));
+                    case "readOwnerLease" -> "live-owner".equals(arguments[0])
+                        ? CompletableFuture.completedFuture(
+                            new ZLinkOwnerLeaseFound(
+                                new ZLinkLocationOwnerToken("live-owner", 1),
+                                NOW.plusSeconds(30), NOW))
+                        : CompletableFuture.completedFuture(
+                            new ZLinkOwnerLeaseMissing());
+                    default -> throw new UnsupportedOperationException(
+                        method.getName());
+                });
+        var resolvers = new ZLinkStoreLocationResolvers(
+            ZLinkRegisteredLocationStores.fromUnified(store),
+            new ZLinkLocationOptions());
+
+        var peers = resolvers.listPeers(
+                ZLinkAutoConnectType.ROUTE_MESH,
+                "mesh",
+                ZLinkLocationRole.ROUTER)
+            .toCompletableFuture()
+            .join();
+
+        assertEquals(List.of(RoutingId.from("live")),
+            peers.stream().map(ZLinkAutoConnectPeer::nodeRid).toList());
+    }
+
+    private static ZLinkMeshNodeDescriptor meshNodeDescriptor(
+        String meshName,
+        RoutingId rid,
+        String ownerId) {
+        return new ZLinkMeshNodeDescriptor(
+            meshName,
+            rid,
+            1,
+            1,
+            "tcp://127.0.0.1:7000",
+            Map.of("orders", 100),
+            1,
+            List.of(),
+            ZLinkMeshNodeObjectRole.NONE,
+            Optional.empty(),
+            100,
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(0, 0, 0),
+                List.of()),
+            new ZLinkActivationConcurrency(0, 1),
+            Optional.empty(),
+            systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            ownerId,
+            1,
+            NOW);
     }
 
     private static ZLinkAuthoritySnapshot readySpotSnapshot() {

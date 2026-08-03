@@ -454,6 +454,15 @@ final class MeshChannelRouteSendCall implements ZLinkSendCall {
         if (duplicate != null) {
             return duplicate;
         }
+        java.util.Optional<Integer> classified =
+            node.classifyChannelTarget(channelName);
+        if (classified.isPresent()) {
+            payload.close();
+            ZLinkChannelRuntime.trace(
+                "route-channel target=none channel=" + channelName
+                    + " status=" + classified.orElseThrow());
+            return ZLinkOneWayCalls.oneWayStatus(classified.orElseThrow());
+        }
         List<Message> parts = ZLinkChannelCallRuntime.parts(
             packetName, payload, contentType);
         return runtime.oneWayCalls().submitOneWay(
@@ -542,6 +551,18 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
         runtime.track(result, timeout);
+        java.util.Optional<Integer> classified =
+            node.classifyChannelTarget(channelName);
+        if (classified.isPresent()) {
+            payload.close();
+            ZLinkChannelRuntime.trace(
+                "route-channel target=none channel=" + channelName
+                    + " status=" + classified.orElseThrow());
+            result.completeExceptionally(
+                ZLinkOneWayCalls.failureForStatus(classified.orElseThrow()));
+            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+                .manageCurrent(result);
+        }
         long deadline = System.nanoTime() + timeout.toNanos();
         byte[] payloadBytes;
         try {

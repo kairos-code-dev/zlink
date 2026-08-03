@@ -7,10 +7,11 @@
 
 ## 현재 판정
 
-Go source와 Core 11 raw projection은 Linux x86_64에서 test, sample process, perf smoke와 file-proxy clean
-consumer를 통과했다. 현재 전체 작업은 `PARTIAL / NOT CLEAN`이다. Candidate verify 파일은 존재하지만 V11-R2
-review가 `independent: false`이고, Go–Rust parity, common submit draft 승인, Linux arm64/macOS payload와
-독립 frontier review가 남아 있다.
+Go source와 Core 11 raw projection은 Linux x86_64에서 test, sample process, perf smoke와 candidate-bound
+file-proxy clean consumer를 통과했다. 현재 전체 작업은 `PARTIAL / NOT CLEAN`이다. Go package는
+`V11-M3-CORE-PKG` pass evidence와 같은 candidate identity를 사용하지만 V11-R2 review가
+`independent: false`이다. Go–Rust parity, common submit draft 승인, Linux arm64/macOS payload와 독립
+frontier review가 남아 있다.
 
 ## Candidate 입력
 
@@ -27,8 +28,18 @@ review:
   independent: false
 ```
 
-`V11-M3-CORE-PKG`의 기존 evidence는 현재 Go가 사용하는 11.1.0 candidate와 동일한 identity임을 확인하지
-못했으므로 Go package 승인 증거로 사용하지 않았다.
+`V11-M3-CORE-PKG` evidence는 다음 candidate identity와 일치한다.
+
+```text
+packageEvidence:
+  path: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json
+  sha256: 3a912391c6a7d441e22e606c3407e626ee9d05883142cc541b331498f39722df
+candidateManifestSha256: d318525a4cf8496b6bef5d900c9a88330ea6d7e10ed4120ac0fd9f19d23f6765
+candidateAggregateSha256: 327587596195a162374498b630f51a043977dd392eb556061af615bf05186703
+runtimeSha256: b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4
+provenanceManifestSha256: 46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693
+status: pass
+```
 
 ## 구현과 설계 checkpoint
 
@@ -39,6 +50,7 @@ review:
 | `afd96c43aa` | Core 11 raw projection, service API·header·sample·perf 제거, `/v11`, HWM `uint64` 전달 |
 | `eab6cf9411` | `ZlinkError`/`InternalErrno`, context cancellation test, bounded handle progress pump, raw sample/perf runner |
 | `f1210adaffc` | raw header/symbol allowlist, hot-path cost inventory, Go file-proxy package와 clean-consumer gate |
+| `40dcadb2ef0` | 승인 Core candidate manifest/package evidence를 검증하는 package builder와 candidate-bound Linux payload |
 
 POSD와 DDD 판단은 다음 책임 경계를 기준으로 적용했다.
 
@@ -49,6 +61,9 @@ POSD와 DDD 판단은 다음 책임 경계를 기준으로 적용했다.
 - Go-owned scratch buffer를 반환 전에 다시 복사하던 경로를 제거했으며, ownership에 필요한 native allocation,
   snapshot copy, submit preservation copy와 callback worker는 cost inventory에 분류했다.
 - Service alias, forwarding projection, Core 10 compatibility export와 dead service path를 남기지 않았다.
+- Package builder가 candidate manifest, Core package evidence, installed provenance와 runtime/header hash를
+  한 경계에서 검증하게 해 호출자가 여러 hash를 수동으로 조합하지 않도록 했다. 이 검증은 package 입력의
+  provenance 책임을 builder에 둔 POSD 정보 은닉과 DDD의 Core package 경계를 반영한다.
 
 ## 검증 명령과 결과
 
@@ -81,29 +96,37 @@ perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 
 ```bash
 scripts/local-package/go/build-wsl.sh \
   --platforms linux-x86_64 \
-  --output-root /home/hep7/project/kairos/zlink/.artifacts/wsl/go
+  --core-candidate-manifest \
+    /home/hep7/project/kairos/zlink/.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json \
+  --core-package-evidence \
+    /home/hep7/project/kairos/zlink/.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json \
+  --output-root /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final
 ```
 
-결과: module `zlink.systems/zlink/v11`, version `v11.1.0`, clean consumer `pass`. Consumer는 빈
-`GOMODCACHE`와 `GOCACHE`에서 `replace` 없이 module을 다운로드·build하고 Pair message roundtrip을 실행했다.
-`ldd`는 module cache의 `native/linux-x86_64/libzlink.so.11`을 가리켰다.
+결과: module `zlink.systems/zlink/v11`, version `v11.1.0`, candidate-bound clean consumer `pass`.
+Consumer는 빈 `GOMODCACHE`와 `GOCACHE`에서 `replace` 없이 module을 다운로드·build하고 Pair message
+roundtrip을 실행했다. `ldd`는 module cache의 `native/linux-x86_64/libzlink.so.11`을 가리켰다.
 
 현재 package evidence:
 
 ```text
-evidence: .artifacts/wsl/go/go-package-v11.1.0.json
-evidence sha256: 3b13349d2201d7bf441385c09058052ce98d203df3b3d5d9dc2d31074897895c
-sourceRevision: d02edf6b4f609e5e4a7db1d0338e54e2d66de890
-sourceManifestSha256: 7b4cb11a8c40937eb6c09a900378d1bab865528f4ab2fdf15991400861e161f1
-packageScriptSha256: 3784ad3675b1f26d89b8f54fb6f3d1ee6e5cb6f7b97db4e281f5c7bc646a6825
-moduleZipSha256: c1f0fa1ca09a9f845ee22a1daf29673c23c83ca4d8bd0e57d125fdcce4cfa394
+evidence: .artifacts/wsl/go-candidate-final/go-package-v11.1.0.json
+evidence sha256: 7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d
+sourceRevision: f83290b28cb63afdc88e06110fb4c50a8d8b7053
+sourceManifestSha256: d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004
+packageScriptSha256: 9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee
+moduleZipSha256: 12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef
 headerSha256: 159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d
-sourceSha256: 884cdfabd5c2cfebde9641447d98cbecdc61bfb3c40dee5f9b7f6025a7819e99
-runtimeSha256: a790c7fbfd2a6d7b61c03209b9356e7ac1693afa9456768f867f4e93790b4991
+sourceSha256: 8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7
+runtimeSha256: b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4
+coreCandidateManifestSha256: d318525a4cf8496b6bef5d900c9a88330ea6d7e10ed4120ac0fd9f19d23f6765
+coreCandidateAggregateSha256: 327587596195a162374498b630f51a043977dd392eb556061af615bf05186703
+corePackageEvidenceSha256: 3a912391c6a7d441e22e606c3407e626ee9d05883142cc541b331498f39722df
+coreProvenanceManifestSha256: 46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693
 ```
 
 ```bash
-unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go/proxy/zlink.systems/zlink/v11/@v/v11.1.0.zip \
+unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final/proxy/zlink.systems/zlink/v11/@v/v11.1.0.zip \
   | rg 'service|spot|actor|/build/|/results/'
 ```
 
@@ -119,11 +142,9 @@ unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go/proxy/zlink.systems/
 
 ## 남은 작업
 
-1. 현재 Go package evidence를 V11-M3-CORE-PKG 승인 identity와 연결하고, platform별 package evidence를
-   새로 만든다.
-2. Linux arm64의 major 9 payload와 Darwin payload를 같은 Core 11 candidate runtime으로 교체한 뒤 native
+1. Linux arm64의 major 9 payload와 Darwin payload를 같은 Core 11 candidate runtime으로 교체한 뒤 native
    consumer와 loader evidence를 실행한다.
-3. Go–Rust parity inventory와 submit 반환 draft를 승인하고, 현재 signature를 유지할지 error-only로 바꿀지
+2. Go–Rust parity inventory와 submit 반환 draft를 승인하고, 현재 signature를 유지할지 error-only로 바꿀지
    공통 contract에 반영한다.
-4. 구현자가 아닌 frontier reviewer가 같은 source manifest와 fresh test 결과를 read-only로 검토한다. `Critical`,
+3. 구현자가 아닌 frontier reviewer가 같은 source manifest와 fresh test 결과를 read-only로 검토한다. `Critical`,
    `High`, `Medium` finding이 없고 최종 `CLEAN` 판정이 있어야 전체 완료로 올린다.

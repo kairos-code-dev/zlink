@@ -16,12 +16,12 @@ Linux x86_64 runtime은 Core 11.1.0 raw contract를 사용한다. Linux aarch64�
 Darwin payload는 현재 Core 11 runtime으로 검증되지 않았다. Root의 `VERSION`과 `core/include/zlink.h`에 있는
 11.2.0 변경은 다른 workstream의 dirty change이므로 이 작업의 package 입력으로 사용하지 않는다.
 
-현재 Go source, Linux x86_64 runtime, raw sample과 local file-proxy consumer의 범위는 통과했다. Service API,
-Spot, Actor와 MeshNode projection은 제거했다. 따라서 현재 판정은 **PARTIAL / NOT CLEAN**이다. 전체 완료를
-막는 조건은 다음과 같다.
+현재 Go source, 승인 Core 11.1.0 runtime, raw sample과 candidate-bound local file-proxy consumer의 범위는
+통과했다. Service API, Spot, Actor와 MeshNode projection은 제거했다. 따라서 현재 판정은 **PARTIAL / NOT
+CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 
-- Core candidate verify evidence는 있지만 V11-R2 review가 `independent: false`이고, 현재 Go package evidence가
-  그 candidate의 V11-M3-CORE-PKG 승인 identity와 연결되어 있지 않다.
+- Go package는 현재 Core candidate의 `V11-M3-CORE-PKG` pass evidence와 연결되지만, V11-R2 review가
+  `independent: false`이므로 독립 review gate는 닫히지 않았다.
 - Linux arm64와 macOS payload의 Core 11 runtime 및 native consumer가 검증되지 않았다.
 - Go–Rust parity inventory와 공통 submit 반환 초안의 승인 전이다. 현재 Go send/request terminal method는
   `(bool, error)`를 유지하므로 “성공 값 없는 submit은 `error`만 반환한다”는 목표를 완료로 표시하지 않는다.
@@ -38,6 +38,9 @@ Candidate verify 입력은 다음과 같다.
 | V11-R2 review | `.artifacts/v11/evidence/V11-R2/core-candidate-reply-match-completion-hwm-review-20260801.json` |
 | V11-R2 review SHA-256 | `171a9cc8f7203500de08050dcb74ecd36b4c9ce55a75a14ce1bee283705c9e04` |
 | Review 판정 | `passed`, `independent: false` |
+| V11-M3-CORE-PKG evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
+| V11-M3-CORE-PKG evidence SHA-256 | `3a912391c6a7d441e22e606c3407e626ee9d05883142cc541b331498f39722df` |
+| Approved runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
 
 ## 2. Module path와 version 결정
 
@@ -143,7 +146,8 @@ go test ./internal/native -run 'Test(OptimizationGuard|RawCore11Allowlist|HotPat
   `pass=7 fail=0`으로 통과했다.
 - Spot, Actor와 service operation sample·perf scenario는 runner에서 제거했다.
 - Sample과 perf는 public root package만 사용하며 private cgo bridge와 raw byte 우회를 사용하지 않는다.
-- Single runner는 package `native` runtime path를 출력하고 다음 smoke가 통과했다.
+- Single runner는 승인 package `native` runtime path를 출력한다. 현재 Linux x86_64 runtime SHA-256은
+  `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`이며 다음 smoke가 통과했다.
 
 ```bash
 perf/run_benchmarks.sh --smoke --pattern PAIR --duration 1 --msg-sizes 64 --transports inproc --runs 1
@@ -197,7 +201,7 @@ target만 나타낸다.
 
 | Platform | 상태 | 근거와 남은 조건 |
 |----------|------|------------------|
-| Linux amd64 (`linux-x86_64`) | `PASS` | Core 11.1.0 runtime SHA-256 `a790c7fbfd2a6d7b61c03209b9356e7ac1693afa9456768f867f4e93790b4991`, package clean consumer와 ldd path 검증 |
+| Linux amd64 (`linux-x86_64`) | `PASS` | V11-M3-CORE-PKG 승인 runtime SHA-256 `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`, package clean consumer와 ldd path 검증 |
 | Linux arm64 (`linux-aarch64`) | `BLOCKED` | 추적 payload가 major 9이며 Core 11 runtime과 consumer가 없음 |
 | macOS amd64 (`darwin-x86_64`) | `UNVERIFIED` | payload가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
 | macOS arm64 (`darwin-aarch64`) | `UNVERIFIED` | payload가 현재 Core 11 candidate와 연결되지 않았고 이 Linux host에서 native consumer를 실행하지 않음 |
@@ -209,9 +213,9 @@ platform별로 기록한다. 현재 Linux x86_64 PASS만 local package gate에 �
 ## 6. Go module package와 clean consumer
 
 Repository subtree를 tar로 묶거나 consumer `go.mod`에 local path `replace`를 넣는 방식은 package 완료 증거로
-사용하지 않는다. `scripts/local-package/go/build-wsl.sh`는 표준 file proxy layout을 만들고 commit된
-`bindings/go` source snapshot에서 module을 materialize한다. Binding source의 미커밋 변경과 package-local
-header version drift를 거부한다. 선택한 native payload는 snapshot에 넣기 전에 platform별로 확인한다.
+사용하지 않는다. `scripts/local-package/go/build-wsl.sh`는 명시한 V11-M3-CORE-VERIFY candidate manifest와
+V11-M3-CORE-PKG evidence를 먼저 검증한 뒤, commit된 `bindings/go` source snapshot에서 module을 materialize한다.
+Binding source의 미커밋 변경, package-local header version drift와 candidate와 다른 native payload를 거부한다.
 
 ```text
 <proxy>/zlink.systems/zlink/v11/@v/v11.1.0.info
@@ -219,29 +223,43 @@ header version drift를 거부한다. 선택한 native payload는 snapshot에 �
 <proxy>/zlink.systems/zlink/v11/@v/v11.1.0.zip
 ```
 
+현재 package command는 다음 입력을 사용한다.
+
+```bash
+scripts/local-package/go/build-wsl.sh \
+  --platforms linux-x86_64 \
+  --core-candidate-manifest /absolute/path/candidate-reply-match-completion-hwm-20260801.json \
+  --core-package-evidence /absolute/path/core-package-20260801.json \
+  --output-root /absolute/path/.artifacts/wsl/go-candidate
+```
+
 현재 Linux x86_64 package evidence는 다음 값을 기록한다.
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `d02edf6b4f609e5e4a7db1d0338e54e2d66de890` |
-| Source manifest SHA-256 | `7b4cb11a8c40937eb6c09a900378d1bab865528f4ab2fdf15991400861e161f1` |
-| Package script SHA-256 | `3784ad3675b1f26d89b8f54fb6f3d1ee6e5cb6f7b97db4e281f5c7bc646a6825` |
-| Module zip SHA-256 | `c1f0fa1ca09a9f845ee22a1daf29673c23c83ca4d8bd0e57d125fdcce4cfa394` |
+| Source revision | `f83290b28cb63afdc88e06110fb4c50a8d8b7053` |
+| Source manifest SHA-256 | `d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004` |
+| Package script SHA-256 | `9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee` |
+| Module zip SHA-256 | `12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
-| Source aggregate SHA-256 | `884cdfabd5c2cfebde9641447d98cbecdc61bfb3c40dee5f9b7f6025a7819e99` |
-| Package evidence | `.artifacts/wsl/go/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `3b13349d2201d7bf441385c09058052ce98d203df3b3d5d9dc2d31074897895c` |
+| Source aggregate SHA-256 | `8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7` |
+| Package evidence | `.artifacts/wsl/go-candidate-final/go-package-v11.1.0.json` |
+| Package evidence SHA-256 | `7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d` |
+| Core candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
+| Core package evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
+| Core provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
+| Runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
 | Clean consumer | `pass`, `replace` 없음, module-cache runtime ldd 확인 |
 
-이 evidence는 Linux x86_64 package gate의 결과이며 Core candidate 승인이나 다른 platform의 package evidence를
-대신하지 않는다.
+이 evidence는 Linux x86_64 package가 동일한 Core candidate manifest, V11-R2 review와 installed Core provenance를
+사용했음을 증명한다. 독립 Go review와 다른 platform package evidence를 대신하지 않는다.
 
 ## 7. 검증 표
 
 | Gate | 상태 | Evidence |
 |------|------|----------|
-| 공통 candidate 입력 확인 | `PARTIAL` | Candidate verify는 존재하지만 V11-R2 `independent: false`, matching V11-M3-CORE-PKG gate 미확정 |
-| Go binding source manifest | `PASS` | `.artifacts/wsl/go/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
+| 공통 candidate 입력 확인 | `PASS` (독립 review 제외) | Candidate verify와 matching V11-M3-CORE-PKG pass evidence가 같은 manifest `d318...`/aggregate `327...`을 사용하며 runtime provenance 검증 통과 |
+| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
 | `/v11` module path와 version | `PASS` | `bindings/go/go.mod`, package evidence `v11.1.0` |
 | Raw cgo·header·symbol allowlist | `PASS` | `bindings/go/tests/raw-core11-allowlist.json`, `TestRawCore11Allowlist` |
 | Public API snapshot과 service 부재 | `PASS` | root/contracts projection, raw surface test, package zip forbidden-entry 검사 |
@@ -253,11 +271,11 @@ header version drift를 거부한다. 선택한 native payload는 snapshot에 �
 | Go·Rust parity inventory | `PENDING` | `go-rust-return-parity.ko.md`의 Go–Rust 공통 비교 미완료 |
 | Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |
 | Raw sample process runner | `PASS` | `samples: pass=7 fail=0` |
-| File proxy package contents | `PASS` | zip에 선택 Linux runtime 포함, service/build/results forbidden-entry 없음 |
+| File proxy package contents | `PASS` | candidate-bound zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |
 | Replace 없는 clean module consumer | `PASS` | 빈 `GOMODCACHE`/`GOCACHE`, go build와 Pair roundtrip, module-cache ldd |
 | Linux·macOS native consumer | `PARTIAL` | Linux x86_64 PASS, Linux arm64 BLOCKED, macOS UNVERIFIED |
 | 한국어·영문 spec, GoDoc와 guide | `PARTIAL` | Go spec/GoDoc/sample entrypoint 갱신; 공통 draft·parity 통합 미완료 |
-| Package·통합 최종 review | `PENDING` | Candidate/package identity 연결, platform evidence, 독립 review 필요 |
+| Package·통합 최종 review | `PENDING` | Linux x86_64 candidate 연결은 통과했지만 다른 platform evidence와 독립 review 필요 |
 
 명령, 종료 코드, test 수, module zip SHA-256과 실패 원인은
 `bindings/doc/plan/log/go/` 아래 날짜별 log에 기록한다.

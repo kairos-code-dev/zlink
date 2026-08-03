@@ -59,7 +59,8 @@ DDD 기준의 경계는 다음과 같다.
 
 ### PY-01 — Raw FFI와 Core 11 projection — PASS
 
-- `ffi.py`, `_zlink_native.c`, `_zlink_perf_native.c`는 Core 11 raw symbol과 layout만 선언한다.
+- `ffi.py`와 `_zlink_native.c`는 Core 11 raw symbol과 layout만 선언한다. 공식 perf runner는 public
+  Python contract를 사용하므로 별도 private perf native extension을 package에 포함하지 않는다.
 - Core header에 없는 이전 기능의 FFI, callback, include와 compiled entrypoint를 제거했다.
 - `ctx_set_data`/`ctx_get_data`가 필요한 `uint64` option은 Core 함수군의 실제 ABI에 맞춰 연결했다.
 - `Message`, `Received`, routing id, raw socket, monitor, poller와 timer의 production path를 유지했다.

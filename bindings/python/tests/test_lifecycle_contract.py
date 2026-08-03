@@ -1,6 +1,7 @@
 """Regression tests for retryable native ownership transitions."""
 
 import errno
+import threading
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -12,6 +13,7 @@ from zlink._runtime.eventing import monitor as monitor_runtime
 from zlink._runtime.eventing import poller as poller_runtime
 from zlink._runtime.eventing import timer as timer_runtime
 from zlink._runtime.handles import native_support
+from zlink._runtime.messaging.request_reply import _PendingRequest
 from zlink._runtime.sockets import socket_base, socket_base_impl
 
 
@@ -53,6 +55,8 @@ def _socket_with_lifecycle_state(socket_cls, handle):
     owner._packet_handler = object()
     owner._packet_handler_cb = object()
     owner._dispatcher = Mock()
+    owner._request_state_lock = threading.RLock()
+    owner._request_closing = False
     return owner
 
 
@@ -117,7 +121,7 @@ def test_request_callback_is_not_cancelled_until_socket_close_succeeds():
     handle = _RetryableHandle()
     socket = _socket_with_lifecycle_state(socket_base_impl.DealerSocket, handle)
     callback = Mock()
-    socket._pending_requests = {1: SimpleNamespace(callback=callback)}
+    socket._pending_requests = {1: _PendingRequest(callback=callback)}
 
     with pytest.raises(zlink.CloseError):
         socket.close()

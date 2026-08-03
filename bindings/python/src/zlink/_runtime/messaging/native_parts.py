@@ -10,11 +10,11 @@ the caller on failure.
 import ctypes
 
 from .message_materializer import Message
+from ..._native.ffi import ZlinkMsg
 from ..handles.native_support import (
     _close_multipart,
     _clone_native_msg,
     _init_msg_from_buffer,
-    ZlinkMsg,
 )
 
 

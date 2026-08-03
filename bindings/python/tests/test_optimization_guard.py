@@ -43,7 +43,6 @@ def test_raw_runtime_does_not_use_dynamic_ffi_or_service_fallbacks():
 
 def test_raw_hot_path_keeps_gil_release_and_part_failure_cleanup():
     native_text = (SRC / "_native" / "_zlink_native.c").read_text(encoding="utf-8")
-    perf_text = (SRC / "_native" / "_zlink_perf_native.c").read_text(encoding="utf-8")
     socket_text = (SRC / "_runtime" / "sockets" / "socket_base.py").read_text(
         encoding="utf-8"
     )
@@ -51,7 +50,6 @@ def test_raw_hot_path_keeps_gil_release_and_part_failure_cleanup():
     assert "zlink_send_part" in native_text
     assert "zlink_recv_part" in native_text
     assert "zlink_router_recv_part" not in native_text
-    assert "Py_BEGIN_ALLOW_THREADS" in perf_text
     assert "_send_payload_via_native_bridge" in socket_text
     assert "_recv_owner_via_native_bridge" in socket_text
     assert "for (Py_ssize_t j = i; j < prepared.count; ++j)" in native_text

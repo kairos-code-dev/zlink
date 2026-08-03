@@ -131,9 +131,5 @@ setup(
             "zlink._native._zlink_native",
             "src/zlink/_native/_zlink_native.c",
         ),
-        _native_extension(
-            "zlink._native._zlink_perf_native",
-            "src/zlink/_native/_zlink_perf_native.c",
-        ),
     ]
 )

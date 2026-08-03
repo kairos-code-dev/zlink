@@ -100,6 +100,79 @@ class CoreApiAlignmentTests(unittest.TestCase):
                         self.assertEqual(received.to_bytes_list(), [b"first", b"second"])
                     self.assertEqual(len(received), 0)
 
+    def test_message_builder_and_request_reply_accept_native_messages(self):
+        with zlink.create_context() as ctx:
+            with zlink.create_pair_socket(ctx) as left:
+                with zlink.create_pair_socket(ctx) as right:
+                    left.bind("inproc://python-core-11-message-builder")
+                    right.connect("inproc://python-core-11-message-builder")
+                    with zlink.Message.from_(b"builder-payload") as message:
+                        self.assertTrue(left.send().message(message).submit())
+                    received = zlink.create_received()
+                    self.assertTrue(right.recv_into(received))
+                    with received:
+                        self.assertEqual(received.to_bytes_list(), [b"builder-payload"])
+
+            callbacks = queue.Queue()
+            with zlink.create_dealer_socket(ctx) as dealer:
+                with zlink.create_router_socket(ctx) as router:
+                    router.bind("inproc://python-core-11-message-request")
+                    dealer.connect("inproc://python-core-11-message-request")
+
+                    def on_reply(result, parts):
+                        try:
+                            callbacks.put((result, [part.to_bytes() for part in parts]))
+                        finally:
+                            for part in parts:
+                                part.close()
+
+                    with zlink.Message.from_(b"request-payload") as request:
+                        self.assertTrue(
+                            dealer.request().message(request).submit(on_reply)
+                        )
+                    request_received = zlink.create_received()
+                    self.assertTrue(router.recv_into(request_received))
+                    with request_received:
+                        self.assertEqual(
+                            request_received.to_bytes_list(), [b"request-payload"]
+                        )
+                        with zlink.Message.from_(b"reply-payload") as reply:
+                            request_received.reply().message(reply).submit()
+
+                    _wait_for(lambda: not callbacks.empty())
+                    result, parts = callbacks.get_nowait()
+                    self.assertEqual(result, zlink.RequestResult.OK)
+                    self.assertEqual(parts, [b"reply-payload"])
+
+    def test_pending_request_close_delivers_termination_without_close_error(self):
+        callbacks = queue.Queue()
+        with zlink.create_context() as ctx:
+            with zlink.create_dealer_socket(ctx) as dealer:
+                with zlink.create_router_socket(ctx) as router:
+                    router.bind("inproc://python-core-11-pending-close")
+                    dealer.connect("inproc://python-core-11-pending-close")
+                    dealer.request().message(b"pending").submit(
+                        lambda result, parts: callbacks.put((result, parts))
+                    )
+                    received = zlink.create_received()
+                    self.assertTrue(router.recv_into(received))
+                    received.close()
+
+                    dealer.close()
+
+                    _wait_for(lambda: not callbacks.empty())
+                    result, parts = callbacks.get_nowait()
+                    self.assertEqual(result, zlink.RequestResult.TERMINATED)
+                    self.assertEqual(parts, [])
+
+    def test_request_rejects_missing_callback_before_native_submission(self):
+        with zlink.create_context() as ctx:
+            with zlink.create_dealer_socket(ctx) as dealer:
+                with self.assertRaises(TypeError):
+                    dealer.request().message(b"payload").submit(None)
+                with self.assertRaises(TypeError):
+                    dealer.request().message(b"payload").flags(0).submit(None)
+
     def test_dealer_router_request_reply_uses_raw_routing_metadata(self):
         callbacks = queue.Queue()
         with zlink.create_context() as ctx:

@@ -5,28 +5,17 @@ import errno as _errno
 import sys
 import traceback
 
-from ...contracts.core.options import AutoHwmProfile, ContextOption
+from ...contracts.core.routing_id import RoutingId
 from ...contracts.errors.codes import (
-    BindResult,
-    CloseResult,
     ConfigResult,
-    ConnectResult,
 )
 from ...contracts.sockets.codes import (
-    HandlerResult,
     RecvResult,
     RequestResult,
-    SubmitResult,
 )
 from ...contracts.errors.errors import (
-    BindError,
-    CloseError,
     ConfigError,
-    ConnectError,
-    HandlerError,
     RecvError,
-    RequestError,
-    SubmitError,
     ZlinkError,
     _TypedZlinkError,
 )
@@ -40,35 +29,6 @@ def _request_result_from_code(code):
         # Keep a future Core result observable to the caller. Mapping it to a
         # known terminal result would change the wire contract silently.
         return int(code)
-
-
-def _request_result_native_errno(result):
-    typed = _request_result_from_code(result)
-    if typed == RequestResult.TIMED_OUT:
-        return _errno.ETIMEDOUT
-    if typed == RequestResult.TERMINATED:
-        return getattr(_errno, "ETERM", 0)
-    if typed == RequestResult.NOT_FOUND:
-        return _errno.ENOENT
-    if typed == RequestResult.INTERNAL_ERROR:
-        return _errno.EIO
-    if typed == RequestResult.REJECTED:
-        return _errno.ECONNREFUSED
-    if typed == RequestResult.CONFLICT:
-        return _errno.EINVAL
-    if typed == RequestResult.BUSY:
-        return _errno.EBUSY
-    if typed == RequestResult.NOT_CONNECTED:
-        return _errno.ENOTCONN
-    if typed == RequestResult.INVALID_ARGUMENT:
-        return _errno.EINVAL
-    if typed == RequestResult.INVALID_STATE:
-        return _errno.EINVAL
-    if typed == RequestResult.NOT_SUPPORTED:
-        return _errno.ENOTSUP
-    if typed == RequestResult.BACKPRESSURED:
-        return _errno.EAGAIN
-    return 0
 
 
 def _config_result_from_errno(err):
@@ -460,35 +420,3 @@ def _recv_native_parts(handle, flags):
         final_array[index] = native_part
     routing = _routing_id_bytes(routing_id.contents) if routing_id else None
     return routing, _ReceivedPartsOwner(final_array, part_count)
-
-
-# Public classes live in contracts/. The re-export below is intentionally
-# deferred via __getattr__ so this module can be loaded before the contracts
-# package finishes initializing. Internal _runtime callers can still write
-# ``from ..handles.native_support import Context, Message, RoutingId, ...`` without inviting
-# a circular import.
-def __getattr__(name):
-    _public = {
-        "Context": ("zlink.contracts.core.context", "Context"),
-        "ContextOptions": ("zlink.contracts.core.context", "ContextOptions"),
-        "RoutingId": ("zlink.contracts.core.routing_id", "RoutingId"),
-        "Message": ("zlink.contracts.messaging.message", "Message"),
-        "Received": ("zlink.contracts.messaging.received", "Received"),
-        "ReceivedMessage": ("zlink.contracts.messaging.received", "ReceivedMessage"),
-        "ReceivedMultipart": ("zlink.contracts.messaging.received", "ReceivedMultipart"),
-        "SubscriptionEvent": (
-            "zlink.contracts.messaging.subscription_event",
-            "SubscriptionEvent",
-        ),
-        "TopicMessage": ("zlink.contracts.messaging.topic_message", "TopicMessage"),
-        "METADATA_KEY_USER_MIN": ("zlink.contracts.messaging.message", "METADATA_KEY_USER_MIN"),
-        "METADATA_VALUE_MAX": ("zlink.contracts.messaging.message", "METADATA_VALUE_MAX"),
-    }
-    target = _public.get(name)
-    if target is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-    module = importlib.import_module(target[0])
-    value = getattr(module, target[1])
-    globals()[name] = value
-    return value

@@ -15,13 +15,11 @@ from ...contracts.errors.codes import (
 from ...contracts.eventing.codes import MonitorEventMask
 from ...contracts.sockets.codes import (
     HandlerResult,
-    RidDuplicatePolicy,
+    RecvResult,
     SocketType,
     SubmitResult,
 )
-from ..native_codes import SocketOption
-from ..._native import bridge as _native_bridge
-from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
+from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, ZlinkRoutingId, lib
 from ..buffers.payload_buffers import (
     _bool_bytes,
     _int32_bytes,
@@ -36,6 +34,15 @@ from ..options.option_mapping import (
     create_sub_socket_options,
 )
 from ...contracts.core.routing_id import RoutingId
+from ...contracts.errors.errors import (
+    BindError,
+    CloseError,
+    ConfigError,
+    ConnectError,
+    HandlerError,
+    RecvError,
+    SubmitError,
+)
 from ..messaging.message_materializer import (
     Message,
     Received,
@@ -43,16 +50,6 @@ from ..messaging.message_materializer import (
 )
 from ..messaging.native_parts import _materialize_native_parts, _payload_parts
 from ..handles.native_support import (
-    BindError,
-    CloseError,
-    ConfigError,
-    ConnectError,
-    HandlerError,
-    HandlerResult,
-    RecvError,
-    RecvResult,
-    SubmitError,
-    ZlinkRoutingId,
     _SOCKET_RECV_HANDLER,
     _SOCKET_SEND_READY_HANDLER,
     _BytesReceivedPartsOwner,
@@ -60,24 +57,23 @@ from ..handles.native_support import (
     _as_bytes_view,
     _clone_native_msg,
     _copy_routing_id,
-    _decode_topic_text,
-    _init_msg_from_buffer,
-    _is_eagain,
     _recv_native_parts,
     _report_unhandled_callback_exception,
     _raise_result_error,
     _routing_id_bytes,
     _validated_c_string_text,
     _validated_c_string_value,
-    _validated_int32,
-    _validated_int64,
     _validated_routing_id_bytes,
     _send_buffer,
-    ZlinkError,
 )
 
 _callback_depth_by_thread = {}
-_native_extension = getattr(_native_bridge, "_zlink_native", None)
+try:
+    from ..._native import _zlink_native as _native_extension
+except ImportError:  # pragma: no cover - exercised when extension is not built.
+    _native_extension = None
+
+
 _native_recv_owner = (
     getattr(_native_extension, "recv_owner", None)
     if _native_extension is not None
@@ -866,7 +862,9 @@ class _SubscriberSocket(_Socket):
                 _raise_result_error(RecvError, RecvResult, rc, err)
             routing_id = RoutingId.from_(routing) if routing is not None else None
             return topic_raw, owner, routing_id
-        result = _native_bridge.subscribe_parts(self._handle, flags)
+        if _native_extension is None:
+            return None
+        result = _native_extension.subscribe_parts(int(self._handle), int(flags))
         if result is None:
             return None
         rc, err, routing, topic_raw, parts = result

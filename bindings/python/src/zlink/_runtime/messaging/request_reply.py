@@ -3,24 +3,16 @@
 import ctypes
 import errno
 import threading
+import traceback
 
+from ...contracts.errors.errors import SubmitError
+from ...contracts.sockets.codes import RequestResult, SubmitResult
 from ..handles.native_support import (
-    HandlerError,
-    HandlerResult,
-    RecvError,
-    RecvResult,
-    RequestError,
-    RequestResult,
-    RoutingId,
-    SubmitError,
-    SubmitResult,
-    ZlinkMsg,
     _REPLY_HANDLER,
     _clone_native_msg,
     _copy_routing_id,
     _report_unhandled_callback_exception,
     _request_result_from_code,
-    _request_result_native_errno,
     _raise_result_error,
     _routing_id_bytes,
 )
@@ -62,7 +54,7 @@ class _PendingRequest:
     def __init__(self, *, callback=None):
         self.callback = callback
 
-    def resolve(self, result, received, errnum=0):
+    def resolve(self, result, received):
         if self.callback is None:
             return
 
@@ -89,9 +81,10 @@ class _RequestProgressPump:
     needs to wake the wait loop when handles complete.
     """
 
-    def __init__(self, handle_getter, is_active):
+    def __init__(self, handle_getter, is_active, on_failure):
         self._handle_getter = handle_getter
         self._is_active = is_active
+        self._on_failure = on_failure
         self._lock = threading.Lock()
         self._thread = None
         self._stop_event = threading.Event()
@@ -132,7 +125,9 @@ class _RequestProgressPump:
                 return
             poller = lib().zlink_poller_new()
             if not poller:
+                self._notify_failure()
                 return
+            poller_added = False
             try:
                 rc = lib().zlink_poller_add(
                     poller,
@@ -141,7 +136,9 @@ class _RequestProgressPump:
                     ctypes.c_short(_POLL_COMPLETION),
                 )
                 if rc != 0:
+                    self._notify_failure()
                     return
+                poller_added = True
                 events = (ZlinkPollerEvent * 1)()
                 error_out = ctypes.c_int()
                 # Use a finite wait timeout so the worker can observe
@@ -153,14 +150,25 @@ class _RequestProgressPump:
                             poller, events, 1, 50, ctypes.byref(error_out)
                         )
                         if wait_rc < 0:
+                            self._notify_failure()
                             break
                     except Exception:
+                        self._notify_failure()
                         break
             finally:
-                lib().zlink_poller_remove(poller, handle)
+                if poller_added:
+                    lib().zlink_poller_remove(poller, handle)
                 handle_ptr = ctypes.c_void_p(poller)
                 lib().zlink_poller_destroy(ctypes.byref(handle_ptr))
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
+
+    def _notify_failure(self):
+        if self._stop_event.is_set() or not self._is_active():
+            return
+        try:
+            self._on_failure()
+        except Exception:
+            traceback.print_exc()

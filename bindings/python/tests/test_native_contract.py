@@ -1,7 +1,7 @@
 import ctypes
 from pathlib import Path
 
-from zlink._native import _zlink_native, _zlink_perf_native
+from zlink._native import _zlink_native
 from zlink._native.ffi import (
     ZlinkMonitorStatus,
     ZlinkMsg,
@@ -26,7 +26,7 @@ def test_ffi_layouts_are_the_core_11_layouts():
     assert (ctypes.sizeof(ZlinkPollerEvent), ctypes.alignment(ZlinkPollerEvent)) == (48, 8)
 
 
-def test_native_extensions_expose_only_raw_bridge_operations():
+def test_native_extension_exposes_only_raw_bridge_operations():
     assert {
         name
         for name in dir(_zlink_native)
@@ -48,21 +48,8 @@ def test_native_extensions_expose_only_raw_bridge_operations():
         "subscribe_parts",
         "subscribe_owner",
     }
-    assert {
-        name
-        for name in dir(_zlink_perf_native)
-        if not name.startswith("__")
-    } == {
-        "single_socket_one_way",
-        "multi_send_one_way",
-        "multi_echo_roundtrip",
-        "router_echo_server_loop",
-        "recv_count_active",
-        "publish_active",
-        "subscribe_count_active",
-        "perf_stamp_payload",
-        "perf_active_latency_ns",
-    }
+    assert not (SRC / "_native" / "_zlink_perf_native.c").exists()
+    assert "_zlink_perf_native" not in (ROOT / "setup.py").read_text(encoding="utf-8")
 
 
 def test_native_source_contains_no_service_ffi_or_repository_fallback():
@@ -70,10 +57,8 @@ def test_native_source_contains_no_service_ffi_or_repository_fallback():
         path.read_text(encoding="utf-8")
         for path in (
             SRC / "_native" / "ffi.py",
-            SRC / "_native" / "bridge.py",
             SRC / "_native" / "_native_loader.py",
             SRC / "_native" / "_zlink_native.c",
-            SRC / "_native" / "_zlink_perf_native.c",
         )
     )
     for forbidden in (
@@ -102,6 +87,16 @@ def test_package_platform_policy_is_explicit_linux_x86_64_only():
     assert "_prepare_windows_runtime" not in loader_text
     assert "libzlink.dylib" not in loader_text
     assert 'f"native/{platform_dir}/*"' not in setup_text
+    native_root = SRC / "native"
+    assert {
+        path.relative_to(native_root).as_posix()
+        for path in native_root.rglob("*")
+        if path.is_file() or path.is_symlink()
+    } == {
+        "linux-x86_64/libzlink.so",
+        "linux-x86_64/libzlink.so.11",
+        "linux-x86_64/libzlink.so.11.2.0",
+    }
 
 
 def test_raw_core_symbol_binding_is_present_and_removed_symbols_are_absent():

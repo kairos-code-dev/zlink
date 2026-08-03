@@ -1,50 +1,37 @@
 # SPDX-License-Identifier: MPL-2.0
 
 import ctypes
-import errno
+import threading
 
 from ...contracts.sockets.codes import SocketType
-from ..native_codes import RouterOption
 from ..options.option_mapping import (
     create_pub_socket_options,
     create_router_socket_options,
 )
 from ..buffers.payload_buffers import _read_int32
-from ..._native import bridge as _native_bridge
-from ..._native.ffi import ZLINK_PART_FINAL, ZLINK_PART_MORE, ZlinkMsg, lib
+from ..._native.ffi import ZlinkMsg, ZlinkRoutingId, lib
 from ..handles.native_support import (
     _copy_routing_id,
     _decode_topic_text,
-    _msg_to_bytes,
     _REPLY_HANDLER,
-    _BytesReceivedPartsOwner,
     _ReceivedPartsOwner,
-    ZlinkRoutingId,
-    _is_eagain,
     _raise_result_error,
     _request_result_from_code,
-    _request_result_native_errno,
     _report_unhandled_callback_exception,
     _routing_id_bytes,
     _validated_routing_id_bytes,
     _validated_c_string_value,
 )
 from ...contracts.errors.errors import (
-    BindError,
-    CloseError,
-    ConfigError,
     ConnectError,
     HandlerError,
     RecvError,
-    RequestError,
     SubmitError,
 )
-from ...contracts.errors.codes import ConfigResult, ConnectResult
+from ...contracts.errors.codes import ConnectResult
 from ...contracts.sockets.codes import HandlerResult, RecvResult, RequestResult, SubmitResult
-from ...contracts.core.routing_id import RoutingId
 from ..messaging.message_materializer import (
     Message,
-    Received,
     ReceivedMessage,
     SubscriptionEvent,
 )
@@ -82,6 +69,13 @@ from .socket_base import (
 
 
 _NO_PAYLOAD = object()
+
+
+def _require_request_callback(callback):
+    if not callable(callback):
+        raise TypeError("request callback must be callable")
+
+
 _native_socket_send_op_func = (
     getattr(_native_extension, "socket_send_op", None)
     if _native_extension is not None
@@ -283,7 +277,7 @@ class _PublisherSendOp(_SocketSendOp):
             raise
 
 
-class _NativeBuilderSendOp:
+class _NativeBuilderSendOp(_SocketSendOp):
     """Delay native builder selection until payload types are known.
 
     The C builder is the fast path for buffer-protocol parts. A public
@@ -295,63 +289,12 @@ class _NativeBuilderSendOp:
     __slots__ = (
         "_native_factory",
         "_fallback_factory",
-        "_payload",
-        "_parts",
-        "_flags",
-        "_submitted",
     )
 
     def __init__(self, native_factory, fallback_factory):
+        super().__init__(None)
         self._native_factory = native_factory
         self._fallback_factory = fallback_factory
-        self._payload = _NO_PAYLOAD
-        self._parts = None
-        self._flags = 0
-        self._submitted = False
-
-    def message(self, payload):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        if self._parts is not None:
-            self._parts.append(payload)
-        elif self._payload is _NO_PAYLOAD:
-            self._payload = payload
-        else:
-            self._parts = [self._payload, payload]
-            self._payload = _NO_PAYLOAD
-        return self
-
-    def messages(self, *payloads):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        if not payloads:
-            return self
-        if self._parts is not None:
-            self._parts.extend(payloads)
-        elif self._payload is _NO_PAYLOAD:
-            if len(payloads) == 1:
-                self._payload = payloads[0]
-            else:
-                self._parts = list(payloads)
-        else:
-            self._parts = [self._payload, *payloads]
-            self._payload = _NO_PAYLOAD
-        return self
-
-    def flags(self, flags):
-        if self._submitted:
-            raise SubmitError(SubmitResult.INVALID_STATE, 0)
-        self._flags = int(flags)
-        return self
-
-    def _payload_or_raise(self):
-        if self._parts is not None:
-            if not self._parts:
-                raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
-            return self._parts
-        if self._payload is _NO_PAYLOAD:
-            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
-        return self._payload
 
     def submit(self):
         if self._submitted:
@@ -422,6 +365,7 @@ class _RequestOp:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         if not self._parts:
             raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        _require_request_callback(callback)
         self._submitted = True
         return self._op_callback(
             self._parts,
@@ -472,6 +416,7 @@ class _RequestCallbackOp:
             raise SubmitError(SubmitResult.INVALID_STATE, 0)
         if not self._parts:
             raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        _require_request_callback(callback)
         self._submitted = True
         return self._op_callback(
             self._parts,
@@ -524,46 +469,56 @@ class _RequestSocket:
 
     def _init_request_socket(self):
         self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
+        self._request_state_lock = threading.RLock()
+        self._request_closing = False
         self._pending_requests = {}
         self._request_progress = _RequestProgressPump(
             lambda: self._handle,
-            lambda: bool(self._pending_requests),
+            self._request_has_pending,
+            lambda: self._cancel_pending_requests(RequestResult.INTERNAL_ERROR),
         )
+
+    def _request_has_pending(self):
+        with self._request_state_lock:
+            return bool(self._pending_requests)
 
     def _on_request_reply(self, result_code, parts, part_count, userdata):
         handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._pending_requests.pop(handle, None)
+        with self._request_state_lock:
+            pending = self._pending_requests.pop(handle, None)
         if pending is None:
             return
         result = _request_result_from_code(int(result_code))
         reply = []
         if result == RequestResult.OK:
             reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_native_errno(result))
+        pending.resolve(result, reply)
 
     def _cancel_pending_requests(self, result):
-        for handle, pending in list(self._pending_requests.items()):
-            self._pending_requests.pop(handle, None)
-            if pending.callback is not None:
-                try:
-                    pending.callback(result, [])
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
+        with self._request_state_lock:
+            pending_requests = list(self._pending_requests.values())
+            self._pending_requests.clear()
+        for pending in pending_requests:
+            pending.resolve(result, [])
 
     def close(self):
         progress = getattr(self, "_request_progress", None)
-        if progress is not None:
-            progress.stop()
+        with self._request_state_lock:
+            self._request_closing = True
         try:
+            if progress is not None:
+                progress.stop()
             super().close()
         except Exception:
             # A retryable Core close must leave the request aggregate usable.
             # Restart progress only while the native handle and pending work
             # still exist; a successful close drains/cancels them below.
+            with self._request_state_lock:
+                self._request_closing = False
             if (
                 progress is not None
                 and self._handle
-                and self._pending_requests
+                and self._request_has_pending()
             ):
                 progress.ensure_running()
             raise
@@ -602,21 +557,24 @@ class DealerSocket(
         )
 
     def _request_callback(self, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._pending_requests[handle] = pending
-        try:
-            self._start_request(payload, flags, timeout, handle)
-            self._request_progress.ensure_running()
-            return True
-        except SubmitError as ex:
-            self._pending_requests.pop(handle, None)
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-        except Exception:
-            self._pending_requests.pop(handle, None)
-            raise
+        with self._request_state_lock:
+            if self._request_closing or not self._handle:
+                raise SubmitError(SubmitResult.INVALID_STATE, 0)
+            pending = _PendingRequest(callback=callback)
+            handle = id(pending)
+            self._pending_requests[handle] = pending
+            try:
+                self._start_request(payload, flags, timeout, handle)
+                self._request_progress.ensure_running()
+                return True
+            except SubmitError as ex:
+                self._pending_requests.pop(handle, None)
+                if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                    return False
+                raise
+            except Exception:
+                self._pending_requests.pop(handle, None)
+                raise
 
     def _start_request(self, payload, flags, timeout, handle):
         native_parts = _clone_payload(payload)
@@ -635,16 +593,6 @@ class DealerSocket(
         if rc != 0:
             self._pending_requests.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
-
-    def _cancel_pending_requests(self, result):
-        for handle, pending in list(self._pending_requests.items()):
-            self._pending_requests.pop(handle, None)
-            if pending.callback is not None:
-                try:
-                    pending.callback(result, [])
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
-
 
 class RouterSocket(
     _RequestSocket,
@@ -768,21 +716,24 @@ class RouterSocket(
         return True
 
     def _request_callback(self, routing_id, payload, callback, *, flags=0, timeout=0):
-        pending = _PendingRequest(callback=callback)
-        handle = id(pending)
-        self._pending_requests[handle] = pending
-        try:
-            self._start_request(routing_id, payload, flags, timeout, handle)
-            self._request_progress.ensure_running()
-            return True
-        except SubmitError as ex:
-            self._pending_requests.pop(handle, None)
-            if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
-                return False
-            raise
-        except Exception:
-            self._pending_requests.pop(handle, None)
-            raise
+        with self._request_state_lock:
+            if self._request_closing or not self._handle:
+                raise SubmitError(SubmitResult.INVALID_STATE, 0)
+            pending = _PendingRequest(callback=callback)
+            handle = id(pending)
+            self._pending_requests[handle] = pending
+            try:
+                self._start_request(routing_id, payload, flags, timeout, handle)
+                self._request_progress.ensure_running()
+                return True
+            except SubmitError as ex:
+                self._pending_requests.pop(handle, None)
+                if int(flags) & 1 and ex.result == SubmitResult.BACKPRESSURED:
+                    return False
+                raise
+            except Exception:
+                self._pending_requests.pop(handle, None)
+                raise
 
     def _start_request(self, routing_id, payload, flags, timeout, handle):
         native_parts = _clone_payload(payload)

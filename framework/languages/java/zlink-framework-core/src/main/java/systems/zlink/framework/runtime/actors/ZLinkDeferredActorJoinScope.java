@@ -184,7 +184,7 @@ final class ZLinkDeferredActorJoinScope {
                 }
                 if (matched != null && matched != candidate) {
                     throw failure(
-                        ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                        ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                         "Actor join defer matches more than one open handler scope");
                 }
                 matched = candidate;
@@ -193,34 +193,34 @@ final class ZLinkDeferredActorJoinScope {
         }
         if (state == null) {
             throw failure(
-                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                 "Actor join defer is only valid in an open Framework handler scope");
         }
         synchronized (state) {
             if (state.sealed) {
                 throw failure(
-                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                     "Actor join handler registration scope is closed");
             }
             if (!state.accepts(actorId)) {
                 throw failure(
-                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                     "Actor join defer must target a local Actor allowed by the current handler");
             }
             if (requestBytes < 0 || requestBytes > MAX_REQUEST_BYTES) {
                 throw failure(
-                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                     "Actor join request exceeds the 1 MiB encoded limit");
             }
             if (state.intents.size() >= MAX_JOIN_COUNT
                 || state.requestBytes + requestBytes > MAX_TOTAL_REQUEST_BYTES) {
                 throw failure(
-                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                     "Actor join registrations exceed the handler limit");
             }
             if (state.claimedActorIds.contains(actorId)) {
                 throw failure(
-                    ZLinkFrameworkErrorKind.ACTOR_MOVING,
+                    ZLinkFrameworkErrorKind.UNAVAILABLE,
                     "Actor already has a pending membership transition");
             }
             state.claimedActorIds.add(actorId);

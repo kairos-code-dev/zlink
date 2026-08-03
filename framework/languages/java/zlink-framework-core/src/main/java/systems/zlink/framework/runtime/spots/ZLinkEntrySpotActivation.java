@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.internal.backend.*;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -195,12 +196,17 @@ final class EntrySpotActivation
     }
 
     private void drainRoutes() {
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendReceived received =
                 backendSpot.recvRoute(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {
                 return;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.acceptedJournalRecordSize()));
             ZLinkSpotRuntime.traceSpotRouteInbound("entry-recv", backendSpot, received);
             if (host.dispatchSpotRouteBridgePacket(received)) {
                 received.close();
@@ -288,7 +294,7 @@ final class EntrySpotActivation
                     backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        ZLinkFrameworkErrorKind.REJECTED,
                         "Actor application admission is sealed"));
             }
             closeRouteReceived(received);
@@ -314,7 +320,7 @@ final class EntrySpotActivation
                     backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        ZLinkFrameworkErrorKind.REJECTED,
                         "SPOT application admission is sealed"));
             }
             closeRouteReceived(received);
@@ -362,12 +368,17 @@ final class EntrySpotActivation
     }
 
     private void drainSubscriptions() {
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendTopicMessage received =
                 backendSpot.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {
                 return;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.topic().getBytes(StandardCharsets.UTF_8).length));
             dispatchSpotSubscription(received);
         }
     }
@@ -472,12 +483,14 @@ final class EntrySpotActivation
     }
 
     private void drainUnhandledActorJoins() {
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendActorJoinRequest request =
                 backendSpot.recvActorJoin(ZLinkBackendRecvMode.DONT_WAIT);
             if (request == null) {
                 return;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(request.parts()));
             Message payloadCopy = request.parts().isEmpty()
                 ? Message.from(new byte[0])
                 : Message.from(request.parts().get(0).toByteArray());

@@ -114,16 +114,21 @@ async function main(): Promise<void> {
     zlinkStreamAssert.ensure(internal.payload.nodeId === NodeIds.west, 'ZW-B3 node id changed.');
     console.log('scenario ZW-B3 passed');
 
+    console.log('scenario ZW-B2 preparing cross-node move');
     position = await walkTo(gateway, joined.playerId, position, 49, 25);
+    console.log('scenario ZW-B2 source position ready');
     const transferredTask = gateway
       .waitFor<ZoneChangedNotify>(PacketNames.zoneChangedNotify)
       .where((message) => message.payload.zoneId === ZoneIds.northEast)
       .submit();
     await gateway.send(new MoveMsg(52, 25)).packetName(PacketNames.moveMsg).submit();
+    console.log('scenario ZW-B2 move submitted');
     const transferred = await transferredTask;
+    console.log('scenario ZW-B2 change observed');
     zlinkStreamAssert.ensure(transferred.payload.transferred, 'ZW-B2 cross-node move did not transfer the actor.');
     zlinkStreamAssert.ensure(transferred.payload.nodeId === NodeIds.east, 'ZW-B2 target node mismatch.');
     await moveAndWait(gateway, joined.playerId, 55, 25);
+    console.log('scenario ZW-B2 target position ready');
     console.log('scenario ZW-B2 passed');
 
     await westObserver.connect();

@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import systems.zlink.framework.ZLinkHandlerFilter;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -47,6 +48,8 @@ public final class ZLinkFrameworkRegistration {
     private ZLinkStreamCompressionCodec streamCompressionCodec = ZLinkStreamCompressionCodecs.lz4();
     private Executor handlerExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private boolean closeHandlerExecutor = true;
+    private final ExecutorService serialExecutor =
+        Executors.newVirtualThreadPerTaskExecutor();
     private Duration defaultRequestTimeout = Duration.ofSeconds(30);
     private Duration messageFollowDuration = Duration.ofSeconds(30);
     private ZLinkRelocationStore relocationStore;
@@ -156,6 +159,11 @@ public final class ZLinkFrameworkRegistration {
 
     public boolean closeHandlerExecutor() {
         return closeHandlerExecutor;
+    }
+
+    /** Executor owned by the framework runtime for serial queue turns. */
+    public ExecutorService serialExecutor() {
+        return serialExecutor;
     }
 
     public Set<Class<?>> applicationTypes() {

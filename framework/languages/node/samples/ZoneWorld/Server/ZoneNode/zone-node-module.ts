@@ -5,7 +5,11 @@ import {
   createZoneWorldConfigurationModule
 } from '../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
-import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
+import {
+  createZoneWorldLocationStore,
+  createZoneWorldRelocationStore,
+  zoneWorldLocationOptions
+} from '../Configuration/location-store';
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
 import { PlayerActorRelocationAdapter } from './Infrastructure/ZLink/Actors/player-actor-relocation-adapter';
@@ -17,6 +21,7 @@ import {
 import { MaintenanceStore } from '../Configuration/maintenance-store';
 import { NodeRuntimeState } from './Domain/node-runtime-state';
 import { SpotRuntimeStatusObserver } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
+import { OpsReportAdapter } from './Infrastructure/ZLink/Monitoring/ops-report-adapter';
 
 
 function createZoneNodeModule() {
@@ -34,6 +39,7 @@ function createZoneNodeModule() {
           if (node === undefined) throw new Error('ZoneNode configuration is required.');
           const builder = zlinkFramework();
           builder.addLocationStore(createZoneWorldLocationStore(config.shared));
+          builder.addRelocationStore(createZoneWorldRelocationStore(config.shared));
           zoneWorldLocationOptions(builder.configureLocations());
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
@@ -89,7 +95,8 @@ function createZoneNodeModule() {
       ZoneEntrySpot,
       ZoneSpot,
       PlayerMovement,
-      SpotRuntimeStatusObserver
+      SpotRuntimeStatusObserver,
+      OpsReportAdapter
     ]
   })(ZoneNodeModule);
   return ZoneNodeModule;

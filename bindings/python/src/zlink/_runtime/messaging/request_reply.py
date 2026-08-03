@@ -2,9 +2,7 @@
 
 import ctypes
 import errno
-import queue
 import threading
-import time
 
 from ..handles.native_support import (
     HandlerError,
@@ -26,12 +24,12 @@ from ..handles.native_support import (
     _raise_result_error,
     _routing_id_bytes,
 )
-from .message_materializer import Message, message_from
+from .message_materializer import Message
+from .native_parts import _materialize_native_parts
 from ..sockets.socket_base import _enter_callback, _leave_callback
 from ..._native.ffi import ZlinkPollerEvent, lib
 
 
-_ERRNO_ETERM = getattr(errno, "ETERM", 156)
 _ERRNO_ENOTSUP = getattr(errno, "ENOTSUP", getattr(errno, "EOPNOTSUPP", 95))
 
 
@@ -46,33 +44,7 @@ def _timeout_to_ms(timeout):
     return max(1, int(float(timeout) * 1000))
 
 
-def _payload_parts(payload):
-    if isinstance(payload, (list, tuple)):
-        parts = payload
-    else:
-        parts = [payload]
-    if not parts:
-        raise ValueError("payload must not be empty")
-    return parts
-
-
-def _clone_payload(payload):
-    parts = []
-    for part in _payload_parts(payload):
-        if isinstance(part, Message):
-            parts.append(_clone_native_msg(part._msg))
-        else:
-            copied = message_from(part)
-            parts.append(_clone_native_msg(copied._msg))
-            copied.close()
-    return parts
-
-
-def _prepare_native_parts(native_parts):
-    parts_array = (ZlinkMsg * len(native_parts))()
-    for index, native in enumerate(native_parts):
-        parts_array[index] = native
-    return parts_array
+_clone_payload = _materialize_native_parts
 
 
 def _message_list_from_parts(parts_ptr, part_count):
@@ -122,17 +94,36 @@ class _RequestProgressPump:
         self._is_active = is_active
         self._lock = threading.Lock()
         self._thread = None
+        self._stop_event = threading.Event()
 
     def ensure_running(self):
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
+            self._stop_event.clear()
             self._thread = threading.Thread(
                 target=self._run,
                 name="zlink-request-progress",
                 daemon=True,
             )
             self._thread.start()
+
+    def stop(self):
+        """Stop the poller before its owning socket is closed.
+
+        A close retry may restart the worker when Core rejects the close with
+        ``BUSY``. A worker that cannot join is treated as a lifecycle error so
+        the native handle is never closed while its poller still references it.
+        """
+
+        self._stop_event.set()
+        with self._lock:
+            thread = self._thread
+        if thread is None or thread is threading.current_thread():
+            return
+        thread.join(timeout=1.0)
+        if thread.is_alive():
+            raise RuntimeError("request progress worker did not stop")
 
     def _run(self):
         try:
@@ -156,11 +147,13 @@ class _RequestProgressPump:
                 # Use a finite wait timeout so the worker can observe
                 # _is_active() turning false (e.g. when the owning socket
                 # closes and cancels its pending requests).
-                while self._is_active():
+                while not self._stop_event.is_set() and self._is_active():
                     try:
-                        lib().zlink_poller_wait(
+                        wait_rc = lib().zlink_poller_wait(
                             poller, events, 1, 50, ctypes.byref(error_out)
                         )
+                        if wait_rc < 0:
+                            break
                     except Exception:
                         break
             finally:

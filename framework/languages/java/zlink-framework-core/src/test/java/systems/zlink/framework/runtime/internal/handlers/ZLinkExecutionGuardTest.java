@@ -59,6 +59,6 @@ final class ZLinkExecutionGuardTest {
         ZLinkFrameworkException failure = assertThrows(
             ZLinkFrameworkException.class,
             operation::run);
-        assertEquals(ZLinkFrameworkErrorKind.INVALID_CONFIGURATION, failure.kind());
+        assertEquals(ZLinkFrameworkErrorKind.NOT_CONFIGURED, failure.kind());
     }
 }

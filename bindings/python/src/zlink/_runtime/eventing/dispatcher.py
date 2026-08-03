@@ -11,7 +11,9 @@ behave identically to the dedicated-thread form.
 from __future__ import annotations
 
 import queue
+import sys
 import threading
+import traceback
 
 
 class CallbackDispatcher:
@@ -22,7 +24,15 @@ class CallbackDispatcher:
     other than the dispatcher's own worker.
     """
 
-    __slots__ = ("_queue", "_thread", "_name", "_closed", "_enter", "_leave")
+    __slots__ = (
+        "_queue",
+        "_thread",
+        "_name",
+        "_closed",
+        "_enter",
+        "_leave",
+        "_state_lock",
+    )
 
     def __init__(self, name, enter_callback, leave_callback):
         self._queue = queue.SimpleQueue()
@@ -31,30 +41,35 @@ class CallbackDispatcher:
         self._closed = False
         self._enter = enter_callback
         self._leave = leave_callback
+        self._state_lock = threading.Lock()
 
     def submit(self, task):
-        if self._closed:
-            return
-        if self._thread is None:
-            self._thread = threading.Thread(
-                target=self._run, name=self._name, daemon=True
-            )
-            self._thread.start()
-        self._queue.put(task)
+        with self._state_lock:
+            if self._closed:
+                return False
+            if self._thread is None:
+                self._thread = threading.Thread(
+                    target=self._run, name=self._name, daemon=True
+                )
+                self._thread.start()
+            self._queue.put(task)
+            return True
 
     def close(self):
-        if self._closed:
-            return
-        self._closed = True
-        self._queue.put(None)
-        thread = self._thread
+        with self._state_lock:
+            if not self._closed:
+                self._closed = True
+                self._queue.put(None)
+            thread = self._thread
         if (
             thread is not None
             and thread.is_alive()
             and thread is not threading.current_thread()
         ):
             thread.join(timeout=1.0)
-        self._thread = None
+        with self._state_lock:
+            if self._thread is thread and (thread is None or not thread.is_alive()):
+                self._thread = None
 
     @property
     def closed(self):
@@ -64,14 +79,25 @@ class CallbackDispatcher:
         enter = self._enter
         leave = self._leave
         get = self._queue.get
-        while True:
-            task = get()
-            if task is None:
-                return
-            enter()
-            try:
-                task()
-            except Exception:
-                pass
-            finally:
-                leave()
+        try:
+            while True:
+                task = get()
+                if task is None:
+                    return
+                entered = False
+                try:
+                    enter()
+                    entered = True
+                    task()
+                except Exception:
+                    # Callback wrappers normally report user exceptions. This
+                    # path keeps dispatcher failures visible instead of
+                    # silently dropping a task or corrupting callback depth.
+                    traceback.print_exc(file=sys.stderr)
+                finally:
+                    if entered:
+                        leave()
+        finally:
+            with self._state_lock:
+                if self._thread is threading.current_thread():
+                    self._thread = None

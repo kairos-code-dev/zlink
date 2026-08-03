@@ -1,4 +1,7 @@
-import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import {
+  ZLinkRedisLocationStore,
+  ZLinkRedisRelocationStore
+} from '@zlink-systems/framework-locations-redis';
 import type { ZLinkLocationOptions } from '@zlink-systems/framework';
 import type { SharedSettings } from './configuration';
 
@@ -6,6 +9,13 @@ function createZoneWorldLocationStore(shared: SharedSettings): ZLinkRedisLocatio
   return new ZLinkRedisLocationStore({
     url: `redis://${shared.redisEndpoint}`,
     keyPrefix: `${shared.redisKeyPrefix}location`
+  });
+}
+
+function createZoneWorldRelocationStore(shared: SharedSettings): ZLinkRedisRelocationStore {
+  return new ZLinkRedisRelocationStore({
+    url: `redis://${shared.redisEndpoint}`,
+    keyPrefix: `${shared.redisKeyPrefix}relocation`
   });
 }
 
@@ -18,4 +28,8 @@ function zoneWorldLocationOptions(options: ZLinkLocationOptions): void {
     .ownerLeaseRenewTimeoutMs(500);
 }
 
-export { createZoneWorldLocationStore, zoneWorldLocationOptions };
+export {
+  createZoneWorldLocationStore,
+  createZoneWorldRelocationStore,
+  zoneWorldLocationOptions
+};

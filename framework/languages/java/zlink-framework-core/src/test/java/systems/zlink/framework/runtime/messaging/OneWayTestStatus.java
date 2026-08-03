@@ -18,8 +18,8 @@ public final class OneWayTestStatus {
             if (cause instanceof ZLinkFrameworkException frameworkError) {
                 return switch (frameworkError.kind()) {
                     case DEADLINE_EXCEEDED -> 2;
-                    case ROUTE_NOT_CONNECTED -> 3;
-                    case RUNTIME_SHUTDOWN -> 5;
+                    case UNAVAILABLE -> 3;
+                    case SHUTTING_DOWN -> 5;
                     default -> 4;
                 };
             }

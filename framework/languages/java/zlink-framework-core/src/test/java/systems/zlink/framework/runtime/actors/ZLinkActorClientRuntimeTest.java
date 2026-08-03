@@ -189,7 +189,7 @@ final class ZLinkActorClientRuntimeTest {
                 .join());
 
         ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
+        assertEquals(ZLinkFrameworkErrorKind.UNAVAILABLE, frameworkError.kind());
         assertEquals(1, node.requestAttempts);
     }
 
@@ -212,7 +212,7 @@ final class ZLinkActorClientRuntimeTest {
                 .join());
 
         ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
+        assertEquals(ZLinkFrameworkErrorKind.NOT_FOUND, frameworkError.kind());
     }
 
     private static systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository

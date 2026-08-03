@@ -69,17 +69,17 @@ internal sealed class MeshConnectionEventObserver(
                            .ObserveAsync(options.MeshName, stoppingToken)
                            .ConfigureAwait(false))
         {
-            var current = status.Peers
+            var current = status.Status.Peers
                 .Where(static peer => peer.State == ZLinkPeerState.Ready)
                 .Select(static peer => peer.NodeRid.ToString())
                 .ToHashSet(StringComparer.Ordinal);
             foreach (var peer in current.Except(previous))
             {
-                Add("ConnectionReady", peer, status.Sequence);
+                Add("ConnectionReady", peer, status.Status.Sequence);
             }
             foreach (var peer in previous.Except(current))
             {
-                Add("Disconnected", peer, status.Sequence);
+                Add("Disconnected", peer, status.Status.Sequence);
             }
             previous = current;
         }

@@ -418,6 +418,7 @@ async function notifyJoinFailure(
   operationId: { readonly high: bigint; readonly low: bigint },
   error: unknown
 ): Promise<void> {
+  console.error(`actor join failure actor=${actor.context.actorId}`, error);
   const frameworkError = error instanceof ZLinkFrameworkException
     ? error
     : createInternalFrameworkException(

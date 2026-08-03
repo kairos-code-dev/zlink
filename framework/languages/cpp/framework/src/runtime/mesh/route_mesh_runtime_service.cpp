@@ -3,12 +3,11 @@
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/mesh/route_mesh_connection_policy.hpp"
+#include "runtime/diagnostics/runtime_observation.hpp"
 
 #include <zlink/framework/contracts/errors/error.hpp>
 
 #include <algorithm>
-#include <condition_variable>
-#include <deque>
 #include <set>
 #include <thread>
 #include <utility>
@@ -92,92 +91,8 @@ framework_exception_t invalid_runtime_call (std::string message)
 struct route_mesh_runtime_service_t::state_t :
     public std::enable_shared_from_this<route_mesh_runtime_service_t::state_t>
 {
-    struct observer_t : public std::enable_shared_from_this<observer_t>
-    {
-        observer_t (std::size_t capacity_,
-                    std::function<void (const mesh_node_snapshot_t &)> callback_) :
-            capacity (capacity_), callback (std::move (callback_))
-        {
-        }
-
-        ~observer_t () { close (); }
-
-        void start ()
-        {
-            const auto self = shared_from_this ();
-            worker = std::thread ([self] {
-                for (;;) {
-                    std::optional<mesh_node_snapshot_t> snapshot;
-                    {
-                        std::unique_lock lock (self->mutex);
-                        self->ready.wait (
-                          lock, [&] {
-                              return self->closed || !self->pending.empty ();
-                          });
-                        if (self->closed && self->pending.empty ())
-                            return;
-                        snapshot.emplace (std::move (self->pending.front ()));
-                        self->pending.pop_front ();
-                    }
-                    try {
-                        self->callback (*snapshot);
-                    }
-                    catch (...) {
-                        std::lock_guard lock (self->mutex);
-                        self->closed = true;
-                        self->pending.clear ();
-                        return;
-                    }
-                }
-            });
-        }
-
-        void enqueue (mesh_node_snapshot_t snapshot)
-        {
-            std::lock_guard lock (mutex);
-            if (closed)
-                return;
-            if (pending.size () == capacity)
-                pending.pop_front ();
-            pending.push_back (std::move (snapshot));
-            ready.notify_one ();
-        }
-
-        void seal (mesh_node_snapshot_t terminal)
-        {
-            {
-                std::lock_guard lock (mutex);
-                if (closed)
-                    return;
-                pending.clear ();
-                pending.push_back (std::move (terminal));
-                closed = true;
-            }
-            ready.notify_all ();
-            if (worker.joinable ())
-                worker.detach ();
-        }
-
-        void close () noexcept
-        {
-            {
-                std::lock_guard lock (mutex);
-                closed = true;
-                pending.clear ();
-            }
-            ready.notify_all ();
-            if (worker.joinable ())
-                worker.detach ();
-        }
-
-        std::size_t capacity;
-        std::function<void (const mesh_node_snapshot_t &)> callback;
-        std::mutex mutex;
-        std::condition_variable ready;
-        std::deque<mesh_node_snapshot_t> pending;
-        bool closed = false;
-        std::thread worker;
-    };
+    using observer_t =
+      observation_detail::runtime_observer_state_t<mesh_node_snapshot_t>;
 
     struct hub_t
     {
@@ -246,8 +161,10 @@ struct route_mesh_runtime_service_t::state_t :
             }
             hub.observers.erase (write, hub.observers.end ());
         }
+        const bool terminal = snapshot.state == mesh_node_state_t::stopped
+                              || snapshot.state == mesh_node_state_t::failed;
         for (const auto &observer : current)
-            observer->enqueue (snapshot);
+            observer->enqueue (snapshot, terminal);
     }
 
     std::optional<mesh_node_snapshot_t>
@@ -530,14 +447,8 @@ void route_mesh_runtime_service_t::stop () noexcept
         terminal->sequence =
           _state->next_sequence (terminal->mesh_name);
         terminal->observed_at = std::chrono::system_clock::now ();
-        for (const auto &observer : observers) {
-            try {
-                observer->seal (*terminal);
-            }
-            catch (...) {
-                observer->close ();
-            }
-        }
+        for (const auto &observer : observers)
+            observer->enqueue (*terminal, true);
     }
 }
 
@@ -788,7 +699,8 @@ std::unique_ptr<mesh_runtime_observation_t>
 route_mesh_runtime_service_t::observe (
   std::string mesh_name,
   std::size_t capacity,
-  std::function<void (const mesh_node_snapshot_t &)> observer)
+  std::function<void (
+    const observed_status_t<mesh_node_snapshot_t> &)> observer)
 {
     if (capacity == 0)
         throw invalid_runtime_call ("capacity must be positive");
@@ -797,17 +709,15 @@ route_mesh_runtime_service_t::observe (
     const auto hub = _state->require_hub (mesh_name);
     auto initial = snapshot (mesh_name);
     auto registered = std::make_shared<state_t::observer_t> (
-      capacity,
-      [observer = std::move (observer)] (
-        const mesh_node_snapshot_t &snapshot) {
-          observer (snapshot);
-      });
-    registered->start ();
+      capacity, std::move (observer));
     {
         std::lock_guard lock (hub->mutex);
         hub->observers.push_back (registered);
     }
-    registered->enqueue (std::move (initial));
+    const bool terminal = initial.state == mesh_node_state_t::stopped
+                          || initial.state == mesh_node_state_t::failed;
+    registered->enqueue (
+      std::move (initial), terminal);
     return std::make_unique<observation_t> (std::move (registered));
 }
 

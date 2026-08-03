@@ -1445,8 +1445,9 @@ int main ()
         .observe (
           1,
           [&observed_runtime_status] (
-            const zlink::framework::framework_runtime_status_t &status) {
-              observed_runtime_status.set_value (status);
+            const zlink::framework::observed_status_t<
+              zlink::framework::framework_runtime_status_t> &observed) {
+              observed_runtime_status.set_value (observed.status);
           });
     if (observed_runtime_status_future.wait_for (
           std::chrono::seconds (1))
@@ -1520,7 +1521,8 @@ int main ()
       provider.get_required<zlink::framework::framework_runtime_t> ()
         .observe (
           1,
-          [&] (const zlink::framework::framework_runtime_status_t &) {
+          [&] (const zlink::framework::observed_status_t<
+                 zlink::framework::framework_runtime_status_t> &) {
               allow_self_close_future.wait ();
               self_closing_raw->close ();
               self_close_completed.set_value ();
@@ -1550,7 +1552,8 @@ int main ()
             .get_required<zlink::framework::framework_runtime_t> ()
             .observe (
               1,
-              [] (const zlink::framework::framework_runtime_status_t &) {});
+              [] (const zlink::framework::observed_status_t<
+                    zlink::framework::framework_runtime_status_t> &) {});
     }
     std::this_thread::sleep_for (std::chrono::milliseconds (30));
     if (detached_provider

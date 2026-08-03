@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { ZLinkConfigurationException } from '../configuration';
+import { isAbortError } from '../abort';
 
 export interface ZLinkRuntimeTaskFailure {
   readonly taskName: string;
@@ -27,7 +28,11 @@ export class ZLinkSpotSerialTurn {
   private frameworkOperationsBlocked = false;
 
   constructor(
-    private readonly postResume: (turn: ZLinkSpotSerialTurn, resume: () => void) => boolean,
+    private readonly postResume: (
+      turn: ZLinkSpotSerialTurn,
+      resume: () => void,
+      reject: (reason: unknown) => void
+    ) => boolean,
     readonly yieldAllowed: boolean
   ) {}
 
@@ -96,7 +101,7 @@ export class ZLinkSpotSerialTurn {
 
   private awaitResumePermit(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.postResume(this, resolve)) {
+      if (!this.postResume(this, resolve, reject)) {
         reject(new Error('ZLink Spot serial executor is closed.'));
       }
     });
@@ -322,7 +327,7 @@ export class ZLinkRuntimeTaskRunner {
     return Promise.resolve()
       .then(() => callback(this.shutdownSignal))
       .catch((error) => {
-        if (this.shutdownSignal.aborted && isCancellationError(error)) {
+        if (isCancellationError(error, this.shutdownSignal)) {
           return;
         }
         this.errorSink.reportRuntimeTaskException(taskName, error);
@@ -355,17 +360,16 @@ export class ZLinkFrameworkExecutionState {
     try {
       await Promise.all(this.listenerTasks);
     } catch (error) {
-      if (!isCancellationError(error)) {
+      if (!isCancellationError(error, this.abortController.signal)) {
         this.errorSink.reportRuntimeTaskException('listener', error);
       }
     }
   }
 }
 
-function isCancellationError(error: unknown): boolean {
-  return (
-    error instanceof DOMException && error.name === 'AbortError'
-  ) || (
-    error instanceof Error && /aborted|cancelled|canceled/i.test(error.message)
-  );
+function isCancellationError(error: unknown, signal?: AbortSignal): boolean {
+  if (isAbortError(error)) {
+    return true;
+  }
+  return signal?.aborted === true && error === signal.reason;
 }

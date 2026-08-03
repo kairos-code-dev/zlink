@@ -138,7 +138,7 @@ public final class SupportUserActor implements ZLinkActor {
                 .send(new Messages.JoinConversationFailedNotify(
                     pending,
                     failed.kind().name(),
-                    failed.isRetriable()))
+                    false))
                 .metadata(SampleNames.ConversationIdMetadataKey, pending)
                 .submit();
         }

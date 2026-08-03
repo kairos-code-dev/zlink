@@ -94,7 +94,7 @@ final class ZLinkCodecRegistrationTest {
             () -> registration.serializerForReceivedContentType(
                 "application/x-unregistered", json));
 
-        assertEquals(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, error.kind());
+        assertEquals(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, error.kind());
     }
 
     record Probe(String text) {

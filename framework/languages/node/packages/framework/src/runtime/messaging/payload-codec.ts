@@ -71,13 +71,14 @@ function decodeFrameworkPayload<T>(
   }
 
   const serializer = selectDefaultSerializer(registry);
+  const parsedPayload = parseJsonPayload(message);
   if (serializer !== undefined) {
     // A selective extension is also the only available decoder for an
     // inbound non-JSON stream frame. JSON remains the wire fallback when the
     // same registry is used for framework-owned messages that were encoded
     // without a matching application type.
-    if (isJsonPayload(message) && isSelectableSerializer(serializer)) {
-      return JSON.parse(message.getString('utf8')) as T;
+    if (parsedPayload.valid && isSelectableSerializer(serializer)) {
+      return parsedPayload.value as T;
     }
     return serializer.deserialize(
       ZLinkEncodedPayload.from(message.data()),
@@ -85,20 +86,19 @@ function decodeFrameworkPayload<T>(
     );
   }
 
-  const text = message.getString('utf8');
-  try {
-    return JSON.parse(text) as T;
-  } catch (error) {
-    if (!rejectInvalidJson) {
-      return text as T;
-    }
-    throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
-      'PayloadDecodeFailed: framework payload is not valid JSON.',
-      false,
-      error
-    );
+  if (parsedPayload.valid) {
+    return parsedPayload.value as T;
   }
+  const text = message.getString('utf8');
+  if (!rejectInvalidJson) {
+    return text as T;
+  }
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed,
+    'PayloadDecodeFailed: framework payload is not valid JSON.',
+    false,
+    parsedPayload.error
+  );
 }
 
 export function wrapFrameworkPayloadMessage(
@@ -170,12 +170,19 @@ function isSelectableSerializer(serializer: ZLinkMessageSerializer): serializer 
   return typeof (serializer as ZLinkSelectableMessageSerializer).canSerialize === 'function';
 }
 
-function isJsonPayload(message: Message): boolean {
+function parseJsonPayload(message: Message): {
+  readonly valid: true;
+  readonly value: unknown;
+  readonly error?: undefined;
+} | {
+  readonly valid: false;
+  readonly value?: undefined;
+  readonly error: unknown;
+} {
   try {
-    JSON.parse(message.getString('utf8'));
-    return true;
-  } catch {
-    return false;
+    return { valid: true, value: JSON.parse(message.getString('utf8')) };
+  } catch (error) {
+    return { valid: false, error };
   }
 }
 

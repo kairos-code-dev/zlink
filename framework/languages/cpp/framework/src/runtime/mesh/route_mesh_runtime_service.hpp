@@ -35,7 +35,8 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
     std::unique_ptr<mesh_runtime_observation_t>
     observe (std::string mesh_name,
              std::size_t capacity,
-             std::function<void (const mesh_node_snapshot_t &)> observer) override;
+             std::function<void (
+               const observed_status_t<mesh_node_snapshot_t> &)> observer) override;
     bool is_ready (std::string mesh_name) const override;
 
     void start ();

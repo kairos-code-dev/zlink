@@ -28,6 +28,14 @@ public record ZLinkBackendReceived(
             : acceptedJournalRecord.clone();
     }
 
+    public int applicationMetadataSize() {
+        return applicationMetadata.length;
+    }
+
+    public int acceptedJournalRecordSize() {
+        return acceptedJournalRecord.length;
+    }
+
     /** Backward-compatible constructor without an inbound content type. */
     public ZLinkBackendReceived(
         ZLinkBackendRequestResult result,

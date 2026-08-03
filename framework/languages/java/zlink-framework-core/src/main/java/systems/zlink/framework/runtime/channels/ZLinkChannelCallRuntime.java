@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -176,7 +178,7 @@ final class ZLinkChannelCallRuntime {
         CompletableFuture<TReply> result) {
         if (reply.result() != ZLinkBackendRequestResult.OK) {
             result.completeExceptionally(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                 "channel request failed: " + reply.result()));
             return;
         }

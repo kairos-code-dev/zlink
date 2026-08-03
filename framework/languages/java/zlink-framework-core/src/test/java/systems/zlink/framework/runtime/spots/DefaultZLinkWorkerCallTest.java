@@ -54,7 +54,7 @@ class DefaultZLinkWorkerCallTest {
                 }).yield());
             assertEquals(
                 systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-                    .INVALID_CONFIGURATION,
+                    .NOT_CONFIGURED,
                 failure.kind());
         }
         assertEquals(0, executions.get());

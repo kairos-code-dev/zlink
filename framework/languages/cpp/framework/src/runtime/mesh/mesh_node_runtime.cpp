@@ -209,6 +209,8 @@ void mesh_node_runtime_t::start ()
 
     std::lock_guard lock (_state->mutex);
     _state->spot_state->one_way_send_timeout = one_way_send_timeout (*_state);
+    _state->spot_state->instance_spot_idle_timeout =
+      _state->instance_spot_idle_timeout;
     if (_state->mesh_name.empty ()) {
         throw configuration_error ("MeshName is required");
     }
@@ -2826,6 +2828,19 @@ mesh_node_builder_t::set_spot_limit (std::int32_t limit)
           "Spot capacity limit must be non-negative");
     std::lock_guard lock (_state->mutex);
     _state->spot_limit = limit;
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_instance_spot_idle_timeout (
+  std::chrono::milliseconds timeout)
+{
+    if (timeout < std::chrono::milliseconds::zero ())
+        throw detail::configuration_error (
+          "Instance Spot idle timeout must not be negative");
+    std::lock_guard lock (_state->mutex);
+    _state->instance_spot_idle_timeout = timeout;
+    _state->spot_state->instance_spot_idle_timeout = timeout;
     return *this;
 }
 

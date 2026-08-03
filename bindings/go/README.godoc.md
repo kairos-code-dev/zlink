@@ -41,6 +41,8 @@ The exported Go package reflects the Core 11 raw-socket contract.
 - monitor open APIs take typed masks and default to `ALL` when omitted
 - callback delivery hops off native callback threads onto Go-managed
   dispatcher goroutines before user handlers run
+- ROUTER completion-control records use `OnCompletionControl` and
+  `CompletionControl`; native part callbacks remain internal
 
 ## Message Payload Lifetime
 

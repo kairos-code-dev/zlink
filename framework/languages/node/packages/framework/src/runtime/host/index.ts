@@ -34,6 +34,7 @@ import type {
   ZLinkFrameworkLifecycleOptions,
   ZLinkFrameworkRelocationOptions,
   ZLinkFrameworkRelocationResult,
+  ZLinkObservedStatus,
   ZLinkFrameworkRuntimeStatus,
   ZLinkFrameworkTerminationResult,
   ZLinkRouteMeshRuntime,
@@ -613,7 +614,7 @@ export class ZLinkFrameworkRuntimeHost implements
     };
   }
 
-  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus> {
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> {
     const queue = new RuntimeEventQueue<ZLinkFrameworkRuntimeStatus>(64, signal);
     this.runtimeObservers.add(queue);
     queue.onClose(() => this.runtimeObservers.delete(queue));
@@ -886,9 +887,11 @@ export class ZLinkFrameworkRuntimeHost implements
     this.runtimeSequence += 1n;
     this.notifyTopologyHostStateChanged();
     const status = this.status;
-    for (const observer of this.runtimeObservers) observer.push(status);
+    for (const observer of this.runtimeObservers) {
+      if (state === ZLinkFrameworkRuntimeState.Stopped) observer.seal(status);
+      else observer.push(status);
+    }
     if (state === ZLinkFrameworkRuntimeState.Stopped) {
-      for (const observer of this.runtimeObservers) observer.return();
       this.runtimeObservers.clear();
     }
   }
@@ -1242,6 +1245,16 @@ export class ZLinkFrameworkRuntimeHost implements
                 spotManager.isInstanceMaterialized(
                   meshName,
                   target.stableType,
+                  target.targetSpotId as never
+                ),
+              isIdleEvicting: (target) =>
+                spotManager.isInstanceSpotIdleEvicting(
+                  meshName,
+                  target.targetSpotId as never
+                ),
+              beginIdleEviction: (target) =>
+                spotManager.beginInstanceSpotIdleEviction(
+                  meshName,
                   target.targetSpotId as never
                 ),
               materialize: (target, objectGeneration) =>
@@ -1699,6 +1712,16 @@ export class ZLinkFrameworkRuntimeHost implements
           spotManager.isInstanceMaterialized(
             meshName,
             target.stableType,
+            target.targetSpotId as never
+          ),
+        isIdleEvicting: (target) =>
+          spotManager.isInstanceSpotIdleEvicting(
+            meshName,
+            target.targetSpotId as never
+          ),
+        beginIdleEviction: (target) =>
+          spotManager.beginInstanceSpotIdleEviction(
+            meshName,
             target.targetSpotId as never
           ),
         materialize: (target, objectGeneration) =>

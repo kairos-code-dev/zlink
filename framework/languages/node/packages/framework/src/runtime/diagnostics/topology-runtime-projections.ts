@@ -4,6 +4,7 @@ import type {
   ZLinkClientServerTargetStatus,
   ZLinkFanoutStatus,
   ZLinkFanoutRuntime,
+  ZLinkObservedStatus,
   ZLinkPeerStatus
 } from '../../contracts';
 import {
@@ -71,7 +72,11 @@ export class ZLinkClientServerRuntimeProjection implements ZLinkClientServerRunt
     };
   }
 
-  observe(channelName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkClientServerStatus> {
+  observe(
+    channelName: string,
+    capacity = 64,
+    signal?: AbortSignal
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkClientServerStatus>> {
     const runtime = this.requireRuntime();
     const queue = new RuntimeEventQueue<ZLinkClientServerStatus>(capacity, signal);
     let lastSnapshot = this.snapshot(channelName);
@@ -87,25 +92,21 @@ export class ZLinkClientServerRuntimeProjection implements ZLinkClientServerRunt
         queue.push(lastSnapshot);
       },
       stop: () => {
+        this.sequence += 1n;
+        let current = lastSnapshot;
         try {
-          this.sequence += 1n;
-          let current = lastSnapshot;
-          try {
-            current = this.snapshot(channelName);
-            lastSnapshot = current;
-          } catch {
-            // The last complete projection remains valid after native teardown.
-          }
-          queue.seal({
-            ...current,
-            state: ZLinkTopologyState.Stopped,
-            isReady: false,
-            sequence: this.sequence,
-            observedAt: new Date()
-          });
-        } finally {
-          void queue.return();
+          current = this.snapshot(channelName);
+          lastSnapshot = current;
+        } catch {
+          // The last complete projection remains valid after native teardown.
         }
+        queue.seal({
+          ...current,
+          state: ZLinkTopologyState.Stopped,
+          isReady: false,
+          sequence: this.sequence,
+          observedAt: new Date()
+        });
       }
     };
     this.hostObservers.add(hostObserver);
@@ -192,7 +193,11 @@ export class ZLinkFanoutRuntimeProjection implements ZLinkFanoutRuntime {
     };
   }
 
-  observe(channelName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkFanoutStatus> {
+  observe(
+    channelName: string,
+    capacity = 64,
+    signal?: AbortSignal
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkFanoutStatus>> {
     const runtime = this.requireRuntime();
     const queue = new RuntimeEventQueue<ZLinkFanoutStatus>(capacity, signal);
     let lastSnapshot = this.snapshot(channelName);
@@ -208,25 +213,21 @@ export class ZLinkFanoutRuntimeProjection implements ZLinkFanoutRuntime {
         queue.push(lastSnapshot);
       },
       stop: () => {
+        this.sequence += 1n;
+        let current = lastSnapshot;
         try {
-          this.sequence += 1n;
-          let current = lastSnapshot;
-          try {
-            current = this.snapshot(channelName);
-            lastSnapshot = current;
-          } catch {
-            // The last complete projection remains valid after native teardown.
-          }
-          queue.seal({
-            ...current,
-            state: ZLinkTopologyState.Stopped,
-            isReady: false,
-            sequence: this.sequence,
-            observedAt: new Date()
-          });
-        } finally {
-          void queue.return();
+          current = this.snapshot(channelName);
+          lastSnapshot = current;
+        } catch {
+          // The last complete projection remains valid after native teardown.
         }
+        queue.seal({
+          ...current,
+          state: ZLinkTopologyState.Stopped,
+          isReady: false,
+          sequence: this.sequence,
+          observedAt: new Date()
+        });
       }
     };
     this.hostObservers.add(hostObserver);
@@ -282,26 +283,40 @@ function topologyStateForHost(state: ZLinkFrameworkRuntimeState): ZLinkTopologyS
   }
 }
 
-export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> {
-  private readonly values: Array<T | undefined> = [];
-  private valuesHead = 0;
-  private valuesCount = 0;
-  private readonly waiters: Array<((result: IteratorResult<T>) => void) | undefined> = [];
+export class RuntimeEventQueue<T>
+  implements AsyncIterable<ZLinkObservedStatus<T>>, AsyncIterator<ZLinkObservedStatus<T>> {
+  private pending?: T;
+  private terminal?: T;
+  private readonly waiters: Array<
+    ((result: IteratorResult<ZLinkObservedStatus<T>>) => void) | undefined
+  > = [];
   private waitersHead = 0;
   private waitersCount = 0;
   private cleanup?: () => void;
+  private coalescedCount = 0n;
+  private discardedTerminalCount = 0n;
+  private sealed = false;
   private closed = false;
 
-  constructor(private readonly capacity: number, signal?: AbortSignal) {
+  constructor(capacity: number, signal?: AbortSignal) {
     if (!Number.isInteger(capacity) || capacity <= 0) throw new RangeError('Observer capacity must be positive.');
     signal?.addEventListener('abort', () => this.close(), { once: true });
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<T> { return this; }
+  [Symbol.asyncIterator](): AsyncIterator<ZLinkObservedStatus<T>> { return this; }
 
-  next(): Promise<IteratorResult<T>> {
-    const value = this.takeValue();
-    if (value !== undefined) return Promise.resolve({ done: false, value });
+  next(): Promise<IteratorResult<ZLinkObservedStatus<T>>> {
+    if (this.pending !== undefined) {
+      const value = this.pending;
+      this.pending = undefined;
+      return Promise.resolve({ done: false, value: this.observed(value) });
+    }
+    if (this.terminal !== undefined) {
+      const value = this.terminal;
+      this.terminal = undefined;
+      this.close();
+      return Promise.resolve({ done: false, value: this.observed(value) });
+    }
     if (this.closed) return Promise.resolve({ done: true, value: undefined });
     return new Promise(resolve => {
       this.waiters.push(resolve);
@@ -309,7 +324,7 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
     });
   }
 
-  return(): Promise<IteratorResult<T>> {
+  return(): Promise<IteratorResult<ZLinkObservedStatus<T>>> {
     this.close();
     return Promise.resolve({ done: true, value: undefined });
   }
@@ -320,55 +335,58 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
   }
 
   push(value: T): void {
-    if (this.closed) return;
+    if (this.closed || this.sealed) return;
     const waiter = this.takeWaiter();
-    if (waiter !== undefined) waiter({ done: false, value });
+    if (waiter !== undefined) waiter({ done: false, value: this.observed(value) });
     else {
-      if (this.valuesCount === this.capacity) this.takeValue();
-      this.values.push(value);
-      this.valuesCount += 1;
+      if (this.pending !== undefined) this.coalescedCount = saturatingIncrement(this.coalescedCount);
+      this.pending = value;
     }
   }
 
   seal(value: T): void {
     if (this.closed) return;
-    this.clearValues();
-    const waiter = this.takeWaiter();
-    if (waiter !== undefined) waiter({ done: false, value });
-    else {
-      this.values.push(value);
-      this.valuesCount = 1;
+    if (this.sealed) {
+      this.discardedTerminalCount = saturatingIncrement(this.discardedTerminalCount);
+      return;
     }
-    this.close();
+    this.sealed = true;
+    const waiter = this.takeWaiter();
+    if (waiter !== undefined) {
+      waiter({ done: false, value: this.observed(value) });
+      this.close();
+    }
+    else {
+      this.terminal = value;
+    }
   }
 
-  private close(): void {
+  close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.pending = undefined;
+    this.terminal = undefined;
     this.cleanup?.();
     this.cleanup = undefined;
-    let waiter: ((result: IteratorResult<T>) => void) | undefined;
+    let waiter: ((result: IteratorResult<ZLinkObservedStatus<T>>) => void) | undefined;
     while ((waiter = this.takeWaiter()) !== undefined) {
       waiter({ done: true, value: undefined });
     }
   }
 
-  private takeValue(): T | undefined {
-    if (this.valuesCount === 0) return undefined;
-    const value = this.values[this.valuesHead];
-    this.values[this.valuesHead] = undefined;
-    this.valuesHead += 1;
-    this.valuesCount -= 1;
-    if (this.valuesCount === 0) {
-      this.clearValues();
-    } else if (this.valuesHead >= 1024 && this.valuesHead * 2 >= this.values.length) {
-      this.values.splice(0, this.valuesHead);
-      this.valuesHead = 0;
-    }
-    return value;
+  private observed(status: T): ZLinkObservedStatus<T> {
+    return {
+      status,
+      loss: {
+        coalescedCount: this.coalescedCount,
+        discardedTerminalCount: this.discardedTerminalCount
+      }
+    };
   }
 
-  private takeWaiter(): ((result: IteratorResult<T>) => void) | undefined {
+  private takeWaiter():
+    | ((result: IteratorResult<ZLinkObservedStatus<T>>) => void)
+    | undefined {
     if (this.waitersCount === 0) return undefined;
     const waiter = this.waiters[this.waitersHead];
     this.waiters[this.waitersHead] = undefined;
@@ -383,10 +401,10 @@ export class RuntimeEventQueue<T> implements AsyncIterable<T>, AsyncIterator<T> 
     }
     return waiter;
   }
+}
 
-  private clearValues(): void {
-    this.values.length = 0;
-    this.valuesHead = 0;
-    this.valuesCount = 0;
-  }
+const MAX_OBSERVATION_LOSS = 9_223_372_036_854_775_807n;
+
+function saturatingIncrement(value: bigint): bigint {
+  return value >= MAX_OBSERVATION_LOSS ? MAX_OBSERVATION_LOSS : value + 1n;
 }

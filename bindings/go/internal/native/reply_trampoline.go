@@ -15,6 +15,7 @@ func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_
 	handle := cgo.Handle(userdata)
 	state, ok := safeHandleAs[*replyCallbackState](userdata)
 	if !ok {
+		discardParts(parts, partCount)
 		return
 	}
 	defer handle.Delete()

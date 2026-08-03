@@ -31,6 +31,7 @@ import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
 
 interface ZLinkSpotSubscriptionDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
@@ -207,7 +208,10 @@ export class ZLinkSpotSubscriptionDispatch {
           throw error;
         }
       }
-    }));
+    }), zlinkSerialWorkOptions(
+      envelope.payload.byteLength,
+      zlinkMetadataByteLength(envelope.header.metadata)
+    ));
   }
 }
 

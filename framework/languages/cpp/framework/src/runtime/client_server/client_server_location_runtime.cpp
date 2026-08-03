@@ -204,6 +204,7 @@ struct client_server_location_runtime_t::client_connection_t
 {
     client_server_server_descriptor_t descriptor;
     std::shared_ptr<raw_client_server_client_t> owner;
+    bool selector_ready = false;
 };
 
 struct client_server_location_runtime_t::client_channel_t
@@ -212,81 +213,8 @@ struct client_server_location_runtime_t::client_channel_t
     std::vector<std::uint8_t> routing_id;
     std::map<std::string, client_connection_t> connections;
     smooth_weighted_selector_t selector;
-};
-
-struct client_server_location_runtime_t::observer_t :
-    public std::enable_shared_from_this<observer_t>
-{
-    observer_t (
-      std::size_t capacity_,
-      std::function<void (const client_server_runtime_event_t &)> callback_) :
-        capacity (std::max<std::size_t> (1, capacity_)),
-        callback (std::move (callback_))
-    {
-    }
-
-    ~observer_t () { close (); }
-
-    void start ()
-    {
-        const auto self = shared_from_this ();
-        worker = std::thread ([self] {
-            for (;;) {
-                std::optional<client_server_runtime_event_t> event;
-                {
-                    std::unique_lock lock (self->mutex);
-                    self->ready.wait (
-                      lock, [&] {
-                          return self->closed || !self->pending.empty ();
-                      });
-                    if (self->closed && self->pending.empty ())
-                        return;
-                    event.emplace (std::move (self->pending.front ()));
-                    self->pending.pop_front ();
-                }
-                try {
-                    self->callback (*event);
-                }
-                catch (...) {
-                    std::lock_guard lock (self->mutex);
-                    self->closed = true;
-                    self->pending.clear ();
-                    return;
-                }
-            }
-        });
-    }
-
-    void enqueue (client_server_runtime_event_t event)
-    {
-        std::lock_guard lock (mutex);
-        if (closed)
-            return;
-        if (pending.size () == capacity)
-            pending.pop_front ();
-        pending.push_back (std::move (event));
-        ready.notify_one ();
-    }
-
-    void close () noexcept
-    {
-        {
-            std::lock_guard lock (mutex);
-            closed = true;
-            pending.clear ();
-        }
-        ready.notify_all ();
-        if (worker.joinable ())
-            worker.detach ();
-    }
-
-    std::size_t capacity;
-    std::function<void (const client_server_runtime_event_t &)> callback;
-    std::mutex mutex;
-    std::condition_variable ready;
-    std::deque<client_server_runtime_event_t> pending;
-    bool closed = false;
-    std::thread worker;
+    std::vector<weighted_candidate_t> selector_candidates;
+    bool selector_dirty = true;
 };
 
 namespace
@@ -526,14 +454,14 @@ std::unique_ptr<mesh_runtime_observation_t>
 client_server_location_runtime_t::observe (
   std::string channel_name,
   std::size_t capacity,
-  std::function<void (const client_server_runtime_event_t &)> observer)
+  std::function<void (
+    const observed_status_t<client_server_runtime_event_t> &)> observer)
 {
-    if (channel_name.empty () || !observer)
+    if (channel_name.empty () || capacity == 0 || !observer)
         throw std::invalid_argument (
           "ClientServer observation requires a channel and callback");
     auto value = std::make_shared<observer_t> (
       capacity, std::move (observer));
-    value->start ();
     {
         std::lock_guard lock (_gate);
         _observers[channel_name].push_back (value);
@@ -849,13 +777,23 @@ void client_server_location_runtime_t::reconcile_channel (
         }
     }
     std::vector<std::shared_ptr<raw_client_server_client_t>> close;
+    bool selector_changed = false;
     for (const auto &[key, descriptor] : desired) {
         bool exists = false;
         {
             std::lock_guard lock (_gate);
             const auto found = channel.connections.find (key);
             if (found != channel.connections.end ()) {
-                found->second.descriptor = descriptor;
+                if (found->second.descriptor.endpoint != descriptor.endpoint
+                    || found->second.descriptor.server_rid
+                         != descriptor.server_rid
+                    || found->second.descriptor.lifecycle_generation
+                         != descriptor.lifecycle_generation
+                    || found->second.descriptor.weight != descriptor.weight
+                    || found->second.descriptor.state != descriptor.state) {
+                    found->second.descriptor = descriptor;
+                    selector_changed = true;
+                }
                 exists = true;
             } else if (!key.starts_with ("manual|")) {
                 const auto manual = channel.connections.find (
@@ -866,6 +804,7 @@ void client_server_location_runtime_t::reconcile_channel (
                     connection.descriptor = descriptor;
                     channel.connections.emplace (
                       key, std::move (connection));
+                    selector_changed = true;
                     exists = true;
                 }
             }
@@ -901,6 +840,7 @@ void client_server_location_runtime_t::reconcile_channel (
         std::lock_guard lock (_gate);
         channel.connections.emplace (
           key, client_connection_t{descriptor, std::move (raw)});
+        selector_changed = true;
     }
 
     {
@@ -929,29 +869,44 @@ void client_server_location_runtime_t::reconcile_channel (
             }
             close.push_back (it->second.owner);
             it = channel.connections.erase (it);
+            selector_changed = true;
         }
     }
     for (auto &owner : close)
         owner->close ();
+    if (selector_changed) {
+        std::lock_guard lock (_gate);
+        channel.selector_dirty = true;
+    }
 }
 
 void client_server_location_runtime_t::pump ()
 {
     const auto now =
       mesh::service_liveness_registry_t::clock_t::now ();
-    for (auto &[_, server] : _servers) {
-        (void) server->owner->drain_monitor_events (now);
-        //  Stop on backpressure as well as on no_data. The pending record can
-        //  only be enqueued after dispatch drains the mailbox below, so
-        //  looping again here would spin without progress.
-        for (;;) {
-            const auto result = server->owner->pump_one (now);
-            if (result == client_server_pump_result_t::no_data
-                || result == client_server_pump_result_t::backpressured)
-                break;
+    std::vector<server_entry_t *> servers;
+    servers.reserve (_servers.size ());
+    for (auto &[_, server] : _servers)
+        servers.push_back (server.get ());
+    if (!servers.empty ()) {
+        const auto start = _server_pump_cursor % servers.size ();
+        for (std::size_t offset = 0; offset < servers.size (); ++offset) {
+            auto &server = *servers[(start + offset) % servers.size ()];
+            (void) server.owner->drain_monitor_events (now);
+            receive_batch_budget_t budget;
+            while (budget.can_receive ()) {
+                const auto result = server.owner->pump_one (now);
+                if (result == client_server_pump_result_t::no_data
+                    || result == client_server_pump_result_t::backpressured)
+                    break;
+                budget.account (server.owner->last_pump_bytes ());
+                if (budget.exhausted ())
+                    break;
+            }
+            (void) server.owner->tick_liveness (now);
+            dispatch_server (server);
         }
-        (void) server->owner->tick_liveness (now);
-        dispatch_server (*server);
+        _server_pump_cursor = (start + 1) % servers.size ();
     }
     std::vector<std::shared_ptr<raw_client_server_client_t>> clients;
     {
@@ -961,17 +916,40 @@ void client_server_location_runtime_t::pump ()
                 clients.push_back (connection.owner);
         }
     }
-    for (auto &client : clients) {
-        (void) client->drain_monitor_events (now);
-        for (;;) {
-            const auto result = client->pump_one (now);
-            if (result == client_server_pump_result_t::no_data
-                || result == client_server_pump_result_t::backpressured)
-                break;
+    if (!clients.empty ()) {
+        const auto start = _client_pump_cursor % clients.size ();
+        for (std::size_t offset = 0; offset < clients.size (); ++offset) {
+            auto &client = clients[(start + offset) % clients.size ()];
+            (void) client->drain_monitor_events (now);
+            receive_batch_budget_t budget;
+            while (budget.can_receive ()) {
+                const auto result = client->pump_one (now);
+                if (result == client_server_pump_result_t::no_data
+                    || result == client_server_pump_result_t::backpressured)
+                    break;
+                budget.account (client->last_pump_bytes ());
+                if (budget.exhausted ())
+                    break;
+            }
+            (void) client->tick_liveness (now);
+            (void) client->expire_requests (
+              foundation::operation_registry_t::clock_t::now ());
         }
-        (void) client->tick_liveness (now);
-        (void) client->expire_requests (
-          foundation::operation_registry_t::clock_t::now ());
+        _client_pump_cursor = (start + 1) % clients.size ();
+    }
+    std::lock_guard lock (_gate);
+    for (auto &[_, channel] : _clients) {
+        for (auto &[__, connection] : channel->connections) {
+            const bool ready =
+              connection.owner->ready ()
+              && connection.descriptor.state
+                   == framework_runtime_state_t::serving
+              && connection.descriptor.weight > 0;
+            if (ready != connection.selector_ready) {
+                connection.selector_ready = ready;
+                channel->selector_dirty = true;
+            }
+        }
     }
     _ready.notify_all ();
 }
@@ -980,12 +958,22 @@ void client_server_location_runtime_t::dispatch_server (
   server_entry_t &server)
 {
     auto &mailbox = server.owner->mailbox ();
+    receive_batch_budget_t budget;
     for (;;) {
+        if (!budget.can_receive ())
+            return;
         auto claim = mailbox.try_claim (
           mesh::service_mailbox_domain_t::application,
           64, 4u * 1024u * 1024u);
         if (!claim)
             return;
+        for (const auto &record : claim->records) {
+            std::size_t record_bytes = 0;
+            for (const auto &part : record.parts)
+                record_bytes += part.size ();
+            budget.account (record_bytes);
+        }
+        const bool yield_after_claim = budget.exhausted ();
         for (const auto &record : claim->records) {
             if (record.parts.size () != 2)
                 continue;
@@ -1154,6 +1142,8 @@ void client_server_location_runtime_t::dispatch_server (
             }
         }
         (void) mailbox.release (*claim);
+        if (yield_after_claim)
+            return;
     }
 }
 
@@ -1313,19 +1303,25 @@ client_server_location_runtime_t::select_ready (
           "ClientServer has no ready target before the bounded wait expired");
     }
     auto &channel = *_clients.at (channel_name);
-    std::vector<weighted_candidate_t> candidates;
-    for (auto &[key, connection] : channel.connections) {
-        if (!connection.owner->ready ()
-            || connection.descriptor.state
-                 != framework_runtime_state_t::serving
-            || connection.descriptor.weight <= 0)
-            continue;
-        candidates.push_back (
-          {key,
-           static_cast<std::uint32_t> (
-             connection.descriptor.weight)});
+    if (channel.selector_dirty) {
+        channel.selector_candidates.clear ();
+        channel.selector_candidates.reserve (channel.connections.size ());
+        for (auto &[key, connection] : channel.connections) {
+            if (!connection.owner->ready ()
+                || connection.descriptor.state
+                     != framework_runtime_state_t::serving
+                || connection.descriptor.weight <= 0)
+                continue;
+            channel.selector_candidates.push_back (
+              {key,
+               static_cast<std::uint32_t> (
+                 connection.descriptor.weight),
+               stable_key (connection.descriptor)});
+        }
+        channel.selector.set_candidates (channel.selector_candidates);
+        channel.selector_dirty = false;
     }
-    const auto selected = channel.selector.select (candidates);
+    const auto selected = channel.selector.select ();
     if (!selected) {
         return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
           framework_error_kind_t::not_found,

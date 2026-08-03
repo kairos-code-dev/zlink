@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -34,35 +35,22 @@ typedef struct single_socket_bench_t
     size_t topic_len;
     uint64_t sent;
     uint64_t received;
-    int ok;
-    int err;
+    atomic_int ok;
+    atomic_int error;
     pthread_mutex_t latency_lock;
     latency_samples_t latencies;
 } single_socket_bench_t;
 
-typedef struct stream_echo_item_t
+static int single_socket_bench_is_ok (const single_socket_bench_t *bench)
 {
-    zlink_routing_id_t routing_id;
-    zlink_msg_t msg;
-    struct stream_echo_item_t *next;
-} stream_echo_item_t;
+    return atomic_load_explicit (&bench->ok, memory_order_acquire);
+}
 
-typedef struct stream_echo_session_t
+static void single_socket_bench_fail (single_socket_bench_t *bench, int error)
 {
-    void *handle;
-    pthread_mutex_t send_lock;
-    pthread_mutex_t queue_lock;
-    stream_echo_item_t *head;
-    stream_echo_item_t *tail;
-    char *stop_token;
-    size_t stop_token_len;
-    int stop_requested;
-    int failed;
-    int last_errno;
-    unsigned long long recv_count;
-    unsigned long long send_count;
-    unsigned long long pending_count;
-} stream_echo_session_t;
+    atomic_store_explicit (&bench->error, error, memory_order_release);
+    atomic_store_explicit (&bench->ok, 0, memory_order_release);
+}
 
 typedef struct routed_echo_item_t
 {
@@ -394,14 +382,12 @@ static void *single_socket_sender_thread (void *arg)
         if (zlink_msg_init_size (&part, bench->msg_size) != 0
             || !stamp_active_payload ((unsigned char *) zlink_msg_data (&part), bench->msg_size,
                                       bench->run_id, seq)) {
-            bench->ok = 0;
-            bench->err = zlink_errno ();
+            single_socket_bench_fail (bench, zlink_errno ());
             return NULL;
         }
         int step = send_owned_part_mode (bench, &part, ZLINK_SEND_FLAGS_NONE);
         if (step < 0) {
-            bench->ok = 0;
-            bench->err = zlink_errno ();
+            single_socket_bench_fail (bench, zlink_errno ());
             return NULL;
         }
         if (step > 0)
@@ -419,8 +405,7 @@ static void *single_socket_sender_thread (void *arg)
         struct timespec ts = {0, 1000000L};
         nanosleep (&ts, NULL);
     }
-    bench->ok = 0;
-    bench->err = zlink_errno ();
+    single_socket_bench_fail (bench, zlink_errno ());
     return NULL;
 }
 
@@ -429,12 +414,11 @@ static void *single_socket_receiver_thread (void *arg)
     single_socket_bench_t *bench = (single_socket_bench_t *) arg;
     const uint64_t deadline = steady_ns () + ((uint64_t) bench->duration_s * 1000000000ULL);
 
-    while (bench->ok) {
+    while (single_socket_bench_is_ok (bench)) {
         zlink_msg_t part;
         zlink_part_flag_t has_more = ZLINK_PART_FINAL;
         if (zlink_msg_init (&part) != 0) {
-            bench->ok = 0;
-            bench->err = zlink_errno ();
+            single_socket_bench_fail (bench, zlink_errno ());
             return NULL;
         }
         const int rc = recv_part_mode (bench, &part, &has_more, ZLINK_RECV_FLAGS_NONE);
@@ -443,8 +427,7 @@ static void *single_socket_receiver_thread (void *arg)
             zlink_msg_close (&part);
             if (err == EAGAIN || err == EINTR)
                 continue;
-            bench->ok = 0;
-            bench->err = err;
+            single_socket_bench_fail (bench, err);
             return NULL;
         }
 
@@ -464,8 +447,7 @@ static void *single_socket_receiver_thread (void *arg)
                 if (!latency_samples_add (&bench->latencies, sample)) {
                     pthread_mutex_unlock (&bench->latency_lock);
                     zlink_msg_close (&part);
-                    bench->ok = 0;
-                    bench->err = ENOMEM;
+                    single_socket_bench_fail (bench, ENOMEM);
                     return NULL;
                 }
                 pthread_mutex_unlock (&bench->latency_lock);
@@ -477,8 +459,7 @@ static void *single_socket_receiver_thread (void *arg)
         for (;;) {
             has_more = ZLINK_PART_FINAL;
             if (zlink_msg_init (&part) != 0) {
-                bench->ok = 0;
-                bench->err = zlink_errno ();
+                single_socket_bench_fail (bench, zlink_errno ());
                 return NULL;
             }
             const int burst_rc = recv_part_mode (bench, &part, &has_more, ZLINK_DONTWAIT);
@@ -487,8 +468,7 @@ static void *single_socket_receiver_thread (void *arg)
                 zlink_msg_close (&part);
                 if (err == EAGAIN || err == EINTR)
                     break;
-                bench->ok = 0;
-                bench->err = err;
+                single_socket_bench_fail (bench, err);
                 return NULL;
             }
             data = zlink_msg_data (&part);
@@ -507,8 +487,7 @@ static void *single_socket_receiver_thread (void *arg)
                     if (!latency_samples_add (&bench->latencies, sample)) {
                         pthread_mutex_unlock (&bench->latency_lock);
                         zlink_msg_close (&part);
-                        bench->ok = 0;
-                        bench->err = ENOMEM;
+                        single_socket_bench_fail (bench, ENOMEM);
                         return NULL;
                     }
                     pthread_mutex_unlock (&bench->latency_lock);
@@ -567,7 +546,8 @@ static PyObject *py_single_socket_one_way (PyObject *self, PyObject *args)
     bench.send_mode = send_mode;
     bench.recv_mode = recv_mode;
     bench.run_id = (uint32_t) run_id_value;
-    bench.ok = 1;
+    atomic_init (&bench.ok, 1);
+    atomic_init (&bench.error, 0);
     if (send_mode == 1) {
         if (aux.len <= 0 || aux.len > 255) {
             PyBuffer_Release (&aux);
@@ -600,14 +580,12 @@ static PyObject *py_single_socket_one_way (PyObject *self, PyObject *args)
         if (pthread_create (&sender_thread, NULL, single_socket_sender_thread, &bench) == 0) {
             sender_started = 1;
         } else {
-            bench.ok = 0;
-            bench.err = errno;
+            single_socket_bench_fail (&bench, errno);
         }
     }
     else
     {
-        bench.ok = 0;
-        bench.err = errno;
+        single_socket_bench_fail (&bench, errno);
     }
     if (sender_started)
         pthread_join (sender_thread, NULL);
@@ -616,8 +594,8 @@ static PyObject *py_single_socket_one_way (PyObject *self, PyObject *args)
     Py_END_ALLOW_THREADS
 
       pthread_mutex_destroy (&bench.latency_lock);
-    if (!bench.ok || bench.received == 0) {
-        int err = bench.err;
+    if (!single_socket_bench_is_ok (&bench) || bench.received == 0) {
+        int err = atomic_load_explicit (&bench.error, memory_order_acquire);
         free (bench.latencies.values);
         return Py_BuildValue ("Kdddddi", (unsigned long long) bench.received, 0.0, 0.0, 0.0, 0.0,
                               0.0, err);
@@ -1576,313 +1554,6 @@ static PyObject *py_subscribe_count_active (PyObject *self, PyObject *args)
 
 
 
-static int stream_echo_build_frame (zlink_msg_t *packet, zlink_msg_t *header, zlink_msg_t *body)
-{
-    size_t header_size = zlink_msg_size (header);
-    size_t body_size = zlink_msg_size (body);
-    size_t total_size = 6 + header_size + body_size;
-    unsigned char *dst = NULL;
-
-    if (header_size > UINT16_MAX || body_size > UINT32_MAX) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (zlink_msg_init_size (packet, total_size) != ZLINK_CONFIG_OK)
-        return -1;
-
-    dst = (unsigned char *) zlink_msg_data (packet);
-    dst[0] = (unsigned char) ((header_size >> 8) & 0xff);
-    dst[1] = (unsigned char) (header_size & 0xff);
-    dst[2] = (unsigned char) ((body_size >> 24) & 0xff);
-    dst[3] = (unsigned char) ((body_size >> 16) & 0xff);
-    dst[4] = (unsigned char) ((body_size >> 8) & 0xff);
-    dst[5] = (unsigned char) (body_size & 0xff);
-    if (header_size > 0)
-        memcpy (dst + 6, zlink_msg_data (header), header_size);
-    if (body_size > 0)
-        memcpy (dst + 6 + header_size, zlink_msg_data (body), body_size);
-    return 0;
-}
-
-static int stream_echo_try_send (stream_echo_session_t *session,
-                                 const zlink_routing_id_t *routing_id,
-                                 zlink_msg_t *packet)
-{
-    int rc = ZLINK_SUBMIT_OK;
-
-    pthread_mutex_lock (&session->send_lock);
-    rc =
-      zlink_send_part_rid (session->handle, routing_id, packet, ZLINK_DONTWAIT, ZLINK_PART_FINAL);
-    pthread_mutex_unlock (&session->send_lock);
-    if (rc == ZLINK_SUBMIT_OK)
-        return 0;
-    session->last_errno = zlink_errno ();
-    if (session->last_errno == EAGAIN)
-        return 1;
-    session->failed = 1;
-    session->stop_requested = 1;
-    return -1;
-}
-
-static int stream_echo_enqueue (stream_echo_session_t *session,
-                                const zlink_routing_id_t *routing_id,
-                                zlink_msg_t *packet)
-{
-    stream_echo_item_t *item = (stream_echo_item_t *) calloc (1, sizeof (stream_echo_item_t));
-    if (!item) {
-        session->last_errno = ENOMEM;
-        session->failed = 1;
-        session->stop_requested = 1;
-        return -1;
-    }
-    item->routing_id = *routing_id;
-    if (zlink_msg_init (&item->msg) != ZLINK_CONFIG_OK
-        || zlink_msg_move (&item->msg, packet) != ZLINK_CONFIG_OK) {
-        free (item);
-        session->last_errno = zlink_errno ();
-        session->failed = 1;
-        session->stop_requested = 1;
-        return -1;
-    }
-
-    pthread_mutex_lock (&session->queue_lock);
-    if (session->tail)
-        session->tail->next = item;
-    else
-        session->head = item;
-    session->tail = item;
-    session->pending_count++;
-    pthread_mutex_unlock (&session->queue_lock);
-    return 0;
-}
-
-static int stream_echo_body_is_stop (stream_echo_session_t *session, zlink_msg_t *body)
-{
-    return session->stop_token && session->stop_token_len > 0
-           && zlink_msg_size (body) == session->stop_token_len
-           && memcmp (zlink_msg_data (body), session->stop_token, session->stop_token_len) == 0;
-}
-
-static void stream_echo_packet_handler (void *stream,
-                                        const zlink_routing_id_t *routing_id,
-                                        zlink_msg_t *header,
-                                        zlink_msg_t *body,
-                                        void *userdata)
-{
-    stream_echo_session_t *session = (stream_echo_session_t *) userdata;
-    zlink_msg_t packet;
-    int send_result = 0;
-
-    if (!session || !stream || !routing_id || !header || !body) {
-        if (header)
-            zlink_msg_close (header);
-        if (body)
-            zlink_msg_close (body);
-        return;
-    }
-
-    if (stream_echo_body_is_stop (session, body)) {
-        session->stop_requested = 1;
-        zlink_msg_close (header);
-        zlink_msg_close (body);
-        return;
-    }
-
-    memset (&packet, 0, sizeof (packet));
-    session->recv_count++;
-    if (stream_echo_build_frame (&packet, header, body) != 0) {
-        session->last_errno = errno ? errno : zlink_errno ();
-        session->failed = 1;
-        session->stop_requested = 1;
-        zlink_msg_close (header);
-        zlink_msg_close (body);
-        return;
-    }
-
-    send_result = stream_echo_try_send (session, routing_id, &packet);
-    if (send_result == 0) {
-        session->send_count++;
-        zlink_msg_close (&packet);
-    } else if (send_result > 0) {
-        if (stream_echo_enqueue (session, routing_id, &packet) != 0)
-            zlink_msg_close (&packet);
-    } else {
-        zlink_msg_close (&packet);
-    }
-
-    zlink_msg_close (header);
-    zlink_msg_close (body);
-}
-
-static void stream_echo_free_queue (stream_echo_session_t *session)
-{
-    stream_echo_item_t *item = NULL;
-    stream_echo_item_t *next = NULL;
-
-    if (!session)
-        return;
-    item = session->head;
-    while (item) {
-        next = item->next;
-        zlink_msg_close (&item->msg);
-        free (item);
-        item = next;
-    }
-    session->head = NULL;
-    session->tail = NULL;
-    session->pending_count = 0;
-}
-
-static void stream_echo_capsule_destructor (PyObject *capsule)
-{
-    stream_echo_session_t *session =
-      (stream_echo_session_t *) PyCapsule_GetPointer (capsule, "zlink.StreamEchoSession");
-    if (!session)
-        return;
-    if (session->handle)
-        zlink_stream_packet_handler (session->handle, NULL, NULL);
-    pthread_mutex_lock (&session->queue_lock);
-    stream_echo_free_queue (session);
-    pthread_mutex_unlock (&session->queue_lock);
-    pthread_mutex_destroy (&session->queue_lock);
-    pthread_mutex_destroy (&session->send_lock);
-    free (session->stop_token);
-    free (session);
-}
-
-static PyObject *py_stream_echo_install (PyObject *self, PyObject *args)
-{
-    unsigned long long handle_value = 0;
-    const char *stop_token = NULL;
-    Py_ssize_t stop_token_len = 0;
-    stream_echo_session_t *session = NULL;
-    int rc = ZLINK_HANDLER_OK;
-
-    (void) self;
-    if (!PyArg_ParseTuple (args, "Ky#", &handle_value, &stop_token, &stop_token_len))
-        return NULL;
-
-    session = (stream_echo_session_t *) calloc (1, sizeof (*session));
-    if (!session) {
-        PyErr_NoMemory ();
-        return NULL;
-    }
-    session->handle = (void *) (uintptr_t) handle_value;
-    if (pthread_mutex_init (&session->send_lock, NULL) != 0
-        || pthread_mutex_init (&session->queue_lock, NULL) != 0) {
-        free (session);
-        PyErr_SetFromErrno (PyExc_OSError);
-        return NULL;
-    }
-    session->stop_token = (char *) malloc ((size_t) stop_token_len + 1);
-    if (!session->stop_token) {
-        pthread_mutex_destroy (&session->queue_lock);
-        pthread_mutex_destroy (&session->send_lock);
-        free (session);
-        PyErr_NoMemory ();
-        return NULL;
-    }
-    memcpy (session->stop_token, stop_token, (size_t) stop_token_len);
-    session->stop_token[stop_token_len] = '\0';
-    session->stop_token_len = (size_t) stop_token_len;
-
-    Py_BEGIN_ALLOW_THREADS rc =
-      zlink_stream_packet_handler (session->handle, stream_echo_packet_handler, session);
-    Py_END_ALLOW_THREADS if (rc != ZLINK_HANDLER_OK)
-    {
-        int err = zlink_errno ();
-        pthread_mutex_destroy (&session->queue_lock);
-        pthread_mutex_destroy (&session->send_lock);
-        free (session->stop_token);
-        free (session);
-        errno = err;
-        PyErr_SetFromErrno (PyExc_OSError);
-        return NULL;
-    }
-
-    return PyCapsule_New (session, "zlink.StreamEchoSession", stream_echo_capsule_destructor);
-}
-
-static PyObject *py_stream_echo_drain (PyObject *self, PyObject *args)
-{
-    PyObject *capsule = NULL;
-    stream_echo_session_t *session = NULL;
-
-    (void) self;
-    if (!PyArg_ParseTuple (args, "O", &capsule))
-        return NULL;
-    session = (stream_echo_session_t *) PyCapsule_GetPointer (capsule, "zlink.StreamEchoSession");
-    if (!session)
-        return NULL;
-
-    Py_BEGIN_ALLOW_THREADS while (!session->stop_requested)
-    {
-        stream_echo_item_t *item = NULL;
-        int send_result = 0;
-
-        pthread_mutex_lock (&session->queue_lock);
-        item = session->head;
-        if (item) {
-            session->head = item->next;
-            if (!session->head)
-                session->tail = NULL;
-            item->next = NULL;
-        }
-        pthread_mutex_unlock (&session->queue_lock);
-        if (!item)
-            break;
-
-        Py_BEGIN_ALLOW_THREADS send_result =
-          stream_echo_try_send (session, &item->routing_id, &item->msg);
-        Py_END_ALLOW_THREADS if (send_result == 0)
-        {
-            session->send_count++;
-            if (session->pending_count > 0)
-                session->pending_count--;
-            zlink_msg_close (&item->msg);
-            free (item);
-            continue;
-        }
-
-        pthread_mutex_lock (&session->queue_lock);
-        item->next = session->head;
-        session->head = item;
-        if (!session->tail)
-            session->tail = item;
-        pthread_mutex_unlock (&session->queue_lock);
-        break;
-    }
-    Py_END_ALLOW_THREADS
-
-      PyObject *stopped = PyBool_FromLong (session->stop_requested || session->failed);
-    PyObject *pending = PyLong_FromUnsignedLongLong (session->pending_count);
-    if (!stopped || !pending) {
-        Py_XDECREF (stopped);
-        Py_XDECREF (pending);
-        return NULL;
-    }
-    PyObject *result = PyTuple_Pack (2, stopped, pending);
-    Py_DECREF (stopped);
-    Py_DECREF (pending);
-    return result;
-}
-
-static PyObject *py_stream_echo_stats (PyObject *self, PyObject *args)
-{
-    PyObject *capsule = NULL;
-    stream_echo_session_t *session = NULL;
-
-    (void) self;
-    if (!PyArg_ParseTuple (args, "O", &capsule))
-        return NULL;
-    session = (stream_echo_session_t *) PyCapsule_GetPointer (capsule, "zlink.StreamEchoSession");
-    if (!session)
-        return NULL;
-    return Py_BuildValue ("KKKii", session->recv_count, session->send_count, session->pending_count,
-                          session->failed, session->last_errno);
-}
-
-
 static PyMethodDef zlink_perf_native_methods[] = {
   {"single_socket_one_way", py_single_socket_one_way, METH_VARARGS,
    "Run a native single one-way socket benchmark active phase."},
@@ -1898,11 +1569,6 @@ static PyMethodDef zlink_perf_native_methods[] = {
    "Publish topic payloads in a native active phase."},
   {"subscribe_count_active", py_subscribe_count_active, METH_VARARGS,
    "Count active topic messages across subscribers in a native loop."},
-  {"stream_echo_install", py_stream_echo_install, METH_VARARGS,
-   "Install a native stream packet echo handler for perf hot paths."},
-  {"stream_echo_drain", py_stream_echo_drain, METH_VARARGS,
-   "Drain pending native stream echo replies."},
-  {"stream_echo_stats", py_stream_echo_stats, METH_VARARGS, "Return native stream echo counters."},
   {"perf_stamp_payload", py_perf_stamp_payload, METH_VARARGS, "Stamp a perf payload header."},
   {"perf_active_latency_ns", py_perf_active_latency_ns, METH_VARARGS,
    "Classify a perf payload and return active latency ns."},

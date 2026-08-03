@@ -44,8 +44,9 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
+	reuse := out.beginReceive()
 	var sourceRID *C.zlink_routing_id_t
-	clonedParts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+	clonedParts, err := recvMultipart(reuse, flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_recv_part(s.raw(), &sourceRID, part, hasMore, recvFlags))
 	})
 	if err != nil {
@@ -56,19 +57,6 @@ func (s *directSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	}
 	out.replace(routingIDFromCPtr(sourceRID), clonedParts, 0, false, nil, nil, nil)
 	return true, nil
-}
-
-func (s *directSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
-	result, err := recvDirectPartInto(out, flags, func(rid **C.zlink_routing_id_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
-		return recvErrorFromResult(C.zlink_recv_part(s.raw(), rid, part, hasMore, recvFlags))
-	})
-	if err != nil {
-		if isNoData(err) {
-			return RecvPartResult{}, false, nil
-		}
-		return RecvPartResult{}, false, err
-	}
-	return result, true, nil
 }
 
 func (s *directSocket) onReceive(handler func(*Received)) error {

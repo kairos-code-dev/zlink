@@ -101,7 +101,8 @@ final class ZLinkFrameworkActorSubsystem {
                 serializer,
                 runtimeHandlers,
                 defaultStreamCodec,
-                ZLinkAdmissionRuntime.factory(backendFactory))
+                ZLinkAdmissionRuntime.factory(backendFactory),
+                registration.serialExecutor())
             : null;
         ZLinkActorDirectory actorDirectory = actors != null
             ? actors

@@ -43,26 +43,34 @@ func newProgressPump(handle unsafe.Pointer) *progressPump {
 	return pump
 }
 
-func acquireExternalRequestProgress(handle unsafe.Pointer) {
+func acquireExternalRequestProgress(handle unsafe.Pointer, owner *socketCore) {
 	if handle == nil {
 		return
 	}
 	externalProgressMu.Lock()
 	externalProgressRefs[handle]++
 	externalProgressMu.Unlock()
+	if owner != nil {
+		owner.pauseInternalRequestProgress()
+	}
 }
 
-func releaseExternalRequestProgress(handle unsafe.Pointer) {
+func releaseExternalRequestProgress(handle unsafe.Pointer, owner *socketCore) {
 	if handle == nil {
 		return
 	}
 	externalProgressMu.Lock()
+	last := false
 	if count := externalProgressRefs[handle]; count <= 1 {
 		delete(externalProgressRefs, handle)
+		last = true
 	} else {
 		externalProgressRefs[handle] = count - 1
 	}
 	externalProgressMu.Unlock()
+	if last && owner != nil {
+		owner.resumeInternalRequestProgress()
+	}
 }
 
 func externalRequestProgressActive(handle unsafe.Pointer) bool {
@@ -72,7 +80,7 @@ func externalRequestProgressActive(handle unsafe.Pointer) bool {
 	return active
 }
 
-func (p *progressPump) attachDone(done <-chan struct{}) {
+func (p *progressPump) attach(state *replyCallbackState) {
 	p.mu.Lock()
 	p.activeCount++
 	startWorker := !p.workerOn && !p.stopping
@@ -80,11 +88,7 @@ func (p *progressPump) attachDone(done <-chan struct{}) {
 		p.workerOn = true
 	}
 	p.mu.Unlock()
-
-	go func() {
-		<-done
-		p.detach()
-	}()
+	state.setProgressDetach(p.detach)
 	if startWorker {
 		go p.run()
 	}

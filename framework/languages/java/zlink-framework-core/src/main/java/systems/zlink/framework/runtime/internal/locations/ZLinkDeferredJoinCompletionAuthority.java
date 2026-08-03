@@ -691,7 +691,7 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                 || crc32c(found.payload()) != checksumCrc32c) {
                 return CompletableFuture.failedFuture(
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.RELOCATION_DATA_LOST,
+                        ZLinkFrameworkErrorKind.DATA_LOST,
                         "deferred Join canonical relocation root checksum is invalid"));
             }
             return ZLinkRelocationTreeStore.read(
@@ -956,14 +956,14 @@ public final class ZLinkDeferredJoinCompletionAuthority {
     public static final class CanonicalRootUnavailableException
         extends ZLinkFrameworkException {
         CanonicalRootUnavailableException(String message) {
-            super(ZLinkFrameworkErrorKind.RELOCATION_DATA_LOST, message);
+            super(ZLinkFrameworkErrorKind.DATA_LOST, message);
         }
     }
 
     public static final class CanonicalRootMissingException
         extends ZLinkFrameworkException {
         CanonicalRootMissingException(String message) {
-            super(ZLinkFrameworkErrorKind.RELOCATION_DATA_LOST, message);
+            super(ZLinkFrameworkErrorKind.DATA_LOST, message);
         }
     }
 }

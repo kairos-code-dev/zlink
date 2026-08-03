@@ -5,8 +5,7 @@ internal sealed class ZLinkInboundDispatchBudget
     private readonly object _gate = new();
     private readonly SemaphoreSlim _receiveCapacity = new(1, 1);
     private readonly ulong _applicationHwmBytes;
-    private ulong _cumulativeReceivedPayloadBytes;
-    private ulong _cumulativeCompletedPayloadBytes;
+    private ulong _pendingPayloadBytes;
     private ulong _activePayloadBytes;
     private bool _receivePaused;
     private List<Action>? _capacityAvailableHandlers;
@@ -17,38 +16,27 @@ internal sealed class ZLinkInboundDispatchBudget
     }
 
     internal bool CanStartApplicationReceive
-    {
-        get
-        {
-            lock (_gate) return CanStartApplicationReceiveUnderLock();
-        }
-    }
+        => CanStartApplicationReceiveNow();
 
     internal ulong PendingPayloadBytes
-    {
-        get
-        {
-            lock (_gate) return PendingPayloadBytesUnderLock();
-        }
-    }
+        => Volatile.Read(ref _pendingPayloadBytes);
 
     internal async ValueTask<bool> WaitForReceiveCapacityAsync(
         CancellationToken cancellationToken)
     {
         while (true)
         {
-            lock (_gate)
-                if (CanStartApplicationReceiveUnderLock() && !_receivePaused)
-                    return false;
+            if (CanStartApplicationReceiveNow()
+                && !Volatile.Read(ref _receivePaused))
+                return false;
 
             await _receiveCapacity.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
-            lock (_gate)
-            {
-                if (!CanStartApplicationReceiveUnderLock())
-                    continue;
-                return true;
-            }
+            // The permit represents one receive attempt released by a
+            // completed dispatch. A concurrent receive may cross the HWM
+            // again before this waiter resumes; the attempt still owns the
+            // permit and CompleteReceiveAttempt reconciles the next state.
+            return true;
         }
     }
 
@@ -57,34 +45,50 @@ internal sealed class ZLinkInboundDispatchBudget
         if (!ownsResumePermit)
             return;
         lock (_gate)
+        {
             if (CanStartApplicationReceiveUnderLock())
+            {
+                _receivePaused = false;
                 ReleaseReceiveCapacityUnderLock();
+            }
+            else
+            {
+                _receivePaused = true;
+                _receiveCapacity.Wait(0);
+            }
+        }
     }
 
     internal void Received(ulong payloadBytes)
     {
-        lock (_gate)
-        {
-            RecordAcceptedPayloadUnderLock(payloadBytes);
-        }
+        var pending = AddPendingPayload(payloadBytes);
+        MarkReceivePausedIfNeeded(pending);
     }
 
     internal bool TryTrack(
         ulong payloadBytes,
         out ZLinkInboundDispatchLease? lease)
     {
-        lock (_gate)
+        while (true)
         {
+            var current = Volatile.Read(ref _pendingPayloadBytes);
             // A complete message that began below HWM may finish above it;
             // the contract stops the next application receive, so admission
             // checks the immutable pending total before this message.
-            if (!CanStartApplicationReceiveUnderLock())
+            if (_applicationHwmBytes != 0
+                && current >= _applicationHwmBytes)
             {
                 lease = null;
                 return false;
             }
 
-            RecordAcceptedPayloadUnderLock(payloadBytes);
+            var next = checked(current + payloadBytes);
+            if (Interlocked.CompareExchange(
+                    ref _pendingPayloadBytes,
+                    next,
+                    current) != current)
+                continue;
+            MarkReceivePausedIfNeeded(next);
             lease = new ZLinkInboundDispatchLease(this, payloadBytes);
             return true;
         }
@@ -92,31 +96,29 @@ internal sealed class ZLinkInboundDispatchBudget
 
     internal void HandlerStarted(ulong payloadBytes)
     {
-        lock (_gate)
-            _activePayloadBytes = unchecked(_activePayloadBytes + payloadBytes);
+        AddActivePayload(payloadBytes);
     }
 
     internal void Completed(ulong payloadBytes, bool handlerStarted)
     {
         Action[]? handlers = null;
-        lock (_gate)
+        if (handlerStarted)
         {
-            if (handlerStarted)
+            SubtractActivePayload(payloadBytes);
+        }
+        var pending = SubtractPendingPayload(payloadBytes);
+        if (_applicationHwmBytes != 0
+            && pending < _applicationHwmBytes)
+        {
+            lock (_gate)
             {
-                if (payloadBytes > _activePayloadBytes)
-                    throw new InvalidOperationException();
-                _activePayloadBytes -= payloadBytes;
-            }
-            _cumulativeCompletedPayloadBytes = unchecked(
-                _cumulativeCompletedPayloadBytes + payloadBytes);
-
-            if (_applicationHwmBytes != 0
-                && _receivePaused
-                && PendingPayloadBytesUnderLock() < _applicationHwmBytes)
-            {
-                _receivePaused = false;
-                ReleaseReceiveCapacityUnderLock();
-                handlers = _capacityAvailableHandlers?.ToArray();
+                if (_receivePaused
+                    && CanStartApplicationReceiveNow())
+                {
+                    _receivePaused = false;
+                    ReleaseReceiveCapacityUnderLock();
+                    handlers = _capacityAvailableHandlers?.ToArray();
+                }
             }
         }
 
@@ -180,39 +182,76 @@ internal sealed class ZLinkInboundDispatchBudget
 
     internal ZLinkInboundDispatchBudgetSnapshot Snapshot()
     {
-        lock (_gate)
-        {
-            var pending = PendingPayloadBytesUnderLock();
-            var active = Math.Min(_activePayloadBytes, pending);
-            return new ZLinkInboundDispatchBudgetSnapshot(
-                _applicationHwmBytes,
-                pending,
-                pending - active,
-                active,
-                _receivePaused);
-        }
+        var pending = Volatile.Read(ref _pendingPayloadBytes);
+        var active = Math.Min(Volatile.Read(ref _activePayloadBytes), pending);
+        return new ZLinkInboundDispatchBudgetSnapshot(
+            _applicationHwmBytes,
+            pending,
+            pending - active,
+            active,
+            Volatile.Read(ref _receivePaused));
     }
+
+    private bool CanStartApplicationReceiveNow() =>
+        _applicationHwmBytes == 0
+        || Volatile.Read(ref _pendingPayloadBytes) < _applicationHwmBytes;
 
     private bool CanStartApplicationReceiveUnderLock() =>
         _applicationHwmBytes == 0
-        || PendingPayloadBytesUnderLock() < _applicationHwmBytes;
+        || Volatile.Read(ref _pendingPayloadBytes) < _applicationHwmBytes;
 
-    private void RecordAcceptedPayloadUnderLock(ulong payloadBytes)
+    private ulong AddPendingPayload(ulong payloadBytes) =>
+        AddPayload(ref _pendingPayloadBytes, payloadBytes);
+
+    private ulong SubtractPendingPayload(ulong payloadBytes) =>
+        SubtractPayload(ref _pendingPayloadBytes, payloadBytes);
+
+    private void AddActivePayload(ulong payloadBytes) =>
+        _ = AddPayload(ref _activePayloadBytes, payloadBytes);
+
+    private void SubtractActivePayload(ulong payloadBytes) =>
+        _ = SubtractPayload(ref _activePayloadBytes, payloadBytes);
+
+    private void MarkReceivePausedIfNeeded(ulong pendingPayloadBytes)
     {
-        _cumulativeReceivedPayloadBytes = unchecked(
-            _cumulativeReceivedPayloadBytes + payloadBytes);
-        if (_applicationHwmBytes != 0
-            && PendingPayloadBytesUnderLock() >= _applicationHwmBytes
-            && !_receivePaused)
+        if (_applicationHwmBytes == 0
+            || pendingPayloadBytes < _applicationHwmBytes)
+            return;
+
+        lock (_gate)
         {
-            _receivePaused = true;
-            _receiveCapacity.Wait(0);
+            if (Volatile.Read(ref _pendingPayloadBytes) >= _applicationHwmBytes
+                && !_receivePaused)
+            {
+                _receivePaused = true;
+                _receiveCapacity.Wait(0);
+            }
         }
     }
 
-    private ulong PendingPayloadBytesUnderLock() => Difference(
-        _cumulativeReceivedPayloadBytes,
-        _cumulativeCompletedPayloadBytes);
+    private static ulong AddPayload(ref ulong target, ulong payloadBytes)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref target);
+            var next = unchecked(current + payloadBytes);
+            if (Interlocked.CompareExchange(ref target, next, current)
+                == current)
+                return next;
+        }
+    }
+
+    private static ulong SubtractPayload(ref ulong target, ulong payloadBytes)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref target);
+            var next = unchecked(current - payloadBytes);
+            if (Interlocked.CompareExchange(ref target, next, current)
+                == current)
+                return next;
+        }
+    }
 
     private void ReleaseReceiveCapacityUnderLock()
     {
@@ -220,8 +259,6 @@ internal sealed class ZLinkInboundDispatchBudget
             _receiveCapacity.Release();
     }
 
-    private static ulong Difference(ulong received, ulong completed) =>
-        unchecked((ulong)(received - completed));
 }
 
 internal readonly record struct ZLinkInboundDispatchBudgetSnapshot(

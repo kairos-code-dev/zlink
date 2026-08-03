@@ -454,6 +454,30 @@ test('ZLinkSpotManager reports HostShutdown only for shutdown-drained User and I
   );
 });
 
+test('ZLinkSpotManager evicts an idle Instance Spot with the contracted close reason', async () => {
+  let closingReason;
+  class IdleInstanceSpot {
+    async onClosing(context) {
+      closingReason = context.reason;
+    }
+  }
+  const spotId = zlink.RoutingId.from('idle-instance');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['idle', IdleInstanceSpot]])
+    ]]),
+    instanceSpotIdleTimeoutMs: new Map([['test.mesh', 5]])
+  });
+
+  await manager.materializeInstance('test.mesh', 'idle', spotId, 1n);
+  await waitFor(() => closingReason !== undefined, 1000);
+
+  assert.equal(closingReason, framework.ZLinkSpotCloseReason.IdleEvicted);
+  assert.equal(await manager.find('test.mesh', spotId), null);
+});
+
 test('ZLinkSpotManager shares concurrent close and finishes cleanup after onClosing failure', async () => {
   const entered = createDeferred();
   const release = createDeferred();

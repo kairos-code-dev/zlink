@@ -124,6 +124,7 @@ final class RelocationPublicContractTest {
                 .getMethod("onClosing", ZLinkSpotClosingContext.class)
                 .getReturnType());
         assertEquals(2, ZLinkSpotCloseReason.RELOCATION_OUT.value());
+        assertEquals(3, ZLinkSpotCloseReason.IDLE_EVICTED.value());
         assertEquals(
             void.class,
             ZLinkActorFactoryBuilder.class

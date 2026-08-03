@@ -18,6 +18,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkActorSpotRoutePackets;
 import systems.zlink.framework.runtime.internal.backend.*;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 
 abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoCloseable {
@@ -56,6 +57,10 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
 
     final void trackRouteReceived(ZLinkBackendReceived received) {
         activeRouteReceives.add(received);
+    }
+
+    final boolean hasActiveRouteReceives() {
+        return !activeRouteReceives.isEmpty();
     }
 
     CompletionStage<Void> dispatchResolvedActorPacket(
@@ -135,7 +140,8 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
     final CompletionStage<Void> drainActorLifecycleEvents() {
         CompletionStage<Void> tail =
             java.util.concurrent.CompletableFuture.completedFuture(null);
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             if (host.isClosing()) {
                 return tail;
             }
@@ -144,6 +150,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             if (event == null) {
                 return tail;
             }
+            batch.record(0);
             if (!host.actorSessions().available()) {
                 continue;
             }
@@ -153,6 +160,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 tail = appendActorLifecycle(tail, event, actorRef, actor.get());
             }
         }
+        return tail;
     }
 
     final CompletionStage<Void> dispatchSpotRouteHandler(

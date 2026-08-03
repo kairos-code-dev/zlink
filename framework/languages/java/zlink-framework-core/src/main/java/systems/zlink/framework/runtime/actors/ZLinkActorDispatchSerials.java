@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import java.util.function.Function;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
@@ -19,21 +20,39 @@ final class ZLinkActorDispatchSerials {
         java.util.logging.Logger.getLogger(ZLinkActorDispatchSerials.class.getName());
     private final Object runtimeScope;
     private final Function<String, Object> incarnationResolver;
+    private final Executor executor;
     private final Map<String, ZLinkAsyncSerialQueue> queues = new HashMap<>();
     private final Set<String> activeActorIds = new HashSet<>();
     private final Map<String, CompletionStage<Void>> teardowns = new HashMap<>();
 
     ZLinkActorDispatchSerials() {
-        this(ZLinkDeferredActorJoinScope.legacyRuntimeScope(), actorId -> actorId);
+        this(
+            ZLinkDeferredActorJoinScope.legacyRuntimeScope(),
+            actorId -> actorId,
+            null);
     }
 
     ZLinkActorDispatchSerials(
         Object runtimeScope,
         Function<String, Object> incarnationResolver) {
+        this(runtimeScope, incarnationResolver, null);
+    }
+
+    ZLinkActorDispatchSerials(
+        Object runtimeScope,
+        Function<String, Object> incarnationResolver,
+        Executor executor) {
         this.runtimeScope = java.util.Objects.requireNonNull(
             runtimeScope, "runtimeScope");
         this.incarnationResolver = java.util.Objects.requireNonNull(
             incarnationResolver, "incarnationResolver");
+        this.executor = executor;
+    }
+
+    private ZLinkAsyncSerialQueue newQueue() {
+        return executor == null
+            ? new ZLinkAsyncSerialQueue(false)
+            : new ZLinkAsyncSerialQueue(executor, false);
     }
 
     boolean isCurrent(String actorId) {
@@ -52,12 +71,12 @@ final class ZLinkActorDispatchSerials {
         }
         return new QueuedTurn(
             actorId,
-            queues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue(false)));
+            queues.computeIfAbsent(actorId, ignored -> newQueue()));
     }
 
     synchronized ZLinkAsyncSerialQueue relocationLane(String actorId) {
         return queues.computeIfAbsent(
-            actorId, ignored -> new ZLinkAsyncSerialQueue(false));
+            actorId, ignored -> newQueue());
     }
 
     synchronized void remove(String actorId) {
@@ -121,7 +140,7 @@ final class ZLinkActorDispatchSerials {
             if (teardown == null) {
                 ZLinkAsyncSerialQueue queue = queues.computeIfAbsent(
                     actorId,
-                    ignored -> new ZLinkAsyncSerialQueue(false));
+                    ignored -> newQueue());
                 CompletableFuture<Void> terminal = new CompletableFuture<>();
                 teardowns.put(actorId, terminal);
                 queue.enqueueLifecycleBarrier(cleanup)
@@ -157,7 +176,7 @@ final class ZLinkActorDispatchSerials {
         synchronized (this) {
             queue = queues.computeIfAbsent(
                 actorId,
-                ignored -> new ZLinkAsyncSerialQueue(false));
+                ignored -> newQueue());
         }
         return queue.enqueueBarrierNext(() -> runTurn(actorId, operation));
     }

@@ -30,7 +30,7 @@ final class DefaultInstanceSpotContext
     private final ZLinkBackendSpot backendSpot;
     private final DefaultSpotOutbound outbound;
     private final ZLinkHandlerInstanceOwner handlerInstances;
-    private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
+    private final ZLinkAsyncSerialQueue dispatchQueue;
     private final ZLinkSpotHandlerCatalog handlers = new ZLinkSpotHandlerCatalog(
         "Instance Spot handler registration is only allowed while configure is running");
     private final ZLinkInstanceSpotHandlerRegistry publicHandlers =
@@ -51,6 +51,8 @@ final class DefaultInstanceSpotContext
         this.meshName = Objects.requireNonNull(meshName, "meshName");
         this.nodeRid = Objects.requireNonNull(nodeRid, "nodeRid");
         this.backendSpot = Objects.requireNonNull(backendSpot, "backendSpot");
+        this.dispatchQueue = new ZLinkAsyncSerialQueue(
+            host.serialExecutor(), false);
         this.handlerInstances = host.createHandlerInstances();
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.timers = host.createTimerRegistry(
@@ -82,6 +84,14 @@ final class DefaultInstanceSpotContext
         timers.close();
         handlerInstances.close();
         backendSpot.close();
+    }
+
+    CompletionStage<Void> awaitQuiescence() {
+        return dispatchQueue.awaitQuiescence();
+    }
+
+    boolean hasActiveTimers() {
+        return timers.hasActiveTimers();
     }
 
     <T> CompletionStage<T> runLifecycleExecution(

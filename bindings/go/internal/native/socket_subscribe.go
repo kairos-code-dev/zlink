@@ -41,19 +41,6 @@ func (s *subscribeSocket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, e
 	return true, nil
 }
 
-func (s *subscribeSocket) SubscribePart(out *Message, topicBuffer []byte, flags RecvFlags) (SubscribePartResult, bool, error) {
-	result, err := recvSubscribePartInto(out, topicBuffer, flags, func(rid **C.zlink_routing_id_t, topic *C.char, topicCap C.size_t, topicLen *C.size_t, part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
-		return recvErrorFromResult(C.zlink_subscribe_part(s.raw(), rid, topic, topicCap, topicLen, part, hasMore, recvFlags))
-	})
-	if err != nil {
-		if isNoData(err) {
-			return SubscribePartResult{}, false, nil
-		}
-		return SubscribePartResult{}, false, err
-	}
-	return result, true, nil
-}
-
 type xpubSubscribeSocket struct {
 	*publishSocket
 }

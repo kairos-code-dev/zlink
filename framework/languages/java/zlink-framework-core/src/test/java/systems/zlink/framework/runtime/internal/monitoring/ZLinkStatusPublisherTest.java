@@ -10,13 +10,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 
 final class ZLinkStatusPublisherTest {
     @Test
     void preservedMilestoneIsDeliveredBeforeLaterTerminalSnapshot()
         throws Exception {
         AtomicInteger state = new AtomicInteger();
-        Flow.Publisher<Integer> publisher = ZLinkStatusPublisher.create(
+        ZLinkStatusPublisher<Integer> publisher = ZLinkStatusPublisher.create(
             state::get,
             value -> value,
             4,
@@ -26,16 +27,19 @@ final class ZLinkStatusPublisherTest {
             new CopyOnWriteArrayList<>();
         CompletableFuture<Flow.Subscription> subscribed =
             new CompletableFuture<>();
-        CompletableFuture<Void> completed = new CompletableFuture<>();
+        CompletableFuture<Void> failed = new CompletableFuture<>();
         publisher.subscribe(new Flow.Subscriber<>() {
             @Override public void onSubscribe(Flow.Subscription subscription) {
                 subscribed.complete(subscription);
             }
-            @Override public void onNext(Integer item) { received.add(item); }
-            @Override public void onError(Throwable failure) {
-                completed.completeExceptionally(failure);
+            @Override public void onNext(ZLinkObservedStatus<Integer> item) {
+                received.add(item.status());
             }
-            @Override public void onComplete() { completed.complete(null); }
+            @Override public void onError(Throwable failure) {
+                failed.completeExceptionally(failure);
+            }
+            @Override public void onComplete() { failed.completeExceptionally(
+                new AssertionError("terminal status must not complete observation")); }
         });
         Flow.Subscription subscription = subscribed.get(1, TimeUnit.SECONDS);
         subscription.request(1);
@@ -44,20 +48,26 @@ final class ZLinkStatusPublisherTest {
             Thread.sleep(1);
         }
         state.set(2);
+        publisher.signal();
         Thread.sleep(60);
         state.set(3);
+        publisher.signal();
         Thread.sleep(60);
         subscription.request(2);
 
-        completed.get(1, TimeUnit.SECONDS);
+        long terminalDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+        while (received.size() < 3 && System.nanoTime() < terminalDeadline) {
+            Thread.sleep(1);
+        }
         assertEquals(java.util.List.of(0, 2, 3), received);
+        assertTrue(!failed.isDone());
     }
 
     @Test
     void slowObserverDoesNotDelayAnotherObserverAndTerminalIsDelivered()
         throws Exception {
         AtomicInteger state = new AtomicInteger();
-        Flow.Publisher<Integer> publisher = ZLinkStatusPublisher.create(
+        ZLinkStatusPublisher<Integer> publisher = ZLinkStatusPublisher.create(
             state::get,
             value -> value,
             4,
@@ -65,7 +75,6 @@ final class ZLinkStatusPublisherTest {
         CountDownLatch slowEntered = new CountDownLatch(1);
         CountDownLatch releaseSlow = new CountDownLatch(1);
         CompletableFuture<Integer> fastTerminal = new CompletableFuture<>();
-        CompletableFuture<Void> fastCompleted = new CompletableFuture<>();
 
         publisher.subscribe(subscriber(value -> {
             slowEntered.countDown();
@@ -79,16 +88,16 @@ final class ZLinkStatusPublisherTest {
             if (value == 2) {
                 fastTerminal.complete(value);
             }
-        }, fastCompleted));
+        }, new CompletableFuture<>()));
 
         assertTrue(slowEntered.await(1, TimeUnit.SECONDS));
         state.set(2);
+        publisher.signal();
         assertEquals(2, fastTerminal.get(1, TimeUnit.SECONDS));
-        fastCompleted.get(1, TimeUnit.SECONDS);
         releaseSlow.countDown();
     }
 
-    private static Flow.Subscriber<Integer> subscriber(
+    private static Flow.Subscriber<ZLinkObservedStatus<Integer>> subscriber(
         java.util.function.IntConsumer onNext,
         CompletableFuture<Void> completed) {
         return new Flow.Subscriber<>() {
@@ -96,17 +105,15 @@ final class ZLinkStatusPublisherTest {
                 subscription.request(Long.MAX_VALUE);
             }
 
-            @Override public void onNext(Integer item) {
-                onNext.accept(item);
+            @Override public void onNext(ZLinkObservedStatus<Integer> item) {
+                onNext.accept(item.status());
             }
 
             @Override public void onError(Throwable failure) {
                 completed.completeExceptionally(failure);
             }
 
-            @Override public void onComplete() {
-                completed.complete(null);
-            }
+            @Override public void onComplete() { }
         };
     }
 }

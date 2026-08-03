@@ -304,10 +304,7 @@ void raw_mesh_node_owner_t::start ()
     }
     descriptor.advertised_endpoint = advertised_endpoint (
       router->options ().last_endpoint (), _options.advertise_host);
-    descriptor.state = service_node_state_t::serving;
     ++descriptor.descriptor_revision;
-    _topology.publish_local (descriptor);
-    _options.descriptor = descriptor;
 
     _port = std::make_shared<detail::backend::raw_route_port_t> (
       *router, &_socket_mutex,
@@ -329,6 +326,12 @@ void raw_mesh_node_owner_t::start ()
     _monitor = std::move (monitor);
     _router = std::move (router);
     _context = std::move (context);
+
+    // Keep the descriptor in preparing until the receive port, completion
+    // control, and monitor path can accept the first admitted message.
+    descriptor.state = service_node_state_t::serving;
+    _topology.publish_local (descriptor);
+    _options.descriptor = descriptor;
 }
 
 void raw_mesh_node_owner_t::close () noexcept
@@ -1689,6 +1692,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
   service_liveness_registry_t::clock_t::time_point now,
   bool accept_application_receive)
 {
+    _last_pump_bytes = 0;
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
@@ -1723,6 +1727,8 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         && accept_application_receive) {
         const auto accepted_result =
           _pending_received->accepted_result;
+        for (const auto &part : _pending_received->record.parts)
+            _last_pump_bytes += part.size ();
         if (!_mailbox.try_enqueue (
               std::move (_pending_received->record))) {
             return raw_mesh_pump_result_t::backpressured;
@@ -1772,6 +1778,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
     if (!received) {
         return raw_mesh_pump_result_t::no_data;
     }
+    _last_pump_bytes = raw_received_bytes (*received);
     if (received->parts.empty ()) {
         return raw_mesh_pump_result_t::protocol_error;
     }

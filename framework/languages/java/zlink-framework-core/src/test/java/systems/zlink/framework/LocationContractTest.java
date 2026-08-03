@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -252,55 +251,19 @@ final class LocationContractTest {
     @Test
     void enumValuesMatchDotnetContractTablesValueByValue() throws Exception {
         assertEnumValues(ZLinkFrameworkErrorKind.class, Map.ofEntries(
-            Map.entry("ACTOR_ROUTE_NOT_FOUND", 0),
-            Map.entry("ACTOR_CREATE_FAILED", 1),
-            Map.entry("ACTOR_ALREADY_EXISTS", 2),
-            Map.entry("ACTOR_TYPE_MISMATCH", 3),
-            Map.entry("SPOT_CREATE_FAILED", 4),
-            Map.entry("SPOT_ROUTE_NOT_FOUND", 5),
-            Map.entry("SPOT_TYPE_MISMATCH", 6),
-            Map.entry("ACTOR_SESSION_NOT_BOUND", 7),
-            Map.entry("HANDLER_NOT_FOUND", 8),
-            Map.entry("ROUTE_HANDLER_NOT_FOUND", 9),
-            Map.entry("ACTOR_DISPATCH_HANDLER_NOT_FOUND", 10),
-            Map.entry("PAYLOAD_DECODE_FAILED", 11),
-            Map.entry("ROUTE_NOT_CONNECTED", 12),
-            Map.entry("REQUEST_TARGET_NOT_FOUND", 13),
-            Map.entry("REQUEST_REJECTED", 14),
-            Map.entry("REQUEST_PROTOCOL_ERROR", 15),
-            Map.entry("REQUEST_FAILED", 16),
-            Map.entry("WORKER_QUEUE_FULL", 17),
-            Map.entry("WORKER_TIMED_OUT", 18),
-            Map.entry("WORKER_FAILED", 19),
-            Map.entry("ACTOR_LOCATION_STALE", 20),
-            Map.entry("ACTOR_CREATE_REJECTED", 21),
-            Map.entry("OBJECT_CLIENT_NOT_CONFIGURED", 22),
-            Map.entry("MESH_SELECTION_REQUIRED", 23),
-            Map.entry("MESH_NOT_FOUND", 24),
-            Map.entry("INVALID_CONFIGURATION", 25),
-            Map.entry("ALREADY_SUBMITTED", 26),
-            Map.entry("ACTOR_GENERATION_STALE", 27),
-            Map.entry("ACTOR_MOVING", 28),
-            Map.entry("DEADLINE_EXCEEDED", 29),
-            Map.entry("PLACEMENT_CAPACITY_EXHAUSTED", 30),
-            Map.entry("ROUTING_ID_CONFLICT", 31),
-            Map.entry("SPOT_GENERATION_STALE", 32),
-            Map.entry("SPOT_MOVING", 33),
-            Map.entry("RELOCATION_DATA_LOST", 34),
-            Map.entry("SPOT_ID_CONFLICT", 35),
-            Map.entry("RUNTIME_SHUTDOWN", 36),
-            Map.entry("RELOCATION_DISABLED", 37),
-            Map.entry("RELOCATION_TARGET_UNAVAILABLE", 38),
-            Map.entry("RELOCATION_FAILED", 39)));
-        assertRetriableOnly(
-            ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
-            ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
-            ZLinkFrameworkErrorKind.ACTOR_MOVING,
-            ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
-            ZLinkFrameworkErrorKind.PLACEMENT_CAPACITY_EXHAUSTED,
-            ZLinkFrameworkErrorKind.SPOT_MOVING,
-            ZLinkFrameworkErrorKind.RELOCATION_TARGET_UNAVAILABLE,
-            ZLinkFrameworkErrorKind.RELOCATION_FAILED);
+            Map.entry("NOT_FOUND", 0),
+            Map.entry("ALREADY_EXISTS", 1),
+            Map.entry("TYPE_MISMATCH", 2),
+            Map.entry("NOT_CONFIGURED", 3),
+            Map.entry("REJECTED", 4),
+            Map.entry("UNAVAILABLE", 5),
+            Map.entry("CAPACITY_EXCEEDED", 6),
+            Map.entry("DEADLINE_EXCEEDED", 7),
+            Map.entry("SHUTTING_DOWN", 8),
+            Map.entry("PROTOCOL_ERROR", 9),
+            Map.entry("INVALID_OPERATION", 10),
+            Map.entry("DATA_LOST", 11),
+            Map.entry("INTERNAL_FAILURE", 12)));
 
         assertEnumValues(ZLinkLocationRole.class, Map.of(
             "INVALID", 0,
@@ -348,7 +311,7 @@ final class LocationContractTest {
             "operationId", "reply");
         assertRecordComponents(
             ZLinkActorJoinCompletion.Failed.class,
-            "operationId", "kind", "isRetriable");
+            "operationId", "kind");
         assertEquals(ActorRef.class,
             componentType(ZLinkActorJoinCompletion.Accepted.class, "actor"));
 
@@ -529,13 +492,6 @@ final class LocationContractTest {
         Method value = type.getMethod("value");
         for (T constant : type.getEnumConstants()) {
             assertEquals(expected.get(constant.name()), value.invoke(constant), constant.name());
-        }
-    }
-
-    private static void assertRetriableOnly(ZLinkFrameworkErrorKind... retriable) {
-        Set<ZLinkFrameworkErrorKind> retriableSet = Set.of(retriable);
-        for (ZLinkFrameworkErrorKind kind : ZLinkFrameworkErrorKind.values()) {
-            assertEquals(retriableSet.contains(kind), kind.retriable(), kind.name());
         }
     }
 

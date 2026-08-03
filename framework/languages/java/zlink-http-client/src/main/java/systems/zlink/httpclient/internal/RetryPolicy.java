@@ -51,7 +51,10 @@ final class RetryPolicy {
             return CompletableFuture.failedFuture(
                 cause instanceof ZLinkFrameworkException
                     ? cause
-                    : new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, cause.getMessage(), isRetriable(cause), cause));
+                    : new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
+                        cause.getMessage(),
+                        cause));
         });
     }
 

@@ -36,7 +36,8 @@ public final class ZLinkInboundDispatchBudget {
     private static final List<Path> CGROUP_MEMORY_LIMIT_FILES = List.of(
         Path.of("/sys/fs/cgroup/memory.max"),
         Path.of("/sys/fs/cgroup/memory/memory.limit_in_bytes"));
-    private final Object lock = new Object();
+    private final Object payloadLock = new Object();
+    private final Object completionLock = new Object();
     private final long applicationHwmBytes;
     private final int completionSendLimit;
     private final List<Runnable> capacityHandlers = new ArrayList<>();
@@ -46,8 +47,8 @@ public final class ZLinkInboundDispatchBudget {
     private long activePayloadBytes;
     private long pendingCompletionSends;
     private int activeCompletionSends;
-    private boolean completionAdmissionClosed;
-    private boolean closed;
+    private volatile boolean completionAdmissionClosed;
+    private volatile boolean closed;
     private boolean receivePaused;
 
     public ZLinkInboundDispatchBudget(long applicationHwmBytes) {
@@ -68,7 +69,7 @@ public final class ZLinkInboundDispatchBudget {
     }
 
     public boolean canStartApplicationReceive() {
-        synchronized (lock) {
+        synchronized (payloadLock) {
             return !closed && (applicationHwmBytes == 0
                 || queuedPayloadBytesUnderLock() < applicationHwmBytes);
         }
@@ -78,7 +79,7 @@ public final class ZLinkInboundDispatchBudget {
         if (payloadBytes < 0) {
             throw new IllegalArgumentException("payloadBytes must not be negative");
         }
-        synchronized (lock) {
+        synchronized (payloadLock) {
             if (closed) {
                 throw new IllegalStateException("inbound dispatch budget is closed");
             }
@@ -99,7 +100,7 @@ public final class ZLinkInboundDispatchBudget {
         if (payloadBytes < 0) {
             throw new IllegalArgumentException("payloadBytes must not be negative");
         }
-        synchronized (lock) {
+        synchronized (payloadLock) {
             if (closed) {
                 return null;
             }
@@ -116,21 +117,21 @@ public final class ZLinkInboundDispatchBudget {
 
     public AutoCloseable onCapacityAvailable(Runnable handler) {
         Objects.requireNonNull(handler, "handler");
-        synchronized (lock) {
+        synchronized (payloadLock) {
             if (closed) {
                 return () -> { };
             }
             capacityHandlers.add(handler);
         }
         return () -> {
-            synchronized (lock) {
+            synchronized (payloadLock) {
                 capacityHandlers.remove(handler);
             }
         };
     }
 
     public Snapshot snapshot() {
-        synchronized (lock) {
+        synchronized (payloadLock) {
             long active = Math.min(activePayloadBytes, pendingPayloadBytes);
             return new Snapshot(
                 applicationHwmBytes,
@@ -147,7 +148,7 @@ public final class ZLinkInboundDispatchBudget {
      * occupied; no application thread is blocked while waiting.
      */
     public CompletionStage<CompletionPermit> acquireCompletionPermit() {
-        synchronized (lock) {
+        synchronized (completionLock) {
             if (completionAdmissionClosed) {
                 return CompletableFuture.failedFuture(
                     new IllegalStateException("inbound completion admission is closed"));
@@ -166,7 +167,7 @@ public final class ZLinkInboundDispatchBudget {
     }
 
     public long pendingCompletionSends() {
-        synchronized (lock) {
+        synchronized (completionLock) {
             return pendingCompletionSends;
         }
     }
@@ -182,15 +183,17 @@ public final class ZLinkInboundDispatchBudget {
      */
     public void close() {
         List<CompletableFuture<CompletionPermit>> waiters;
-        synchronized (lock) {
-            completionAdmissionClosed = true;
+        synchronized (payloadLock) {
             closed = true;
+            receivePaused = true;
+            capacityHandlers.clear();
+        }
+        synchronized (completionLock) {
+            completionAdmissionClosed = true;
             waiters = List.copyOf(completionWaiters);
             completionWaiters.clear();
             pendingCompletionSends = 0;
             activeCompletionSends = 0;
-            capacityHandlers.clear();
-            receivePaused = true;
         }
         IllegalStateException failure = new IllegalStateException(
             "inbound completion admission is closed");
@@ -214,7 +217,7 @@ public final class ZLinkInboundDispatchBudget {
 
     private void completed(long payloadBytes, boolean handlerStarted) {
         List<Runnable> handlers = List.of();
-        synchronized (lock) {
+        synchronized (payloadLock) {
             if (closed) {
                 if (handlerStarted) {
                     activePayloadBytes = Math.max(0, activePayloadBytes - payloadBytes);
@@ -269,7 +272,7 @@ public final class ZLinkInboundDispatchBudget {
 
     private void releaseCompletionPermit() {
         CompletableFuture<CompletionPermit> waiter = null;
-        synchronized (lock) {
+        synchronized (completionLock) {
             if (completionAdmissionClosed) {
                 return;
             }
@@ -297,7 +300,7 @@ public final class ZLinkInboundDispatchBudget {
         if (!waiter.isCancelled()) {
             return;
         }
-        synchronized (lock) {
+        synchronized (completionLock) {
             if (!completionAdmissionClosed && completionWaiters.remove(waiter)) {
                 if (pendingCompletionSends <= 0) {
                     throw new IllegalStateException(
@@ -339,7 +342,7 @@ public final class ZLinkInboundDispatchBudget {
 
         public void handlerStarted() {
             List<Runnable> handlers;
-            synchronized (owner.lock) {
+            synchronized (owner.payloadLock) {
                 if (closed) {
                     throw new IllegalStateException(
                         "inbound dispatch lease is already closed");
@@ -365,7 +368,7 @@ public final class ZLinkInboundDispatchBudget {
 
         @Override
         public void close() {
-            synchronized (owner.lock) {
+            synchronized (owner.payloadLock) {
                 if (closed) {
                     return;
                 }
@@ -385,7 +388,7 @@ public final class ZLinkInboundDispatchBudget {
 
         @Override
         public void close() {
-            synchronized (owner.lock) {
+            synchronized (owner.completionLock) {
                 if (closed) {
                     return;
                 }

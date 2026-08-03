@@ -474,6 +474,12 @@ class public_host_runtime_t :
       std::shared_ptr<stateful::relocation_store_port_t> relocations,
       location_owner_token_t owner,
       instance_spot_activation_materializer_t materializer);
+    bool evict_instance_spot (
+      const std::string &stable_type,
+      const std::string &spot_id,
+      std::uint64_t object_generation,
+      std::uint64_t authority_owner_generation,
+      std::function<bool ()> close_local);
     void configure_session_route_owner (
       std::function<std::optional<location_owner_token_t> ()>
         owner_resolver);

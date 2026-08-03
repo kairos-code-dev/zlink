@@ -117,7 +117,7 @@ final class ZLinkChannelHandlerFilterContractTest {
         ZLinkFrameworkException rejected = assertInstanceOf(
             ZLinkFrameworkException.class,
             failure.getCause());
-        assertEquals(ZLinkFrameworkErrorKind.REQUEST_REJECTED, rejected.kind());
+        assertEquals(ZLinkFrameworkErrorKind.REJECTED, rejected.kind());
         assertEquals(0, probe.handlerCalls);
     }
 

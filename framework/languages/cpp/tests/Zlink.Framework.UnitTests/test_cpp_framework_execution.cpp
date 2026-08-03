@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/diagnostics/runtime_observation.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
 #include "runtime/spots/spot_runtime.hpp"
@@ -435,6 +437,302 @@ bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expect
     return *order == expected;
 }
 
+bool verify_serial_queue_lanes_and_byte_budget ()
+{
+    using namespace zlink::framework::runtime;
+
+    offload_executor_t executor (2);
+    serial_execution_queue_options_t options;
+    options.application_message_capacity = 4;
+    options.application_byte_capacity = 512;
+    options.lifecycle_message_capacity = 2;
+    options.lifecycle_byte_capacity = 512;
+    options.lifecycle_burst_limit = 2;
+    options.owner_time_budget = std::chrono::milliseconds::zero ();
+    serial_execution_queue_t queue (executor, options);
+
+    std::mutex gate;
+    std::condition_variable changed;
+    bool first_entered = false;
+    bool release_first = false;
+    std::vector<std::string> order;
+
+    if (!queue.try_post ("application-first", [&] {
+            {
+                std::lock_guard lock (gate);
+                first_entered = true;
+                changed.notify_all ();
+            }
+            std::unique_lock lock (gate);
+            changed.wait (lock, [&] { return release_first; });
+            order.push_back ("application-first");
+        }, serial_work_options_t{serial_work_lane_t::application, 256})) {
+        return false;
+    }
+    {
+        std::unique_lock lock (gate);
+        if (!changed.wait_for (lock, std::chrono::seconds (1),
+                              [&] { return first_entered; })) {
+            return false;
+        }
+    }
+
+    const auto application = serial_work_options_t{
+      serial_work_lane_t::application, 256};
+    const auto lifecycle = serial_work_options_t{
+      serial_work_lane_t::lifecycle, 256};
+    if (!queue.try_post ("application-second", [&] {
+            order.push_back ("application-second");
+        }, application)
+        || !queue.try_post ("lifecycle-first", [&] {
+               order.push_back ("lifecycle-first");
+           }, lifecycle)
+        || !queue.try_post ("lifecycle-second", [&] {
+               order.push_back ("lifecycle-second");
+           }, lifecycle)
+        || queue.try_post ("application-over-byte-limit", [] {}, application)
+        || queue.try_post ("lifecycle-over-message-limit", [] {}, lifecycle)) {
+        return false;
+    }
+    if (queue.pending_count (serial_work_lane_t::application) != 2
+        || queue.pending_count (serial_work_lane_t::lifecycle) != 2
+        || queue.pending_bytes () != 1024) {
+        return false;
+    }
+
+    {
+        std::lock_guard lock (gate);
+        release_first = true;
+        changed.notify_all ();
+    }
+    queue.drain ();
+    return order
+             == std::vector<std::string>{"application-first", "lifecycle-first",
+                                         "lifecycle-second", "application-second"}
+           && queue.pending_count () == 0
+           && queue.pending_bytes () == 0;
+}
+
+bool verify_inbound_budget_atomic_pending_and_observations ()
+{
+    zlink::framework::runtime::inbound_dispatch_budget_t budget (100);
+    if (!budget.can_start_application_receive ()) {
+        return false;
+    }
+
+    budget.received (60);
+    budget.handler_started (40);
+    auto snapshot = budget.snapshot ();
+    if (snapshot.pending_payload_bytes != 60
+        || snapshot.active_payload_bytes != 40
+        || snapshot.queued_payload_bytes != 20
+        || snapshot.application_receive_paused) {
+        return false;
+    }
+
+    budget.received (50);
+    snapshot = budget.snapshot ();
+    if (snapshot.pending_payload_bytes != 110
+        || snapshot.active_payload_bytes != 40
+        || !snapshot.application_receive_paused
+        || budget.can_start_application_receive ()) {
+        return false;
+    }
+
+    budget.completed (40, true);
+    snapshot = budget.snapshot ();
+    if (snapshot.pending_payload_bytes != 70
+        || snapshot.active_payload_bytes != 0
+        || snapshot.queued_payload_bytes != 70
+        || snapshot.application_receive_paused
+        || !budget.can_start_application_receive ()) {
+        return false;
+    }
+
+    budget.completed (70, false);
+    snapshot = budget.snapshot ();
+    return snapshot.pending_payload_bytes == 0
+           && snapshot.queued_payload_bytes == 0
+           && snapshot.active_payload_bytes == 0;
+}
+
+bool verify_runtime_observation_loss_and_terminal_retention ()
+{
+    struct probe_status_t
+    {
+        int sequence = 0;
+    };
+    using observer_t = zlink::framework::observation_detail::
+      runtime_observer_state_t<probe_status_t>;
+
+    std::mutex gate;
+    std::condition_variable changed;
+    bool first_entered = false;
+    bool release_first = false;
+    std::vector<zlink::framework::observed_status_t<probe_status_t>> received;
+    auto observer = std::make_shared<observer_t> (
+      1,
+      [&] (const auto &observed) {
+          std::unique_lock lock (gate);
+          received.push_back (observed);
+          if (observed.status.sequence == 1) {
+              first_entered = true;
+              changed.notify_all ();
+              changed.wait (lock, [&] { return release_first; });
+          }
+          changed.notify_all ();
+      });
+    observer->enqueue (probe_status_t{1});
+    {
+        std::unique_lock lock (gate);
+        if (!changed.wait_for (lock, std::chrono::seconds (1),
+                              [&] { return first_entered; })) {
+            return false;
+        }
+    }
+    observer->enqueue (probe_status_t{2});
+    observer->enqueue (probe_status_t{3});
+    observer->enqueue (probe_status_t{4}, true);
+    {
+        std::lock_guard lock (gate);
+        release_first = true;
+        changed.notify_all ();
+    }
+    {
+        std::unique_lock lock (gate);
+        if (!changed.wait_for (lock, std::chrono::seconds (1), [&] {
+                return received.size () == 2;
+            })) {
+            return false;
+        }
+        if (received[0].status.sequence != 1
+            || received[1].status.sequence != 4
+            || received[1].loss.coalesced_count != 2
+            || received[1].loss.discarded_terminal_count != 0) {
+            return false;
+        }
+    }
+    observer->close ();
+
+    std::mutex terminal_gate;
+    std::condition_variable terminal_changed;
+    bool terminal_first_entered = false;
+    bool terminal_release_first = false;
+    std::vector<zlink::framework::observed_status_t<probe_status_t>> terminals;
+    auto terminal_observer = std::make_shared<observer_t> (
+      1,
+      [&] (const auto &observed) {
+          std::unique_lock lock (terminal_gate);
+          terminals.push_back (observed);
+          if (observed.status.sequence == 10) {
+              terminal_first_entered = true;
+              terminal_changed.notify_all ();
+              terminal_changed.wait (
+                lock, [&] { return terminal_release_first; });
+          }
+          terminal_changed.notify_all ();
+      });
+    terminal_observer->enqueue (probe_status_t{10});
+    {
+        std::unique_lock lock (terminal_gate);
+        if (!terminal_changed.wait_for (
+              lock, std::chrono::seconds (1),
+              [&] { return terminal_first_entered; })) {
+            return false;
+        }
+    }
+    terminal_observer->enqueue (probe_status_t{11}, true);
+    terminal_observer->enqueue (probe_status_t{12}, true);
+    {
+        std::lock_guard lock (terminal_gate);
+        terminal_release_first = true;
+        terminal_changed.notify_all ();
+    }
+    {
+        std::unique_lock lock (terminal_gate);
+        if (!terminal_changed.wait_for (lock, std::chrono::seconds (1), [&] {
+                return terminals.size () == 2;
+            })) {
+            return false;
+        }
+        if (terminals[1].status.sequence != 12
+            || terminals[1].loss.discarded_terminal_count != 1) {
+            return false;
+        }
+    }
+    terminal_observer->close ();
+    return true;
+}
+
+bool verify_idle_instance_spot_eviction_closes_local_context ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto node = std::make_shared<spot_node_builder_state_t> ("idle-node");
+    node->instance_spot_idle_timeout = std::chrono::milliseconds (1);
+
+    auto executor = std::make_shared<runtime::offload_executor_t> (1);
+    auto context = std::make_shared<spot_context_state_t> ();
+    context->node = node;
+    context->spot_id = "instance-1";
+    context->spot_name = "instance-player";
+    context->instance_spot = true;
+    context->object_generation = 7;
+    context->authority_owner_generation = 11;
+    context->spot_instance = std::make_shared<int> (1);
+    context->serial_executor = executor;
+    context->serial_queue = std::make_shared<runtime::serial_execution_queue_t> (
+      *executor, runtime::serial_execution_queue_options_t{});
+    context->last_application_work_completed_ns.store (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+        std::chrono::steady_clock::now ().time_since_epoch ())
+        .count ()
+        - std::chrono::duration_cast<std::chrono::nanoseconds> (
+          std::chrono::seconds (1))
+            .count (),
+      std::memory_order_relaxed);
+
+    bool closing_called = false;
+    spot_close_reason_t closing_reason = spot_close_reason_t::explicit_close;
+    context->lifecycle.on_closing = [&] (
+      void *, const spot_closing_context_t &closing, std::stop_token) {
+        closing_called = true;
+        closing_reason = closing.reason;
+    };
+
+    node->spot_ids_by_name.emplace (context->spot_name, context->spot_id);
+    node->spot_names_by_id.emplace (context->spot_id, context->spot_name);
+    node->spot_contexts_by_id.emplace (
+      context->spot_id, spot_context_access_t::create (context));
+
+    bool admission_called = false;
+    node->admit_instance_spot_idle_eviction = [&] (
+      const spot_id_t &spot_id,
+      std::string_view spot_name,
+      std::uint64_t object_generation,
+      std::uint64_t authority_owner_generation,
+      std::function<bool ()> close_local) {
+        admission_called = true;
+        if (spot_id != "instance-1" || spot_name != "instance-player"
+            || object_generation != 7 || authority_owner_generation != 11)
+            return false;
+        return close_local ();
+    };
+
+    spot_node_runtime_t runtime (node);
+    runtime.evict_idle_spots ();
+    executor->drain ();
+
+    return admission_called && closing_called
+           && closing_reason == spot_close_reason_t::idle_evicted
+           && context->closed && !context->node
+           && !context->spot_instance
+           && node->spot_contexts_by_id.empty ()
+           && node->spot_ids_by_name.empty ()
+           && node->spot_names_by_id.empty ();
+}
+
 } // namespace
 
 int main ()
@@ -496,6 +794,18 @@ int main ()
     }
     if (!verify_request_turn_mode (true, {1, 2, 3})) {
         return 26;
+    }
+    if (!verify_serial_queue_lanes_and_byte_budget ()) {
+        return 50;
+    }
+    if (!verify_inbound_budget_atomic_pending_and_observations ()) {
+        return 51;
+    }
+    if (!verify_runtime_observation_loss_and_terminal_retention ()) {
+        return 52;
+    }
+    if (!verify_idle_instance_spot_eviction_closes_local_context ()) {
+        return 53;
     }
 
     std::atomic_int unsupported_submit_count = 0;

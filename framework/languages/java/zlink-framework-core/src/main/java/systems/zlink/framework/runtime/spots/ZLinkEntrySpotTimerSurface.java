@@ -78,7 +78,7 @@ record ZLinkEntrySpotBackedContext(
         return () -> {
             throw new systems.zlink.framework.errors.ZLinkFrameworkException(
                 systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-                    .INVALID_CONFIGURATION,
+                    .NOT_CONFIGURED,
                 "Entry Spot does not support relocationReady().defer()");
         };
     }

@@ -12,6 +12,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
@@ -181,13 +182,110 @@ final class ZLinkAsyncSerialQueueTest {
             return firstGate;
         }));
         firstStarted.get(3, TimeUnit.SECONDS);
-        assertTrue(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
         assertFalse(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
 
         firstGate.complete(null);
 
         capacityAvailable.get(3, TimeUnit.SECONDS);
         assertTrue(queue.tryEnqueue(() -> CompletableFuture.completedFuture(null)));
+    }
+
+    @Test
+    void byteBudgetRejectsLargeApplicationRecordAndReturnsCapacityAfterCompletion()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            null,
+            false,
+            4,
+            10,
+            4,
+            10,
+            4,
+            2,
+            Duration.ofSeconds(1));
+        CompletableFuture<Void> active = new CompletableFuture<>();
+
+        queue.enqueueRelocatable(new byte[6], () -> active)
+            .toCompletableFuture();
+        assertFalse(queue.tryEnqueueRelocatable(
+            new byte[1],
+            () -> CompletableFuture.completedFuture(null)));
+
+        active.complete(null);
+        queue.awaitQuiescence().toCompletableFuture()
+            .get(3, TimeUnit.SECONDS);
+        assertTrue(queue.tryEnqueueRelocatable(
+            new byte[1],
+            () -> CompletableFuture.completedFuture(null)));
+    }
+
+    @Test
+    void lifecycleCapacityIsSeparateAndDoesNotBypassItsOwnLimit() {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            null,
+            false,
+            4,
+            64,
+            1,
+            4,
+            4,
+            2,
+            Duration.ofSeconds(1));
+        CompletableFuture<Void> active = new CompletableFuture<>();
+        queue.enqueue(() -> active);
+
+        assertFalse(queue.enqueueBarrierNext(
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture().isCompletedExceptionally());
+        assertTrue(queue.enqueueBarrierNext(
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture().isCompletedExceptionally());
+        active.complete(null);
+    }
+
+    @Test
+    void lifecycleBurstYieldsToApplicationLane() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            null,
+            false,
+            8,
+            128,
+            8,
+            128,
+            4,
+            2,
+            Duration.ofSeconds(1));
+        CompletableFuture<Void> active = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+        List<String> order = new CopyOnWriteArrayList<>();
+        queue.enqueue(() -> {
+            started.complete(null);
+            return active;
+        });
+        started.get(3, TimeUnit.SECONDS);
+        queue.enqueueLifecycleBarrier(() -> {
+            order.add("lifecycle-1");
+            return CompletableFuture.completedFuture(null);
+        });
+        queue.enqueueLifecycleBarrier(() -> {
+            order.add("lifecycle-2");
+            return CompletableFuture.completedFuture(null);
+        });
+        queue.enqueueLifecycleBarrier(() -> {
+            order.add("lifecycle-3");
+            return CompletableFuture.completedFuture(null);
+        });
+        queue.enqueue(() -> {
+            order.add("application");
+            return CompletableFuture.completedFuture(null);
+        });
+
+        active.complete(null);
+        queue.awaitQuiescence().toCompletableFuture()
+            .get(3, TimeUnit.SECONDS);
+        assertEquals(
+            List.of("lifecycle-1", "lifecycle-2", "application", "lifecycle-3"),
+            order);
     }
 
     @Test

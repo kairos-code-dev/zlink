@@ -52,7 +52,7 @@ final class ZLinkChannelReplyDecoder {
             }
         }
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED,
+            ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
             failurePrefix + "; first reply frame=" + replies.get(0).toUtf8String(),
             lastError);
     }

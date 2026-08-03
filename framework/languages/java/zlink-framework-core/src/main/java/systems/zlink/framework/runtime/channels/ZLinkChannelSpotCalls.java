@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -479,7 +481,7 @@ final class SpotCallAddresses {
             .map(CompletableFuture::completedFuture)
             .orElseGet(() -> CompletableFuture.failedFuture(
                 new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND,
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
                     "SpotHandle route is stale or unavailable"))));
     }
 
@@ -493,7 +495,7 @@ final class SpotCallAddresses {
 
     static boolean isStaleRoute(Throwable failure) {
         return failure instanceof ZLinkFrameworkException error
-            && error.kind() == ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND;
+            && error.kind() == ZLinkFrameworkErrorKind.NOT_FOUND;
     }
 
     static String requireText(String value) {

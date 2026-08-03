@@ -217,11 +217,11 @@ final class ZLinkActorLocationCoordinator {
         ZLinkLocationWriteStatus status) {
         if (status == ZLinkLocationWriteStatus.REJECTED_CONFLICT) {
             return new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                ZLinkFrameworkErrorKind.REJECTED,
                 "Actor '" + actorId + "' location is owned by another runtime.");
         }
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED,
+            ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
             "Actor '" + actorId + "' location claim failed because the location store is unavailable.");
     }
 }

@@ -745,7 +745,7 @@ final class ZLinkSpotLifecycle {
 
     private static ZLinkConfigurationException duplicateSpot(String spotId) {
         return new ZLinkConfigurationException(
-            ZLinkFrameworkErrorKind.SPOT_ID_CONFLICT,
+            ZLinkFrameworkErrorKind.ALREADY_EXISTS,
             "duplicate SpotId: " + spotId);
     }
 
@@ -774,8 +774,8 @@ final class ZLinkSpotLifecycle {
                 + "' location claim failed because the location store is unavailable.";
         return new ZLinkFrameworkException(
             status == ZLinkLocationWriteStatus.REJECTED_CONFLICT
-                ? ZLinkFrameworkErrorKind.SPOT_ID_CONFLICT
-                : ZLinkFrameworkErrorKind.SPOT_CREATE_FAILED,
+                ? ZLinkFrameworkErrorKind.ALREADY_EXISTS
+                : ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
             message);
     }
 

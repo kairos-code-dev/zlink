@@ -199,12 +199,7 @@ func (s *DealerSocket) Request() RequestOp {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
-		messages, cleanup, err := requestBuilderMessagesForClone(parts)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resultCh, err := (&dealerRequestSupport{socket: s}).startRequest(flags, timeout, messages...)
+		resultCh, err := startDealerRequest(s, flags, timeout, parts)
 		if err != nil {
 			return err
 		}

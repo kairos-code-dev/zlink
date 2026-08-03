@@ -393,6 +393,46 @@ class ZLinkInMemoryLocationStoreTest {
     }
 
     @Test
+    void preservePutCanSealAnActiveAuthorityWithoutChangingItsOwnerFence()
+        throws Exception {
+        ZLinkInMemoryAuthorityStore store = newAuthorityStore();
+        var owner = new ZLinkLocationOwnerToken("source", 1);
+        String key = "zla1:a:4:mesh:7:closing";
+        var active = createActive(store, key, owner);
+
+        var closing = assertInstanceOf(
+            ZLinkAuthorityStored.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(active.storeVersion()),
+                    new ZLinkAuthorityPut(
+                        new byte[] {2},
+                        ZLinkAuthorityGenerationTransition.PRESERVE,
+                        Optional.empty(),
+                        Optional.empty()),
+                    () -> false)
+                .toCompletableFuture().get());
+
+        assertEquals(active.objectGeneration(), closing.objectGeneration());
+        assertEquals(
+            active.authorityOwnerGeneration(),
+            closing.authorityOwnerGeneration());
+        assertEquals(active.ownerId(), closing.ownerId());
+        assertEquals(
+            active.ownerLeaseGeneration(),
+            closing.ownerLeaseGeneration());
+        assertArrayEquals(new byte[] {2}, closing.payload());
+        assertInstanceOf(
+            ZLinkAuthorityConflict.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(active.storeVersion()),
+                    new ZLinkAuthorityDelete(),
+                    () -> false)
+                .toCompletableFuture().get());
+    }
+
+    @Test
     void restoreRequiresExactOwnerButDoesNotRequireALiveLease()
         throws Exception {
         var leaseLive = new java.util.concurrent.atomic.AtomicBoolean(true);

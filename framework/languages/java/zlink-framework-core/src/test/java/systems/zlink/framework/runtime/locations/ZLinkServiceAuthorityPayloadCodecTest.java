@@ -38,6 +38,29 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
     }
 
     @Test
+    void closingInstanceSpotRoundTripsAsAClosingAuthority() {
+        var codec = new ZLinkServiceAuthorityPayloadCodec();
+
+        var decoded = codec.decode(codec.encodeInstance(
+            ZLinkServiceAuthorityPayloadCodec.State.CLOSING,
+            "game.room",
+            "room-17",
+            "owner-b",
+            31,
+            "game",
+            RoutingId.from("node-b"),
+            17)).orElseThrow();
+
+        assertEquals(
+            ZLinkServiceAuthorityPayloadCodec.Kind.INSTANCE,
+            decoded.kind());
+        assertEquals(
+            ZLinkServiceAuthorityPayloadCodec.State.CLOSING,
+            decoded.state());
+        assertEquals("room-17", decoded.spotId());
+    }
+
+    @Test
     void spotIdUsesUtf8TextRatherThanTransportRoutingIdentity() {
         var codec = new ZLinkServiceAuthorityPayloadCodec();
         String spotId = "room/서울:alpha";

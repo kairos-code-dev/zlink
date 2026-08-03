@@ -91,8 +91,8 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .join();
         ensure(
             response.status() == 500
-                && response.body().contains("REQUEST_TARGET_NOT_FOUND"),
-            "RouteMesh no-target request did not return REQUEST_TARGET_NOT_FOUND: "
+                && response.body().contains("NOT_FOUND"),
+            "RouteMesh no-target request did not return NOT_FOUND: "
                 + response.status() + ": " + response.body());
     }
 

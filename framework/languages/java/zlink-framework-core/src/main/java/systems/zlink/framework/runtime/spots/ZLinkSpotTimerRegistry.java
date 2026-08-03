@@ -141,6 +141,10 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         publishStagedRestore();
     }
 
+    synchronized boolean hasActiveTimers() {
+        return timers.values().stream().anyMatch(timer -> !timer.isDisposed());
+    }
+
     synchronized void stageRestore(FrozenTimers state) {
         close();
         frozen = true;

@@ -404,6 +404,8 @@ internal sealed class ZLinkSpotNodeRegistration
     public int MaxActiveObjects { get; set; } = 10_000;
 
     public int MaxPendingActivations { get; set; } = 128;
+
+    public TimeSpan InstanceSpotIdleTimeout { get; set; }
 }
 
 internal sealed record ZLinkInstanceSpotFactoryRegistration(

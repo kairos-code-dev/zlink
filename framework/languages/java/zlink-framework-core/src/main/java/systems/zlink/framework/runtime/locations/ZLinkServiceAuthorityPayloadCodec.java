@@ -98,7 +98,9 @@ public final class ZLinkServiceAuthorityPayloadCodec {
                     ? State.CREATING
                     : instanceState == 2 && operationKind == 0
                         ? State.READY
-                        : null;
+                        : instanceState == 3 && operationKind == 3
+                            ? State.CLOSING
+                            : null;
             } else {
                 return Optional.empty();
             }
@@ -187,22 +189,26 @@ public final class ZLinkServiceAuthorityPayloadCodec {
         String meshName,
         RoutingId nodeRid,
         long nodeGeneration) {
-        if (state == State.CLOSING) {
-            throw new IllegalArgumentException(
-                "Instance authority does not define a closing state");
-        }
         Writer instance = new Writer();
         instance.text8(stableType);
         instance.text8(systems.zlink.framework.runtime.internal.spots
             .ZLinkSpotIdValidator.requireValid(spotId));
         Writer spot = new Writer();
-        spot.u8(state == State.CREATING ? 1 : 2);
+        spot.u8(switch (state) {
+            case CREATING -> 1;
+            case READY -> 2;
+            case CLOSING -> 3;
+        });
         spot.u16(instance.size());
         spot.raw(instance.bytes());
         Writer object = new Writer();
         object.conditional16(3, spot.bytes());
         Writer body = new Writer();
-        body.u8(state == State.CREATING ? 1 : 0);
+        body.u8(switch (state) {
+            case CREATING -> 1;
+            case READY -> 0;
+            case CLOSING -> 3;
+        });
         body.conditional16(2, object.bytes());
         body.text8(ownerId);
         body.nonzeroU64(ownerLeaseGeneration);

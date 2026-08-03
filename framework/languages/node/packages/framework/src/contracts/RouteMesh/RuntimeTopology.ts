@@ -2,7 +2,8 @@ import type { RoutingId } from '../Common';
 import type {
   ZLinkPeerState,
   ZLinkTopologyReason,
-  ZLinkTopologyState
+  ZLinkTopologyState,
+  ZLinkObservedStatus
 } from './Contracts';
 import type { ZLinkFrameworkRuntimeState } from '../Locations';
 
@@ -89,7 +90,7 @@ export interface ZLinkInboundDispatchStatus {
 
 export interface ZLinkFrameworkRuntime {
   readonly status: ZLinkFrameworkRuntimeStatus;
-  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus>;
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>;
   relocate(options: ZLinkFrameworkRelocationOptions): Promise<ZLinkFrameworkRelocationResult>;
   shutdown(options?: ZLinkFrameworkLifecycleOptions): Promise<ZLinkFrameworkTerminationResult>;
 }
@@ -120,7 +121,7 @@ export interface ZLinkClientServerRuntime {
     channelName: string,
     capacity?: number,
     signal?: AbortSignal
-  ): AsyncIterable<ZLinkClientServerStatus>;
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkClientServerStatus>>;
   isReady(channelName: string): boolean;
 }
 
@@ -136,5 +137,9 @@ export interface ZLinkFanoutStatus {
 
 export interface ZLinkFanoutRuntime {
   snapshot(channelName: string): ZLinkFanoutStatus;
-  observe(channelName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFanoutStatus>;
+  observe(
+    channelName: string,
+    capacity?: number,
+    signal?: AbortSignal
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkFanoutStatus>>;
 }

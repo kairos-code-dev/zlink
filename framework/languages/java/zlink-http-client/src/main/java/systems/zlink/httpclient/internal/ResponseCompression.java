@@ -52,13 +52,13 @@ public final class ResponseCompression {
         // mapping and keeps its REQUEST_FAILED kind.
         BoundedRead.copy(stream, maxBytes,
             () -> new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                 "HTTP response compressed body exceeds maxResponseBodySize"),
             (buffer, length) -> output.write(buffer, 0, length));
         return output.toByteArray();
     }
 
     private static ZLinkFrameworkException malformed(IOException cause) {
-        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED, "HTTP response compressed body is malformed", cause);
+        return new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, "HTTP response compressed body is malformed", cause);
     }
 }

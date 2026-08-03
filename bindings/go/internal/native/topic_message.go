@@ -14,19 +14,6 @@ type TopicMessage struct {
 	parts     []*Message
 }
 
-type RecvPartResult struct {
-	RoutingID     RoutingID
-	RequestSeq    uint64
-	HasRequestSeq bool
-	More          bool
-}
-
-type SubscribePartResult struct {
-	RoutingID RoutingID
-	TopicLen  int
-	More      bool
-}
-
 func (t *TopicMessage) RoutingID() RoutingID {
 	if t == nil {
 		return RoutingID{}
@@ -99,5 +86,8 @@ func (t *TopicMessage) Close() error {
 			first = err
 		}
 	}
+	t.routingID = RoutingID{}
+	t.topic = ""
+	t.parts = nil
 	return first
 }

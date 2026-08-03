@@ -208,7 +208,7 @@ public final class ZLinkActorCreationCoordinator
                 if (result instanceof ZLinkObjectTypeMismatch) {
                     return CompletableFuture.failedFuture(
                         frameworkFailure(
-                            ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                            ZLinkFrameworkErrorKind.REJECTED,
                             "Actor type does not match"));
                 }
                 if (result instanceof ZLinkObjectConflict conflict) {
@@ -279,7 +279,7 @@ public final class ZLinkActorCreationCoordinator
         String actorType) {
         var authority = authorities.decode(snapshot.payload())
             .orElseThrow(() -> frameworkFailure(
-                ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED,
+                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                 "Actor authority payload is invalid"));
         if (authority.state()
                 != ZLinkActorAuthorityPayloadCodec.State.READY
@@ -920,7 +920,7 @@ public final class ZLinkActorCreationCoordinator
 
     private static ZLinkFrameworkException stale(String message) {
         return frameworkFailure(
-            ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED, message);
+            ZLinkFrameworkErrorKind.INTERNAL_FAILURE, message);
     }
 
     private static void streamTrace(String message) {

@@ -12,18 +12,26 @@ internal sealed class ZLinkSerialWorkItem
         Func<CancellationToken, ValueTask> callback,
         ZLinkAcceptedWorkRecord? acceptedRecord = null,
         Action? relocationRelease = null,
-        bool previousOwnerMessageFollow = false)
+        bool previousOwnerMessageFollow = false,
+        ZLinkSerialWorkLane lane = ZLinkSerialWorkLane.Application,
+        long accountingBytes = ZLinkSerialExecutionQueue.WorkItemFixedCostBytes)
     {
         _callback = callback;
         AcceptedRecord = acceptedRecord;
         _relocationRelease = relocationRelease;
         PreviousOwnerMessageFollow = previousOwnerMessageFollow;
+        Lane = lane;
+        AccountingBytes = accountingBytes > 0
+            ? accountingBytes
+            : throw new ArgumentOutOfRangeException(nameof(accountingBytes));
     }
 
     public Task Completion => _completion.Task;
 
     public ZLinkAcceptedWorkRecord? AcceptedRecord { get; }
     public bool PreviousOwnerMessageFollow { get; }
+    public ZLinkSerialWorkLane Lane { get; }
+    public long AccountingBytes { get; }
 
     public void ReleaseForRelocation(Action<Exception> onUnhandledException)
     {
@@ -141,6 +149,12 @@ internal sealed class ZLinkSerialWorkItem
             if (ex is not OperationCanceledException) onUnhandledException(ex);
         }
     }
+}
+
+internal enum ZLinkSerialWorkLane
+{
+    Application = 0,
+    Lifecycle = 1
 }
 
 internal enum ZLinkSerialWorkItemResult

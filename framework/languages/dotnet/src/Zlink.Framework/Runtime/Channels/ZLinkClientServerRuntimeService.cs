@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
+
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Runtime.Channels;
@@ -133,31 +134,25 @@ internal sealed class ZLinkClientServerRuntimeService(
             snapshot.ObservedAt);
     }
 
-    public async IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
+    public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkClientServerStatus>> ObserveAsync(
         string channelName,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         const int capacity = 1024;
         _ = SnapshotInternal(channelName);
-
-        var queue = Channel.CreateBounded<ZLinkClientServerRuntimeEvent>(
-            new BoundedChannelOptions(capacity)
-            {
-                FullMode = BoundedChannelFullMode.DropWrite,
-                SingleReader = true,
-                SingleWriter = true
-            },
-            static dropped => ZLinkRuntimeMetrics.RecordObserverOverflow(
-                dropped.Identifier));
+        var observer = new ZLinkObservationQueue<ZLinkClientServerRuntimeEvent>(
+            capacity,
+            static item => item.Sequence);
         using var stop =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var producer = ProduceAsync(channelName, queue.Writer, stop.Token);
+        var producer = ProduceAsync(channelName, observer, stop.Token);
         try
         {
-            while (await queue.Reader.WaitToReadAsync(cancellationToken)
-                       .ConfigureAwait(false))
-                while (queue.Reader.TryRead(out var change))
-                    yield return GetStatus(channelName);
+            await foreach (var item in observer.ReadAllAsync(cancellationToken)
+                               .ConfigureAwait(false))
+                yield return new ZLinkObservedStatus<ZLinkClientServerStatus>(
+                    GetStatus(channelName),
+                    item.Loss);
         }
         finally
         {
@@ -170,15 +165,13 @@ internal sealed class ZLinkClientServerRuntimeService(
                 when (stop.IsCancellationRequested)
             {
             }
-            while (queue.Reader.TryRead(out _))
-            {
-            }
+            observer.Complete();
         }
     }
 
     private async Task ProduceAsync(
         string channelName,
-        ChannelWriter<ZLinkClientServerRuntimeEvent> writer,
+        ZLinkObservationQueue<ZLinkClientServerRuntimeEvent> observer,
         CancellationToken cancellationToken)
     {
         var previous = SnapshotInternal(channelName);
@@ -191,15 +184,16 @@ internal sealed class ZLinkClientServerRuntimeService(
                 var current = SnapshotInternal(channelName);
                 if (current.Sequence == previous.Sequence) continue;
                 foreach (var change in Changes(previous, current))
-                    if (!writer.TryWrite(change))
-                        ZLinkRuntimeMetrics.RecordObserverOverflow(
-                            change.Identifier);
+                    observer.Publish(
+                        change,
+                        hostLifecycle.State is ZLinkFrameworkRuntimeState.Stopped
+                            or ZLinkFrameworkRuntimeState.Error);
                 previous = current;
             }
         }
         finally
         {
-            writer.TryComplete();
+            observer.Complete();
         }
     }
 

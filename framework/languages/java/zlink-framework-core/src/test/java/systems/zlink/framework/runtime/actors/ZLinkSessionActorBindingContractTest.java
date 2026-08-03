@@ -81,7 +81,7 @@ final class ZLinkSessionActorBindingContractTest {
             ZLinkFrameworkException error =
                 (ZLinkFrameworkException) completion.getCause();
             assertEquals(
-                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 error.kind());
         } finally {
             ZLinkSessionActorsRuntime.exitRelayDispatch();

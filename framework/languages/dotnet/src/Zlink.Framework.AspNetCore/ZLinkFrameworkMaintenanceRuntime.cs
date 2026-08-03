@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 
 using Zlink.Framework.Runtime.Diagnostics;
@@ -30,7 +29,7 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private readonly Func<bool> _acceptingWorkSnapshot;
     private readonly ILogger<ZLinkFrameworkMaintenanceRuntime>? _logger;
     private readonly object _gate = new();
-    private readonly List<ObserverMailbox> _observers = [];
+    private readonly List<ZLinkObservationQueue<ZLinkFrameworkRuntimeStatus>> _observers = [];
 
     private Task<ZLinkFrameworkRelocationResult>? _relocationOperation;
     private Task<ZLinkFrameworkTerminationResult>? _shutdownOperation;
@@ -106,15 +105,18 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
         MarkError();
     }
 
-    public async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+    public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var observer = new ObserverMailbox(ObserverMailboxCapacity);
+        var observer = new ZLinkObservationQueue<ZLinkFrameworkRuntimeStatus>(
+            ObserverMailboxCapacity,
+            static status => status.Sequence);
         lock (_gate)
         {
             ThrowIfDisposed();
             _observers.Add(observer);
-            observer.Publish(CreateStatusUnderLock(DateTimeOffset.UtcNow));
+            var initial = CreateStatusUnderLock(DateTimeOffset.UtcNow);
+            observer.Publish(initial, IsTerminal(initial));
         }
         try
         {
@@ -644,89 +646,12 @@ internal sealed class ZLinkFrameworkMaintenanceRuntime :
     private void PublishStatusUnderLock(ZLinkFrameworkRuntimeStatus status)
     {
         foreach (var observer in _observers)
-            observer.Publish(status);
+            observer.Publish(status, IsTerminal(status));
     }
 
-    private sealed class ObserverMailbox
-    {
-        private readonly object _gate = new();
-        private readonly Queue<ZLinkFrameworkRuntimeStatus> _terminalStatuses = [];
-        private readonly Channel<bool> _signal = Channel.CreateBounded<bool>(
-            new BoundedChannelOptions(1)
-            {
-                SingleReader = true,
-                SingleWriter = false,
-                AllowSynchronousContinuations = false,
-                FullMode = BoundedChannelFullMode.DropWrite
-            });
-        private ZLinkFrameworkRuntimeStatus? _latestSnapshot;
-
-        internal ObserverMailbox(int snapshotCapacity)
-        {
-            if (snapshotCapacity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(snapshotCapacity));
-        }
-
-        internal void Publish(ZLinkFrameworkRuntimeStatus status)
-        {
-            lock (_gate)
-            {
-                if (IsTerminal(status))
-                    _terminalStatuses.Enqueue(status);
-                else
-                    _latestSnapshot = status;
-            }
-            _signal.Writer.TryWrite(true);
-        }
-
-        internal async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ReadAllAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            // The signal channel is only a wake-up mechanism. The mailbox keeps
-            // one coalesced non-terminal snapshot and every terminal result, so
-            // a slow observer cannot lose a relocation or shutdown outcome.
-            while (await _signal.Reader.WaitToReadAsync(cancellationToken)
-                             .ConfigureAwait(false))
-            {
-                while (_signal.Reader.TryRead(out _))
-                {
-                }
-
-                while (TryTakeNext(out var status))
-                    yield return status;
-            }
-        }
-
-        internal void Complete() => _signal.Writer.TryComplete();
-
-        private bool TryTakeNext(out ZLinkFrameworkRuntimeStatus status)
-        {
-            lock (_gate)
-            {
-                if (_terminalStatuses.Count != 0
-                    && (_latestSnapshot is not { } latest
-                        || _terminalStatuses.Peek().Sequence <= latest.Sequence))
-                {
-                    status = _terminalStatuses.Dequeue();
-                    return true;
-                }
-
-                if (_latestSnapshot is { } snapshot)
-                {
-                    _latestSnapshot = null;
-                    status = snapshot;
-                    return true;
-                }
-            }
-
-            status = default!;
-            return false;
-        }
-
-        private static bool IsTerminal(ZLinkFrameworkRuntimeStatus status) =>
-            status.RelocationResult is not null
-            || status.TerminationResult is not null;
-    }
+    private static bool IsTerminal(ZLinkFrameworkRuntimeStatus status) =>
+        status.RelocationResult is not null
+        || status.TerminationResult is not null;
 
     private void LogRelocationChanged(ZLinkFrameworkRelocationResult result)
     {

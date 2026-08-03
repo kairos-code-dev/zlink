@@ -2,7 +2,7 @@ package systems.zlink.framework.errors;
 
 public final class ZLinkConfigurationException extends ZLinkFrameworkException {
     public ZLinkConfigurationException(String message) {
-        super(message);
+        super(ZLinkFrameworkErrorKind.NOT_CONFIGURED, message);
     }
 
     public ZLinkConfigurationException(
@@ -12,6 +12,6 @@ public final class ZLinkConfigurationException extends ZLinkFrameworkException {
     }
 
     public ZLinkConfigurationException(String message, Throwable cause) {
-        super(message, cause);
+        super(ZLinkFrameworkErrorKind.NOT_CONFIGURED, message, cause);
     }
 }

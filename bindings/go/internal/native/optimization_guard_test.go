@@ -27,8 +27,11 @@ var requiredPartSymbols = []string{
 	"zlink_subscribe_part",
 	"zlink_router_recv_part",
 	"zlink_dealer_request_part",
+	"zlink_dealer_recv_part",
+	"zlink_dealer_reply_part",
 	"zlink_router_request_part",
 	"zlink_router_reply_part",
+	"zlink_router_completion_control_part",
 }
 
 func bindingRoot(t *testing.T) string {

@@ -147,6 +147,25 @@ type recvCallbackState struct {
 	handler    recvCallback
 }
 
+type completionControlCallbackState struct {
+	dispatcher *callbackDispatcher
+	handler    func(*Received)
+}
+
+func newCompletionControlCallbackState(handler func(*Received)) *completionControlCallbackState {
+	return &completionControlCallbackState{
+		dispatcher: newCallbackDispatcher(),
+		handler:    handler,
+	}
+}
+
+func (s *completionControlCallbackState) close() {
+	if s == nil {
+		return
+	}
+	s.dispatcher.close()
+}
+
 func newRecvCallbackState(handler recvCallback) *recvCallbackState {
 	return &recvCallbackState{
 		dispatcher: newCallbackDispatcher(),
@@ -281,11 +300,16 @@ func safeHandleAs[T any](userdata C.uintptr_t) (value T, ok bool) {
 func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	state, ok := safeHandleAs[*recvCallbackState](userdata)
 	if !ok {
+		discardParts(parts, partCount)
+		return
+	}
+	ownedParts, err := takeParts(parts, partCount)
+	if err != nil {
 		return
 	}
 	received := &Received{
 		routingID: routingIDFromCPtr(sourceRID),
-		parts:     mustTakeParts(parts, partCount),
+		parts:     ownedParts,
 	}
 	if state.dispatcher.enqueue(&callbackTask{
 		label: "receive",
@@ -305,12 +329,17 @@ func goZlinkRecvTrampoline(sourceRID *C.zlink_routing_id_t, parts *C.zlink_msg_t
 func goZlinkSubscribeTrampoline(sourceRID *C.zlink_routing_id_t, topic *C.char, topicLen C.size_t, parts *C.zlink_msg_t, partCount C.size_t, userdata C.uintptr_t) {
 	state, ok := safeHandleAs[*subscribeCallbackState](userdata)
 	if !ok {
+		discardParts(parts, partCount)
+		return
+	}
+	ownedParts, err := takeParts(parts, partCount)
+	if err != nil {
 		return
 	}
 	message := &TopicMessage{
 		routingID: routingIDFromCPtr(sourceRID),
 		topic:     C.GoStringN(topic, C.int(topicLen)),
-		parts:     mustTakeParts(parts, partCount),
+		parts:     ownedParts,
 	}
 	if state.dispatcher.enqueue(&callbackTask{
 		label: "subscribe",
@@ -344,6 +373,8 @@ func goZlinkSendReadyTrampoline(_ unsafe.Pointer, userdata C.uintptr_t) {
 func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_id_t, header *C.zlink_msg_t, body *C.zlink_msg_t, userdata C.uintptr_t) {
 	state, ok := safeHandleAs[*streamPacketCallbackState](userdata)
 	if !ok {
+		discardParts(header, 1)
+		discardParts(body, 1)
 		return
 	}
 	headerParts, err := takeParts(header, 1)

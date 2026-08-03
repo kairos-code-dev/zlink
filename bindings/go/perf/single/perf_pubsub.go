@@ -45,15 +45,13 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	stats := perfcommon.NewStats()
-	recvPart, err := zlink.NewMessageWithSize(0)
-	perfcommon.Must(err)
-	defer recvPart.Close()
-	topicBuffer := make([]byte, 256)
+	var received zlink.TopicMessage
+	defer received.Close()
 
 	receiverDone := make(chan error, 1)
 	go func() {
 		for {
-			stop, drainErr := recvSinglePubSubUntilStop(subscriber, recvPart, topicBuffer, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
+			stop, drainErr := recvSinglePubSubUntilStop(subscriber, &received, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 			if drainErr != nil {
 				receiverDone <- drainErr
 				return
@@ -97,18 +95,17 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 
 func recvSinglePubSubUntilStop(
 	subscriber *zlink.SubSocket,
-	part *zlink.Message,
-	topicBuffer []byte,
+	received *zlink.TopicMessage,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 ) (bool, error) {
-	stop, _, err := recvSinglePubSubOnce(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
+	stop, _, err := recvSinglePubSubOnce(subscriber, received, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
 	if err != nil || stop {
 		return stop, err
 	}
-	return drainSinglePubSubUntilStop(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt)
+	return drainSinglePubSubUntilStop(subscriber, received, stats, msgSize, activeAt, stopAt)
 }
 
 // drainSinglePubSubUntilStop drains the subscriber until either a
@@ -116,15 +113,14 @@ func recvSinglePubSubUntilStop(
 // It returns stop=true when the stop token has been observed.
 func drainSinglePubSubUntilStop(
 	subscriber *zlink.SubSocket,
-	part *zlink.Message,
-	topicBuffer []byte,
+	received *zlink.TopicMessage,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 ) (bool, error) {
 	for {
-		stop, processed, err := recvSinglePubSubOnce(subscriber, part, topicBuffer, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
+		stop, processed, err := recvSinglePubSubOnce(subscriber, received, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
 		if err != nil || stop {
 			return stop, err
 		}
@@ -136,15 +132,14 @@ func drainSinglePubSubUntilStop(
 
 func recvSinglePubSubOnce(
 	subscriber *zlink.SubSocket,
-	part *zlink.Message,
-	topicBuffer []byte,
+	received *zlink.TopicMessage,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 	flags zlink.RecvFlags,
 ) (bool, bool, error) {
-	result, ok, err := subscriber.SubscribePart(part, topicBuffer, flags)
+	ok, err := subscriber.Subscribe(received, flags)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false, false, nil
@@ -154,26 +149,18 @@ func recvSinglePubSubOnce(
 	if !ok {
 		return false, false, nil
 	}
-	if result.More || !topicMatches(topicBuffer, result.TopicLen, singlePubSubTopic) {
-		return false, true, fmt.Errorf("unexpected PUBSUB part metadata topic_len=%d more=%v", result.TopicLen, result.More)
+	if received.Topic() != singlePubSubTopic || len(received.Parts()) != 1 {
+		return false, true, fmt.Errorf("unexpected PUBSUB metadata topic=%q parts=%d", received.Topic(), len(received.Parts()))
+	}
+	part, partErr := received.SinglePartOrError()
+	if partErr != nil {
+		return false, true, partErr
 	}
 	if perfcommon.IsStopTokenMessage(part) {
 		return true, true, nil
 	}
 	perfcommon.RecordMessageLatency(stats, activeAt, stopAt, msgSize, part)
 	return false, true, nil
-}
-
-func topicMatches(buffer []byte, topicLen int, expected string) bool {
-	if topicLen != len(expected) || topicLen > len(buffer) {
-		return false
-	}
-	for i := 0; i < topicLen; i++ {
-		if buffer[i] != expected[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // sendPubSubStopToken pushes the wire-level stop token on the bench

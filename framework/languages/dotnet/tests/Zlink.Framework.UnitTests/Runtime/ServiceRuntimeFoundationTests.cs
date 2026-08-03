@@ -1303,6 +1303,46 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public void CompletionTable_OverflowRetainsFailureTombstoneForLateRegister()
+    {
+        var table = new ZLinkMeshCompletionTable(
+            earlyCompletionCount: 1,
+            earlyCompletionBytes: 64,
+            tombstoneCount: 1,
+            tombstoneBytes: 32);
+        var retained = new MeshOperationId(0, 10);
+        var overflow = new MeshOperationId(0, 11);
+        table.Complete(Completion(retained), Array.Empty<Message>());
+
+        using var parts = Message.From(new byte[] { 1, 2, 3 });
+        table.Complete(Completion(overflow), [parts]);
+        Assert.Throws<ObjectDisposedException>(() => _ = parts.Size);
+
+        RequestResult? result = null;
+        Assert.True(table.RegisterRequest(
+            overflow,
+            (completed, reply) =>
+            {
+                result = completed;
+                Assert.Empty(reply);
+            }));
+        Assert.Equal(RequestResult.Backpressured, result);
+    }
+
+    [Fact]
+    public void CompletionTable_RegisterAndCompleteRaceInvokesOneHandler()
+    {
+        var table = new ZLinkMeshCompletionTable();
+        var operation = new MeshOperationId(0, 12);
+        var calls = 0;
+        Parallel.Invoke(
+            () => table.Register(operation, (_, _) => Interlocked.Increment(ref calls)),
+            () => table.Complete(Completion(operation), Array.Empty<Message>()));
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task InstanceAuthority_UsesExactStoreVersionAcrossReadyAndRelease()
     {
         var store = new ZLinkInMemoryLocationStore();

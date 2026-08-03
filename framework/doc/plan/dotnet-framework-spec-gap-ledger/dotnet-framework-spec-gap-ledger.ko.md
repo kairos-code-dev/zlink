@@ -52,6 +52,14 @@
 > Sample source 계약 수정, regression `141/141`과 POSD·DDD 점검 결과는
 > [`log/20260803-1106-sample-contract-posd-ddd.ko.md`](log/20260803-1106-sample-contract-posd-ddd.ko.md)에 기록한다.
 >
+> 2026-08-04 route-seal frame admission 수정, focused unit test, 독립 sample process와
+> `framework/doc/framework/common/internals` 대조 결과는
+> [`log/20260804-runtime-unit-sample-internals.ko.md`](log/20260804-runtime-unit-sample-internals.ko.md)에
+> 기록한다. `ZW-B1` 선택 실행과 6종 독립 sample runner는 통과했지만, 최신 ZoneWorld 전체
+> runner는 `ZW-C2` 뒤 replacement node의 remote Actor bootstrap timeout으로 아직 완료가 아니다.
+> 이 보충 log의 결과가 아래 2026-08-03 snapshot보다 최신이며, broad UnitTests·package-only
+> process·Config 14·독립 audit gate는 별도로 열린 상태다.
+
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
 

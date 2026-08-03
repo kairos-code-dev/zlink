@@ -159,8 +159,6 @@ type SocketMonitor struct {
 	callback cgo.Handle
 }
 
-var IgnoreMonitorHandler func(*MonitorEvent) = func(*MonitorEvent) {}
-
 func resolveMonitorEvents(events []MonitorEventMask) MonitorEventMask {
 	if len(events) == 0 {
 		return MonitorEventAll

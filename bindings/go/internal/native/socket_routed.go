@@ -48,9 +48,10 @@ func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, 
 }
 
 func (s *routedSocket) recvInto(out *Received, flags RecvFlags) error {
+	reuse := out.beginReceive()
 	var sourceRID *C.zlink_routing_id_t
 	var requestSeq C.uint64_t
-	parts, err := recvMultipart(flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
+	parts, err := recvMultipart(reuse, flags, func(part *C.zlink_msg_t, hasMore *C.zlink_part_flag_t, recvFlags C.zlink_recv_flags_t) error {
 		return recvErrorFromResult(C.zlink_router_recv_part(
 			s.raw(),
 			&sourceRID,
@@ -98,33 +99,6 @@ func (s *routedSocket) Recv(out *Received, flags RecvFlags) (bool, error) {
 	}
 	return true, nil
 }
-
-func (s *routedSocket) RecvPart(out *Message, flags RecvFlags) (RecvPartResult, bool, error) {
-	result, err := recvRoutedPartInto(out, flags, func(
-		sourceRID **C.zlink_routing_id_t,
-		requestSeq *C.uint64_t,
-		part *C.zlink_msg_t,
-		hasMore *C.zlink_part_flag_t,
-		recvFlags C.zlink_recv_flags_t,
-	) error {
-		return recvErrorFromResult(C.zlink_router_recv_part(
-			s.raw(),
-			sourceRID,
-			requestSeq,
-			part,
-			hasMore,
-			recvFlags,
-		))
-	})
-	if err != nil {
-		if isNoData(err) {
-			return RecvPartResult{}, false, nil
-		}
-		return RecvPartResult{}, false, err
-	}
-	return result, true, nil
-}
-
 func (s *RouterSocket) SendTo(target RoutingID) SendOp {
 	return newSendBuilder(func(parts []sendBuilderPart, flags SendFlags) error {
 		rid := target.toC()
@@ -150,12 +124,7 @@ func (s *RouterSocket) Request(peerRID RoutingID) RequestOp {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
-		messages, cleanup, err := requestBuilderMessagesForClone(parts)
-		if err != nil {
-			return err
-		}
-		defer cleanup()
-		resultCh, err := (&routerRequestSupport{socket: s}).startRequest(peerRID, flags, timeout, messages...)
+		resultCh, err := startRouterRequest(s, peerRID, flags, timeout, parts)
 		if err != nil {
 			return err
 		}
@@ -166,7 +135,6 @@ func (s *RouterSocket) Request(peerRID RoutingID) RequestOp {
 
 func (s *RouterSocket) Reply(rid RoutingID, requestSeq uint64) ReplyOp {
 	return newReplyBuilder(func(parts []*Message, flags SendFlags) error {
-		_, err := (&routerRequestSupport{socket: s}).Reply(rid, requestSeq, flags, parts...)
-		return err
+		return s.reply(rid, requestSeq, flags, parts...)
 	})
 }

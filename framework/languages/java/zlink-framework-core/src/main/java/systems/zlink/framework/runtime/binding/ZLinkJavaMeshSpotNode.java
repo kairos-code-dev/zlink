@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.binding;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;

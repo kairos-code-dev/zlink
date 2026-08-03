@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import systems.zlink.framework.runtime.internal.backend.*;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
@@ -102,8 +103,7 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 final class SpotActivation
     extends SpotActivationBase<DefaultSpotContext> {
     private final ZLinkSpot<?> spot;
-    private final ZLinkAsyncSerialQueue membershipLifecycle =
-        new ZLinkAsyncSerialQueue();
+    private final ZLinkAsyncSerialQueue membershipLifecycle;
 
     SpotActivation(
         ZLinkSpotRuntime host,
@@ -113,6 +113,8 @@ final class SpotActivation
         DefaultSpotContext context) {
         super(host, spotHandlerInvoker, spot, backendSpot, context);
         this.spot = spot;
+        this.membershipLifecycle = new ZLinkAsyncSerialQueue(
+            host.serialExecutor(), false);
     }
 
     ZLinkSpot<?> spot() {
@@ -209,12 +211,17 @@ final class SpotActivation
 
     private CompletionStage<Void> drainRoutesForDispatch() {
         List<ZLinkBackendReceived> routes = new ArrayList<>();
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendReceived received =
                 backendSpot.recvRoute(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {
                 break;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.acceptedJournalRecordSize()));
             if (host.dispatchSpotRouteBridgePacket(received)) {
                 received.close();
                 continue;
@@ -259,12 +266,17 @@ final class SpotActivation
 
     private CompletionStage<Void> drainRoutesAsync() {
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendReceived received =
                 backendSpot.recvRoute(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {
                 return tail;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.acceptedJournalRecordSize()));
             ZLinkSpotRuntime.traceSpotRouteInbound("spot-recv", backendSpot, received);
             if (host.dispatchSpotRouteBridgePacket(received)) {
                 received.close();
@@ -272,6 +284,7 @@ final class SpotActivation
             }
             tail = tail.thenCompose(ignored -> dispatchRouteAsync(received));
         }
+        return tail;
     }
 
     private CompletionStage<Void> dispatchRouteAsync(ZLinkBackendReceived received) {
@@ -320,7 +333,7 @@ final class SpotActivation
                     backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        ZLinkFrameworkErrorKind.REJECTED,
                         "Actor application admission is sealed"));
             }
             closeRouteReceived(received);
@@ -346,7 +359,7 @@ final class SpotActivation
                     backendSpot.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                        ZLinkFrameworkErrorKind.REJECTED,
                         "SPOT application admission is sealed"));
             }
             closeRouteReceived(received);
@@ -398,26 +411,35 @@ final class SpotActivation
 
     private CompletionStage<Void> drainSubscriptionsAsync() {
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendTopicMessage received =
                 backendSpot.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
             if (received == null) {
                 return tail;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.topic().getBytes(StandardCharsets.UTF_8).length));
             tail = tail.thenCompose(ignored -> dispatchSpotSubscription(received));
         }
+        return tail;
     }
 
     private CompletionStage<Void> drainUnhandledActorJoinsAsync() {
         CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             ZLinkBackendActorJoinRequest request =
                 backendSpot.recvActorJoin(ZLinkBackendRecvMode.DONT_WAIT);
             if (request == null) {
                 return tail;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(request.parts()));
             tail = tail.thenCompose(ignored -> dispatchActorJoinAsync(request));
         }
+        return tail;
     }
 
     private CompletionStage<Void> dispatchActorJoinAsync(ZLinkBackendActorJoinRequest request) {

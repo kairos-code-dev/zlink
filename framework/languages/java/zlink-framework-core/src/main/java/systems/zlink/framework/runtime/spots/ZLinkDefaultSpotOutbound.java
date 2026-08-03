@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -178,7 +180,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             .map(CompletableFuture::completedFuture)
             .orElseGet(() -> CompletableFuture.failedFuture(
                 new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND,
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
                     "SpotHandle route is stale or unavailable"))));
     }
 
@@ -588,7 +590,7 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
 
     private static boolean isStaleRoute(Throwable failure) {
         return failure instanceof ZLinkFrameworkException error
-            && error.kind() == ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND;
+            && error.kind() == ZLinkFrameworkErrorKind.NOT_FOUND;
     }
 
     private static String requireStableType(String value) {

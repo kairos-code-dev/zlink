@@ -60,7 +60,8 @@ class route_mesh_readiness_service_t final : public hosted_service_t
         _observation = runtime.observe (
           _mesh_name, 64,
           [state, node_name = _node_name, label = _label] (
-            const mesh_node_snapshot_t &snapshot) {
+            const observed_status_t<mesh_node_snapshot_t> &observed) {
+              const auto &snapshot = observed.status;
               if (!snapshot.is_ready
                   || state->reported.exchange (true, std::memory_order_acq_rel))
                   return;

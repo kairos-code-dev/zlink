@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.streams;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -36,6 +38,7 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 import systems.zlink.framework.runtime.actors.ZLinkActorRuntime;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -76,6 +79,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final Map<String, ZLinkInternalMeshNode> meshNodes;
     private final ZLinkHandlerActivator handlerFactory;
     private final Executor handlerExecutor;
+    private final Executor serialExecutor;
     private final systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
     private final ZLinkStreamCodec defaultCodec;
@@ -209,6 +213,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         this.handlerExecutor = ZLinkFlowContext.propagating(java.util.Objects.requireNonNull(
             registration.handlerExecutor(),
             "handlerExecutor"));
+        this.serialExecutor = registration.serialExecutor();
         this.flow = new systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer(
             registration.dispatchOptions(), handlerFactory, this.handlerExecutor, eventDispatcher);
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
@@ -356,6 +361,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         private final Set<RoutingId> ignoredPeers =
             ConcurrentHashMap.newKeySet();
         private final Object receiveLock = new Object();
+        private long receiveStateCursor;
         private boolean closed;
         private boolean capacitySignal;
         private AutoCloseable capacityRegistration;
@@ -423,10 +429,15 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         private void runLoop() {
             while (!isClosed()) {
                 try {
-                    if (!flushReceiveStates()) {
+                    ZLinkReceiveBatchBudget dispatchBatch =
+                        new ZLinkReceiveBatchBudget();
+                    if (!flushReceiveStates(dispatchBatch)) {
                         if (!awaitCapacity()) {
                             return;
                         }
+                        continue;
+                    }
+                    if (!dispatchBatch.canReceiveNext()) {
                         continue;
                     }
                     if (!inboundDispatchBudget.canStartApplicationReceive()) {
@@ -441,14 +452,26 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     if (isClosed()) {
                         return;
                     }
-                    ZLinkBackendStreamReceived received = stream.recv();
-                    if (received == null) {
-                        continue;
-                    }
-                    try {
-                        processReceived(received);
-                    } finally {
-                        received.close();
+                    ZLinkReceiveBatchBudget transportBatch =
+                        new ZLinkReceiveBatchBudget();
+                    while (transportBatch.canReceiveNext()
+                        && dispatchBatch.canReceiveNext()
+                        && inboundDispatchBudget.canStartApplicationReceive()) {
+                        if (transportBatch.messageCount() > 0
+                            && !stream.waitForReadable(Duration.ZERO)) {
+                            break;
+                        }
+                        ZLinkBackendStreamReceived received = stream.recv();
+                        if (received == null) {
+                            break;
+                        }
+                        transportBatch.record(ZLinkReceiveBatchBudget.bytesOf(
+                            received.parts()));
+                        try {
+                            processReceived(received, dispatchBatch);
+                        } finally {
+                            received.close();
+                        }
                     }
                 } catch (RuntimeException | Error failure) {
                     if (!isClosed()) {
@@ -488,27 +511,42 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             }
         }
 
-        private boolean flushReceiveStates() {
-            List<StreamReceiveState> snapshot = List.copyOf(receiveStates.values());
-            boolean canReceive = true;
-            for (StreamReceiveState state : snapshot) {
+        private boolean flushReceiveStates(ZLinkReceiveBatchBudget batch) {
+            List<StreamReceiveState> snapshot =
+                new ArrayList<>(receiveStates.values());
+            snapshot.sort((left, right) ->
+                left.routingId().toString().compareTo(
+                    right.routingId().toString()));
+            if (snapshot.isEmpty()) {
+                return true;
+            }
+            int cursor = (int) Math.floorMod(
+                receiveStateCursor, snapshot.size());
+            for (int offset = 0;
+                offset < snapshot.size() && batch.canReceiveNext();
+                offset++) {
+                StreamReceiveState state = snapshot.get(cursor);
+                cursor = (cursor + 1) % snapshot.size();
+                receiveStateCursor = cursor;
                 try {
                     synchronized (state) {
                         if (state.closed()) {
                             continue;
                         }
-                        if (!drainReceiveState(state)) {
-                            canReceive = false;
+                        if (!drainReceiveState(state, batch)) {
+                            return false;
                         }
                     }
                 } catch (RuntimeException | Error failure) {
                     isolatePeer(state.routingId(), failure);
                 }
             }
-            return canReceive;
+            return true;
         }
 
-        private void processReceived(ZLinkBackendStreamReceived received) {
+        private void processReceived(
+            ZLinkBackendStreamReceived received,
+            ZLinkReceiveBatchBudget batch) {
             RoutingId routingId = received.routingId().orElse(null);
             if (routingId == null) {
                 LOGGER.warning("STREAM receive did not provide a source routing id or part: "
@@ -555,30 +593,45 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     for (Message part : parts) {
                         state.buffer().append(part.toByteArray());
                     }
-                    drainReceiveState(state);
+                    drainReceiveState(state, batch);
                 }
             } catch (RuntimeException | Error failure) {
                 isolatePeer(routingId, failure);
             }
         }
 
-        private boolean drainReceiveState(StreamReceiveState state) {
+        private boolean drainReceiveState(
+            StreamReceiveState state,
+            ZLinkReceiveBatchBudget batch) {
             while (true) {
                 ZLinkStreamInboundFrame pending = state.pending();
                 if (pending != null) {
+                    if (!batch.canReceiveNext()) {
+                        return true;
+                    }
+                    long bytes = pending.header().size()
+                        + (long) pending.payload().size();
                     if (!tryAdmitFrame(state.routingId(), pending)) {
                         return false;
                     }
                     state.clearPending();
+                    batch.record(bytes);
                 }
                 ZLinkStreamInboundFrame frame = state.buffer().tryTakeFrame();
                 if (frame == null) {
                     return true;
                 }
+                if (!batch.canReceiveNext()) {
+                    state.setPending(frame);
+                    return true;
+                }
+                long bytes = frame.header().size()
+                    + (long) frame.payload().size();
                 if (!tryAdmitFrame(state.routingId(), frame)) {
                     state.setPending(frame);
                     return false;
                 }
+                batch.record(bytes);
             }
         }
 
@@ -999,7 +1052,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 "stream session must expose the context provided by the runtime: "
                     + streamNode.sessionType().getName());
         }
-        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            serialExecutor, false);
         return new SessionState(session, queue, context, stream, routingId);
     }
 

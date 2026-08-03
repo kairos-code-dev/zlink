@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -109,8 +111,7 @@ public final class ZLinkChannelRuntime
     private final ZLinkBackendContext context;
     private final boolean ownsContext;
     private final ZLinkChannelSocketRegistry sockets = new ZLinkChannelSocketRegistry();
-    private final ZLinkChannelDispatchRegistry dispatchRegistry =
-        new ZLinkChannelDispatchRegistry();
+    private final ZLinkChannelDispatchRegistry dispatchRegistry;
     private final ZLinkSpotRouteBridgeRawReplies spotRouteBridgeRawReplies =
         new ZLinkSpotRouteBridgeRawReplies();
     private final ZLinkMessageSerializer serializer;
@@ -424,6 +425,8 @@ public final class ZLinkChannelRuntime
         this.spotAddressResolver = resolveSpotAddressResolver(this.handlerFactory);
         this.handlerExecutor = systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext
             .propagating(Objects.requireNonNull(registration.handlerExecutor(), "handlerExecutor"));
+        this.dispatchRegistry = new ZLinkChannelDispatchRegistry(
+            registration.serialExecutor());
         this.suspendHandlerInvokers = registration.suspendHandlerInvokers();
         this.filterTypes = List.copyOf(registration.filters());
         this.channelHandlerInvoker = new ZLinkChannelHandlerInvoker(
@@ -999,7 +1002,7 @@ public final class ZLinkChannelRuntime
             sockets.awaitClientForOutbound(channelName, bound);
         if (ready == null) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 "client/server channel has no ready server: " + channelName);
         }
         return ready;
@@ -1246,7 +1249,7 @@ public final class ZLinkChannelRuntime
                     try {
                         if (reply.result() != ZLinkBackendRequestResult.OK) {
                             result.completeExceptionally(new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                                 "internal route request failed: " + reply.result()));
                         } else if (reply.parts().isEmpty()) {
                             result.completeExceptionally(new ZLinkConfigurationException(

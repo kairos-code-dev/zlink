@@ -55,7 +55,8 @@ public final class ZLinkFrameworkLifecycle
 
             @Override
             public java.util.concurrent.Flow.Publisher<
-                systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot> observe(
+                systems.zlink.framework.monitoring.ZLinkObservedStatus<
+                    systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot> > observe(
                     String meshName,
                     int capacity) {
                 return requireRuntime().routeMeshRuntime().observe(meshName, capacity);
@@ -77,7 +78,8 @@ public final class ZLinkFrameworkLifecycle
 
                 @Override
                 public java.util.concurrent.Flow.Publisher<
-                    systems.zlink.framework.monitoring.ZLinkClientServerStatus> observe(
+                    systems.zlink.framework.monitoring.ZLinkObservedStatus<
+                        systems.zlink.framework.monitoring.ZLinkClientServerStatus> > observe(
                         String channelName,
                         int capacity) {
                     return requireRuntime().clientServerRuntime().observe(
@@ -99,7 +101,8 @@ public final class ZLinkFrameworkLifecycle
 
             @Override
             public java.util.concurrent.Flow.Publisher<
-                systems.zlink.framework.monitoring.ZLinkFanoutStatus> observe(
+                systems.zlink.framework.monitoring.ZLinkObservedStatus<
+                    systems.zlink.framework.monitoring.ZLinkFanoutStatus> > observe(
                     String channelName,
                     int capacity) {
                 return requireRuntime().fanoutRuntime().observe(channelName, capacity);
@@ -359,7 +362,8 @@ public final class ZLinkFrameworkLifecycle
     }
 
     public java.util.concurrent.Flow.Publisher<
-        systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus> observe() {
+        systems.zlink.framework.monitoring.ZLinkObservedStatus<
+            systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus> > observe() {
         return requireRuntime().observe();
     }
 

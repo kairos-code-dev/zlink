@@ -26,7 +26,6 @@ type (
 	RequestReplyCallback   = impl.RequestReplyCallback
 	RequestReplyCompletion = impl.RequestReplyCompletion
 	Received               = impl.Received
-	RecvPartResult         = impl.RecvPartResult
 	TopicMessage           = impl.TopicMessage
 	SubscriptionEvent      = impl.SubscriptionEvent
 
@@ -201,7 +200,6 @@ const (
 )
 
 var (
-	IgnoreMonitorHandler  = impl.IgnoreMonitorHandler
 	OpenSocketMonitor     = impl.OpenSocketMonitor
 	NewRoutingID          = impl.NewRoutingID
 	NewRoutingIDString    = impl.NewRoutingIDString

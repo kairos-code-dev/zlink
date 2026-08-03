@@ -80,10 +80,12 @@ class EntryJoinWorldHandler {
       return new JoinWorldRes(actor.actorId, actor.zoneId, nodeOf(actor.zoneId), actor.x, actor.y);
     }
     const targetZone = zoneOf(actor.x, actor.y);
+    console.log(`join world handler actor=${actor.actorId} current=${String(actor.context.spotId)} target=${targetZone}`);
     actor.context.joinSpot(
       targetZone,
       new EnterZoneMsg(actor.actorId, actor.x, actor.y, false, null)
     ).timeout(10_000).defer();
+    console.log(`join world deferred actor=${actor.actorId} target=${targetZone}`);
     actor.zoneId = targetZone;
     return new JoinWorldRes(actor.actorId, targetZone, nodeOf(targetZone), actor.x, actor.y);
   }
@@ -150,6 +152,12 @@ class PlayerMoveHandler {
     _context: ZLinkMessageContext,
     message: MoveMsg
   ): Promise<void> {
+    if (actor.actorId === 'player-a1') {
+      console.log(
+        `player move handler actor=${actor.actorId} spot=${String(actor.context.spotId)}`
+          + ` from=${actor.x},${actor.y} to=${message.x},${message.y}`
+      );
+    }
     await this.movement.move(actor, message.x, message.y);
   }
 }

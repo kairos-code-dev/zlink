@@ -60,9 +60,6 @@ def test_native_extensions_expose_only_raw_bridge_operations():
         "recv_count_active",
         "publish_active",
         "subscribe_count_active",
-        "stream_echo_install",
-        "stream_echo_drain",
-        "stream_echo_stats",
         "perf_stamp_payload",
         "perf_active_latency_ns",
     }

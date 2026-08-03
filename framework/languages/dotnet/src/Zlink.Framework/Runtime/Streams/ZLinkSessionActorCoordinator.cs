@@ -404,17 +404,28 @@ internal sealed class ZLinkSessionActorCoordinator(
             StringComparison.Ordinal);
         var acceptedFrame = false;
         ulong acceptedHighWater = 0;
-        if (!isBindingControlFrame
-            && !runtime.TryAcceptSessionActorFrame(
-                actorRef.ActorId,
-                actorRef.BindingToken,
-                out acceptedHighWater))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.Unavailable,
-                $"Actor '{actorRef.ActorId}' session binding changed before frame admission.",
-                ZLinkRetryAdvice.RetryAfterBackoff);
         if (!isBindingControlFrame)
+        {
+            // A relocation seal is an infrastructure boundary, not an
+            // application rejection. Keep this frame in the current stream
+            // operation until the session owner publishes the new route.
+            while (!runtime.TryAcceptSessionActorFrame(
+                       actorRef.ActorId,
+                       actorRef.BindingToken,
+                       out acceptedHighWater))
+            {
+                if (!await runtime.WaitForSessionActorRouteAvailableAsync(
+                            actorRef.ActorId,
+                            actorRef.BindingToken,
+                            cancellationToken)
+                        .ConfigureAwait(false))
+                    throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.Unavailable,
+                        $"Actor '{actorRef.ActorId}' session binding changed before frame admission.",
+                        ZLinkRetryAdvice.RetryAfterBackoff);
+            }
             acceptedFrame = true;
+        }
 
         try
         {

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Host;
 
@@ -20,7 +21,12 @@ internal sealed class ZLinkSpotNodeCatalog(
     ZLinkLocationLifecycle? lifecycle) : IAsyncDisposable
 {
     private readonly object _disposeGate = new();
+    private readonly CancellationTokenSource _idleEvictionStop = new();
+    private readonly TimeSpan _instanceSpotIdleTimeout =
+        registration.InstanceSpotIdleTimeout;
     private Task? _disposeTask;
+    private Task? _idleEvictionTask;
+    private int _idleEvictionStopped;
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
         runtime,
@@ -48,6 +54,16 @@ internal sealed class ZLinkSpotNodeCatalog(
     private bool _closed;
 
     public IReadOnlyCollection<ZLinkSpotActivation> Spots => SnapshotActivations();
+
+    internal void StartIdleEviction()
+    {
+        if (_instanceSpotIdleTimeout <= TimeSpan.Zero) return;
+        lock (_disposeGate)
+        {
+            if (_idleEvictionTask is null)
+                _idleEvictionTask = RunIdleEvictionAsync();
+        }
+    }
 
     internal ZLinkInstanceSpotCatalogSnapshot InstanceSpotSnapshot(
         string stableType)
@@ -351,6 +367,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     internal async ValueTask CloseLifecycleAsync()
     {
+        await StopIdleEvictionAsync().ConfigureAwait(false);
         var activations = SnapshotActivations();
         List<Exception>? failures = null;
         foreach (var activation in activations)
@@ -464,6 +481,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         bool forceStop)
     {
         List<Exception>? failures = null;
+        await CaptureAsync(StopIdleEvictionAsync).ConfigureAwait(false);
         await CaptureAsync(() => new ValueTask(creationsDrained)).ConfigureAwait(false);
         if (!forceStop)
             await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
@@ -502,6 +520,77 @@ internal sealed class ZLinkSpotNodeCatalog(
                 (failures ??= []).Add(exception);
             }
         }
+    }
+
+    private async Task RunIdleEvictionAsync()
+    {
+        var interval = _instanceSpotIdleTimeout < TimeSpan.FromSeconds(1)
+            ? _instanceSpotIdleTimeout
+            : TimeSpan.FromSeconds(1);
+        try
+        {
+            using var timer = new PeriodicTimer(interval);
+            while (await timer.WaitForNextTickAsync(_idleEvictionStop.Token)
+                       .ConfigureAwait(false))
+            {
+                foreach (var activation in SnapshotActivations())
+                {
+                    if (!IsIdleInstanceCandidate(activation)) continue;
+                    var closed = await CloseCoreAsync(
+                            activation.SpotId,
+                            null,
+                            releaseLocation: true,
+                            requireNoActors: true,
+                            ZLinkSpotCloseReason.IdleEvicted,
+                            _idleEvictionStop.Token)
+                        .ConfigureAwait(false);
+                    if (!closed)
+                        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"instance_spot_idle_eviction_deferred spot={activation.SpotId}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+            when (_idleEvictionStop.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            runtime.ErrorSink.ReportRuntimeTaskException(
+                "instance-spot-idle-eviction",
+                exception);
+        }
+    }
+
+    private bool IsIdleInstanceCandidate(ZLinkSpotActivation activation)
+    {
+        if (_instanceSpotIdleTimeout <= TimeSpan.Zero
+            || activation.Spot is not IZLinkInstanceSpot
+            || activation.JoinedActorCount != 0
+            || activation.HasIdleRelocationParticipation
+            || activation.HasPendingApplicationWork)
+            return false;
+
+        var elapsed = Stopwatch.GetTimestamp()
+                      - activation.LastApplicationWorkCompletedAt;
+        var required = _instanceSpotIdleTimeout.TotalSeconds
+                       * Stopwatch.Frequency;
+        return elapsed >= required;
+    }
+
+    private async ValueTask StopIdleEvictionAsync()
+    {
+        if (Interlocked.Exchange(ref _idleEvictionStopped, 1) != 0)
+            return;
+        Task? task;
+        lock (_disposeGate)
+        {
+            _idleEvictionStop.Cancel();
+            task = _idleEvictionTask;
+        }
+        if (task is not null)
+            await task.ConfigureAwait(false);
+        _idleEvictionStop.Dispose();
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(

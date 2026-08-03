@@ -13,6 +13,22 @@
 namespace zlink::framework
 {
 
+struct observation_loss_t
+{
+    std::uint64_t coalesced_count = 0;
+    std::uint64_t discarded_terminal_count = 0;
+
+    friend bool operator== (const observation_loss_t &,
+                            const observation_loss_t &) = default;
+};
+
+template <typename TStatus>
+struct observed_status_t final
+{
+    TStatus status;
+    observation_loss_t loss;
+};
+
 struct inbound_dispatch_status_t
 {
     std::uint64_t application_hwm_bytes = 0;
@@ -60,7 +76,8 @@ class framework_runtime_t
     virtual std::unique_ptr<runtime_observation_t>
     observe (
       std::size_t capacity,
-      std::function<void (const framework_runtime_status_t &)> observer) = 0;
+      std::function<void (
+        const observed_status_t<framework_runtime_status_t> &)> observer) = 0;
 };
 
 } // namespace zlink::framework

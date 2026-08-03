@@ -15,8 +15,6 @@ type (
 	RequestReplyCompletion = impl.RequestReplyCompletion
 	// Received is a received message envelope: routing metadata, parts, and an optional reply/send context.
 	Received = impl.Received
-	// RecvPartResult is the outcome of receiving a single message part.
-	RecvPartResult = impl.RecvPartResult
 	// TopicMessage is a received publish: its topic and message parts.
 	TopicMessage = impl.TopicMessage
 	// SubscriptionEvent is a subscriber's subscribe or unsubscribe as observed by an XPUB socket.

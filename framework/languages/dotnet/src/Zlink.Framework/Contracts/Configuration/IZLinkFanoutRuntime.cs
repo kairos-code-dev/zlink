@@ -13,7 +13,7 @@ public interface IZLinkFanoutRuntime
 {
     ZLinkFanoutStatus GetStatus(string channelName);
 
-    IAsyncEnumerable<ZLinkFanoutStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkFanoutStatus>> ObserveAsync(
         string channelName,
         CancellationToken cancellationToken = default);
 }

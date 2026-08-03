@@ -123,7 +123,26 @@ public final class ZLinkFrameworkRuntime
     private final java.util.concurrent.atomic.AtomicReference<
         systems.zlink.framework.configuration.ZLinkMessageFlowLogMode> messageFlowMode;
     private final ZLinkRuntimeEventDispatcher eventDispatcher;
-    private final systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime
+    private final systems.zlink.framework.runtime.internal.monitoring
+        .ZLinkStatusPublisher<systems.zlink.framework.monitoring
+            .ZLinkFrameworkRuntimeStatus> runtimeStatusPublisher =
+        systems.zlink.framework.runtime.internal.monitoring
+            .ZLinkStatusPublisher.create(
+                () -> runtimeStatus(terminationSequence.get()),
+                status -> java.util.List.of(
+                    status.state(),
+                    status.isReady(),
+                    status.acceptingWork(),
+                    status.deadline(),
+                    status.relocationResult(),
+                    status.terminationResult(),
+                    status.inboundDispatch()),
+                java.util.concurrent.Flow.defaultBufferSize(),
+                status -> status.state() == ZLinkFrameworkRuntimeState.STOPPED
+                    || status.state() == ZLinkFrameworkRuntimeState.ERROR,
+                status -> status.state()
+                    == ZLinkFrameworkRuntimeState.RELOCATED);
+    private final ZLinkRouteMeshRuntimeView
         routeMeshRuntime = new ZLinkRouteMeshRuntimeView(this);
 
     ZLinkFrameworkRuntime(
@@ -736,24 +755,10 @@ public final class ZLinkFrameworkRuntime
     }
 
     public java.util.concurrent.Flow.Publisher<
-        systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus>
+        systems.zlink.framework.monitoring.ZLinkObservedStatus<
+            systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus>>
         observe() {
-        return systems.zlink.framework.runtime.internal.monitoring
-            .ZLinkStatusPublisher.create(
-                () -> runtimeStatus(terminationSequence.incrementAndGet()),
-                status -> java.util.List.of(
-                    status.state(),
-                    status.isReady(),
-                    status.acceptingWork(),
-                    status.deadline(),
-                    status.relocationResult(),
-                    status.terminationResult(),
-                    status.inboundDispatch()),
-                java.util.concurrent.Flow.defaultBufferSize(),
-                status -> status.state() == ZLinkFrameworkRuntimeState.STOPPED
-                    || status.state() == ZLinkFrameworkRuntimeState.ERROR,
-                status -> status.state()
-                    == ZLinkFrameworkRuntimeState.RELOCATED);
+        return runtimeStatusPublisher;
     }
 
     public java.util.concurrent.CompletionStage<ZLinkFrameworkRelocationResult>
@@ -1523,6 +1528,8 @@ public final class ZLinkFrameworkRuntime
         if (eventDispatcher != null) {
             eventDispatcher.publishHostStatus(status);
         }
+        runtimeStatusPublisher.signal();
+        routeMeshRuntime.signalAll();
     }
 
     private java.util.concurrent.CompletionStage<Void>
@@ -1538,6 +1545,8 @@ public final class ZLinkFrameworkRuntime
             if (eventDispatcher != null) {
                 eventDispatcher.publishHostStatus(status);
             }
+            runtimeStatusPublisher.signal();
+            routeMeshRuntime.signalAll();
         }).exceptionallyCompose(failure -> {
             runtimeState.set(ZLinkFrameworkRuntimeState.SERVING);
             if (spots != null) {
@@ -1584,6 +1593,7 @@ public final class ZLinkFrameworkRuntime
         shutdown.defer(registration.inboundDispatchBudget()::close);
         shutdown.defer(this::closeHandlerExecutor);
         shutdown.defer(backendContext::close);
+        shutdown.defer(routeMeshRuntime::close);
         if (authorityRouteRuntime != null) {
             shutdown.defer(authorityRouteRuntime::close);
         }
@@ -1868,9 +1878,29 @@ public final class ZLinkFrameworkRuntime
     }
 
     private void closeHandlerExecutor() {
-        if (!registration.closeHandlerExecutor()) {
-            return;
+        RuntimeException failure = null;
+        if (registration.closeHandlerExecutor()) {
+            try {
+                closeConfiguredHandlerExecutor();
+            } catch (RuntimeException ex) {
+                failure = ex;
+            }
         }
+        try {
+            closeSerialExecutor();
+        } catch (RuntimeException ex) {
+            if (failure == null) {
+                failure = ex;
+            } else {
+                failure.addSuppressed(ex);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    private void closeConfiguredHandlerExecutor() {
         if (registration.handlerExecutor() instanceof ExecutorService executor) {
             executor.shutdown();
             try {
@@ -1881,16 +1911,31 @@ public final class ZLinkFrameworkRuntime
             } catch (InterruptedException ex) {
                 executor.shutdownNow();
                 Thread.currentThread().interrupt();
-                throw new ZLinkConfigurationException("failed to close handler executor", ex);
+                throw new ZLinkConfigurationException(
+                    "failed to close handler executor", ex);
             }
-            return;
-        }
-        if (registration.handlerExecutor() instanceof AutoCloseable closeable) {
+        } else if (registration.handlerExecutor() instanceof AutoCloseable closeable) {
             try {
                 closeable.close();
             } catch (Exception ex) {
-                throw new ZLinkConfigurationException("failed to close handler executor", ex);
+                throw new ZLinkConfigurationException(
+                    "failed to close handler executor", ex);
             }
+        }
+    }
+
+    private void closeSerialExecutor() {
+        registration.serialExecutor().shutdown();
+        try {
+            if (!registration.serialExecutor().awaitTermination(1, TimeUnit.SECONDS)) {
+                registration.serialExecutor().shutdownNow();
+                registration.serialExecutor().awaitTermination(4, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException ex) {
+            registration.serialExecutor().shutdownNow();
+            Thread.currentThread().interrupt();
+            throw new ZLinkConfigurationException(
+                "failed to close serial executor", ex);
         }
     }
 

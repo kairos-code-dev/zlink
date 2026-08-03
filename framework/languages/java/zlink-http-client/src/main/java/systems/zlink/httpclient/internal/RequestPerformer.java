@@ -107,7 +107,7 @@ public final class RequestPerformer {
         if (options.followRedirects() > 0 && RedirectPolicy.isRedirect(status) && location != null && !location.isEmpty()) {
             closeQuietly(response.body());
             if (redirectsLeft == 0) {
-                throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP request exceeded the redirect limit");
+                throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.INTERNAL_FAILURE, "HTTP request exceeded the redirect limit");
             }
             RedirectPolicy.Rewrite rewrite = RedirectPolicy.rewriteMethodAndBody(status, method, body);
             return hop(spec, RedirectPolicy.resolveLocation(current, location), origin,

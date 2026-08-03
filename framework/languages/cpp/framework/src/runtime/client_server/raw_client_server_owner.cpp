@@ -368,6 +368,7 @@ std::size_t raw_client_server_server_t::drain_monitor_events (
 client_server_pump_result_t raw_client_server_server_t::pump_one (
   mesh::service_liveness_registry_t::clock_t::time_point now)
 {
+    _last_pump_bytes = 0;
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lock (_mutex);
@@ -377,6 +378,8 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
         return client_server_pump_result_t::no_data;
     }
     if (_pending_received) {
+        for (const auto &part : _pending_received->parts)
+            _last_pump_bytes += part.size ();
         if (!_mailbox.try_enqueue (
               std::move (*_pending_received))) {
             return client_server_pump_result_t::backpressured;
@@ -389,6 +392,8 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
     if (!received) {
         return client_server_pump_result_t::no_data;
     }
+    for (const auto &part : received->parts)
+        _last_pump_bytes += part.size ();
     if (received->parts.empty ()) {
         return client_server_pump_result_t::protocol_error;
     }
@@ -824,6 +829,7 @@ std::size_t raw_client_server_client_t::drain_monitor_events (
 client_server_pump_result_t raw_client_server_client_t::pump_one (
   mesh::service_liveness_registry_t::clock_t::time_point now)
 {
+    _last_pump_bytes = 0;
     std::shared_ptr<detail::backend::raw_dealer_port_t> port;
     {
         std::lock_guard lock (_mutex);
@@ -836,6 +842,8 @@ client_server_pump_result_t raw_client_server_client_t::pump_one (
     if (!received) {
         return client_server_pump_result_t::no_data;
     }
+    for (const auto &part : *received)
+        _last_pump_bytes += part.size ();
     if (received->empty ()) {
         return client_server_pump_result_t::protocol_error;
     }

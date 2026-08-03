@@ -18,7 +18,7 @@ final class ZLinkFrameworkErrorReplyTest {
             assertTrue(ZLinkFrameworkErrorReply.isPacketName(parts.get(0).toUtf8String()));
             assertEquals("route failed", ZLinkFrameworkErrorReply.message(parts));
             assertEquals(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                 ZLinkFrameworkErrorReply.kind(parts));
         } finally {
             parts.forEach(Message::close);
@@ -28,11 +28,11 @@ final class ZLinkFrameworkErrorReplyTest {
     @Test
     void preservesTypedRequestRejection() {
         List<Message> parts = ZLinkFrameworkErrorReply.create(
-            ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+            ZLinkFrameworkErrorKind.REJECTED,
             "filter rejected");
         try {
             assertEquals(
-                ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                ZLinkFrameworkErrorKind.REJECTED,
                 ZLinkFrameworkErrorReply.kind(parts));
             assertEquals(
                 "filter rejected",

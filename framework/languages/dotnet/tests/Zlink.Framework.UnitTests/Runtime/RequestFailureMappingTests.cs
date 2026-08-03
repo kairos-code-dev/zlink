@@ -133,6 +133,18 @@ public sealed class RequestFailureMappingTests
     }
 
     [Fact]
+    public void Completion_Backpressure_Maps_To_CapacityExceeded()
+    {
+        var error = Assert.IsType<ZLinkFrameworkException>(
+            ZLinkRequestFailureMapper.CreateCompletionException(
+                RequestResult.Backpressured,
+                "completion"));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.CapacityExceeded, error.Kind);
+        Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, error.RetryAdvice);
+    }
+
+    [Fact]
     public void RawCompletion_Maps_NotFound_To_RequestTargetNotFound()
     {
         Exception? observed = null;

@@ -55,8 +55,6 @@ const (
 )
 
 var (
-	// IgnoreMonitorHandler is a no-op monitor event handler that ignores every event.
-	IgnoreMonitorHandler = impl.IgnoreMonitorHandler
 	// OpenSocketMonitor opens a monitor on a socket for the selected events; the caller owns it.
 	OpenSocketMonitor = impl.OpenSocketMonitor
 	// NewTimer creates a standalone timer; the caller owns it.

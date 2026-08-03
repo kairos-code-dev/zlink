@@ -147,6 +147,8 @@ class mesh_node_builder_t
     mesh_node_builder_t &set_placement_weight (int weight);
     mesh_node_builder_t &set_actor_limit (std::int32_t limit);
     mesh_node_builder_t &set_spot_limit (std::int32_t limit);
+    mesh_node_builder_t &set_instance_spot_idle_timeout (
+      std::chrono::milliseconds timeout);
     mesh_node_builder_t &
     set_activation_concurrency (std::int32_t limit);
     mesh_node_socket_config_t &configure_router_socket ();

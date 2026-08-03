@@ -117,7 +117,7 @@ final class ZLinkSpotRouterNodeDispatcher {
                         retryRequest.accept(this);
                     } else if (!submitted) {
                         result.completeExceptionally(new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                            ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                             "Spot node router '" + routerChannelId
                                 + "' was not ready before the request timeout."));
                     }
@@ -158,8 +158,8 @@ final class ZLinkSpotRouterNodeDispatcher {
             if (reply.result() != ZLinkBackendRequestResult.OK) {
                 ZLinkFrameworkErrorKind errorKind = reply.result()
                     == ZLinkBackendRequestResult.NOT_FOUND
-                    ? ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND
-                    : ZLinkFrameworkErrorKind.REQUEST_FAILED;
+                    ? ZLinkFrameworkErrorKind.NOT_FOUND
+                    : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
                 result.completeExceptionally(new ZLinkFrameworkException(
                     errorKind,
                     "SPOT route request failed: " + reply.result()));
@@ -169,7 +169,7 @@ final class ZLinkSpotRouterNodeDispatcher {
             if (ZLinkChannelRuntime.isFrameworkErrorReply(replyParts)) {
                 replyParts.forEach(Message::close);
                 result.completeExceptionally(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                     ZLinkChannelRuntime.frameworkErrorReplyMessage(reply.parts())));
                 return;
             }

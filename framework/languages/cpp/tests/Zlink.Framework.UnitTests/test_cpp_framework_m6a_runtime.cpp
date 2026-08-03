@@ -1296,6 +1296,66 @@ void verify_client_server_weighted_selection ()
       {"disabled", 0}};
     assert (!selector.select (none));
     assert (selector.state_size () == 0);
+
+    client_server::smooth_weighted_selector_t rid_tiebreak;
+    const std::vector<client_server::weighted_candidate_t> tied{
+      {"connection-z", 100, "rid-a"},
+      {"connection-a", 100, "rid-b"}};
+    const auto tie_selected = rid_tiebreak.select (tied);
+    assert (tie_selected && *tie_selected == "connection-z");
+
+    mesh::service_topology_registry_t topology (descriptor ("route-local"));
+    auto route_a = descriptor ("route-a");
+    auto route_b = descriptor ("route-b");
+    route_a.state = mesh::service_node_state_t::serving;
+    route_b.state = mesh::service_node_state_t::serving;
+    assert (topology.admit (route_a, bytes ("route-connection-a"))
+            == mesh::peer_admission_result_t::admitted);
+    assert (topology.admit (route_b, bytes ("route-connection-b"))
+            == mesh::peer_admission_result_t::admitted);
+    const std::vector<std::vector<std::uint8_t>> expected_route_ids{
+      bytes ("route-a"), bytes ("route-b"), bytes ("route-a"),
+      bytes ("route-b")};
+    for (const auto &expected : expected_route_ids) {
+        const auto selected_route = topology.select ("alpha");
+        assert (selected_route
+                && selected_route->descriptor.node_routing_id == expected);
+    }
+
+    auto weighted_route_a = descriptor ("weighted-route-a");
+    auto weighted_route_b = descriptor ("weighted-route-b");
+    weighted_route_a.channels.front ().weight = 300;
+    weighted_route_b.channels.front ().weight = 100;
+    weighted_route_a.state = mesh::service_node_state_t::serving;
+    weighted_route_b.state = mesh::service_node_state_t::serving;
+    mesh::service_topology_registry_t weighted_topology (
+      descriptor ("weighted-route-local"));
+    assert (weighted_topology.admit (
+              weighted_route_a, bytes ("weighted-route-connection-a"))
+            == mesh::peer_admission_result_t::admitted);
+    assert (weighted_topology.admit (
+              weighted_route_b, bytes ("weighted-route-connection-b"))
+            == mesh::peer_admission_result_t::admitted);
+    std::map<std::vector<std::uint8_t>, std::size_t> weighted_selected;
+    for (std::size_t index = 0; index < 400; ++index) {
+        const auto selected_route = weighted_topology.select ("alpha");
+        assert (selected_route);
+        ++weighted_selected[selected_route->descriptor.node_routing_id];
+    }
+    assert (weighted_selected[bytes ("weighted-route-a")] == 300);
+    assert (weighted_selected[bytes ("weighted-route-b")] == 100);
+
+    weighted_route_b.descriptor_revision = 2;
+    weighted_route_b.state = mesh::service_node_state_t::retiring;
+    assert (weighted_topology.admit (
+              weighted_route_b, bytes ("weighted-route-connection-b"))
+            == mesh::peer_admission_result_t::admitted);
+    for (std::size_t index = 0; index < 32; ++index) {
+        const auto selected_route = weighted_topology.select ("alpha");
+        assert (selected_route
+                && selected_route->descriptor.node_routing_id
+                     == bytes ("weighted-route-a"));
+    }
 }
 
 void verify_raw_owner_node_send_and_liveness ()
@@ -1309,9 +1369,17 @@ void verify_raw_owner_node_send_and_liveness ()
         16u * 1024u * 1024u,
         1024,
         4u * 1024u * 1024u});
+    assert (first.topology ().local_descriptor ().state
+            == mesh::service_node_state_t::preparing);
+    assert (second.topology ().local_descriptor ().state
+            == mesh::service_node_state_t::preparing);
     first.start ();
     second.start ();
     assert (first.started () && second.started ());
+    assert (first.topology ().local_descriptor ().state
+            == mesh::service_node_state_t::serving);
+    assert (second.topology ().local_descriptor ().state
+            == mesh::service_node_state_t::serving);
 
     auto first_descriptor = first.topology ().local_descriptor ();
     auto second_descriptor = second.topology ().local_descriptor ();

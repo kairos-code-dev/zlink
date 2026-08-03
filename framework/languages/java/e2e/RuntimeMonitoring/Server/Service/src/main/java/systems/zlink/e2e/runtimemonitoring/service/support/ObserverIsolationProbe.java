@@ -5,6 +5,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 
 public final class ObserverIsolationProbe {
@@ -22,14 +23,15 @@ public final class ObserverIsolationProbe {
         }
         started = true;
         runtime.observe(Contracts.SPOT_MESH, 2).subscribe(
-            new Flow.Subscriber<ZLinkMeshNodeSnapshot>() {
+            new Flow.Subscriber<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>>() {
                 @Override
                 public void onSubscribe(Flow.Subscription subscription) {
                     subscription.request(Long.MAX_VALUE);
                 }
 
                 @Override
-                public void onNext(ZLinkMeshNodeSnapshot status) {
+                public void onNext(ZLinkObservedStatus<ZLinkMeshNodeSnapshot> observed) {
+                    ZLinkMeshNodeSnapshot status = observed.status();
                     normalEventCount.incrementAndGet();
                     normalLatestSequence.set(status.sequence());
                 }
@@ -43,14 +45,15 @@ public final class ObserverIsolationProbe {
                 }
             });
         runtime.observe(Contracts.SPOT_MESH, 2).subscribe(
-            new Flow.Subscriber<ZLinkMeshNodeSnapshot>() {
+            new Flow.Subscriber<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>>() {
                 @Override
                 public void onSubscribe(Flow.Subscription subscription) {
                     slowSubscription = subscription;
                 }
 
                 @Override
-                public void onNext(ZLinkMeshNodeSnapshot status) {
+                public void onNext(ZLinkObservedStatus<ZLinkMeshNodeSnapshot> observed) {
+                    ZLinkMeshNodeSnapshot status = observed.status();
                     slowLatestSequence.set(status.sequence());
                     throw new IllegalStateException("intentional slow observer failure");
                 }

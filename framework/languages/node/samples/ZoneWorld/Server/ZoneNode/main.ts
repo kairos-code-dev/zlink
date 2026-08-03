@@ -5,13 +5,19 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,
+  ZLINK_LOCATION_RUNTIME_QUERY,
   ZLINK_ROUTE_CLIENT,
+  ZLINK_ROUTE_MESH_RUNTIME,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
   ZLINK_SPOT_MANAGER
 } from '@zlink-systems/nestjs';
 import type {
   ZLinkActorClient,
   ZLinkActorManager,
+  ZLinkLocationRuntimeQuery,
   ZLinkRouteClient,
+  ZLinkRouteMeshRuntime,
+  ZLinkRouteMeshRuntimeOptions,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
 import { ZONEWORLD_CONFIG } from '../Configuration/configuration';
@@ -42,12 +48,27 @@ async function bootstrap(): Promise<void> {
     const maintenance = app.get(MaintenanceStore);
     state.restore(await maintenance.readAll());
     console.log(`maintenance restored node=${node.nodeId} enabled=${state.ownMaintenance()}`);
+    if (node.waitForPlacementPeer === true) {
+      const routeMeshRuntime = app.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME, { strict: false });
+      await waitForPlacementPeer(routeMeshRuntime, ZoneWorldNames.zoneMesh);
+    }
     const spots = app.get<ZLinkSpotManager>(ZLINK_SPOT_MANAGER, { strict: false });
     for (const zoneId of zones) {
-      await spots
+      const result = await spots
         .getOrCreate(zoneId, ZoneSpot.name)
         .inMesh(ZoneWorldNames.zoneMesh)
         .submit();
+      console.log(`zone spot create zone=${zoneId} state=${result.state}`);
+      if (result.state === 'rejected') {
+        throw new Error(`Zone spot '${zoneId}' creation was rejected.`);
+      }
+    }
+    if (node.placementWeightAfterZoneCreation !== undefined) {
+      await updatePlacementWeight(
+        app,
+        node.nodeId,
+        node.placementWeightAfterZoneCreation
+      );
     }
     if (node.disableBots !== true) {
       await spawnBots(app, zones);
@@ -94,6 +115,40 @@ export {};
 async function waitForBotStart(signalPath: string | undefined): Promise<void> {
   if (signalPath === undefined) return;
   while (!fs.existsSync(signalPath)) await delay(50);
+}
+
+async function waitForPlacementPeer(runtime: ZLinkRouteMeshRuntime, meshName: string): Promise<void> {
+  while (!runtime.isReady(meshName) || runtime.snapshot(meshName).readyPeerCount < 1) {
+    await delay(50);
+  }
+}
+
+async function updatePlacementWeight(
+  app: { get<T>(token: unknown, options?: { strict: boolean }): T },
+  nodeId: string,
+  weight: number
+): Promise<void> {
+  const options = app.get<ZLinkRouteMeshRuntimeOptions>(
+    ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+    { strict: false }
+  );
+  options.mesh(ZoneWorldNames.zoneMesh).placementWeight = weight;
+  const locations = app.get<ZLinkLocationRuntimeQuery>(
+    ZLINK_LOCATION_RUNTIME_QUERY,
+    { strict: false }
+  );
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const descriptors = await locations.listMeshNodeDescriptors(ZoneWorldNames.zoneMesh);
+    if (descriptors.items.some((descriptor) => descriptor.placementWeight === weight)) {
+      console.log(`placement weight updated node=${nodeId} weight=${weight}`);
+      return;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Placement weight update for '${nodeId}' was not published.`);
+    }
+    await delay(50);
+  }
 }
 
 async function spawnBots(app: { get<T>(token: unknown, options?: { strict: boolean }): T }, zones: readonly string[]): Promise<void> {

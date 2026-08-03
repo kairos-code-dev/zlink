@@ -880,6 +880,14 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
+  setInstanceSpotIdleTimeout(timeoutMs: number): this {
+    this.node.instanceSpotIdleTimeoutMs = requireNonNegativeSafeInteger(
+      timeoutMs,
+      'Instance Spot idle timeout'
+    );
+    return this;
+  }
+
   configureRouterSocket(): ZLinkMeshNodeSocketConfig {
     this.node.router ??= {};
     return this.node.router as ZLinkMeshNodeSocketConfig;
@@ -1351,6 +1359,15 @@ function requirePositiveCapacity(value: number, label: string): number {
   return value;
 }
 
+function requireNonNegativeSafeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ZLinkConfigurationException(
+      `${label} must be a non-negative safe integer.`
+    );
+  }
+  return value;
+}
+
 function requirePublicWeight(value: number, label: string): number {
   if (!Number.isInteger(value) || value < 0 || value > 10_000) {
     throw new ZLinkConfigurationException(`${label} must be an integer in 0..10000.`);
@@ -1512,6 +1529,7 @@ interface MutableSpotNodeOptions {
   actorLimit?: number;
   spotLimit?: number;
   activationConcurrencyLimit?: number;
+  instanceSpotIdleTimeoutMs?: number;
   routingId?: string;
   routingIdPrefix?: string;
   router?: MutableSpotRouterCapabilityOptions;

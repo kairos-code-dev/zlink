@@ -129,6 +129,137 @@ func TestPollerModifyCompletionDoesNotDisableRequestProgress(t *testing.T) {
 	}
 }
 
+func TestPollerCompletionOwnsAndReleasesRequestProgress(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer router.Close()
+	dealer, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer dealer.Close()
+
+	endpoint := inprocEndpoint("poller-completion-ownership")
+	if err := router.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := dealer.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := router.SetReceiveTimeout(5 * time.Second); err != nil {
+		t.Fatalf("SetReceiveTimeout() error = %v", err)
+	}
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	registered := false
+	defer func() {
+		if registered {
+			_ = poller.RemoveSocket(dealer)
+		}
+		_ = poller.Close()
+	}()
+	if err := poller.AddSocket(dealer, zlink.PollCompletion, 91); err != nil {
+		t.Fatalf("AddSocket(PollCompletion) error = %v", err)
+	}
+	registered = true
+
+	serveRequest := func(payload string) <-chan error {
+		result := make(chan error, 1)
+		go func() {
+			var request zlink.Received
+			if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil {
+				result <- err
+				return
+			}
+			defer request.Close()
+			reply, err := zlink.NewMessage([]byte(payload))
+			if err != nil {
+				result <- err
+				return
+			}
+			defer reply.Close()
+			result <- request.Reply().Message(reply).Submit(nil)
+		}()
+		return result
+	}
+
+	serverDone := serveRequest("poller-reply")
+	completion, err := dealer.Request().Bytes([]byte("poller-request")).Timeout(2 * time.Second).SubmitAsync(nil)
+	if err != nil {
+		t.Fatalf("SubmitAsync() error = %v", err)
+	}
+
+	events := make([]zlink.PollEvent, 1)
+	sawCompletionEvent := false
+	var first zlink.RequestReplyCompletion
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		n, err := poller.Wait(events, 100*time.Millisecond)
+		if err != nil {
+			t.Fatalf("Wait(PollCompletion) error = %v", err)
+		}
+		if n > 0 && events[0].Slot == 91 && events[0].Revents&zlink.PollCompletion != 0 {
+			sawCompletionEvent = true
+		}
+		select {
+		case result, ok := <-completion:
+			if !ok {
+				t.Fatalf("completion channel closed without result")
+			}
+			first = result
+			goto firstComplete
+		default:
+		}
+	}
+	t.Fatalf("PollCompletion did not deliver request completion")
+
+firstComplete:
+	if !sawCompletionEvent {
+		t.Fatalf("request completed without a PollCompletion event")
+	}
+	if first.Err != nil {
+		t.Fatalf("first request completion error = %v", first.Err)
+	}
+	zlink.MultipartClose(first.Parts)
+	if err := <-serverDone; err != nil {
+		t.Fatalf("first server request error = %v", err)
+	}
+
+	if err := poller.RemoveSocket(dealer); err != nil {
+		t.Fatalf("RemoveSocket() error = %v", err)
+	}
+	registered = false
+
+	serverDone = serveRequest("internal-reply")
+	second, err := dealer.Request().Bytes([]byte("internal-request")).Timeout(2 * time.Second).SubmitAsync(nil)
+	if err != nil {
+		t.Fatalf("second SubmitAsync() error = %v", err)
+	}
+	select {
+	case result, ok := <-second:
+		if !ok {
+			t.Fatalf("second completion channel closed without result")
+		}
+		if result.Err != nil {
+			t.Fatalf("second request completion error = %v", result.Err)
+		}
+		zlink.MultipartClose(result.Parts)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("internal request progress did not resume after RemoveSocket")
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatalf("second server request error = %v", err)
+	}
+}
+
 func TestSendDontWaitDoesNotTreatTemporaryBackpressureAsError(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

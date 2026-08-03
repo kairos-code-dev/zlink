@@ -4,6 +4,7 @@
 #include "runtime/mesh/route_mesh_connection_policy.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -327,6 +328,7 @@ peer_admission_result_t service_topology_registry_t::admit_impl (
         _peers.erase (key);
         _not_required_peers.insert_or_assign (
           std::move (key), std::move (descriptor));
+        ++_topology_version;
         auto changed = _change_handler;
         lock.unlock ();
         if (changed)
@@ -359,6 +361,7 @@ peer_admission_result_t service_topology_registry_t::admit_impl (
       admitted_peer_t{std::move (descriptor), std::move (connection_id),
                       direction.value_or (
                         service_connection_direction_t::inbound)});
+    ++_topology_version;
     auto changed = _change_handler;
     lock.unlock ();
     if (changed)
@@ -379,6 +382,7 @@ bool service_topology_registry_t::disconnect (
             return false;
         }
         _peers.erase (found);
+        ++_topology_version;
         changed = _change_handler;
     }
     if (changed)
@@ -419,6 +423,125 @@ std::optional<admitted_peer_t> service_topology_registry_t::peer (
     return found->second;
 }
 
+void service_topology_registry_t::materialize_selection_state (
+  selection_state_t &state)
+{
+    if (!state.precomputed)
+        return;
+    const auto total_selections = static_cast<std::int64_t> (
+      state.precomputed_total_selections);
+    for (std::size_t index = 0; index < state.ordered_node_ids.size (); ++index) {
+        const auto weight = static_cast<std::int64_t> (
+          state.ordered_weights[index]);
+        state.cumulative[state.ordered_node_ids[index]] =
+          state.precomputed_initial_cumulative[index]
+          + total_selections * weight
+          - static_cast<std::int64_t> (
+              state.precomputed_selected_counts[index])
+              * static_cast<std::int64_t> (state.total_weight);
+    }
+    state.precomputed = false;
+    state.precomputed_initial_cumulative.clear ();
+    state.precomputed_cycle_start_cumulative.clear ();
+    state.precomputed_schedule.clear ();
+    state.precomputed_selected_counts.clear ();
+    state.precomputed_total_selections = 0;
+    state.precomputed_cursor = 0;
+    state.precomputed_cycle_start = 0;
+    state.precomputed_schedule_end = 0;
+}
+
+void service_topology_registry_t::rebuild_selection_schedule (
+  selection_state_t &state)
+{
+    constexpr std::size_t max_precomputed_steps = 4096;
+    constexpr auto max_precompute_time = std::chrono::milliseconds (5);
+    state.precomputed = false;
+    state.precomputed_initial_cumulative.clear ();
+    state.precomputed_cycle_start_cumulative.clear ();
+    state.precomputed_schedule.clear ();
+    state.precomputed_selected_counts.clear ();
+    state.precomputed_total_selections = 0;
+    state.precomputed_cursor = 0;
+    state.precomputed_cycle_start = 0;
+    state.precomputed_schedule_end = 0;
+    if (state.ordered_node_ids.empty ()
+        || state.total_weight == 0
+        || state.total_weight
+             > static_cast<std::uint64_t> (
+                 std::numeric_limits<std::int64_t>::max ()))
+        return;
+
+    std::vector<std::int64_t> simulated;
+    simulated.reserve (state.ordered_node_ids.size ());
+    for (const auto &node_id : state.ordered_node_ids)
+        simulated.push_back (state.cumulative[node_id]);
+    const auto initial = simulated;
+    std::map<std::vector<std::int64_t>, std::size_t> seen;
+    std::vector<std::size_t> schedule;
+    schedule.reserve (max_precomputed_steps);
+    const auto started = std::chrono::steady_clock::now ();
+
+    const auto select_index = [&] (
+      const std::vector<std::int64_t> &credits) {
+        std::optional<std::size_t> selected;
+        for (std::size_t index = 0; index < credits.size (); ++index) {
+            const auto candidate_credit =
+              credits[index]
+              + static_cast<std::int64_t> (state.ordered_weights[index]);
+            if (!selected
+                || candidate_credit
+                     > credits[*selected]
+                         + static_cast<std::int64_t> (
+                             state.ordered_weights[*selected])
+                || (candidate_credit
+                      == credits[*selected]
+                           + static_cast<std::int64_t> (
+                               state.ordered_weights[*selected])
+                    && state.ordered_node_ids[index]
+                         < state.ordered_node_ids[*selected])) {
+                selected = index;
+            }
+        }
+        return selected;
+    };
+
+    const auto apply_selection = [&] (std::vector<std::int64_t> &credits,
+                                      std::size_t selected) {
+        for (std::size_t index = 0; index < credits.size (); ++index)
+            credits[index] += static_cast<std::int64_t> (
+              state.ordered_weights[index]);
+        credits[selected] -= static_cast<std::int64_t> (state.total_weight);
+    };
+
+    for (std::size_t step = 0; step < max_precomputed_steps; ++step) {
+        if (std::chrono::steady_clock::now () - started
+            >= max_precompute_time)
+            return;
+        const auto [found, inserted] = seen.emplace (simulated, step);
+        if (!inserted) {
+            const auto cycle_start = found->second;
+            auto cycle_state = initial;
+            for (std::size_t index = 0; index < cycle_start; ++index)
+                apply_selection (cycle_state, schedule[index]);
+            state.precomputed = true;
+            state.precomputed_initial_cumulative = initial;
+            state.precomputed_cycle_start_cumulative = std::move (cycle_state);
+            state.precomputed_selected_counts.assign (
+              state.ordered_node_ids.size (), 0);
+            state.precomputed_cycle_start = cycle_start;
+            state.precomputed_schedule_end = schedule.size ();
+            state.precomputed_schedule = std::move (schedule);
+            return;
+        }
+        const auto selected = select_index (simulated);
+        if (!selected)
+            return;
+        schedule.push_back (*selected);
+        apply_selection (simulated, *selected);
+    }
+}
+
 std::optional<admitted_peer_t>
 service_topology_registry_t::select (const std::string &channel_name)
 {
@@ -426,43 +549,97 @@ service_topology_registry_t::select (const std::string &channel_name)
         return std::nullopt;
     }
     std::lock_guard lock (_mutex);
-    std::vector<const admitted_peer_t *> eligible;
-    std::vector<int> weights;
-    for (const auto &[_, peer] : _peers) {
-        if (!selectable (peer.descriptor, channel_name)) {
-            continue;
+    auto &state = _selection_state[channel_name];
+    if (!state.initialized || state.topology_version != _topology_version) {
+        materialize_selection_state (state);
+        state.weights.clear ();
+        state.total_weight = 0;
+        for (const auto &[node_id, peer] : _peers) {
+            if (!selectable (peer.descriptor, channel_name))
+                continue;
+            const auto channel = std::lower_bound (
+              peer.descriptor.channels.begin (),
+              peer.descriptor.channels.end (), channel_name,
+              [] (const service_channel_descriptor_t &entry,
+                  const std::string &name) { return entry.name < name; });
+            const auto weight = static_cast<std::uint64_t> (channel->weight);
+            if (state.total_weight
+                > std::numeric_limits<std::uint64_t>::max () - weight)
+                throw std::overflow_error (
+                  "RouteMesh selection weight total is exhausted");
+            state.weights.insert_or_assign (node_id, weight);
+            state.total_weight += weight;
         }
-        eligible.push_back (&peer);
-        const auto channel = std::lower_bound (
-          peer.descriptor.channels.begin (), peer.descriptor.channels.end (),
-          channel_name,
-          [] (const service_channel_descriptor_t &entry, const std::string &name) {
-              return entry.name < name;
-          });
-        weights.push_back (channel->weight);
-    }
-    const auto total_weight =
-      sum_service_weights (weights);
-    if (eligible.empty () || total_weight == 0) {
-        return std::nullopt;
+        for (auto it = state.cumulative.begin ();
+             it != state.cumulative.end ();) {
+            if (!state.weights.contains (it->first))
+                it = state.cumulative.erase (it);
+            else
+                ++it;
+        }
+        state.ordered_node_ids.clear ();
+        state.ordered_weights.clear ();
+        state.ordered_node_ids.reserve (state.weights.size ());
+        state.ordered_weights.reserve (state.weights.size ());
+        for (const auto &[node_id, weight] : state.weights) {
+            state.ordered_node_ids.push_back (node_id);
+            state.ordered_weights.push_back (weight);
+        }
+        rebuild_selection_schedule (state);
+        state.initialized = true;
+        state.topology_version = _topology_version;
     }
 
-    auto &cursor = _selection_cursor[channel_name];
-    const auto selected_weight = cursor++ % total_weight;
-    std::uint64_t offset = 0;
-    for (const auto *peer : eligible) {
-        const auto channel = std::lower_bound (
-          peer->descriptor.channels.begin (), peer->descriptor.channels.end (),
-          channel_name,
-          [] (const service_channel_descriptor_t &entry, const std::string &name) {
-              return entry.name < name;
-          });
-        offset += channel->weight;
-        if (selected_weight < offset) {
-            return *peer;
+    if (state.weights.empty () || state.total_weight == 0)
+        return std::nullopt;
+
+    if (state.precomputed) {
+        const auto selected_index =
+          state.precomputed_schedule[state.precomputed_cursor++];
+        ++state.precomputed_selected_counts[selected_index];
+        ++state.precomputed_total_selections;
+        const auto selected_node_id =
+          state.ordered_node_ids[selected_index];
+        if (state.precomputed_cursor == state.precomputed_schedule_end) {
+            state.precomputed_initial_cumulative =
+              state.precomputed_cycle_start_cumulative;
+            std::fill (state.precomputed_selected_counts.begin (),
+                       state.precomputed_selected_counts.end (), 0);
+            state.precomputed_total_selections = 0;
+            state.precomputed_cursor = state.precomputed_cycle_start;
+        }
+        const auto selected = _peers.find (selected_node_id);
+        if (selected == _peers.end ())
+            return std::nullopt;
+        return selected->second;
+    }
+
+    const admitted_peer_t *selected = nullptr;
+    std::int64_t selected_cumulative = std::numeric_limits<std::int64_t>::min ();
+    for (const auto &[node_id, weight] : state.weights) {
+        const auto peer = _peers.find (node_id);
+        if (peer == _peers.end ())
+            continue;
+        auto &cumulative =
+          state.cumulative[node_id];
+        if (cumulative > std::numeric_limits<std::int64_t>::max ()
+                         - static_cast<std::int64_t> (weight)) {
+            throw std::overflow_error (
+              "RouteMesh selection cumulative value is exhausted");
+        }
+        cumulative += static_cast<std::int64_t> (weight);
+        if (selected == nullptr || cumulative > selected_cumulative) {
+            selected = &peer->second;
+            selected_cumulative = cumulative;
         }
     }
-    return *eligible.back ();
+    if (selected == nullptr)
+        return std::nullopt;
+
+    auto &selected_value =
+      state.cumulative[selected->descriptor.node_routing_id];
+    selected_value -= static_cast<std::int64_t> (state.total_weight);
+    return *selected;
 }
 
 std::vector<admitted_peer_t>

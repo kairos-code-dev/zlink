@@ -39,7 +39,7 @@ final class ZLinkHttpRequestBodyEncoder {
         List<MultipartPart> multipart) {
         if (countBodySources(body, bodyProvider, form, multipart) > 1) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
                 "HTTP request accepts a single body source: body, body_stream, form, or multipart");
         }
 

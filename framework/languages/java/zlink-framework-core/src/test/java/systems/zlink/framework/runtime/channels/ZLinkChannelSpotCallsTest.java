@@ -26,6 +26,6 @@ final class ZLinkChannelSpotCallsTest {
         ZLinkFrameworkException typed = assertInstanceOf(
             ZLinkFrameworkException.class,
             failure.getCause());
-        assertEquals(ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND, typed.kind());
+        assertEquals(ZLinkFrameworkErrorKind.NOT_FOUND, typed.kind());
     }
 }

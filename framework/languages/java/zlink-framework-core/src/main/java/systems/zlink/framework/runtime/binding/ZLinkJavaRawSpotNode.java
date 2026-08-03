@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.binding;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -1694,7 +1696,8 @@ final class ZLinkJavaRawSpotNode
         ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
         InstanceAuthority current =
             instanceAuthorities.get(route.targetSpotId());
-        if (current != null && current.route().equals(route)) {
+        if (current != null
+            && sameInstanceAuthorityFence(current.route(), route)) {
             instanceAuthorities.remove(
                 route.targetSpotId(), current);
         }

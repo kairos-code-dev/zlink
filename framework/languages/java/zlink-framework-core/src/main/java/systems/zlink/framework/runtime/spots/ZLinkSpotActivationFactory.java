@@ -64,7 +64,8 @@ final class ZLinkSpotActivationFactory {
             handlerLoader,
             host.primaryNode().routingId(),
             backendSpot,
-            new systems.zlink.framework.execution.ZLinkAsyncSerialQueue(),
+            new systems.zlink.framework.execution.ZLinkAsyncSerialQueue(
+                host.serialExecutor(), false),
             executionModes.getOrDefault(
                 spotType,
                 ZLinkUserSpotExecutionMode.SPOT_WIDE),

@@ -59,11 +59,13 @@ public sealed class FrameworkRuntimeContracts
             ZLinkFrameworkRuntimeState.Serving,
             sequence: 0);
 
-        public async IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+        public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return Status;
+            yield return new ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>(
+                Status,
+                default);
             await Task.CompletedTask;
         }
 

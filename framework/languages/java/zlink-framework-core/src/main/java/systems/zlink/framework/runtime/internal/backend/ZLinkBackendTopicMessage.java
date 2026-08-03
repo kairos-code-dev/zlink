@@ -19,6 +19,10 @@ public record ZLinkBackendTopicMessage(
             applicationMetadata == null ? new byte[0] : applicationMetadata.clone();
     }
 
+    public int applicationMetadataSize() {
+        return applicationMetadata.length;
+    }
+
     /** Backward-compatible constructor without an inbound content type. */
     public ZLinkBackendTopicMessage(
         Optional<RoutingId> routingId,

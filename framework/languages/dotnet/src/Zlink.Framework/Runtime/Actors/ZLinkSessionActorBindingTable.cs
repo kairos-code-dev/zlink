@@ -11,7 +11,8 @@ internal sealed record ZLinkSessionBindingEntry(
     string? RelocationHandoffId = null,
     string? CompletedRelocationHandoffId = null,
     int ActiveFrames = 0,
-    TaskCompletionSource? DrainSignal = null)
+    TaskCompletionSource? DrainSignal = null,
+    TaskCompletionSource? RouteAvailableSignal = null)
 {
     internal ulong ObjectGeneration => Route.Ref.ObjectGeneration;
     internal ulong AuthorityOwnerGeneration => Route.AuthorityOwnerGeneration;
@@ -217,6 +218,7 @@ internal sealed class ZLinkSessionActorBindingTable
             {
                 _entries.Remove(new ZLinkSessionBindingKey(actorId, entry.BindingToken));
                 entry.DrainSignal?.TrySetResult();
+                entry.RouteAvailableSignal?.TrySetResult();
             }
 
             _entries[key] = new ZLinkSessionBindingEntry(
@@ -282,6 +284,7 @@ internal sealed class ZLinkSessionActorBindingTable
             {
                 _entries.Remove(key);
                 entry.DrainSignal?.TrySetResult();
+                entry.RouteAvailableSignal?.TrySetResult();
             }
         }
     }
@@ -342,6 +345,38 @@ internal sealed class ZLinkSessionActorBindingTable
             };
             return true;
         }
+    }
+
+    public ValueTask<bool> WaitForRouteAvailableAsync(
+        string actorId,
+        string bindingToken,
+        CancellationToken cancellationToken)
+    {
+        Task? signalTask = null;
+        lock (_entries)
+        {
+            var key = new ZLinkSessionBindingKey(actorId, bindingToken);
+            if (!_entries.TryGetValue(key, out var entry))
+                return ValueTask.FromResult(false);
+            if (entry.RelocationHandoffId is null)
+                return ValueTask.FromResult(true);
+
+            var signal = entry.RouteAvailableSignal
+                         ?? new TaskCompletionSource(
+                             TaskCreationOptions.RunContinuationsAsynchronously);
+            _entries[key] = entry with { RouteAvailableSignal = signal };
+            signalTask = signal.Task;
+        }
+
+        return WaitForRouteAvailableSignalAsync(signalTask, cancellationToken);
+    }
+
+    private static async ValueTask<bool> WaitForRouteAvailableSignalAsync(
+        Task signalTask,
+        CancellationToken cancellationToken)
+    {
+        await signalTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public void CompleteAccepted(
@@ -480,6 +515,7 @@ internal sealed class ZLinkSessionActorBindingTable
 
     public bool AbortRouteSeal(ZLinkSessionRouteSeal request)
     {
+        TaskCompletionSource? routeAvailableSignal = null;
         lock (_entries)
         {
             var key = new ZLinkSessionBindingKey(
@@ -504,10 +540,13 @@ internal sealed class ZLinkSessionActorBindingTable
             _entries[key] = entry with
             {
                 RelocationHandoffId = null,
-                DrainSignal = null
+                DrainSignal = null,
+                RouteAvailableSignal = null
             };
-            return true;
+            routeAvailableSignal = entry.RouteAvailableSignal;
         }
+        routeAvailableSignal?.TrySetResult();
+        return true;
     }
 
     public bool UnsealCommittedRoute(
@@ -521,6 +560,7 @@ internal sealed class ZLinkSessionActorBindingTable
                 request.TargetOwnerLeaseGeneration,
                 out var targetRoute))
             return false;
+        TaskCompletionSource? routeAvailableSignal = null;
         lock (_entries)
         {
             var key = new ZLinkSessionBindingKey(
@@ -569,10 +609,13 @@ internal sealed class ZLinkSessionActorBindingTable
             _entries[key] = entry with
             {
                 RelocationHandoffId = null,
-                DrainSignal = null
+                DrainSignal = null,
+                RouteAvailableSignal = null
             };
-            return true;
+            routeAvailableSignal = entry.RouteAvailableSignal;
         }
+        routeAvailableSignal?.TrySetResult();
+        return true;
     }
 
     public ZLinkSessionRouteCommitResult CommitRoute(
@@ -776,6 +819,7 @@ internal sealed class ZLinkSessionActorBindingTable
             {
                 _entries.Remove(key);
                 existing.DrainSignal?.TrySetResult();
+                existing.RouteAvailableSignal?.TrySetResult();
             }
         }
     }
@@ -870,7 +914,10 @@ internal sealed class ZLinkSessionActorBindingTable
         lock (_entries)
         {
             foreach (var entry in _entries.Values)
+            {
                 entry.DrainSignal?.TrySetResult();
+                entry.RouteAvailableSignal?.TrySetResult();
+            }
             _entries.Clear();
             _tombstones.Clear();
         }

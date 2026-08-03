@@ -77,6 +77,7 @@ class raw_client_server_server_t
       mesh::service_liveness_registry_t::clock_t::time_point now);
     client_server_pump_result_t pump_one (
       mesh::service_liveness_registry_t::clock_t::time_point now);
+    std::size_t last_pump_bytes () const noexcept { return _last_pump_bytes; }
     mesh::service_liveness_tick_t tick_liveness (
       mesh::service_liveness_registry_t::clock_t::time_point now);
     bool reply (
@@ -111,6 +112,7 @@ class raw_client_server_server_t
              byte_vector_less_t>
       _connections;
     bool _closed = false;
+    std::size_t _last_pump_bytes = 0;
 };
 
 struct raw_client_server_client_options_t
@@ -134,6 +136,7 @@ class raw_client_server_client_t
       mesh::service_liveness_registry_t::clock_t::time_point now);
     client_server_pump_result_t pump_one (
       mesh::service_liveness_registry_t::clock_t::time_point now);
+    std::size_t last_pump_bytes () const noexcept { return _last_pump_bytes; }
     mesh::service_liveness_tick_t tick_liveness (
       mesh::service_liveness_registry_t::clock_t::time_point now);
 
@@ -163,6 +166,7 @@ class raw_client_server_client_t
     mesh::service_liveness_registry_t _liveness;
     std::vector<std::uint8_t> _connection_id;
     std::uint64_t _next_correlation = 1;
+    std::size_t _last_pump_bytes = 0;
     bool _ready = false;
     bool _closed = false;
 };

@@ -25,10 +25,12 @@ class SpotRuntimeStatusObserver implements OnApplicationBootstrap, OnApplication
   private async observeReadiness(): Promise<void> {
     const nodeId = this.config.zoneNode?.nodeId;
     if (nodeId === undefined) return;
-    for await (const status of this.routeMeshRuntime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
+    for await (const observed of this.routeMeshRuntime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
+      const status = observed.status;
       console.log(
         `mesh status node=${nodeId} state=${status.state}`
         + ` readyPeers=${status.readyPeerCount}`
+        + ` peers=${status.peers.map((peer) => `${peer.nodeRid}:${peer.state}`).join(',')}`
       );
     }
   }

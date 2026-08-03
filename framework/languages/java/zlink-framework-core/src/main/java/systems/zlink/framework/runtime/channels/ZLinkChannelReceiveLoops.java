@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.channels;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -12,6 +13,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRouterSocket
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 
 final class ZLinkChannelReceiveLoops implements AutoCloseable {
     private static final Duration RECEIVE_POLL_TIMEOUT = Duration.ofMillis(250);
@@ -51,15 +53,23 @@ final class ZLinkChannelReceiveLoops implements AutoCloseable {
                 if (!router.waitForReadable(RECEIVE_POLL_TIMEOUT)) {
                     return false;
                 }
-                if (!inboundDispatchBudget.canStartApplicationReceive()) {
-                    return false;
+                ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+                boolean dispatched = false;
+                while (batch.canReceiveNext()
+                    && inboundDispatchBudget.canStartApplicationReceive()) {
+                    ZLinkBackendReceived received = router.recv(
+                        ZLinkBackendRecvMode.DONT_WAIT);
+                    if (received == null) {
+                        break;
+                    }
+                    batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                        received.parts(),
+                        received.applicationMetadataSize(),
+                        received.acceptedJournalRecordSize()));
+                    dispatch.accept(received);
+                    dispatched = true;
                 }
-                ZLinkBackendReceived received = router.recv(ZLinkBackendRecvMode.DONT_WAIT);
-                if (received == null) {
-                    return false;
-                }
-                dispatch.accept(received);
-                return true;
+                return dispatched;
             }
         });
     }
@@ -74,16 +84,23 @@ final class ZLinkChannelReceiveLoops implements AutoCloseable {
                 if (!subscriber.waitForReadable(RECEIVE_POLL_TIMEOUT)) {
                     return false;
                 }
-                if (!inboundDispatchBudget.canStartApplicationReceive()) {
-                    return false;
+                ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+                boolean dispatched = false;
+                while (batch.canReceiveNext()
+                    && inboundDispatchBudget.canStartApplicationReceive()) {
+                    ZLinkBackendTopicMessage received = subscriber.subscribe(
+                        ZLinkBackendRecvMode.DONT_WAIT);
+                    if (received == null) {
+                        break;
+                    }
+                    batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                        received.parts(),
+                        received.applicationMetadataSize(),
+                        received.topic().getBytes(StandardCharsets.UTF_8).length));
+                    dispatch.accept(received);
+                    dispatched = true;
                 }
-                ZLinkBackendTopicMessage received =
-                    subscriber.subscribe(ZLinkBackendRecvMode.DONT_WAIT);
-                if (received == null) {
-                    return false;
-                }
-                dispatch.accept(received);
-                return true;
+                return dispatched;
             }
         });
     }
@@ -100,20 +117,27 @@ final class ZLinkChannelReceiveLoops implements AutoCloseable {
                 if (!router.waitForReadable(RECEIVE_POLL_TIMEOUT)) {
                     return false;
                 }
-                if (!inboundDispatchBudget.canStartApplicationReceive()) {
-                    return false;
+                ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+                boolean dispatched = false;
+                drainBridge.run();
+                while (batch.canReceiveNext()
+                    && inboundDispatchBudget.canStartApplicationReceive()) {
+                    ZLinkBackendReceived received;
+                    synchronized (socketLock.get()) {
+                        received = router.recv(ZLinkBackendRecvMode.DONT_WAIT);
+                    }
+                    if (received == null) {
+                        break;
+                    }
+                    batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                        received.parts(),
+                        received.applicationMetadataSize(),
+                        received.acceptedJournalRecordSize()));
+                    dispatch.accept(received);
+                    dispatched = true;
                 }
                 drainBridge.run();
-                ZLinkBackendReceived received;
-                synchronized (socketLock.get()) {
-                    received = router.recv(ZLinkBackendRecvMode.DONT_WAIT);
-                }
-                if (received == null) {
-                    drainBridge.run();
-                    return false;
-                }
-                dispatch.accept(received);
-                return true;
+                return dispatched;
             }
         });
     }

@@ -115,6 +115,15 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
+    public IZLinkMeshNodeBuilder SetInstanceSpotIdleTimeout(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.Zero)
+            throw new ZLinkConfigurationException(
+                "Instance Spot idle timeout must not be negative.");
+        registration.InstanceSpotIdleTimeout = timeout;
+        return this;
+    }
+
     public IZLinkMeshObjectRoleBuilder Objects() =>
         new ZLinkMeshObjectRoleBuilder(registration);
 

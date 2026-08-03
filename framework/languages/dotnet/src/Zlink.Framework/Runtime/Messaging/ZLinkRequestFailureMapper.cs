@@ -43,6 +43,11 @@ internal static class ZLinkRequestFailureMapper
                 $"{operationName} was rejected with result '{result}'.",
                 ZLinkRetryAdvice.DoNotRetry,
                 CreateRequestException(result)),
+            RequestResult.Backpressured => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.CapacityExceeded,
+                $"{operationName} exceeded the bounded completion capacity.",
+                ZLinkRetryAdvice.RetryAfterBackoff,
+                CreateRequestException(result)),
             RequestResult.ProtocolError => new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ProtocolError,
                 $"{operationName} failed with a protocol error.",

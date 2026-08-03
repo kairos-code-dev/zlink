@@ -23,8 +23,8 @@ public sealed class RouteMeshRuntimeContracts
 
         await foreach (var observed in runtime.ObserveAsync("orders"))
         {
-            Assert.Equal("orders", observed.MeshName);
-            Assert.True(observed.Sequence > status.Sequence);
+            Assert.Equal("orders", observed.Status.MeshName);
+            Assert.True(observed.Status.Sequence > status.Sequence);
             break;
         }
 
@@ -64,14 +64,16 @@ public sealed class RouteMeshRuntimeContracts
         public ZLinkRouteMeshStatus GetStatus(string meshName) =>
             Create(meshName, sequence: 1);
 
-        public async IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+        public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> ObserveAsync(
             string meshName,
             [System.Runtime.CompilerServices.EnumeratorCancellation]
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Yield();
-            yield return Create(meshName, sequence: 2);
+            yield return new ZLinkObservedStatus<ZLinkRouteMeshStatus>(
+                Create(meshName, sequence: 2),
+                default);
         }
 
         private static ZLinkRouteMeshStatus Create(

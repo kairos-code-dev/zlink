@@ -219,6 +219,13 @@ function requireNonNegativeInteger(label: string, value: number | undefined): vo
   }
 }
 
+function requireNonNegativeSafeInteger(label: string, value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ZLinkConfigurationException(`${label} must be a non-negative safe integer.`);
+  }
+}
+
 function validateChannelCapabilities(
   channels: ZLinkFrameworkRegistrationOptions['channels'],
   peerLocationConfigured: boolean
@@ -328,6 +335,10 @@ function validateSpotNodes(registration: ZLinkFrameworkRegistration): void {
       );
     }
     validateSpotNodeCapability(`SpotNode '${spotNodeName}' pubSub`, spotNode.pubSub);
+    requireNonNegativeSafeInteger(
+      `SpotNode '${spotNodeName}' instanceSpotIdleTimeoutMs`,
+      spotNode.instanceSpotIdleTimeoutMs
+    );
     requireValidSendTimeoutMs(
       `SpotNode '${spotNodeName}' publisher sendTimeoutMs`,
       spotNode.publisherConfig?.sendTimeoutMs

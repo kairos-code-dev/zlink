@@ -19,7 +19,7 @@ final class ZLinkOneWayAdmission {
             return null;
         }
         return CompletableFuture.failedFuture(new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ALREADY_SUBMITTED,
+            ZLinkFrameworkErrorKind.INVALID_OPERATION,
             "call has already been submitted"));
     }
 
@@ -54,13 +54,13 @@ final class ZLinkOneWayAdmission {
                 ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
                 "one-way submission did not obtain queue capacity before the send deadline");
             case ROUTE_NOT_CONNECTED -> new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 "one-way route is not connected");
             case TARGET_NOT_FOUND -> new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 "one-way target was not found");
             case SHUTDOWN -> new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RUNTIME_SHUTDOWN,
+                ZLinkFrameworkErrorKind.SHUTTING_DOWN,
                 "framework runtime is shutting down");
         };
     }

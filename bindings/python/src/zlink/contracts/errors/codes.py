@@ -29,6 +29,7 @@ class ConnectResult(IntEnum):
     NOT_FOUND = 605
     CONFLICT = 606
     BUSY = 607
+    AUTH_FAILED = 608
 
 class ConfigResult(IntEnum):
     """The outcome of reading or applying a configuration option."""
@@ -39,6 +40,9 @@ class ConfigResult(IntEnum):
     INTERNAL_ERROR = 704
     INVALID_STATE = 705
     NOT_FOUND = 706
+    CONFLICT = 707
+    BUFFER_TOO_SMALL = 708
+    BUSY = 709
 
 class ErrorCode(IntEnum):
     """Native zlink-internal error codes (FSM, protocol, termination)."""

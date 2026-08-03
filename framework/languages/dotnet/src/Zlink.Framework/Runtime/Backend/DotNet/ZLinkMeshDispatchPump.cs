@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Dispatch;
@@ -283,27 +284,26 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
         try
         {
-            while (true)
-            {
-                receiveBatch.Reset();
-                receiveBatch.MaximumRecords =
-                    readyRecord.Domain == MeshReadyDomains.Application ? 1 : int.MaxValue;
-                var got = claim.Receive(receiveBatch, RecvFlags.DontWait);
-                if (!got)
-                    return;
+            receiveBatch.Reset();
+            // Application admission is already reserved when the record enters
+            // its owner mailbox. Keep the receive turn bounded by the shared
+            // count/byte/time budget instead of reducing it to one record; a
+            // single-record turn starves later owners under sustained actor and
+            // timer traffic while providing no additional HWM guarantee.
+            receiveBatch.MaximumRecords = ZLinkReceiveBatchBudget.MaximumRecords;
+            receiveBatch.MaximumBytes = ZLinkReceiveBatchBudget.MaximumBytes;
+            receiveBatch.StartedAt = Stopwatch.GetTimestamp();
+            if (!claim.Receive(receiveBatch, RecvFlags.DontWait))
+                return;
 
-                var count = receiveBatch.Count;
-                for (var record = 0; record < count; record++)
-                    DispatchRecord(receiveBatch, record, ownerSpotId, readyRecord.Actor);
+            var count = receiveBatch.Count;
+            for (var record = 0; record < count; record++)
+                DispatchRecord(receiveBatch, record, ownerSpotId, readyRecord.Actor);
 
-                // Application records consume host-wide admission budget. End
-                // this claim after the bounded batch so the mailbox can release
-                // the claim and pre-admit the next record only after capacity
-                // has returned. Infrastructure domains may continue draining
-                // under the same claim because they do not consume that budget.
-                if (readyRecord.Domain == MeshReadyDomains.Application)
-                    return;
-            }
+            // Release every claim after one bounded turn. The mailbox signals
+            // again when residue remains, so the next turn returns to the
+            // ready-owner rotation instead of letting one owner monopolize the
+            // pump.
         }
         catch (Exception)
         {

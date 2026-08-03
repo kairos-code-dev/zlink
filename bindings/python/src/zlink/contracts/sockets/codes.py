@@ -58,6 +58,7 @@ class RequestResult(IntEnum):
     INVALID_ARGUMENT = 110
     INVALID_STATE = 111
     NOT_SUPPORTED = 112
+    BACKPRESSURED = 113
 
 class RecvResult(IntEnum):
     """The outcome of a receive."""
@@ -68,6 +69,8 @@ class RecvResult(IntEnum):
     INVALID_HANDLE = 204
     NOT_SUPPORTED = 205
     INTERNAL_ERROR = 206
+    BUFFER_TOO_SMALL = 207
+    INVALID_STATE = 208
 
 class HandlerResult(IntEnum):
     """The outcome of registering or running a callback handler."""

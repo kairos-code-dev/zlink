@@ -122,9 +122,17 @@ and ROUTER provide request operations. When ROUTER receives request metadata,
 that metadata is used to create the reply operation. STREAM provides raw TCP
 packet callbacks and caller-provided receive.
 
-`RecvPart`, `SubscribePart`, and packet callbacks are public operations over
-the Core raw-part substrate. Callers do not handle native `zlink_msg_t` values
-or raw pointers directly.
+PAIR, DEALER, ROUTER, and STREAM receive through `Recv`, which fills a
+`Received` result store. SUB and XSUB topic receive uses `Subscribe`, which
+fills a `TopicMessage` result store. Core part functions are the internal
+substrate for these aggregate surfaces and are not exposed as Go public
+methods.
+
+ROUTER also exposes the Core completion connection as an opaque multipart
+control record. `OnCompletionControl` delivers a `Received` containing the
+source routing ID and payload parts; the handler must close or consume those
+parts. `CompletionControl(peerRID)` sends a record to a selected peer and
+rejects flags other than `SendFlagsNone`.
 
 ## Receive and eventing
 

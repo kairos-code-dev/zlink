@@ -177,7 +177,7 @@ class KotlinFrameworkExtensionsContractTest {
     fun `framework error kind is preserved across coroutine await boundary`() = runBlocking {
         val call = FailingRequestCall(
             ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 "stale actor location",
             ),
         )
@@ -188,8 +188,7 @@ class KotlinFrameworkExtensionsContractTest {
             }
         }
 
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, error.kind())
-        assertTrue(error.retriable())
+        assertEquals(ZLinkFrameworkErrorKind.UNAVAILABLE, error.kind())
     }
 
     @Test

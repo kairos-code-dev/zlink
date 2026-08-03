@@ -18,12 +18,12 @@ func TestExternalRequestProgressRegistryReferenceCounting(t *testing.T) {
 		go func() {
 			defer group.Done()
 			for j := 0; j < iterations; j++ {
-				acquireExternalRequestProgress(handle)
+				acquireExternalRequestProgress(handle, nil)
 				if !externalRequestProgressActive(handle) {
 					t.Errorf("registry reported inactive after acquire")
 					return
 				}
-				releaseExternalRequestProgress(handle)
+				releaseExternalRequestProgress(handle, nil)
 			}
 		}()
 	}

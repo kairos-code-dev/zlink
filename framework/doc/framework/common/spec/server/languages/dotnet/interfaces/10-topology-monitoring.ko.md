@@ -96,7 +96,8 @@ public readonly record struct ZLinkObservationLoss(
 
 public readonly record struct ZLinkObservedStatus<TStatus>(
     TStatus Status,
-    ZLinkObservationLoss Loss);
+    ZLinkObservationLoss Loss)
+    where TStatus : notnull;
 
 public readonly record struct ZLinkInboundDispatchStatus(
     ulong ApplicationHwmBytes,

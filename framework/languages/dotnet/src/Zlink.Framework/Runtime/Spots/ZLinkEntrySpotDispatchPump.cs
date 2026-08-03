@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -265,10 +266,24 @@ internal sealed class ZLinkEntrySpotDispatchPump(
     {
         if (_entrySpot is not { } entrySpot) return;
 
+        var startedAt = Stopwatch.GetTimestamp();
+        var count = 0;
+        long bytes = 0;
         while (true)
         {
+            if (ZLinkReceiveBatchBudget.IsExhausted(count, bytes, startedAt))
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                    taskRunner.RunDetached(
+                        "entry-spot-actor-lifecycle-dispatch",
+                        DispatchActorLifecycleDrainAsync);
+                return;
+            }
             var lifecycle = entrySpot.RecvActorLifecycle(RecvFlags.DontWait);
             if (lifecycle is null) return;
+            count++;
+            bytes = checked(
+                bytes + (lifecycle.Value.Info.CurrentActor?.ActorId?.Length ?? 0));
             if (lifecycle.Value.Kind != ZLinkBackendActorLifecycleEventKind.Disconnected)
                 continue;
 

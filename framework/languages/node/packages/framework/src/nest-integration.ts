@@ -208,6 +208,12 @@ export function createIntegrationSpotManager(
         new Map(Object.entries(spotNode.instanceSpotFactories ?? {}))
       ])
     ),
+    instanceSpotIdleTimeoutMs: new Map(
+      [...registration.spotNodes].map(([meshName, spotNode]) => [
+        meshName,
+        spotNode.instanceSpotIdleTimeoutMs ?? 0
+      ])
+    ),
     spotTimerHandlers: [...registration.spotNodes.values()]
       .flatMap((spotNode) => [...(spotNode.spotTimerHandlers ?? [])]),
     spotPacketHandlers: [...registration.spotNodes.values()]

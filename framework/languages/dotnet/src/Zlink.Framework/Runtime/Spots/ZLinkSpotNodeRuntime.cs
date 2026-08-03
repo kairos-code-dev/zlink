@@ -114,6 +114,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             spotChannelName,
             _completionAdmission,
             locationLifecycle);
+        _spots.StartIdleEviction();
         if (frameworkRegistration.Locations.ResolveStore() is not null
             && node is IZLinkBackendRelocationReplyRelay relayBackend)
         {

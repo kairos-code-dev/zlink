@@ -65,16 +65,18 @@ func TestSurfaceRawSocketCapabilities(t *testing.T) {
 	}{
 		{(*zlink.PairSocket)(nil), "Send", true},
 		{(*zlink.PairSocket)(nil), "Recv", true},
-		{(*zlink.PairSocket)(nil), "RecvPart", true},
+		{(*zlink.PairSocket)(nil), "RecvPart", false},
 		{(*zlink.PairSocket)(nil), "TrySend", false},
 		{(*zlink.PairSocket)(nil), "SendBytes", false},
 		{(*zlink.PubSocket)(nil), "Publish", true},
 		{(*zlink.PubSocket)(nil), "Recv", false},
 		{(*zlink.SubSocket)(nil), "Subscribe", true},
-		{(*zlink.SubSocket)(nil), "SubscribePart", true},
+		{(*zlink.SubSocket)(nil), "SubscribePart", false},
 		{(*zlink.SubSocket)(nil), "Send", false},
 		{(*zlink.RouterSocket)(nil), "SendTo", true},
-		{(*zlink.RouterSocket)(nil), "RecvPart", true},
+		{(*zlink.RouterSocket)(nil), "RecvPart", false},
+		{(*zlink.RouterSocket)(nil), "OnCompletionControl", true},
+		{(*zlink.RouterSocket)(nil), "CompletionControl", true},
 		{(*zlink.RouterSocket)(nil), "SetRoutingID", true},
 		{(*zlink.RouterSocket)(nil), "SetConnectRoutingID", true},
 		{(*zlink.RouterSocket)(nil), "RoutingID", true},
@@ -147,9 +149,6 @@ func TestSurfaceTypedOptionsAndCallbacks(t *testing.T) {
 	}
 	if hasMethod((*zlink.PubSocket)(nil), "TopicsCount") || hasMethod((*zlink.XPubSocket)(nil), "TopicsCount") {
 		t.Fatalf("publish sockets should not expose subscriber-only topic count")
-	}
-	if zlink.IgnoreMonitorHandler == nil {
-		t.Fatalf("IgnoreMonitorHandler should be defined")
 	}
 	waitMethod := methodType((*zlink.Poller)(nil), "Wait")
 	if waitMethod == nil || waitMethod.NumIn() != 3 || waitMethod.In(1) != reflect.TypeOf([]zlink.PollEvent{}) || waitMethod.In(2) != reflect.TypeOf(time.Duration(0)) {

@@ -268,10 +268,24 @@ raw_fanout_subscriber_t::try_receive (
   std::chrono::steady_clock::time_point now)
 {
     std::lock_guard lock (_mutex);
-    for (auto &[intent, connection] : _connections) {
-        if (!connection.socket) {
+    if (_connections.empty ())
+        return {fanout_receive_status_t::no_data, std::nullopt};
+
+    const auto count = _connections.size ();
+    const auto start = _receive_cursor % count;
+    auto current = _connections.begin ();
+    for (std::size_t index = 0; index < start; ++index)
+        ++current;
+    for (std::size_t checked = 0; checked < count; ++checked) {
+        auto selected = current;
+        ++current;
+        if (current == _connections.end ())
+            current = _connections.begin ();
+        _receive_cursor = (start + checked + 1) % count;
+        auto &intent = selected->first;
+        auto &connection = selected->second;
+        if (!connection.socket)
             continue;
-        }
         zlink::poll_event_t readiness;
         try {
             if (_poller.wait (

@@ -73,13 +73,14 @@ class ReceivedMessage:
     def close(self):
         if self._closed:
             return
-        self._closed = True
         if self._owner is not None:
             self._owner.close_part(self._index)
+            self._closed = True
             return
         rc = lib().zlink_msg_close(ctypes.byref(self._msg))
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+        self._closed = True
 
     def __enter__(self):
         return self
@@ -119,10 +120,7 @@ class _BaseReceived:
     def _close_current_owner(self):
         if self._owner is None:
             return
-        try:
-            self._owner.close()
-        except Exception:  # noqa: BLE001
-            pass
+        self._owner.close()
 
     def _attach_owner(self, owner):
         self._owner = owner
@@ -246,10 +244,7 @@ class ReceivedMultipart(_BaseReceived):
     ):
         current_owner = self._owner
         if current_owner is not None:
-            try:
-                current_owner.close()
-            except Exception:  # noqa: BLE001
-                pass
+            current_owner.close()
         self._owner = owner
         if owner._part_count == 1:
             self.parts = (ReceivedMessage._from_owner(owner, 0),)
@@ -391,7 +386,7 @@ class Message:
         if isinstance(data, str):
             data = data.encode("utf-8")
         elif isinstance(data, Message):
-            data = data.to_bytes()
+            data = data.data
         msg = cls.__new__(cls)
         msg._msg = ZlinkMsg()
         msg._valid = False
@@ -433,14 +428,14 @@ class Message:
         return _msg_to_bytes(self._msg) if self._valid else b""
 
     def copy_to(self, destination, source_offset=0, destination_offset=0, length=None):
-        payload = self.to_bytes()
+        payload_size = self.size()
         if length is None:
-            length = len(payload) - source_offset
+            length = payload_size - source_offset
         if (
             source_offset < 0
             or destination_offset < 0
             or length < 0
-            or source_offset + length > len(payload)
+            or source_offset + length > payload_size
         ):
             raise ValueError("copy range is out of bounds")
         view = memoryview(destination)
@@ -453,9 +448,19 @@ class Message:
                 raise TypeError("destination must be a writable byte buffer") from exc
         if destination_offset + length > view.nbytes:
             raise ValueError("destination buffer is too small")
-        view[destination_offset : destination_offset + length] = payload[
-            source_offset : source_offset + length
-        ]
+        if length:
+            source = self.data
+            source_ptr = ctypes.addressof(
+                (ctypes.c_ubyte * source.nbytes).from_buffer(source)
+            )
+            destination_ptr = ctypes.addressof(
+                (ctypes.c_ubyte * view.nbytes).from_buffer(view)
+            )
+            ctypes.memmove(
+                destination_ptr + destination_offset,
+                source_ptr + source_offset,
+                length,
+            )
         return length
 
     def try_copy_to(self, destination):
@@ -476,11 +481,11 @@ class Message:
         if not self._valid:
             return
         rc = lib().zlink_msg_close(ctypes.byref(self._msg))
+        if rc != 0:
+            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
         self._valid = False
         self._keepalive = None
         self._data_view_cache = None
-        if rc != 0:
-            _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
 
     def __enter__(self):
         return self

@@ -238,6 +238,7 @@ export interface ZLinkSpotNodeOptions {
   readonly actorLimit?: number;
   readonly spotLimit?: number;
   readonly activationConcurrencyLimit?: number;
+  readonly instanceSpotIdleTimeoutMs?: number;
   readonly routingId?: string;
   readonly routingIdPrefix?: string;
   readonly router?: ZLinkSpotRouterCapabilityOptions;

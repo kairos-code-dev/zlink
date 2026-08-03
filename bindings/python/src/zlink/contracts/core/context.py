@@ -67,13 +67,6 @@ class ContextOptions(Protocol):
     def max_message_size(self, value): ...
 
     @property
-    def thread_priority(self):
-        """The OS scheduling priority of the context's I/O threads."""
-        ...
-    @thread_priority.setter
-    def thread_priority(self, value): ...
-
-    @property
     def thread_scheduling_policy(self):
         """The OS scheduling policy of the context's I/O threads."""
         ...

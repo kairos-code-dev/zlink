@@ -649,6 +649,13 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return this.requireStateful().instanceSpotApplicationTarget(spotId);
   }
 
+  waitForInstanceApplicationQuiescence(
+    spotId: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    return this.requireStateful().waitForInstanceApplicationQuiescence(spotId, signal);
+  }
+
   restoreUserSpotAuthority(
     spotId: string,
     stableType: string,

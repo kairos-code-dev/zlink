@@ -4,9 +4,11 @@ import java.util.List;
 import java.util.concurrent.Flow;
 import java.util.concurrent.CopyOnWriteArrayList;
 import systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import java.time.Instant;
 
-public final class DrainEvidence implements Flow.Subscriber<ZLinkFrameworkRuntimeStatus> {
+public final class DrainEvidence
+    implements Flow.Subscriber<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> {
     public record Event(String state, Instant timestamp) {}
 
     private final List<Event> events = new CopyOnWriteArrayList<>();
@@ -19,7 +21,8 @@ public final class DrainEvidence implements Flow.Subscriber<ZLinkFrameworkRuntim
     }
 
     @Override
-    public void onNext(ZLinkFrameworkRuntimeStatus status) {
+    public void onNext(ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus> observed) {
+        ZLinkFrameworkRuntimeStatus status = observed.status();
         events.add(new Event(status.state().name(), status.observedAt()));
     }
 
@@ -33,7 +36,8 @@ public final class DrainEvidence implements Flow.Subscriber<ZLinkFrameworkRuntim
         subscription = null;
     }
 
-    public void observe(Flow.Publisher<ZLinkFrameworkRuntimeStatus> statuses) {
+    public void observe(
+        Flow.Publisher<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> statuses) {
         statuses.subscribe(this);
     }
 

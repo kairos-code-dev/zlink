@@ -734,6 +734,14 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
+  setInstanceSpotIdleTimeout(timeoutMs: number): this {
+    this.spotOptions.instanceSpotIdleTimeoutMs = requireNonNegativeSafeInteger(
+      timeoutMs,
+      'Instance Spot idle timeout'
+    );
+    return this;
+  }
+
   configureRouterSocket(): ZLinkMeshNodeSocketConfig {
     this.spotOptions.router ??= {};
     return this.spotOptions.router as ZLinkMeshNodeSocketConfig;
@@ -1175,6 +1183,15 @@ function requirePositiveCapacity(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0 || value > 0x7fff_ffff) {
     throw new framework.ZLinkConfigurationException(
       `${label} must be an integer in 1..2147483647.`
+    );
+  }
+  return value;
+}
+
+function requireNonNegativeSafeInteger(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new framework.ZLinkConfigurationException(
+      `${label} must be a non-negative safe integer.`
     );
   }
   return value;

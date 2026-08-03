@@ -11,6 +11,7 @@ from zlink._runtime.core import context as context_runtime
 from zlink._runtime.eventing import monitor as monitor_runtime
 from zlink._runtime.eventing import poller as poller_runtime
 from zlink._runtime.eventing import timer as timer_runtime
+from zlink._runtime.handles import native_support
 from zlink._runtime.sockets import socket_base, socket_base_impl
 
 
@@ -204,3 +205,16 @@ def test_invalid_native_bridge_payload_is_not_reported_as_backpressure(error_typ
     with patch.object(socket_base, "_native_extension", bridge):
         with pytest.raises(error_type):
             owner._send_payload_via_native_bridge(object(), 1)
+
+
+def test_unknown_native_result_is_preserved_in_typed_error():
+    with pytest.raises(zlink.RequestError) as raised:
+        native_support._raise_result_error(
+            zlink.RequestError,
+            zlink.RequestResult,
+            999,
+            errno.EIO,
+        )
+
+    assert raised.value.result == 999
+    assert raised.value.code == 999

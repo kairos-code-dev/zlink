@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.*;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
@@ -616,7 +618,7 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
                         replyType, result, deadline, payloadBytes));
                 } else {
                     result.completeExceptionally(new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                        ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                         "RouteMesh channel request was not submitted to " + channelName));
                 }
             }
@@ -735,16 +737,16 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
                 result.completeExceptionally(switch (status) {
                     case ZLinkOneWayCalls.TARGET_NOT_FOUND ->
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                            ZLinkFrameworkErrorKind.NOT_FOUND,
                             "RouteMesh node request target was not found: "
                                 + target);
                     case ZLinkOneWayCalls.ROUTE_NOT_CONNECTED ->
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                            ZLinkFrameworkErrorKind.UNAVAILABLE,
                             "RouteMesh node request route is not connected: "
                                 + target);
                     default -> new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                        ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                         "RouteMesh node request target classification failed: "
                             + status);
                 });
@@ -776,7 +778,7 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
                 timeout);
             if (!submitted) {
                 result.completeExceptionally(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                     "RouteMesh node request was not submitted to " + target));
             }
         } catch (RuntimeException error) {

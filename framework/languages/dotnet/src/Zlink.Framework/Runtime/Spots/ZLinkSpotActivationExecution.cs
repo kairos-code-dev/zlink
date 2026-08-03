@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Spots;
@@ -348,7 +349,7 @@ internal sealed partial class ZLinkSpotActivation
                     () => QueueSerialized(
                         static (activation, ct) => activation._dispatcher.DiscardSubscriptionsAsync(ct))),
                 () => QueueSerialized(static (activation, ct) =>
-                    activation._dispatcher.DispatchActorJoinDrainAsync(ct)),
+                    activation.DispatchActorJoinDrainTurnAsync(ct)),
                 () => QueueSerialized(static (activation, ct) =>
                     activation.DispatchActorLifecycleDrainAsync(ct)),
                 (actorParts, inboundDispatchLease) =>
@@ -715,6 +716,10 @@ internal sealed partial class ZLinkSpotActivation
         bool requireNoActors,
         CancellationToken cancellationToken)
     {
+        if (reason == ZLinkSpotCloseReason.IdleEvicted
+            && (JoinedActorCount != 0 || HasIdleRelocationParticipation))
+            return false;
+
         return await _serial.ExecuteQuiescentLifecycleAsync(
                 async (activation, ct) =>
                 {
@@ -723,6 +728,9 @@ internal sealed partial class ZLinkSpotActivation
                     //  callback조차 불리지 않는다. Relocate와 일반 close는
                     //  actor를 옮긴 뒤 닫으므로 가드를 그대로 유지한다.
                     if (requireNoActors && activation._actors.Count > 0)
+                        return false;
+                    if (reason == ZLinkSpotCloseReason.IdleEvicted
+                        && activation._serial.HasPendingApplicationWork)
                         return false;
 
                     if (Interlocked.Exchange(ref activation._closingInvoked, 1) == 0)
@@ -733,6 +741,25 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    internal bool HasIdleRelocationParticipation
+    {
+        get
+        {
+            if (_serial.HasRelocationBarrier
+                || PerActorShellRelocationPlan is not null
+                || Volatile.Read(ref _messageFollow) is not null)
+                return true;
+            lock (_messageFollowPendingGate)
+                return _holdIngressForMessageFollow
+                       || _messageFollowPending.Count != 0;
+        }
+    }
+
+    internal bool HasPendingApplicationWork => _serial.HasPendingApplicationWork;
+
+    internal long LastApplicationWorkCompletedAt =>
+        _serial.LastApplicationWorkCompletedAt;
 
     private ValueTask InvokeClosingAsync(
         ZLinkSpotCloseReason reason,
@@ -782,7 +809,7 @@ internal sealed partial class ZLinkSpotActivation
 
     private bool QueueSerialized(Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation)
     {
-        return _serial.Queue(operation);
+        return _serial.QueueLifecycle(operation);
     }
 
     private bool QueueSerialized<TState>(
@@ -792,7 +819,7 @@ internal sealed partial class ZLinkSpotActivation
     {
         var capturedOp = operation;
         var capturedState = state;
-        return _serial.Queue(
+        return _serial.QueueLifecycle(
             (activation, ct) => capturedOp(activation, capturedState, ct),
             onSkipped);
     }
@@ -1034,10 +1061,23 @@ internal sealed partial class ZLinkSpotActivation
 
     private async ValueTask DispatchActorLifecycleDrainAsync(CancellationToken cancellationToken)
     {
+        var startedAt = Stopwatch.GetTimestamp();
+        var count = 0;
+        long bytes = 0;
         while (true)
         {
+            if (ZLinkReceiveBatchBudget.IsExhausted(count, bytes, startedAt))
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                    QueueSerialized(static (activation, ct) =>
+                        activation.DispatchActorLifecycleDrainAsync(ct));
+                return;
+            }
             var lifecycle = NativeSpot.RecvActorLifecycle(RecvFlags.DontWait);
             if (lifecycle is null) return;
+            count++;
+            bytes = checked(
+                bytes + (lifecycle.Value.Info.CurrentActor?.ActorId?.Length ?? 0));
             if (lifecycle.Value.Kind != ZLinkBackendActorLifecycleEventKind.Disconnected)
                 continue;
 
@@ -1054,6 +1094,16 @@ internal sealed partial class ZLinkSpotActivation
             await _runtime.NotifyActorDisconnectedByIdAsync(actorId, cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    private async ValueTask DispatchActorJoinDrainTurnAsync(
+        CancellationToken cancellationToken)
+    {
+        if (await _dispatcher.DispatchActorJoinDrainAsync(cancellationToken)
+                .ConfigureAwait(false)
+            && !cancellationToken.IsCancellationRequested)
+            QueueSerialized(static (activation, ct) =>
+                activation.DispatchActorJoinDrainTurnAsync(ct));
     }
 
     private async ValueTask<bool> InvokeTimerAsync(

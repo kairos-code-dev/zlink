@@ -188,7 +188,10 @@ zlink_close_result_t zlink_close (void *s_)
         zlink_socket_request_reply_cleanup (s_);
         if (!deferred_close)
             handle.socket->complete_close_handoff ();
-        if (drain_rc != 0) {
+        // The drain API returns the number of callbacks it delivered. Only a
+        // negative value indicates failure; a positive count is successful
+        // close work, not a close error.
+        if (drain_rc < 0) {
             errno = drain_errno;
             return zlink::close_result_internal::from_rc (-1);
         }
@@ -206,7 +209,10 @@ zlink_close_result_t zlink_close (void *s_)
     zlink_socket_request_reply_cleanup (s_);
     if (!deferred_close)
         handle.socket->complete_close_handoff ();
-    if (drain_rc != 0) {
+    // The drain API returns the number of callbacks it delivered. Only a
+    // negative value indicates failure; a positive count is successful
+    // close work, not a close error.
+    if (drain_rc < 0) {
         errno = drain_errno;
         return zlink::close_result_internal::from_rc (-1);
     }

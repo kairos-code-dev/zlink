@@ -206,6 +206,8 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkTerminationResult',
     'ZLinkFrameworkLifecycleOptions',
     'ZLinkFrameworkRuntimeStatus',
+    'ZLinkObservationLoss',
+    'ZLinkObservedStatus',
     'ZLinkFrameworkRuntime',
     'ZLinkPeerStatus',
     'ZLinkChannelStatus',
@@ -241,6 +243,8 @@ test('runtime topology and supporting exact names are declared by their producti
     'ZLinkFrameworkTerminationResult',
     'ZLinkFrameworkLifecycleOptions',
     'ZLinkFrameworkRuntimeStatus',
+    'ZLinkObservationLoss',
+    'ZLinkObservedStatus',
     'ZLinkFrameworkRuntime',
     'ZLinkTopologyState',
     'ZLinkPeerState',
@@ -260,7 +264,7 @@ test('runtime topology and supporting exact names are declared by their producti
   assert.match(frameworkRuntime, /relocate\(options: ZLinkFrameworkRelocationOptions\): Promise<ZLinkFrameworkRelocationResult>/);
   assert.match(frameworkRuntime, /shutdown\(options\?: ZLinkFrameworkLifecycleOptions\): Promise<ZLinkFrameworkTerminationResult>/);
   assert.match(routeMeshRuntime, /snapshot\(meshName: string\): ZLinkRouteMeshStatus/);
-  assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkRouteMeshStatus>/);
+  assert.match(routeMeshRuntime, /observe\(meshName: string, capacity\?: number, signal\?: AbortSignal\): AsyncIterable<ZLinkObservedStatus<ZLinkRouteMeshStatus>>/);
   assert.match(routeMeshRuntime, /isReady\(meshName: string\): boolean/);
   assert.doesNotMatch(routeMeshRuntime, /\bdrain\(/);
   assert.doesNotMatch(routeMeshRuntime, /\bawaitDrained\(/);

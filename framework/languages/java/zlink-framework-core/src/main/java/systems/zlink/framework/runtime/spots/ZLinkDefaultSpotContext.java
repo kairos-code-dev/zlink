@@ -40,7 +40,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     private final RoutingId nodeRid;
     private final ZLinkBackendSpot backendSpot;
     private final DefaultSpotOutbound outbound;
-    private final ZLinkAsyncSerialQueue dispatchQueue = new ZLinkAsyncSerialQueue();
+    private final ZLinkAsyncSerialQueue dispatchQueue;
     private final ZLinkHandlerInstanceOwner handlerInstances;
     private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
     private final java.util.Map<String, ZLinkSpotTimerRegistry> actorTimers =
@@ -60,6 +60,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         this.handlerLoader = handlerLoader;
         this.nodeRid = nodeRid;
         this.backendSpot = backendSpot;
+        this.dispatchQueue = new ZLinkAsyncSerialQueue(
+            host.serialExecutor(), false);
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.handlerInstances = host.createHandlerInstances();
     }
@@ -314,7 +316,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             handlerLoader,
             nodeRid,
             backendSpot,
-            new ZLinkAsyncSerialQueue(),
+            new ZLinkAsyncSerialQueue(host.serialExecutor(), false),
             ZLinkUserSpotExecutionMode.SPOT_WIDE,
             false);
     }
@@ -758,7 +760,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         }
         ZLinkAsyncSerialQueue queue = timerQueues.computeIfAbsent(
             Objects.requireNonNull(timerName, "timerName"),
-            ignored -> new ZLinkAsyncSerialQueue());
+            ignored -> new ZLinkAsyncSerialQueue(host.serialExecutor(), false));
         return queue.enqueue(() -> runApplicationExecution(
             null,
             false,
@@ -955,7 +957,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     private static ZLinkFrameworkException invalidRelocationReady(
         String message) {
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+            ZLinkFrameworkErrorKind.NOT_CONFIGURED,
             message);
     }
 

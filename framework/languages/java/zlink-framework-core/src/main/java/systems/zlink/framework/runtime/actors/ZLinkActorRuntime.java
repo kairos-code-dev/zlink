@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 
 import systems.zlink.framework.runtime.internal.backend.*;
@@ -564,6 +566,36 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 java.util.function.Supplier<Boolean>,
                 Runnable,
                 CompletionStage<Void>>> admission) {
+        this(
+            spotNode,
+            factories,
+            transferAdapters,
+            defaultRequestTimeout,
+            messageFollowDuration,
+            serializer,
+            handlerFactory,
+            defaultStreamCodec,
+            admission,
+            null);
+    }
+
+    public ZLinkActorRuntime(
+        ZLinkInternalSpotNode spotNode,
+        Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Map<String, Class<? extends ZLinkActorRelocationAdapter<?>>> transferAdapters,
+        Duration defaultRequestTimeout,
+        Duration messageFollowDuration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerActivator handlerFactory,
+        ZLinkStreamCodec defaultStreamCodec,
+        java.util.function.BiFunction<
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission,
+        java.util.concurrent.Executor serialExecutor) {
         if (serializer == null) {
             throw new ZLinkConfigurationException("serializer is required");
         }
@@ -573,7 +605,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.spotNode = spotNode;
         this.dispatches = new ZLinkActorDispatchSerials(
             this,
-            this::deferredJoinIncarnation);
+            this::deferredJoinIncarnation,
+            serialExecutor);
         this.meshName = spotNode.routingId().toString();
         this.factories = Map.copyOf(factories);
         this.defaultRequestTimeout = defaultRequestTimeout;
@@ -649,12 +682,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         requireActorId(actorId);
         if (draining || relocating) {
             return CompletableFuture.failedFuture(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                ZLinkFrameworkErrorKind.REJECTED,
                 "Actor creation is rejected while relocation or shutdown admission is sealed"));
         }
         if (selectedMesh != null && !selectedMesh.equals(meshName)) {
             return CompletableFuture.failedFuture(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.MESH_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 "Actor Mesh was not found: " + selectedMesh));
         }
         CreationSubmitter submitter = creationSubmitter;
@@ -771,7 +804,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         if ((draining || relocating)
             && intent != ZLinkLocationWriteIntent.TAKEOVER) {
             return CompletableFuture.failedFuture(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                ZLinkFrameworkErrorKind.REJECTED,
                 "actor creation is rejected while the node is draining"));
         }
         if (createRequest == null) {
@@ -1879,12 +1912,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 .exceptionallyCompose(error -> {
                     Throwable cause = unwrap(error);
                     if (cause instanceof ZLinkFrameworkException frameworkError
-                        && frameworkError.kind() == ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED) {
+                        && frameworkError.kind() == ZLinkFrameworkErrorKind.INTERNAL_FAILURE) {
                         return find(actorId).thenCompose(raced -> raced
                             .<CompletionStage<ActorRef>>map(CompletableFuture::completedFuture)
                             .orElseGet(() -> CompletableFuture.failedFuture(
                                 new ZLinkFrameworkException(
-                                    ZLinkFrameworkErrorKind.ACTOR_CREATE_REJECTED,
+                                    ZLinkFrameworkErrorKind.REJECTED,
                                     frameworkError.getMessage(),
                                     frameworkError))));
                     }
@@ -1914,7 +1947,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             ? "actor directory requires one registered actor factory"
             : "actor directory cannot choose an actor type when multiple actor factories are registered";
         throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ACTOR_CREATE_FAILED,
+            ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
             message);
     }
 
@@ -2759,18 +2792,18 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     void requireDeferredJoinRegistration(DefaultActorContext context) {
         if (draining || relocating) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RUNTIME_SHUTDOWN,
+                ZLinkFrameworkErrorKind.SHUTTING_DOWN,
                 "Actor join admission is sealed while the runtime is draining");
         }
         ZLinkActor actor = context.actor();
         if (actor == null || actorRegistry.context(actor) != context) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_GENERATION_STALE,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 "Actor context does not represent the current local incarnation");
         }
         if (context.moving()) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_MOVING,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 "Actor already has a membership transition in progress");
         }
     }

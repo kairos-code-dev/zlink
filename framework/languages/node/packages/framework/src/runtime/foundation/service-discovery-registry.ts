@@ -34,6 +34,7 @@ export class ServiceDiscoveryRegistry {
   private readonly clientServers = new Map<string, Current<ClientServerDescriptor>>();
   private readonly fanoutPublishers = new Map<string, Current<FanoutPublisherDescriptor>>();
   private readonly clientServerSelectionWeights = new Map<string, Map<string, bigint>>();
+  private readonly clientServerCandidates = new Map<string, readonly Current<ClientServerDescriptor>[]>();
 
   admitClientServer(descriptor: ClientServerDescriptor, connectionId: string): boolean {
     validateClientServer(descriptor);
@@ -43,9 +44,12 @@ export class ServiceDiscoveryRegistry {
       && current.descriptor.state === 'disconnected'
       && sameClientServerDescriptorExceptState(current.descriptor, descriptor)) {
       this.clientServers.set(key, { descriptor: { ...descriptor }, connectionId });
+      this.invalidateClientServerCandidates(descriptor.channelName);
       return true;
     }
-    return this.admit(this.clientServers, key, descriptor, connectionId);
+    const admitted = this.admit(this.clientServers, key, descriptor, connectionId);
+    if (admitted) this.invalidateClientServerCandidates(descriptor.channelName);
+    return admitted;
   }
 
   markClientServerDisconnected(
@@ -61,6 +65,7 @@ export class ServiceDiscoveryRegistry {
         descriptor: { ...current.descriptor, state: 'disconnected' },
         connectionId
       });
+      this.invalidateClientServerCandidates(channelName);
     }
     return true;
   }
@@ -70,7 +75,9 @@ export class ServiceDiscoveryRegistry {
     serverRoutingId: string,
     connectionId: string
   ): boolean {
-    return removeCurrent(this.clientServers, `${channelName}\0${serverRoutingId}`, connectionId);
+    const removed = removeCurrent(this.clientServers, `${channelName}\0${serverRoutingId}`, connectionId);
+    if (removed) this.invalidateClientServerCandidates(channelName);
+    return removed;
   }
 
   selectClientServer(channelName: string): ClientServerDescriptor | undefined {
@@ -78,13 +85,7 @@ export class ServiceDiscoveryRegistry {
   }
 
   selectClientServerConnection(channelName: string): SelectedClientServer | undefined {
-    const eligible = [...this.clientServers.values()]
-      .filter(value =>
-        value.descriptor.channelName === channelName
-        && value.descriptor.state === 'serving'
-        && value.descriptor.weight > 0)
-      .sort((left, right) =>
-        left.descriptor.serverRoutingId.localeCompare(right.descriptor.serverRoutingId));
+    const eligible = this.clientServerCandidatesFor(channelName);
     const total = eligible.reduce((sum, value) => sum + BigInt(value.descriptor.weight), 0n);
     if (total === 0n) return undefined;
     const currentWeights = this.clientServerSelectionWeights.get(channelName) ?? new Map();
@@ -177,6 +178,24 @@ export class ServiceDiscoveryRegistry {
     }
     rows.set(key, { descriptor: { ...descriptor }, connectionId });
     return true;
+  }
+
+  private invalidateClientServerCandidates(channelName: string): void {
+    this.clientServerCandidates.delete(channelName);
+  }
+
+  private clientServerCandidatesFor(channelName: string): readonly Current<ClientServerDescriptor>[] {
+    const cached = this.clientServerCandidates.get(channelName);
+    if (cached !== undefined) return cached;
+    const candidates = [...this.clientServers.values()]
+      .filter(value =>
+        value.descriptor.channelName === channelName
+        && value.descriptor.state === 'serving'
+        && value.descriptor.weight > 0)
+      .sort((left, right) =>
+        left.descriptor.serverRoutingId.localeCompare(right.descriptor.serverRoutingId));
+    this.clientServerCandidates.set(channelName, candidates);
+    return candidates;
   }
 }
 

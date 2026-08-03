@@ -69,6 +69,6 @@ final class RedirectPolicy {
         if (location.startsWith("/")) {
             return URI.create(originOf(current) + location);
         }
-        throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP redirect location is not supported: " + location);
+        throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.INTERNAL_FAILURE, "HTTP redirect location is not supported: " + location);
     }
 }

@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

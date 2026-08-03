@@ -429,7 +429,8 @@ static_assert (
     decltype (std::declval<zlink::framework::route_mesh_runtime_t &> ().observe (
       std::declval<std::string> (),
       std::declval<std::size_t> (),
-      std::declval<std::function<void (const zlink::framework::mesh_node_snapshot_t &)>> ())),
+      std::declval<std::function<void (const zlink::framework::observed_status_t<
+        zlink::framework::mesh_node_snapshot_t> &)>> ())),
     std::unique_ptr<zlink::framework::mesh_runtime_observation_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::route_mesh_runtime_t &> ()
@@ -1143,7 +1144,8 @@ static_assert (
         .observe (
           std::size_t{1},
           std::declval<std::function<void (
-            const zlink::framework::framework_runtime_status_t &)>> ())),
+            const zlink::framework::observed_status_t<
+              zlink::framework::framework_runtime_status_t> &)>> ())),
     std::unique_ptr<zlink::framework::runtime_observation_t>>);
 static_assert (
   std::is_same_v<
@@ -1350,6 +1352,13 @@ static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .set_object_role (
                              zlink::framework::object_role_t::client)),
+               zlink::framework::mesh_node_builder_t &>);
+static_assert (static_cast<int> (zlink::framework::spot_close_reason_t::idle_evicted)
+               == 3);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
+                           .set_instance_spot_idle_timeout (
+                             std::chrono::milliseconds{})),
                zlink::framework::mesh_node_builder_t &>);
 static_assert (std::is_same_v<decltype (std::declval<contract_spot_t &> ().on_actor_join (
                                 std::declval<std::string_view> (),

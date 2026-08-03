@@ -85,7 +85,7 @@ internal sealed class ObserverIsolationProbe(
                            cancellationToken))
         {
             lock (_gate)
-                _normalSequences.Add(runtimeEvent.Sequence);
+                _normalSequences.Add(runtimeEvent.Status.Sequence);
         }
     }
 
@@ -108,7 +108,7 @@ internal sealed class ObserverIsolationProbe(
         if (await events.MoveNextAsync().ConfigureAwait(false))
         {
             lock (_gate)
-                _slowLatestSequence = events.Current.Sequence;
+                _slowLatestSequence = events.Current.Status.Sequence;
         }
 
         try

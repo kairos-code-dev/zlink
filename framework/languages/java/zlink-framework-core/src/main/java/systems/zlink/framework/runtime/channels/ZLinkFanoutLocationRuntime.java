@@ -38,6 +38,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage
 import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 import systems.zlink.framework.runtime.internal.service.ZLinkClassicFanoutLiveness;
 
 /**
@@ -46,7 +47,6 @@ import systems.zlink.framework.runtime.internal.service.ZLinkClassicFanoutLivene
 final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private static final String SECURITY_IDENTITY = "default";
     private static final int MAX_DESCRIPTORS_PER_CHANNEL = 1024;
-    private static final int MAX_RECEIVES_PER_TICK = 64;
     private static final Logger LOGGER =
         Logger.getLogger(ZLinkFanoutLocationRuntime.class.getName());
 
@@ -73,6 +73,7 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private volatile boolean running;
     private volatile long nextReconcileNanos;
     private volatile long nextBeaconNanos;
+    private long receiveCursor;
     private volatile long lifecycleEpoch;
     private volatile boolean reconciling;
 
@@ -391,50 +392,59 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     }
 
     private synchronized void receiveAvailable(long nowNanos) {
-        for (Connection connection
-            : List.copyOf(connections.values())) {
-            for (int count = 0;
-                count < MAX_RECEIVES_PER_TICK;
-                count++) {
-                if (!connection.subscriber.waitForReadable(Duration.ZERO)) {
-                    break;
-                }
-                ZLinkBackendTopicMessage received =
-                    connection.subscriber.subscribe(
-                        ZLinkBackendRecvMode.DONT_WAIT);
-                if (received == null) {
-                    break;
-                }
-                List<byte[]> frames = new ArrayList<>();
-                frames.add(received.topic().getBytes(
-                    StandardCharsets.UTF_8));
-                frames.addAll(received.parts().stream()
-                    .map(Message::toByteArray)
-                    .toList());
-                ZLinkClassicFanoutLiveness.ReceiveKind kind;
-                try {
-                    kind = connection.liveness.receive(
-                            connection.descriptor.publisherRid(),
-                            connection.connectionId,
-                            frames,
-                            nowNanos);
-                } catch (IllegalArgumentException malformed) {
-                    received.parts().forEach(Message::close);
-                    remove(connection.connectionId, connection);
-                    break;
-                }
-                if (kind
-                    == ZLinkClassicFanoutLiveness.ReceiveKind.APPLICATION) {
-                    dispatch.accept(
-                        connection.descriptor.channelName(),
-                        received);
-                } else {
-                    received.parts().forEach(Message::close);
-                }
-                connection.ready = connection.nativeReady
-                    && connection.liveness.isReady(
-                        connection.descriptor.publisherRid());
+        List<Connection> ordered = new ArrayList<>(connections.values());
+        ordered.sort((left, right) ->
+            left.connectionId.compareTo(right.connectionId));
+        if (ordered.isEmpty()) {
+            return;
+        }
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        int cursor = (int) Math.floorMod(receiveCursor, ordered.size());
+        int idleConnections = 0;
+        while (batch.canReceiveNext() && idleConnections < ordered.size()) {
+            Connection connection = ordered.get(cursor);
+            cursor = (cursor + 1) % ordered.size();
+            receiveCursor = cursor;
+            if (!connection.subscriber.waitForReadable(Duration.ZERO)) {
+                idleConnections++;
+                continue;
             }
+            ZLinkBackendTopicMessage received = connection.subscriber.subscribe(
+                ZLinkBackendRecvMode.DONT_WAIT);
+            if (received == null) {
+                idleConnections++;
+                continue;
+            }
+            idleConnections = 0;
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(
+                received.parts(),
+                received.applicationMetadataSize(),
+                received.topic().getBytes(StandardCharsets.UTF_8).length));
+            List<byte[]> frames = new ArrayList<>();
+            frames.add(received.topic().getBytes(StandardCharsets.UTF_8));
+            frames.addAll(received.parts().stream()
+                .map(Message::toByteArray)
+                .toList());
+            ZLinkClassicFanoutLiveness.ReceiveKind kind;
+            try {
+                kind = connection.liveness.receive(
+                        connection.descriptor.publisherRid(),
+                        connection.connectionId,
+                        frames,
+                        System.nanoTime());
+            } catch (IllegalArgumentException malformed) {
+                received.parts().forEach(Message::close);
+                remove(connection.connectionId, connection);
+                continue;
+            }
+            if (kind == ZLinkClassicFanoutLiveness.ReceiveKind.APPLICATION) {
+                dispatch.accept(connection.descriptor.channelName(), received);
+            } else {
+                received.parts().forEach(Message::close);
+            }
+            connection.ready = connection.nativeReady
+                && connection.liveness.isReady(
+                    connection.descriptor.publisherRid());
         }
     }
 

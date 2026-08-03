@@ -122,8 +122,8 @@ public sealed class RouteMeshRuntimeServiceTests
             .WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(await observer.MoveNextAsync());
-        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.State);
-        Assert.False(observer.Current.IsReady);
+        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.Status.State);
+        Assert.False(observer.Current.Status.IsReady);
         Assert.False(await observer.MoveNextAsync());
     }
 
@@ -143,10 +143,10 @@ public sealed class RouteMeshRuntimeServiceTests
             .WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(await pending);
-        while (observer.Current.State != ZLinkTopologyState.Stopped)
+        while (observer.Current.Status.State != ZLinkTopologyState.Stopped)
             Assert.True(await observer.MoveNextAsync());
-        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.State);
-        Assert.False(observer.Current.IsReady);
+        Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.Status.State);
+        Assert.False(observer.Current.Status.IsReady);
         Assert.False(await observer.MoveNextAsync());
     }
 
@@ -327,17 +327,17 @@ public sealed class RouteMeshRuntimeServiceTests
             ZLinkMeshNodeObjectRole.Client);
         var added = await MoveUntilAsync(
             observer,
-            status => status.Peers.Any(peer => peer.NodeRid == remoteRid));
+            status => status.Status.Peers.Any(peer => peer.NodeRid == remoteRid));
         Assert.Contains(
-            added.Peers,
+            added.Status.Peers,
             peer => peer.NodeRid == remoteRid
                     && peer.State == ZLinkPeerState.NotRequired);
 
         await fixture.RemoveDescriptorAsync(remoteRid);
         var removed = await MoveUntilAsync(
             observer,
-            status => status.Peers.All(peer => peer.NodeRid != remoteRid));
-        Assert.DoesNotContain(removed.Peers, peer => peer.NodeRid == remoteRid);
+            status => status.Status.Peers.All(peer => peer.NodeRid != remoteRid));
+        Assert.DoesNotContain(removed.Status.Peers, peer => peer.NodeRid == remoteRid);
     }
 
     [Fact]
@@ -354,19 +354,19 @@ public sealed class RouteMeshRuntimeServiceTests
         fixture.ReportLocationFailure();
         var degraded = await MoveUntilAsync(
             observer,
-            status => status.State == ZLinkTopologyState.Degraded);
-        Assert.False(degraded.IsReady);
-        Assert.False(degraded.Placement.IsAvailable);
+            status => status.Status.State == ZLinkTopologyState.Degraded);
+        Assert.False(degraded.Status.IsReady);
+        Assert.False(degraded.Status.Placement.IsAvailable);
         Assert.Equal(
             ZLinkTopologyReason.LocationUnavailable,
-            degraded.Placement.UnavailableReason);
+            degraded.Status.Placement.UnavailableReason);
 
         fixture.ReportLocationSuccess();
         var recovered = await MoveUntilAsync(
             observer,
-            status => status.State == ZLinkTopologyState.Ready);
-        Assert.True(recovered.IsReady);
-        Assert.True(recovered.Placement.IsAvailable);
+            status => status.Status.State == ZLinkTopologyState.Ready);
+        Assert.True(recovered.Status.IsReady);
+        Assert.True(recovered.Status.Placement.IsAvailable);
     }
 
     [Fact]
@@ -383,16 +383,16 @@ public sealed class RouteMeshRuntimeServiceTests
         fixture.RuntimeOptions.Mesh(RuntimeFixture.MeshName).PlacementWeight = 0;
         var unavailable = await MoveUntilAsync(
             observer,
-            status => !status.Placement.IsAvailable);
+            status => !status.Status.Placement.IsAvailable);
         Assert.Equal(
             ZLinkTopologyReason.CapacityExceeded,
-            unavailable.Placement.UnavailableReason);
+            unavailable.Status.Placement.UnavailableReason);
 
         fixture.RuntimeOptions.Mesh(RuntimeFixture.MeshName).PlacementWeight = 100;
         var recovered = await MoveUntilAsync(
             observer,
-            status => status.Placement.IsAvailable);
-        Assert.True(recovered.Placement.IsAvailable);
+            status => status.Status.Placement.IsAvailable);
+        Assert.True(recovered.Status.Placement.IsAvailable);
     }
 
     private static async Task<ZLinkRouteMeshStatus> WaitForStatusAsync(
@@ -416,9 +416,9 @@ public sealed class RouteMeshRuntimeServiceTests
                     $"{peer.NodeRid}:{peer.State}")));
     }
 
-    private static async Task<ZLinkRouteMeshStatus> MoveUntilAsync(
-        IAsyncEnumerator<ZLinkRouteMeshStatus> observer,
-        Func<ZLinkRouteMeshStatus, bool> predicate)
+    private static async Task<ZLinkObservedStatus<ZLinkRouteMeshStatus>> MoveUntilAsync(
+        IAsyncEnumerator<ZLinkObservedStatus<ZLinkRouteMeshStatus>> observer,
+        Func<ZLinkObservedStatus<ZLinkRouteMeshStatus>, bool> predicate)
     {
         while (await observer.MoveNextAsync())
         {

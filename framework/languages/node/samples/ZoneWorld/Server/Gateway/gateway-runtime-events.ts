@@ -18,12 +18,17 @@ class GatewaySpotEventHandler implements OnApplicationBootstrap, OnApplicationSh
   }
 
   private async observeReadiness(): Promise<void> {
-    for await (const status of this.runtime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
-      console.log(
-        `gateway mesh status mesh=${status.meshName} state=${status.state}`
-        + ` readyPeers=${status.readyPeerCount}`
-      );
+    this.logStatus(this.runtime.snapshot(ZoneWorldNames.zoneMesh));
+    for await (const observed of this.runtime.observe(ZoneWorldNames.zoneMesh, 64, this.stop.signal)) {
+      this.logStatus(observed.status);
     }
+  }
+
+  private logStatus(status: import('@zlink-systems/framework').ZLinkRouteMeshStatus): void {
+    console.log(
+      `gateway mesh status mesh=${status.meshName} state=${status.state}`
+      + ` readyPeers=${status.readyPeerCount}`
+    );
   }
 }
 

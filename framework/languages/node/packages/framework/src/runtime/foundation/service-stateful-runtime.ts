@@ -167,6 +167,8 @@ export type ServiceInstanceApplicationTarget = Pick<
 
 export interface ServiceInstanceApplicationLifecycle {
   isMaterialized(target: ServiceInstanceApplicationTarget): boolean;
+  isIdleEvicting?(target: ServiceInstanceApplicationTarget): boolean;
+  beginIdleEviction?(target: ServiceInstanceApplicationTarget): boolean;
   materialize(target: ServiceInstanceApplicationTarget, objectGeneration: bigint): Promise<void>;
   discard(target: ServiceInstanceActivationTarget): Promise<void>;
   beginTerminal(target: ServiceInstanceActivationTarget): void;
@@ -279,6 +281,8 @@ export class ServiceStatefulRuntime {
   private readonly subscriptions = new Map<string, Set<string>>();
   private readonly instanceIntents = new Map<string, ServiceInstanceIntent>();
   private readonly admittedInstanceOperations = new Map<string, bigint>();
+  private readonly pendingInstanceTerminals = new Map<string, number>();
+  private readonly instanceApplicationWaiters = new Map<string, Set<() => void>>();
   private readonly actorRoutes = new Map<string, ServiceActorRouteFence>();
   private readonly spotRoutes = new Map<string, ServiceDirectSpotRouteFence>();
   private readonly spotMessageFollow = new Map<string, ServiceSpotMessageFollowState>();
@@ -425,30 +429,40 @@ export class ServiceStatefulRuntime {
     authorityOwnerGeneration = attempt
   ): { readonly spot: ServiceSpotState; readonly created: boolean } {
     this.requireOpen();
-    const result = this.registry.reserve('instanceSpot', spotId, instanceType, attempt);
-    if (result.kind === 'existing') {
-      if (result.spot === undefined) throw new Error('Instance Spot reservation lost its Spot state.');
-      return { spot: result.spot, created: false };
+    const current = this.registry.spot(spotId);
+    if (current !== undefined) {
+      if (current.kind !== 'instance' || current.stableType !== instanceType) {
+        throw new TypeError(`Instance Spot '${spotId}' is assigned to another type.`);
+      }
+      if (current.ref.generation > attempt) {
+        throw new ServiceStaleGenerationError('spot', spotId);
+      }
+      if (current.ref.generation === attempt) {
+        return {
+          spot: current.authorityOwnerGeneration === authorityOwnerGeneration
+            ? current
+            : this.registry.restoreSpot(
+                current.ref,
+                'instance',
+                instanceType,
+                authorityOwnerGeneration
+              ),
+          created: false
+        };
+      }
+      if (!this.registry.closeSpot(current.ref)) {
+        throw new ServiceStaleGenerationError('spot', spotId);
+      }
     }
-    if (result.kind === 'typeMismatch') {
-      throw new TypeError(`Instance Spot '${spotId}' is assigned to another type.`);
-    }
-    if (result.kind === 'attemptStale') {
-      throw new ServiceStaleGenerationError('spot', spotId);
-    }
-    const committed = this.registry.commitReservation(result.reservation);
-    if (!('kind' in committed) || committed.kind !== 'instance') {
-      throw new Error('Instance Spot reservation produced another object kind.');
-    }
-    const spot = committed.authorityOwnerGeneration === authorityOwnerGeneration
-      ? committed
-      : this.registry.restoreSpot(
-          committed.ref,
-          'instance',
-          committed.stableType,
-          authorityOwnerGeneration
-        );
-    return { spot, created: true };
+    return {
+      spot: this.registry.restoreSpot(
+        { spotId, generation: attempt },
+        'instance',
+        instanceType,
+        authorityOwnerGeneration
+      ),
+      created: true
+    };
   }
 
   registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void {
@@ -764,6 +778,34 @@ export class ServiceStatefulRuntime {
       this.forgetClosedInstanceRoute(released);
     }
     return released;
+  }
+
+  waitForInstanceApplicationQuiescence(
+    spotId: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const key = String(spotId);
+    if ((this.pendingInstanceTerminals.get(key) ?? 0) === 0) {
+      return Promise.resolve();
+    }
+    if (signal?.aborted === true) {
+      return Promise.reject(signal.reason);
+    }
+    return new Promise<void>((resolve, reject) => {
+      const waiters = this.instanceApplicationWaiters.get(key) ?? new Set<() => void>();
+      this.instanceApplicationWaiters.set(key, waiters);
+      const complete = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
+        waiters.delete(complete);
+        if (waiters.size === 0) this.instanceApplicationWaiters.delete(key);
+        reject(signal?.reason);
+      };
+      waiters.add(complete);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
   }
 
 
@@ -1392,6 +1434,11 @@ export class ServiceStatefulRuntime {
     this.operations.close();
     this.sessionDeliveries.clear();
     this.instanceIntents.clear();
+    this.pendingInstanceTerminals.clear();
+    for (const waiters of this.instanceApplicationWaiters.values()) {
+      for (const waiter of waiters) waiter();
+    }
+    this.instanceApplicationWaiters.clear();
     this.admittedUserSpotOperations.clear();
     this.actorRoutes.clear();
     this.spotRoutes.clear();
@@ -1577,7 +1624,15 @@ export class ServiceStatefulRuntime {
       return 'infrastructure';
     }
     const spot = this.requireInstanceActivation(ingress, record);
-    return this.enqueueActivatedInstanceSpot(ingress, record, payload, spot, undefined, undefined, metadataFrame);
+    return this.enqueueActivatedInstanceSpot(
+      ingress,
+      record,
+      payload,
+      spot,
+      undefined,
+      this.instanceApplicationTerminalCompletion(this.instanceApplicationTarget(record)),
+      metadataFrame
+    );
   }
 
   private needsInstanceApplicationMaterialization(
@@ -1596,6 +1651,12 @@ export class ServiceStatefulRuntime {
       || !sameInstanceRoute(intent.route, record.route)
     ) {
       return false;
+    }
+    if (this.instanceApplicationLifecycle?.isIdleEvicting?.({
+      targetSpotId: record.route.targetSpotId,
+      stableType: intent.instanceType
+    }) === true) {
+      throw new ServiceStaleGenerationError('spot', record.route.targetSpotId);
     }
     return !lifecycle.isMaterialized({
       targetSpotId: record.route.targetSpotId,
@@ -1628,13 +1689,21 @@ export class ServiceStatefulRuntime {
           'instanceSpotRequest'
         )
       : undefined;
+    const applicationTarget = this.instanceApplicationTarget(record);
     let deferredReply: Parameters<NonNullable<ServiceStatefulMailboxData['reply']>> | undefined;
     const terminalCompletion = onTerminalCompletion === undefined
       ? undefined
       : async () => {
-          await onTerminalCompletion();
-          if (deferredReply !== undefined && directReply !== undefined) {
-            directReply(...deferredReply);
+          // The application turn has returned before authority cleanup starts.
+          // Mark it quiescent first so a close requested by that turn can finish
+          // its local cleanup and release the exact authority fence below.
+          this.completeInstanceApplicationOperation(applicationTarget.targetSpotId);
+          try {
+            await onTerminalCompletion();
+          } finally {
+            if (deferredReply !== undefined && directReply !== undefined) {
+              directReply(...deferredReply);
+            }
           }
         };
     const result = this.enqueueApplication(
@@ -1663,9 +1732,10 @@ export class ServiceStatefulRuntime {
     );
     if (operationKey !== undefined && result === 'application' && record.activation === 'missing') {
       this.admittedInstanceOperations.set(operationKey, record.deadlineUnixMs);
-      if (onTerminalCompletion !== undefined) {
-        this.instanceApplicationLifecycle?.beginTerminal(record.target);
-      }
+    }
+    if (onTerminalCompletion !== undefined && result === 'application') {
+      this.beginInstanceApplicationOperation(applicationTarget.targetSpotId);
+      this.instanceApplicationLifecycle?.beginTerminal(applicationTarget);
     }
     return result;
   }
@@ -1759,7 +1829,7 @@ export class ServiceStatefulRuntime {
         payload,
         spot,
         undefined,
-        undefined,
+        this.instanceApplicationTerminalCompletion(this.instanceApplicationTarget(record)),
         metadataFrame
       );
       if (admitted !== 'application') {
@@ -1794,6 +1864,54 @@ export class ServiceStatefulRuntime {
         }
       }
     })();
+  }
+
+  private instanceApplicationTerminalCompletion(
+    target: ServiceInstanceActivationTarget
+  ): () => Promise<void> {
+    return async () => {
+      await this.instanceApplicationLifecycle?.completeTerminal(target);
+    };
+  }
+
+  private instanceApplicationTarget(
+    record: Extract<ServiceStatefulWireRecord, { readonly kind: 'instanceSpot' }>
+  ): ServiceInstanceActivationTarget {
+    if (record.activation === 'missing') return record.target;
+    const intent = this.instanceIntents.get(record.route.targetSpotId);
+    if (intent === undefined) {
+      throw new ServiceStaleGenerationError('spot', record.route.targetSpotId);
+    }
+    return {
+      targetNodeRid: record.route.targetNodeRid,
+      targetNodeGeneration: record.route.targetNodeGeneration,
+      targetSpotId: record.route.targetSpotId,
+      stableType: intent.instanceType,
+      descriptorVersion: ''
+    };
+  }
+
+  private beginInstanceApplicationOperation(spotId: string): void {
+    const key = String(spotId);
+    this.pendingInstanceTerminals.set(
+      key,
+      (this.pendingInstanceTerminals.get(key) ?? 0) + 1
+    );
+  }
+
+  private completeInstanceApplicationOperation(spotId: string): void {
+    const key = String(spotId);
+    const pending = this.pendingInstanceTerminals.get(key);
+    if (pending === undefined || pending <= 1) {
+      this.pendingInstanceTerminals.delete(key);
+      const waiters = this.instanceApplicationWaiters.get(key);
+      if (waiters !== undefined) {
+        this.instanceApplicationWaiters.delete(key);
+        for (const waiter of waiters) waiter();
+      }
+      return;
+    }
+    this.pendingInstanceTerminals.set(key, pending - 1);
   }
 
   private async relayMissingInstanceActivation(
@@ -1946,6 +2064,9 @@ export class ServiceStatefulRuntime {
     ) {
       throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
+    if (this.instanceApplicationLifecycle?.isIdleEvicting?.(target) === true) {
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
+    }
     const authority = this.instanceAuthority;
     if (authority === undefined) {
       throw new Error('Instance activation authority is not registered.');
@@ -2010,7 +2131,7 @@ export class ServiceStatefulRuntime {
     payload: ServiceApplicationPayload,
     metadataFrame?: Buffer
   ): Promise<{ readonly spot: ServiceSpotState; readonly route: ServiceInstanceRouteFence }> {
-    const key = instanceOperationKey(record);
+    const key = instanceActivationKey(record);
     const pending = this.pendingInstanceActivations.get(key);
     if (pending !== undefined) return pending;
     const activation = this.runMissingInstanceActivation(record, payload, metadataFrame);
@@ -3620,6 +3741,13 @@ function instanceOperationKey(
 ): string {
   return `${record.sourceNodeRid}\0${record.sourceNodeGeneration}\0`
     + `${record.operation.high}\0${record.operation.low}`;
+}
+
+function instanceActivationKey(
+  record: Extract<ServiceStatefulWireRecord, { readonly kind: 'instanceSpot'; readonly activation: 'missing' }>
+): string {
+  return `${record.target.targetNodeRid}\0${record.target.targetNodeGeneration}\0`
+    + `${record.target.targetSpotId}\0${record.target.stableType}`;
 }
 
 function subscriptionKey(channelName: string, topicFilter: string): string {

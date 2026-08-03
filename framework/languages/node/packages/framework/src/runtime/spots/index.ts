@@ -46,9 +46,14 @@ import {
   type ReadyRecord,
   type ReceiveRecord
 } from '../foundation/service-runtime-contracts';
+import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
 import {
   ZLinkConfigurationException
 } from '../configuration';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
 import type {
   ZLinkBackendSpot,
   ZLinkBackendSpotNode
@@ -148,6 +153,7 @@ export interface ZLinkSpotManagerOptions {
     string,
     ReadonlyMap<string, Type<ZLinkInstanceSpot>>
   >;
+  readonly instanceSpotIdleTimeoutMs?: ReadonlyMap<string, number>;
   readonly spotTimerHandlers?: readonly ZLinkSpotTimerHandlerRegistration[];
   readonly spotPacketHandlers?: readonly ZLinkSpotPacketHandlerRegistration[];
   readonly spotSubscriptionHandlers?: readonly ZLinkSpotSubscriptionHandlerRegistration[];
@@ -220,6 +226,11 @@ export interface ZLinkSpotManagerOptions {
     meshName: string,
     spotId: RoutingId
   ) => { readonly stableType: string; readonly objectGeneration: bigint } | undefined;
+  readonly instanceSpotApplicationQuiescenceProvider?: (
+    meshName: string,
+    spotId: RoutingId,
+    signal?: AbortSignal
+  ) => Promise<void>;
   // Backs each user Spot with a core-native Spot object (registered for join
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
@@ -260,8 +271,11 @@ export class DefaultZLinkSpotManager {
     string,
     Promise<ZLinkSpotActivation>
   >();
-  private readonly pendingInstanceTerminals = new Set<string>();
+  private readonly pendingInstanceCloses = new Map<string, Promise<boolean>>();
+  private readonly pendingInstanceTerminals = new Map<string, number>();
   private readonly deferredInstanceAuthorityReleases = new Set<string>();
+  private idleSweepTimer?: ReturnType<typeof setTimeout>;
+  private idleSweepRunning = false;
 
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.activations = new ZLinkSpotActivationRegistry(options.metrics);
@@ -328,17 +342,25 @@ export class DefaultZLinkSpotManager {
         this.actorMembership.leaveActor(spotId, actor, signal, meshName),
       closeSpot: (meshName, spotId, signal, reason) =>
         this.closeWithReason(meshName, spotId, signal, reason),
-      registerActivation: (activation) => this.activations.register(activation),
-      releaseLocation: (activation, meshName, spotId) =>
-        this.isInstanceFactory(meshName, activation.spotType)
-          ? this.pendingInstanceTerminals.has(`${meshName}\0${String(spotId)}`)
-            ? (this.deferredInstanceAuthorityReleases.add(
-                `${meshName}\0${String(spotId)}`
-              ), Promise.resolve())
-            : this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve()
-          : this.locationClaim.release(meshName, spotId),
+      registerActivation: (activation) => {
+        this.activations.register(activation);
+        this.scheduleIdleSweep();
+      },
+      releaseLocation: (activation, meshName, spotId) => {
+        if (!this.isInstanceFactory(meshName, activation.spotType)) {
+          return this.locationClaim.release(meshName, spotId);
+        }
+        const key = `${meshName}\0${String(spotId)}`;
+        if (this.pendingInstanceTerminals.has(key)) {
+          this.deferredInstanceAuthorityReleases.add(key);
+          return Promise.resolve();
+        }
+        this.deferredInstanceAuthorityReleases.delete(key);
+        return this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve();
+      },
       metrics: options.metrics
     });
+    this.scheduleIdleSweep();
   }
 
   entrySpotIdForMesh(meshName: string): string | undefined {
@@ -424,6 +446,21 @@ export class DefaultZLinkSpotManager {
       }
       return Promise.resolve();
     }
+    const lifecycleActivation = this.activations.activeActivations().find((activation) =>
+      activation.meshName === meshName && String(activation.spotId) === String(spotId)
+    );
+    if (
+      lifecycleActivation !== undefined
+      && (
+        lifecycleActivation.isIdleEvicting
+        || this.activations.closingOperation(meshName, spotId) !== undefined
+      )
+    ) {
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
+        `Instance Spot '${String(spotId)}' is closing after idle eviction.`
+      );
+    }
     const key = `${meshName}\0${String(spotId)}`;
     let pending = this.pendingInstanceMaterializations.get(key);
     if (pending === undefined) {
@@ -478,11 +515,52 @@ export class DefaultZLinkSpotManager {
     await operation?.ready;
   }
 
+  isInstanceSpotIdleEvicting(meshName: string, spotId: RoutingId): boolean {
+    const activation = this.activations.activeActivations().find((candidate) =>
+      candidate.meshName === meshName && String(candidate.spotId) === String(spotId)
+    );
+    return activation !== undefined
+      && this.isInstanceFactory(meshName, activation.spotType)
+      && activation.isIdleEvicting;
+  }
+
+  beginInstanceSpotIdleEviction(meshName: string, spotId: RoutingId): boolean {
+    const activation = this.activations.activeActivations().find((candidate) =>
+      candidate.meshName === meshName && String(candidate.spotId) === String(spotId)
+    );
+    if (
+      activation === undefined
+      || !this.isInstanceFactory(meshName, activation.spotType)
+      || !activation.isIdleFor(
+        Date.now(),
+        this.options.instanceSpotIdleTimeoutMs?.get(meshName) ?? 0
+      )
+    ) {
+      return false;
+    }
+    return activation.beginIdleEviction();
+  }
+
   async completeInstanceTerminal(meshName: string, spotId: RoutingId): Promise<boolean> {
     const key = `${meshName}\0${String(spotId)}`;
+    const pending = this.pendingInstanceTerminals.get(key);
+    if (pending === undefined) return false;
+    if (pending > 1) {
+      this.pendingInstanceTerminals.set(key, pending - 1);
+      return false;
+    }
     this.pendingInstanceTerminals.delete(key);
+    const pendingClose = this.pendingInstanceCloses.get(key);
     const deferredRelease = this.deferredInstanceAuthorityReleases.delete(key);
-    if (!deferredRelease && this.activations.closingOperation(meshName, spotId) === undefined) {
+    if (pendingClose !== undefined) {
+      this.deferredInstanceAuthorityReleases.add(key);
+      await pendingClose;
+      return true;
+    }
+    if (
+      !deferredRelease
+      && this.activations.closingOperation(meshName, spotId) === undefined
+    ) {
       return false;
     }
     await (this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve());
@@ -490,7 +568,11 @@ export class DefaultZLinkSpotManager {
   }
 
   beginInstanceTerminal(meshName: string, spotId: RoutingId): void {
-    this.pendingInstanceTerminals.add(`${meshName}\0${String(spotId)}`);
+    const key = `${meshName}\0${String(spotId)}`;
+    this.pendingInstanceTerminals.set(
+      key,
+      (this.pendingInstanceTerminals.get(key) ?? 0) + 1
+    );
   }
 
   private requireInstanceFactory(
@@ -512,6 +594,72 @@ export class DefaultZLinkSpotManager {
   ): boolean {
     return [...(this.options.instanceSpotFactories?.get(meshName)?.values() ?? [])]
       .some(factory => factory === implementation);
+  }
+
+  private scheduleIdleSweep(): void {
+    if (this.idleSweepTimer !== undefined) return;
+    if (!this.hasIdleSweepTarget()) return;
+    const delays = [...(this.options.instanceSpotIdleTimeoutMs?.values() ?? [])]
+      .filter((value) => value > 0);
+    if (delays.length === 0) return;
+    const delay = Math.max(1, Math.min(...delays));
+    const timer = setTimeout(() => {
+      this.idleSweepTimer = undefined;
+      void this.runIdleSweep();
+    }, delay);
+    timer.unref();
+    this.idleSweepTimer = timer;
+  }
+
+  private hasIdleSweepTarget(): boolean {
+    return this.activations.activeActivations().some((activation) =>
+      (this.options.instanceSpotIdleTimeoutMs?.get(activation.meshName) ?? 0) > 0
+      && this.isInstanceFactory(activation.meshName, activation.spotType)
+    );
+  }
+
+  private async runIdleSweep(): Promise<void> {
+    if (this.idleSweepRunning) return;
+    this.idleSweepRunning = true;
+    try {
+      const now = Date.now();
+      for (const activation of this.activations.activeActivations()) {
+        const timeoutMs = this.options.instanceSpotIdleTimeoutMs?.get(activation.meshName) ?? 0;
+        if (
+          timeoutMs <= 0
+          || !this.isInstanceFactory(activation.meshName, activation.spotType)
+          || !activation.isIdleFor(now, timeoutMs)
+          || !activation.beginIdleEviction()
+        ) {
+          continue;
+        }
+        const close = this.closeWithReason(
+          activation.meshName,
+          activation.spotId,
+          undefined,
+          ZLinkSpotCloseReason.IdleEvicted
+        );
+        const run = async () => {
+          try {
+            const closed = await close;
+            if (!closed) activation.abortIdleEviction();
+          } catch (error) {
+            activation.abortIdleEviction();
+            throw error;
+          }
+        };
+        this.options.detachedTaskRunner?.runDetached(
+          `instance idle eviction ${String(activation.spotId)}`,
+          run
+        );
+        if (this.options.detachedTaskRunner === undefined) {
+          void run().catch(() => undefined);
+        }
+      }
+    } finally {
+      this.idleSweepRunning = false;
+      this.scheduleIdleSweep();
+    }
   }
 
   async create<TSpot extends ZLinkSpot>(
@@ -654,9 +802,16 @@ export class DefaultZLinkSpotManager {
     reason = ZLinkSpotCloseReason.ExplicitClose
   ): Promise<boolean> {
     requireMeshName(meshName);
+    const key = `${meshName}\0${String(spotId)}`;
     const closing = this.activations.closingOperation(meshName, spotId);
     if (closing !== undefined) {
       return await closing.ready;
+    }
+    const pendingClose = this.pendingInstanceCloses.get(key);
+    if (pendingClose !== undefined) {
+      const pendingActivation = this.activations.resolve(meshName, spotId);
+      if (pendingActivation?.serial.isCurrentTurn === true) return true;
+      return await pendingClose;
     }
     const activation = this.activations.resolve(meshName, spotId);
     if (activation === undefined) {
@@ -676,6 +831,36 @@ export class DefaultZLinkSpotManager {
       }
       return operation;
     };
+
+    const waitForApplication = this.isInstanceFactory(meshName, activation.spotType)
+      ? this.options.instanceSpotApplicationQuiescenceProvider?.(meshName, spotId, signal)
+      : undefined;
+    if (waitForApplication !== undefined) {
+      const deferredClose = waitForApplication.then(async () => {
+        const operation = beginClose();
+        if (operation === undefined) return false;
+        return await operation.ready;
+      });
+      let trackedClose: Promise<boolean>;
+      trackedClose = deferredClose.finally(() => {
+        if (this.pendingInstanceCloses.get(key) === trackedClose) {
+          this.pendingInstanceCloses.delete(key);
+        }
+      });
+      this.pendingInstanceCloses.set(key, trackedClose);
+      if (currentTurn) {
+        this.options.detachedTaskRunner?.runDetached(
+          `instance spot close ${String(spotId)}`,
+          async () => { await trackedClose; }
+        );
+        if (this.options.detachedTaskRunner === undefined) {
+          void trackedClose.catch(() => undefined);
+        }
+        return true;
+      }
+      return await trackedClose;
+    }
+
     const operation = beginClose();
     if (operation === undefined) {
       return false;
@@ -860,7 +1045,11 @@ export class DefaultZLinkSpotManager {
     spotId: RoutingId,
     packetName: string | undefined,
     message: unknown,
-    context: { readonly channelName: string; readonly contentType?: string }
+    context: {
+      readonly channelName: string;
+      readonly contentType?: string;
+      readonly workOptions?: import('../execution/serial-scheduler').ZLinkSerialWorkOptions;
+    }
   ): Promise<void> {
     await this.routedSpotPackets.send(spotId, packetName, message, context);
   }
@@ -869,7 +1058,11 @@ export class DefaultZLinkSpotManager {
     spotId: RoutingId,
     packetName: string | undefined,
     request: unknown,
-    context: { readonly channelName: string; readonly contentType?: string }
+    context: {
+      readonly channelName: string;
+      readonly contentType?: string;
+      readonly workOptions?: import('../execution/serial-scheduler').ZLinkSerialWorkOptions;
+    }
   ): Promise<TReply> {
     return await this.routedSpotPackets.request<TReply>(spotId, packetName, request, context);
   }
@@ -906,7 +1099,11 @@ export class DefaultZLinkSpotManager {
     );
     const context = {
       channelName: envelope.header.channelName,
-      contentType: envelope.header.contentType
+      contentType: envelope.header.contentType,
+      workOptions: zlinkSerialWorkOptions(
+        envelope.payload.byteLength,
+        record.applicationMetadata?.byteLength ?? zlinkMetadataByteLength(envelope.header.metadata)
+      )
     };
     if (record.kind === ReceiveKind.SpotSend) {
       await this.ensureInstanceApplicationActivation(meshName, spotId);
@@ -970,7 +1167,11 @@ export class DefaultZLinkSpotManager {
     );
     const context = {
       channelName: envelope.header.channelName,
-      contentType: envelope.header.contentType
+      contentType: envelope.header.contentType,
+      workOptions: zlinkSerialWorkOptions(
+        envelope.payload.byteLength,
+        record.applicationMetadata?.byteLength ?? zlinkMetadataByteLength(envelope.header.metadata)
+      )
     };
     if (record.operationKind !== OperationKind.InstanceSpotRequest) {
       await this.routedSpotPackets.send(spotId, envelope.packetName, payload, context);

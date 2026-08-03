@@ -2,6 +2,8 @@
 #pragma once
 
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/diagnostics/runtime_observation.hpp"
+#include "runtime/dispatch/receive_batch_budget.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/client_server/raw_client_server_owner.hpp"
 #include "runtime/locations/location_runtime.hpp"
@@ -60,10 +62,13 @@ class client_server_location_runtime_t final : public client_server_runtime_t
     std::unique_ptr<mesh_runtime_observation_t> observe (
       std::string channel_name,
       std::size_t capacity,
-      std::function<void (const client_server_runtime_event_t &)> observer) override;
+      std::function<void (
+        const observed_status_t<client_server_runtime_event_t> &)> observer) override;
     bool is_ready (std::string channel_name) const override;
 
-    struct observer_t;
+    using observer_t =
+      zlink::framework::observation_detail::runtime_observer_state_t<
+        client_server_runtime_event_t>;
 
   private:
     struct server_entry_t;
@@ -137,6 +142,8 @@ class client_server_location_runtime_t final : public client_server_runtime_t
     std::map<std::string, std::uint64_t> _snapshot_sequences;
     std::map<std::string, client_server_channel_snapshot_t> _last_snapshots;
     std::map<std::string, std::vector<std::weak_ptr<observer_t>>> _observers;
+    std::size_t _server_pump_cursor = 0;
+    std::size_t _client_pump_cursor = 0;
     std::atomic_bool _stop{false};
     std::thread _thread;
 };

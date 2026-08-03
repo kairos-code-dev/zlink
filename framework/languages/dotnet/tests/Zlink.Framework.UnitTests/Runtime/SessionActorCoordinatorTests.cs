@@ -1381,7 +1381,7 @@ public sealed class SessionActorCoordinatorTests
     }
 
     [Fact]
-    public async Task Sealed_Route_Reports_Unavailable_Before_Frame_Admission()
+    public async Task Sealed_Route_Holds_Frame_Admission_Until_Unseal()
     {
         var runtime = CreateRuntime();
         var context = CreateSessionContext(runtime, "session-seal-unavailable");
@@ -1406,30 +1406,50 @@ public sealed class SessionActorCoordinatorTests
                     identity.TargetNodeGeneration,
                     identity.OwnerLeaseGeneration,
                     identity.SessionOwnerNodeGeneration,
-                    "handoff-seal-unavailable"),
+                "handoff-seal-unavailable"),
             CancellationToken.None)).Acknowledged);
 
-        using var payload = Message.From(new byte[] { 1, 2, 3 });
-        var header = new ZlinkStreamHeader(
-            ZlinkStreamMessageKind.Request,
-            ZlinkStreamCodec.Json,
-            ZlinkStreamHeaderFlags.HasRequestSeq,
-            new ZlinkStreamRequestSeq(1),
-            "ActorPingReq",
-            ZlinkStreamMetadata.Empty);
+        var wait = runtime.WaitForSessionActorRouteAvailableAsync(
+                actor.ActorId,
+                identity.BindingToken,
+                CancellationToken.None)
+            .AsTask();
+        Assert.False(wait.IsCompleted);
 
-        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
-            await context.ActorCoordinator.RelayToActorAsync(
-                bound,
-                header,
-                payload,
-                static (_, _, _) => ValueTask.CompletedTask,
-                CancellationToken.None));
+        var target = new ActorRef(
+            actor.ActorId,
+            actor.ObjectGeneration,
+            actor.MeshName,
+            RoutingId.From("actor-node-b"));
+        var command = new ZLinkSessionRouteCommit(
+            actor.ActorId,
+            identity.BindingToken,
+            identity.BindingGeneration,
+            actor.ObjectGeneration,
+            identity.AuthorityOwnerGeneration,
+            identity.AuthorityOwnerGeneration + 1,
+            identity.MeshName,
+            identity.MeshName,
+            identity.TargetNodeGeneration,
+            identity.TargetNodeGeneration + 1,
+            identity.OwnerLeaseGeneration,
+            identity.OwnerLeaseGeneration + 1,
+            identity.SessionOwnerNodeGeneration,
+            identity.AcceptedHighWater,
+            "handoff-seal-unavailable",
+            target);
+        Assert.True(runtime.CommitSessionActorRoute(command).Acknowledged);
+        Assert.True(runtime.UnsealCommittedSessionActorRoute(command));
+        Assert.True(await wait);
 
-        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
-        Assert.Contains("before frame admission", error.Message, StringComparison.Ordinal);
-        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var current));
-        Assert.Equal(identity.AcceptedHighWater, current.AcceptedHighWater);
+        Assert.True(runtime.TryAcceptSessionActorFrame(
+            actor.ActorId,
+            identity.BindingToken,
+            out var acceptedHighWater));
+        Assert.Equal(identity.AcceptedHighWater + 1, acceptedHighWater);
+        runtime.CompleteAcceptedSessionActorFrame(
+            actor.ActorId,
+            identity.BindingToken);
     }
 
     [Fact]

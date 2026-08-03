@@ -31,8 +31,7 @@ public sealed interface ZLinkActorJoinCompletion
 
     record Failed(
         ZLinkActorJoinOperationId operationId,
-        ZLinkFrameworkErrorKind kind,
-        boolean isRetriable) implements ZLinkActorJoinCompletion {
+        ZLinkFrameworkErrorKind kind) implements ZLinkActorJoinCompletion {
         public Failed {
             Objects.requireNonNull(operationId, "operationId");
             Objects.requireNonNull(kind, "kind");

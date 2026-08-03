@@ -63,7 +63,7 @@ public interface IZLinkRouteMeshRuntime
 {
     ZLinkRouteMeshStatus GetStatus(string meshName);
 
-    IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> ObserveAsync(
         string meshName,
         CancellationToken cancellationToken = default);
 }
@@ -95,7 +95,7 @@ public interface IZLinkClientServerRuntime
 {
     ZLinkClientServerStatus GetStatus(string channelName);
 
-    IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkClientServerStatus>> ObserveAsync(
         string channelName,
         CancellationToken cancellationToken = default);
 }

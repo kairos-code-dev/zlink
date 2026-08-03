@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -9,6 +10,8 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwn
 import systems.zlink.framework.spots.ZLinkSpot;
 
 abstract class ZLinkSpotContextHost {
+    abstract Executor serialExecutor();
+
     abstract DefaultSpotOutbound createContextOutbound(
         ZLinkBackendSpot backendSpot,
         RoutingId nodeRid);

@@ -34,6 +34,7 @@
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
+#include "runtime/diagnostics/runtime_observation.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/stateful/public_store_adapters.hpp"
 #include "runtime/streams/stream_host_service.hpp"
@@ -369,6 +370,9 @@ class app_state_t
 namespace
 {
 
+using framework_observer_state_t =
+  observation_detail::runtime_observer_state_t<framework_runtime_status_t>;
+
 bool same_runtime_status (
   const framework_runtime_status_t &left,
   const framework_runtime_status_t &right)
@@ -474,10 +478,11 @@ class framework_runtime_status_source_t
             _worker.join ();
     }
 
-    std::shared_ptr<class framework_runtime_observer_state_t>
+    std::shared_ptr<framework_observer_state_t>
     observe (
       std::size_t capacity,
-      std::function<void (const framework_runtime_status_t &)> observer);
+      std::function<void (
+        const observed_status_t<framework_runtime_status_t> &)> observer);
 
   private:
     void run () noexcept;
@@ -489,93 +494,17 @@ class framework_runtime_status_source_t
     std::atomic_bool _closed{false};
     std::condition_variable _changed;
     std::mutex _observers_mutex;
-    std::vector<std::weak_ptr<class framework_runtime_observer_state_t>>
-      _observers;
+    std::vector<std::weak_ptr<framework_observer_state_t>> _observers;
     std::thread _worker;
 };
 
-class framework_runtime_observer_state_t final :
-    public std::enable_shared_from_this<framework_runtime_observer_state_t>
-{
-  public:
-    framework_runtime_observer_state_t (
-      std::size_t capacity,
-      std::function<void (const framework_runtime_status_t &)> observer) :
-        _capacity (capacity), _observer (std::move (observer))
-    {
-    }
-
-    void start ()
-    {
-        auto self = shared_from_this ();
-        std::thread ([self] { self->run (); }).detach ();
-    }
-
-    void enqueue (framework_runtime_status_t status)
-    {
-        {
-        std::lock_guard lock (_mutex);
-        if (_closed)
-            return;
-        if (_last_enqueued_sequence == status.sequence)
-            return;
-        _last_enqueued_sequence = status.sequence;
-        if (_pending.size () == _capacity)
-            _pending.pop_front ();
-            _pending.push_back (std::move (status));
-        }
-        _changed.notify_one ();
-    }
-
-    void close () noexcept
-    {
-        {
-            std::lock_guard lock (_mutex);
-            _closed = true;
-            _pending.clear ();
-        }
-        _changed.notify_all ();
-    }
-
-  private:
-    void run () noexcept
-    {
-        for (;;) {
-            std::optional<framework_runtime_status_t> status;
-            {
-                std::unique_lock lock (_mutex);
-                _changed.wait (
-                  lock, [&] { return _closed || !_pending.empty (); });
-                if (_closed)
-                    return;
-                status.emplace (std::move (_pending.front ()));
-                _pending.pop_front ();
-            }
-            try {
-                _observer (*status);
-            }
-            catch (...) {
-                close ();
-                return;
-            }
-        }
-    }
-
-    std::size_t _capacity;
-    std::function<void (const framework_runtime_status_t &)> _observer;
-    std::mutex _mutex;
-    std::condition_variable _changed;
-    std::deque<framework_runtime_status_t> _pending;
-    std::uint64_t _last_enqueued_sequence = 0;
-    bool _closed = false;
-};
-
-std::shared_ptr<framework_runtime_observer_state_t>
+std::shared_ptr<framework_observer_state_t>
 framework_runtime_status_source_t::observe (
   std::size_t capacity,
-  std::function<void (const framework_runtime_status_t &)> observer)
+  std::function<void (
+    const observed_status_t<framework_runtime_status_t> &)> observer)
 {
-    auto state = std::make_shared<framework_runtime_observer_state_t> (
+    auto state = std::make_shared<framework_observer_state_t> (
       capacity, std::move (observer));
     {
         std::lock_guard lock (_observers_mutex);
@@ -586,8 +515,11 @@ framework_runtime_status_source_t::observe (
           _observers.end ());
         _observers.emplace_back (state);
     }
-    state->start ();
-    state->enqueue (snapshot ());
+    auto initial = snapshot ();
+    const bool terminal = initial.state == framework_runtime_state_t::stopped
+                          || initial.state == framework_runtime_state_t::error;
+    state->enqueue (
+      std::move (initial), terminal);
     return state;
 }
 
@@ -598,7 +530,7 @@ void framework_runtime_status_source_t::run () noexcept
         auto status = snapshot ();
         if (status.sequence != last_sequence) {
             last_sequence = status.sequence;
-            std::vector<std::shared_ptr<framework_runtime_observer_state_t>>
+            std::vector<std::shared_ptr<framework_observer_state_t>>
               observers;
             {
                 std::lock_guard lock (_observers_mutex);
@@ -613,8 +545,11 @@ void framework_runtime_status_source_t::run () noexcept
                     }
                 }
             }
+            const bool terminal =
+              status.state == framework_runtime_state_t::stopped
+              || status.state == framework_runtime_state_t::error;
             for (const auto &observer : observers)
-                observer->enqueue (status);
+                observer->enqueue (status, terminal);
         }
         std::unique_lock lock (_observers_mutex);
         _changed.wait_for (
@@ -628,7 +563,7 @@ class framework_runtime_observation_t final :
 {
   public:
     explicit framework_runtime_observation_t (
-      std::shared_ptr<framework_runtime_observer_state_t> state) :
+      std::shared_ptr<framework_observer_state_t> state) :
         _state (std::move (state))
     {
     }
@@ -644,7 +579,7 @@ class framework_runtime_observation_t final :
     }
 
   private:
-    std::shared_ptr<framework_runtime_observer_state_t> _state;
+    std::shared_ptr<framework_observer_state_t> _state;
 };
 
 class public_framework_runtime_t final :
@@ -670,7 +605,8 @@ class public_framework_runtime_t final :
 
     std::unique_ptr<runtime_observation_t> observe (
       std::size_t capacity,
-      std::function<void (const framework_runtime_status_t &)> observer)
+      std::function<void (
+        const observed_status_t<framework_runtime_status_t> &)> observer)
       override
     {
         if (capacity == 0)

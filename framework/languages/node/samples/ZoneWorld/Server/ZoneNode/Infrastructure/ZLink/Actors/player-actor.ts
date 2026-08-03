@@ -1,6 +1,11 @@
 import { zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
 import { ZoneSpot } from '../Spots/zone-spot';
-import type { ZLinkActor, ZLinkActorContext, ZLinkMessageContext } from '@zlink-systems/framework';
+import type {
+  ZLinkActor,
+  ZLinkActorContext,
+  ZLinkActorJoinCompletion,
+  ZLinkMessageContext
+} from '@zlink-systems/framework';
 import { ZoneIds } from '../../../../../Shared/spec';
 import {
   WorldAnnounceNotify,
@@ -24,7 +29,24 @@ class PlayerActor implements ZLinkActor {
 
   push(payload: unknown): void {
     if (this.isBot) return;
-    this.context.boundSession.send(payload).submit();
+    const packetName = typeof payload === 'object' && payload !== null
+      ? payload.constructor.name
+      : typeof payload;
+    void this.context.boundSession.send(payload).submit().then(
+      () => console.log(`actor push submitted actor=${this.actorId} packet=${packetName}`),
+      (error: unknown) => console.error(
+        `actor push failed actor=${this.actorId} packet=${packetName}`,
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
+
+  async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
+    const kind = 'kind' in completion ? completion.kind : 'none';
+    console.log(
+      `actor join completed actor=${this.actorId} status=${completion.status}`
+        + ` kind=${kind ?? 'none'}`
+    );
   }
 }
 

@@ -55,9 +55,6 @@ func TestMessageCanonicalCopyHelpers(t *testing.T) {
 	if got := msg.Text(); got != "copy-payload" {
 		t.Fatalf("Bytes() should return a snapshot, message text = %q", got)
 	}
-	if got := string(msg.BytesCopy()); got != "copy-payload" {
-		t.Fatalf("BytesCopy() = %q, want copy-payload", got)
-	}
 
 	copyMsg, err := msg.Copy()
 	if err != nil {

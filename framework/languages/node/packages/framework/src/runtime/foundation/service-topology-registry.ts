@@ -63,7 +63,7 @@ export class ServiceTopologyRegistry {
   private readonly peersByRid = new Map<string, AdmittedServicePeer>();
   private readonly notRequiredByRid = new Map<string, ServiceNodeDescriptor>();
   private readonly knownByRid = new Map<string, ServiceNodeDescriptor>();
-  private readonly selectionCursor = new Map<string, bigint>();
+  private readonly selectionWeights = new Map<string, Map<string, bigint>>();
 
   constructor(local: ServiceNodeDescriptor) {
     validateDescriptor(local);
@@ -274,7 +274,13 @@ export class ServiceTopologyRegistry {
         peer: AdmittedServicePeer;
         channel: ServiceChannelDescriptor;
       } => value.channel !== undefined && value.peer.descriptor.state === 'serving' && value.channel.weight > 0);
-    return this.selectWeighted(`channel:${channelName}`, eligible, value => value.channel.weight)?.peer;
+    return this.selectWeighted(
+      `channel:${channelName}`,
+      eligible,
+      value => value.channel.weight,
+      value => value.peer.descriptor.nodeRoutingId,
+      (left, right) => left.peer.descriptor.nodeRoutingId.localeCompare(right.peer.descriptor.nodeRoutingId)
+    )?.peer;
   }
 
   selectPlacement(): AdmittedServicePeer | undefined {
@@ -289,7 +295,9 @@ export class ServiceTopologyRegistry {
     return this.selectWeighted(
       'placement',
       eligible,
-      peer => peer.descriptor.placementWeight
+      peer => peer.descriptor.placementWeight,
+      peer => peer.descriptor.nodeRoutingId,
+      (left, right) => left.descriptor.nodeRoutingId.localeCompare(right.descriptor.nodeRoutingId)
     );
   }
 
@@ -310,7 +318,9 @@ export class ServiceTopologyRegistry {
     return this.selectWeighted(
       `object:${stableType}`,
       candidates,
-      descriptor => descriptor.placementWeight
+      descriptor => descriptor.placementWeight,
+      descriptor => descriptor.nodeRoutingId,
+      (left, right) => left.nodeRoutingId.localeCompare(right.nodeRoutingId)
     );
   }
 
@@ -333,37 +343,33 @@ export class ServiceTopologyRegistry {
   private selectWeighted<T>(
     key: string,
     eligible: readonly T[],
-    weight: (value: T) => number
+    weight: (value: T) => number,
+    identity: (value: T) => string,
+    compare: (left: T, right: T) => number
   ): T | undefined {
-    const weights = eligible.map(value => BigInt(weight(value)));
-    const total = weights.reduce((sum, value) => sum + value, 0n);
+    const ordered = [...eligible].sort(compare);
+    const weighted = ordered.map(value => ({ value, weight: BigInt(weight(value)), id: identity(value) }));
+    const total = weighted.reduce((sum, value) => sum + value.weight, 0n);
     if (total === 0n) return undefined;
-    const cursor = this.selectionCursor.get(key) ?? 0n;
-    this.selectionCursor.set(key, cursor + 1n);
-    // Reduce the weighted cycle before selecting its slot. This preserves the
-    // long-run weight ratio while allowing equal-weight targets to participate
-    // in a bounded request window instead of consuming one full weight block.
-    const divisor = weights.reduce((current, value) => gcd(current, value), 0n);
-    const cycleLength = total / divisor;
-    const selected = cursor % cycleLength;
-    let offset = 0n;
-    for (let index = 0; index < eligible.length; index += 1) {
-      offset += weights[index]! / divisor;
-      if (selected < offset) return eligible[index]!;
+    const current = this.selectionWeights.get(key) ?? new Map<string, bigint>();
+    this.selectionWeights.set(key, current);
+    const eligibleIds = new Set(weighted.map(value => value.id));
+    for (const id of current.keys()) {
+      if (!eligibleIds.has(id)) current.delete(id);
     }
-    return eligible.at(-1);
+    let selected = weighted[0]!;
+    let selectedCurrent: bigint | undefined;
+    for (const candidate of weighted) {
+      const next = (current.get(candidate.id) ?? 0n) + candidate.weight;
+      current.set(candidate.id, next);
+      if (selectedCurrent === undefined || next > selectedCurrent) {
+        selected = candidate;
+        selectedCurrent = next;
+      }
+    }
+    current.set(selected.id, current.get(selected.id)! - total);
+    return selected.value;
   }
-}
-
-function gcd(left: bigint, right: bigint): bigint {
-  let a = left < 0n ? -left : left;
-  let b = right < 0n ? -right : right;
-  while (b !== 0n) {
-    const remainder = a % b;
-    a = b;
-    b = remainder;
-  }
-  return a;
 }
 
 export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {

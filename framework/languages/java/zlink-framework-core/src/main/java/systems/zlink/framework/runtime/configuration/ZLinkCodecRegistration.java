@@ -152,7 +152,7 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         String normalized = contentType.trim();
         if (normalized.isEmpty()) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
                 "received payload content type must not be blank");
         }
         if (DEFAULT_JSON_CONTENT_TYPE.equalsIgnoreCase(normalized)
@@ -162,7 +162,7 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         RegisteredSerializer registered = serializers.get(normalized);
         if (registered == null) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
                 "No payload serializer is registered for received content type '"
                     + normalized + "'");
         }

@@ -75,7 +75,7 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
 
     public bool EnqueueInfrastructure(Func<ValueTask> work)
     {
-        return _queue.TryPost(_ => work(), out _);
+        return _queue.TryPostNext(_ => work(), out _);
     }
 
     public ZLinkSerialPostAdmission EnqueueApplication(

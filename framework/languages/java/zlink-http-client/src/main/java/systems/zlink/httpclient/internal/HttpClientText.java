@@ -21,7 +21,7 @@ public final class HttpClientText {
 
     public static void requireNonBlank(String value, String message) {
         if (isBlank(value)) {
-            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, message);
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, message);
         }
     }
 
@@ -32,7 +32,7 @@ public final class HttpClientText {
     /** Returns the contract's millisecond-rounded timeout after validating its finite range. */
     public static Duration normalizeTimeout(Duration value) {
         if (value == null || value.isZero() || value.isNegative()) {
-            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, "HTTP client timeout must be greater than zero");
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, "HTTP client timeout must be greater than zero");
         }
         long millis;
         try {
@@ -42,13 +42,13 @@ public final class HttpClientText {
             }
         } catch (ArithmeticException error) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
                 "HTTP client timeout must fit the finite 1..2147483647 ms range",
                 error);
         }
         if (millis < 1L || millis > MAX_TIMEOUT_MILLIS) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+                ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
                 "HTTP client timeout must fit the finite 1..2147483647 ms range");
         }
         return Duration.ofMillis(millis);

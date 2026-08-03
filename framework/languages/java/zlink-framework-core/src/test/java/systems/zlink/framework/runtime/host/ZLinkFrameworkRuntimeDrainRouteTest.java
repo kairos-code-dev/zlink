@@ -83,8 +83,9 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
             @Override
             public void onNext(
                 systems.zlink.framework.monitoring
-                    .ZLinkFrameworkRuntimeStatus status) {
-                status.terminationResult().ifPresent(observed::complete);
+                    .ZLinkObservedStatus<systems.zlink.framework.monitoring
+                        .ZLinkFrameworkRuntimeStatus> observedStatus) {
+                observedStatus.status().terminationResult().ifPresent(observed::complete);
             }
 
             @Override

@@ -5,7 +5,7 @@ import java.util.concurrent.Flow;
 public interface ZLinkFanoutRuntime {
     ZLinkFanoutStatus snapshot(String channelName);
 
-    Flow.Publisher<ZLinkFanoutStatus> observe(
+    Flow.Publisher<ZLinkObservedStatus<ZLinkFanoutStatus>> observe(
         String channelName,
         int capacity);
 }

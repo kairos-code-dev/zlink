@@ -29,7 +29,7 @@ runtime이 무엇을 고쳐야 하는지 정리한 목록이다. 배경과 판�
 |---|---|---|
 | C++ | A1(둘 다) · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2 | Channel DEALER fan 경로에 **효과 없는 선택 로직**이 남아 있다. 삭제하고 core `lb_t`를 고쳐야 한다 |
 | .NET | A1(둘 다) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4 · D2 · D3 · D4 | 관찰자 두 stream이 합치지 않고 버린다 |
-| Java | A1(둘 다) · A2 · A3 · A4 · A5 · A6 · A8 · A10 · A11 · B6 · D2 · D4 | **error kind enum이 구형 40-kind 모델**이라 wire 의미가 다르다. Spot queue 사실상 무한 |
+| Java | A2 · A3 · A4(기본값·payload 회계) · A5(wire) · A6(D6) · A8 · A9(전체 topology) · A10 · A11 · D4 · D6 | public error kind와 queue 구조는 공통 방향으로 정리했지만 relay wire·idle eviction·전체 수신 경로·내부 copy 회계가 남아 있다 |
 | Node | A1(RouteMesh) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4b · B5 · D1 · D4 | Spot·Actor queue에 한도가 아예 없다 |
 
 ### 선행 과제 (구현 전에 정해야 하는 것)
@@ -85,11 +85,11 @@ topology마다 다르다 — RouteMesh는 NodeRid, ClientServer는 Server RID다
 |---|---|---|---|
 | C++ | cursor를 weight 합으로 나눈 **연속 구간**에서 고른다. 후보 map key가 NodeRid라 tiebreak 키는 맞다 | `cpp/runtime/mesh/service_topology_registry.cpp:422-465` (`cursor++ % total_weight`) | **갭.** 절차가 누적값 방식이 아니다 |
 | .NET | 서로소 step으로 weighted ring을 순회한다. 게다가 local target을 먼저 넣고 peer만 정렬하므로 **전체 후보가 NodeRid 순서가 아니다** | selector `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs:6688-6701`, 정렬 `:6739-6759`, 절차 `dotnet/Runtime/Channels/ZLinkWeightedSelector.cs:16` | **갭 2건.** 절차와 정렬 |
-| Java | cursor를 `weight 합` 범위에 넣고 **연속 구간**에서 고른다 | `java/runtime/internal/service/ZLinkServiceTopologyRegistry.java:224-243`, 후보 정렬 `:187-192` | **갭.** `A,A,A,B` burst |
+| Java | 후보별 current를 갱신하는 **smooth weighted round-robin**을 사용하고 NodeRid 오름차순으로 동점을 결정한다 | `java/runtime/internal/service/ZLinkServiceTopologyRegistry.java` | **구현.** `M6ARuntimeContractTest`에서 선택 순서와 weight를 검증 |
 | Node | 같은 방식(gcd로 줄인 연속 block) | `node/runtime/foundation/service-topology-registry.ts:333-354` | **갭.** 같은 결함 |
 
-**네 언어 모두 갭이다.** Java·Node·C++은 후보를 NodeRid로 정렬하므로 절차만 누적값
-방식으로 바꾸면 닫힌다. .NET은 정렬도 함께 고쳐야 한다.
+Java는 W2에서 누적 current 방식으로 닫혔다. C++·.NET·Node의 기존 판정은 그대로 남아
+있으며, Java의 구현만으로 다른 언어의 갭이 닫히지는 않는다.
 
 > **C++의 DEALER fan은 fallback 경로이며, 정식 ClientServer는 framework가 고른다.**
 >
@@ -119,9 +119,9 @@ topology마다 다르다 — RouteMesh는 NodeRid, ClientServer는 Server RID다
 | Node | 누적값 3단계 ✓ | `serverRoutingId` ✓ | `node/runtime/foundation/service-discovery-registry.ts:80-115` | **충족** |
 | .NET | 누적값 3단계 ✓ | **없음** ✗ | `dotnet/Runtime/Channels/ZLinkClientServerClientRuntime.cs:430-451` | **갭.** `OrderByDescending(SelectionCurrent).First()`라 동점이면 열거 순서가 결정한다 |
 | C++ | 누적값 3단계 ✓ | **연결 map key** ✗ | 절차 `cpp/runtime/client_server/weighted_selector.hpp:24-60`, 후보 구성 `cpp/runtime/client_server/client_server_location_runtime.cpp:1316-1327` | **갭.** key가 자동 연결은 `serverRid+lifecycleGeneration`, 수동 연결은 endpoint 기반이다 |
-| Java | 연속 구간 cursor ✗ | Server RID ✓ | `java/runtime/channels/ZLinkChannelSocketRegistry.java:112-159` | **갭.** 절차 |
+| Java | current 갱신 기반 smooth weighted round-robin ✓ | Server RID ✓ | `java/runtime/channels/ZLinkChannelSocketRegistry.java` | **구현.** `ZLinkClientServerM6RuntimeTest`에서 선택 순서와 연결 세대를 검증 |
 
-**세 언어의 ClientServer 수정은 작다.** C++은 후보에 Server RID를 별도 field로 실어
+**나머지 언어의 ClientServer 수정은 작다.** C++은 후보에 Server RID를 별도 field로 실어
 보내고 tiebreak가 그 값만 비교하게 한다. .NET은 `OrderByDescending`에 Server RID
 오름차순 두 번째 키를 붙인다. Java는 절차를 누적값 방식으로 바꾼다.
 
@@ -284,7 +284,7 @@ Instance Spot이 유휴 기준을 넘겨 local instance를 내릴 때 호출하�
 |---|---|---|
 | C++ | `cpp-inc/contracts/spots/spot.hpp:101-106` | **갭** |
 | .NET | `dotnet/Contracts/Spots/ZLinkSpot.cs:92-97` | **갭** |
-| Java | `java/spots/ZLinkSpotCloseReason.java:3-6` | **갭** |
+| Java | `java/spots/ZLinkSpotCloseReason.java` | **부분 구현.** `IDLE_EVICTED=3`과 timeout 표면은 있지만 실제 eviction은 남아 있다 |
 | Node | `node/contracts/Spots/ZLinkSpot.ts:19-23` | **갭** |
 
 **enum 추가만으로 닫지 않는다.** 한 단위로 함께 구현해야 하는 것은 다음이다.
@@ -365,55 +365,58 @@ node/runtime/foundation/service-mailbox.ts:89-93
 |---|---|---|
 | C++ | 건수만 | `cpp/runtime/execution/serial_execution_queue.cpp:296-317` |
 | .NET | 건수만 | 기본값 `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:5`, 한도 검사 `:565-574` |
-| Java | **사실상 무한.** Spot context가 기본 생성자를 쓰고 기본 capacity가 `Integer.MAX_VALUE`다 | 생성 `java/runtime/spots/ZLinkDefaultSpotContext.java:43`, `java/runtime/spots/ZLinkDefaultInstanceSpotContext.java:33`; 기본값 `java/execution/ZLinkAsyncSerialQueue.java:35-42` |
+| Java | runtime-owned queue가 건수·byte 두 축을 함께 예약하고 active entry도 포함한다 | `java/execution/ZLinkAsyncSerialQueue.java:17-23,121-154,337-376`; Spot·Actor production queue 생성 경로 |
 | Node | **한도 없음.** promise chain tail에 무한히 붙는다 | `node/runtime/spots/spot-serial-executor.ts:109-113`, `node/runtime/actors/actor-mailbox.ts:1-12` |
 
 **exact interface 반영은 끝났다.** 네 계약 문서 모두
 `payload 크기 + metadata 크기 + 작업당 고정 비용`으로 바꿨다
 (`spec/server/languages/{cpp/03-channel-messaging,java/configuration-host,node/01-foundation-configuration,dotnet/03-configuration-topology}.ko.md`).
 
-**남은 것은 기본값이다.** 작업당 고정 비용의 실제 값과 기본 건수·byte 한도가 정해지지
-않아, 같은 입력·같은 한도에서 언어마다 포화 지점이 달라질 수 있다(D6).
+**Java의 구조는 구현되었지만 기본값은 provisional이다.** 작업당 고정 비용과 기본 건수·byte
+한도에 대한 측정·공통 판정이 없어, 같은 입력·같은 한도에서 언어마다 포화 지점이 달라질 수
+있다(D6). 일반 `enqueue`는 payload 길이를 전달받지 않으므로 relocatable record 외의
+payload byte는 고정 비용으로만 계산된다.
 
 **수정 방향.** 실행 queue를 `service_mailbox` 계열과 같은 두 축 구조로 맞추고, 건수와
-byte를 **원자적으로** 예약·반납한다. Java와 Node는 한도 도입 자체가 선행 과제다.
+byte를 **원자적으로** 예약·반납한다. Java는 이 구조와 runtime wiring을 구현했으며, 남은
+작업은 기본값 측정과 payload 크기 전달 경계 결정이다.
 
-> Java `ZLinkAsyncSerialQueue.java:148,160`은 `outstanding > pendingCapacity`라 한도보다
-> 하나 더 받는다. `>=`로 고치되, production 경로가 `tryEnqueue`를 쓰도록 바꾸지 않으면
-> 효과가 없다.
+> Java `ZLinkAsyncSerialQueue`는 `canReserve`에서 두 lane의 건수·byte를 함께 검사하고
+> `enqueue`도 같은 예약 경로를 사용한다. `MeshApplicationDispatcher`는 socket pending
+> 한도와 active execution slot의 차이를 반영해 queue 한도를 구성한다.
 
 ### A5. `CapacityExceeded` 오류 kind — `32-framework-error-model`
 
-**Java의 public error kind enum이 공통 계약과 다른 모델이다.**
+Java의 public error kind enum은 공통 계약으로 교체되었다. 남은 문제는 언어 간 wire
+표현이 공통으로 고정되지 않았다는 점이다.
 
 | 언어 | enum | 확인 위치 |
 |---|---|---|
 | C++ | 공통 13-kind, `capacity_exceeded = 6` | `cpp-inc/contracts/errors/error.hpp:12-26` |
 | .NET | 공통 13-kind, `CapacityExceeded = 6` | `dotnet/../Zlink.Framework.Contracts/Errors/ZLinkFrameworkException.cs:34-48` |
 | Node | 공통 13-kind, `CapacityExceeded = 6` | `node/contracts/Errors/ZLinkFrameworkException.ts:2-16` |
-| Java | **40-kind 구형 모델.** `CAPACITY_EXCEEDED`가 없고 값 6은 `SPOT_TYPE_MISMATCH`다 | `java/errors/ZLinkFrameworkErrorKind.java:3-43` |
+| Java | 공통 13-kind, `CAPACITY_EXCEEDED = 6` | `java/errors/ZLinkFrameworkErrorKind.java` |
 
-Java는 대신 `WORKER_QUEUE_FULL=17`, `PLACEMENT_CAPACITY_EXHAUSTED=30`을 쓴다.
+구형 kind를 public Java surface에서 제거하고 공통 13개 kind로 매핑했으며, 관련 Java
+unit test·sample의 호출도 갱신했다. 그러나 `ZLinkFrameworkErrorReply`는 아직 enum
+이름 문자열을 사용하는 legacy internal packet이다.
 
-> **wire 위험을 정정한다.** "수치가 wire를 넘어 다른 뜻이 된다"고 적었으나 **틀렸다.**
-> Java의 error reply는 enum **이름 문자열**을 보내고 `valueOf()`로 읽는다
-> (`java/runtime/messaging/ZLinkFrameworkErrorReply.java:19-29,48-60`). 숫자는 wire를
-> 건너지 않는다.
->
-> 실제 위험은 **이름 불일치**다. Java가 보내는 `WORKER_QUEUE_FULL`을 다른 언어는 모르고,
-> 다른 언어가 보내는 `CapacityExceeded`를 Java는 `valueOf()`로 읽지 못한다.
+**wire는 아직 닫지 않는다.** 현재 언어별 경로가 서로 다른 표현을 사용한다 — Java의
+legacy packet은 enum 이름, C++ channel envelope는 snake case 이름, .NET은 enum 이름,
+Node channel envelope는 숫자 문자열이다. 공통 wire schema와 이행 규칙이 정해지지 않은
+상태에서 Java만 형식을 바꾸면 상호운용을 더 불안정하게 만든다.
 
-**따라서 두 가지를 먼저 정해야 한다.**
+**따라서 다음 두 가지를 먼저 정해야 한다.**
 
 | 결정 | 선택지 |
 |---|---|
 | wire 표현 | 공통 **숫자**로 바꿀 것인가, 공통 **이름**을 유지할 것인가 |
 | 이행 | 구형 이름 alias를 얼마 동안 받아줄 것인가 |
 
-**public Java enum 교체와 wire 형식 결정은 별개 작업이다.** 전자는 Java 사용자 코드를
-깨고, 후자는 언어 간 상호운용을 바꾼다. 섞어서 진행하면 되돌리기 어렵다.
+**public Java enum 교체와 wire 형식 결정은 별개 작업이다.** 전자는 완료되었지만, 후자는
+공통 schema와 cross-language test가 정해질 때까지 미완료로 남긴다.
 
-시작 전에 **네 언어의 error envelope encode·decode 표**를 만든다. 지금은 Java만 확인했다.
+완료 조건은 네 언어의 error envelope encode·decode 표와 언어가 섞인 error-reply test다.
 
 ### A6. Owner 점유 시간 상한 — `06-framework-api`
 
@@ -423,11 +426,11 @@ Java는 대신 `WORKER_QUEUE_FULL=17`, `PLACEMENT_CAPACITY_EXHAUSTED=30`을 쓴�
 |---|---|---|
 | C++ | 작업 하나를 실행한 뒤 다음 drain을 다시 예약한다. owner별 경과 시간과 ready owner 공정성 제어는 없다 | `cpp/runtime/execution/serial_execution_queue.cpp:449,485-488,503-508,542-544` |
 | .NET | `TryTakeNext`가 빌 때까지 drain한다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:605-663` |
-| Java | 한 entry가 끝나면 즉시 다음 entry를 잇는다 | `java/execution/ZLinkAsyncSerialQueue.java:208-223` |
+| Java | queue owner의 claim 시작 시각과 owner time budget을 기록하고 상한에 도달하면 다음 turn을 executor에 재등록한다 | `java/execution/ZLinkAsyncSerialQueue.java:23,448-494` |
 | Node | owner별 promise tail을 계속 잇는다 | `node/runtime/spots/spot-serial-executor.ts:109-113` |
 
-**갭 4/4.** 네 구현 모두 owner별 경과 시간을 재지 않고 ready owner 사이의 공정성 제어도
-없다. 따라서 "건수 한도에 시간을 추가"가 아니라 다음을 새로 만들어야 한다.
+Java는 위 구조와 lifecycle burst limit을 구현했다. 다만 공통 기본값의 측정이 끝나지 않았고,
+다른 언어의 기존 판정은 그대로 남아 있다. 각 구현은 다음을 갖춰야 한다.
 
 - ready owner 집합
 - claim 시작 시각 기록
@@ -467,20 +470,20 @@ D6이 값을 정하기 전까지는 구조만 만들고 상한값은 설정으�
 |---|---|---|---|
 | C++ | Spot 제출은 nonblocking `try_post_async`를 쓰지만 full을 `Rejected`로 반환한다 | `cpp/runtime/spots/spot_runtime.cpp:924-935,2426-2429` | **갭.** 대기는 아니고 **오류 kind가 틀렸다** |
 | .NET | full이면 `InvalidOperationException("…closed or full")` | queue `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:110-118`, Spot 호출 `dotnet/Runtime/Spots/ZLinkSpotSerialExecutor.cs:858-891` | **갭.** public `CapacityExceeded` 매핑이 없고 closed와 full을 구분할 수 없다 |
-| Java | production Spot 경로가 `tryEnqueue`가 아니라 무제한 `enqueue`다 | `java/runtime/spots/ZLinkDefaultSpotContext.java:43,148,551-616` | **갭.** 포화 자체가 발생하지 않는다(A4) |
+| Java | production Spot·Actor 경로가 runtime-owned bounded queue의 `enqueue`를 사용한다 | `java/runtime/spots/ZLinkDefaultSpotContext.java`, `java/runtime/spots/ZLinkDefaultInstanceSpotContext.java`, `java/execution/ZLinkAsyncSerialQueue.java` | **부분 구현.** 같은 runtime capacity failure는 `CapacityExceeded`로 끝나지만 payload byte 기본값과 모든 호출별 검증은 D6·추가 audit이 남아 있다 |
 | Node | 한도가 없다 | `node/runtime/spots/spot-serial-executor.ts:79-113` | **갭.** A4가 닫힌 뒤 함께 판정 |
 
 **control claim 예외 — 현재 상태는 제각각이다.**
 
 | 언어 | 현재 |
 |---|---|
-| Java | `enqueueBarrierNext`가 capacity 검사를 우회하고 앞에 넣는다 (`java/execution/ZLinkAsyncSerialQueue.java:65-94`) |
+| Java | lifecycle lane에 별도 건수·byte 한도로 예약하고 FIFO 뒤에 넣는다 (`java/execution/ZLinkAsyncSerialQueue.java`) |
 | .NET | essential slot이 application capacity를 우회한다 (`dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:577-585`) |
 | C++ | barrier가 앞쪽 제출을 쓰지만 **같은 capacity**에 걸린다 (`cpp/runtime/execution/serial_execution_queue.cpp:360-374`) |
 | Node | barrier가 같은 무한 tail을 쓴다 (`node/runtime/spots/spot-serial-executor.ts:75-77`) |
 
-조항이 요구하는 것은 **별도 한도를 가진 별도 lane**이다. 앞쪽 삽입도, capacity 공유도,
-capacity 우회도 아니다([2. 직렬 실행 함정 3](../../framework/common/internals/02-serialization.ko.md)).
+조항이 요구하는 것은 **별도 한도를 가진 별도 lane**이다. Java는 앞쪽 삽입과 capacity
+우회를 제거했으며, queue unit test에서 lane 한도·FIFO·lifecycle burst를 확인했다.
 
 ### A9. 수신 batch 공정성 — `29-transport-liveness`
 
@@ -489,7 +492,7 @@ capacity 우회도 아니다([2. 직렬 실행 함정 3](../../framework/common/
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
 | C++ | 한 subscriber를 `for(;;)`로 완전히 drain한다. 내부 connection 순회도 매번 처음부터 시작한다 | `cpp/runtime/fanout/fanout_location_runtime.cpp:298-340`, `cpp/runtime/fanout/raw_fanout_owner.cpp:266-333` | **갭** |
-| Java | connection마다 최대 64건 | `java/runtime/channels/ZLinkFanoutLocationRuntime.java:49,393-404` | 충족 |
+| Java | fanout connection마다 최대 64건. RouteMesh·ClientServer·service·STREAM은 별도 loop를 사용한다 | `java/runtime/channels/ZLinkFanoutLocationRuntime.java:49,393-404`, `java/runtime/channels/ZLinkChannelReceiveLoops.java`, `java/runtime/streams/ZLinkStreamRuntime.java` | **부분 충족.** 전체 topology의 byte·시간 상한과 회전 cursor audit은 남아 있다 |
 | .NET | subscriber별 loop가 한 record씩 처리 | `dotnet/Runtime/Channels/ZLinkChannelReceiveLoop.cs:227-251` | 충족 |
 | Node | connection별 loop가 한 record 처리 후 event loop에 양보 | `node/runtime/channels/channel-receive-loops.ts:283-306` | 충족 |
 
@@ -519,12 +522,13 @@ Lifecycle lane과 application lane이 함께 ready이면 lifecycle을 먼저 실
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
 | C++ | join barrier를 **앞쪽 삽입**으로 처리한다. 우선 실행은 되지만 시간 상한이 없다 | `cpp/runtime/execution/serial_execution_queue.cpp:360-374` | **갭.** lane 분리와 시간 상한 |
-| Java | relocation barrier는 앞쪽, teardown은 뒤쪽 | `java/execution/ZLinkAsyncSerialQueue.java:65-124`, 호출 `java/runtime/actors/ZLinkActorDispatchSerials.java:115-162` | **갭.** 종류마다 다르게 처리한다 |
+| Java | application·lifecycle·continuation을 별도 FIFO로 두고 lifecycle burst limit과 owner time budget을 적용한다 | `java/execution/ZLinkAsyncSerialQueue.java` | **부분 구현.** 앞쪽 삽입은 제거했지만 기본값 D6과 payload 회계 경계가 남아 있다 |
 | .NET | 일반 dequeue는 FIFO이고, infrastructure 우선 탐색은 relocation seal 중에만 동작한다. `reservedPrioritySlots`는 기본값 `0`이고 0이 아닌 값을 넘기는 호출자가 없다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:666-689,693-714,42,50-52` | **갭.** 상시 우선 실행이 없다 |
 | Node | `postBarrierTurn`이 기존 promise tail 뒤에 붙는다 | `node/runtime/spots/spot-serial-executor.ts:75-77,109-113` | **갭.** 우선 실행이 아예 없다 |
 
-**네 언어 모두 갭이며, 현재 구조가 전부 다르다.** 검증 기준은 하나다 — lifecycle이 ready면
-application보다 먼저 선택되고, 시간 상한이 지나면 application turn이 실행된다.
+Java는 위 선택 규칙과 unit test를 갖췄다. 다른 언어의 기존 판정은 그대로 남아 있다. 검증
+기준은 하나다 — lifecycle이 ready면 application보다 먼저 선택되고, 시간 상한이 지나면
+application turn이 실행된다.
 
 ### A11·A12. 관찰자 stream — `24-runtime-monitoring`
 
@@ -537,7 +541,7 @@ application보다 먼저 선택되고, 시간 상한이 지나면 application tu
 | .NET | `DropWrite` | `dotnet/Runtime/Channels/ZLinkClientServerRuntimeService.cs:136-151` | **갭.** 최신 `Sequence`가 전달되지 않는다 |
 | C++ | full이면 oldest 폐기 | `cpp/runtime/client_server/client_server_location_runtime.cpp:217-268` | **갭** |
 | Node | full이면 oldest 폐기 + **terminal을 넣은 뒤 stream을 닫는다** | drop `node/runtime/host/route-mesh-runtime.ts:670-679`, `close()` `:701`, 공용 queue drop `node/runtime/diagnostics/topology-runtime-projections.ts:327`, close `:342` | **갭 2건** |
-| Java | 최신 중간 상태를 교체하고 preserve 항목을 남긴다 — 합치기 방향은 맞다. 그러나 **terminal 전달 뒤 `onComplete()`로 stream을 닫는다** | 합치기 `java/runtime/internal/monitoring/ZLinkStatusPublisher.java:103-135`, 종료 `:129-132`, 미적용 capacity `:21-34` | **갭 2건.** stream 종료와 무한 누적 |
+| Java | source별 최신 상태를 합치고 terminal을 보존하며 `ZLinkObservedStatus<T>`로 loss 누계를 전달한다. terminal에서 stream을 닫지 않는다 | `java/runtime/internal/monitoring/ZLinkStatusPublisher.java`, `java/monitoring/ZLinkObservedStatus.java`, `java/monitoring/ZLinkObservationLoss.java` | **구현.** publisher unit test·Spring test·RuntimeMonitoring sample이 통과 |
 
 **수정 방향.** 네 언어 모두 drop을 source별 합치기로 바꾸고, terminal 보관에 상한을 두고,
 버린 횟수를 **관찰자별 누적 field**로 노출한다.
@@ -561,14 +565,14 @@ thread 대신 공유 dispatcher와 수요 기반 queue를 쓴다.
 유실 수는 status가 아니라 **전달 쌍**에 담는다 — status는 관찰자 사이에 공유하는 값이라
 관찰자별 값을 넣을 수 없기 때문이다.
 
-**남은 것은 구현이다.** 네 언어 public 반환형·callback 인자가 아직 raw status이고, 유실을
-세는 코드가 없다.
+Java public 반환형과 유실 회계는 구현되었다. 다른 언어의 raw status·유실 회계 판정은
+그대로 남아 있다.
 
 | 언어 | public 표면 | 유실 회계 |
 |---|---|---|
 | C++ | raw callback (`cpp-inc/contracts/monitoring/framework_runtime.hpp:63`, `route_mesh_runtime.hpp:97`) | 없음 |
 | .NET | `IAsyncEnumerable<TStatus>` (`dotnet/Contracts/Configuration/ZLinkDrainContracts.cs:117`) | overflow를 runtime metric에만 기록 |
-| Java | `Flow.Publisher<ZLinkMeshNodeSnapshot>` (`java/monitoring/ZLinkRouteMeshRuntime.java:8`) | 없음 |
+| Java | `Flow.Publisher<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>>` (`java/monitoring/ZLinkRouteMeshRuntime.java`) | `ZLinkStatusPublisher`가 coalesced·discarded terminal을 subscriber별로 포화 누계 |
 | Node | raw status (`node/contracts/RouteMesh/RuntimeTopology.ts:92`) | 없음 |
 
 ---
@@ -625,11 +629,11 @@ optional `canSerialize`를 타입 단언으로 읽고 검사한다(`node/runtime
 
 ### B6. `HANDLER_EXECUTOR`가 JVM 전역 static — Java
 
-`java/execution/ZLinkAsyncSerialQueue.java:15-18`. 종료 경로가 없어 같은 JVM에 두 runtime이
-있으면 실행 자원을 공유하고, 하나를 닫아도 스레드가 남는다.
+`java/execution/ZLinkAsyncSerialQueue.java`의 전역 executor를 제거했다. registration이
+runtime-owned virtual-thread executor를 만들고 actor·channel·spot·stream queue에 주입하며,
+runtime close가 handler executor와 serial executor를 모두 종료한다.
 
-**수정 방향.** runtime이 소유하는 executor를 생성자로 주입하고 runtime close가 수명을
-소유한다.
+**판정 — 해소.** production 경로의 static executor 검색과 core 전체 unit test로 확인했다.
 
 ### 삭제된 항목
 
@@ -738,6 +742,9 @@ Floyd·Brent 방식). 탐색에는 **걸음 수와 시간 두 상한**을 두고
 | Java | `java/runtime/internal/dispatch/ZLinkInboundDispatchBudget.java:71,81,102,119,133` |
 
 Node는 event loop 하나이므로 해당하지 않는다. **불필요한 atomic을 강제하지 않는다.**
+
+Java는 `payloadLock`과 `completionLock`을 분리하고 close flag를 volatile로 정리했다.
+`ZLinkInboundDispatchBudget` unit test가 통과했다. 다른 언어의 기존 판정은 유지한다.
 
 **수정 방향.** HWM permit 획득·반환과 관측용 누계를 분리한다.
 
@@ -862,6 +869,34 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 - **A9 범위 확대.** `29`의 수신 공정성이 Classic fanout 한정이 아니라 모든
   multi-connection 수신 경로에 적용되므로, `언어 × RouteMesh × ClientServer × service ×
   STREAM × fanout` 행렬로 다시 감사해야 한다. 지금 표는 fanout·channel 경로만 본 것이다.
+
+### 2026-08-04 C++ runtime 검증 기록
+
+이번 C++ runtime 변경은 위 표의 기존 관찰값을 그대로 유지하는 작업이 아니라, 다음
+경로를 구현하고 `framework/doc/framework/common/internals/`의 정본과 대조한 결과다.
+
+- W1은 application·lifecycle 두 FIFO lane에 건수·byte 예약을 함께 적용하고, lifecycle
+  burst/debt와 after-active phase를 둔다. queue가 포화되면 호출자 stack에서 작업을 실행하지
+  않고 `capacity_exceeded`로 끝낸다.
+- W2·D1은 RouteMesh의 Node RID와 ClientServer의 Server RID를 tiebreak 식별자로 사용한다.
+  후보가 바뀔 때 누적 상태를 기준으로 도입부와 cycle을 사전 계산하고, 걸음 수·시간 상한을
+  넘으면 기존 smooth weighted 계산으로 되돌린다.
+- W4·W5·W6·D2·B3은 idle eviction, 관찰자별 bounded/coalesced delivery, receive
+  message·byte·time batch, HWM pending 회계, 준비 완료 전 publish 금지로 반영했다.
+  deferred barrier의 activation은 예약 barrier 뒤에서 새치기하지 않고 별도 after-active
+  phase에서 실행한다.
+- W3(A2·D5)의 relay 성공 통지는 공통 service wire schema에 command ID·body·auth·fence가
+  아직 고정되지 않았으므로 구현하지 않았다. 이 상태에서 임의 wire command를 추가하면
+  `service-wire-protocol.ko.md`의 closed command set을 어기므로 별도 설계 blocker로 남긴다.
+- A9의 STREAM은 session마다 독립 worker가 blocking read를 수행하는 구조라 shared
+  connection cursor를 사용하지 않는다. RouteMesh·ClientServer·service·fanout의 공유
+  pump 경로는 batch budget과 회전 cursor를 적용했지만, 언어×topology 전체 행렬의 성능
+  검증은 이 기록으로 완료 판정하지 않는다.
+
+검증 결과는 C++ `framework-unit` 31/31, sample smoke 6/6이다. 전체 build는 runtime 및
+관련 test/sample target까지 통과했지만, 별도 `zlink_cpp_e2e_store_failure_consumer`
+target이 `main` 없는 소스를 링크하는 기존 aggregate build 오류로 전체 target build는
+완료되지 않았다.
 
 ---
 

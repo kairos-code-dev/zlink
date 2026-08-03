@@ -62,7 +62,7 @@ final class ResponseBodyReader {
 
     private static ZLinkFrameworkException tooLarge() {
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP response exceeded the maximum body size");
+            ZLinkFrameworkErrorKind.INTERNAL_FAILURE, "HTTP response exceeded the maximum body size");
     }
 
     DecodedBody decompress(byte[] bytes, Map<String, String> headers) {

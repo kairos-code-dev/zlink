@@ -18,6 +18,7 @@ import { ZLinkConfigurationException } from '../configuration';
 import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkSerialWorkOptions } from '../execution/serial-scheduler';
 
 interface ZLinkRoutedSpotPacketActivation {
   readonly spotId: RoutingId;
@@ -34,6 +35,12 @@ interface ZLinkRoutedSpotPacketDispatchOptions {
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
 
+interface ZLinkRoutedSpotPacketContext {
+  readonly channelName: string;
+  readonly contentType?: string;
+  readonly workOptions?: ZLinkSerialWorkOptions;
+}
+
 export class ZLinkRoutedSpotPacketDispatch {
   constructor(private readonly options: ZLinkRoutedSpotPacketDispatchOptions) {}
 
@@ -41,7 +48,7 @@ export class ZLinkRoutedSpotPacketDispatch {
     spotId: RoutingId,
     packetName: string | undefined,
     message: unknown,
-    context: { readonly channelName: string; readonly contentType?: string }
+    context: ZLinkRoutedSpotPacketContext
   ): Promise<void> {
     await this.dispatch(spotId, packetName, message, context, false);
   }
@@ -50,7 +57,7 @@ export class ZLinkRoutedSpotPacketDispatch {
     spotId: RoutingId,
     packetName: string | undefined,
     request: unknown,
-    context: { readonly channelName: string; readonly contentType?: string }
+    context: ZLinkRoutedSpotPacketContext
   ): Promise<TReply> {
     return await this.dispatch(spotId, packetName, request, context, true) as TReply;
   }
@@ -59,7 +66,7 @@ export class ZLinkRoutedSpotPacketDispatch {
     spotId: RoutingId,
     packetName: string | undefined,
     payload: unknown,
-    context: { readonly channelName: string; readonly contentType?: string },
+    context: ZLinkRoutedSpotPacketContext,
     returnResponse: boolean
   ): Promise<unknown> {
     const activation = this.options.resolveActivation(spotId);
@@ -102,7 +109,7 @@ export class ZLinkRoutedSpotPacketDispatch {
             metadata: zlinkMessageMetadata({})
           });
         }
-      });
+      }, context.workOptions);
     } catch (error) {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotRoute,

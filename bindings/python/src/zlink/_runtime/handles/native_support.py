@@ -37,7 +37,9 @@ def _request_result_from_code(code):
     try:
         return RequestResult(int(code))
     except ValueError:
-        return RequestResult.PROTOCOL_ERROR
+        # Keep a future Core result observable to the caller. Mapping it to a
+        # known terminal result would change the wire contract silently.
+        return int(code)
 
 
 def _request_result_native_errno(result):
@@ -64,6 +66,8 @@ def _request_result_native_errno(result):
         return _errno.EINVAL
     if typed == RequestResult.NOT_SUPPORTED:
         return _errno.ENOTSUP
+    if typed == RequestResult.BACKPRESSURED:
+        return _errno.EAGAIN
     return 0
 
 
@@ -89,7 +93,9 @@ def _raise_result_error(error_type, result_type, rc, native_errno=None):
     try:
         result = result_type(int(rc))
     except ValueError:
-        result = result_type(0)
+        # Do not map an unknown native result to enum value zero. The typed
+        # error preserves the raw result for forward-compatible diagnostics.
+        result = int(rc)
     _raise_zlink_error(error_type, result, native_errno)
 
 
@@ -276,7 +282,9 @@ def _init_msg_from_buffer(msg, data, *, borrow):
             ctypes.memmove(_msg_data_ptr(msg), ptr, size)
     if rc != 0:
         _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-    return keepalive
+    # A copied message no longer depends on the caller buffer. Borrowed
+    # messages retain the source object until the native message is closed.
+    return keepalive if borrow else None
 
 
 def _clone_native_msg(src):

@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -236,8 +238,8 @@ final class ZLinkSpotDirectOutbound {
                     if (reply.result() != ZLinkBackendRequestResult.OK) {
                         ZLinkFrameworkErrorKind errorKind = reply.result()
                             == ZLinkBackendRequestResult.NOT_FOUND
-                            ? ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND
-                            : ZLinkFrameworkErrorKind.REQUEST_FAILED;
+                            ? ZLinkFrameworkErrorKind.NOT_FOUND
+                            : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
                         result.completeExceptionally(new ZLinkFrameworkException(
                             errorKind,
                             "SPOT direct request failed: " + reply.result()));
@@ -254,7 +256,7 @@ final class ZLinkSpotDirectOutbound {
             if (!submitted) {
                 closeRequestParts.run();
                 result.completeExceptionally(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                     "SPOT direct request was not admitted"));
             }
         } catch (RuntimeException ex) {

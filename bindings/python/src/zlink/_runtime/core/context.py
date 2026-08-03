@@ -132,14 +132,6 @@ class NativeContextOptions:
         self._context._set_option(ContextOption.MAX_MSGSZ, value)
 
     @property
-    def thread_priority(self):
-        return self._context._get_option(ContextOption.THREAD_PRIORITY)
-
-    @thread_priority.setter
-    def thread_priority(self, value):
-        self._context._set_option(ContextOption.THREAD_PRIORITY, value)
-
-    @property
     def thread_scheduling_policy(self):
         return self._context._get_option(ContextOption.THREAD_SCHED_POLICY)
 

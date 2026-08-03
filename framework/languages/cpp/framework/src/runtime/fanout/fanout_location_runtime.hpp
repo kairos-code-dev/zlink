@@ -3,6 +3,7 @@
 
 #include "runtime/channels/channel_runtime.hpp"
 #include <runtime/locations/location_repository.hpp>
+#include "runtime/dispatch/receive_batch_budget.hpp"
 #include "runtime/fanout/raw_fanout_owner.hpp"
 #include "runtime/locations/location_runtime.hpp"
 
@@ -87,6 +88,7 @@ class fanout_location_runtime_t
       _publishers;
     std::map<std::string, std::unique_ptr<subscriber_entry_t>>
       _subscribers;
+    std::size_t _subscriber_pump_cursor = 0;
     std::atomic_bool _stop{false};
     std::thread _thread;
 };

@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
@@ -125,7 +127,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             .thenApply(row -> {
                 if (row == null || row.actorRef() == null) {
                     throw new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                        ZLinkFrameworkErrorKind.NOT_FOUND,
                         "Actor route '" + actorId + "' was not found.");
                 }
                 return rememberAuthority(row);
@@ -259,7 +261,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         Class<TReply> replyType) {
         if (header.kind() == ZLinkStreamMessageKind.ERROR) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                 payload.toUtf8String());
         }
         return ZLinkMessagePayloads.deserialize(serializer, payload, replyType);
@@ -270,18 +272,16 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         if (unwrapped instanceof ZlinkRequestException request) {
             return switch (request.getResult()) {
                 case NOT_CONNECTED -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                    ZLinkFrameworkErrorKind.UNAVAILABLE,
                     operationName + " failed because the target route is not connected.",
-                    true,
                     request);
                 case NOT_FOUND -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
                     operationName + " failed because the actor route was not found.",
                     request);
                 case CONFLICT -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+                    ZLinkFrameworkErrorKind.UNAVAILABLE,
                     operationName + " failed because the actor location is stale.",
-                    true,
                     request);
                 default -> request;
             };
@@ -289,12 +289,11 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         if (unwrapped instanceof ZlinkSubmitException submit) {
             return switch (submit.getResult()) {
                 case NOT_CONNECTED -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                    ZLinkFrameworkErrorKind.UNAVAILABLE,
                     operationName + " failed because the target route is not connected.",
-                    true,
                     submit);
                 case NOT_FOUND -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
                     operationName + " failed because the actor route was not found.",
                     submit);
                 default -> submit;
@@ -303,29 +302,27 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         String text = unwrapped.getMessage() == null ? "" : unwrapped.getMessage();
         if (text.contains("NOT_CONNECTED")) {
             return new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 operationName + " failed because the target route is not connected.",
-                true,
                 unwrapped);
         }
         if (text.contains("NOT_FOUND")) {
             return new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 operationName + " failed because the actor route was not found.",
                 unwrapped);
         }
         if (text.contains("CONFLICT")) {
             return new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 operationName + " failed because the actor location is stale.",
-                true,
                 unwrapped);
         }
         if (unwrapped instanceof RuntimeException runtimeException) {
             return runtimeException;
         }
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.REQUEST_FAILED,
+            ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
             operationName + " failed.",
             unwrapped);
     }
@@ -340,14 +337,24 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     private static boolean isStaleActorError(Throwable error) {
         Throwable unwrapped = unwrap(error);
         return unwrapped instanceof ZLinkFrameworkException frameworkError
-            && (frameworkError.kind() == ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND
-                || frameworkError.kind() == ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE);
+            && (frameworkError.kind() == ZLinkFrameworkErrorKind.NOT_FOUND
+                || frameworkError.kind() == ZLinkFrameworkErrorKind.UNAVAILABLE);
     }
 
     private static boolean isRouteNotConnected(Throwable error) {
         Throwable unwrapped = unwrap(error);
-        return unwrapped instanceof ZLinkFrameworkException frameworkError
-            && frameworkError.kind() == ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED;
+        if (!(unwrapped instanceof ZLinkFrameworkException frameworkError)
+            || frameworkError.kind() != ZLinkFrameworkErrorKind.UNAVAILABLE) {
+            return false;
+        }
+        Throwable cause = frameworkError.getCause();
+        if (cause instanceof ZlinkRequestException request) {
+            return request.getResult() == systems.zlink.contracts.sockets.RequestResult.NOT_CONNECTED;
+        }
+        if (cause instanceof ZlinkSubmitException submit) {
+            return submit.getResult() == systems.zlink.contracts.sockets.SubmitResult.NOT_CONNECTED;
+        }
+        return false;
     }
 
     private static Duration routeRetryTimeout(Duration timeout) {

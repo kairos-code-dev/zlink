@@ -7,18 +7,42 @@ import {
   ZLinkSpotSerialTurn
 } from '../execution';
 import type { SpotId } from '../../contracts';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
+import {
+  ZLinkBoundedSerialScheduler,
+  type ZLinkSerialSchedulerOptions,
+  type ZLinkSerialWorkOptions,
+  type ZLinkSerialWorkRecord
+} from '../execution/serial-scheduler';
 
 export class ZLinkSpotSerialExecutor {
-  private tail: Promise<unknown> = Promise.resolve();
+  private readonly scheduler: ZLinkBoundedSerialScheduler;
   private depth = 0;
   private turnSequence = 0;
   private executionBarrier: ZLinkExecutionBarrier | undefined;
+  private lastActivityAtMs = Date.now();
   activeTurnId = 0;
 
   constructor(
     private readonly yieldAllowed = true,
-    readonly sourceSpotId?: SpotId
-  ) {}
+    readonly sourceSpotId?: SpotId,
+    schedulerOptions?: ZLinkSerialSchedulerOptions
+  ) {
+    this.scheduler = new ZLinkBoundedSerialScheduler(
+      (record) => this.runQueuedRecord(record),
+      {
+        ...schedulerOptions,
+        capacityError: schedulerOptions?.capacityError ?? (() =>
+          createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.WorkerQueueFull,
+            'Spot execution queue capacity was exceeded.'
+          ))
+      }
+    );
+  }
 
   get isExecuting(): boolean {
     return this.depth > 0;
@@ -26,6 +50,14 @@ export class ZLinkSpotSerialExecutor {
 
   get isCurrentTurn(): boolean {
     return this.depth > 0 && isCurrentZLinkSpotSerialTurn(this);
+  }
+
+  get hasPendingWork(): boolean {
+    return this.scheduler.hasPendingWork;
+  }
+
+  get lastActivityAt(): number {
+    return this.lastActivityAtMs;
   }
 
   get currentTurn(): ZLinkSpotSerialTurn | undefined {
@@ -51,11 +83,14 @@ export class ZLinkSpotSerialExecutor {
    * as part of that turn instead of queueing (which would deadlock a turn
    * that awaits the nested result).
    */
-  execute<T>(operation: () => Promise<T> | T): Promise<T> {
+  execute<T>(
+    operation: () => Promise<T> | T,
+    workOptions?: ZLinkSerialWorkOptions
+  ): Promise<T> {
     if (this.isCurrentTurn) {
       return Promise.resolve().then(operation);
     }
-    return this.post(operation);
+    return this.enqueue(operation, false, workOptions);
   }
 
   /**
@@ -63,8 +98,11 @@ export class ZLinkSpotSerialExecutor {
    * from within the currently active turn. Detached completion callbacks use
    * this so they never run inline inside another callback's turn.
    */
-  post<T>(operation: () => Promise<T> | T): Promise<T> {
-    return this.enqueue(operation, false);
+  post<T>(
+    operation: () => Promise<T> | T,
+    workOptions?: ZLinkSerialWorkOptions
+  ): Promise<T> {
+    return this.enqueue(operation, false, workOptions);
   }
 
   /**
@@ -72,54 +110,50 @@ export class ZLinkSpotSerialExecutor {
    * application admission remains sealed. Callers must release the matching
    * barrier seal after this turn finishes.
    */
-  postBarrierTurn<T>(operation: () => Promise<T> | T): Promise<T> {
-    return this.enqueue(operation, true);
+  postBarrierTurn<T>(
+    operation: () => Promise<T> | T,
+    workOptions?: ZLinkSerialWorkOptions
+  ): Promise<T> {
+    return this.enqueue(operation, true, workOptions);
   }
 
   private enqueue<T>(
     operation: () => Promise<T> | T,
-    resumeExistingClaim: boolean
+    resumeExistingClaim: boolean,
+    workOptions: ZLinkSerialWorkOptions = {}
   ): Promise<T> {
-    const result = new Promise<T>((resolve, reject) => {
-      void this.scheduleQueuedTurn(
-        operation,
-        resolve,
-        reject,
-        resumeExistingClaim
-      );
-    });
-    return result;
+    return this.scheduleQueuedTurn(operation, resumeExistingClaim, workOptions);
   }
 
   private async scheduleQueuedTurn<T>(
     operation: () => Promise<T> | T,
-    resolve: (value: T) => void,
-    reject: (reason: unknown) => void,
-    resumeExistingClaim: boolean
-  ): Promise<void> {
+    resumeExistingClaim: boolean,
+    workOptions: ZLinkSerialWorkOptions
+  ): Promise<T> {
+    this.lastActivityAtMs = Date.now();
     let barrierClaim: ZLinkExecutionBarrierClaim | undefined;
     try {
       if (!resumeExistingClaim) {
         barrierClaim = await this.executionBarrier?.enter();
       }
+      return await this.scheduler.submit(operation, {
+        ...workOptions,
+        lane: resumeExistingClaim ? 'lifecycle' : workOptions.lane ?? 'application'
+      }, barrierClaim);
     } catch (error) {
-      reject(error);
-      return;
+      barrierClaim?.release();
+      throw error;
     }
-    const gate = this.tail.then(
-      () => this.startQueuedTurn(operation, resolve, reject, barrierClaim),
-      () => this.startQueuedTurn(operation, resolve, reject, barrierClaim)
-    );
-    this.tail = gate.catch(() => undefined);
   }
 
-  private startQueuedTurn<T>(
-    operation: () => Promise<T> | T,
-    resolve: (value: T) => void,
-    reject: (reason: unknown) => void,
-    barrierClaim: ZLinkExecutionBarrierClaim | undefined
-  ): Promise<void> {
-    return this.runTurn(operation, resolve, reject, barrierClaim);
+  private runQueuedRecord(record: ZLinkSerialWorkRecord<unknown>): Promise<void> {
+    return this.runTurn(
+      record.operation,
+      (value) => record.resolve(value),
+      (error) => record.reject(error),
+      record.context as ZLinkExecutionBarrierClaim | undefined,
+      record.release
+    );
   }
 
   yieldPromise<T>(pending: Promise<T>): Promise<T> {
@@ -134,14 +168,16 @@ export class ZLinkSpotSerialExecutor {
     operation: () => Promise<T> | T,
     resolve: (value: T) => void,
     reject: (reason: unknown) => void,
-    barrierClaim?: ZLinkExecutionBarrierClaim
+    barrierClaim?: ZLinkExecutionBarrierClaim,
+    release?: () => void
   ): Promise<void> {
     const turn = new ZLinkSpotSerialTurn(
-      (resumeTurn, resume) => this.postResume(resumeTurn, resume),
+      (resumeTurn, resume, resumeReject) => this.postResume(resumeTurn, resume, resumeReject),
       this.yieldAllowed
     );
     const wrapped = async () => {
       this.depth += 1;
+      this.lastActivityAtMs = Date.now();
       this.turnSequence += 1;
       const turnId = this.turnSequence;
       this.activeTurnId = turnId;
@@ -155,8 +191,14 @@ export class ZLinkSpotSerialExecutor {
     const owner = wrapped();
     turn.bindOwner(owner);
     owner.then(
-      () => barrierClaim?.release(),
-      () => barrierClaim?.release()
+      () => {
+        barrierClaim?.release();
+        release?.();
+      },
+      () => {
+        barrierClaim?.release();
+        release?.();
+      }
     );
     owner.then(resolve, reject);
     return Promise.race([
@@ -165,12 +207,16 @@ export class ZLinkSpotSerialExecutor {
     ]);
   }
 
-  private postResume(turn: ZLinkSpotSerialTurn, resume: () => void): boolean {
+  private postResume(
+    turn: ZLinkSpotSerialTurn,
+    resume: () => void,
+    reject: (reason: unknown) => void
+  ): boolean {
     void this.enqueue(async () => {
       turn.resetSuspension();
       resume();
       await turn.resumeOwnerUntilNextYield();
-    }, true);
+    }, true).catch(reject);
     return true;
   }
 }

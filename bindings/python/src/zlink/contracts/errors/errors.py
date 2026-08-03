@@ -34,8 +34,15 @@ class _TypedZlinkError(ZlinkError):
     def __init__(self, result, native_errno: int = 0):
         if self._result_type is None:
             raise TypeError("typed zlink error missing result type")
-        self._result = self._result_type(int(result))
-        super().__init__(int(self._result), native_errno)
+        raw_result = int(result)
+        try:
+            self._result = self._result_type(raw_result)
+        except ValueError:
+            # A newer Core may add a result before this binding is upgraded.
+            # Preserve the native value instead of turning it into success or
+            # silently classifying it as an unrelated known result.
+            self._result = raw_result
+        super().__init__(raw_result, native_errno)
 
     @property
     def result(self):

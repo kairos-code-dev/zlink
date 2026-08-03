@@ -1,10 +1,16 @@
 package systems.zlink.framework.runtime.host;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Flow;
+import java.lang.ref.WeakReference;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
@@ -12,6 +18,7 @@ import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.monitoring.ZLinkPlacementSnapshot;
@@ -19,15 +26,22 @@ import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkTopologyReason;
 import systems.zlink.framework.monitoring.ZLinkTopologyState;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
 import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkMeshNodeMonitoringProjection;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkStatusPublisher;
+import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.core.RoutingId;
 
-final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
+final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime, AutoCloseable {
+    private static final long MONITOR_IDLE_NANOS = 10_000_000L;
     private final ZLinkFrameworkRuntime runtime;
     private final AtomicLong sequence = new AtomicLong();
+    private final ConcurrentHashMap<String, SignalHub> signalHubs =
+        new ConcurrentHashMap<>();
 
     ZLinkRouteMeshRuntimeView(ZLinkFrameworkRuntime runtime) {
         this.runtime = runtime;
@@ -128,25 +142,52 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
     }
 
     @Override
-    public Flow.Publisher<ZLinkMeshNodeSnapshot> observe(
+    public Flow.Publisher<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>> observe(
         String meshName,
         int capacity) {
         requireNode(meshName);
-        return ZLinkStatusPublisher.create(
-            () -> snapshot(meshName),
-            status -> List.of(
-                status.state(),
-                status.isReady(),
-                status.readyPeerCount(),
-                status.channels(),
-                status.peers(),
-                status.placement()),
-            capacity);
+        ZLinkStatusPublisher<ZLinkMeshNodeSnapshot> publisher =
+            ZLinkStatusPublisher.create(
+                () -> snapshot(meshName),
+                status -> List.of(
+                    status.state(),
+                    status.isReady(),
+                    status.readyPeerCount(),
+                    status.channels(),
+                    status.peers(),
+                    status.placement()),
+                capacity,
+                status -> status.state() == ZLinkTopologyState.STOPPED
+                    || status.state() == ZLinkTopologyState.FAILED,
+                status -> status.state() == ZLinkTopologyState.STOPPING);
+        WeakReference<ZLinkStatusPublisher<ZLinkMeshNodeSnapshot>> publisherRef =
+            new WeakReference<>(publisher);
+        signalHubs.compute(meshName, (ignored, existing) ->
+            existing == null || existing.isStopped()
+                ? new SignalHub(requireNode(meshName))
+                : existing).register(() -> {
+                    ZLinkStatusPublisher<ZLinkMeshNodeSnapshot> current =
+                        publisherRef.get();
+                    if (current != null) {
+                        current.signal();
+                    }
+                });
+        return publisher;
     }
 
     @Override
     public boolean isReady(String meshName) {
         return snapshot(meshName).isReady();
+    }
+
+    void signalAll() {
+        signalHubs.values().forEach(SignalHub::signal);
+    }
+
+    @Override
+    public void close() {
+        signalHubs.values().forEach(SignalHub::close);
+        signalHubs.clear();
     }
 
     private ZLinkInternalMeshNode requireNode(String meshName) {
@@ -251,5 +292,119 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime {
         int limit = placement.activationConcurrency().limit();
         return limit == 0
             || placement.activationConcurrency().active() < limit;
+    }
+
+    private static final class SignalHub implements AutoCloseable {
+        private final ZLinkInternalMeshNode node;
+        private final Object gate = new Object();
+        private final List<Runnable> signals = new ArrayList<>();
+        private volatile boolean stopped;
+        private Thread pump;
+
+        SignalHub(ZLinkInternalMeshNode node) {
+            this.node = node;
+        }
+
+        boolean isStopped() {
+            return stopped;
+        }
+
+        void register(Runnable signal) {
+            Objects.requireNonNull(signal, "signal");
+            synchronized (gate) {
+                if (stopped) {
+                    return;
+                }
+                signals.add(signal);
+                signal.run();
+                if (pump == null) {
+                    pump = Thread.ofVirtual()
+                        .name("zlink-mesh-status-monitor")
+                        .start(this::pump);
+                }
+            }
+        }
+
+        void signal() {
+            Runnable[] current;
+            synchronized (gate) {
+                current = signals.toArray(Runnable[]::new);
+            }
+            for (Runnable signal : current) {
+                signal.run();
+            }
+        }
+
+        private void pump() {
+            MeshNodeMonitor monitor = null;
+            try {
+                try {
+                    monitor = node.openMonitor();
+                } catch (UnsupportedOperationException unavailable) {
+                    // Alternate backends may not expose a monitor. The
+                    // initial snapshot remains available in that case.
+                }
+                // The Java binding currently exposes a nonblocking snapshot
+                // adapter. This is one runtime-owned source probe for the hub;
+                // subscribers receive hub signals and never poll the source.
+                SourceSnapshot previous = sourceSnapshot();
+                while (!stopped) {
+                    boolean monitorChanged = monitor != null
+                        && monitor.recv(RecvFlags.DONT_WAIT) != null;
+                    SourceSnapshot current = sourceSnapshot();
+                    if (monitorChanged || !Objects.equals(previous, current)) {
+                        signal();
+                    }
+                    previous = current;
+                    LockSupport.parkNanos(MONITOR_IDLE_NANOS);
+                }
+            } catch (RuntimeException ignored) {
+                // Monitoring must not terminate the application runtime or a
+                // subscriber dispatcher when the backend monitor closes.
+            } finally {
+                if (monitor != null) {
+                    monitor.close();
+                }
+            }
+        }
+
+        private SourceSnapshot sourceSnapshot() {
+            MeshNodeStatus status = node.status();
+            List<MeshPeerEntry> peers = List.copyOf(node.peers());
+            Map<RoutingId, PeerChannels> peerChannels = new HashMap<>();
+            for (MeshPeerEntry peer : peers) {
+                peerChannels.put(
+                    peer.routingId(),
+                    peerChannels(node, peer));
+            }
+            return new SourceSnapshot(
+                status,
+                peers,
+                Map.copyOf(peerChannels),
+                Map.copyOf(node.channelWeights()));
+        }
+
+        private record SourceSnapshot(
+            MeshNodeStatus status,
+            List<MeshPeerEntry> peers,
+            Map<RoutingId, PeerChannels> peerChannels,
+            Map<String, Integer> channelWeights) {
+        }
+
+        @Override
+        public void close() {
+            Thread current;
+            synchronized (gate) {
+                if (stopped) {
+                    return;
+                }
+                stopped = true;
+                current = pump;
+                signals.clear();
+            }
+            if (current != null) {
+                current.interrupt();
+            }
+        }
     }
 }

@@ -34,6 +34,8 @@ import {
 import { decodeFrameworkTypedPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkSerialWorkOptions } from '../execution/serial-scheduler';
+import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
 
 export interface ZLinkActorResponseOptions {
   readonly metadata: ReadonlyMap<string, string>;
@@ -166,7 +168,11 @@ export class ZLinkSpotActorPacketDispatch {
         returnResponse,
         remoteBoundSessionTarget,
         fallbackActorRef,
-        requestTerminal
+        requestTerminal,
+        zlinkSerialWorkOptions(
+          parts[1].data().byteLength,
+          zlinkMetadataByteLength(header.metadata)
+        )
       );
     });
   }
@@ -247,13 +253,15 @@ export class ZLinkSpotActorPacketDispatch {
     returnResponse: boolean,
     fallbackBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined,
     fallbackActorRef: ActorRef | undefined,
-    requestTerminal: ((response: unknown) => Promise<void> | void) | undefined
+    requestTerminal: ((response: unknown) => Promise<void> | void) | undefined,
+    workOptions: ZLinkSerialWorkOptions
   ): Promise<unknown> {
     const dispatcher = new ZLinkSpotActorDispatcher({
       registry: this.options.registry,
       spot: this.options.spot,
       providerResolver: this.options.providerResolver,
       serial: this.options.serial,
+      serialWorkOptions: workOptions,
       messageSerializers: this.options.messageSerializers
     });
     try {

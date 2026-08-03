@@ -66,6 +66,10 @@ export class ZLinkSpotTimerRegistry {
     this.executionBarrier = barrier;
   }
 
+  get hasActiveTimers(): boolean {
+    return this.timers.size > 0;
+  }
+
   async add<TSpot extends ZLinkTimerOwnerSpot, THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
     periodMs: number,

@@ -19,7 +19,8 @@ export interface ZLinkActorCreateResponse extends ZLinkSpotAcceptRejectResponse 
 export enum ZLinkSpotCloseReason {
   ExplicitClose = 0,
   HostShutdown = 1,
-  RelocationOut = 2
+  RelocationOut = 2,
+  IdleEvicted = 3
 }
 
 export interface ZLinkSpotClosingContext {

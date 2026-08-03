@@ -562,6 +562,42 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SpotSerialExecutor_LifecycleCallback_Uses_ApplicationLane_For_ApplicationCode()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = new ZLinkSpotSerialExecutor(
+            null!,
+            static () => false,
+            CancellationToken.None,
+            errorSink);
+        var applicationRan = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var lifecycle = executor.ExecuteLifecycleAsync(
+            async (_, cancellationToken) =>
+            {
+                await executor.ExecuteApplicationCallbackAsync(
+                        static (_, completed, _) =>
+                        {
+                            Assert.True(
+                                ZLinkApplicationExecutionContext.Current
+                                    is { YieldAllowed: true });
+                            Assert.NotNull(ZLinkSerialTurn.Current);
+                            completed.TrySetResult();
+                            return ValueTask.CompletedTask;
+                        },
+                        applicationRan,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            },
+            CancellationToken.None)
+            .AsTask();
+
+        await applicationRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await lifecycle.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task SerialExecutionQueue_RunAsync_Propagates_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
@@ -676,6 +712,151 @@ public sealed class SerialExecutorTests
             queue.TryPostNextWithAdmission(
                 static _ => ValueTask.CompletedTask,
                 out _));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Reserves_Count_And_Bytes_Per_Lane()
+    {
+        await using var queue = new ZLinkSerialExecutionQueue(
+            new ZLinkRuntimeTaskRunner(
+                new ZLinkRuntimeErrorSink(),
+                CancellationToken.None),
+            new ZLinkRuntimeErrorSink(),
+            CancellationToken.None,
+            capacity: 8,
+            applicationByteCapacity:
+                ZLinkSerialExecutionQueue.WorkItemFixedCostBytes + 4,
+            lifecycleByteCapacity:
+                ZLinkSerialExecutionQueue.WorkItemFixedCostBytes);
+
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.Equal(
+            ZLinkAcceptedWorkAdmission.Accepted,
+            queue.TryPostAccepted(
+                new byte[] { 1, 2, 3, 4 },
+                async _ => await release.Task.ConfigureAwait(false),
+                static () => { },
+                out var accepted));
+        Assert.Equal(
+            ZLinkSerialPostAdmission.QueueFull,
+            queue.TryPostApplicationWithAdmission(
+                static _ => ValueTask.CompletedTask,
+                out _));
+
+        Assert.Equal(
+            ZLinkSerialPostAdmission.Accepted,
+            queue.TryPostNextWithAdmission(
+                static _ => ValueTask.CompletedTask,
+                out var lifecycle));
+
+        release.TrySetResult();
+        await Task.WhenAll(accepted.Completion, lifecycle.Completion)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            ZLinkAcceptedWorkAdmission.Accepted,
+            queue.TryPostAccepted(
+                ReadOnlyMemory<byte>.Empty,
+                static _ => ValueTask.CompletedTask,
+                static () => { },
+                out var next));
+        await next.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Selects_Lifecycle_Before_Ready_Application()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new ConcurrentQueue<string>();
+
+        Assert.True(queue.TryPost(
+            async _ =>
+            {
+                firstStarted.TrySetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+                order.Enqueue("first");
+            },
+            out var first));
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(queue.TryPostApplication(
+            _ =>
+            {
+                order.Enqueue("application");
+                return ValueTask.CompletedTask;
+            },
+            out var application));
+        Assert.True(queue.TryPostNext(
+            _ =>
+            {
+                order.Enqueue("lifecycle");
+                return ValueTask.CompletedTask;
+            },
+            out var lifecycle));
+
+        releaseFirst.TrySetResult();
+        await Task.WhenAll(first.Completion, application.Completion, lifecycle.Completion)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "first", "lifecycle", "application" }, order);
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_YieldDebt_Prevents_Lifecycle_Starvation_Of_Application()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var order = new ConcurrentQueue<string>();
+
+        Assert.True(queue.TryPostNext(
+            async _ =>
+            {
+                firstStarted.TrySetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+                order.Enqueue("lifecycle-0");
+            },
+            out var first));
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var lifecycle = new List<ZLinkSerialWorkItem> { first };
+        for (var index = 1; index < ZLinkSerialExecutionQueue.LifecycleTurnLimit + 8; index++)
+        {
+            Assert.True(queue.TryPostNext(
+                _ =>
+                {
+                    order.Enqueue($"lifecycle-{index}");
+                    return ValueTask.CompletedTask;
+                },
+                out var item));
+            lifecycle.Add(item);
+        }
+
+        Assert.True(queue.TryPostApplication(
+            _ =>
+            {
+                order.Enqueue("application");
+                return ValueTask.CompletedTask;
+            },
+            out var application));
+
+        releaseFirst.TrySetResult();
+        await Task.WhenAll(lifecycle.Select(static item => item.Completion)
+                .Append(application.Completion))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        var applicationIndex = order.ToArray().ToList().IndexOf("application");
+        Assert.InRange(
+            applicationIndex,
+            0,
+            ZLinkSerialExecutionQueue.LifecycleTurnLimit);
     }
 
     [Fact]

@@ -164,7 +164,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     public void defer() {
         if (!deferred.compareAndSet(false, true)) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ALREADY_SUBMITTED,
+                ZLinkFrameworkErrorKind.INVALID_OPERATION,
                 "Actor join call was already deferred");
         }
         services.actors().requireDeferredJoinRegistration(context);
@@ -177,7 +177,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         ZLinkActorJoinOperationId operationId = newOperationId();
         if (!context.tryClaimDeferredJoin(deferred)) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ACTOR_MOVING,
+                ZLinkFrameworkErrorKind.UNAVAILABLE,
                 "Actor already has a pending membership transition");
         }
         try {
@@ -259,8 +259,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         if (remaining == null) {
             return notifyCompletion(new ZLinkActorJoinCompletion.Failed(
                 operationId,
-                ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
-                false));
+                ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED));
         }
         ZLinkActorSpotJoinCall bounded =
             (ZLinkActorSpotJoinCall) timeout(remaining);
@@ -269,14 +268,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     Throwable cause = unwrap(error);
                     ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
                         ? framework.kind()
-                        : ZLinkFrameworkErrorKind.REQUEST_FAILED;
-                    boolean retriable = cause instanceof ZLinkFrameworkException framework
-                        ? framework.retriable()
-                        : kind.retriable();
+                        : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
                     return (ZLinkActorJoinCompletion) new ZLinkActorJoinCompletion.Failed(
                         operationId,
-                        kind,
-                        retriable);
+                        kind);
                 }
                 if (result instanceof ZLinkActorJoinOutcome.Accepted accepted) {
                     return new ZLinkActorJoinCompletion.Accepted(
@@ -307,7 +302,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     private CompletionStage<Void> notifyCompletion(
         ZLinkActorJoinCompletion completion) {
         String outcomeDetails = completion instanceof ZLinkActorJoinCompletion.Failed failed
-            ? " kind=" + failed.kind() + " retriable=" + failed.isRetriable()
+            ? " kind=" + failed.kind()
             : "";
         streamTrace("join completion callback-start actor="
             + context.actorRef().actorId()
@@ -1013,7 +1008,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             }
             if (isFrameworkErrorReply(replyParts)) {
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                     frameworkErrorReplyMessage(replyParts));
             }
             ZLinkActorSpotRoutePackets.JoinReply reply =

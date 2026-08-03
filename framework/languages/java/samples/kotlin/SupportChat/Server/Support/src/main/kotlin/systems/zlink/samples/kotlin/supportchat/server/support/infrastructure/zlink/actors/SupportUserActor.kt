@@ -116,7 +116,7 @@ class SupportUserActor(
                         JoinConversationFailedNotify(
                             pending,
                             completion.kind().name,
-                            completion.isRetriable,
+                            false,
                         ),
                     )
                     .metadata(SampleNames.ConversationIdMetadataKey, pending)

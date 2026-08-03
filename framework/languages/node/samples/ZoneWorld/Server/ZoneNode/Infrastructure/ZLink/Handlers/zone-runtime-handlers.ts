@@ -16,20 +16,47 @@ import { adjacentZones } from '../../../Domain/world';
 import { Inject } from '@nestjs/common';
 import { ZONEWORLD_CONFIG } from '../../../../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../../../../Configuration/configuration';
+import { OpsReportAdapter } from '../Monitoring/ops-report-adapter';
 
 @Injectable()
 class ZoneTickHandler implements ZLinkSpotTimerHandler<ZoneSpot> {
   private faultInjected = false;
 
-  constructor(@Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration) {}
+  constructor(
+    @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
+    private readonly ops: OpsReportAdapter
+  ) {}
 
   async handle(spot: ZoneSpot, _tick: ZLinkTimerTick): Promise<void> {
-    const zoneId = String(spot.context.spotId);
-    if (this.config.zoneNode?.faultTickZone === zoneId && !this.faultInjected) {
-      this.faultInjected = true;
-      throw new Error(`injected tick failure for ${zoneId}`);
+    try {
+      const zoneId = String(spot.context.spotId);
+      if (this.config.zoneNode?.faultTickZone === zoneId && !this.faultInjected) {
+        this.faultInjected = true;
+        console.log(`zone tick fault injected zone=${zoneId}`);
+        throw new Error(`injected tick failure for ${zoneId}`);
+      }
+      await spot.tick();
+    } catch (error) {
+      const zoneId = String(spot.context.spotId);
+      try {
+        console.log(`zone spot event reporting zone=${zoneId}`);
+        await this.ops.reportSpotEvent(
+          this.config.zoneNode?.nodeId ?? 'unknown',
+          'TimerHandlerFailed',
+          `spot=${zoneId}; timer=zone-tick-${zoneId}; detail=${error instanceof Error ? error.message : String(error)}`
+        );
+        console.log(`zone spot event reported zone=${zoneId}`);
+      } catch (reportError) {
+        // The Framework still owns timer failure logging. A report transport
+        // failure must not replace the original handler exception or change
+        // the timer policy.
+        console.error(
+          `zone spot event report failed. zone=${zoneId}`
+          + ` error=${reportError instanceof Error ? reportError.message : String(reportError)}`
+        );
+      }
+      throw error;
     }
-    await spot.tick();
   }
 }
 

@@ -102,7 +102,7 @@ final class ZLinkChannelDispatchReporter {
             && decode.getCause() instanceof ZLinkFrameworkException frameworkError) {
             return frameworkError.kind();
         }
-        return ZLinkFrameworkErrorKind.REQUEST_FAILED;
+        return ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
     }
 
     static void replyAndClose(

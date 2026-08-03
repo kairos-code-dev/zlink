@@ -11,8 +11,11 @@ import "C"
 
 import "unsafe"
 
-func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
-	parts := make([]*Message, 0, 1)
+func recvMultipart(reuse []*Message, flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) {
+	if reuse == nil {
+		reuse = make([]*Message, 0, 1)
+	}
+	parts := reuse[:0]
 	recvFlags := C.zlink_recv_flags_t(flags)
 	for {
 		var part C.zlink_msg_t
@@ -28,12 +31,18 @@ func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) 
 			return nil, err
 		}
 
-		msg := &Message{}
+		var msg *Message
+		if len(parts) < len(reuse) {
+			msg = reuse[len(parts)]
+		} else {
+			msg = &Message{}
+		}
 		if err := configErrorFromResult(C.zlink_msg_adopt(&msg.msg, &part)); err != nil {
 			_ = configErrorFromResult(C.zlink_msg_close(&part))
 			closeMessageSlice(parts)
 			return nil, err
 		}
+		msg.closed = false
 		parts = append(parts, msg)
 
 		if hasMore == 0 {
@@ -41,7 +50,9 @@ func recvMultipart(flags RecvFlags, recv multipartRecvFunc) ([]*Message, error) 
 		}
 		recvFlags = C.zlink_recv_flags_t(C.ZLINK_DONTWAIT)
 	}
-
+	for i := len(parts); i < len(reuse); i++ {
+		reuse[i] = nil
+	}
 	return parts, nil
 }
 
@@ -71,26 +82,9 @@ func takeParts(ptr *C.zlink_msg_t, partCount C.size_t) ([]*Message, error) {
 	return parts, nil
 }
 
-func bytePartsToMessages(parts [][]byte) ([]*Message, error) {
-	if len(parts) == 0 {
-		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+func discardParts(ptr *C.zlink_msg_t, partCount C.size_t) {
+	if ptr == nil || partCount == 0 {
+		return
 	}
-	messages := make([]*Message, 0, len(parts))
-	for _, part := range parts {
-		msg, err := NewMessage(part)
-		if err != nil {
-			closeMessageSlice(messages)
-			return nil, err
-		}
-		messages = append(messages, msg)
-	}
-	return messages, nil
-}
-
-func mustTakeParts(ptr *C.zlink_msg_t, partCount C.size_t) []*Message {
-	parts, err := takeParts(ptr, partCount)
-	if err != nil {
-		panic(err)
-	}
-	return parts
+	C.zlink_multipart_close(ptr, partCount)
 }

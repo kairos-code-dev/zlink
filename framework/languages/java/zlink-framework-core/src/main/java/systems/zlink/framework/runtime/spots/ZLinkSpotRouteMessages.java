@@ -48,7 +48,7 @@ final class ZLinkSpotRouteMessages {
         try {
             if (isFrameworkErrorReply(replyParts)) {
                 throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
                     ZLinkFrameworkErrorReply.message(replyParts));
             }
             Message firstReply = replyParts.isEmpty()

@@ -59,4 +59,18 @@ final class MeshNodeRegistrationSubmitTimeoutTest {
         assertEquals(maximum,
             registration.configureSpotPublisher().sendTimeout().orElseThrow());
     }
+
+    @Test
+    void instanceSpotIdleTimeoutUsesZeroDefaultAndRejectsNegativeValues() {
+        MeshNodeRegistration registration = new MeshNodeRegistration("mesh");
+
+        assertEquals(Duration.ZERO, registration.instanceSpotIdleTimeout());
+        Duration configured = Duration.ofMillis(250);
+        registration.setInstanceSpotIdleTimeout(configured);
+        assertEquals(configured, registration.instanceSpotIdleTimeout());
+        assertThrows(ZLinkConfigurationException.class,
+            () -> registration.setInstanceSpotIdleTimeout(Duration.ofNanos(-1)));
+        assertThrows(ZLinkConfigurationException.class,
+            () -> registration.setInstanceSpotIdleTimeout(null));
+    }
 }

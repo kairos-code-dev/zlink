@@ -127,7 +127,7 @@ private fun findActorOrThrow(
 ): ActorRef {
     return directory.find(actorId).toCompletableFuture().join().orElseThrow {
         ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+            ZLinkFrameworkErrorKind.NOT_FOUND,
             "Actor route '$actorId' was not found.",
         )
     }

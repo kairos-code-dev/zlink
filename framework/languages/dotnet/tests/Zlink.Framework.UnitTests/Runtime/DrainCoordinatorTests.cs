@@ -1497,7 +1497,7 @@ public sealed class DrainCoordinatorTests
             0,
             DateTimeOffset.UtcNow);
 
-        public IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+        public IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(
                 "The readiness check must not start observation.");

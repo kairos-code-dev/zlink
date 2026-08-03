@@ -270,7 +270,7 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkClientServerChannelServerBuilder SetWeight(System.Int32 weight [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkClientServerRuntime
     method abstract Zlink.Framework.Contracts.Configuration.ZLinkClientServerStatus GetStatus(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkClientServerStatus> ObserveAsync(System.String channelName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<Zlink.Framework.Contracts.Configuration.ZLinkClientServerStatus>> ObserveAsync(System.String channelName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkEndpointConnections
     method abstract System.Void Connect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void Disconnect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -291,7 +291,7 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkFanoutChannelBuilder SetRoutingId(Systems.Zlink.RoutingId publisherRoutingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkFanoutRuntime
     method abstract Zlink.Framework.Contracts.Configuration.ZLinkFanoutStatus GetStatus(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkFanoutStatus> ObserveAsync(System.String channelName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<Zlink.Framework.Contracts.Configuration.ZLinkFanoutStatus>> ObserveAsync(System.String channelName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkFrameworkOptions
     property System.Int64 ApplicationVersion { get; set; } [nullability=read:not-null,write:not-null]
     property Zlink.Framework.Contracts.Codecs.IZLinkCodecRegistryBuilder Codecs { get; } [nullability=read:not-null,write:unknown]
@@ -321,7 +321,7 @@ assembly Zlink.Framework
       where TFilter : class, Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilter
   type interface Zlink.Framework.Contracts.Configuration.IZLinkFrameworkRuntime
     property Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRuntimeStatus Status { get; } [nullability=read:not-null,write:unknown]
-    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRuntimeStatus> ObserveAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRuntimeStatus>> ObserveAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRelocationResult> RelocateAsync(Zlink.Framework.Contracts.Configuration.ZLinkFrameworkRelocationOptions options [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Configuration.ZLinkFrameworkTerminationResult> ShutdownAsync(System.Nullable<System.TimeSpan> deadline = null [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkInboundDispatchOptions
@@ -389,6 +389,7 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetAdvertiseHost(System.String advertiseHost [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetBindHost(System.String bindHost [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetDefaultRequestTimeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetInstanceSpotIdleTimeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetPlacementWeight(System.Int32 weight [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetRoutingIdPrefix(System.String prefix [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetRoutingId(Systems.Zlink.RoutingId routingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -442,7 +443,7 @@ assembly Zlink.Framework
     property System.Boolean RequireKnownPeer { get; set; } [nullability=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime
     method abstract Zlink.Framework.Contracts.Configuration.ZLinkRouteMeshStatus GetStatus(System.String meshName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkRouteMeshStatus> ObserveAsync(System.String meshName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<Zlink.Framework.Contracts.Configuration.ZLinkRouteMeshStatus>> ObserveAsync(System.String meshName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntimeOptions
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelRuntimeOptions Channel(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshPlacementRuntimeOptions Mesh(System.String meshName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -682,6 +683,30 @@ assembly Zlink.Framework
     method override System.String ToString() [return=read:unknown,write:unknown]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss>
+    ctor ZLinkObservationLoss(System.UInt64 CoalescedCount [nullability=read:not-null,write:not-null], System.UInt64 DiscardedTerminalCount [nullability=read:not-null,write:not-null])
+    property System.UInt64 CoalescedCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 DiscardedTerminalCount { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.UInt64 CoalescedCount [nullability=read:not-null,write:not-null], out System.UInt64 DiscardedTerminalCount [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus>>
+    generic TStatus variance=invariant nullable=not-null
+    where TStatus : notnull
+    ctor ZLinkObservedStatus(TStatus Status [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss Loss [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss Loss { get; init; } [nullability=read:not-null,write:not-null]
+    property TStatus Status { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out TStatus Status [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Configuration.ZLinkObservationLoss Loss [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkObservedStatus<TStatus> right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Configuration.ZLinkPeerState : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Configuration.ZLinkPeerState Connecting = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkPeerState Draining = 2 [nullability=read:not-null,write:not-null]
@@ -1262,6 +1287,7 @@ assembly Zlink.Framework
   type enum Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason ExplicitClose = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason HostShutdown = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason IdleEvicted = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason RelocationOut = 2 [nullability=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Spots.ZLinkSpotClosingContext : System.IEquatable<Zlink.Framework.Contracts.Spots.ZLinkSpotClosingContext>
     ctor ZLinkSpotClosingContext(Zlink.Framework.Contracts.Spots.ZLinkSpotCloseReason Reason [nullability=read:not-null,write:not-null], System.DateTimeOffset Deadline [nullability=read:not-null,write:not-null])

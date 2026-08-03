@@ -53,6 +53,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private readonly Queue<RelocationReplyTerminalKey>
         _relocationReplyTerminalOrder = [];
     private readonly ConcurrentDictionary<string, ZLinkManagedSpot> _spots = new();
+    private readonly object _entrySpotGate = new();
     private readonly ConcurrentDictionary<string, ManagedActor> _actors =
         new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<RemoteUserSpotOperationKey, RemoteUserSpotInvocation>
@@ -88,6 +89,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private ICanonicalRelocationReservationTarget?
         _canonicalRelocationReservationTarget;
     private RoutingId _routingId;
+    private ZLinkManagedSpot? _entrySpot;
     private ZLinkMeshNodeObjectRole _objectRole;
     private string _bindEndpoint = string.Empty;
     private string _advertisedEndpoint = string.Empty;
@@ -100,7 +102,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private ulong _nextAuthorityOwnerGeneration;
     private long _localOwnerLeaseGeneration = 1;
     private ZLinkServiceWireCodec.RequestSourceFence _localRequestSourceFence;
-    private long _nextChannelSelection;
+    private readonly Dictionary<string, Dictionary<string, long>>
+        _channelSelectionCurrents = new(StringComparer.Ordinal);
     private long _queuedMessages;
     private long _queuedBytes;
     private int _readyPosted;
@@ -1403,13 +1406,21 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (_routingId.IsEmpty)
             throw new InvalidOperationException(
                 "The MeshNode routing id must be configured before its Entry Spot is used.");
-        return _spots.GetOrAdd(
-            _routingId.ToString(),
-            value => new ZLinkManagedSpot(
-                this,
-                value,
-                _lifecycleGeneration,
-                _lifecycleGeneration));
+        lock (_entrySpotGate)
+        {
+            // The backend assigns the public Entry Spot id by rekeying this
+            // object after the node-rid placeholder has been created. Keep the
+            // object reference so later actor creation and lookup use the same
+            // logical owner instead of recreating the placeholder under the
+            // node routing id.
+            return _entrySpot ??= _spots.GetOrAdd(
+                _routingId.ToString(),
+                value => new ZLinkManagedSpot(
+                    this,
+                    value,
+                    _lifecycleGeneration,
+                    _lifecycleGeneration));
+        }
     }
 
     public ISpot GetOrCreateSpot(string spotId, out bool created)
@@ -2715,7 +2726,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                         actorRef.NodeRid,
                         actorRef.ActorId,
                         actorRef.ObjectGeneration),
-                    out var authority)
+                out var authority)
                 || peer.LifecycleGeneration != authority.TargetNodeGeneration)
                 return SubmitResult.NotFound;
             var head = ZLinkServiceWireCodec.EncodeActor(
@@ -3465,8 +3476,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void DrainRawSocket()
     {
+        var startedAt = Stopwatch.GetTimestamp();
+        long bytes = 0;
         for (var index = 0; index < ReceiveBatchSize; index++)
         {
+            if (ZLinkReceiveBatchBudget.IsExhausted(index, bytes, startedAt))
+                return;
             var ownsResumePermit = false;
             try
             {
@@ -3486,6 +3501,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     available = _socket!.Recv(received, RecvFlags.DontWait);
                 if (!available)
                     return;
+                bytes = checked(
+                    bytes + ZLinkReceiveBatchBudget.MeasureParts(received.Parts));
                 ProcessReceived(received);
             }
             finally
@@ -6662,7 +6679,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         var count = 0;
         var maximumRecords = Math.Min(ReceiveBatchSize, batch.MaximumRecords);
         while (count < maximumRecords
-               && mailbox.TryDequeue(this, out var queued))
+               && mailbox.TryDequeue(this, batch, out var queued))
         {
             batch.Add(queued.Record, queued.TakeParts());
             count++;
@@ -6687,18 +6704,41 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private bool TrySelectChannelTarget(string channelName, out RoutingId targetRid)
     {
-        var targets = SnapshotChannelTargets(channelName);
-        if (targets.Count == 0)
+        lock (_gate)
         {
-            targetRid = default;
-            return false;
+            var targets = SnapshotChannelTargets(channelName);
+            if (targets.Count == 0)
+            {
+                _channelSelectionCurrents.Remove(channelName);
+                targetRid = default;
+                return false;
+            }
+
+            if (!_channelSelectionCurrents.TryGetValue(
+                    channelName,
+                    out var currents))
+            {
+                currents = new Dictionary<string, long>(StringComparer.Ordinal);
+                _channelSelectionCurrents[channelName] = currents;
+            }
+
+            var keys = targets
+                .Select(static target => target.RoutingId.ToHex())
+                .ToHashSet(StringComparer.Ordinal);
+            foreach (var key in currents.Keys
+                         .Where(key => !keys.Contains(key))
+                         .ToArray())
+                currents.Remove(key);
+
+            var target = ZLinkWeightedSelector.Select(
+                targets,
+                static candidate => candidate.Weight,
+                static candidate => candidate.RoutingId.ToHex(),
+                currents,
+                StringComparer.Ordinal);
+            targetRid = target!.RoutingId;
+            return true;
         }
-        var target = ZLinkWeightedSelector.Select(
-            targets,
-            static candidate => candidate.Weight,
-            ref _nextChannelSelection);
-        targetRid = target!.RoutingId;
-        return true;
     }
 
     //  Spec 08 §7 separates two outcomes. A ChannelName with no declared
@@ -6754,9 +6794,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                                && weight > 0)
                 .Select(peer => new WeightedChannelTarget(
                     peer.RoutingId,
-                    checked((int)peer.Channels[channelName])))
-                .OrderBy(static target => target.RoutingId.ToHex(), StringComparer.Ordinal));
-            return targets;
+                    checked((int)peer.Channels[channelName]))));
+            return targets
+                .OrderBy(
+                    static target => target.RoutingId.ToHex(),
+                    StringComparer.Ordinal)
+                .ToList();
         }
     }
 
@@ -7291,11 +7334,18 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
         internal bool TryDequeue(
             ZLinkManagedMeshNode owner,
+            MeshReceiveBatch batch,
             out QueuedRecord record)
         {
             lock (_gate)
             {
                 if (_records.Count == 0)
+                {
+                    record = null!;
+                    return false;
+                }
+                var candidate = _records.Peek();
+                if (!batch.CanAdd(checked((long)candidate.PendingBytes)))
                 {
                     record = null!;
                     return false;

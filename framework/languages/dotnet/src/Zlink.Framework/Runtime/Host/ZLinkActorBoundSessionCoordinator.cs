@@ -332,6 +332,15 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             bindingToken,
             out acceptedHighWater);
 
+    public ValueTask<bool> WaitForSessionRouteAvailableAsync(
+        string actorId,
+        string bindingToken,
+        CancellationToken cancellationToken)
+        => _sessionBindings.WaitForRouteAvailableAsync(
+            actorId,
+            bindingToken,
+            cancellationToken);
+
     public ZLinkSessionRouteCommitResult CommitSessionRoute(
         ZLinkSessionRouteCommit request)
         => _sessionBindings.CommitRoute(request);

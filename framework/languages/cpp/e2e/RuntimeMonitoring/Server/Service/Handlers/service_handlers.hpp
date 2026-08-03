@@ -662,7 +662,9 @@ class runtime_observation_store_t
             return;
         _observation = runtime.observe (
           route_mesh_name, 32,
-          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
+          [&evidence] (const zlink::framework::observed_status_t<
+                         zlink::framework::mesh_node_snapshot_t> &observed) {
+              const auto &event = observed.status;
               auto line = "mesh-runtime-snapshot|mesh=" + event.mesh_name
                           + "|sequence=" + std::to_string (event.sequence)
                           + "|ready=" + (event.is_ready ? "true" : "false")
@@ -680,7 +682,9 @@ class runtime_observation_store_t
             return;
         _slow_observation = runtime.observe (
           route_mesh_name, 1,
-          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
+          [&evidence] (const zlink::framework::observed_status_t<
+                         zlink::framework::mesh_node_snapshot_t> &observed) {
+              const auto &event = observed.status;
               evidence.add (
                 "mesh-runtime-slow|mesh=" + event.mesh_name
                 + "|sequence=" + std::to_string (event.sequence));
@@ -688,7 +692,9 @@ class runtime_observation_store_t
           });
         _throwing_observation = runtime.observe (
           route_mesh_name, 1,
-          [&evidence] (const zlink::framework::mesh_node_snapshot_t &event) {
+          [&evidence] (const zlink::framework::observed_status_t<
+                         zlink::framework::mesh_node_snapshot_t> &observed) {
+              const auto &event = observed.status;
               evidence.add (
                 "mesh-runtime-throwing|mesh=" + event.mesh_name
                 + "|sequence=" + std::to_string (event.sequence));
@@ -885,7 +891,8 @@ class runtime_validation_handler_t
         try {
             (void) _runtime.observe (
               "missing", 1,
-              [] (const zlink::framework::mesh_node_snapshot_t &) {});
+              [] (const zlink::framework::observed_status_t<
+                    zlink::framework::mesh_node_snapshot_t> &) {});
         }
         catch (const zlink::framework::framework_exception_t &) {
             missing_observer_rejected = true;
@@ -893,7 +900,8 @@ class runtime_validation_handler_t
         try {
             (void) _runtime.observe (
               route_mesh_name, 0,
-              [] (const zlink::framework::mesh_node_snapshot_t &) {});
+              [] (const zlink::framework::observed_status_t<
+                    zlink::framework::mesh_node_snapshot_t> &) {});
         }
         catch (const zlink::framework::framework_exception_t &) {
             zero_capacity_rejected = true;

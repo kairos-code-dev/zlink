@@ -5,7 +5,7 @@ import java.util.concurrent.Flow;
 public interface ZLinkClientServerRuntime {
     ZLinkClientServerStatus snapshot(String channelName);
 
-    Flow.Publisher<ZLinkClientServerStatus> observe(
+    Flow.Publisher<ZLinkObservedStatus<ZLinkClientServerStatus>> observe(
         String channelName,
         int capacity);
 

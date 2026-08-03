@@ -61,12 +61,6 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 		if event.Revents&perfcommon.ZLinkPollIn == 0 {
 			continue
 		}
-		if useMultiDealerDealerRecvPart(cfg.transport, cfg.msgSize) {
-			if drainMultiDealerDealerServerRecvPart(server, cfg, window, stats, latencyStride, &stopRequested) {
-				break
-			}
-			continue
-		}
 		var received zlink.Received
 		for {
 			ok, recvErr := server.Recv(&received, zlink.RecvFlagsDontWait)
@@ -111,16 +105,6 @@ func runMultiDealerDealerServer(cfg multiConfig) {
 	printMultiResult(cfg, stats.Snapshot(cfg.duration, cfg.msgSize))
 }
 
-func useMultiDealerDealerRecvPart(transport string, msgSize int) bool {
-	if msgSize == 64 || msgSize == 65536 {
-		return true
-	}
-	if msgSize == 131072 && (transport == "wss" || transport == "tls") {
-		return true
-	}
-	return msgSize == 262144 && transport == "wss"
-}
-
 func resolveMultiDealerDealerLatencySampleStride(transport string, msgSize int) uint64 {
 	if msgSize == 64 {
 		return uint64(positiveMultiDealerDealerIntEnv("PERF_MULTI_DEALER_DEALER_LATENCY_SAMPLE_STRIDE", 32))
@@ -142,64 +126,6 @@ func positiveMultiDealerDealerIntEnv(name string, fallback int) int {
 
 func shouldSampleMultiDealerDealerLatency(index, stride uint64) bool {
 	return stride <= 1 || index == 1 || index%stride == 0
-}
-
-func drainMultiDealerDealerServerRecvPart(
-	server *zlink.DealerSocket,
-	cfg multiConfig,
-	window perfcommon.BenchmarkWindow,
-	stats *perfcommon.Stats,
-	latencyStride uint64,
-	stopRequested *bool,
-) bool {
-	message := perfcommon.NewMessageWithSize(0)
-	defer message.Close()
-	var localCount uint64
-	flushCount := func() {
-		stats.AddCountBy(localCount)
-		localCount = 0
-	}
-	for {
-		result, ok, recvErr := server.RecvPart(message, zlink.RecvFlagsDontWait)
-		if recvErr != nil {
-			if perfcommon.IsTransient(recvErr) {
-				flushCount()
-				return false
-			}
-			flushCount()
-			perfcommon.Must(fmt.Errorf("multi dealer/dealer server recv part: %w", recvErr))
-		}
-		if !ok {
-			flushCount()
-			return false
-		}
-		if result.RoutingID.Size() != 0 || result.More {
-			continue
-		}
-		if perfcommon.IsStopTokenMessage(message) {
-			*stopRequested = true
-			flushCount()
-			return true
-		}
-		if latencyStride <= 1 {
-			now := time.Now()
-			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok {
-				localCount++
-				stats.AddLatencySampleNs(latencyNs)
-			}
-			continue
-		}
-		if !perfcommon.HasMetricHeaderPhase(message.Data(), cfg.msgSize, perfcommon.PhaseActive) {
-			continue
-		}
-		localCount++
-		if shouldSampleMultiDealerDealerLatency(localCount, latencyStride) {
-			now := time.Now()
-			if latencyNs, ok := perfcommon.LatencyNsFromMessageAt(message, cfg.msgSize, perfcommon.PhaseActive, now); ok {
-				stats.AddLatencySampleNs(latencyNs)
-			}
-		}
-	}
 }
 
 func drainMultiDealerDealerActiveTail(

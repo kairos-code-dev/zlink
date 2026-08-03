@@ -34,7 +34,7 @@ final class ZLinkAdmissionRuntimeTest {
                 .toCompletableFuture()
                 .join());
         assertEquals(
-            ZLinkFrameworkErrorKind.ALREADY_SUBMITTED,
+            ZLinkFrameworkErrorKind.INVALID_OPERATION,
             ((ZLinkFrameworkException) duplicate.getCause()).kind());
     }
 

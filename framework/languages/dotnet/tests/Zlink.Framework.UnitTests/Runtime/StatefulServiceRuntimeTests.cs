@@ -407,6 +407,22 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task EntrySpot_RekeyKeepsActorOwnerAtTheLogicalEntrySpot()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = NewNode(context, "entry-rekey-node");
+        var entrySpot = (ZLinkManagedSpot)node.EntrySpot();
+
+        entrySpot.SetRoutingId(RoutingId.From("entry-rekey-logical-spot"));
+        var actor = node.CreateActor("entry-rekey-actor");
+
+        Assert.Same(entrySpot, node.EntrySpot());
+        Assert.Equal("entry-rekey-logical-spot", entrySpot.SpotId);
+        Assert.True(node.ActorLookup(actor.ActorId, out var location));
+        Assert.Equal(entrySpot.SpotId, location.SpotId);
+    }
+
+    [Fact]
     public async Task RouteMesh_ApplicationHwm_AdmitsOneMailboxAndResumesAfterRelease()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();

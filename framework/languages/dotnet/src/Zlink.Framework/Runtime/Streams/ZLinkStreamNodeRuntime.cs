@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Messaging;
 using Zlink.Framework.Runtime.Dispatch;
@@ -30,6 +31,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly LinkedList<RoutingId> _disconnectedRoutingIdOrder = [];
     private readonly HashSet<ZLinkStreamReceiveState> _blockedReceiveStates = [];
     private readonly List<ZLinkStreamReceiveState> _receiveStateSnapshot = [];
+    private string? _receiveStateCursor;
     private const int DisconnectedRoutingIdLimit = 4096;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
@@ -354,11 +356,18 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                                   | PollEventFlags.PollPri)) == 0)
                     continue;
 
+                var batchStartedAt = Stopwatch.GetTimestamp();
+                long batchBytes = 0;
                 for (var receivedCount = 0;
                      receivedCount < ReceiveBatchSize
                      && !stop.IsCancellationRequested;
                      receivedCount++)
                 {
+                    if (ZLinkReceiveBatchBudget.IsExhausted(
+                            receivedCount,
+                            batchBytes,
+                            batchStartedAt))
+                        break;
                     // A transport multipart already started before the HWM
                     // became full must be consumed to preserve Core's part
                     // boundary.  Otherwise, flush blocked complete frames
@@ -398,6 +407,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                         }
                         _multipartRoutingId = hasMore ? sourceRoutingId : null;
                         ProcessReceived(sourceRoutingId, part);
+                        batchBytes = checked(batchBytes + Math.Max(part.Size, 0));
                     }
                     catch (Exception exception)
                     {
@@ -458,7 +468,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         {
             if (state.Removed) return;
             state.Buffer.Append(receivedPart.AsReadOnlySpan());
-            blocked = !DrainReceiveState(state);
+            blocked = DrainReceiveState(state) != ZLinkReceiveStateDrainResult.Empty;
         }
         if (blocked) MarkReceiveStateBlocked(state);
     }
@@ -488,19 +498,24 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
             _receiveStateSnapshot.Clear();
             _receiveStateSnapshot.AddRange(_blockedReceiveStates);
             _blockedReceiveStates.Clear();
+            _receiveStateSnapshot.Sort(static (left, right) =>
+                StringComparer.Ordinal.Compare(
+                    left.RoutingId.ToHex(),
+                    right.RoutingId.ToHex()));
+            RotateReceiveStateSnapshot();
         }
 
         var anyBlocked = false;
         foreach (var state in _receiveStateSnapshot)
         {
             Exception? failure = null;
-            var canReceive = true;
+            var result = ZLinkReceiveStateDrainResult.Empty;
             lock (state.Gate)
             {
                 if (state.Removed) continue;
                 try
                 {
-                    canReceive = DrainReceiveState(state);
+                    result = DrainReceiveState(state);
                 }
                 catch (Exception exception)
                 {
@@ -514,9 +529,11 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
                 continue;
             }
 
-            if (!canReceive)
-            {
+            _receiveStateCursor = state.RoutingId.ToHex();
+            if (result == ZLinkReceiveStateDrainResult.AdmissionBlocked)
                 anyBlocked = true;
+            if (result != ZLinkReceiveStateDrainResult.Empty)
+            {
                 MarkReceiveStateBlocked(state);
             }
         }
@@ -524,23 +541,66 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         return !anyBlocked;
     }
 
-    private bool DrainReceiveState(ZLinkStreamReceiveState state)
+    private ZLinkReceiveStateDrainResult DrainReceiveState(
+        ZLinkStreamReceiveState state)
     {
+        var startedAt = Stopwatch.GetTimestamp();
+        var count = 0;
+        long bytes = 0;
         while (true)
         {
             if (state.Pending is { } pending)
             {
-                if (!TryAdmitFrame(state.RoutingId, pending)) return false;
+                var pendingBytes = pending.ByteLength;
+                if (!TryAdmitFrame(state.RoutingId, pending))
+                    return ZLinkReceiveStateDrainResult.AdmissionBlocked;
                 state.Pending = null;
+                count++;
+                bytes = checked(bytes + pendingBytes);
             }
 
-            if (!state.Buffer.TryTakeFrame(out var frame)) return true;
+            if (!state.Buffer.TryGetCompleteFrameSize(out var frameBytes))
+                return ZLinkReceiveStateDrainResult.Empty;
+            if (ZLinkReceiveBatchBudget.WouldExceed(
+                    count,
+                    bytes,
+                    frameBytes,
+                    startedAt))
+                return ZLinkReceiveStateDrainResult.BatchExhausted;
+            if (!state.Buffer.TryTakeFrame(out var frame))
+                return ZLinkReceiveStateDrainResult.Empty;
+            var admittedBytes = frame!.ByteLength;
             if (!TryAdmitFrame(state.RoutingId, frame!))
             {
                 state.Pending = frame;
-                return false;
+                return ZLinkReceiveStateDrainResult.AdmissionBlocked;
             }
+            count++;
+            bytes = checked(bytes + admittedBytes);
         }
+    }
+
+    private void RotateReceiveStateSnapshot()
+    {
+        if (_receiveStateCursor is null || _receiveStateSnapshot.Count < 2)
+            return;
+        var start = _receiveStateSnapshot.FindIndex(state =>
+            StringComparer.Ordinal.Compare(
+                state.RoutingId.ToHex(),
+                _receiveStateCursor) > 0);
+        if (start < 0) start = 0;
+        if (start == 0) return;
+        var rotated = _receiveStateSnapshot.Skip(start).Concat(
+            _receiveStateSnapshot.Take(start)).ToArray();
+        _receiveStateSnapshot.Clear();
+        _receiveStateSnapshot.AddRange(rotated);
+    }
+
+    private enum ZLinkReceiveStateDrainResult
+    {
+        Empty = 0,
+        BatchExhausted = 1,
+        AdmissionBlocked = 2
     }
 
     private bool TryAdmitFrame(

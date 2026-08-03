@@ -28,6 +28,8 @@
 #include "runtime/streams/stream_runtime.hpp"
 #include "runtime/timers/timer_runtime.hpp"
 
+#include <zlink/framework/contracts/channels/call.hpp>
+
 #include <zlink.hpp>
 
 #include <algorithm>
@@ -158,7 +160,7 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
       std::make_shared<runtime::offload_executor_t> (2, 4096, "zlink-spot-ser");
     state->serial_queue =
       std::make_shared<runtime::serial_execution_queue_t> (
-        *state->serial_executor, 4096,
+        *state->serial_executor, runtime::serial_execution_queue_options_t{},
         runtime::serial_execution_queue_t::error_handler_t{},
         !state->entry_spot
           && state->execution_mode == user_spot_execution_mode_t::spot_wide);
@@ -894,17 +896,23 @@ bool spot_context_state_t::is_current_callback_thread () const
     return callback_depth > 0 && callback_thread == std::this_thread::get_id ();
 }
 
-bool spot_context_state_t::try_post_serial (std::string name, std::function<void ()> work)
+bool spot_context_state_t::try_post_serial (
+  std::string name,
+  std::function<void ()> work,
+  runtime::serial_work_options_t options)
 {
     if (!serial_queue) {
         work ();
         return true;
     }
-    return serial_queue->try_post (std::move (name), std::move (work));
+    return serial_queue->try_post (
+      std::move (name), std::move (work), std::move (options));
 }
 
 bool spot_context_state_t::try_post_serial_after_current_turn (
-  std::string name, std::function<void ()> work)
+  std::string name,
+  std::function<void ()> work,
+  runtime::serial_work_options_t options)
 {
     if (!serial_queue) {
         work ();
@@ -915,14 +923,19 @@ bool spot_context_state_t::try_post_serial_after_current_turn (
      * is rejected. Run lifecycle cleanup in the queue's after-active phase so
      * it executes after the borrowed handler reference is released but before
      * the normal next-turn continuation. */
-    if (owns_current_serial_turn ()) {
+    const auto current_turn = detail::capture_current_serial_turn ();
+    if (owns_current_serial_turn ()
+        && current_turn && !current_turn->is_after_active_phase ()) {
         return serial_queue->try_post_deferred (std::move (name), std::move (work));
     }
-    return serial_queue->try_post (std::move (name), std::move (work));
+    return serial_queue->try_post (
+      std::move (name), std::move (work), std::move (options));
 }
 
 bool spot_context_state_t::try_post_serial_async (
-  std::string name, runtime::serial_execution_queue_t::async_work_t work)
+  std::string name,
+  runtime::serial_execution_queue_t::async_work_t work,
+  runtime::serial_work_options_t options)
 {
     if (!serial_queue) {
         work ([] (std::function<void ()> completion) {
@@ -932,7 +945,8 @@ bool spot_context_state_t::try_post_serial_async (
         });
         return true;
     }
-    return serial_queue->try_post_async (std::move (name), std::move (work));
+    return serial_queue->try_post_async (
+      std::move (name), std::move (work), std::move (options));
 }
 
 result_t<void> spot_context_state_t::run_serial_task (
@@ -1016,9 +1030,12 @@ result_t<void> spot_context_state_t::run_serial_task (
                     "spot lifecycle callback failed"));
               });
           }
-      });
+      },
+      runtime::serial_work_options_t{
+        runtime::serial_work_lane_t::lifecycle,
+        runtime::serial_execution_queue_t::fixed_work_byte_cost});
     if (!posted) {
-        return result_t<void>::failure (framework_error_kind_t::rejected,
+        return result_t<void>::failure (framework_error_kind_t::capacity_exceeded,
                                         "spot serial queue is full");
     }
     return result.result ();
@@ -1048,7 +1065,9 @@ bool spot_context_state_t::run_serial_sync (std::string name, std::function<void
             error = std::current_exception ();
         }
         leave_callback ();
-    });
+    }, runtime::serial_work_options_t{
+      runtime::serial_work_lane_t::lifecycle,
+      runtime::serial_execution_queue_t::fixed_work_byte_cost});
     if (!posted) {
         return false;
     }
@@ -1094,18 +1113,23 @@ void spot_context_state_t::defer_relocation_ready ()
           "relocation-ready-continued", [this] {
               complete_relocation_ready (
                 spot_relocation_ready_outcome_t::continued);
-          })) {
+          },
+          runtime::serial_work_options_t{
+            runtime::serial_work_lane_t::lifecycle,
+            runtime::serial_execution_queue_t::fixed_work_byte_cost})) {
         std::lock_guard lock (callback_mutex);
         relocation_ready_deferred = false;
         throw framework_exception_t (
-          framework_error_kind_t::rejected,
+          framework_error_kind_t::capacity_exceeded,
           "relocation readiness completion queue is full");
     }
 }
 
 void spot_context_state_t::ensure_relocation_turn_open () const
 {
-    if (!owns_current_serial_turn ())
+    const auto current_turn = detail::capture_current_serial_turn ();
+    if (!owns_current_serial_turn ()
+        || !current_turn || current_turn->is_after_active_phase ())
         return;
     std::lock_guard lock (callback_mutex);
     if (relocation_ready_deferred) {
@@ -1423,32 +1447,52 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
                 dispatch_message_kind_t::actor_request,
                 "actor_leave_deferred_execute", {}, state->spot_id,
                 deferred_ref.actor_id ());
-              try {
-                  const auto completed =
-                    spot_context_t (state)
-                      .leave_actor_erased (deferred_ref, actor_type, actor,
-                                           std::move (update_actor_ref))
-                      .result ();
-                  report_spot_dispatch_trace (
-                    state->node,
-                    completed ? message_flow_outcome_t::replied
-                              : message_flow_outcome_t::error,
-                    dispatch_error_surface_t::spot_actor,
-                    dispatch_message_kind_t::actor_request,
-                    completed ? "actor_leave_deferred_complete"
-                              : "actor_leave_deferred_failed",
-                    {}, state->spot_id, deferred_ref.actor_id ());
-              }
-              catch (...) {
+              /* The deferred queue item is only an admission trigger. Waiting
+               * for the full leave operation here can consume every serial
+               * worker while the leave callback waits for an outbound reply.
+               * Run that blocking boundary on the Framework call executor so
+               * the serial queue remains available for the callback and its
+               * continuation. */
+              const auto submitted = detail::submit_blocking_call (
+                [state, deferred_ref, actor_type, actor,
+                 update_actor_ref = std::move (update_actor_ref)] () mutable {
+                    try {
+                        const auto completed =
+                          spot_context_t (state)
+                            .leave_actor_erased (deferred_ref, actor_type, actor,
+                                                 std::move (update_actor_ref))
+                            .result ();
+                        report_spot_dispatch_trace (
+                          state->node,
+                          completed ? message_flow_outcome_t::replied
+                                    : message_flow_outcome_t::error,
+                          dispatch_error_surface_t::spot_actor,
+                          dispatch_message_kind_t::actor_request,
+                          completed ? "actor_leave_deferred_complete"
+                                    : "actor_leave_deferred_failed",
+                          {}, state->spot_id, deferred_ref.actor_id ());
+                    }
+                    catch (...) {
+                        report_spot_dispatch_trace (
+                          state->node, message_flow_outcome_t::error,
+                          dispatch_error_surface_t::spot_actor,
+                          dispatch_message_kind_t::actor_request,
+                          "actor_leave_deferred_exception", {}, state->spot_id,
+                          deferred_ref.actor_id ());
+                    }
+                });
+              if (!submitted) {
                   report_spot_dispatch_trace (
                     state->node, message_flow_outcome_t::error,
                     dispatch_error_surface_t::spot_actor,
                     dispatch_message_kind_t::actor_request,
-                    "actor_leave_deferred_exception", {}, state->spot_id,
+                    "actor_leave_deferred_rejected", {}, state->spot_id,
                     deferred_ref.actor_id ());
-                  throw;
               }
-          });
+          },
+          runtime::serial_work_options_t{
+            runtime::serial_work_lane_t::lifecycle,
+            runtime::serial_execution_queue_t::fixed_work_byte_cost});
         if (!posted) {
             return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
               framework_error_kind_t::capacity_exceeded,
@@ -1725,7 +1769,10 @@ task_t<void> entry_spot_context_t::destroy_actor_erased (const actor_ref_t &acto
               (void) entry_spot_context_t (state)
                 .destroy_actor_erased (deferred_actor)
                 .result ();
-          });
+          },
+          runtime::serial_work_options_t{
+            runtime::serial_work_lane_t::lifecycle,
+            runtime::serial_execution_queue_t::fixed_work_byte_cost});
         if (!posted) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::capacity_exceeded,
@@ -2330,7 +2377,7 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                                         result_t<
                                           zlink::message_t>::
                                           failure (
-                                            framework_error_kind_t::rejected,
+                                            framework_error_kind_t::capacity_exceeded,
                                             "spot serial queue is full"));
                                   });
                             }
@@ -2425,7 +2472,8 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
               });
             if (!posted) {
                 return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::rejected, "spot serial queue is full"));
+                  framework_error_kind_t::capacity_exceeded,
+                  "spot serial queue is full"));
             }
             return task;
         }
@@ -3154,7 +3202,7 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
         if (caller_owns_source_turn) {
             create_actor ();
         } else if (!target_state.run_serial_sync ("spot-actor-create", create_actor)) {
-            throw framework_exception_t (framework_error_kind_t::rejected,
+            throw framework_exception_t (framework_error_kind_t::capacity_exceeded,
                                          "spot serial queue is full");
         }
         if (!create_result)
@@ -3921,7 +3969,7 @@ spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
                                                        request, serializers);
         })) {
         return result_t<spot_actor_join_result_t>::failure (
-          framework_error_kind_t::rejected, "spot serial queue is full");
+          framework_error_kind_t::capacity_exceeded, "spot serial queue is full");
     }
     node_lock.lock ();
     if (response.accepted) {
@@ -5235,7 +5283,8 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
   std::unique_lock<std::recursive_mutex> &node_lock,
   std::uint64_t object_generation,
   std::string mesh_name,
-  std::function<task_t<void> (void *)> staged_restore)
+  std::function<task_t<void> (void *)> staged_restore,
+  std::uint64_t authority_owner_generation)
 {
     /* graceful-drain-handoff §4-2: a draining node blocks new spot creation.
      * Existing spots (and in-progress transfer commits) keep running. */
@@ -5267,6 +5316,12 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
                                                    : std::move (mesh_name);
     context_state->spot_id = spot_id;
     context_state->object_generation = object_generation;
+    context_state->authority_owner_generation = authority_owner_generation;
+    context_state->last_application_work_completed_ns.store (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (
+        std::chrono::steady_clock::now ().time_since_epoch ())
+        .count (),
+      std::memory_order_relaxed);
     context_state->spot_name = spot_name;
     context_state->entry_spot =
       _state->snapshot.entry_spot_name
@@ -5470,7 +5525,8 @@ local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string 
                                                               spot_id_t spot_id,
                                                               zlink::message_t request,
                                                               std::uint64_t object_generation,
-                                                              std::string mesh_name)
+                                                              std::string mesh_name,
+                                                              std::uint64_t authority_owner_generation)
 {
     std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
     const auto id_value = std::string (spot_id);
@@ -5531,7 +5587,8 @@ local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string 
     try {
         auto result = create_spot_context_unlocked (std::move (spot_name), std::move (spot_id),
                                                     std::move (request), node_lock,
-                                                    object_generation, std::move (mesh_name));
+                                                    object_generation, std::move (mesh_name),
+                                                    {}, authority_owner_generation);
         const auto owned =
           _state->pending_spot_creations_by_id.find (id_value);
         if (owned == _state->pending_spot_creations_by_id.end ()
@@ -5624,8 +5681,13 @@ task_t<zlink::message_t> spot_node_runtime_t::dispatch_instance_activation (
                              .correlation_id = std::move (correlation_id)});
     detail::observe_task_completion (
       handler_task,
-      [node = _state, request, message_kind, trace_packet_name, trace_spot_id,
+      [node = _state, state, request, message_kind, trace_packet_name, trace_spot_id,
        trace_correlation_id] (const result_t<zlink::message_t> &result) {
+          state->last_application_work_completed_ns.store (
+            std::chrono::duration_cast<std::chrono::nanoseconds> (
+              std::chrono::steady_clock::now ().time_since_epoch ())
+              .count (),
+            std::memory_order_relaxed);
           if (result) {
               report_spot_dispatch_trace (
                 node,
@@ -6062,6 +6124,21 @@ void spot_node_runtime_t::attach_native_node (std::shared_ptr<service::mesh_node
     for (auto &[_, context] : _state->spot_contexts_by_id) {
         attach_native_spot_locked (context._state);
     }
+    if (_state->instance_spot_idle_timeout
+          > std::chrono::milliseconds::zero ()
+        && !_state->instance_spot_idle_timer) {
+        auto weak_state = std::weak_ptr<spot_node_builder_state_t> (_state);
+        auto timer = std::make_unique<zlink::timer_t> ();
+        timer->on_fire ([weak_state] (std::uint64_t) {
+            if (auto state = weak_state.lock ()) {
+                if (!state->stopping.load (std::memory_order_acquire))
+                    spot_node_runtime_t (std::move (state)).evict_idle_spots ();
+            }
+        });
+        timer->start (_state->instance_spot_idle_timeout,
+                      std::numeric_limits<std::uint64_t>::max ());
+        _state->instance_spot_idle_timer = std::move (timer);
+    }
 }
 
 void spot_node_runtime_t::detach_native_node ()
@@ -6069,6 +6146,13 @@ void spot_node_runtime_t::detach_native_node ()
     std::vector<std::shared_ptr<service::spot_t>> native_spots;
     {
         std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        if (_state->instance_spot_idle_timer) {
+            try {
+                _state->instance_spot_idle_timer->stop ();
+            }
+            catch (...) {
+            }
+        }
         native_spots.reserve (_state->native_spots_by_id.size ());
         for (const auto &[_, native] : _state->native_spots_by_id) {
             if (native) {
@@ -6096,6 +6180,102 @@ void spot_node_runtime_t::detach_native_node ()
     }
     if (close_error) {
         std::rethrow_exception (close_error);
+    }
+}
+
+void spot_node_runtime_t::evict_idle_spots () noexcept
+{
+    try {
+        if (_state->instance_spot_idle_timeout
+              <= std::chrono::milliseconds::zero ()
+            || !_state->admit_instance_spot_idle_eviction
+            || _state->stopping.load (std::memory_order_acquire))
+            return;
+
+        const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds> (
+          std::chrono::steady_clock::now ().time_since_epoch ())
+                              .count ();
+        const auto timeout_ns = std::chrono::duration_cast<std::chrono::nanoseconds> (
+          _state->instance_spot_idle_timeout)
+                                  .count ();
+        std::vector<std::shared_ptr<spot_context_state_t>> candidates;
+        {
+            std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+            for (auto &[rid, context] : _state->spot_contexts_by_id) {
+                (void) rid;
+                auto state = context._state;
+                if (!state || state->closed || !state->instance_spot
+                    || !state->spot_instance || state->actor_count != 0
+                    || state->relocation_boundary_active
+                    || state->relocation_ready_deferred
+                    || state->queued_routed_packets.size () != 0
+                    || state->idle_eviction_in_progress
+                    || state->authority_owner_generation == 0)
+                    continue;
+                const auto pending_creation =
+                  _state->pending_spot_creations_by_id.find (
+                    std::string (state->spot_id));
+                if (pending_creation != _state->pending_spot_creations_by_id.end ())
+                    continue;
+                if (!state->serial_queue
+                    || state->serial_queue->pending_count (
+                         runtime::serial_work_lane_t::application) != 0
+                    || state->serial_queue->pending_count (
+                         runtime::serial_work_lane_t::lifecycle) != 0)
+                    continue;
+                if (state->has_active_callback ())
+                    continue;
+                {
+                    std::lock_guard callback_lock (state->callback_mutex);
+                    if (state->callback_admission_closed
+                        || state->callback_depth != 0
+                        || state->close_requested)
+                        continue;
+                }
+                bool timer_busy = false;
+                for (const auto &timer : state->timers) {
+                    if (!timer)
+                        continue;
+                    std::lock_guard timer_lock (timer->mutex);
+                    if (!timer->disposed
+                        && (timer->running || timer->pending_fire
+                            || timer->pending_fire_count != 0)) {
+                        timer_busy = true;
+                        break;
+                    }
+                }
+                if (timer_busy)
+                    continue;
+                const auto last_ns = state->last_application_work_completed_ns.load (
+                  std::memory_order_relaxed);
+                if (last_ns <= 0 || now_ns < last_ns
+                    || now_ns - last_ns < timeout_ns)
+                    continue;
+                state->idle_eviction_in_progress = true;
+                candidates.push_back (std::move (state));
+            }
+        }
+
+        for (const auto &state : candidates) {
+            bool evicted = false;
+            try {
+                evicted = _state->admit_instance_spot_idle_eviction (
+                  state->spot_id, state->spot_name,
+                  state->object_generation,
+                  state->authority_owner_generation,
+                  [state] { return state->try_close_idle (); });
+            }
+            catch (...) {
+                evicted = false;
+            }
+            if (!evicted) {
+                std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+                if (!state->closed)
+                    state->idle_eviction_in_progress = false;
+            }
+        }
+    }
+    catch (...) {
     }
 }
 

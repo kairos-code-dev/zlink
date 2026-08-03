@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
+
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Locations;
 
@@ -9,7 +10,9 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
     private readonly HashSet<string> _automaticChannels;
     private readonly Dictionary<string, ChannelState> _states =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<Observer>> _observers =
+    private readonly Dictionary<
+            string,
+            List<ZLinkObservationQueue<ZLinkFanoutRuntimeEvent>>> _observers =
         new(StringComparer.Ordinal);
     private readonly ZLinkFrameworkHostLifecycleState _hostLifecycle;
 
@@ -64,12 +67,14 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
             snapshot.ObservedAt);
     }
 
-    public async IAsyncEnumerable<ZLinkFanoutStatus> ObserveAsync(
+    public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkFanoutStatus>> ObserveAsync(
         string channelName,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         const int capacity = 1024;
-        var observer = new Observer(capacity);
+        var observer = new ZLinkObservationQueue<ZLinkFanoutRuntimeEvent>(
+            capacity,
+            static item => item.Sequence);
         lock (_gate)
         {
             _ = RequireState(channelName);
@@ -80,10 +85,11 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
 
         try
         {
-            await foreach (var item in observer.Channel.Reader
-                               .ReadAllAsync(cancellationToken)
+            await foreach (var item in observer.ReadAllAsync(cancellationToken)
                                .ConfigureAwait(false))
-                yield return GetStatus(channelName);
+                yield return new ZLinkObservedStatus<ZLinkFanoutStatus>(
+                    GetStatus(channelName),
+                    item.Loss);
         }
         finally
         {
@@ -94,6 +100,7 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
                     if (observers.Count == 0)
                         _observers.Remove(channelName);
                 }
+            observer.Complete();
         }
     }
 
@@ -200,7 +207,10 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
         if (!_observers.TryGetValue(channelName, out var observers))
             return;
         foreach (var observer in observers.ToArray())
-            observer.Channel.Writer.TryWrite(item);
+            observer.Publish(
+                item,
+                _hostLifecycle.State is ZLinkFrameworkRuntimeState.Stopped
+                    or ZLinkFrameworkRuntimeState.Error);
     }
 
     private void OnHostStateChanged(ZLinkFrameworkRuntimeState _)
@@ -247,7 +257,7 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
         lock (_gate)
         {
             foreach (var observer in _observers.Values.SelectMany(static value => value))
-                observer.Channel.Writer.TryComplete();
+                observer.Complete();
             _observers.Clear();
         }
     }
@@ -299,16 +309,4 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
         }
     }
 
-    private sealed class Observer(int capacity)
-    {
-        internal Channel<ZLinkFanoutRuntimeEvent> Channel { get; } =
-            System.Threading.Channels.Channel
-                .CreateBounded<ZLinkFanoutRuntimeEvent>(
-                    new BoundedChannelOptions(capacity)
-                    {
-                        SingleReader = true,
-                        SingleWriter = false,
-                        FullMode = BoundedChannelFullMode.DropOldest
-                    });
-    }
 }

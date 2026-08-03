@@ -40,6 +40,22 @@ class EnumValueTests(unittest.TestCase):
         self.assertEqual(int(zlink.ConnectResult.NOT_SUPPORTED), 602)
         self.assertEqual(int(zlink.ConfigResult.NOT_SUPPORTED), 703)
 
+    def test_result_enums_match_core_11_contract(self):
+        expected = {
+            zlink.RequestResult: {
+                0, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113
+            },
+            zlink.RecvResult: {0, 201, 202, 203, 204, 205, 206, 207, 208},
+            zlink.ConnectResult: {0, 601, 602, 603, 604, 605, 606, 607, 608},
+            zlink.ConfigResult: {0, 701, 702, 703, 704, 705, 706, 707, 708, 709},
+        }
+        for enum_type, values in expected.items():
+            self.assertEqual({int(value) for value in enum_type}, values)
+
+    def test_unsupported_context_option_is_not_public(self):
+        with zlink.create_context() as context:
+            self.assertFalse(hasattr(context.options, "thread_priority"))
+
     def test_monitor_event_values(self):
         self.assertEqual(int(zlink.MonitorEventMask.CONNECTED), 0x0001)
         self.assertEqual(int(zlink.MonitorEventMask.ALL), 0xFFFF)

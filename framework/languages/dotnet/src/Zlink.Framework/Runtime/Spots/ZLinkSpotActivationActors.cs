@@ -296,20 +296,14 @@ internal sealed partial class ZLinkSpotActivation
                     ?? throw new ZLinkFrameworkException(
                         ZLinkFrameworkErrorKind.NotFound,
                         $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
-        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
-            ? CompleteTransferredActorJoinLifecycleCoreAsync(
-                actor,
-                actorState,
-                handoffId,
-                cancellationToken)
-            : ExecuteSerializedAsync(
-                static (activation, state, ct) => activation.CompleteTransferredActorJoinLifecycleCoreAsync(
-                    state.Actor,
-                    state.ActorState,
-                    state.HandoffId,
-                    ct),
-                (Actor: actor, ActorState: actorState, HandoffId: handoffId),
-                cancellationToken);
+        return _serial.ExecuteApplicationCallbackAsync(
+            static (activation, state, ct) => activation.CompleteTransferredActorJoinLifecycleCoreAsync(
+                state.Actor,
+                state.ActorState,
+                state.HandoffId,
+                ct),
+            (Actor: actor, ActorState: actorState, HandoffId: handoffId),
+            cancellationToken);
     }
 
     private async ValueTask CompleteTransferredActorJoinLifecycleCoreAsync(

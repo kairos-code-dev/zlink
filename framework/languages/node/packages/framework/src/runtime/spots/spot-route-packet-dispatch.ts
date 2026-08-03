@@ -32,6 +32,7 @@ import {
 import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
 import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
 import {
   appendRouteReplyParts,
@@ -167,7 +168,10 @@ export class ZLinkSpotRoutePacketDispatch {
             );
             response = await handler.handle(spot, payload, context);
           }
-        }));
+        }, zlinkSerialWorkOptions(
+          envelope.payload.byteLength,
+          zlinkMetadataByteLength(envelope.header.metadata)
+        )));
       if (replyable) {
         submitRouteReply(appendRouteReplyParts(
           received.reply(),
@@ -242,7 +246,10 @@ export class ZLinkSpotRoutePacketDispatch {
             correlationId: received.requestSeq?.toString()
           });
         }
-      });
+      }, zlinkSerialWorkOptions(
+        Buffer.byteLength(JSON.stringify(envelope.payload ?? null), 'utf8'),
+        zlinkMetadataByteLength(envelope.metadata)
+      ));
       if (replyable) {
         submitRouteReply(
           received.reply()

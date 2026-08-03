@@ -169,6 +169,7 @@ export interface ZLinkBackendMeshNode {
     readonly stableType: string;
     readonly objectGeneration: bigint;
   } | undefined;
+  waitForInstanceApplicationQuiescence?(spotId: string, signal?: AbortSignal): Promise<void>;
   restoreUserSpotAuthority?(
     spotId: string,
     stableType: string,

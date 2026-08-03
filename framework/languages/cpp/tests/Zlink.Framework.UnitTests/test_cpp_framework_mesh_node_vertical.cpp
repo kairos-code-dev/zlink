@@ -804,7 +804,9 @@ void verify_public_runtime_surface ()
     std::this_thread::sleep_for (150ms);
     auto observation = runtime->observe (
       "vertical-mesh", 1,
-      [&] (const zlink::framework::mesh_node_snapshot_t &status) {
+      [&] (const zlink::framework::observed_status_t<
+             zlink::framework::mesh_node_snapshot_t> &observed) {
+          const auto &status = observed.status;
           {
               std::lock_guard lock (event_mutex);
               received.push_back (status);
@@ -989,7 +991,8 @@ void verify_public_runtime_surface ()
     try {
         (void) runtime->observe (
           "vertical-mesh", 0,
-          [] (const zlink::framework::mesh_node_snapshot_t &) {});
+          [] (const zlink::framework::observed_status_t<
+                zlink::framework::mesh_node_snapshot_t> &) {});
     }
     catch (const zlink::framework::framework_exception_t &) {
         rejected_capacity = true;
@@ -1050,7 +1053,9 @@ void verify_slow_observer_does_not_block_stop ()
     std::size_t stopped_count = 0;
     auto observation = runtime->observe (
       "vertical-mesh", 4,
-      [&] (const zlink::framework::mesh_node_snapshot_t &snapshot) {
+      [&] (const zlink::framework::observed_status_t<
+             zlink::framework::mesh_node_snapshot_t> &observed) {
+          const auto &snapshot = observed.status;
           std::unique_lock lock (gate);
           if (!entered) {
               entered = true;

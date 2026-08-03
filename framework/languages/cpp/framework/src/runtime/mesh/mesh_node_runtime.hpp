@@ -52,6 +52,7 @@ struct mesh_node_builder_state_t
     int placement_weight = 100;
     std::int32_t actor_limit = 10000;
     std::int32_t spot_limit = 128;
+    std::chrono::milliseconds instance_spot_idle_timeout{0};
     std::int32_t activation_concurrency_limit = 128;
     std::map<std::string, mesh_channel_registration_t> channels;
     std::function<void (const std::string &)> channel_name_observer;

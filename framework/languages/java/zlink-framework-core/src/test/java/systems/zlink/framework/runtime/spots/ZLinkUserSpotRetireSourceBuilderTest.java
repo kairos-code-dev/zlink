@@ -143,7 +143,7 @@ final class ZLinkUserSpotRetireSourceBuilderTest {
                     () -> context.relocationReady().defer());
                 assertEquals(
                     systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-                        .INVALID_CONFIGURATION,
+                        .NOT_CONFIGURED,
                     failure.kind());
                 return CompletableFuture.completedFuture(null);
             });

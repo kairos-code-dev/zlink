@@ -79,8 +79,8 @@ public final class ObjectClientEndpoints {
             .submit(Contracts.RouteRes.class)
             .handle((ignored, failure) -> errorKind(failure));
         return send.thenCombine(requestCall, (sendKind, requestKind) -> Map.of(
-            "terminal", sendKind == ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND
-                && requestKind == ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND
+            "terminal", sendKind == ZLinkFrameworkErrorKind.NOT_FOUND
+                && requestKind == ZLinkFrameworkErrorKind.NOT_FOUND
                     ? "NotFound"
                     : "Unexpected",
             "sendErrorKind", sendKind.name(),

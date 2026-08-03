@@ -172,7 +172,7 @@ final class ZLinkMeshApplicationDispatcherTest {
             parts -> replyKind.complete(ZLinkFrameworkErrorReply.kind(parts))));
 
         assertEquals(
-            ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR,
+            ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
             replyKind.get(2, TimeUnit.SECONDS));
         assertFalse(ProtocolRequestHandler.received.isDone());
     }

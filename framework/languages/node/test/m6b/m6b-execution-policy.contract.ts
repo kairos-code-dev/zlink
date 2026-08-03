@@ -187,3 +187,83 @@ test('PerActor timer registrations select an independent lane per timer name', a
   assert.notEqual(timerSerials.get('expiry'), spotSerial);
   await registry.dispose();
 });
+
+test('Spot execution reserves message and byte capacity as one bounded admission', async () => {
+  const serial = new ZLinkSpotSerialExecutor(false, undefined, {
+    applicationMessageCapacity: 4,
+    applicationByteCapacity: 600,
+    lifecycleMessageCapacity: 2,
+    lifecycleByteCapacity: 512,
+    ownerTimeBudgetMs: 50,
+    lifecycleBurstLimit: 8,
+    fixedWorkByteCost: 256
+  });
+  const startedSignal = deferred<void>();
+  const finished = deferred<void>();
+  const first = serial.execute(async () => {
+    startedSignal.resolve();
+    await finished.promise;
+  });
+  await startedSignal.promise;
+
+  const accepted = serial.execute(() => undefined);
+  await assert.rejects(
+    () => serial.execute(() => undefined, { payloadBytes: 100 }),
+    (error: unknown) => error instanceof Error && 'kind' in error && (error as { kind?: number }).kind === 6
+  );
+  finished.resolve();
+  await Promise.all([first, accepted]);
+});
+
+test('Spot execution includes metadata bytes in the same atomic reservation', async () => {
+  const serial = new ZLinkSpotSerialExecutor(false, undefined, {
+    applicationMessageCapacity: 2,
+    applicationByteCapacity: 399,
+    lifecycleMessageCapacity: 1,
+    lifecycleByteCapacity: 256,
+    fixedWorkByteCost: 256
+  });
+  const started = deferred<void>();
+  const finished = deferred<void>();
+  const first = serial.execute(async () => {
+    started.resolve();
+    await finished.promise;
+  });
+  await started.promise;
+
+  await assert.rejects(
+    () => serial.execute(() => undefined, { payloadBytes: 100, metadataBytes: 50 }),
+    (error: unknown) => error instanceof Error && 'kind' in error && (error as { kind?: number }).kind === 6
+  );
+  finished.resolve();
+  await first;
+});
+
+test('Spot lifecycle lane is selected before application and scheduler yields at its time budget', async () => {
+  const serial = new ZLinkSpotSerialExecutor(false, undefined, {
+    applicationMessageCapacity: 256,
+    applicationByteCapacity: 256 * 256,
+    lifecycleMessageCapacity: 16,
+    lifecycleByteCapacity: 16 * 256,
+    ownerTimeBudgetMs: 1,
+    lifecycleBurstLimit: 8,
+    fixedWorkByteCost: 256
+  });
+  const events: string[] = [];
+  const application = serial.execute(() => events.push('application'));
+  const lifecycle = serial.postBarrierTurn(() => events.push('lifecycle'));
+  await Promise.all([application, lifecycle]);
+  assert.deepEqual(events.slice(0, 2), ['lifecycle', 'application']);
+
+  let timerRan = false;
+  const timer = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      timerRan = true;
+      resolve();
+    }, 0);
+  });
+  const jobs = Array.from({ length: 128 }, () => serial.execute(() => undefined));
+  await timer;
+  await Promise.all(jobs);
+  assert.equal(timerRan, true);
+});

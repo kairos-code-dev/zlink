@@ -10,15 +10,26 @@
 
 Kotlin은 Java runtime을 공유하므로 별도 작업이 없다.
 
+## 2026-08-04 현재 판정
+
+Java runtime 수정, unit test, RuntimeMonitoring sample 동작까지 확인했다. Core module
+unit test 750건, Spring starter test, Kotlin test가 통과했고, RuntimeMonitoring sample의
+10개 scenario도 통과했다. 공통 `framework/doc/framework/common/internals/` 문서와 대조해
+앞쪽 삽입·message 문자열 기반 retry·subscriber별 polling을 제거하거나 분리했다.
+
+이 결과는 요청한 runtime·unit·sample 범위의 승인 근거다. Java implementation plan 전체가
+완료된 것은 아니다. relay notification wire command, idle eviction의 admission seal과
+generation 경쟁 규칙, 전체 topology 수신 공정성, cross-language error wire, D4/D6은
+공통 설계 또는 추가 검증이 필요하다.
+
 
 ## 이 언어의 특징
 
-**public error kind enum이 구형 40-kind 모델이다.** 네 언어 중 Java만 다르다. wire는 enum
-**이름 문자열**을 보내므로 숫자 충돌은 없지만, 이름이 서로 없어서 상대가 읽지 못한다. 이후
-묶음이 전부 이 kind를 쓰므로 먼저 닫는다.
+**public error kind enum은 공통 13-kind 모델로 교체했다.** 다만 legacy Java error packet과
+다른 언어의 error envelope 표현은 아직 공통 wire schema로 고정되지 않았다.
 
-**Spot·Actor queue가 사실상 무한하다.** 기본 capacity가 `Integer.MAX_VALUE`이고 production
-경로가 한도 검사 없는 `enqueue`를 쓴다. 한도 도입 자체가 W1의 선행 과제다.
+**Spot·Actor queue는 runtime-owned bounded queue로 연결했다.** 건수·byte 두 축과 owner
+time budget을 적용하지만, 고정 비용과 일반 payload byte 회계의 공통 값은 D6으로 남아 있다.
 
 두 채널 종류 모두 framework에서 고르므로 Core 수정에 걸리지 않는다. 실행 자원은
 virtual thread per task라 두 실행 영역 분리를 물리적으로 구현할 수 있다.
@@ -51,67 +62,66 @@ virtual thread per task라 두 실행 영역 분리를 물리적으로 구현할
 
 항목: **A5**
 
-`errors/ZLinkFrameworkErrorKind.java:3-43`이 40-kind 구형 모델이다.
+`errors/ZLinkFrameworkErrorKind.java`는 공통 13-kind 모델을 사용한다.
 
 | 언어 | enum | 값 6 |
 |---|---|---|
 | C++·.NET·Node | 공통 13-kind | `CapacityExceeded` |
-| **Java** | 40-kind | **`SPOT_TYPE_MISMATCH`** |
+| **Java** | 공통 13-kind | **`CAPACITY_EXCEEDED`** |
 
-`CAPACITY_EXCEEDED`가 아예 없고 대신 `WORKER_QUEUE_FULL=17`,
-`PLACEMENT_CAPACITY_EXHAUSTED=30`을 쓴다.
+구형 kind를 public surface에서 제거하고 queue·placement·runtime 오류 매핑을 공통 kind로
+맞췄다. 관련 unit test와 sample 호출도 갱신했다.
 
-**wire는 숫자가 아니라 이름을 보낸다**(`runtime/messaging/ZLinkFrameworkErrorReply.java:19-29,48-60`).
-따라서 위험은 값 충돌이 아니라 **이름 불일치**다 — Java가 보내는 `WORKER_QUEUE_FULL`을
-다른 언어가 모르고, 다른 언어가 보내는 `CapacityExceeded`를 Java `valueOf()`가 읽지 못한다.
+`ZLinkFrameworkErrorReply`는 아직 enum 이름을 사용하는 legacy internal packet이다. C++,
+.NET, Node의 channel envelope 표현도 서로 다르므로 공통 wire schema가 정해질 때까지
+interoperability closure는 승인하지 않는다.
 
-**시작 전에 두 가지를 정한다.**
+**남은 결정은 두 가지다.**
 
 | 결정 | 선택지 |
 |---|---|
 | wire 표현 | 공통 숫자로 바꿀 것인가, 공통 이름을 유지할 것인가 |
 | 이행 | 구형 이름 alias를 얼마 동안 받아줄 것인가 |
 
-**public enum 교체와 wire 형식 결정은 별개 작업이다.** 전자는 Java 사용자 코드를 깨고,
-후자는 언어 간 상호운용을 바꾼다. 섞으면 되돌리기 어렵다.
+**public enum 교체와 wire 형식 결정은 별개 작업이다.** 전자는 완료되었지만, 후자는
+공통 schema와 cross-language test가 정해질 때까지 미완료로 남긴다.
 
-먼저 **네 언어의 error envelope encode·decode 표**를 만든다. 지금은 Java만 확인했다.
+완료 조건은 네 언어의 error envelope encode·decode 표와 언어가 섞인 error-reply test다.
 
 교체 후 매핑을 다시 잡아야 하는 자리도 함께 정리한다 — queue 포화, completion table 부족,
 placement 수용량이 각각 어느 kind로 가는지.
 
 ## B6 — static executor
 
-`execution/ZLinkAsyncSerialQueue.java:15-18`의 `HANDLER_EXECUTOR`가 JVM 전역 static이고
-종료 경로가 없다. 같은 JVM에 runtime이 둘이면 실행 자원을 공유하고, 하나를 닫아도 thread가
-남는다.
+`execution/ZLinkAsyncSerialQueue.java`의 전역 executor를 제거했다. registration이
+runtime-owned virtual-thread executor를 만들고 actor·channel·spot·stream queue에 주입하며,
+runtime close가 handler executor와 serial executor를 모두 종료한다.
 
-runtime이 소유하는 executor를 생성자로 주입하고 runtime close가 수명을 소유한다. 작고
-독립적이지만 **W1에서 실행 자원 구조를 건드리므로 그 전에 넣는 편이 낫다.**
+**판정 — 해소.** production static executor 검색과 Core unit test로 확인했다.
 
 ## W1 — scheduler (한도 도입이 선행)
 
 한 단위로 묶는 항목: **A4 · A6 · A8 · A10 · D2 · D4**
 
-**다른 언어와 출발점이 다르다.** Java는 한도 자체가 없는 상태에서 시작한다.
+**현재 Java는 두 축 queue를 production 경로에 연결했다.** 기본값과 payload 회계의 공통
+판정은 아직 남아 있다.
 
 | 단계 | 지금 | 목표 |
 |---|---|---|
-| 한도 | **사실상 무한.** Spot context가 기본 생성자를 쓰고 기본값이 `Integer.MAX_VALUE` (`runtime/spots/ZLinkDefaultSpotContext.java:43`, `runtime/spots/ZLinkDefaultInstanceSpotContext.java:33`, `execution/ZLinkAsyncSerialQueue.java:35-42`) | 건수·byte 두 축을 하나의 예약으로 |
-| 제출 경로 | production Spot 경로가 `tryEnqueue`가 아니라 **한도 검사 없는 `enqueue`** (`runtime/spots/ZLinkDefaultSpotContext.java:43,148,551-616`) | 한도를 거치는 경로로 전환 |
-| lane | 단일 queue. relocation barrier는 앞쪽, teardown은 뒤쪽 (`execution/ZLinkAsyncSerialQueue.java:65-124`, 호출 `runtime/actors/ZLinkActorDispatchSerials.java:115-162`) | application·lifecycle 두 FIFO lane. **종류마다 다르게 처리하지 않는다** |
-| 선택 | — | lane 선택 + 연속 실행 상한 + 양보 부채 |
-| 점유 | 한 entry가 끝나면 즉시 다음을 잇는다 (`execution/ZLinkAsyncSerialQueue.java:208-223`) | ready owner + claim 시작 시각 + 경과 시간 확인 |
-| 반납 | — | handler 종료 후 두 축 동시 반납 |
+| 한도 | queue마다 건수·byte 두 축을 함께 예약하고 active entry도 포함한다 (`execution/ZLinkAsyncSerialQueue.java`) | 기본값과 payload byte 경계의 공통 판정 |
+| 제출 경로 | Spot·Actor·channel·stream production queue가 runtime-owned executor와 bounded queue를 사용한다 | 모든 public 결과의 capacity mapping 점검 |
+| lane | application·lifecycle FIFO와 continuation re-entry FIFO를 분리하고 앞쪽 삽입을 사용하지 않는다 | 공통 lane 선택 규칙과 양보 부채 경계 |
+| 선택 | lifecycle burst limit으로 application starvation을 제한한다 | 공통 기본값 측정 |
+| 점유 | claim 시작 시각과 owner time budget을 확인하고 상한 시 executor에 재등록한다 | D6 값 확정 |
+| 반납 | handler 완료 시 lane별 건수·byte를 반납한다 | payload 크기 전달 경계 |
 
-**off-by-one도 함께.** `:148,160`이 `outstanding > pendingCapacity`라 한도보다 하나 더 받는다.
-`>=`로 고치되, production 경로가 `tryEnqueue`를 쓰도록 바꾸지 않으면 효과가 없다.
+`canReserve`가 두 lane의 건수·byte를 원자적으로 확인한 뒤 예약하므로 active entry를 포함한
+한도는 queue admission에서 적용된다.
 
-**barrier가 capacity를 우회한다.** `enqueueBarrierNext`(`:65-94`)가 한도 검사를 건너뛰고 앞에
-넣는다. 조항이 요구하는 것은 **별도 한도를 가진 별도 lane**이지 우회가 아니다.
+barrier도 lifecycle lane의 별도 한도에 걸리며 FIFO 뒤에 추가된다.
 
-**D2 — 수신 회계 lock.** `runtime/internal/dispatch/ZLinkInboundDispatchBudget.java:71,81,102,119,133`이
-같은 monitor를 통과한다. HWM 판정용만 남기고 관측 누계는 분리한다.
+**D2 — 수신 회계 lock.** Java는 HWM permit과 completion 회계를 분리했다. 관련 unit test가
+통과했으며 다른 언어의 lock 판정은 갭 목록에 남아 있다.
 
 **D4 — 복사.** `ZLinkEncodedPayload.java:13,18`이 생성과 `bytes()` 접근에서 각각 복사하고,
 `messaging/ZLinkMessage.java:31,50`이 그 복사를 다시 수행한다. 공개 API의 불변성은 유지하되
@@ -125,8 +135,8 @@ runtime 내부 소유권 이전에는 복사하지 않는 경로를 따로 둔�
 
 | 경로 | 지금 | 할 일 |
 |---|---|---|
-| RouteMesh 채널 | cursor를 weight 합 범위에 넣는 **연속 구간** (`runtime/internal/service/ZLinkServiceTopologyRegistry.java:224-243`) | 누적값 3단계로 교체. 후보 정렬(`:187-192`)이 NodeRid라 tiebreak는 이미 맞다 |
-| ClientServer | Server RID 정렬은 맞지만 **연속 구간 cursor** (`runtime/channels/ZLinkChannelSocketRegistry.java:112-159`) | 누적값 3단계로 교체 |
+| RouteMesh 채널 | 후보 current를 갱신하는 smooth weighted round-robin | `M6ARuntimeContractTest`에서 누적 선택과 NodeRid tiebreak를 검증 |
+| ClientServer | Server RID 정렬을 유지한 smooth weighted round-robin | `ZLinkClientServerM6RuntimeTest`에서 선택 순서와 세대를 검증 |
 
 두 곳 모두 tiebreak 키는 이미 옳고 **절차만 바꾸면 된다.** 네 언어 중 수정 범위가 가장
 명확하다.
@@ -135,30 +145,19 @@ runtime 내부 소유권 이전에는 복사하지 않는 경로를 따로 둔�
 
 항목: **A11 · A12**
 
-`runtime/internal/monitoring/ZLinkStatusPublisher.java:103-135`가 최신 중간 상태를 교체하고
-preserve 항목을 남긴다 — **합치기 방향은 이미 맞다.** 네 언어 중 가장 가깝다.
+`runtime/internal/monitoring/ZLinkStatusPublisher.java`는 최신 중간 상태를 source별로
+합치고 preserve 항목을 보존한다. terminal 전달 뒤 stream을 닫지 않으며, 전달 envelope에
+coalesced·discarded terminal 누계를 넣는다. runtime-owned SignalHub가 source를 한 번
+감시하고 subscriber는 hub signal만 받는다.
 
-남은 결함은 둘이다.
-
-| 결함 | 위치 |
-|---|---|
-| 생성자 `capacity`를 저장·적용하지 않아 preserve 항목이 무한히 쌓인다 | `:21-34` |
-| terminal 전달 뒤 `onComplete()`로 stream을 닫는다 | `:129-132` |
-
-두 번째는 "가득 찼다는 이유로 종료하지 않는다"와는 다른 위반이다 — terminal을 보냈다고
-구독 자체를 끝내면 안 된다. terminal은 source slot만 닫고 구독은 유지한다.
-
-**실행 비용도 함께 본다.** 관찰자마다 virtual thread를 만들고(`:80`) 수요와 무관하게
-25ms마다 snapshot·fingerprint를 계산한다(`:14` `POLL_NANOS`, `:103`). 관찰자당 초당 40회다.
-polling을 없애고 상태 변경 시 publish하는 구조로 바꾼다.
-
-`spec/server/languages/java/interfaces/monitoring.ko.md`도 전달 envelope에 맞춰 고친다.
+`spec/server/languages/java/interfaces/monitoring.ko.md`와 exact snapshot도 envelope에
+맞췄고, publisher·Spring·RuntimeMonitoring sample test를 통과했다.
 
 ## W6 — 수신 공정성
 
 항목: **A9**
 
-fanout은 connection마다 최대 64건으로 **충족**이다
+fanout은 connection마다 최대 64건으로 충족이다
 (`runtime/channels/ZLinkFanoutLocationRuntime.java:49,393-404`).
 
 다만 그 `64`는 fanout 전용이고 조항 범위가 RouteMesh·ClientServer·service·STREAM까지
@@ -169,7 +168,8 @@ fanout은 connection마다 최대 64건으로 **충족**이다
 
 항목: **A3**
 
-`spots/ZLinkSpotCloseReason.java:3-6`에 `IdleEvicted`를 추가하는 것은 시작일 뿐이다.
+`spots/ZLinkSpotCloseReason.java`에 `IDLE_EVICTED=3`과 timeout 표면은 추가했지만, 실제
+eviction은 시작일 뿐이다.
 Location Store CAS·admission seal·timer 구조가 함께 필요하다.
 
 ## W3 — relay 통지

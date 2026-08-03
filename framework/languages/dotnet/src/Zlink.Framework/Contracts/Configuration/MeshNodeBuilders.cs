@@ -183,6 +183,8 @@ public interface IZLinkMeshNodeBuilder
 
     IZLinkMeshNodeBuilder SetActivationConcurrency(int limit);
 
+    IZLinkMeshNodeBuilder SetInstanceSpotIdleTimeout(TimeSpan timeout);
+
     IZLinkMeshObjectRoleBuilder Objects();
 
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();

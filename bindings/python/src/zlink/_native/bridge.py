@@ -50,12 +50,6 @@ def subscribe_parts(handle, flags):
     return _zlink_native.subscribe_parts(int(handle), int(flags))
 
 
-def stream_echo_install(handle, stop_token):
-    if _zlink_perf_native is None:
-        return None
-    return _zlink_perf_native.stream_echo_install(int(handle), stop_token)
-
-
 def single_socket_one_way(
     sender_handle,
     receiver_handle,
@@ -172,14 +166,3 @@ def subscribe_count_active(
         int(sample_stride),
     )
 
-
-def stream_echo_drain(session):
-    if _zlink_perf_native is None or session is None:
-        return None
-    return _zlink_perf_native.stream_echo_drain(session)
-
-
-def stream_echo_stats(session):
-    if _zlink_perf_native is None or session is None:
-        return None
-    return _zlink_perf_native.stream_echo_stats(session)

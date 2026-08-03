@@ -158,7 +158,7 @@ public final class ZLinkSuspendInvocationContext {
 
     private static ZLinkFrameworkException invalid(String message) {
         return new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+            ZLinkFrameworkErrorKind.NOT_CONFIGURED,
             message);
     }
 

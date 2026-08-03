@@ -445,6 +445,9 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             var selected = ready
                 .OrderByDescending(
                     static value => value.SelectionCurrent)
+                .ThenBy(
+                    static value => value.SelectionServerRid?.ToHex(),
+                    StringComparer.Ordinal)
                 .First();
             selected.SelectionCurrent = checked(
                 selected.SelectionCurrent - total);
@@ -603,6 +606,14 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         }
         internal int Weight { get { lock (_gate) return _weight; } }
         internal long SelectionCurrent { get; set; }
+        internal RoutingId? SelectionServerRid
+        {
+            get
+            {
+                lock (_gate)
+                    return _currentAdmission?.ServerRid ?? _expected?.ServerRid;
+            }
+        }
         internal string Diagnostics
         {
             get { lock (_gate) return _diagnostics; }

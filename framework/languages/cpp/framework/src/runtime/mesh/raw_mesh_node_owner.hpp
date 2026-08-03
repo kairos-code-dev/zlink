@@ -260,6 +260,10 @@ class raw_mesh_node_owner_t
     raw_mesh_pump_result_t
     pump_one (service_liveness_registry_t::clock_t::time_point now,
               bool accept_application_receive = true);
+    std::size_t last_pump_bytes () const noexcept
+    {
+        return _last_pump_bytes;
+    }
     std::size_t drain_monitor_events (
       service_liveness_registry_t::clock_t::time_point now);
     service_liveness_tick_t
@@ -356,6 +360,7 @@ class raw_mesh_node_owner_t
     std::deque<pending_unadmitted_application_t>
       _pending_unadmitted_applications;
     std::size_t _pending_unadmitted_application_bytes = 0;
+    std::size_t _last_pump_bytes = 0;
     struct pending_completion_control_t
     {
         detail::backend::raw_received_t received;

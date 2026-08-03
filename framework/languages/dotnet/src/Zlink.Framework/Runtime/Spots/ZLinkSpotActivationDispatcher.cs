@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -85,10 +86,16 @@ internal sealed class ZLinkSpotActivationDispatcher
 
     public ZLinkSpotActorPacketDispatcher ActorPackets => _actorPacketDispatcher;
 
-    public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
+    public async ValueTask<bool> DispatchActorJoinDrainAsync(
+        CancellationToken cancellationToken)
     {
+        var startedAt = Stopwatch.GetTimestamp();
+        var count = 0;
+        long bytes = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (ZLinkReceiveBatchBudget.IsExhausted(count, bytes, startedAt))
+                return true;
             ZLinkBackendActorJoinRequest? request;
             try
             {
@@ -97,10 +104,13 @@ internal sealed class ZLinkSpotActivationDispatcher
             catch (ZlinkRecvException ex)
                 when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
             {
-                return;
+                return false;
             }
 
-            if (request is null) return;
+            if (request is null) return false;
+            bytes = checked(
+                bytes + ZLinkReceiveBatchBudget.MeasureParts(request.Parts));
+            count++;
 
             try
             {
@@ -113,6 +123,7 @@ internal sealed class ZLinkSpotActivationDispatcher
                 request.DispatchLease?.Dispose();
             }
         }
+        return false;
     }
 
     public async ValueTask DispatchActorFramesAsync(
@@ -132,15 +143,26 @@ internal sealed class ZLinkSpotActivationDispatcher
         return _actorPipeline.DispatchReplayAsync(frames, acknowledgeFrame, cancellationToken);
     }
 
-    public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
+    public async ValueTask<bool> DispatchRouteDrainAsync(
+        CancellationToken cancellationToken)
     {
+        var startedAt = Stopwatch.GetTimestamp();
+        var count = 0;
+        long bytes = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (ZLinkReceiveBatchBudget.IsExhausted(count, bytes, startedAt))
+                return true;
             var received = nativeSpot.RecvRoute(RecvFlags.DontWait);
-            if (received is null) return;
+            if (received is null) return false;
+
+            var recordBytes = ZLinkReceiveBatchBudget.MeasureParts(received.Parts);
+            bytes = checked(bytes + recordBytes);
+            count++;
 
             await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
         }
+        return false;
     }
 
     public async ValueTask DispatchRouteAsync(

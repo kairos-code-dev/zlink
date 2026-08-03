@@ -78,6 +78,30 @@ internal sealed class ZLinkStreamReceiveBuffer : IDisposable
         return true;
     }
 
+    internal bool TryGetCompleteFrameSize(out long messageBytes)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        messageBytes = 0;
+        if (_length < ZLinkStreamFrameCodec.PrefixSize) return false;
+
+        var input = _buffer.AsSpan(_offset, _length);
+        var headerSize = BinaryPrimitives.ReadUInt16BigEndian(input[..2]);
+        var payloadSize = BinaryPrimitives.ReadUInt32BigEndian(input.Slice(2, 4));
+        if (payloadSize > int.MaxValue)
+            throw new InvalidDataException("STREAM payload length exceeds the supported size.");
+
+        var messageSize = checked((long)headerSize + payloadSize);
+        if (_maxMessageSize > 0 && messageSize > _maxMessageSize)
+            throw new InvalidDataException("STREAM frame exceeds MaxMessageSize.");
+        var totalBytes = checked((long)ZLinkStreamFrameCodec.PrefixSize + messageSize);
+        if (totalBytes > int.MaxValue)
+            throw new InvalidDataException("STREAM frame exceeds the supported size.");
+        if (_length < totalBytes) return false;
+
+        messageBytes = messageSize;
+        return true;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -146,6 +170,8 @@ internal sealed class ZLinkStreamInboundFrame(Message header, Message payload) :
 {
     internal Message? Header { get; private set; } = header;
     internal Message? Payload { get; private set; } = payload;
+
+    internal long ByteLength => checked((long)(Header?.Size ?? 0) + (Payload?.Size ?? 0));
 
     internal void Detach()
     {

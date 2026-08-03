@@ -97,6 +97,17 @@ public readonly record struct ZLinkInboundDispatchStatus(
     ulong PendingCompletionSends,
     ulong CompletionSendLimit);
 
+/// <summary>Counts status updates that were coalesced or discarded for one observer.</summary>
+public readonly record struct ZLinkObservationLoss(
+    ulong CoalescedCount,
+    ulong DiscardedTerminalCount);
+
+/// <summary>Returns a status snapshot together with loss observed by this subscription.</summary>
+public readonly record struct ZLinkObservedStatus<TStatus>(
+    TStatus Status,
+    ZLinkObservationLoss Loss)
+    where TStatus : notnull;
+
 public sealed record ZLinkFrameworkRuntimeStatus(
     ZLinkFrameworkRuntimeState State,
     bool IsReady,
@@ -114,7 +125,7 @@ public interface IZLinkFrameworkRuntime
     ZLinkFrameworkRuntimeStatus Status { get; }
 
     /// <summary>Observes the latest host status without changing host lifecycle.</summary>
-    IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>

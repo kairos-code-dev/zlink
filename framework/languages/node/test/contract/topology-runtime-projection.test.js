@@ -43,8 +43,9 @@ test('ClientServer runtime projects minimal status and emits complete status cha
   const events = runtime.observe('orders')[Symbol.asyncIterator]();
   changed();
   const status = await events.next();
-  assert.equal(status.value.channelName, 'orders');
-  assert.equal(status.value.isReady, true);
+  assert.equal(status.value.status.channelName, 'orders');
+  assert.equal(status.value.status.isReady, true);
+  assert.deepEqual(status.value.loss, { coalescedCount: 0n, discardedTerminalCount: 0n });
   await events.return();
   assert.equal(changed, undefined);
 });
@@ -81,8 +82,8 @@ test('Fanout runtime projects minimal publisher status and emits complete status
   const events = runtime.observe('events')[Symbol.asyncIterator]();
   changed();
   const status = await events.next();
-  assert.equal(status.value.channelName, 'events');
-  assert.equal(status.value.publishers[0].nodeRid, 'publisher-a');
+  assert.equal(status.value.status.channelName, 'events');
+  assert.equal(status.value.status.publishers[0].nodeRid, 'publisher-a');
   await events.return();
 });
 
@@ -128,8 +129,8 @@ test('ClientServer and Fanout topology disable readiness during host relocation 
   hostState = framework.ZLinkFrameworkRuntimeState.Relocating;
   clientServer.hostStateChanged();
   fanout.hostStateChanged();
-  assert.equal((await clientServerEvents.next()).value.isReady, false);
-  assert.equal((await fanoutEvents.next()).value.isReady, false);
+  assert.equal((await clientServerEvents.next()).value.status.isReady, false);
+  assert.equal((await fanoutEvents.next()).value.status.isReady, false);
   assert.equal(clientServer.snapshot('orders').isReady, false);
   assert.equal(clientServer.snapshot('orders').readyTargetCount, 1);
   assert.equal(clientServer.snapshot('orders').state, framework.ZLinkTopologyState.Stopping);
@@ -156,7 +157,7 @@ test('Framework runtime shutdown surface emits status and Nest exports topology 
     host.status.terminationResult.outcome,
     framework.ZLinkFrameworkTerminationOutcome.Stopped
   );
-  assert.equal(event.value.state, framework.ZLinkFrameworkRuntimeState.Draining);
+  assert.equal(event.value.status.state, framework.ZLinkFrameworkRuntimeState.Draining);
   assert.equal(typeof nestjs.ZLINK_CLIENT_SERVER_RUNTIME, 'symbol');
   assert.equal(typeof nestjs.ZLINK_FANOUT_RUNTIME, 'symbol');
 });
@@ -236,8 +237,8 @@ test('Shutdown seals active RouteMesh ClientServer and Fanout observers with ter
   for (const events of [routeEvents, clientEvents, fanoutEvents]) {
     const terminal = await events.next();
     assert.equal(terminal.done, false);
-    assert.equal(terminal.value.state, framework.ZLinkTopologyState.Stopped);
-    assert.equal(terminal.value.isReady, false);
+    assert.equal(terminal.value.status.state, framework.ZLinkTopologyState.Stopped);
+    assert.equal(terminal.value.status.isReady, false);
     assert.equal((await events.next()).done, true);
   }
 });

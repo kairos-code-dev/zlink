@@ -114,8 +114,16 @@ Pair와 DEALER는 `Send`, PUB와 XPUB는 `Publish`, ROUTER와 STREAM은 대상 r
 ROUTER가 받은 request metadata가 있으면 그 metadata로 reply operation을 만든다.
 STREAM은 raw TCP packet callback과 caller-provided receive를 제공한다.
 
-`RecvPart`, `SubscribePart`와 packet callback은 Core raw part substrate를 사용하는
-공개 계약이다. 호출자는 native `zlink_msg_t`나 raw pointer를 직접 다루지 않는다.
+PAIR, DEALER, ROUTER와 STREAM의 수신은 `Received` 저장소를 채우는 `Recv`로
+제공한다. SUB와 XSUB의 topic 수신은 `TopicMessage` 저장소를 채우는
+`Subscribe`로 제공한다. Core의 part 함수는 이 aggregate 표면을 구현하기 위한
+internal substrate이며 Go public method로 노출하지 않는다.
+
+ROUTER는 Core completion connection의 opaque multipart control record도 제공한다.
+`OnCompletionControl` handler에는 source routing id와 payload parts를 담은
+`Received`가 전달되며 handler가 parts를 닫거나 소비해야 한다.
+`CompletionControl(peerRID)` builder는 지정한 peer에 record를 보내고
+`SendFlagsNone` 이외의 flag는 거부한다.
 
 ## Receive와 eventing
 

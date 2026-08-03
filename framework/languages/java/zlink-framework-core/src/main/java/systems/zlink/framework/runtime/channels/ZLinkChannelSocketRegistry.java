@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 import java.time.Duration;
 import java.time.Instant;
 import systems.zlink.contracts.core.RoutingId;
@@ -31,6 +30,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSocketMonitor;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 
 final class ZLinkChannelSocketRegistry {
     private static final long READY_POLL_INTERVAL_MILLIS = 5;
@@ -47,7 +47,7 @@ final class ZLinkChannelSocketRegistry {
         new HashMap<>();
     private final Map<String, ZLinkClientServerServerDescriptor>
         clientServerServerDescriptors = new HashMap<>();
-    private final Map<String, AtomicLong> clientServerSelectionCursors =
+    private final Map<String, Map<String, Long>> clientServerSelectionCurrents =
         new HashMap<>();
     private final Map<String, Object> routeSocketLocks = new HashMap<>();
     private final Map<String, ZLinkBackendSpotRouteBridge> spotRouteBridges =
@@ -57,6 +57,7 @@ final class ZLinkChannelSocketRegistry {
     private final Map<String, ClientServerServerPeer> clientServerServerPeers =
         new HashMap<>();
     private long nextClientServerProbeId = 1;
+    private long clientServerControlCursor;
     private boolean unmanagedBackendClientMode;
     private static final long CLIENT_SERVER_PROBE_INTERVAL_NANOS =
         java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
@@ -146,17 +147,38 @@ final class ZLinkChannelSocketRegistry {
                 ? clients.get(channelName)
                 : null;
         }
-        AtomicLong cursor = clientServerSelectionCursors.computeIfAbsent(
-            channelName, ignored -> new AtomicLong());
-        long selected = Math.floorMod(cursor.getAndIncrement(), total);
-        long offset = 0;
+        Map<String, Long> currentByServer =
+            clientServerSelectionCurrents.computeIfAbsent(
+                channelName,
+                ignored -> new HashMap<>());
+        Set<String> eligibleServerIds = eligible.stream()
+            .map(connection -> connection.descriptor().serverRid().toHex())
+            .collect(java.util.stream.Collectors.toSet());
+        currentByServer.keySet().removeIf(
+            serverId -> !eligibleServerIds.contains(serverId));
+        ClientServerConnection selectedConnection = null;
+        long selectedCurrent = Long.MIN_VALUE;
         for (ClientServerConnection connection : eligible) {
-            offset = Math.addExact(
-                offset,
+            String serverId = connection.descriptor().serverRid().toHex();
+            long current = Math.addExact(
+                currentByServer.getOrDefault(serverId, 0L),
                 connection.descriptor().weight());
-            if (selected < offset) {
-                return connection.dealer();
+            currentByServer.put(serverId, current);
+            if (selectedConnection == null
+                || current > selectedCurrent
+                || current == selectedCurrent
+                    && serverId.compareTo(
+                        selectedConnection.descriptor().serverRid().toHex()) < 0) {
+                selectedConnection = connection;
+                selectedCurrent = current;
             }
+        }
+        if (selectedConnection != null) {
+            String selectedId = selectedConnection.descriptor().serverRid().toHex();
+            currentByServer.put(
+                selectedId,
+                Math.subtractExact(currentByServer.get(selectedId), total));
+            return selectedConnection.dealer();
         }
         throw new IllegalStateException(
             "ClientServer weighted selection did not select a connection");
@@ -547,10 +569,21 @@ final class ZLinkChannelSocketRegistry {
             Set<ClientServerConnection> physical =
                 java.util.Collections.newSetFromMap(new IdentityHashMap<>());
             physical.addAll(clientServerConnections.values());
-            clientConnections = List.copyOf(physical);
+            clientConnections = new ArrayList<>(physical);
             serverPeers = List.copyOf(clientServerServerPeers.values());
         }
-        for (ClientServerConnection connection : clientConnections) {
+        clientConnections.sort(java.util.Comparator.comparing(
+            ClientServerConnection::connectionId));
+        int connectionCount = clientConnections.size();
+        int connectionStart = connectionCount == 0
+            ? 0
+            : (int) Math.floorMod(
+                clientServerControlCursor, connectionCount);
+        for (int offset = 0; offset < connectionCount; offset++) {
+            ClientServerConnection connection = clientConnections.get(
+                (connectionStart + offset) % connectionCount);
+            clientServerControlCursor =
+                (connectionStart + offset + 1) % connectionCount;
             drainClientServerControls(connection);
             long probeId = 0;
             long physicalGeneration = 0;
@@ -628,7 +661,8 @@ final class ZLinkChannelSocketRegistry {
 
     private void drainClientServerControls(
         ClientServerConnection connection) {
-        while (true) {
+        ZLinkReceiveBatchBudget batch = new ZLinkReceiveBatchBudget();
+        while (batch.canReceiveNext()) {
             if (!connection.dealer.waitForReadable(Duration.ZERO)) {
                 return;
             }
@@ -637,6 +671,7 @@ final class ZLinkChannelSocketRegistry {
             if (received == null) {
                 return;
             }
+            batch.record(ZLinkReceiveBatchBudget.bytesOf(received.parts()));
             try (received) {
                 if (received.parts().size() != 1) {
                     terminateClientServerProtocol(connection);

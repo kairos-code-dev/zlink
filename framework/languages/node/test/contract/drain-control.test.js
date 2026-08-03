@@ -94,7 +94,7 @@ test('deadline uses the closed snake_case force reason and terminal event exactl
   runtime.markServing();
   const events = [];
   const observed = (async () => {
-    for await (const event of runtime.observe('game', 4)) events.push(event);
+    for await (const event of runtime.observe('game', 4)) events.push(event.status);
   })();
   assert.deepEqual(await runtime.drain('game', 10), {
     kind: 'forceStopped',
@@ -229,13 +229,13 @@ test('RouteMesh observer reports a complete status after placement capacity chan
   await events.return();
 
   assert.equal(observed.done, false);
-  assert.equal(observed.value.meshName, 'game');
-  assert.equal(observed.value.state, framework.ZLinkTopologyState.Ready);
-  assert.equal(observed.value.isReady, true);
-  assert.equal(observed.value.placement.isAvailable, true);
-  assert.equal(observed.value.placement.activeActorCount, 2);
-  assert.equal(observed.value.placement.activeSpotCount, 1);
-  assert.ok(observed.value.observedAt instanceof Date);
+  assert.equal(observed.value.status.meshName, 'game');
+  assert.equal(observed.value.status.state, framework.ZLinkTopologyState.Ready);
+  assert.equal(observed.value.status.isReady, true);
+  assert.equal(observed.value.status.placement.isAvailable, true);
+  assert.equal(observed.value.status.placement.activeActorCount, 2);
+  assert.equal(observed.value.status.placement.activeSpotCount, 1);
+  assert.ok(observed.value.status.observedAt instanceof Date);
 });
 
 test('RouteMesh snapshot keeps NotRequired distinct from NotConnected', () => {
@@ -389,14 +389,14 @@ test('RouteMesh status follows local channel and placement weight overrides', as
   await events.return();
 
   assert.equal(observed.done, false);
-  assert.deepEqual(observed.value.channels, [{
+  assert.deepEqual(observed.value.status.channels, [{
     channelName: 'orders',
     isReady: false,
     readyTargetCount: 0
   }]);
-  assert.equal(observed.value.placement.isAvailable, false);
+  assert.equal(observed.value.status.placement.isAvailable, false);
   assert.equal(
-    observed.value.placement.unavailableReason,
+    observed.value.status.placement.unavailableReason,
     framework.ZLinkTopologyReason.NoReadyTarget
   );
 });
@@ -861,5 +861,5 @@ async function nextObserved(events, timeoutMessage) {
     ))
   ]);
   assert.equal(observed.done, false);
-  return observed.value;
+  return observed.value.status;
 }

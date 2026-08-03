@@ -184,6 +184,33 @@ public sealed class ChannelsTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public void MeshNodeInstanceSpotIdleTimeout_UsesZeroAsDisabledAndStoresValue()
+    {
+        var services = new ServiceCollection();
+
+        services.AddZLinkFramework(options =>
+            options.AddRouteMesh("play")
+                .Listen("tcp://127.0.0.1:7101")
+                .SetInstanceSpotIdleTimeout(TimeSpan.FromSeconds(3)));
+
+        var node = Assert.Single(services.BuildServiceProvider()
+            .GetRequiredService<ZLinkFrameworkRegistration>()
+            .SpotNodes.Values);
+        Assert.Equal(TimeSpan.FromSeconds(3), node.InstanceSpotIdleTimeout);
+    }
+
+    [Fact]
+    public void MeshNodeInstanceSpotIdleTimeout_RejectsNegativeValue()
+    {
+        var services = new ServiceCollection();
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            services.AddZLinkFramework(options =>
+                options.AddRouteMesh("play")
+                    .SetInstanceSpotIdleTimeout(TimeSpan.FromMilliseconds(-1))));
+    }
+
+    [Fact]
     public void MeshNodeCapacitySetters_AllowUnlimitedPopulationLimits()
     {
         var services = new ServiceCollection();

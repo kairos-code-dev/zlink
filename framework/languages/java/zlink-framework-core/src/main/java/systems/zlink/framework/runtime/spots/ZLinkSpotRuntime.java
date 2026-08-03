@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
@@ -28,6 +30,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -158,6 +161,7 @@ public final class ZLinkSpotRuntime
     private final Set<RoutingId> autoConnectedRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final Map<String, ZLinkInstanceSpotActivation>
         instanceSpotActivations = new ConcurrentHashMap<>();
+    private final Map<String, Duration> instanceSpotIdleTimeouts = new HashMap<>();
     private final List<ZLinkInternalMeshNode> routeMeshNodes;
     private final Map<String, ZLinkInternalMeshNode> routeMeshNodesByName;
     private volatile systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository
@@ -544,6 +548,9 @@ public final class ZLinkSpotRuntime
                     "MeshNode runtime is missing: " + nodeRegistration.meshName());
             }
             ZLinkInternalSpotNode node = meshNode.spotNode();
+            instanceSpotIdleTimeouts.put(
+                nodeRegistration.meshName(),
+                nodeRegistration.instanceSpotIdleTimeout());
             nodeRegistration.relocatableInstanceSpotFactories().values()
                 .forEach(factory -> meshNode.registerInstanceSpotType(
                     factory.stableType(),
@@ -1628,7 +1635,7 @@ public final class ZLinkSpotRuntime
     private void requireAcceptingNewState() {
         if (closing || draining || relocating) {
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                ZLinkFrameworkErrorKind.REJECTED,
                 "SPOT creation is rejected while the node is draining");
         }
     }
@@ -1642,6 +1649,19 @@ public final class ZLinkSpotRuntime
 
     boolean isClosing() {
         return closing;
+    }
+
+    boolean isRelocating() {
+        return relocating;
+    }
+
+    ScheduledFuture<?> scheduleInstanceSpotIdleCheck(
+        Runnable task,
+        long delayNanos) {
+        return timerExecutor.schedule(
+            task,
+            Math.max(1L, delayNanos),
+            TimeUnit.NANOSECONDS);
     }
 
     boolean isDraining() {
@@ -2171,6 +2191,12 @@ public final class ZLinkSpotRuntime
                     .ZLinkPlacementAllocationState.ACTIVE) {
             return activationFromExisting(snapshot, stableType, meshName);
         }
+        if (authority.state()
+                == systems.zlink.framework.runtime.locations
+                    .ZLinkServiceAuthorityPayloadCodec.State.CLOSING) {
+            return instanceSpotNotFound(
+                "Instance Spot is closing: " + authority.spotId());
+        }
         if (System.currentTimeMillis() >= deadline) {
             return CompletableFuture.failedFuture(
                 new java.util.concurrent.TimeoutException(
@@ -2186,8 +2212,9 @@ public final class ZLinkSpotRuntime
                 ? awaitInstanceReady(
                     store, key, current, stableType, meshName, deadline)
                 : CompletableFuture.failedFuture(
-                    new IllegalStateException(
-                        "Instance Spot authority disappeared during activation")));
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.NOT_FOUND,
+                        "Instance Spot authority is no longer available")));
     }
 
     private CompletionStage<InstanceActivation> activationFromExisting(
@@ -2201,10 +2228,17 @@ public final class ZLinkSpotRuntime
                 != systems.zlink.framework.runtime.locations
                     .ZLinkServiceAuthorityPayloadCodec.Kind.INSTANCE
             || !authority.stableType().equals(stableType)
-            || !authority.meshName().equals(meshName)) {
+            || !authority.meshName().equals(meshName)
+            || authority.state()
+                != systems.zlink.framework.runtime.locations
+                    .ZLinkServiceAuthorityPayloadCodec.State.READY
+            || snapshot.allocation().state()
+                != systems.zlink.framework.runtime.internal.locations
+                    .ZLinkPlacementAllocationState.ACTIVE) {
             return CompletableFuture.failedFuture(
-                new IllegalStateException(
-                    "Instance Spot type or Mesh does not match"));
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
+                    "Instance Spot is not Ready"));
         }
         ZLinkInternalMeshNode source = routeMeshNodesByName.get(meshName);
         var route = new systems.zlink.framework.runtime.internal.service
@@ -2215,6 +2249,14 @@ public final class ZLinkSpotRuntime
                 snapshot.ownerLeaseGeneration(), snapshot.storeVersion());
         return CompletableFuture.completedFuture(
             new InstanceActivation(source, route, stableType));
+    }
+
+    private static <T> CompletionStage<T> instanceSpotNotFound(
+        String message) {
+        return CompletableFuture.failedFuture(
+            new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.NOT_FOUND,
+                message));
     }
 
     private CompletionStage<Void> activateInstanceSpotTarget(
@@ -2309,8 +2351,16 @@ public final class ZLinkSpotRuntime
                                     new IllegalStateException(
                                         "Instance Spot Ready commit lost its reservation"));
                             }
+                            activation.setAuthorityFence(
+                                route.ownerId(),
+                                route.leaseGeneration(),
+                                route.authorityOwnerGeneration(),
+                                route.targetNodeGeneration());
                             instanceSpotActivations.put(
                                 route.targetSpotId(), activation);
+                            activation.startIdleEviction(
+                                instanceSpotIdleTimeouts.getOrDefault(
+                                    meshName, Duration.ZERO));
                             return CompletableFuture.completedFuture(null);
                         });
                 });
@@ -3382,6 +3432,11 @@ public final class ZLinkSpotRuntime
     }
 
     @Override
+    Executor serialExecutor() {
+        return frameworkRegistration.serialExecutor();
+    }
+
+    @Override
     DefaultSpotOutbound createContextOutbound(
         ZLinkBackendSpot backendSpot,
         RoutingId nodeRid) {
@@ -3502,6 +3557,82 @@ public final class ZLinkSpotRuntime
         return activation.closeExplicit();
     }
 
+    CompletionStage<Boolean> sealInstanceSpotAuthority(
+        ZLinkInstanceSpotActivation activation) {
+        var store = requireUserSpotLocationStore();
+        String key = systems.zlink.framework.runtime.locations
+            .ZLinkAuthorityKeyCodec.spot(activation.context.spotId());
+        return store.read(key, () -> false).thenCompose(read -> {
+            if (read instanceof systems.zlink.framework.runtime.internal.locations
+                    .ZLinkAuthorityMissing) {
+                return CompletableFuture.completedFuture(true);
+            }
+            if (!(read instanceof systems.zlink.framework.runtime.internal.locations
+                    .ZLinkAuthoritySnapshot snapshot)) {
+                return CompletableFuture.completedFuture(false);
+            }
+            var authority = userSpotAuthorities.decode(snapshot.payload())
+                .orElseThrow(() -> new IllegalStateException(
+                    "invalid Instance Spot authority"));
+            if (authority.kind()
+                    != systems.zlink.framework.runtime.locations
+                        .ZLinkServiceAuthorityPayloadCodec.Kind.INSTANCE
+                || authority.state()
+                    != systems.zlink.framework.runtime.locations
+                        .ZLinkServiceAuthorityPayloadCodec.State.READY
+                || !authority.spotId().equals(activation.context.spotId())
+                || !authority.meshName().equals(activation.context.meshName())
+                || !authority.nodeRid().equals(activation.context.nodeRid())
+                || (activation.expectedNodeGeneration() >= 0
+                    && authority.nodeGeneration()
+                        != activation.expectedNodeGeneration())
+                || snapshot.objectGeneration()
+                    != activation.context.objectGeneration()
+                || !activation.authorityFenceMatches(
+                    snapshot.ownerId(),
+                    snapshot.ownerLeaseGeneration(),
+                    snapshot.authorityOwnerGeneration())
+                || snapshot.allocation().state()
+                    != systems.zlink.framework.runtime.internal.locations
+                        .ZLinkPlacementAllocationState.ACTIVE
+                || snapshot.allocation().objectKind()
+                    != systems.zlink.framework.locations
+                        .ZLinkPlacementObjectKind.INSTANCE_SPOT) {
+                return CompletableFuture.completedFuture(false);
+            }
+            byte[] closing = userSpotAuthorities.encodeInstance(
+                systems.zlink.framework.runtime.locations
+                    .ZLinkServiceAuthorityPayloadCodec.State.CLOSING,
+                authority.stableType(),
+                authority.spotId(),
+                snapshot.ownerId(),
+                snapshot.ownerLeaseGeneration(),
+                authority.meshName(),
+                authority.nodeRid(),
+                authority.nodeGeneration());
+            return store.compareExchange(
+                    key,
+                    new systems.zlink.framework.runtime.internal.locations
+                        .ZLinkAuthorityExpectFound(snapshot.storeVersion()),
+                    new systems.zlink.framework.runtime.internal.locations
+                        .ZLinkAuthorityPut(
+                            closing,
+                            systems.zlink.framework.runtime.internal.locations
+                                .ZLinkAuthorityGenerationTransition.PRESERVE,
+                            Optional.empty(),
+                            Optional.empty()),
+                    () -> false)
+                .thenApply(result -> {
+                    if (result instanceof systems.zlink.framework.runtime.internal.locations
+                            .ZLinkAuthorityStored stored) {
+                        activation.markSealedStoreVersion(stored.storeVersion());
+                        return true;
+                    }
+                    return false;
+                });
+        });
+    }
+
     @Override
     CompletionStage<Boolean> completeInstanceSpotClose(
         ZLinkInstanceSpotActivation activation) {
@@ -3512,13 +3643,29 @@ public final class ZLinkSpotRuntime
                 traceInstanceLifecycle(
                     "close-authority-result spot=" + spotId
                         + " closed=" + closed);
-                if (!closed) {
-                    return false;
-                }
                 instanceSpotActivations.remove(spotId, activation);
                 activation.closeResources();
-                return true;
+                ZLinkInternalMeshNode routeNode = routeMeshNodesByName.get(
+                    activation.context.meshName());
+                if (routeNode != null) {
+                    routeNode.forgetInstanceIntent(
+                        activation.authorityRouteFence());
+                }
+                return closed;
             });
+    }
+
+    void discardInstanceSpotActivation(
+        ZLinkInstanceSpotActivation activation) {
+        instanceSpotActivations.remove(
+            activation.context.spotId(), activation);
+        activation.closeResources();
+        ZLinkInternalMeshNode routeNode = routeMeshNodesByName.get(
+            activation.context.meshName());
+        if (routeNode != null) {
+            routeNode.forgetInstanceIntent(
+                activation.authorityRouteFence());
+        }
     }
 
     private CompletionStage<Boolean> releaseInstanceSpotAuthority(
@@ -3546,12 +3693,22 @@ public final class ZLinkSpotRuntime
                         .ZLinkServiceAuthorityPayloadCodec.Kind.INSTANCE
                 || authority.state()
                     != systems.zlink.framework.runtime.locations
-                        .ZLinkServiceAuthorityPayloadCodec.State.READY
+                        .ZLinkServiceAuthorityPayloadCodec.State.CLOSING
                 || !authority.spotId().equals(activation.context.spotId())
                 || !authority.meshName().equals(activation.context.meshName())
                 || !authority.nodeRid().equals(activation.context.nodeRid())
+                || (activation.expectedNodeGeneration() >= 0
+                    && authority.nodeGeneration()
+                        != activation.expectedNodeGeneration())
                 || snapshot.objectGeneration()
                     != activation.context.objectGeneration()
+                || (activation.sealedStoreVersion() != null
+                    && !activation.sealedStoreVersion().equals(
+                        snapshot.storeVersion()))
+                || !activation.authorityFenceMatches(
+                    snapshot.ownerId(),
+                    snapshot.ownerLeaseGeneration(),
+                    snapshot.authorityOwnerGeneration())
                 || snapshot.allocation().state()
                     != systems.zlink.framework.runtime.internal.locations
                         .ZLinkPlacementAllocationState.ACTIVE

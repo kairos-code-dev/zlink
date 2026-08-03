@@ -87,7 +87,8 @@ class client_server_runtime_t
     virtual std::unique_ptr<mesh_runtime_observation_t> observe (
       std::string channel_name,
       std::size_t capacity,
-      std::function<void (const client_server_runtime_event_t &)> observer) = 0;
+      std::function<void (
+        const observed_status_t<client_server_runtime_event_t> &)> observer) = 0;
     virtual bool is_ready (std::string channel_name) const = 0;
 };
 

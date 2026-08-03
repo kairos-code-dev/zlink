@@ -14,6 +14,8 @@ type ZoneNodeSettings = {
   faultTickZone?: string | null;
   disableBots?: boolean;
   botStartSignalPath?: string;
+  waitForPlacementPeer?: boolean;
+  placementWeightAfterZoneCreation?: number;
 };
 
 type GatewaySettings = {
@@ -95,6 +97,14 @@ function validateConfiguration(
   for (const key of roleKeys(expectedRole)) requireString(role, key, expectedRole);
   if (expectedRole === 'zoneNode' && role.botStartSignalPath !== undefined) {
     requireString(role, 'botStartSignalPath', expectedRole);
+  }
+  if (expectedRole === 'zoneNode' && role.placementWeightAfterZoneCreation !== undefined) {
+    const weight = role.placementWeightAfterZoneCreation;
+    if (typeof weight !== 'number' || !Number.isSafeInteger(weight) || weight < 0 || weight > 10_000) {
+      throw new Error(
+        `Configuration value '${expectedRole}.placementWeightAfterZoneCreation' must be an integer from 0 through 10000.`
+      );
+    }
   }
   return document as ZoneWorldConfiguration;
 }

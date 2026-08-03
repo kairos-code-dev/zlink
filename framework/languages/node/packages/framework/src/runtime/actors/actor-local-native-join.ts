@@ -123,6 +123,14 @@ export class ZLinkLocalNativeActorJoin {
     try {
       const connectDeadline = Date.now() + Math.min(timeoutMs ?? 5_000, 5_000);
       for (;;) {
+        if (process.env.ZLINK_DEBUG_ACTOR_JOIN === '1') {
+          console.error(
+            `actor join attempt actor=${actor.context.actorId}`
+              + ` source=${String(node.status().routingId)}`
+              + ` target=${String(target.targetNodeRid)}`
+              + ` peers=${node.peers().map((peer) => `${String(peer.routingId)}:${peer.state}`).join(',')}`
+          );
+        }
         const operationId = await submitJoinWhenConnected(
           () => node.joinActorSpot(
             actorRef,
@@ -136,6 +144,15 @@ export class ZLinkLocalNativeActorJoin {
           signal
         );
         completion = await completions.wait(operationId, signal);
+        if (process.env.ZLINK_DEBUG_ACTOR_JOIN === '1') {
+          console.error(
+            `actor join result actor=${actor.context.actorId}`
+              + ` target=${String(target.targetNodeRid)}`
+              + ` terminal=${completion.terminalResult}`
+              + ` errno=${completion.failureErrno}`
+              + ` kind=${completion.kindData?.kind ?? 'none'}`
+          );
+        }
         if (
           completion.terminalResult !== RequestResult.NotConnected
           || Date.now() >= connectDeadline

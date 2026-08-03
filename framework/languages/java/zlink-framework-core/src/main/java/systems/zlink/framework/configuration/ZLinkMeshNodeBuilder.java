@@ -29,6 +29,8 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder setActivationConcurrency(
         int maxConcurrentActivations);
 
+    ZLinkMeshNodeBuilder setInstanceSpotIdleTimeout(Duration timeout);
+
     ZLinkMeshNodeSocketConfig configureRouterSocket();
 
     ZLinkSpotPublisherConfig configureSpotPublisher();

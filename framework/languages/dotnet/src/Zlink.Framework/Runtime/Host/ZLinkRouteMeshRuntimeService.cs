@@ -294,7 +294,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         }
     }
 
-    public async IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+    public async IAsyncEnumerable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> ObserveAsync(
         string meshName,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -302,17 +302,9 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         var (hub, observer) = SubscribeMonitor(meshName, capacity);
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var status = await observer.ReadAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                if (status is null)
-                    yield break;
+            await foreach (var status in observer.ReadAllAsync(cancellationToken)
+                               .ConfigureAwait(false))
                 yield return status;
-                if (status.State == ZLinkTopologyState.Stopped
-                    && observer.TerminalStatus is not null)
-                    yield break;
-            }
         }
         finally
         {
@@ -320,7 +312,9 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         }
     }
 
-    private (MonitorHub Hub, ObserverQueue Observer) SubscribeMonitor(
+    private (
+        MonitorHub Hub,
+        ZLinkObservationQueue<ZLinkRouteMeshStatus> Observer) SubscribeMonitor(
         string meshName,
         int capacity)
     {
@@ -364,7 +358,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
     private void UnsubscribeMonitor(
         string meshName,
         MonitorHub hub,
-        ObserverQueue observer)
+        ZLinkObservationQueue<ZLinkRouteMeshStatus> observer)
     {
         lock (_monitorGate)
         {
@@ -706,7 +700,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         private readonly CancellationTokenSource _stop = new();
         private Task? _pump;
         private readonly object _gate = new();
-        private readonly List<ObserverQueue> _observers = [];
+        private readonly List<ZLinkObservationQueue<ZLinkRouteMeshStatus>> _observers = [];
         private readonly Dictionary<RoutingId, ZLinkMeshNodeDescriptor> _descriptors = [];
         private DateTimeOffset _nextDescriptorPoll;
         private string? _lastLocationState;
@@ -741,20 +735,23 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
                     .ToArray();
         }
 
-        public ObserverQueue Subscribe(int capacity)
+        public ZLinkObservationQueue<ZLinkRouteMeshStatus> Subscribe(int capacity)
         {
-            var observer = new ObserverQueue(capacity);
+            var observer = new ZLinkObservationQueue<ZLinkRouteMeshStatus>(
+                capacity,
+                static status => status.Sequence);
             var status = _owner.GetStatus(_meshName);
             lock (_gate)
             {
                 _lastStatus = status;
                 _observers.Add(observer);
             }
-            observer.Enqueue(status);
+            observer.Publish(status, IsTerminalStatus(status));
             return observer;
         }
 
-        public void Unsubscribe(ObserverQueue observer)
+        public void Unsubscribe(
+            ZLinkObservationQueue<ZLinkRouteMeshStatus> observer)
         {
             lock (_gate)
             {
@@ -765,7 +762,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
 
         public void Stop()
         {
-            ObserverQueue[] observers;
+            ZLinkObservationQueue<ZLinkRouteMeshStatus>[] observers;
             ZLinkRouteMeshStatus? currentStatus;
             lock (_gate)
             {
@@ -791,7 +788,10 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
                     ObservedAt = DateTimeOffset.UtcNow
                 };
                 foreach (var observer in observers)
-                    observer.SealWithTerminal(terminalStatus);
+                {
+                    observer.Publish(terminalStatus, terminal: true);
+                    observer.Complete();
+                }
             }
             _stop.Cancel();
             _pump?.GetAwaiter().GetResult();
@@ -802,14 +802,14 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         {
             _ = state;
             var projected = _owner.GetStatus(_meshName);
-            ObserverQueue[] observers;
+            ZLinkObservationQueue<ZLinkRouteMeshStatus>[] observers;
             lock (_gate)
             {
                 _lastStatus = projected;
                 observers = [.. _observers];
             }
             foreach (var observer in observers)
-                observer.Enqueue(projected);
+                observer.Publish(projected, IsTerminalStatus(projected));
         }
 
         private async Task PumpAsync()
@@ -854,7 +854,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
             }
             catch (Exception)
             {
-                ObserverQueue[] observers;
+                ZLinkObservationQueue<ZLinkRouteMeshStatus>[] observers;
                 lock (_gate)
                 {
                     observers = [.. _observers];
@@ -1052,121 +1052,17 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         {
             _ = runtimeEvent;
             var status = _owner.GetStatus(_meshName);
-            ObserverQueue[] observers;
+            ZLinkObservationQueue<ZLinkRouteMeshStatus>[] observers;
             lock (_gate)
             {
                 _lastStatus = status;
                 observers = [.. _observers];
             }
             foreach (var observer in observers)
-                observer.Enqueue(status);
+                observer.Publish(status, IsTerminalStatus(status));
         }
-    }
-
-    /// <summary>
-    /// Per-observer bounded queue. State events retain the newest value, and
-    /// terminal drain events cannot
-    /// be displaced by later non-terminal traffic.
-    /// </summary>
-    private sealed class ObserverQueue
-    {
-        private readonly int _capacity;
-        private readonly object _gate = new();
-        private readonly List<ZLinkRouteMeshStatus> _pending = [];
-        private readonly SemaphoreSlim _available = new(0);
-        private bool _completed;
-        private ZLinkRouteMeshStatus? _terminalStatus;
-
-        public ObserverQueue(int capacity)
-        {
-            _capacity = capacity;
-        }
-
-        public ZLinkRouteMeshStatus? TerminalStatus
-        {
-            get
-            {
-                lock (_gate)
-                    return _terminalStatus;
-            }
-        }
-
-        public void SealWithTerminal(ZLinkRouteMeshStatus status)
-        {
-            lock (_gate)
-            {
-                if (_completed)
-                    return;
-                _terminalStatus = status;
-                _pending.Clear();
-                _pending.Add(status);
-                _completed = true;
-                _available.Release();
-            }
-        }
-
-        public void Enqueue(ZLinkRouteMeshStatus status)
-        {
-            lock (_gate)
-            {
-                if (_completed)
-                    return;
-                if (_pending.Count == _capacity)
-                {
-                    var terminalIndex = _pending.FindIndex(IsTerminalStatus);
-                    if (terminalIndex >= 0 && !IsTerminalStatus(status))
-                        return;
-
-                    var removableIndex = IsTerminalStatus(status)
-                        ? _pending.FindIndex(item => !IsTerminalStatus(item))
-                        : 0;
-                    if (removableIndex < 0)
-                        removableIndex = 0;
-                    _pending.RemoveAt(removableIndex);
-                    _pending.Add(status);
-                    return;
-                }
-
-                _pending.Add(status);
-                _available.Release();
-            }
-        }
-
-        public async ValueTask<ZLinkRouteMeshStatus?> ReadAsync(
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                await _available.WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return null;
-            }
-
-            lock (_gate)
-            {
-                if (_pending.Count == 0)
-                    return null;
-                var next = _pending[0];
-                _pending.RemoveAt(0);
-                return next;
-            }
-        }
-
-        public void Complete()
-        {
-            lock (_gate)
-            {
-                if (_completed)
-                    return;
-                _completed = true;
-                _available.Release();
-            }
-        }
-
         private static bool IsTerminalStatus(ZLinkRouteMeshStatus status) =>
-            status.State == ZLinkTopologyState.Stopped;
-
+            status.State is ZLinkTopologyState.Stopped
+                or ZLinkTopologyState.Failed;
     }
 }

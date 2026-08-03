@@ -18,7 +18,8 @@ class RoomRouterReadinessHandler implements OnApplicationBootstrap, OnApplicatio
   }
 
   private async observeReadiness(): Promise<void> {
-    for await (const status of this.runtime.observe(SampleNames.roomSpotNode, 64, this.stop.signal)) {
+    for await (const observed of this.runtime.observe(SampleNames.roomSpotNode, 64, this.stop.signal)) {
+      const status = observed.status;
       console.log(
         `bingo-room-status state=${status.state} readyPeers=${status.readyPeerCount}`
         + ` placement=${status.placement.isAvailable}`

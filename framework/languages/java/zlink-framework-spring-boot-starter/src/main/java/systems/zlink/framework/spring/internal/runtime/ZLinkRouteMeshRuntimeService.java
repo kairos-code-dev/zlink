@@ -42,6 +42,7 @@ import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkMeshNodeMonitoringProjection;
+import systems.zlink.framework.runtime.internal.monitoring.ZLinkStatusPublisher;
 
 final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoCloseable {
     private static final long MONITOR_IDLE_NANOS = 10_000_000L;
@@ -181,39 +182,30 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
     }
 
     @Override
-    public Flow.Publisher<ZLinkMeshNodeSnapshot> observe(String meshName, int capacity) {
+    public Flow.Publisher<systems.zlink.framework.monitoring.ZLinkObservedStatus<
+        ZLinkMeshNodeSnapshot>> observe(String meshName, int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
         }
         requireNode(meshName);
-        return subscriber -> {
-            if (subscriber == null) {
-                throw new NullPointerException("subscriber");
-            }
-            MonitorHub hub = monitorHubs.computeIfAbsent(
-                meshName, ignored -> new MonitorHub(meshName, requireNode(meshName)));
-            hub.subscribe(new Flow.Subscriber<>() {
-                @Override
-                public void onSubscribe(Flow.Subscription subscription) {
-                    subscriber.onSubscribe(subscription);
-                }
-
-                @Override
-                public void onNext(ZLinkMeshRuntimeEvent ignored) {
-                    subscriber.onNext(snapshot(meshName));
-                }
-
-                @Override
-                public void onError(Throwable throwable) {
-                    subscriber.onError(throwable);
-                }
-
-                @Override
-                public void onComplete() {
-                    subscriber.onComplete();
-                }
-            }, capacity);
-        };
+        ZLinkStatusPublisher<ZLinkMeshNodeSnapshot> publisher =
+            ZLinkStatusPublisher.create(
+                () -> snapshot(meshName),
+                status -> List.of(
+                    status.state(),
+                    status.isReady(),
+                    status.readyPeerCount(),
+                    status.channels(),
+                    status.peers(),
+                    status.placement()),
+                capacity,
+                status -> status.state() == ZLinkTopologyState.STOPPED
+                    || status.state() == ZLinkTopologyState.FAILED,
+                status -> status.state() == ZLinkTopologyState.STOPPING);
+        MonitorHub hub = monitorHubs.computeIfAbsent(
+            meshName, ignored -> new MonitorHub(meshName, requireNode(meshName)));
+        hub.registerSignal(publisher::signal);
+        return publisher;
     }
 
     @Override
@@ -495,6 +487,7 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
         private final ZLinkMeshNodeMonitoringProjection initialPlacement;
         private final Object gate = new Object();
         private final List<ObserverSubscription> observers = new ArrayList<>();
+        private final List<Runnable> signals = new ArrayList<>();
         private volatile boolean stopped;
         private Thread pump;
 
@@ -523,6 +516,21 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
                     meshName,
                     status.routingId(),
                     Optional.of(mapNodeState(status.state()))));
+                if (pump == null) {
+                    pump = Thread.ofVirtual()
+                        .name("zlink-mesh-monitor-" + meshName)
+                        .start(this::pump);
+                }
+            }
+        }
+
+        void registerSignal(Runnable signal) {
+            synchronized (gate) {
+                if (stopped) {
+                    return;
+                }
+                signals.add(signal);
+                signal.run();
                 if (pump == null) {
                     pump = Thread.ofVirtual()
                         .name("zlink-mesh-monitor-" + meshName)
@@ -657,8 +665,13 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
                 return;
             }
             ObserverSubscription[] current;
+            Runnable[] currentSignals;
             synchronized (gate) {
                 current = observers.toArray(ObserverSubscription[]::new);
+                currentSignals = signals.toArray(Runnable[]::new);
+            }
+            for (Runnable signal : currentSignals) {
+                signal.run();
             }
             for (ZLinkMeshRuntimeEvent event : events) {
                 for (ObserverSubscription observer : current) {
@@ -670,6 +683,7 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
         @Override
         public void close() {
             ObserverSubscription[] currentObservers;
+            Runnable[] currentSignals;
             synchronized (gate) {
                 if (stopped) {
                     return;
@@ -677,6 +691,8 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
                 stopped = true;
                 currentObservers = observers.toArray(ObserverSubscription[]::new);
                 observers.clear();
+                currentSignals = signals.toArray(Runnable[]::new);
+                signals.clear();
             }
             Thread current = pump;
             if (current != null) {
@@ -684,6 +700,9 @@ final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime, AutoC
             }
             for (ObserverSubscription observer : currentObservers) {
                 observer.complete();
+            }
+            for (Runnable signal : currentSignals) {
+                signal.run();
             }
         }
     }

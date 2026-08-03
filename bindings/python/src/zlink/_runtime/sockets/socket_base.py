@@ -41,6 +41,7 @@ from ..messaging.message_materializer import (
     Received,
     TopicMessage,
 )
+from ..messaging.native_parts import _materialize_native_parts, _payload_parts
 from ..handles.native_support import (
     BindError,
     CloseError,
@@ -133,16 +134,6 @@ def _socket_type_name(socket_type):
         return SocketType(int(socket_type)).name
     except ValueError:
         return str(int(socket_type))
-
-
-def _payload_parts(payload):
-    if isinstance(payload, (list, tuple)):
-        parts = payload
-    else:
-        parts = [payload]
-    if not parts:
-        raise ValueError("parts must not be empty")
-    return parts
 
 
 def _close_native_parts(native_parts, start=0):
@@ -313,6 +304,8 @@ class _BaseSocket:
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
             return None
+        if any(isinstance(part, Message) for part in _payload_parts(payload)):
+            return None
         result = _native_extension.send_parts(
             int(self._socket_handle.handle), payload, int(flags)
         )
@@ -321,6 +314,8 @@ class _BaseSocket:
     def _send_routed_payload_via_native_bridge(self, routing_id, payload, flags):
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
+            return None
+        if any(isinstance(part, Message) for part in _payload_parts(payload)):
             return None
         result = _native_extension.send_parts_rid(
             int(self._socket_handle.handle),
@@ -336,6 +331,8 @@ class _BaseSocket:
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
             return None
+        if any(isinstance(part, Message) for part in _payload_parts(payload)):
+            return None
         result = _native_extension.send_parts_rid(
             int(self._socket_handle.handle),
             routing_id_bytes,
@@ -347,6 +344,8 @@ class _BaseSocket:
     def _publish_payload_via_native_bridge(self, topic_bytes, payload, flags):
         _ensure_not_in_callback("blocking publish")
         if _native_extension is None:
+            return None
+        if any(isinstance(part, Message) for part in _payload_parts(payload)):
             return None
         result = _native_extension.publish_parts(
             int(self._socket_handle.handle), topic_bytes, payload, int(flags)
@@ -419,16 +418,7 @@ class _BaseSocket:
         return buf.raw[: out_size.value]
 
     def _native_parts_from_payload(self, payload):
-        native_parts = []
-        for part in _payload_parts(payload):
-            if isinstance(part, Message):
-                native_parts.append(_clone_native_msg(part._msg))
-                continue
-            native = ZlinkMsg()
-            _keepalive = _init_msg_from_buffer(native, part, borrow=False)
-            _ = _keepalive
-            native_parts.append(native)
-        return native_parts
+        return _materialize_native_parts(payload)
 
     def _unsupported_capability(self, capability):
         actual = _socket_type_name(self._socket_type)
@@ -797,7 +787,8 @@ class _MessageSocket(_Socket):
             except Exception:
                 _report_unhandled_callback_exception(handler)
                 return
-            dispatcher.submit(lambda received=received: _invoke(received))
+            if not dispatcher.submit(lambda received=received: _invoke(received)):
+                received.close()
 
         callback = _SOCKET_RECV_HANDLER(_callback)
         rc = lib().zlink_recv_handler(self._handle, callback, None)

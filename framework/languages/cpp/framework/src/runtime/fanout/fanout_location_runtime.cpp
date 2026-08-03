@@ -301,15 +301,29 @@ void fanout_location_runtime_t::pump ()
     const auto now = std::chrono::steady_clock::now ();
     for (auto &[_, publisher] : _publishers)
         (void) publisher->owner->tick (now);
-    for (auto &[_, subscriber] : _subscribers) {
-        for (;;) {
+    std::vector<subscriber_entry_t *> subscribers;
+    subscribers.reserve (_subscribers.size ());
+    for (auto &[_, subscriber] : _subscribers)
+        subscribers.push_back (subscriber.get ());
+    if (subscribers.empty ())
+        return;
+    const auto start = _subscriber_pump_cursor % subscribers.size ();
+    for (std::size_t offset = 0; offset < subscribers.size (); ++offset) {
+        auto &subscriber = *subscribers[(start + offset) % subscribers.size ()];
+        receive_batch_budget_t budget;
+        while (budget.can_receive ()) {
             auto [status, received] =
-              subscriber->owner->try_receive (now);
+              subscriber.owner->try_receive (now);
             if (status == fanout_receive_status_t::no_data)
                 break;
+            budget.account (
+              received ? received->payload.payload.size () : 0);
             if (status != fanout_receive_status_t::application
-                || !received)
+                || !received) {
+                if (budget.exhausted ())
+                    break;
                 continue;
+            }
             try {
                 const auto message =
                   zlink::message_t::from (
@@ -317,7 +331,7 @@ void fanout_location_runtime_t::pump ()
                 detail::inbound_message_context_t
                   inbound;
                 inbound.message.channel_name =
-                  subscriber->channel_name;
+                  subscriber.channel_name;
                 inbound.message.packet_name =
                   received->payload.packet_name;
                 inbound.message.content_type =
@@ -329,7 +343,7 @@ void fanout_location_runtime_t::pump ()
                   zlink::framework::detail::service_scope_kind_t::
                     handler_invocation);
                 auto dispatched = _channel_runtime.dispatch_send (
-                  subscriber->channel_name,
+                  subscriber.channel_name,
                   received->topic,
                   received->payload.packet_name,
                   scope.provider (), *_serializers, *_handlers,
@@ -344,7 +358,7 @@ void fanout_location_runtime_t::pump ()
                           dispatched.error ()),
                         .action = dispatch_error_action_t::drop,
                         .packet_name = received->payload.packet_name,
-                        .channel_name = subscriber->channel_name,
+                        .channel_name = subscriber.channel_name,
                         .topic = received->topic,
                         .exception = dispatched.error ()
                           ? std::make_exception_ptr (*dispatched.error ())
@@ -353,9 +367,12 @@ void fanout_location_runtime_t::pump ()
             }
             catch (...) {
             }
+            if (budget.exhausted ())
+                break;
         }
-        (void) subscriber->owner->tick (now);
+        (void) subscriber.owner->tick (now);
     }
+    _subscriber_pump_cursor = (start + 1) % subscribers.size ();
 }
 
 result_t<void> fanout_location_runtime_t::publish (

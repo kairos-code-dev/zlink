@@ -54,6 +54,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
 
   async onInitialize(): Promise<void> {
     this.state = new ZoneState(String(this.context.spotId) as ZoneId);
+    console.log(`zone spot initialized zone=${String(this.context.spotId)}`);
     this.timer = await this.context.addTimer(
       'zone-tick',
       ZoneWorldSpec.tickPeriodMs,
@@ -78,9 +79,11 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
   async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     const enter = request.decode<EnterZoneMsg>(Object as never);
     if (enter.playerId !== actorId) {
+      console.log(`zone admission rejected zone=${String(this.context.spotId)} player=${actorId} reason=player-id`);
       return { accepted: false };
     }
     if (this.nodeState.rejectsArrival(String(this.context.spotId), enter.fromNodeId)) {
+      console.log(`zone admission rejected zone=${String(this.context.spotId)} player=${actorId} reason=wrong-node`);
       return { accepted: false };
     }
     console.log(`zone admission accepted zone=${String(this.context.spotId)} player=${actorId} from=${enter.fromNodeId ?? 'new'}`);
@@ -91,7 +94,10 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
   async onJoinedActor(actor: PlayerActor): Promise<void> {
     const actorId = actor.actorId;
     const enter = this.pendingJoins.get(actorId);
-    if (enter === undefined) return;
+    if (enter === undefined) {
+      console.log(`zone join commit missing zone=${String(this.context.spotId)} player=${actorId}`);
+      return;
+    }
     this.pendingJoins.delete(actorId);
     const participant: ZoneParticipant = {
       actorId,

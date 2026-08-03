@@ -24,6 +24,7 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -212,14 +213,15 @@ public final class Program {
                 throw new IllegalStateException("RouteMesh runtime is required");
             }
             runtime.observe(Contracts.SPOT_MESH, 32).subscribe(
-                new java.util.concurrent.Flow.Subscriber<ZLinkMeshNodeSnapshot>() {
+                new java.util.concurrent.Flow.Subscriber<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>>() {
                     @Override
                     public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
                         subscription.request(Long.MAX_VALUE);
                     }
 
                     @Override
-                    public void onNext(ZLinkMeshNodeSnapshot status) {
+                    public void onNext(ZLinkObservedStatus<ZLinkMeshNodeSnapshot> observed) {
+                        ZLinkMeshNodeSnapshot status = observed.status();
                         state.record(
                             "route-mesh-runtime",
                             status.meshName(),

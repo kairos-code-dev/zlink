@@ -102,7 +102,8 @@ enum class spot_close_reason_t
 {
     explicit_close = 0,
     host_shutdown = 1,
-    relocation_out = 2
+    relocation_out = 2,
+    idle_evicted = 3
 };
 
 struct spot_closing_context_t final

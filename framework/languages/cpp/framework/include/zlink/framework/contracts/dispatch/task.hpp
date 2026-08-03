@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -23,6 +24,28 @@ namespace detail
 {
 
 using task_scheduler_t = std::function<void (std::function<void ()>)>;
+
+struct serial_resume_failure_t
+{
+    framework_error_kind_t kind;
+    std::string message;
+};
+
+inline thread_local std::optional<serial_resume_failure_t>
+  serial_resume_failure;
+
+inline void set_serial_resume_failure (framework_error_kind_t kind,
+                                       std::string message)
+{
+    serial_resume_failure = serial_resume_failure_t{kind, std::move (message)};
+}
+
+inline std::optional<serial_resume_failure_t> take_serial_resume_failure ()
+{
+    auto failure = std::move (serial_resume_failure);
+    serial_resume_failure.reset ();
+    return failure;
+}
 
 class deferred_barrier_t
 {
@@ -43,6 +66,10 @@ class serial_turn_t
     virtual bool released () const = 0;
     virtual task_scheduler_t resume_scheduler () = 0;
     virtual bool belongs_to (const void *owner) const noexcept = 0;
+    // True for a turn released from the previous handler's after-active
+    // phase. It still owns the serial queue, but it is no longer the handler
+    // turn for lifecycle fences such as relocation readiness.
+    virtual bool is_after_active_phase () const noexcept = 0;
     virtual bool allows_yield () const noexcept = 0;
     virtual result_t<void> defer (std::function<void ()> work,
                                   std::function<void ()> cancel = {}) = 0;
@@ -357,7 +384,12 @@ template <typename T> class task_t
     {
         _state->set_continuation (continuation);
     }
-    T await_resume () { return result ().value (); }
+    T await_resume ()
+    {
+        if (const auto failure = detail::take_serial_resume_failure ())
+            throw framework_exception_t (failure->kind, failure->message);
+        return result ().value ();
+    }
 
     const result_t<T> &result () const { return _state->result (); }
 
@@ -422,7 +454,12 @@ template <> class task_t<void>
     {
         _state->set_continuation (continuation);
     }
-    void await_resume () { result ().value (); }
+    void await_resume ()
+    {
+        if (const auto failure = detail::take_serial_resume_failure ())
+            throw framework_exception_t (failure->kind, failure->message);
+        result ().value ();
+    }
 
     const result_t<void> &result () const { return _state->result (); }
 

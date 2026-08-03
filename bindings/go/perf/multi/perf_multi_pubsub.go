@@ -102,17 +102,13 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 			_ = sub.Close()
 		}
 	}()
-	recvParts := make([]*zlink.Message, len(subs))
-	topicBuffers := make([][]byte, len(subs))
-	for i := range subs {
-		part, err := zlink.NewMessageWithSize(0)
-		perfcommon.Must(err)
-		recvParts[i] = part
-		topicBuffers[i] = make([]byte, 256)
+	received := make([]*zlink.TopicMessage, len(subs))
+	for i := range received {
+		received[i] = &zlink.TopicMessage{}
 	}
 	defer func() {
-		for _, part := range recvParts {
-			_ = part.Close()
+		for _, message := range received {
+			_ = message.Close()
 		}
 	}()
 
@@ -142,7 +138,7 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 			}
 			perfcommon.Must(fmt.Errorf("multi pubsub client poll: %w", err))
 		}
-		drainMultiPubSubReady(subs, recvParts, topicBuffers, events[:n], stats, cfg.msgSize, window.StopAt, latencyStride, &phaseDone)
+		drainMultiPubSubReady(subs, received, events[:n], stats, cfg.msgSize, window.StopAt, latencyStride, &phaseDone)
 	}
 	flushControlLine("CLIENT_DONE,%d", cfg.msgSize)
 	return stats.Snapshot(cfg.duration, cfg.msgSize)
@@ -150,8 +146,7 @@ func runMultiPubSubClient(cfg multiConfig, endpoint string) perfcommon.Result {
 
 func drainMultiPubSubReady(
 	subs []*zlink.SubSocket,
-	recvParts []*zlink.Message,
-	topicBuffers [][]byte,
+	received []*zlink.TopicMessage,
 	events []zlink.PollEvent,
 	stats *perfcommon.Stats,
 	msgSize int,
@@ -167,25 +162,7 @@ func drainMultiPubSubReady(
 		if index < 0 || index >= len(subs) {
 			continue
 		}
-		drainMultiPubSubSocket(index, subs[index], recvParts[index], topicBuffers[index], stats, msgSize, recvStopAt, latencyStride, phaseDone)
-		if *phaseDone {
-			return
-		}
-	}
-}
-
-func drainMultiPubSubAvailable(
-	subs []*zlink.SubSocket,
-	recvParts []*zlink.Message,
-	topicBuffers [][]byte,
-	stats *perfcommon.Stats,
-	msgSize int,
-	recvStopAt time.Time,
-	latencyStride uint64,
-	phaseDone *bool,
-) {
-	for index, socket := range subs {
-		drainMultiPubSubSocket(index, socket, recvParts[index], topicBuffers[index], stats, msgSize, recvStopAt, latencyStride, phaseDone)
+		drainMultiPubSubSocket(index, subs[index], received[index], stats, msgSize, recvStopAt, latencyStride, phaseDone)
 		if *phaseDone {
 			return
 		}
@@ -195,8 +172,7 @@ func drainMultiPubSubAvailable(
 func drainMultiPubSubSocket(
 	index int,
 	socket *zlink.SubSocket,
-	part *zlink.Message,
-	topicBuffer []byte,
+	received *zlink.TopicMessage,
 	stats *perfcommon.Stats,
 	msgSize int,
 	recvStopAt time.Time,
@@ -204,7 +180,7 @@ func drainMultiPubSubSocket(
 	phaseDone *bool,
 ) {
 	for {
-		result, ok, err := socket.SubscribePart(part, topicBuffer, zlink.RecvFlagsDontWait)
+		ok, err := socket.Subscribe(received, zlink.RecvFlagsDontWait)
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				break
@@ -214,8 +190,12 @@ func drainMultiPubSubSocket(
 		if !ok {
 			break
 		}
-		if result.More || !multiTopicMatches(topicBuffer, result.TopicLen, "bench") {
-			perfcommon.Must(fmt.Errorf("multi pubsub unexpected part metadata[%d]: topic_len=%d more=%v", index, result.TopicLen, result.More))
+		if received.Topic() != "bench" || len(received.Parts()) != 1 {
+			perfcommon.Must(fmt.Errorf("multi pubsub unexpected metadata[%d]: topic=%q parts=%d", index, received.Topic(), len(received.Parts())))
+		}
+		part, partErr := received.SinglePartOrError()
+		if partErr != nil {
+			perfcommon.Must(fmt.Errorf("multi pubsub part[%d]: %w", index, partErr))
 		}
 		if perfcommon.IsStopTokenMessage(part) {
 			*phaseDone = true

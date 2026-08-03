@@ -22,6 +22,7 @@ import type { ZLinkMessageSerializer } from '../../contracts';
 import { actorJoinIdentity } from './actor-lifecycle-snapshot';
 import { runActorHandlerWithDeferredJoins } from './actor-join-deferred-scope';
 import { runWithLifecycleHandler } from '../handlers/handler-instance-scope';
+import type { ZLinkSerialWorkOptions } from '../execution/serial-scheduler';
 
 export enum ZLinkActorPacketKind {
   Send = 'send',
@@ -101,7 +102,10 @@ export interface ZLinkSpotActorDispatcherOptions {
   readonly registry: ZLinkSpotActorHandlerRegistryRuntime;
   readonly spot: ZLinkSpot;
   readonly providerResolver?: ZLinkProviderResolver;
-  readonly serial?: { execute<T>(operation: () => Promise<T> | T): Promise<T> };
+  readonly serial?: {
+    execute<T>(operation: () => Promise<T> | T, workOptions?: ZLinkSerialWorkOptions): Promise<T>;
+  };
+  readonly serialWorkOptions?: ZLinkSerialWorkOptions;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
 }
 
@@ -256,7 +260,8 @@ export class ZLinkSpotActorDispatcher {
   }
 
   private execute<T>(operation: () => Promise<T> | T): Promise<T> {
-    return this.options.serial?.execute(operation) ?? Promise.resolve().then(operation);
+    return this.options.serial?.execute(operation, this.options.serialWorkOptions)
+      ?? Promise.resolve().then(operation);
   }
 
   private createContext(

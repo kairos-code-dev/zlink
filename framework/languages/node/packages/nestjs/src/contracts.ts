@@ -276,6 +276,7 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   setActorLimit(limit: number): this;
   setSpotLimit(limit: number): this;
   setActivationConcurrency(limit: number): this;
+  setInstanceSpotIdleTimeout(timeoutMs: number): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;

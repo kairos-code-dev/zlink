@@ -15,6 +15,7 @@ import systems.zlink.framework.monitoring.ZLinkClientServerTargetStatus;
 import systems.zlink.framework.monitoring.ZLinkFanoutRuntime;
 import systems.zlink.framework.monitoring.ZLinkFanoutStatus;
 import systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.monitoring.ZLinkTopologyReason;
 import systems.zlink.framework.monitoring.ZLinkTopologyState;
@@ -92,7 +93,7 @@ final class ZLinkClientServerRuntimeView implements ZLinkClientServerRuntime {
     }
 
     @Override
-    public Flow.Publisher<ZLinkClientServerStatus> observe(
+    public Flow.Publisher<ZLinkObservedStatus<ZLinkClientServerStatus>> observe(
         String channelName,
         int capacity) {
         requireChannel(channelName, ChannelKind.CLIENT_SERVER);
@@ -104,7 +105,10 @@ final class ZLinkClientServerRuntimeView implements ZLinkClientServerRuntime {
                 status.isReady(),
                 status.readyTargetCount(),
                 status.targets()),
-            capacity);
+            capacity,
+            status -> status.state() == ZLinkTopologyState.STOPPED
+                || status.state() == ZLinkTopologyState.FAILED,
+            status -> status.state() == ZLinkTopologyState.STOPPING);
     }
 
     @Override
@@ -192,7 +196,7 @@ final class ZLinkFanoutRuntimeView implements ZLinkFanoutRuntime {
     }
 
     @Override
-    public Flow.Publisher<ZLinkFanoutStatus> observe(
+    public Flow.Publisher<ZLinkObservedStatus<ZLinkFanoutStatus>> observe(
         String channelName,
         int capacity) {
         requireChannel(channelName);
@@ -203,7 +207,10 @@ final class ZLinkFanoutRuntimeView implements ZLinkFanoutRuntime {
                 status.isReady(),
                 status.readyPublisherCount(),
                 status.publishers()),
-            capacity);
+            capacity,
+            status -> status.state() == ZLinkTopologyState.STOPPED
+                || status.state() == ZLinkTopologyState.FAILED,
+            status -> status.state() == ZLinkTopologyState.STOPPING);
     }
 
     private void requireChannel(String channelName) {

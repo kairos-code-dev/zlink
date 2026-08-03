@@ -20,16 +20,17 @@ import (
 )
 
 type socketCore struct {
-	handle             unsafe.Pointer
-	closed             bool
-	callbackMu         sync.Mutex
-	recvHandle         cgo.Handle
-	recvActive         atomic.Uintptr
-	subscribeHandle    cgo.Handle
-	sendReadyHandle    cgo.Handle
-	streamPacketHandle cgo.Handle
-	requestProgressMu  sync.Mutex
-	requestProgress    *progressPump
+	handle                  unsafe.Pointer
+	closed                  bool
+	callbackMu              sync.Mutex
+	recvHandle              cgo.Handle
+	recvActive              atomic.Uintptr
+	completionControlHandle cgo.Handle
+	subscribeHandle         cgo.Handle
+	sendReadyHandle         cgo.Handle
+	streamPacketHandle      cgo.Handle
+	requestProgressMu       sync.Mutex
+	requestProgress         *progressPump
 }
 
 func newSocketCore(ctx *Context, socketType C.zlink_socket_type_t) (*socketCore, error) {
@@ -62,7 +63,7 @@ func (s *socketCore) startRequestProgress(state *replyCallbackState) {
 		s.requestProgress = newProgressPump(handle)
 	}
 	pump := s.requestProgress
-	pump.attachDone(state.done)
+	pump.attach(state)
 	s.requestProgressMu.Unlock()
 }
 
@@ -115,7 +116,7 @@ func (s *socketCore) Close() error {
 		pump.stopAndWait()
 	}
 	if err := closeErrorFromResult(C.zlink_close(s.handle)); err != nil {
-		if pump != nil {
+		if pump != nil && !externalRequestProgressActive(s.handle) {
 			pump.resume()
 		}
 		s.callbackMu.Unlock()
@@ -135,15 +136,47 @@ func (s *socketCore) Close() error {
 
 func (s *socketCore) releaseCallbacks() {
 	s.callbackMu.Lock()
-	handles := []cgo.Handle{s.recvHandle, s.subscribeHandle, s.sendReadyHandle, s.streamPacketHandle}
+	handles := []cgo.Handle{s.recvHandle, s.completionControlHandle, s.subscribeHandle, s.sendReadyHandle, s.streamPacketHandle}
 	s.recvHandle = 0
 	s.recvActive.Store(0)
+	s.completionControlHandle = 0
 	s.subscribeHandle = 0
 	s.sendReadyHandle = 0
 	s.streamPacketHandle = 0
 	s.callbackMu.Unlock()
 	for _, handle := range handles {
 		releaseCallbackHandle(handle)
+	}
+}
+
+func (s *socketCore) pauseInternalRequestProgress() {
+	if s == nil {
+		return
+	}
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	s.requestProgressMu.Lock()
+	pump := s.requestProgress
+	s.requestProgressMu.Unlock()
+	if pump != nil {
+		pump.stopAndWait()
+	}
+}
+
+func (s *socketCore) resumeInternalRequestProgress() {
+	if s == nil {
+		return
+	}
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	if s.closed || s.handle == nil || externalRequestProgressActive(s.handle) {
+		return
+	}
+	s.requestProgressMu.Lock()
+	pump := s.requestProgress
+	s.requestProgressMu.Unlock()
+	if pump != nil {
+		pump.resume()
 	}
 }
 

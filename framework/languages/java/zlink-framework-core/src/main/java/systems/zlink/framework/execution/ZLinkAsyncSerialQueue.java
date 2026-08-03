@@ -6,27 +6,51 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Executor;
+import java.time.Duration;
 import java.util.function.Supplier;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 public final class ZLinkAsyncSerialQueue {
-    private static final ExecutorService HANDLER_EXECUTOR =
-        Executors.newVirtualThreadPerTaskExecutor();
+    public static final int DEFAULT_APPLICATION_MESSAGE_CAPACITY = 1024;
+    public static final int DEFAULT_LIFECYCLE_MESSAGE_CAPACITY = 128;
+    public static final long DEFAULT_APPLICATION_BYTE_CAPACITY = 64L * 1024 * 1024;
+    public static final long DEFAULT_LIFECYCLE_BYTE_CAPACITY = 4L * 1024 * 1024;
+    public static final long DEFAULT_FIXED_WORK_BYTE_COST = 256;
+    public static final int DEFAULT_LIFECYCLE_BURST_LIMIT = 8;
+    public static final Duration DEFAULT_OWNER_TIME_BUDGET = Duration.ofMillis(10);
     private static final ThreadLocal<ZLinkAsyncSerialQueue> CURRENT = new ThreadLocal<>();
     private static final ThreadLocal<CompletableFuture<Void>> CURRENT_GATE = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> CURRENT_RELEASE_DEFERRED = new ThreadLocal<>();
 
+    private final Executor executor;
+    private final ExecutorService ownedExecutor;
     private final boolean releaseOnIncompleteStage;
-    private final int pendingCapacity;
-    private final ArrayDeque<Entry> pending = new ArrayDeque<>();
+    private final int applicationMessageCapacity;
+    private final long applicationByteCapacity;
+    private final int lifecycleMessageCapacity;
+    private final long lifecycleByteCapacity;
+    private final long fixedWorkByteCost;
+    private final int lifecycleBurstLimit;
+    private final long ownerTimeBudgetNanos;
+    private final ArrayDeque<Entry> applicationPending = new ArrayDeque<>();
+    // A resumed application turn is kept separate so it can pass a relocation
+    // boundary without inserting at the front of the application FIFO.
+    private final ArrayDeque<Entry> continuationPending = new ArrayDeque<>();
+    private final ArrayDeque<Entry> lifecyclePending = new ArrayDeque<>();
+    private int applicationMessages;
+    private int lifecycleMessages;
+    private long applicationBytes;
+    private long lifecycleBytes;
+    private int lifecycleStreak;
     private int outstanding;
     private long nextSequence = 1L;
     private long nextRelocationSerial = 1L;
     private Entry active;
     private int suspendedContinuations;
+    private long turnClaimedAtNanos;
     private RelocationState relocation;
     private boolean relocated;
     private Runnable capacityAvailable = () -> { };
@@ -34,19 +58,108 @@ public final class ZLinkAsyncSerialQueue {
         new ArrayList<>();
 
     public ZLinkAsyncSerialQueue() {
-        this(false, Integer.MAX_VALUE);
+        this(false);
     }
 
     public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage) {
-        this(releaseOnIncompleteStage, Integer.MAX_VALUE);
+        this(
+            null,
+            releaseOnIncompleteStage,
+            DEFAULT_APPLICATION_MESSAGE_CAPACITY,
+            DEFAULT_APPLICATION_BYTE_CAPACITY,
+            DEFAULT_LIFECYCLE_MESSAGE_CAPACITY,
+            DEFAULT_LIFECYCLE_BYTE_CAPACITY,
+            DEFAULT_FIXED_WORK_BYTE_COST,
+            DEFAULT_LIFECYCLE_BURST_LIMIT,
+            DEFAULT_OWNER_TIME_BUDGET);
+    }
+
+    public ZLinkAsyncSerialQueue(
+        Executor executor,
+        boolean releaseOnIncompleteStage) {
+        this(
+            executor,
+            releaseOnIncompleteStage,
+            DEFAULT_APPLICATION_MESSAGE_CAPACITY,
+            DEFAULT_APPLICATION_BYTE_CAPACITY,
+            DEFAULT_LIFECYCLE_MESSAGE_CAPACITY,
+            DEFAULT_LIFECYCLE_BYTE_CAPACITY,
+            DEFAULT_FIXED_WORK_BYTE_COST,
+            DEFAULT_LIFECYCLE_BURST_LIMIT,
+            DEFAULT_OWNER_TIME_BUDGET);
     }
 
     public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage, int pendingCapacity) {
-        if (pendingCapacity <= 0) {
-            throw new IllegalArgumentException("pendingCapacity must be positive");
+        this(
+            null,
+            releaseOnIncompleteStage,
+            pendingCapacity,
+            Long.MAX_VALUE,
+            pendingCapacity,
+            Long.MAX_VALUE,
+            DEFAULT_FIXED_WORK_BYTE_COST,
+            DEFAULT_LIFECYCLE_BURST_LIMIT,
+            DEFAULT_OWNER_TIME_BUDGET);
+    }
+
+    public ZLinkAsyncSerialQueue(
+        Executor executor,
+        boolean releaseOnIncompleteStage,
+        int pendingCapacity) {
+        this(
+            executor,
+            releaseOnIncompleteStage,
+            pendingCapacity,
+            Long.MAX_VALUE,
+            pendingCapacity,
+            Long.MAX_VALUE,
+            DEFAULT_FIXED_WORK_BYTE_COST,
+            DEFAULT_LIFECYCLE_BURST_LIMIT,
+            DEFAULT_OWNER_TIME_BUDGET);
+    }
+
+    public ZLinkAsyncSerialQueue(
+        Executor executor,
+        boolean releaseOnIncompleteStage,
+        int applicationMessageCapacity,
+        long applicationByteCapacity,
+        int lifecycleMessageCapacity,
+        long lifecycleByteCapacity,
+        long fixedWorkByteCost,
+        int lifecycleBurstLimit,
+        Duration ownerTimeBudget) {
+        if (applicationMessageCapacity <= 0
+            || lifecycleMessageCapacity <= 0
+            || applicationByteCapacity <= 0
+            || lifecycleByteCapacity <= 0
+            || fixedWorkByteCost <= 0
+            || lifecycleBurstLimit <= 0
+            || ownerTimeBudget == null
+            || ownerTimeBudget.isNegative()
+            || ownerTimeBudget.isZero()) {
+            throw new IllegalArgumentException("serial queue limits are invalid");
+        }
+        if (executor == null) {
+            this.ownedExecutor = Executors.newVirtualThreadPerTaskExecutor();
+            this.executor = ownedExecutor;
+        } else {
+            this.ownedExecutor = null;
+            this.executor = executor;
         }
         this.releaseOnIncompleteStage = releaseOnIncompleteStage;
-        this.pendingCapacity = pendingCapacity;
+        this.applicationMessageCapacity = applicationMessageCapacity;
+        this.applicationByteCapacity = applicationByteCapacity;
+        this.lifecycleMessageCapacity = lifecycleMessageCapacity;
+        this.lifecycleByteCapacity = lifecycleByteCapacity;
+        this.fixedWorkByteCost = fixedWorkByteCost;
+        this.lifecycleBurstLimit = lifecycleBurstLimit;
+        this.ownerTimeBudgetNanos = ownerTimeBudget.toNanos();
+    }
+
+    public void close() {
+        if (ownedExecutor != null) {
+            ownedExecutor.shutdown();
+        }
     }
 
     public synchronized CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation) {
@@ -76,7 +189,10 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
-        outstanding++;
+        if (!canReserve(Lane.LIFECYCLE, fixedWorkByteCost)) {
+            return capacityFailure("lifecycle barrier queue is full");
+        }
+        reserve(Lane.LIFECYCLE, fixedWorkByteCost);
         Entry entry = new Entry(
             nextSequence++,
             null,
@@ -84,11 +200,14 @@ public final class ZLinkAsyncSerialQueue {
             () -> { },
             new CompletableFuture<>(),
             ZLinkFlowContext.current(),
-            null);
+            null,
+            Lane.LIFECYCLE,
+            fixedWorkByteCost,
+            false);
         if (relocation != null) {
-            relocation.held.addFirst(entry);
+            relocation.held.addLast(entry);
         } else {
-            pending.addFirst(entry);
+            lifecyclePending.addLast(entry);
             startNext();
         }
         return entry.result;
@@ -110,7 +229,10 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
-        outstanding++;
+        if (!canReserve(Lane.LIFECYCLE, fixedWorkByteCost)) {
+            return capacityFailure("lifecycle barrier queue is full");
+        }
+        reserve(Lane.LIFECYCLE, fixedWorkByteCost);
         Entry entry = new Entry(
             nextSequence++,
             null,
@@ -118,8 +240,11 @@ public final class ZLinkAsyncSerialQueue {
             () -> { },
             new CompletableFuture<>(),
             ZLinkFlowContext.current(),
-            null);
-        pending.addLast(entry);
+            null,
+            Lane.LIFECYCLE,
+            fixedWorkByteCost,
+            false);
+        lifecyclePending.addLast(entry);
         startNext();
         return entry.result;
     }
@@ -145,7 +270,7 @@ public final class ZLinkAsyncSerialQueue {
 
     public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
         if (relocated || relocation != null && relocation.frozen
-            || outstanding > pendingCapacity) {
+            || !canReserve(Lane.APPLICATION, fixedWorkByteCost)) {
             return false;
         }
         enqueueAccepted(null, operation);
@@ -157,7 +282,7 @@ public final class ZLinkAsyncSerialQueue {
         Supplier<CompletionStage<Void>> operation) {
         java.util.Objects.requireNonNull(record, "record");
         if (relocated || relocation != null && relocation.frozen
-            || outstanding > pendingCapacity) {
+            || !canReserve(Lane.APPLICATION, workByteCost(record.length))) {
             return false;
         }
         enqueueAccepted(record.clone(), operation);
@@ -187,7 +312,11 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
-        outstanding++;
+        long byteCost = workByteCost(record == null ? 0 : record.length);
+        if (!canReserve(Lane.APPLICATION, byteCost)) {
+            return capacityFailure("application queue is full");
+        }
+        reserve(Lane.APPLICATION, byteCost);
         Entry entry = new Entry(
             nextSequence++,
             record,
@@ -195,26 +324,116 @@ public final class ZLinkAsyncSerialQueue {
             relocationRelease,
             new CompletableFuture<>(),
             ZLinkFlowContext.current(),
-            null);
+            null,
+            Lane.APPLICATION,
+            byteCost,
+            false);
         if (relocation != null) {
             relocation.held.addLast(entry);
         } else {
-            pending.addLast(entry);
+            applicationPending.addLast(entry);
             startNext();
         }
         return entry.result;
     }
 
+    private boolean canReserve(Lane lane, long byteCost) {
+        if (byteCost <= 0) {
+            return false;
+        }
+        if (lane == Lane.APPLICATION) {
+            return applicationMessages < applicationMessageCapacity
+                && byteCost <= applicationByteCapacity - applicationBytes;
+        }
+        return lifecycleMessages < lifecycleMessageCapacity
+            && byteCost <= lifecycleByteCapacity - lifecycleBytes;
+    }
+
+    private void reserve(Lane lane, long byteCost) {
+        if (!canReserve(lane, byteCost)) {
+            throw new IllegalStateException("serial queue reservation is unavailable");
+        }
+        if (lane == Lane.APPLICATION) {
+            applicationMessages++;
+            applicationBytes = Math.addExact(applicationBytes, byteCost);
+        } else {
+            lifecycleMessages++;
+            lifecycleBytes = Math.addExact(lifecycleBytes, byteCost);
+        }
+        outstanding++;
+    }
+
+    private void release(Entry entry) {
+        if (entry.lane == Lane.APPLICATION) {
+            applicationMessages--;
+            applicationBytes -= entry.byteCost;
+        } else {
+            lifecycleMessages--;
+            lifecycleBytes -= entry.byteCost;
+        }
+        outstanding--;
+    }
+
+    private long workByteCost(int payloadLength) {
+        return Math.addExact(fixedWorkByteCost, payloadLength);
+    }
+
+    private CompletionStage<Void> capacityFailure(String message) {
+        return CompletableFuture.failedFuture(
+            new systems.zlink.framework.errors.ZLinkFrameworkException(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.CAPACITY_EXCEEDED,
+                message));
+    }
+
+    private boolean hasPending() {
+        return !applicationPending.isEmpty()
+            || !continuationPending.isEmpty()
+            || !lifecyclePending.isEmpty();
+    }
+
+    private Entry takeNext() {
+        boolean lifecycleReady = !lifecyclePending.isEmpty();
+        boolean applicationReady = !applicationPending.isEmpty();
+        boolean continuationReady = !continuationPending.isEmpty();
+        if (lifecycleReady && lifecyclePending.peekFirst().relocationBoundary != null) {
+            if (continuationReady) {
+                lifecycleStreak = 0;
+                return continuationPending.removeFirst();
+            }
+            return lifecyclePending.removeFirst();
+        }
+        if (lifecycleReady
+            && (!applicationReady || lifecycleStreak < lifecycleBurstLimit)) {
+            lifecycleStreak++;
+            return lifecyclePending.removeFirst();
+        }
+        if (continuationReady) {
+            lifecycleStreak = 0;
+            return continuationPending.removeFirst();
+        }
+        if (applicationReady) {
+            lifecycleStreak = 0;
+            return applicationPending.removeFirst();
+        }
+        lifecycleStreak = 0;
+        return lifecyclePending.removeFirst();
+    }
+
     private void startNext() {
-        if (active != null || pending.isEmpty()) {
+        if (active != null || !hasPending()) {
             return;
         }
-        if (pending.peekFirst().relocationBoundary != null
-            && suspendedContinuations != 0) {
+        if (!lifecyclePending.isEmpty()
+            && lifecyclePending.peekFirst().relocationBoundary != null
+            && suspendedContinuations != 0
+            && continuationPending.isEmpty()) {
             return;
         }
-        Entry entry = pending.removeFirst();
+        Entry entry = takeNext();
         active = entry;
+        if (turnClaimedAtNanos == 0) {
+            turnClaimedAtNanos = System.nanoTime();
+        }
         CompletionStage<Void> gate = invoke(
             entry.operation,
             entry.result,
@@ -226,26 +445,48 @@ public final class ZLinkAsyncSerialQueue {
         Runnable notify = null;
         List<CompletableFuture<Void>> quiescent = List.of();
         RelocationBoundary boundary = entry.relocationBoundary;
+        boolean yieldToExecutor = false;
         synchronized (this) {
             if (active != entry) {
                 return;
             }
             active = null;
-            boolean wasFull = outstanding > pendingCapacity;
-            outstanding--;
-            if (wasFull && outstanding <= pendingCapacity) {
+            boolean wasApplicationFull = !canReserve(
+                Lane.APPLICATION,
+                fixedWorkByteCost);
+            release(entry);
+            if (wasApplicationFull
+                && canReserve(Lane.APPLICATION, fixedWorkByteCost)) {
                 notify = capacityAvailable;
             }
-            startNext();
+            yieldToExecutor = hasPending()
+                && ownerTimeBudgetNanos > 0
+                && System.nanoTime() - turnClaimedAtNanos >= ownerTimeBudgetNanos;
+            if (yieldToExecutor) {
+                turnClaimedAtNanos = 0;
+            } else if (!hasPending()) {
+                turnClaimedAtNanos = 0;
+            } else {
+                startNext();
+            }
             quiescent = takeQuiescenceWaitersIfReady();
         }
         if (notify != null) {
-            HANDLER_EXECUTOR.execute(notify);
+            executor.execute(notify);
+        }
+        if (yieldToExecutor) {
+            executor.execute(this::startNextAsync);
         }
         if (boundary != null) {
             boundary.finished.complete(null);
         }
         quiescent.forEach(waiter -> waiter.complete(null));
+    }
+
+    private void startNextAsync() {
+        synchronized (this) {
+            startNext();
+        }
     }
 
     /**
@@ -279,6 +520,9 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
+        if (!canReserve(Lane.LIFECYCLE, fixedWorkByteCost)) {
+            return Optional.empty();
+        }
         RelocationBoundary boundary = new RelocationBoundary(this);
         Entry entry = new Entry(
             nextSequence++,
@@ -287,10 +531,13 @@ public final class ZLinkAsyncSerialQueue {
             () -> { },
             new CompletableFuture<>(),
             ZLinkFlowContext.current(),
-            boundary);
+            boundary,
+            Lane.LIFECYCLE,
+            fixedWorkByteCost,
+            false);
         boundary.entry = entry;
-        outstanding++;
-        pending.addFirst(entry);
+        reserve(Lane.LIFECYCLE, fixedWorkByteCost);
+        lifecyclePending.addLast(entry);
         startNext();
         return Optional.of(boundary);
     }
@@ -319,23 +566,15 @@ public final class ZLinkAsyncSerialQueue {
             }
         }
         if (suspendedContinuations != 0
-            || pending.stream().anyMatch(entry -> entry.record == null)) {
+            || !continuationPending.isEmpty()
+            || applicationPending.stream().anyMatch(entry -> entry.record == null)) {
             return Optional.empty();
         }
         if (nextRelocationSerial == Long.MAX_VALUE) {
             throw new IllegalStateException("relocation serial exhausted");
         }
-        ArrayDeque<Entry> captured = new ArrayDeque<>();
-        ArrayDeque<Entry> infrastructure = new ArrayDeque<>();
-        while (!pending.isEmpty()) {
-            Entry entry = pending.removeFirst();
-            if (entry.record == null) {
-                infrastructure.addLast(entry);
-            } else {
-                captured.addLast(entry);
-            }
-        }
-        pending.addAll(infrastructure);
+        ArrayDeque<Entry> captured = new ArrayDeque<>(applicationPending);
+        applicationPending.clear();
         long serial = nextRelocationSerial++;
         RelocationSeal seal = new RelocationSeal(
             serial,
@@ -348,13 +587,19 @@ public final class ZLinkAsyncSerialQueue {
         if (!matches(seal)) {
             return false;
         }
-        ArrayDeque<Entry> restored = new ArrayDeque<>();
-        while (!pending.isEmpty()) {
-            restored.addLast(pending.removeFirst());
+        ArrayDeque<Entry> restored = new ArrayDeque<>(relocation.captured);
+        while (!restored.isEmpty()) {
+            applicationPending.addLast(restored.removeFirst());
         }
-        restored.addAll(relocation.captured);
-        restored.addAll(relocation.held);
-        pending.addAll(restored);
+        relocation.held.forEach(entry -> {
+            if (entry.lane == Lane.LIFECYCLE) {
+                lifecyclePending.addLast(entry);
+            } else if (entry.continuation) {
+                continuationPending.addLast(entry);
+            } else {
+                applicationPending.addLast(entry);
+            }
+        });
         relocation = null;
         startNext();
         return true;
@@ -395,7 +640,7 @@ public final class ZLinkAsyncSerialQueue {
             } catch (RuntimeException failure) {
                 entry.result.completeExceptionally(failure);
             } finally {
-                releaseRelocatedCapacity();
+                releaseRelocatedCapacity(entry);
             }
         }
         completeQuiescenceWaitersIfReady();
@@ -409,11 +654,11 @@ public final class ZLinkAsyncSerialQueue {
             && relocation.seal == seal;
     }
 
-    private void releaseRelocatedCapacity() {
-        boolean wasFull = outstanding > pendingCapacity;
-        outstanding--;
-        if (wasFull && outstanding <= pendingCapacity) {
-            HANDLER_EXECUTOR.execute(capacityAvailable);
+    private void releaseRelocatedCapacity(Entry entry) {
+        boolean wasFull = !canReserve(Lane.APPLICATION, fixedWorkByteCost);
+        release(entry);
+        if (wasFull && canReserve(Lane.APPLICATION, fixedWorkByteCost)) {
+            executor.execute(capacityAvailable);
         }
     }
 
@@ -422,7 +667,7 @@ public final class ZLinkAsyncSerialQueue {
         CompletableFuture<Void> result,
         ZLinkFlowContext.State flow) {
         CompletableFuture<Void> gate = new CompletableFuture<>();
-        HANDLER_EXECUTOR.execute(() -> {
+        executor.execute(() -> {
             ZLinkAsyncSerialQueue previous = CURRENT.get();
             CompletableFuture<Void> previousGate = CURRENT_GATE.get();
             Boolean previousDeferred = CURRENT_RELEASE_DEFERRED.get();
@@ -495,7 +740,7 @@ public final class ZLinkAsyncSerialQueue {
         });
         if (!queue.releaseOnIncompleteStage) {
             CompletableFuture<Void> gate = turn.gate;
-            stage.whenComplete((value, error) -> HANDLER_EXECUTOR.execute(() -> {
+            stage.whenComplete((value, error) -> queue.executor.execute(() -> {
                 ZLinkAsyncSerialQueue previous = CURRENT.get();
                 CompletableFuture<Void> previousGate = CURRENT_GATE.get();
                 CURRENT.set(queue);
@@ -533,24 +778,35 @@ public final class ZLinkAsyncSerialQueue {
             return managed;
         }
         queue.suspendContinuation();
-        stage.whenComplete((value, error) -> queue.enqueueContinuation(() -> {
-            updateCarrier(serialContext, currentTurn());
-            try (var serial = systems.zlink.framework.runtime.internal.handlers
-                     .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
-                         serialContext);
-                 var execution = systems.zlink.framework.runtime.internal.handlers
-                     .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
-                 ZLinkFlowContext.Scope ignored = flow == null
-                     ? () -> { }
-                     : ZLinkFlowContext.enter(flow)) {
-                if (error != null) {
-                    managed.completeExceptionally(error);
-                } else {
-                    managed.complete(value);
-                }
+        stage.whenComplete((value, error) -> {
+            try {
+                CompletionStage<Void> continuation = queue.enqueueContinuation(() -> {
+                    updateCarrier(serialContext, currentTurn());
+                    try (var serial = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
+                                 serialContext);
+                         var execution = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
+                         ZLinkFlowContext.Scope ignored = flow == null
+                             ? () -> { }
+                             : ZLinkFlowContext.enter(flow)) {
+                        if (error != null) {
+                            managed.completeExceptionally(error);
+                        } else {
+                            managed.complete(value);
+                        }
+                    }
+                    return CompletableFuture.completedFuture(null);
+                });
+                continuation.whenComplete((ignored, continuationFailure) -> {
+                    if (continuationFailure != null) {
+                        managed.completeExceptionally(continuationFailure);
+                    }
+                });
+            } catch (RuntimeException continuationFailure) {
+                managed.completeExceptionally(continuationFailure);
             }
-            return CompletableFuture.completedFuture(null);
-        }));
+        });
         return managed;
     }
 
@@ -575,24 +831,35 @@ public final class ZLinkAsyncSerialQueue {
         });
         queue.suspendContinuation();
         gate.complete(null);
-        stage.whenComplete((value, error) -> queue.enqueueContinuation(() -> {
-            updateCarrier(serialContext, currentTurn());
-            try (var serial = systems.zlink.framework.runtime.internal.handlers
-                     .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
-                         serialContext);
-                 var execution = systems.zlink.framework.runtime.internal.handlers
-                     .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
-                 ZLinkFlowContext.Scope ignored = flow == null
-                     ? () -> { }
-                     : ZLinkFlowContext.enter(flow)) {
-                if (error != null) {
-                    managed.completeExceptionally(error);
-                } else {
-                    managed.complete(value);
-                }
+        stage.whenComplete((value, error) -> {
+            try {
+                CompletionStage<Void> continuation = queue.enqueueContinuation(() -> {
+                    updateCarrier(serialContext, currentTurn());
+                    try (var serial = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
+                                 serialContext);
+                         var execution = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
+                         ZLinkFlowContext.Scope ignored = flow == null
+                             ? () -> { }
+                             : ZLinkFlowContext.enter(flow)) {
+                        if (error != null) {
+                            managed.completeExceptionally(error);
+                        } else {
+                            managed.complete(value);
+                        }
+                    }
+                    return CompletableFuture.completedFuture(null);
+                });
+                continuation.whenComplete((ignored, continuationFailure) -> {
+                    if (continuationFailure != null) {
+                        managed.completeExceptionally(continuationFailure);
+                    }
+                });
+            } catch (RuntimeException continuationFailure) {
+                managed.completeExceptionally(continuationFailure);
             }
-            return CompletableFuture.completedFuture(null);
-        }));
+        });
         return managed;
     }
 
@@ -614,7 +881,10 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
-        outstanding++;
+        if (!canReserve(Lane.APPLICATION, fixedWorkByteCost)) {
+            return capacityFailure("application continuation queue is full");
+        }
+        reserve(Lane.APPLICATION, fixedWorkByteCost);
         Entry continuation = new Entry(
             nextSequence++,
             null,
@@ -622,43 +892,24 @@ public final class ZLinkAsyncSerialQueue {
             () -> { },
             new CompletableFuture<>(),
             ZLinkFlowContext.current(),
-            null);
+            null,
+            Lane.APPLICATION,
+            fixedWorkByteCost,
+            true);
         if (relocation != null) {
             relocation.held.addLast(continuation);
         } else {
-            insertBeforeRelocationBoundary(continuation);
+            continuationPending.addLast(continuation);
             startNext();
         }
         return continuation.result;
-    }
-
-    private void insertBeforeRelocationBoundary(Entry continuation) {
-        if (pending.stream().noneMatch(
-                entry -> entry.relocationBoundary != null)) {
-            pending.addLast(continuation);
-            return;
-        }
-        ArrayDeque<Entry> reordered = new ArrayDeque<>();
-        boolean inserted = false;
-        while (!pending.isEmpty()) {
-            Entry entry = pending.removeFirst();
-            if (!inserted && entry.relocationBoundary != null) {
-                reordered.addLast(continuation);
-                inserted = true;
-            }
-            reordered.addLast(entry);
-        }
-        if (!inserted) {
-            reordered.addLast(continuation);
-        }
-        pending.addAll(reordered);
     }
 
     private boolean isQuiescent() {
         return outstanding == 0
             && suspendedContinuations == 0
             && active == null
-            && pending.isEmpty()
+            && !hasPending()
             && (relocation == null
                 || (relocation.captured.isEmpty()
                     && relocation.held.isEmpty()));
@@ -765,6 +1016,11 @@ public final class ZLinkAsyncSerialQueue {
         }
     }
 
+    private enum Lane {
+        APPLICATION,
+        LIFECYCLE
+    }
+
     private record SerialTurn(
         ZLinkAsyncSerialQueue queue,
         CompletableFuture<Void> gate) {
@@ -847,6 +1103,9 @@ public final class ZLinkAsyncSerialQueue {
         private final CompletableFuture<Void> result;
         private final ZLinkFlowContext.State flow;
         private final RelocationBoundary relocationBoundary;
+        private final Lane lane;
+        private final long byteCost;
+        private final boolean continuation;
 
         private Entry(
             long sequence,
@@ -855,7 +1114,10 @@ public final class ZLinkAsyncSerialQueue {
             Runnable relocationRelease,
             CompletableFuture<Void> result,
             ZLinkFlowContext.State flow,
-            RelocationBoundary relocationBoundary) {
+            RelocationBoundary relocationBoundary,
+            Lane lane,
+            long byteCost,
+            boolean continuation) {
             this.sequence = sequence;
             this.record = record;
             this.operation = operation;
@@ -863,6 +1125,9 @@ public final class ZLinkAsyncSerialQueue {
             this.result = result;
             this.flow = flow;
             this.relocationBoundary = relocationBoundary;
+            this.lane = lane;
+            this.byteCost = byteCost;
+            this.continuation = continuation;
         }
 
         private QueuedRecord queuedRecord() {

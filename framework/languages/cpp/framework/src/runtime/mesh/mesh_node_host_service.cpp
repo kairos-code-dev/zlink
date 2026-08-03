@@ -1776,16 +1776,53 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 throw framework_exception_t (
                   framework_error_kind_t::not_configured,
                   "Instance Spot factories require a Relocation Store");
+            registration->spot_state->admit_instance_spot_idle_eviction =
+              [source] (const spot_id_t &spot_id,
+                        std::string_view stable_type,
+                        std::uint64_t object_generation,
+                        std::uint64_t authority_owner_generation,
+                        std::function<bool ()> close_local) {
+                  return source->native_node ().evict_instance_spot (
+                    std::string (stable_type), std::string (spot_id),
+                    object_generation, authority_owner_generation,
+                    std::move (close_local));
+              };
             _nodes[index]->configure_instance_spot_operations (
               store, instance_relocations, *_location_owner,
               host::instance_spot_activation_materializer_t{
-                [registration] (
+                [registration, store] (
                   const protocol::instance_spot_activation_header_t &request) {
+                    const auto authority = store
+                      ->read_authority (authority_key_t{
+                        std::to_string (static_cast<int> (
+                          placement_object_kind_t::instance_spot))
+                        + ":" + request.target.spot_id})
+                      .result ().value ();
+                    const auto *snapshot =
+                      std::get_if<authority_snapshot_t> (&authority);
+                    if (!snapshot
+                        || snapshot->allocation.object_kind
+                             != placement_object_kind_t::instance_spot
+                        || snapshot->allocation.stable_type
+                             != request.target.stable_type
+                        || snapshot->allocation.target.mesh_name
+                             != request.target.mesh_name
+                        || snapshot->allocation.target.node_rid.value ()
+                             != zlink::routing_id_t::from (
+                                  request.target.target_node_routing_id)
+                                  .to_string ()
+                        || snapshot->allocation.target
+                             .node_lifecycle_generation
+                             != request.target.target_node_generation)
+                        return false;
                     const auto created = detail::spot_node_runtime_t (
                       registration->spot_state)
                       .get_or_create_spot (
                         request.target.stable_type,
-                        spot_id_t (request.target.spot_id));
+                        spot_id_t (request.target.spot_id),
+                        zlink::message_t{}, snapshot->object_generation,
+                        request.target.mesh_name,
+                        snapshot->authority_owner_generation);
                     return created.state
                            == spot_create_state_t::created
                            || created.state

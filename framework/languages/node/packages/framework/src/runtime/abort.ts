@@ -1,7 +1,18 @@
-export function createAbortError(): Error {
-  const error = new Error('The operation was aborted.');
-  error.name = 'AbortError';
-  return error;
+/** The typed cancellation error produced by Framework admission helpers. */
+export class ZLinkAbortError extends Error {
+  constructor(message = 'The operation was aborted.') {
+    super(message);
+    this.name = 'AbortError';
+  }
+}
+
+export function createAbortError(): ZLinkAbortError {
+  return new ZLinkAbortError();
+}
+
+export function isAbortError(error: unknown): boolean {
+  return error instanceof ZLinkAbortError
+    || (error instanceof DOMException && error.name === 'AbortError');
 }
 
 export function throwIfAborted(signal: AbortSignal | undefined): void {

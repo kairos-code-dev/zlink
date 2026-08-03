@@ -388,12 +388,30 @@ internal sealed class MeshReceiveBatch : IDisposable
 {
     private readonly List<(MeshReceiveRecord Record, IReadOnlyList<Message> Parts)> _entries = new();
     internal int MaximumRecords { get; set; } = int.MaxValue;
+    internal long MaximumBytes { get; set; } = long.MaxValue;
+    internal long StartedAt { get; set; }
+    internal long Bytes { get; private set; }
     public int Count => _entries.Count;
     public MeshReceiveRecord this[int index] => _entries[index].Record;
     public IReadOnlyList<Message> RetainMessage(int index) =>
         _entries[index].Parts.Select(Message.From).ToArray();
-    internal void Add(MeshReceiveRecord record, IReadOnlyList<Message> parts) =>
+    internal bool CanAdd(long bytes)
+    {
+        if (Count == 0) return true;
+        if (Count >= MaximumRecords || Bytes >= MaximumBytes) return false;
+        if (StartedAt != 0
+            && (System.Diagnostics.Stopwatch.GetTimestamp() - StartedAt)
+                * 1000L / System.Diagnostics.Stopwatch.Frequency
+                >= Zlink.Framework.Runtime.Dispatch.ZLinkReceiveBatchBudget.MaximumMilliseconds)
+            return false;
+        return bytes <= MaximumBytes - Math.Min(Bytes, MaximumBytes);
+    }
+
+    internal void Add(MeshReceiveRecord record, IReadOnlyList<Message> parts)
+    {
         _entries.Add((record, parts));
+        Bytes = checked(Bytes + parts.Sum(static part => Math.Max(part.Size, 0)));
+    }
     public void Reset()
     {
         foreach (var (record, parts) in _entries)
@@ -403,6 +421,7 @@ internal sealed class MeshReceiveBatch : IDisposable
             record.InboundDispatchLease?.Dispose();
         }
         _entries.Clear();
+        Bytes = 0;
     }
 
     internal ZLinkInboundDispatchLease? TakeInboundDispatchLease(int index)

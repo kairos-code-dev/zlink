@@ -92,6 +92,23 @@ internal sealed partial class ZLinkEntrySpotActivation
             .ConfigureAwait(false);
     }
 
+    private async ValueTask ExecuteLifecycleAsync(
+        Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        if (ReferenceEquals(Current.Value, this))
+        {
+            using var _ = ZLinkSpotAmbientContext.Push(this);
+            await operation(this, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await _serial.RunLifecycleAsync(
+                ct => RunOnLineAsync(operation, ct),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async ValueTask ExecuteActorPacketAsync<TState>(
         Func<ZLinkEntrySpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,
@@ -158,9 +175,7 @@ internal sealed partial class ZLinkEntrySpotActivation
 
     public async ValueTask DispatchRouteDrainAsync(CancellationToken cancellationToken)
     {
-        await ExecuteAsync(
-            static (activation, ct) => activation._dispatcher.DispatchRouteDrainAsync(ct),
-            cancellationToken).ConfigureAwait(false);
+        await DispatchRouteDrainTurnAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DispatchRouteAsync(
@@ -175,9 +190,49 @@ internal sealed partial class ZLinkEntrySpotActivation
 
     public async ValueTask DispatchActorJoinDrainAsync(CancellationToken cancellationToken)
     {
-        await ExecuteAsync(
-            static (activation, ct) => activation._dispatcher.DispatchActorJoinDrainAsync(ct),
-            cancellationToken).ConfigureAwait(false);
+        await DispatchActorJoinDrainTurnAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask DispatchRouteDrainTurnAsync(
+        CancellationToken cancellationToken)
+    {
+        var hasMore = false;
+        await ExecuteLifecycleAsync(
+                async (activation, ct) => hasMore =
+                    await activation._dispatcher.DispatchRouteDrainAsync(ct)
+                        .ConfigureAwait(false),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (hasMore && !cancellationToken.IsCancellationRequested)
+            QueueRouteDrainTurn();
+    }
+
+    private async ValueTask DispatchActorJoinDrainTurnAsync(
+        CancellationToken cancellationToken)
+    {
+        var hasMore = false;
+        await ExecuteLifecycleAsync(
+                async (activation, ct) => hasMore =
+                    await activation._dispatcher.DispatchActorJoinDrainAsync(ct)
+                        .ConfigureAwait(false),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (hasMore && !cancellationToken.IsCancellationRequested)
+            QueueActorJoinDrainTurn();
+    }
+
+    private void QueueRouteDrainTurn()
+    {
+        _serial.TryPostNext(
+            ct => DispatchRouteDrainTurnAsync(ct),
+            out _);
+    }
+
+    private void QueueActorJoinDrainTurn()
+    {
+        _serial.TryPostNext(
+            ct => DispatchActorJoinDrainTurnAsync(ct),
+            out _);
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

@@ -409,8 +409,8 @@ public sealed class ClientServerChannelRuntimeTests
             Assert.True(await events.MoveNextAsync());
             Assert.Equal(
                 ZLinkPeerState.Draining,
-                Assert.Single(events.Current.Targets).State);
-            Assert.False(events.Current.IsReady);
+                Assert.Single(events.Current.Status.Targets).State);
+            Assert.False(events.Current.Status.IsReady);
             Assert.False(monitoring.GetStatus("work").IsReady);
         }
         finally

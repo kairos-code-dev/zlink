@@ -112,7 +112,7 @@ public final class PlayActor implements ZLinkActor {
         var failed = (ZLinkActorJoinCompletion.Failed) completion;
         return context.boundSession()
             .send(new JoinGameFailedNotify(
-                roomId, failed.kind().name(), failed.isRetriable()))
+                roomId, failed.kind().name(), false))
             .submit();
     }
 

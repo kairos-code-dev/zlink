@@ -79,6 +79,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private int actorCapacity;
     private int spotCapacity;
     private int activationConcurrency = 128;
+    private Duration instanceSpotIdleTimeout = Duration.ZERO;
     private Duration defaultRequestTimeout;
 
     public MeshNodeRegistration(String meshName) {
@@ -124,6 +125,10 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
     public int activationConcurrency() {
         return activationConcurrency;
+    }
+
+    public Duration instanceSpotIdleTimeout() {
+        return instanceSpotIdleTimeout;
     }
 
     public String routingIdPrefix() {
@@ -369,6 +374,16 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                 "Activation concurrency must be positive.");
         }
         activationConcurrency = maxConcurrentActivations;
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setInstanceSpotIdleTimeout(Duration timeout) {
+        if (timeout == null || timeout.isNegative()) {
+            throw new ZLinkConfigurationException(
+                "Instance Spot idle timeout must be zero or positive.");
+        }
+        instanceSpotIdleTimeout = timeout;
         return this;
     }
 

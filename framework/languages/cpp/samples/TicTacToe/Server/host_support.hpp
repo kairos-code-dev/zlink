@@ -62,7 +62,8 @@ class play_route_readiness_service_t final : public hosted_service_t
         _observation = runtime.observe (
           _mesh_name, 64,
           [state, node_name = _node_name, expected_peer = _expected_peer] (
-            const mesh_node_snapshot_t &snapshot) {
+            const observed_status_t<mesh_node_snapshot_t> &observed) {
+              const auto &snapshot = observed.status;
               const auto peer_ready = std::any_of (
                 snapshot.peers.begin (), snapshot.peers.end (),
                 [&expected_peer] (const mesh_peer_snapshot_t &peer) {

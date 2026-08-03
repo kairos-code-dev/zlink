@@ -11,7 +11,7 @@ import (
 
 type routedRecvSocket interface {
 	zlink.SocketTarget
-	RecvPart(*zlink.Message, zlink.RecvFlags) (zlink.RecvPartResult, bool, error)
+	Recv(*zlink.Received, zlink.RecvFlags) (bool, error)
 }
 
 func runSingleRoutedOneWay(
@@ -64,13 +64,12 @@ func runSingleRoutedOneWayWithTransient(
 		senderDone <- nil
 	}()
 
-	part, err := zlink.NewMessageWithSize(0)
-	perfcommon.Must(err)
-	defer part.Close()
+	var received zlink.Received
+	defer received.Close()
 
 	recvErr := error(nil)
 	for {
-		stop, err := recvSingleRoutedOneWayOnce(receiver, part, stats, cfg.msgSize)
+		stop, err := recvSingleRoutedOneWayOnce(receiver, &received, stats, cfg.msgSize)
 		if err != nil {
 			recvErr = err
 			break
@@ -91,11 +90,11 @@ func runSingleRoutedOneWayWithTransient(
 
 func recvSingleRoutedOneWayOnce(
 	receiver routedRecvSocket,
-	part *zlink.Message,
+	received *zlink.Received,
 	stats *perfcommon.Stats,
 	msgSize int,
 ) (bool, error) {
-	result, ok, err := receiver.RecvPart(part, zlink.RecvFlagsNone)
+	ok, err := receiver.Recv(received, zlink.RecvFlagsNone)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false, nil
@@ -105,10 +104,12 @@ func recvSingleRoutedOneWayOnce(
 	if !ok {
 		return false, nil
 	}
-	if result.RoutingID.Size() == 0 ||
-		result.HasRequestSeq ||
-		result.More {
+	if received.RoutingID().Size() == 0 || received.HasRequestSeq() || len(received.Parts()) != 1 {
 		return false, fmt.Errorf("unexpected routed receive metadata")
+	}
+	part, partErr := received.SinglePartOrError()
+	if partErr != nil {
+		return false, partErr
 	}
 	if perfcommon.IsStopTokenMessage(part) {
 		return true, nil

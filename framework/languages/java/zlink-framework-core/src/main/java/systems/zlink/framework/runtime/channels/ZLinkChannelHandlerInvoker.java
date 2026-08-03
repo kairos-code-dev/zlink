@@ -678,7 +678,7 @@ final class ZLinkChannelHandlerInvoker {
                 if (!result.handlerInvoked()) {
                     return CompletableFuture.failedFuture(
                         new ZLinkFrameworkException(
-                            ZLinkFrameworkErrorKind.REQUEST_REJECTED,
+                            ZLinkFrameworkErrorKind.REJECTED,
                             "A handler filter rejected '"
                                 + context.packetName()
                                 + "'."));

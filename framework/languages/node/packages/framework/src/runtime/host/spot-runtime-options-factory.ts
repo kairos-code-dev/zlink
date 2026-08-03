@@ -140,6 +140,11 @@ export class ZLinkSpotRuntimeOptionsFactory {
         this.options.spotNodeRuntime()
           ?.meshNode(meshName)
           ?.instanceSpotApplicationTarget?.(String(spotId)),
+      instanceSpotApplicationQuiescenceProvider: (meshName, spotId, signal) =>
+        this.options.spotNodeRuntime()
+          ?.meshNode(meshName)
+          ?.waitForInstanceApplicationQuiescence?.(String(spotId), signal)
+        ?? Promise.resolve(),
       createNativeSpot: (meshName, spotId, authority) => {
         const node = this.options.spotNodeRuntime()?.meshNode(meshName);
         if (node === undefined) {

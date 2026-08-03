@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.channels;
 import systems.zlink.framework.spots.SpotHandles;
 
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -156,7 +157,7 @@ final class ZLinkChannelRuntimeTest {
                     .get(1, TimeUnit.SECONDS));
 
             assertEquals(
-                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                ZLinkFrameworkErrorKind.NOT_FOUND,
                 ((ZLinkFrameworkException) error.getCause()).kind());
             assertEquals(0, backend.spotNode.requestAttempts);
         }
@@ -1163,7 +1164,7 @@ final class ZLinkChannelRuntimeTest {
             // 05-framework-api.ko.md 짠13: an empty selectable-target snapshot on a registered
             // send route is RequestTargetNotFound, not RouteNotConnected.
             assertEquals(
-                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND, failure.kind());
+                ZLinkFrameworkErrorKind.NOT_FOUND, failure.kind());
             return false;
         }
     }

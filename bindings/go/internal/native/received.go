@@ -36,24 +36,24 @@ func (r *Received) Parts() []*Message {
 	return r.parts
 }
 
-// AdoptFrom replaces r's internal state with the contents of source.
-// Any messages currently owned by r are closed first; source is left in
-// an empty (already-detached) state after the call. Used by Socket.RecvInto
-// and equivalents to refill caller-provided Received storage without
-// allocating a new value per call.
-func (r *Received) AdoptFrom(source *Received) {
-	if r == nil || source == nil || r == source {
-		return
+func (r *Received) beginReceive() []*Message {
+	if r == nil {
+		return nil
 	}
-	r.replace(source.routingID, source.parts, source.requestSeq, source.hasRequestSeq, source.reply, source.send, source.sendBuilder)
-	// Detach source so its lifecycle no-ops.
-	source.routingID = RoutingID{}
-	source.parts = nil
-	source.requestSeq = 0
-	source.hasRequestSeq = false
-	source.reply = nil
-	source.send = nil
-	source.sendBuilder = nil
+	previous := r.parts
+	for _, part := range previous {
+		if part != nil {
+			_ = part.Close()
+		}
+	}
+	r.routingID = RoutingID{}
+	r.parts = nil
+	r.requestSeq = 0
+	r.hasRequestSeq = false
+	r.reply = nil
+	r.send = nil
+	r.sendBuilder = nil
+	return previous
 }
 
 func (r *Received) replace(
@@ -65,11 +65,6 @@ func (r *Received) replace(
 	send func(SendFlags, []*Message) (bool, error),
 	sendBuilder func(SendFlags, []sendBuilderPart) (bool, error),
 ) {
-	for _, part := range r.parts {
-		if part != nil {
-			part.Close()
-		}
-	}
 	r.routingID = routingID
 	r.parts = parts
 	r.requestSeq = requestSeq
@@ -182,5 +177,12 @@ func (r *Received) Close() error {
 			first = err
 		}
 	}
+	r.routingID = RoutingID{}
+	r.parts = nil
+	r.requestSeq = 0
+	r.hasRequestSeq = false
+	r.reply = nil
+	r.send = nil
+	r.sendBuilder = nil
 	return first
 }

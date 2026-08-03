@@ -60,8 +60,9 @@ void verify_client_server_runtime_projection_and_observation ()
     std::atomic_int event_count{0};
     auto observation = runtime.observe (
       "client-server-runtime-unit", 8,
-      [&event_count] (const zlink::framework::client_server_runtime_event_t &event) {
-          assert (event.channel_name == "client-server-runtime-unit");
+      [&event_count] (const zlink::framework::observed_status_t<
+                        zlink::framework::client_server_runtime_event_t> &observed) {
+          assert (observed.status.channel_name == "client-server-runtime-unit");
           event_count.fetch_add (1, std::memory_order_relaxed);
       });
     const auto initial_events = event_count.load (std::memory_order_relaxed);

@@ -12,6 +12,15 @@ func receivedReplyToRouter(
 	}
 }
 
+func receivedReplyToDealer(
+	reply func(uint64, SendFlags, ...*Message) error,
+	requestSeq uint64,
+) func(SendFlags, []*Message) error {
+	return func(flags SendFlags, parts []*Message) error {
+		return reply(requestSeq, flags, parts...)
+	}
+}
+
 func receivedSendToRouter(
 	send func(RoutingID, SendFlags, ...*Message) (bool, error),
 	routingID RoutingID,

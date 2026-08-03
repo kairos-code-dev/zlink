@@ -54,7 +54,6 @@ from ..messaging.request_reply import (
     _clone_payload,
     _ensure_reply_flags_supported,
     _message_list_from_parts,
-    _prepare_native_parts,
     _timeout_to_ms,
 )
 from .socket_base import (
@@ -74,6 +73,7 @@ from .socket_base import (
     _SubscriberOptionSocket,
     _SubscriberSocket,
     _close_native_parts,
+    _clone_received_owner,
     _in_callback,
     _native_extension,
     _part_flag,
@@ -102,7 +102,11 @@ _native_publisher_send_op_func = (
 def _native_socket_send_op(socket):
     if _native_socket_send_op_func is None or _in_callback():
         return None
-    return _native_socket_send_op_func(int(socket._socket_handle.handle))
+    handle = int(socket._socket_handle.handle)
+    return _NativeBuilderSendOp(
+        lambda: _native_socket_send_op_func(handle),
+        lambda: _SocketSendOp(socket),
+    )
 
 
 def _native_routed_send_op(socket, routing_id):
@@ -112,16 +116,21 @@ def _native_routed_send_op(socket, routing_id):
         routing_id_bytes = routing_id
     else:
         routing_id_bytes = _validated_routing_id_bytes(routing_id)
-    return _native_routed_send_op_func(
-        int(socket._socket_handle.handle),
-        routing_id_bytes,
+    handle = int(socket._socket_handle.handle)
+    return _NativeBuilderSendOp(
+        lambda: _native_routed_send_op_func(handle, routing_id_bytes),
+        lambda: _RoutedSocketSendOp(socket, routing_id_bytes),
     )
 
 
 def _native_publisher_send_op(socket, topic):
     if _native_publisher_send_op_func is None or _in_callback():
         return None
-    return _native_publisher_send_op_func(int(socket._socket_handle.handle), topic)
+    handle = int(socket._socket_handle.handle)
+    return _NativeBuilderSendOp(
+        lambda: _native_publisher_send_op_func(handle, topic),
+        lambda: _PublisherSendOp(socket, topic),
+    )
 
 
 class _SocketSendOp:
@@ -274,6 +283,100 @@ class _PublisherSendOp(_SocketSendOp):
             raise
 
 
+class _NativeBuilderSendOp:
+    """Delay native builder selection until payload types are known.
+
+    The C builder is the fast path for buffer-protocol parts. A public
+    ``Message`` is a native-owned value rather than a Python buffer, so it is
+    submitted through the shared Python materializer instead of leaking that
+    implementation distinction as a ``TypeError``.
+    """
+
+    __slots__ = (
+        "_native_factory",
+        "_fallback_factory",
+        "_payload",
+        "_parts",
+        "_flags",
+        "_submitted",
+    )
+
+    def __init__(self, native_factory, fallback_factory):
+        self._native_factory = native_factory
+        self._fallback_factory = fallback_factory
+        self._payload = _NO_PAYLOAD
+        self._parts = None
+        self._flags = 0
+        self._submitted = False
+
+    def message(self, payload):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if self._parts is not None:
+            self._parts.append(payload)
+        elif self._payload is _NO_PAYLOAD:
+            self._payload = payload
+        else:
+            self._parts = [self._payload, payload]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def messages(self, *payloads):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        if not payloads:
+            return self
+        if self._parts is not None:
+            self._parts.extend(payloads)
+        elif self._payload is _NO_PAYLOAD:
+            if len(payloads) == 1:
+                self._payload = payloads[0]
+            else:
+                self._parts = list(payloads)
+        else:
+            self._parts = [self._payload, *payloads]
+            self._payload = _NO_PAYLOAD
+        return self
+
+    def flags(self, flags):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        self._flags = int(flags)
+        return self
+
+    def _payload_or_raise(self):
+        if self._parts is not None:
+            if not self._parts:
+                raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+            return self._parts
+        if self._payload is _NO_PAYLOAD:
+            raise SubmitError(SubmitResult.INVALID_ARGUMENT, 0)
+        return self._payload
+
+    def submit(self):
+        if self._submitted:
+            raise SubmitError(SubmitResult.INVALID_STATE, 0)
+        payload = self._payload_or_raise()
+        self._submitted = True
+        parts = self._parts if self._parts is not None else (self._payload,)
+        if any(isinstance(part, Message) for part in parts):
+            fallback = self._fallback_factory()
+            if self._parts is not None:
+                fallback.messages(*self._parts)
+            else:
+                fallback.message(self._payload)
+            fallback.flags(self._flags)
+            return fallback.submit()
+
+        native = self._native_factory()
+        if self._parts is not None:
+            native.messages(*self._parts)
+        else:
+            native.message(self._payload)
+        native.flags(self._flags)
+        return native.submit()
+
+
 class _RequestOp:
     """Own the fluent state for one raw request submission."""
 
@@ -416,6 +519,57 @@ class _ReplyOp:
         return self._op_callback(self._parts, self._flags)
 
 
+class _RequestSocket:
+    """Aggregate request completion ownership for DEALER and ROUTER."""
+
+    def _init_request_socket(self):
+        self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
+        self._pending_requests = {}
+        self._request_progress = _RequestProgressPump(
+            lambda: self._handle,
+            lambda: bool(self._pending_requests),
+        )
+
+    def _on_request_reply(self, result_code, parts, part_count, userdata):
+        handle = ctypes.cast(userdata, ctypes.c_void_p).value
+        pending = self._pending_requests.pop(handle, None)
+        if pending is None:
+            return
+        result = _request_result_from_code(int(result_code))
+        reply = []
+        if result == RequestResult.OK:
+            reply = _message_list_from_parts(parts, part_count)
+        pending.resolve(result, reply, _request_result_native_errno(result))
+
+    def _cancel_pending_requests(self, result):
+        for handle, pending in list(self._pending_requests.items()):
+            self._pending_requests.pop(handle, None)
+            if pending.callback is not None:
+                try:
+                    pending.callback(result, [])
+                except Exception:
+                    _report_unhandled_callback_exception(pending.callback)
+
+    def close(self):
+        progress = getattr(self, "_request_progress", None)
+        if progress is not None:
+            progress.stop()
+        try:
+            super().close()
+        except Exception:
+            # A retryable Core close must leave the request aggregate usable.
+            # Restart progress only while the native handle and pending work
+            # still exist; a successful close drains/cancels them below.
+            if (
+                progress is not None
+                and self._handle
+                and self._pending_requests
+            ):
+                progress.ensure_running()
+            raise
+        self._cancel_pending_requests(RequestResult.TERMINATED)
+
+
 class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
     _socket_type_value = SocketType.PAIR
 
@@ -424,6 +578,7 @@ class PairSocket(_SendReadySocket, _EndpointSocket, _MessageSocket):
 
 
 class DealerSocket(
+    _RequestSocket,
     _SendReadySocket,
     _EndpointSocket,
     _DealerOptionSocket,
@@ -434,12 +589,7 @@ class DealerSocket(
 
     def __init__(self, context):
         super().__init__(context)
-        self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
-        self._pending_requests = {}
-        self._request_progress = _RequestProgressPump(
-            lambda: self._handle,
-            lambda: bool(self._pending_requests),
-        )
+        self._init_request_socket()
 
     def send(self):
         return _native_socket_send_op(self) or _SocketSendOp(self)
@@ -450,10 +600,6 @@ class DealerSocket(
                 parts, callback, flags=flags, timeout=timeout
             )
         )
-
-    def close(self):
-        super().close()
-        self._cancel_pending_requests(RequestResult.TERMINATED)
 
     def _request_callback(self, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -490,17 +636,6 @@ class DealerSocket(
             self._pending_requests.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
-    def _on_request_reply(self, result_code, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._pending_requests.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_code(int(result_code))
-        reply = []
-        if result == RequestResult.OK:
-            reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_native_errno(result))
-
     def _cancel_pending_requests(self, result):
         for handle, pending in list(self._pending_requests.items()):
             self._pending_requests.pop(handle, None)
@@ -512,6 +647,7 @@ class DealerSocket(
 
 
 class RouterSocket(
+    _RequestSocket,
     _SendReadySocket,
     _EndpointSocket,
     _RouterOptionSocket,
@@ -522,12 +658,7 @@ class RouterSocket(
 
     def __init__(self, context):
         super().__init__(context)
-        self._request_reply_handler = _REPLY_HANDLER(self._on_request_reply)
-        self._pending_requests = {}
-        self._request_progress = _RequestProgressPump(
-            lambda: self._handle,
-            lambda: bool(self._pending_requests),
-        )
+        self._init_request_socket()
 
     @property
     def router_options(self):
@@ -636,17 +767,6 @@ class RouterSocket(
         )
         return True
 
-    def _on_request_reply(self, result_code, parts, part_count, userdata):
-        handle = ctypes.cast(userdata, ctypes.c_void_p).value
-        pending = self._pending_requests.pop(handle, None)
-        if pending is None:
-            return
-        result = _request_result_from_code(int(result_code))
-        reply = []
-        if result == RequestResult.OK:
-            reply = _message_list_from_parts(parts, part_count)
-        pending.resolve(result, reply, _request_result_native_errno(result))
-
     def _request_callback(self, routing_id, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
         handle = id(pending)
@@ -683,19 +803,6 @@ class RouterSocket(
         if rc != 0:
             self._pending_requests.pop(handle, None)
             _raise_result_error(SubmitError, SubmitResult, rc, err)
-
-    def close(self):
-        super().close()
-        self._cancel_pending_requests(RequestResult.TERMINATED)
-
-    def _cancel_pending_requests(self, result):
-        for handle, pending in list(self._pending_requests.items()):
-            self._pending_requests.pop(handle, None)
-            if pending.callback is not None:
-                try:
-                    pending.callback(result, [])
-                except Exception:
-                    _report_unhandled_callback_exception(pending.callback)
 
 class StreamSocket(
     _SendReadySocket,
@@ -745,12 +852,12 @@ class StreamSocket(
                 routing_id = None
                 if source_rid_ptr:
                     routing_id = _routing_id_bytes(source_rid_ptr.contents)
-                header_owner = _BytesReceivedPartsOwner._from_trusted_bytes_tuple(
-                    (_msg_to_bytes(header_ptr.contents),)
-                )
-                body_owner = _BytesReceivedPartsOwner._from_trusted_bytes_tuple(
-                    (_msg_to_bytes(body_ptr.contents),)
-                )
+                header_owner = _clone_received_owner(header_ptr, 1)
+                try:
+                    body_owner = _clone_received_owner(body_ptr, 1)
+                except Exception:
+                    header_owner.close()
+                    raise
                 header = ReceivedMessage._from_owner(header_owner, 0)
                 body = ReceivedMessage._from_owner(body_owner, 0)
             except Exception:
@@ -759,7 +866,9 @@ class StreamSocket(
             task = lambda routing_id=routing_id, header=header, body=body: _invoke(
                 routing_id, header, body
             )
-            dispatcher.submit(task)
+            if not dispatcher.submit(task):
+                header.close()
+                body.close()
 
         callback = _STREAM_PACKET_HANDLER(_callback)
         rc = lib().zlink_stream_packet_handler(self._handle, callback, None)

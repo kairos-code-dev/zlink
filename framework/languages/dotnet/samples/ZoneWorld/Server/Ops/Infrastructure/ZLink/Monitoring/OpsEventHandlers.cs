@@ -29,7 +29,7 @@ internal sealed class SocketEventHandler(
                            .ObserveAsync(ZoneWorldNames.MeshName, stoppingToken)
                            .ConfigureAwait(false))
         {
-            var current = status.Peers
+            var current = status.Status.Peers
                 .Where(static peer => peer.State == ZLinkPeerState.Ready)
                 .Select(static peer => peer.NodeRid.ToString())
                 .ToHashSet(StringComparer.Ordinal);

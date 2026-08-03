@@ -75,13 +75,15 @@ public sealed class WeightContractTests
             static candidate => candidate.Name,
             static _ => 0,
             StringComparer.Ordinal);
-        long cursor = 0;
+        var currents = new Dictionary<string, long>(StringComparer.Ordinal);
         for (var index = 0; index < 400; index++)
         {
             var selected = ZLinkWeightedSelector.Select(
                 candidates,
                 static candidate => candidate.Weight,
-                ref cursor);
+                static candidate => candidate.Name,
+                currents,
+                StringComparer.Ordinal);
             counts[selected!.Name]++;
         }
 
@@ -97,17 +99,39 @@ public sealed class WeightContractTests
             new("existing", 100),
             new("new", 100)
         ];
-        long cursor = 10;
+        var currents = new Dictionary<string, long>(StringComparer.Ordinal);
 
         var selected = Enumerable.Range(0, 4)
             .Select(_ => ZLinkWeightedSelector.Select(
                 candidates,
                 static candidate => candidate.Weight,
-                ref cursor)!.Name)
+                static candidate => candidate.Name,
+                currents,
+                StringComparer.Ordinal)!.Name)
             .ToArray();
 
         Assert.Contains("existing", selected);
         Assert.Contains("new", selected);
+    }
+
+    [Fact]
+    public void EqualCurrentValuesUseStableIdentifierAsTheTieBreak()
+    {
+        WeightedCandidate[] candidates =
+        [
+            new("z", 100),
+            new("a", 100)
+        ];
+        var currents = new Dictionary<string, long>(StringComparer.Ordinal);
+
+        var selected = ZLinkWeightedSelector.Select(
+            candidates,
+            static candidate => candidate.Weight,
+            static candidate => candidate.Name,
+            currents,
+            StringComparer.Ordinal);
+
+        Assert.Equal("a", selected!.Name);
     }
 
     [Fact]
@@ -122,14 +146,16 @@ public sealed class WeightContractTests
             static candidate => candidate.Name,
             static _ => 0,
             StringComparer.Ordinal);
-        long cursor = 0;
+        var currents = new Dictionary<string, long>(StringComparer.Ordinal);
 
         for (var index = 0; index < 20; index++)
         {
             var selected = ZLinkWeightedSelector.Select(
                 candidates,
                 static candidate => candidate.Weight,
-                ref cursor);
+                static candidate => candidate.Name,
+                currents,
+                StringComparer.Ordinal);
             counts[selected!.Name]++;
         }
 

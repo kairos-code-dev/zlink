@@ -48,7 +48,7 @@ public final class TlsSupport {
                 null);
             return context;
         } catch (Exception cause) {
-            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, "HTTP client TLS configuration failed", cause);
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, "HTTP client TLS configuration failed", cause);
         }
     }
 
@@ -72,7 +72,7 @@ public final class TlsSupport {
                 return x509;
             }
         }
-        throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_PROTOCOL_ERROR, "No X509 trust manager available");
+        throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, "No X509 trust manager available");
     }
 
     /** Trusts a certificate if either the JVM default store or the custom certificate accepts it. */

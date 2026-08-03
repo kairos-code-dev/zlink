@@ -6,9 +6,11 @@ import {
   ZLinkTopologyState,
   ZLinkTopologyReason,
   ZLinkPeerState,
+  type ZLinkObservedStatus,
   type ZLinkRouteMeshStatus,
   type ZLinkRouteMeshRuntime
 } from '../../contracts';
+import { RuntimeEventQueue } from '../diagnostics/topology-runtime-projections';
 
 type ZLinkDrainForceReason =
   | 'deadline_exceeded'
@@ -53,7 +55,7 @@ interface ZLinkMeshDrainState {
   operation?: Promise<ZLinkMeshDrainResult>;
   result?: ZLinkMeshDrainResult;
   readonly waiters: Array<(result: ZLinkMeshDrainResult) => void>;
-  readonly observers: Set<ZLinkMeshStatusQueue>;
+  readonly observers: Set<RuntimeEventQueue<ZLinkRouteMeshStatus>>;
   lastSnapshot?: ZLinkRouteMeshStatus;
 }
 
@@ -175,11 +177,16 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     return snapshot;
   }
 
-  observe(meshName: string, capacity = 64, signal?: AbortSignal): AsyncIterable<ZLinkRouteMeshStatus> {
+  observe(
+    meshName: string,
+    capacity = 64,
+    signal?: AbortSignal
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> {
     const state = this.requireState(meshName);
     if (!Number.isInteger(capacity) || capacity <= 0) throw new RangeError('Observer capacity must be positive.');
     if (state.observers.size === 0) this.seedPlacementFingerprint(meshName);
-    const queue = new ZLinkMeshStatusQueue(capacity, signal, () => {
+    const queue = new RuntimeEventQueue<ZLinkRouteMeshStatus>(capacity, signal);
+    queue.onClose(() => {
       state.observers.delete(queue);
       this.stopPlacementObserverIfIdle();
     });
@@ -630,112 +637,6 @@ export class ZLinkRetiringRollbackError extends Error {
   constructor() {
     super('Retiring descriptor publication could not be rolled back to Serving.');
     this.name = 'ZLinkRetiringRollbackError';
-  }
-}
-
-class ZLinkMeshStatusQueue implements AsyncIterable<ZLinkRouteMeshStatus>, AsyncIterator<ZLinkRouteMeshStatus> {
-  private readonly values: Array<ZLinkRouteMeshStatus | undefined> = [];
-  private valuesHead = 0;
-  private valuesCount = 0;
-  private readonly waiters: Array<((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined> = [];
-  private waitersHead = 0;
-  private waitersCount = 0;
-  private closed = false;
-
-  constructor(
-    private readonly capacity: number,
-    signal: AbortSignal | undefined,
-    private readonly remove: () => void
-  ) {
-    signal?.addEventListener('abort', () => this.close(), { once: true });
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<ZLinkRouteMeshStatus> { return this; }
-
-  next(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
-    const value = this.takeValue();
-    if (value !== undefined) return Promise.resolve({ done: false, value });
-    if (this.closed) return Promise.resolve({ done: true, value: undefined });
-    return new Promise((resolve) => {
-      this.waiters.push(resolve);
-      this.waitersCount += 1;
-    });
-  }
-
-  return(): Promise<IteratorResult<ZLinkRouteMeshStatus>> {
-    this.close();
-    return Promise.resolve({ done: true, value: undefined });
-  }
-
-  push(value: ZLinkRouteMeshStatus): void {
-    if (this.closed) return;
-    const waiter = this.takeWaiter();
-    if (waiter !== undefined) {
-      waiter({ done: false, value });
-      return;
-    }
-    if (this.valuesCount === this.capacity) this.takeValue();
-    this.values.push(value);
-    this.valuesCount += 1;
-  }
-
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.remove();
-    let waiter: ((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined;
-    while ((waiter = this.takeWaiter()) !== undefined) {
-      waiter({ done: true, value: undefined });
-    }
-  }
-
-  seal(value: ZLinkRouteMeshStatus): void {
-    if (this.closed) return;
-    this.clearValues();
-    const waiter = this.takeWaiter();
-    if (waiter !== undefined) waiter({ done: false, value });
-    else {
-      this.values.push(value);
-      this.valuesCount = 1;
-    }
-    this.close();
-  }
-
-  private takeValue(): ZLinkRouteMeshStatus | undefined {
-    if (this.valuesCount === 0) return undefined;
-    const value = this.values[this.valuesHead];
-    this.values[this.valuesHead] = undefined;
-    this.valuesHead += 1;
-    this.valuesCount -= 1;
-    if (this.valuesCount === 0) {
-      this.clearValues();
-    } else if (this.valuesHead >= 1024 && this.valuesHead * 2 >= this.values.length) {
-      this.values.splice(0, this.valuesHead);
-      this.valuesHead = 0;
-    }
-    return value;
-  }
-
-  private takeWaiter(): ((result: IteratorResult<ZLinkRouteMeshStatus>) => void) | undefined {
-    if (this.waitersCount === 0) return undefined;
-    const waiter = this.waiters[this.waitersHead];
-    this.waiters[this.waitersHead] = undefined;
-    this.waitersHead += 1;
-    this.waitersCount -= 1;
-    if (this.waitersCount === 0) {
-      this.waiters.length = 0;
-      this.waitersHead = 0;
-    } else if (this.waitersHead >= 1024 && this.waitersHead * 2 >= this.waiters.length) {
-      this.waiters.splice(0, this.waitersHead);
-      this.waitersHead = 0;
-    }
-    return waiter;
-  }
-
-  private clearValues(): void {
-    this.values.length = 0;
-    this.valuesHead = 0;
-    this.valuesCount = 0;
   }
 }
 

@@ -22,12 +22,15 @@ class VerifyExpectedVersionFenceHandler
     @Inject(SHOPPINGMALL_ROLE) private readonly role: string
   ) {}
 
-  handle(
+  async handle(
     spot: OrderWorkflowSpot,
     request: VerifyExpectedVersionFenceReq
   ): Promise<VerifyExpectedVersionFenceRes> {
-    void spot;
-    return Promise.resolve(this.workflow.verifyExpectedVersionFence(request, this.role));
+    const result = this.workflow.verifyExpectedVersionFence(request, this.role);
+    // Each probe is a separate workflow instance so the next probe can be
+    // placed on another process and exercise the event-store version fence.
+    await spot.context.close();
+    return result;
   }
 }
 

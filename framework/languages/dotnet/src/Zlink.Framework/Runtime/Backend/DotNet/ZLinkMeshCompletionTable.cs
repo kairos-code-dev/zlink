@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet;
@@ -6,51 +5,98 @@ namespace Zlink.Framework.Runtime.Backend.DotNet;
 // RouteMesh 10.0.0 request/reply bridge.
 //
 // 9.x request operations took a callback and the binding drove it when the reply
-// arrived. 10.0.0 requests are pull dispatch: RequestTo*/Join*/Destroy* return a
-// SubmitResult plus an out MeshOperationId, and the reply/terminal outcome is
+// arrived. 10.0.0 requests are pull dispatch: RequestTo*/Join*/Destroy* return
+// a SubmitResult plus an out MeshOperationId, and the reply/terminal outcome is
 // delivered later as a Completion receive record. This table holds a pending
-// record-aware completion handler keyed by MeshOperationId; the node dispatch pump
-// resolves the entry when the matching Completion record drains. Handlers close
-// over the framework callback shape they need (RequestCallback, ActorJoinCallback,
-// ActorJoinEntrySpotCallback, or a TaskCompletionSource for async waits).
+// record-aware completion handler keyed by MeshOperationId; the node dispatch
+// pump resolves the entry when the matching Completion record drains.
 internal sealed class ZLinkMeshCompletionTable
 {
     internal delegate void CompletionHandler(
         MeshReceiveRecord record, IReadOnlyList<Message> parts);
 
-    private readonly ConcurrentDictionary<MeshOperationId, CompletionHandler> _pending = new();
+    private const int DefaultEarlyCompletionCount = 4096;
+    private const long DefaultEarlyCompletionBytes = 16L * 1024 * 1024;
+    private const int DefaultTombstoneCount = 4096;
+    private const long DefaultTombstoneBytes = 256L * 1024;
+    private const long TombstoneRecordBytes = 32;
+    private const int CompletionRecordHeaderBytes = sizeof(int) + sizeof(long);
+
+    private readonly object _gate = new();
+    private readonly Dictionary<MeshOperationId, CompletionHandler> _pending = new();
+    private readonly Dictionary<MeshOperationId, EarlyCompletion> _early = new();
+    private readonly Dictionary<MeshOperationId, Tombstone> _tombstones = new();
+    private readonly int _earlyCompletionCount;
+    private readonly long _earlyCompletionBytes;
+    private readonly int _tombstoneCount;
+    private readonly long _tombstoneBytesLimit;
+    private long _earlyBytes;
+    private long _tombstoneBytes;
+
+    internal ZLinkMeshCompletionTable(
+        int earlyCompletionCount = DefaultEarlyCompletionCount,
+        long earlyCompletionBytes = DefaultEarlyCompletionBytes,
+        int tombstoneCount = DefaultTombstoneCount,
+        long tombstoneBytes = DefaultTombstoneBytes)
+    {
+        if (earlyCompletionCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(earlyCompletionCount));
+        if (earlyCompletionBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(earlyCompletionBytes));
+        if (tombstoneCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(tombstoneCount));
+        if (tombstoneBytes < TombstoneRecordBytes)
+            throw new ArgumentOutOfRangeException(nameof(tombstoneBytes));
+        _earlyCompletionCount = earlyCompletionCount;
+        _earlyCompletionBytes = earlyCompletionBytes;
+        _tombstoneCount = tombstoneCount;
+        _tombstoneBytesLimit = tombstoneBytes;
+    }
 
     // A same-process completion can drain on the pump thread between the
-    // operation submit and the caller's Register. Dropping it would leave the
-    // awaiting caller hanging forever, so unmatched completions are buffered
-    // until their handler registers. Records are fully managed views (the
-    // Core-owned parts were retained by the pump before Complete), so holding
-    // them is safe; the bound guards a leak from operations nobody awaits.
-    private const int MaxEarlyCompletions = 4096;
-    private readonly ConcurrentDictionary<
-        MeshOperationId, (MeshReceiveRecord Record, IReadOnlyList<Message> Parts)> _early = new();
-
+    // operation submit and the caller's Register. Retain it until registration,
+    // but keep both count and byte bounds so an operation nobody awaits cannot
+    // grow this table without limit.
     public bool Register(MeshOperationId operationId, CompletionHandler handler)
     {
         if (operationId == default) return false;
-        if (_early.TryRemove(operationId, out var early))
+        ArgumentNullException.ThrowIfNull(handler);
+
+        CompletionDispatch? dispatch = null;
+        lock (_gate)
         {
-            handler(early.Record, early.Parts);
-            return true;
+            if (_early.Remove(operationId, out var early))
+            {
+                _earlyBytes -= early.Bytes;
+                dispatch = new CompletionDispatch(
+                    handler,
+                    early.Record,
+                    early.Parts);
+            }
+            else if (_tombstones.Remove(operationId, out _))
+            {
+                _tombstoneBytes -= TombstoneRecordBytes;
+                dispatch = new CompletionDispatch(
+                    handler,
+                    MeshReceiveRecord.CompletionFailure(
+                        operationId,
+                        RequestResult.Backpressured),
+                    Array.Empty<Message>());
+            }
+            else
+            {
+                _pending[operationId] = handler;
+            }
         }
 
-        _pending[operationId] = handler;
-        // Complete may have buffered between the early check and the pending
-        // publication; whichever side observes both entries delivers.
-        if (_early.TryRemove(operationId, out early)
-            && _pending.TryRemove(operationId, out var raced))
-            raced(early.Record, early.Parts);
+        dispatch?.Invoke();
         return true;
     }
 
     // Registers a plain request callback (result + reply parts).
     public bool RegisterRequest(MeshOperationId operationId, RequestCallback callback)
     {
+        ArgumentNullException.ThrowIfNull(callback);
         return Register(operationId, (record, parts) =>
             callback(MapResult(record.TerminalResult, record.FailureErrno), parts));
     }
@@ -58,43 +104,123 @@ internal sealed class ZLinkMeshCompletionTable
     public void Complete(
         MeshReceiveRecord record, IReadOnlyList<Message> parts)
     {
-        if (_pending.TryRemove(record.OperationId, out var handler))
+        CompletionDispatch? dispatch = null;
+        var dispose = false;
+        var bytes = EstimateBytes(parts);
+        lock (_gate)
         {
-            handler(record, parts);
-            return;
+            if (_pending.Remove(record.OperationId, out var handler))
+            {
+                dispatch = new CompletionDispatch(handler, record, parts);
+            }
+            else if (_early.ContainsKey(record.OperationId)
+                     || _tombstones.ContainsKey(record.OperationId))
+            {
+                // A second terminal for the same operation has no owner.
+                dispose = true;
+            }
+            else if (_early.Count < _earlyCompletionCount
+                     && CanRetain(_earlyBytes, bytes, _earlyCompletionBytes))
+            {
+                _early[record.OperationId] = new EarlyCompletion(
+                    record,
+                    parts,
+                    bytes);
+                _earlyBytes = checked(_earlyBytes + bytes);
+            }
+            else if (_tombstones.Count < _tombstoneCount
+                     && CanRetain(
+                         _tombstoneBytes,
+                         TombstoneRecordBytes,
+                         _tombstoneBytesLimit))
+            {
+                // The parts cannot be retained after the early-result budget is
+                // full. Retain a bounded failure marker so a caller that
+                // registers later receives CapacityExceeded instead of waiting
+                // until its own timeout.
+                _tombstones[record.OperationId] = new Tombstone();
+                _tombstoneBytes = checked(
+                    _tombstoneBytes + TombstoneRecordBytes);
+                dispose = true;
+            }
+            else
+            {
+                // The pump still owns these parts at this point. Release them
+                // when neither the result nor a failure marker can be retained.
+                dispose = true;
+            }
         }
 
-        if (_early.Count >= MaxEarlyCompletions)
-        {
+        if (dispose)
             ZLinkMessageParts.DisposeAll(parts);
-            return;
-        }
-
-        _early[record.OperationId] = (record, parts);
-        // Register may have published a handler between the pending check and
-        // the early publication; whichever side observes both entries delivers.
-        if (_pending.TryRemove(record.OperationId, out handler)
-            && _early.TryRemove(record.OperationId, out var raced))
-            handler(raced.Record, raced.Parts);
+        dispatch?.Invoke();
     }
 
     public void FailAll(RequestResult result)
     {
-        foreach (var operationId in _pending.Keys.ToArray())
-            if (_pending.TryRemove(operationId, out var handler))
-                handler(
-                    MeshReceiveRecord.CompletionFailure(operationId, result),
-                    Array.Empty<Message>());
-        foreach (var operationId in _early.Keys.ToArray())
-            if (_early.TryRemove(operationId, out var early))
-                ZLinkMessageParts.DisposeAll(early.Parts);
+        List<CompletionDispatch> dispatches;
+        List<IReadOnlyList<Message>> partsToDispose;
+        lock (_gate)
+        {
+            dispatches = _pending
+                .Select(entry => new CompletionDispatch(
+                    entry.Value,
+                    MeshReceiveRecord.CompletionFailure(entry.Key, result),
+                    Array.Empty<Message>()))
+                .ToList();
+            _pending.Clear();
+            partsToDispose = _early.Values
+                .Select(static early => early.Parts)
+                .ToList();
+            _early.Clear();
+            _tombstones.Clear();
+            _earlyBytes = 0;
+            _tombstoneBytes = 0;
+        }
+
+        foreach (var dispatch in dispatches)
+            dispatch.Invoke();
+        foreach (var parts in partsToDispose)
+            ZLinkMessageParts.DisposeAll(parts);
     }
 
-    // Maps a Completion receive record's terminal result/errno onto the framework
-    // RequestResult surface the callbacks expect. Completion terminal results are
-    // zlink_request_result_t values (0 / 101+), which the binding's RequestResult
-    // mirrors one-to-one; values without a managed member (e.g. native
-    // Backpressured) fall back to InternalError.
+    private static bool CanRetain(long current, long bytes, long limit) =>
+        bytes >= 0 && current <= limit - bytes;
+
+    private static long EstimateBytes(IReadOnlyList<Message> parts)
+    {
+        try
+        {
+            var bytes = (long)CompletionRecordHeaderBytes;
+            foreach (var part in parts)
+                bytes = checked(bytes + Math.Max(part.Size, 1));
+            return bytes;
+        }
+        catch (OverflowException)
+        {
+            return long.MaxValue;
+        }
+    }
+
+    private sealed record EarlyCompletion(
+        MeshReceiveRecord Record,
+        IReadOnlyList<Message> Parts,
+        long Bytes);
+
+    private sealed record Tombstone;
+
+    private sealed record CompletionDispatch(
+        CompletionHandler Handler,
+        MeshReceiveRecord Record,
+        IReadOnlyList<Message> Parts)
+    {
+        internal void Invoke() => Handler(Record, Parts);
+    }
+
+    // Maps a Completion receive record's terminal result/errno onto the
+    // framework callback surface. Completion terminal results are
+    // zlink_request_result_t values (0 / 101+), which the binding's
+    // RequestResult mirrors one-to-one.
     public static RequestResult MapResult(int terminalResult, int failureErrno)
     {
         if (terminalResult == 0) return RequestResult.Ok;

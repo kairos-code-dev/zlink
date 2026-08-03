@@ -93,7 +93,8 @@ public enum ZLinkSpotCloseReason
 {
     ExplicitClose = 0,
     HostShutdown = 1,
-    RelocationOut = 2
+    RelocationOut = 2,
+    IdleEvicted = 3
 }
 
 public readonly record struct ZLinkSpotClosingContext(

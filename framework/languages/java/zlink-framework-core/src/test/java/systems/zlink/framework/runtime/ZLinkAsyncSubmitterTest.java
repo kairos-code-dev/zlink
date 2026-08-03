@@ -86,7 +86,7 @@ final class ZLinkAsyncSubmitterTest {
                 systems.zlink.framework.errors.ZLinkFrameworkException.class,
                 duplicate.getCause());
             assertEquals(
-                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.ALREADY_SUBMITTED,
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.INVALID_OPERATION,
                 frameworkError.kind());
             assertEquals(1, backend.submissions);
         }

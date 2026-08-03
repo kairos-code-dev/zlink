@@ -15,7 +15,8 @@ import systems.zlink.contracts.core.RoutingId;
  */
 public final class ZLinkServiceTopologyRegistry {
     private final Map<RoutingId, Peer> peers = new HashMap<>();
-    private final Map<String, Long> selectionCursors = new HashMap<>();
+    private final Map<String, Map<String, Long>> selectionCurrents = new HashMap<>();
+    private final Map<String, Long> placementSelectionCursors = new HashMap<>();
     private ZLinkServiceNodeDescriptor local;
 
     public ZLinkServiceTopologyRegistry(ZLinkServiceNodeDescriptor local) {
@@ -208,7 +209,7 @@ public final class ZLinkServiceTopologyRegistry {
     }
 
     public synchronized Optional<Peer> selectPlacement() {
-        return select(
+        return selectRange(
             "placement",
             peers().stream()
                 .filter(peer -> peer.descriptor().acceptsPlacement())
@@ -217,16 +218,19 @@ public final class ZLinkServiceTopologyRegistry {
                 .toList());
     }
 
-    private Optional<Peer> select(String key, List<WeightedPeer> eligible) {
+    private Optional<Peer> selectRange(String key, List<WeightedPeer> eligible) {
         long total = 0;
         for (WeightedPeer candidate : eligible) {
             total = Math.addExact(total, candidate.weight());
         }
         if (total == 0) {
+            placementSelectionCursors.remove(key);
             return Optional.empty();
         }
-        long cursor = selectionCursors.getOrDefault(key, 0L);
-        selectionCursors.put(key, cursor == Long.MAX_VALUE ? 0L : cursor + 1);
+        long cursor = placementSelectionCursors.getOrDefault(key, 0L);
+        placementSelectionCursors.put(
+            key,
+            cursor == Long.MAX_VALUE ? 0L : cursor + 1);
         long selected = Math.floorMod(cursor, total);
         long offset = 0;
         for (WeightedPeer value : eligible) {
@@ -235,7 +239,56 @@ public final class ZLinkServiceTopologyRegistry {
                 return Optional.of(value.peer());
             }
         }
-        throw new IllegalStateException("weighted selection did not select a peer");
+        throw new IllegalStateException("weighted placement did not select a peer");
+    }
+
+    private Optional<Peer> select(String key, List<WeightedPeer> eligible) {
+        long total = 0;
+        for (WeightedPeer candidate : eligible) {
+            total = Math.addExact(total, candidate.weight());
+        }
+        if (total == 0) {
+            selectionCurrents.remove(key);
+            return Optional.empty();
+        }
+
+        List<WeightedPeer> ordered = eligible.stream()
+            .sorted(Comparator.comparing(
+                value -> value.peer().descriptor().nodeRoutingId().toString()))
+            .toList();
+        Map<String, Long> currentByNode = selectionCurrents.computeIfAbsent(
+            key,
+            ignored -> new HashMap<>());
+        java.util.Set<String> eligibleIds = ordered.stream()
+            .map(value -> value.peer().descriptor().nodeRoutingId().toString())
+            .collect(java.util.stream.Collectors.toSet());
+        currentByNode.keySet().removeIf(id -> !eligibleIds.contains(id));
+
+        WeightedPeer selected = null;
+        long selectedCurrent = Long.MIN_VALUE;
+        for (WeightedPeer candidate : ordered) {
+            String identity = candidate.peer().descriptor().nodeRoutingId().toString();
+            long current = Math.addExact(
+                currentByNode.getOrDefault(identity, 0L),
+                candidate.weight());
+            currentByNode.put(identity, current);
+            if (selected == null
+                || current > selectedCurrent
+                || current == selectedCurrent
+                    && identity.compareTo(
+                        selected.peer().descriptor().nodeRoutingId().toString()) < 0) {
+                selected = candidate;
+                selectedCurrent = current;
+            }
+        }
+        if (selected == null) {
+            throw new IllegalStateException("weighted selection did not select a peer");
+        }
+        String selectedId = selected.peer().descriptor().nodeRoutingId().toString();
+        currentByNode.put(
+            selectedId,
+            Math.subtractExact(currentByNode.get(selectedId), total));
+        return Optional.of(selected.peer());
     }
 
     private List<WeightedPeer> eligibleChannelTargets(String channelName) {

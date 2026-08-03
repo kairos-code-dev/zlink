@@ -257,10 +257,6 @@ func (m *Message) Bytes() []byte {
 	return append([]byte(nil), data...)
 }
 
-func (m *Message) BytesCopy() []byte {
-	return m.Bytes()
-}
-
 func (m *Message) Size() int {
 	if m == nil || m.closed {
 		return 0

@@ -170,7 +170,7 @@ public final class Program {
         return actors.find(actorId)
             .thenApply(found -> found
                 .orElseThrow(() -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    ZLinkFrameworkErrorKind.NOT_FOUND,
                     "actor ref not found: " + actorId)));
     }
 

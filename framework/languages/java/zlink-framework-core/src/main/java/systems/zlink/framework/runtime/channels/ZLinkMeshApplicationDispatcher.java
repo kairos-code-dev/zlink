@@ -1,5 +1,7 @@
 package systems.zlink.framework.runtime.channels;
 
+import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,15 +151,25 @@ public final class ZLinkMeshApplicationDispatcher
             receiveHighWaterMark > 0
                 ? (int) Math.min(receiveHighWaterMark, Integer.MAX_VALUE)
                 : 4096;
+        // The socket HWM describes pending application records. The serial
+        // queue accounts the active record as well, so retain one execution
+        // slot in addition to the configured pending capacity.
+        int localQueueCapacity = localPendingCapacity == Integer.MAX_VALUE
+            ? Integer.MAX_VALUE
+            : localPendingCapacity + 1;
         namespaces.put(
             NODE_NAMESPACE,
-            routeNamespace(mesh.nodeHandlers(), localPendingCapacity));
+            routeNamespace(
+                mesh.nodeHandlers(),
+                localQueueCapacity,
+                framework.serialExecutor()));
         mesh.channelHandlers().forEach((name, handlers) ->
             namespaces.put(name, channelNamespace(
                 name,
                 handlers,
                 mesh.channelHandlerGroups().getOrDefault(name, List.of()),
-                scannedHandlers)));
+                scannedHandlers,
+                framework.serialExecutor())));
     }
 
     @Override
@@ -583,8 +595,9 @@ public final class ZLinkMeshApplicationDispatcher
 
     private static Namespace routeNamespace(
         List<MeshNodeRegistration.DispatchHandler> handlers,
-        int sendPendingCapacity) {
-        Namespace namespace = new Namespace(sendPendingCapacity);
+        int sendPendingCapacity,
+        java.util.concurrent.Executor executor) {
+        Namespace namespace = new Namespace(sendPendingCapacity, executor);
         for (MeshNodeRegistration.DispatchHandler handler : handlers) {
             String packetName = ZLinkPacketNames.resolve(handler.messageType());
             if (handler.request()) {
@@ -610,8 +623,9 @@ public final class ZLinkMeshApplicationDispatcher
         String channelName,
         List<MeshNodeRegistration.DispatchHandler> handlers,
         List<String> handlerGroups,
-        ZLinkScannedHandlerCatalog scannedHandlers) {
-        Namespace namespace = new Namespace(Integer.MAX_VALUE);
+        ZLinkScannedHandlerCatalog scannedHandlers,
+        java.util.concurrent.Executor executor) {
+        Namespace namespace = new Namespace(Integer.MAX_VALUE, executor);
         Set<String> groups = handlerGroups.isEmpty()
             ? Set.of(channelName)
             : Set.copyOf(handlerGroups);
@@ -675,10 +689,14 @@ public final class ZLinkMeshApplicationDispatcher
         private final Map<String, ChannelRequestHandlerRegistration> channelRequests =
             new HashMap<>();
         private final ZLinkAsyncSerialQueue sendQueue;
-        private final ZLinkAsyncSerialQueue requestQueue = new ZLinkAsyncSerialQueue();
+        private final ZLinkAsyncSerialQueue requestQueue;
 
-        Namespace(int sendPendingCapacity) {
-            sendQueue = new ZLinkAsyncSerialQueue(false, sendPendingCapacity);
+        Namespace(
+            int sendPendingCapacity,
+            java.util.concurrent.Executor executor) {
+            sendQueue = new ZLinkAsyncSerialQueue(
+                executor, false, sendPendingCapacity);
+            requestQueue = new ZLinkAsyncSerialQueue(executor, false);
         }
     }
 }

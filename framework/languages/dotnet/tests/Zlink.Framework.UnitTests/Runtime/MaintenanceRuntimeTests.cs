@@ -208,14 +208,14 @@ public sealed class MaintenanceRuntimeTests
     {
         using var fixture = Create();
         fixture.Runtime.MarkServing();
-        var observed = new List<ZLinkFrameworkRuntimeStatus>();
+        var observed = new List<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>();
         using var stop = new CancellationTokenSource();
         var observer = Task.Run(async () =>
         {
             await foreach (var status in fixture.Runtime.ObserveAsync(stop.Token))
             {
                 observed.Add(status);
-                if (status.State == ZLinkFrameworkRuntimeState.Relocated)
+                if (status.Status.State == ZLinkFrameworkRuntimeState.Relocated)
                     break;
             }
         });
@@ -228,7 +228,7 @@ public sealed class MaintenanceRuntimeTests
         await observer.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Contains(observed, status =>
-            status.State == ZLinkFrameworkRuntimeState.Relocated);
+            status.Status.State == ZLinkFrameworkRuntimeState.Relocated);
     }
 
     [Fact]
@@ -247,20 +247,20 @@ public sealed class MaintenanceRuntimeTests
                 Mode = ZLinkFrameworkRelocationMode.PlannedMaintenance
             });
 
-        ZLinkFrameworkRuntimeStatus terminal;
+        ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus> terminal;
         do
         {
             Assert.True(await observer.MoveNextAsync());
             terminal = observer.Current;
         }
-        while (terminal.RelocationResult is null);
+        while (terminal.Status.RelocationResult is null);
 
         var result = await relocation;
         Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
         Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.Status.State);
         Assert.Null(fixture.Runtime.Status.RelocationResult);
-        Assert.Equal(result, terminal.RelocationResult);
-        Assert.True(terminal.Sequence > 0);
+        Assert.Equal(result, terminal.Status.RelocationResult);
+        Assert.True(terminal.Status.Sequence > 0);
     }
 
     [Fact]

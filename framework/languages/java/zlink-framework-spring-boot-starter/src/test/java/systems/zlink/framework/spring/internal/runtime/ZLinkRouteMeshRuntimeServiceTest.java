@@ -34,6 +34,7 @@ import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
 import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
+import systems.zlink.framework.monitoring.ZLinkObservedStatus;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.monitoring.ZLinkTopologyReason;
 import systems.zlink.framework.monitoring.ZLinkTopologyState;
@@ -129,8 +130,8 @@ final class ZLinkRouteMeshRuntimeServiceTest {
                 }
 
                 @Override
-                public void onNext(ZLinkMeshNodeSnapshot item) {
-                    status.set(item);
+                public void onNext(ZLinkObservedStatus<ZLinkMeshNodeSnapshot> observed) {
+                    status.set(observed.status());
                     received.countDown();
                 }
 
@@ -169,7 +170,8 @@ final class ZLinkRouteMeshRuntimeServiceTest {
                 }
 
                 @Override
-                public void onNext(ZLinkMeshNodeSnapshot item) {
+                public void onNext(ZLinkObservedStatus<ZLinkMeshNodeSnapshot> observed) {
+                    ZLinkMeshNodeSnapshot item = observed.status();
                     if (initialized.getCount() > 0) {
                         initialized.countDown();
                     } else if (item.placement().activeActorCount() == 4) {

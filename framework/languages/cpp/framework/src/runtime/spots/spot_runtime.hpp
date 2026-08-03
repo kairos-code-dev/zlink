@@ -16,6 +16,7 @@
 #include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 #include <zlink/framework/contracts/workers/worker.hpp>
+#include <zlink/Contracts/Eventing/timers.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -29,6 +30,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_set>
 #include <utility>
@@ -40,6 +42,13 @@ namespace zlink::framework::detail
 namespace runtime = zlink::framework::runtime;
 
 namespace service = zlink::framework::runtime::host;
+
+using instance_spot_idle_eviction_callback_t = std::function<bool (
+  const spot_id_t &,
+  std::string_view,
+  std::uint64_t,
+  std::uint64_t,
+  std::function<bool ()>)>;
 
 class spot_node_builder_state_t
 {
@@ -77,6 +86,7 @@ class spot_node_builder_state_t
     std::function<task_t<std::optional<spot_ref_t>> (spot_id_t)>
       find_user_spot;
     std::function<task_t<bool> (spot_ref_t)> close_user_spot;
+    instance_spot_idle_eviction_callback_t admit_instance_spot_idle_eviction;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     dispatch_options_t dispatch;
     runtime::location_lifecycle_t *location_lifecycle = nullptr;
@@ -85,6 +95,8 @@ class spot_node_builder_state_t
     std::shared_ptr<std::atomic_bool> drain_flag;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::chrono::milliseconds one_way_send_timeout{std::chrono::seconds (1)};
+    std::chrono::milliseconds instance_spot_idle_timeout{0};
+    std::unique_ptr<zlink::timer_t> instance_spot_idle_timer;
     std::atomic_bool stopping{false};
     std::map<std::string, spot_id_t> actor_spot_ids;
     std::map<std::string, std::uint64_t> actor_generations;
@@ -340,11 +352,16 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     void leave_callback ();
     bool is_current_callback_thread () const;
 
-    bool try_post_serial (std::string name, std::function<void ()> work);
+    bool try_post_serial (
+      std::string name,
+      std::function<void ()> work,
+      runtime::serial_work_options_t options = {});
     bool try_post_serial_after_current_turn (std::string name,
-                                             std::function<void ()> work);
+                                             std::function<void ()> work,
+                                             runtime::serial_work_options_t options = {});
     bool try_post_serial_async (std::string name,
-                                runtime::serial_execution_queue_t::async_work_t work);
+                                runtime::serial_execution_queue_t::async_work_t work,
+                                runtime::serial_work_options_t options = {});
     result_t<void> run_serial_task (std::string name,
                                     std::function<task_t<void> ()> work);
     bool run_serial_sync (std::string name, std::function<void ()> work);
@@ -362,6 +379,7 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     std::string mesh_name;
     spot_id_t spot_id;
     std::uint64_t object_generation = 1;
+    std::uint64_t authority_owner_generation = 1;
     std::string spot_name;
     user_spot_execution_mode_t execution_mode =
       user_spot_execution_mode_t::spot_wide;
@@ -397,9 +415,11 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     std::map<std::type_index, std::function<task_t<void> (void *, void *)>>
       on_disconnect_actor_callbacks;
     bool close_requested = false;
+    bool idle_eviction_in_progress = false;
     bool callback_admission_closed = false;
     bool closed = false;
     std::size_t actor_count = 0;
+    std::atomic<std::int64_t> last_application_work_completed_ns{0};
     mutable std::mutex callback_mutex;
     std::thread::id callback_thread;
     std::size_t callback_depth = 0;
@@ -408,6 +428,43 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     {
         std::lock_guard<std::mutex> lock (callback_mutex);
         return callback_depth > 0;
+    }
+
+    bool try_close_idle ()
+    {
+        auto owner = node;
+        if (!owner) {
+            return false;
+        }
+        std::lock_guard<std::recursive_mutex> node_lock (owner->mutex);
+        if (closed || actor_count != 0 || !instance_spot) {
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> callback_lock (callback_mutex);
+            if (callback_depth != 0 || close_requested) {
+                return false;
+            }
+            callback_admission_closed = true;
+            closed = true;
+        }
+        const auto rid = std::string (spot_id);
+        if (owner->location_lifecycle) {
+            (void) owner->location_lifecycle->release_spot (
+              spot_location_key_t{rid});
+        }
+        owner->spot_contexts_by_id.erase (rid);
+        owner->spot_names_by_id.erase (rid);
+        owner->native_spots_by_id.erase (rid);
+        for (auto iterator = owner->spot_ids_by_name.begin ();
+             iterator != owner->spot_ids_by_name.end (); ++iterator) {
+            if (iterator->second == rid) {
+                owner->spot_ids_by_name.erase (iterator);
+                break;
+            }
+        }
+        detach_application_instance (true, spot_close_reason_t::idle_evicted);
+        return true;
     }
 };
 
@@ -497,7 +554,8 @@ class spot_node_runtime_t
                         spot_id_t spot_id,
                         zlink::message_t request,
                         std::uint64_t object_generation = 1,
-                        std::string mesh_name = {});
+                        std::string mesh_name = {},
+                        std::uint64_t authority_owner_generation = 1);
     task_t<zlink::message_t> dispatch_instance_activation (
       const spot_id_t &spot_id,
       std::string packet_name,
@@ -547,6 +605,7 @@ class spot_node_runtime_t
     const std::vector<std::string> &ordering_log (const spot_context_t &context) const;
     void attach_native_node (std::shared_ptr<service::mesh_node_t> node);
     void detach_native_node ();
+    void evict_idle_spots () noexcept;
     void record_core_actor_transfer_activation (std::string actor_id,
                                                 std::uint64_t membership_epoch);
     void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
@@ -1245,7 +1304,8 @@ class spot_node_runtime_t
                                   std::uint64_t object_generation = 1,
                                   std::string mesh_name = {},
                                   std::function<task_t<void> (void *)>
-                                    staged_restore = {});
+                                    staged_restore = {},
+                                  std::uint64_t authority_owner_generation = 1);
     result_t<spot_context_t> actor_join_context_unlocked (spot_id_t spot_id,
                                                           const zlink::message_t &request);
     result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>

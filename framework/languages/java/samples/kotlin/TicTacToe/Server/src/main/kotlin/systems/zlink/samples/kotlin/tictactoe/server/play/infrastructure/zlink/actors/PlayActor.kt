@@ -84,7 +84,7 @@ class PlayActor(
                         JoinGameFailedNotify(
                             roomId.orEmpty(),
                             completion.kind().name,
-                            completion.isRetriable,
+                            false,
                         ),
                     )
                     .submit()

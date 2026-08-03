@@ -141,6 +141,7 @@ class raw_fanout_subscriber_t
     std::map<publisher_intent_key_t, connection_t> _connections;
     std::optional<bool> _automatic_mode;
     std::uintptr_t _next_poller_slot = 1;
+    std::size_t _receive_cursor = 0;
     bool _closed = false;
 };
 

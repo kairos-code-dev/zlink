@@ -25,21 +25,21 @@ internal sealed class MeshEventRecorder(
                            .ObserveAsync(meshName, cancellationToken)
                            .ConfigureAwait(false))
         {
-            var currentPeers = status.Peers
+            var currentPeers = status.Status.Peers
                 .Where(static peer =>
                     peer.State == Zlink.Framework.Contracts.Configuration.ZLinkPeerState.Ready)
                 .Select(static peer => peer.NodeRid.ToString())
                 .ToHashSet(StringComparer.Ordinal);
             foreach (var peer in currentPeers.Except(previousPeers, StringComparer.Ordinal))
             {
-                RecordPeer(meshName, "ConnectionReady", peer, status);
+                RecordPeer(meshName, "ConnectionReady", peer, status.Status);
             }
             foreach (var peer in previousPeers.Except(currentPeers, StringComparer.Ordinal))
             {
-                RecordPeer(meshName, "Disconnected", peer, status);
+                RecordPeer(meshName, "Disconnected", peer, status.Status);
             }
 
-            foreach (var channel in status.Channels)
+            foreach (var channel in status.Status.Channels)
             {
                 var current = (channel.IsReady, channel.ReadyTargetCount);
                 if (!previousChannels.TryGetValue(channel.ChannelName, out var previous)
@@ -50,7 +50,7 @@ internal sealed class MeshEventRecorder(
                         + "|identifier=zlink.runtime.mesh_node.channel_changed"
                         + $"|kind=ReadinessChanged|channel={channel.ChannelName}"
                         + $"|ready={channel.IsReady}|targets={channel.ReadyTargetCount}"
-                        + $"|sequence={status.Sequence}|state={status.State}");
+                        + $"|sequence={status.Status.Sequence}|state={status.Status.State}");
                     previousChannels[channel.ChannelName] = current;
                 }
             }

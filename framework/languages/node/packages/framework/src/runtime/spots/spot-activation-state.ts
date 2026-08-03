@@ -88,6 +88,7 @@ export class ZLinkSpotActivation {
   private closeRequested = false;
   private drainCloseRequested = false;
   private drainCloseReason = ZLinkSpotCloseReason.HostShutdown;
+  private idleEvictionRequested = false;
   private relocationReadyWaiter?: {
     readonly resolve: () => void;
     readonly reject: (error: unknown) => void;
@@ -332,6 +333,33 @@ export class ZLinkSpotActivation {
 
   requestClose(): void {
     this.closeRequested = true;
+  }
+
+  beginIdleEviction(): boolean {
+    if (this.idleEvictionRequested || this.closeRequested) return false;
+    if (!this.isIdleFor(Date.now(), 0)) return false;
+    this.idleEvictionRequested = true;
+    this.closeRequested = true;
+    return true;
+  }
+
+  abortIdleEviction(): void {
+    if (!this.idleEvictionRequested) return;
+    this.idleEvictionRequested = false;
+    this.closeRequested = false;
+  }
+
+  get isIdleEvicting(): boolean {
+    return this.idleEvictionRequested;
+  }
+
+  isIdleFor(nowMs: number, timeoutMs: number): boolean {
+    return !this.idleEvictionRequested
+      && !this.closeRequested
+      && !this.serial.isExecuting
+      && !this.serial.hasPendingWork
+      && !this.timers.hasActiveTimers
+      && nowMs - this.serial.lastActivityAt >= timeoutMs;
   }
 
   requestDrainClose(reason: ZLinkSpotCloseReason): void {

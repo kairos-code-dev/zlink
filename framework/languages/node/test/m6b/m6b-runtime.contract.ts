@@ -1279,6 +1279,7 @@ test('target-owned Instance activation reserves before factory, commits before o
     commit: (_target, _reservation, spot) => {
       events.push('commit');
       assert.equal(runtime.registry.spot('tenant-42'), spot);
+      assert.equal(spot.ref.generation, 11n);
       assert.equal(spot.authorityOwnerGeneration, 17n);
       const committed = {
         kind: 'committed',

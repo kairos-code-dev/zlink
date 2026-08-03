@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
@@ -24,6 +26,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     private int _activeActorClaims;
     private int _spotStopping;
     private int _stopping;
+    private long _lastApplicationWorkCompletedAt;
 
     public ZLinkSpotSerialExecutor(
         ZLinkSpotActivation activation,
@@ -46,6 +49,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             _stopToken,
             _executionOwner);
         _queue = CreateQueue();
+        _lastApplicationWorkCompletedAt = Stopwatch.GetTimestamp();
     }
 
     private ZLinkSerialExecutionQueue CreateQueue()
@@ -244,10 +248,41 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     {
         if (Volatile.Read(ref _spotStopping) != 0 || _isDisposed()) return;
 
-        await _queue.RunAsync(
+        await _queue.RunLifecycleAsync(
                 _ => ExecuteLifecycleOperationAsync(operation, cancellationToken),
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal async ValueTask ExecuteApplicationCallbackAsync<TState>(
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        CancellationToken cancellationToken)
+    {
+        // A lifecycle item may need to notify application code after the
+        // authority transition. Run that callback on the application lane;
+        // do not execute it inline in the lifecycle lane, where Yield is not
+        // a valid application operation and waiting would block the lane.
+        if (ZLinkApplicationExecutionContext.Current is
+                { YieldAllowed: true }
+            && ZLinkSerialTurn.Current is not null)
+        {
+            await operation(_activation, state, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var application = ExecuteAsync(operation, state, cancellationToken);
+        if (ZLinkSerialTurn.Current is { } lifecycleTurn)
+        {
+            await lifecycleTurn.YieldFrameworkCallAsync(
+                    _ => application,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await application.ConfigureAwait(false);
     }
 
     internal async ValueTask<bool> ExecuteQuiescentLifecycleAsync(
@@ -263,7 +298,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
 
         try
         {
-            await _queue.RunAsync(
+            await _queue.RunLifecycleAsync(
                     _ =>
                     {
                         MarkBarrierBoundary(barrier.Generation);
@@ -351,13 +386,32 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         return false;
     }
 
+    internal bool QueueLifecycle(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action? onSkipped = null)
+    {
+        if (Volatile.Read(ref _stopping) != 0 || _isDisposed())
+        {
+            onSkipped?.Invoke();
+            return false;
+        }
+
+        if (_queue.TryPostNext(
+                ct => ExecuteLifecycleOperationAsync(operation, ct),
+                out _))
+            return true;
+
+        onSkipped?.Invoke();
+        return false;
+    }
+
     internal bool QueueNext(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action? onSkipped = null)
     {
         var claim = TryAcquireApplicationClaim(actorLane: false);
         if (claim is null) return false;
-        if (_queue.TryPostNext(
+        if (_queue.TryPostApplication(
                 async ct =>
                 {
                     try
@@ -598,6 +652,27 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         }
     }
 
+    internal bool HasPendingApplicationWork
+    {
+        get
+        {
+            lock (_barrierGate)
+                return _activeApplicationClaims != 0;
+        }
+    }
+
+    internal bool HasRelocationBarrier
+    {
+        get
+        {
+            lock (_barrierGate)
+                return _relocationBarrier is not null;
+        }
+    }
+
+    internal long LastApplicationWorkCompletedAt =>
+        Volatile.Read(ref _lastApplicationWorkCompletedAt);
+
     internal async ValueTask<ZLinkSpotExecutionRelocationSeal> SealRelocationAsync(
         CancellationToken cancellationToken)
         => await SealRelocationAsync(
@@ -770,7 +845,14 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         using var execution = PushExecutionScope(
             actorId: null,
             _executionMode == ZLinkUserSpotExecutionMode.SpotWide);
-        await operation(_activation, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(_activation, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            RecordApplicationWorkCompleted();
+        }
     }
 
     private async ValueTask ExecuteOperationAsync<TState>(
@@ -784,7 +866,14 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         using var execution = PushExecutionScope(
             actorId: null,
             _executionMode == ZLinkUserSpotExecutionMode.SpotWide);
-        await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            RecordApplicationWorkCompleted();
+        }
     }
 
     private async ValueTask ExecuteOperationAsync(
@@ -815,7 +904,14 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         using var execution = PushExecutionScope(
             actorId,
             _executionMode == ZLinkUserSpotExecutionMode.SpotWide);
-        await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            RecordApplicationWorkCompleted();
+        }
     }
 
     private async ValueTask ExecuteTimerOperationAsync<TState>(
@@ -828,8 +924,18 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         using var execution = PushExecutionScope(
             actorId: null,
             _executionMode == ZLinkUserSpotExecutionMode.SpotWide);
-        await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await operation(_activation, state, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            RecordApplicationWorkCompleted();
+        }
     }
+
+    private void RecordApplicationWorkCompleted() =>
+        Volatile.Write(ref _lastApplicationWorkCompletedAt, Stopwatch.GetTimestamp());
 
     private IDisposable PushExecutionScope(string? actorId, bool yieldAllowed)
     {

@@ -135,8 +135,22 @@ export interface ZLinkRouteMeshStatus {
   readonly observedAt: Date;
 }
 
+export interface ZLinkObservationLoss {
+  readonly coalescedCount: bigint;
+  readonly discardedTerminalCount: bigint;
+}
+
+export interface ZLinkObservedStatus<TStatus> {
+  readonly status: TStatus;
+  readonly loss: ZLinkObservationLoss;
+}
+
 export interface ZLinkRouteMeshRuntime {
   snapshot(meshName: string): ZLinkRouteMeshStatus;
-  observe(meshName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkRouteMeshStatus>;
+  observe(
+    meshName: string,
+    capacity?: number,
+    signal?: AbortSignal
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkRouteMeshStatus>>;
   isReady(meshName: string): boolean;
 }

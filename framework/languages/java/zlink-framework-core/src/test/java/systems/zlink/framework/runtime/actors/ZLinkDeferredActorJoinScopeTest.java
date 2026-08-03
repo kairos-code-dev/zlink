@@ -51,7 +51,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                     operation -> operation.get(),
                     () -> { }));
             assertEquals(
-                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                 otherRuntime.kind());
 
             ZLinkFrameworkException replacementIncarnation = assertThrows(
@@ -66,7 +66,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                     operation -> operation.get(),
                     () -> { }));
             assertEquals(
-                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                 replacementIncarnation.kind());
         }
     }
@@ -91,7 +91,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                         operation -> operation.get(),
                         () -> { }));
                 assertEquals(
-                    ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                    ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                     otherRuntime.kind());
                 return CompletableFuture.completedFuture(null);
             });
@@ -190,7 +190,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                 Long.MAX_VALUE,
                 () -> CompletableFuture.completedFuture(null)));
         assertEquals(
-            ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+            ZLinkFrameworkErrorKind.NOT_CONFIGURED,
             detached.kind());
 
         try (ZLinkDeferredActorJoinScope.Scope scope =
@@ -203,7 +203,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                     Long.MAX_VALUE,
                     () -> CompletableFuture.completedFuture(null)));
             assertEquals(
-                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                 wrongActor.kind());
 
             ZLinkFrameworkException oversized = assertThrows(
@@ -214,7 +214,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                     Long.MAX_VALUE,
                     () -> CompletableFuture.completedFuture(null)));
             assertEquals(
-                ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+                ZLinkFrameworkErrorKind.NOT_CONFIGURED,
                 oversized.kind());
 
             ZLinkDeferredActorJoinScope.register(
@@ -229,7 +229,7 @@ final class ZLinkDeferredActorJoinScopeTest {
                     0,
                     Long.MAX_VALUE,
                     () -> CompletableFuture.completedFuture(null)));
-            assertEquals(ZLinkFrameworkErrorKind.ACTOR_MOVING, moving.kind());
+            assertEquals(ZLinkFrameworkErrorKind.UNAVAILABLE, moving.kind());
             scope.finish(
                 CompletableFuture.completedFuture(null),
                 null).toCompletableFuture().join();
@@ -285,7 +285,7 @@ final class ZLinkDeferredActorJoinScopeTest {
 
         assertTrue(failure.getCause() instanceof ZLinkFrameworkException);
         assertEquals(
-            ZLinkFrameworkErrorKind.INVALID_CONFIGURATION,
+            ZLinkFrameworkErrorKind.NOT_CONFIGURED,
             ((ZLinkFrameworkException) failure.getCause()).kind());
     }
 

@@ -12,7 +12,6 @@ import (
 type recvSocket interface {
 	zlink.SocketTarget
 	Recv(*zlink.Received, zlink.RecvFlags) (bool, error)
-	RecvPart(*zlink.Message, zlink.RecvFlags) (zlink.RecvPartResult, bool, error)
 }
 
 func runSingleOneWay(
@@ -42,9 +41,8 @@ func runSingleOneWayWithTransient(
 	}
 	window := perfcommon.NewBenchmarkWindow(cfg.duration)
 	stats := perfcommon.NewStats()
-	recvPart, err := zlink.NewMessageWithSize(0)
-	perfcommon.Must(err)
-	defer recvPart.Close()
+	var received zlink.Received
+	defer received.Close()
 
 	// perf_single_one_way.hpp run_active_phase starts the receiver thread
 	// before the sender thread and waits with a blocking recv. Only the
@@ -52,7 +50,7 @@ func runSingleOneWayWithTransient(
 	receiverDone := make(chan error, 1)
 	go func() {
 		for {
-			stop, drainErr := recvSingleOneWayUntilStop(receiver, recvPart, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
+			stop, drainErr := recvSingleOneWayUntilStop(receiver, &received, stats, cfg.msgSize, window.ActiveAt, window.StopAt)
 			if drainErr != nil {
 				receiverDone <- drainErr
 				return
@@ -97,17 +95,17 @@ func runSingleOneWayWithTransient(
 
 func recvSingleOneWayUntilStop(
 	receiver recvSocket,
-	part *zlink.Message,
+	received *zlink.Received,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 ) (bool, error) {
-	stop, _, err := recvSingleOneWayOnce(receiver, part, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
+	stop, _, err := recvSingleOneWayOnce(receiver, received, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsNone)
 	if err != nil || stop {
 		return stop, err
 	}
-	return drainSingleOneWayUntilStop(receiver, part, stats, msgSize, activeAt, stopAt)
+	return drainSingleOneWayUntilStop(receiver, received, stats, msgSize, activeAt, stopAt)
 }
 
 // drainSingleOneWayUntilStop drains the receiver until either a transient
@@ -115,14 +113,14 @@ func recvSingleOneWayUntilStop(
 // stop=true when the stop token has been observed.
 func drainSingleOneWayUntilStop(
 	receiver recvSocket,
-	part *zlink.Message,
+	received *zlink.Received,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 ) (bool, error) {
 	for {
-		stop, processed, err := recvSingleOneWayOnce(receiver, part, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
+		stop, processed, err := recvSingleOneWayOnce(receiver, received, stats, msgSize, activeAt, stopAt, zlink.RecvFlagsDontWait)
 		if err != nil || stop {
 			return stop, err
 		}
@@ -134,14 +132,14 @@ func drainSingleOneWayUntilStop(
 
 func recvSingleOneWayOnce(
 	receiver recvSocket,
-	part *zlink.Message,
+	received *zlink.Received,
 	stats *perfcommon.Stats,
 	msgSize int,
 	activeAt time.Time,
 	stopAt time.Time,
 	flags zlink.RecvFlags,
 ) (bool, bool, error) {
-	result, ok, err := receiver.RecvPart(part, flags)
+	ok, err := receiver.Recv(received, flags)
 	if err != nil {
 		if perfcommon.IsTransient(err) {
 			return false, false, nil
@@ -151,7 +149,11 @@ func recvSingleOneWayOnce(
 	if !ok {
 		return false, false, nil
 	}
-	if result.More {
+	part, partErr := perfPayloadPart(received)
+	if partErr != nil {
+		return false, true, fmt.Errorf("unexpected multipart receive: %w", partErr)
+	}
+	if len(received.Parts()) != 1 {
 		return false, true, fmt.Errorf("unexpected multipart receive in single one-way")
 	}
 	if perfcommon.IsStopTokenMessage(part) {

@@ -2,7 +2,10 @@
 
 #include "runtime/host/framework_runtime.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/context.hpp>
+#include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/stream_socket.hpp>
 
 #include <chrono>
 

@@ -10,7 +10,8 @@
 #include "runtime/configuration/service_scope.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include <algorithm>
 #include <chrono>

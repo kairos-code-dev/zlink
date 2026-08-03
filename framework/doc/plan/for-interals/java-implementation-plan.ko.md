@@ -12,15 +12,30 @@ Kotlin은 Java runtime을 공유하므로 별도 작업이 없다.
 
 ## 2026-08-04 현재 판정
 
-Java runtime 수정, unit test, RuntimeMonitoring sample 동작까지 확인했다. Core module
-unit test 750건, Spring starter test, Kotlin test가 통과했고, RuntimeMonitoring sample의
-10개 scenario도 통과했다. 공통 `framework/doc/framework/common/internals/` 문서와 대조해
-앞쪽 삽입·message 문자열 기반 retry·subscriber별 polling을 제거하거나 분리했다.
+Java runtime 수정과 unit/integration test는 통과했다. Core unit test task, Core
+`integrationTest`, dispatch pump 단위 test, idle eviction 재활성화 integration test,
+Kotlin test가 각각 통과했다. 전체 Java/Kotlin sample runner도 Java·Kotlin 샘플의
+client/server self-check를 완료하고 `All Java/Kotlin samples passed`와 exit 0으로
+종료했다.
 
-이 결과는 요청한 runtime·unit·sample 범위의 승인 근거다. Java implementation plan 전체가
-완료된 것은 아니다. relay notification wire command, idle eviction의 admission seal과
-generation 경쟁 규칙, 전체 topology 수신 공정성, cross-language error wire, D4/D6은
-공통 설계 또는 추가 검증이 필요하다.
+공통 `framework/doc/framework/common/internals/`와 대조해 앞쪽 삽입,
+message 문자열 기반 retry, subscriber별 polling을 사용하지 않는 경로를 확인했고, 수신
+경로에는 건수·byte·경과 시간 budget과 rotating cursor를 추가했다. RuntimeMonitoring
+aggregate는 10개 scenario 전체 통과가 아니다. 현재 실행에서 A2·A3·A4A·A4B·A5·D1A가
+통과했고, A1은 aggregate에서 한 번 실패했으나 단독 실행은 통과했다. B1·B2는 feature-map의
+부분 구현 상태이며 D1B는 3초 readiness 제한에서 실패했다.
+
+Java·Kotlin API snapshot과 local Maven package clean consumer는 모두 통과했다. Java snapshot은
+2,850 lines, Kotlin snapshot은 3,358 lines이며 source/package hash가 일치한다. 전체 sample
+runner도 Java·Kotlin client/server self-check를 끝냈다. 반면
+`validate_sample_e2e_configuration_policy.sh`는 기존 E2E application의 `System.getenv`·
+`System.getProperty` 사용으로 실패했다. 이 gate는 sample runner의 runtime 동작과 별도의
+configuration policy 조건이며, 해당 E2E 구성 이행은 이번 Java runtime 변경으로 완료되지 않았다.
+
+이 결과는 Java runtime과 test까지의 승인 근거이지 Java implementation plan 전체 완료
+판정은 아니다. relay notification wire command, 공통 error wire schema,
+idle eviction의 cross-node generation 정책, 전체 topology 수신 process evidence, D4와
+D6은 공통 설계 또는 추가 검증이 필요하다.
 
 
 ## 이 언어의 특징
@@ -95,7 +110,8 @@ placement 수용량이 각각 어느 kind로 가는지.
 
 `execution/ZLinkAsyncSerialQueue.java`의 전역 executor를 제거했다. registration이
 runtime-owned virtual-thread executor를 만들고 actor·channel·spot·stream queue에 주입하며,
-runtime close가 handler executor와 serial executor를 모두 종료한다.
+runtime close가 handler executor와 serial executor를 모두 종료한다. one-way admission의
+deadline scheduler도 backend source가 소유하고 source shutdown에서 종료한다.
 
 **판정 — 해소.** production static executor 검색과 Core unit test로 확인했다.
 
@@ -123,9 +139,12 @@ barrier도 lifecycle lane의 별도 한도에 걸리며 FIFO 뒤에 추가된다
 **D2 — 수신 회계 lock.** Java는 HWM permit과 completion 회계를 분리했다. 관련 unit test가
 통과했으며 다른 언어의 lock 판정은 갭 목록에 남아 있다.
 
-**D4 — 복사.** `ZLinkEncodedPayload.java:13,18`이 생성과 `bytes()` 접근에서 각각 복사하고,
-`messaging/ZLinkMessage.java:31,50`이 그 복사를 다시 수행한다. 공개 API의 불변성은 유지하되
-runtime 내부 소유권 이전에는 복사하지 않는 경로를 따로 둔다.
+**D4 — 복사.** `ZLinkEncodedPayload`는 공개 불변성을 위해 생성과 `bytes()` 접근에서
+방어적 복사를 한다. 반면 `ZLinkMessage.fromEncoded`는 전달된 `ZLinkEncodedPayload` 객체를
+그대로 보관하고 `ZLinkMessageOwnershipTest`가 decode·re-encode에서 같은 객체를 확인한다.
+다만 empty 판정과 serializer 경로는 `bytes()`를 호출하므로 모든 내부 hot path가 zero-copy인
+것은 아니다. 공개 경계를 훼손하지 않는 내부 소유권 이전 경로와 buffer 복사 회계는 D4에
+남긴다.
 
 ## W2 — selector
 
@@ -157,20 +176,32 @@ coalesced·discarded terminal 누계를 넣는다. runtime-owned SignalHub가 so
 
 항목: **A9**
 
-fanout은 connection마다 최대 64건으로 충족이다
-(`runtime/channels/ZLinkFanoutLocationRuntime.java:49,393-404`).
+공통 `ZLinkReceiveBatchBudget`은 message 64건, payload 1 MiB, 경과 시간 2 ms 중 먼저
+도달한 조건으로 멈춘다. Channel request/subscribe/route, Spot·Entry·Instance activation,
+ClientServer control, fanout, STREAM, raw mesh receive 경로에 연결했다. fanout과 STREAM은
+정렬된 connection 목록과 rotating cursor를 사용하고, `ZLinkJavaMeshDispatchPump`도
+2 ms에 dispatch turn을 끝내 pending domain을 다음 scheduled task로 넘긴다.
 
-다만 그 `64`는 fanout 전용이고 조항 범위가 RouteMesh·ClientServer·service·STREAM까지
-넓어졌다. **부분 확인 상태이며 나머지 경로 감사가 필요하다.** 상한을 건수만이 아니라
-건수·byte·경과 시간 셋으로 넓히는 것도 함께 본다.
+`ZLinkSpotRouteBridgeDrainer`는 채널 순서를 회전시키지만 backend `drain()`이 처리 건수만
+반환해 byte·시간 상한을 내부에서 확인할 수 없다. 현재 Java production route bridge는
+직접 raw/mesh 경로를 사용해 이 bridge가 활성화되지 않는다. 따라서 공통 internals가 요구한
+전체 topology matrix와 실제 multi-process 공정성은 **부분 확인**으로 남긴다.
 
 ## W4 — 유휴 정리 (신규 기능)
 
 항목: **A3**
 
-`spots/ZLinkSpotCloseReason.java`에 `IDLE_EVICTED=3`과 timeout 표면은 추가했지만, 실제
-eviction은 시작일 뿐이다.
-Location Store CAS·admission seal·timer 구조가 함께 필요하다.
+`ZLinkInstanceSpotActivation`은 마지막 활동 시각, active route receive, timer,
+quiescence를 확인한 뒤 유휴 정리를 시작한다. `ZLinkSpotRuntime`은 Location Store의
+READY→CLOSING CAS를 먼저 수행하고, 같은 시점에 route cache admission을 봉인한다. 이후
+closing callback, 조건부 authority delete, local resource 정리가 이어진다.
+
+`InstanceSpotRuntimeIntegrationTest.publicRequestReactivatesInstanceSpotAfterIdleEviction`
+은 authority 삭제 뒤 일반 `requestToSpot`이 `NOT_FOUND`가 되고,
+`instanceSpot("EchoInstance")` 명시 호출이 새 instance를 활성화하는 흐름을 확인한다.
+두 번의 초기화와 `IDLE_EVICTED` 종료 사유도 확인한다. 다만 공통 wire와
+cross-node generation 경쟁 정책은 별도 계약이 없어 Java 계획의 공통 완료 조건으로는
+남겨 둔다.
 
 ## W3 — relay 통지
 
@@ -183,13 +214,16 @@ wire command 확정 전에는 시작할 수 없다.
 
 ## C부 구조 부채
 
-- `ZLinkOneWayCalls` 중복 5곳 — channels, binding, streams, spots, actors
-- `runtime/messaging/`의 세 파일이 `package …runtime.host;`를 선언 —
-  `ZLinkAdmissionRuntime.java:1`, `ZLinkOneWayAdmissionStatus.java:1`, `ZLinkOneWayAdmission.java:1`
-- 빈 디렉터리 3개 — `systems/zlink/contracts/service`, `runtime/internal/binding`, `runtime/service`
+- `ZLinkOneWayCalls`는 `runtime/internal/calls/`의 공통 구현으로 통합했다.
+- `ZLinkAdmissionRuntime`, `ZLinkOneWayAdmissionStatus`, `ZLinkOneWayAdmission`은
+  `runtime/host/` package와 실제 경로를 일치시켰다.
+- `runtime/internal/binding`과 `runtime/service` 빈 디렉터리는 제거했다. 생성 계약 namespace인
+  `systems/zlink/contracts/service` 빈 디렉터리는 남아 있어 C부 전체를 완료로 판정하지 않는다.
 
 ## 검증
 
 W7은 **언어가 섞인 error-reply test**가 완료 조건이다 — Java가 보낸 kind를 다른 언어가
-읽고, 그 반대도 되는지 확인한다. 단위 test로는 이름 불일치를 잡을 수 없다. W1은 한도가 없던 상태에서 시작하므로
-**빈 payload flood와 큰 payload flood 두 경우**를 모두 확인한다.
+읽고, 그 반대도 되는지 확인한다. 단위 test로는 이름 불일치를 잡을 수 없다. W1은 현재
+건수·byte 예약과 고정 비용 경로를 확인했지만, 일반 payload 길이를 admission에 전달하는
+경계와 공통 기본값은 D6으로 남아 있으므로 **빈 payload flood와 큰 payload flood**를
+각각 확인해야 한다.

@@ -1,21 +1,47 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/foundation/operation_registry.hpp"
+#include "runtime/operations/exactly_once_table.hpp"
 
 #include <cassert>
 #include <stdexcept>
 
 namespace foundation = zlink::framework::runtime::foundation;
+namespace runtime = zlink::framework::runtime;
 
 foundation::operation_id_t id (std::uint8_t value)
 {
-    foundation::operation_id_t result{};
-    result.back () = value;
-    return result;
+    return foundation::operation_id_t{0, value};
 }
 
 int main ()
 {
+    runtime::exactly_once_table_t<foundation::operation_id_t,
+                                  int,
+                                  runtime::operation_id_hash_t>
+      completions (2);
+    assert (completions.reserve (id (10)));
+    assert (completions.claim (id (10)).state
+            == runtime::exactly_once_claim_state::pending);
+    assert (completions.complete (id (10), 7));
+    const auto completed = completions.claim (id (10));
+    assert (completed.state == runtime::exactly_once_claim_state::completed
+            && completed.value && *completed.value == 7);
+    assert (!completions.complete (id (10), 8));
+    int completion = 0;
+    assert (completions.take (id (10), completion) && completion == 7);
+    assert (!completions.take (id (10), completion));
+    assert (completions.claim (id (11)).state
+            == runtime::exactly_once_claim_state::claimed);
+    assert (completions.erase (id (11)));
+    assert (completions.claim (id (11)).state
+            == runtime::exactly_once_claim_state::claimed);
+    assert (completions.complete (id (12), 9));
+    const auto unreserved_completion = completions.claim (id (12));
+    assert (unreserved_completion.state
+              == runtime::exactly_once_claim_state::completed
+            && unreserved_completion.value && *unreserved_completion.value == 9);
+
     foundation::operation_registry_t registry (2);
     const auto now = foundation::operation_registry_t::clock_t::now ();
     int first_terminal = 0;

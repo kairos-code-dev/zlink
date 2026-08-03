@@ -8,7 +8,8 @@
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include <cstdlib>
 #include <iostream>

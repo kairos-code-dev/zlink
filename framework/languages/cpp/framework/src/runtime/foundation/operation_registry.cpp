@@ -35,16 +35,6 @@ void notify (operation_registry_t::callback_t &callback,
 }
 }
 
-std::size_t operation_registry_t::id_hash_t::operator() (const operation_id_t &id) const noexcept
-{
-    std::size_t value = 1469598103934665603ULL;
-    for (const auto byte : id) {
-        value ^= byte;
-        value *= 1099511628211ULL;
-    }
-    return value;
-}
-
 bool operation_registry_t::register_operation (operation_id_t id,
                                                clock_t::time_point deadline,
                                                callback_t callback)

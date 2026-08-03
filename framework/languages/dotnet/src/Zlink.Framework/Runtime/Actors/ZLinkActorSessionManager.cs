@@ -114,6 +114,13 @@ internal sealed partial class ZLinkActorSessionManager(
         CancellationToken cancellationToken)
     {
         var state = _actorSessions.GetOrCreate(actorId);
+        // A source that completed a handoff keeps its retired native ref and
+        // closed activation until the next local materialization. A new
+        // durable object generation on this node must retire that old source
+        // before the reserved Actor factory can use the state again.
+        if (state.Actor is null && state.RetiredLocalActorRef is not null)
+            await PrepareForTransferredActivationAsync(state, cancellationToken)
+                .ConfigureAwait(false);
         return await ActorCreation.PrepareReservedActorAsync(
                 state,
                 actorId,

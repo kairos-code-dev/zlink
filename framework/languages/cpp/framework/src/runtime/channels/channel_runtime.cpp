@@ -5,7 +5,9 @@
 #include <zlink/framework/contracts/configuration/framework_options.hpp>
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/byte_count.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include "runtime/channels/channel_outbound_exchange.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"

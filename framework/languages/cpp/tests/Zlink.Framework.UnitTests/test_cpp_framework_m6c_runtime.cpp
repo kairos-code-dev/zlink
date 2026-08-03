@@ -663,7 +663,8 @@ void test_actor_leave_after_relocation_defer_runs_lifecycle_callbacks (
         state->node_rid = node_rid;
         state->spot_id = std::move (spot_id);
         state->spot_name = std::move (spot_name);
-        state->entry_spot = entry_spot;
+        state->kind = entry_spot ? detail::spot_runtime_kind_t::entry
+                                 : detail::spot_runtime_kind_t::user;
         state->execution_mode = user_spot_execution_mode_t::spot_wide;
         state->relocation_readiness =
           spot_relocation_readiness_mode_t::application_signaled;

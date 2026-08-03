@@ -12,6 +12,7 @@ SCENARIO_SET=0
 G4_CHILD=0
 G4_PROVEN=0
 TRACE_STREAM="${ZLINK_SAMPLE_TRACE_STREAM:-0}"
+SPOT_DISCOVERY_TRACE="${ZLINK_SAMPLE_SPOT_DISCOVERY_TRACE:-1}"
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --browser-smoke)
@@ -186,7 +187,11 @@ start() {
   # Keep Framework spot-discovery evidence in the same per-process files that the
   # readiness gates inspect. This makes mesh admission and replacement routing
   # observable without changing the sample's public traffic.
-  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+  if [[ "$SPOT_DISCOVERY_TRACE" == "1" ]]; then
+    ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+  else
+    "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+  fi
   PIDS+=($!)
   NODE_PID[$name]=$!
   echo "    started $name (pid ${PIDS[-1]})"

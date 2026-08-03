@@ -10,10 +10,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
 import java.util.function.IntUnaryOperator;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
@@ -66,6 +69,40 @@ class ZLinkJavaMeshDispatchPumpTest {
         }
     }
 
+    @Test
+    void residueIsRescheduledAfterTheElapsedTurnBudget() throws Exception {
+        TimeCappedSource source = new TimeCappedSource();
+        CountDownLatch drained = new CountDownLatch(6);
+        AtomicInteger executions = new AtomicInteger();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            1,
+            1,
+            0,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>()) {
+            @Override
+            public void execute(Runnable command) {
+                super.execute(() -> {
+                    executions.incrementAndGet();
+                    command.run();
+                });
+            }
+        };
+
+        try (ZLinkJavaMeshDispatchPump pump =
+                 new ZLinkJavaMeshDispatchPump(source, ignored -> {
+                     drained.countDown();
+                     return CompletableFuture.completedFuture(null);
+                 }, executor)) {
+            source.readyHandler.applyAsInt(1);
+
+            assertTrue(drained.await(2, TimeUnit.SECONDS));
+            assertEquals(6, source.drains.get());
+            assertTrue(executions.get() >= 2,
+                "residue was not split across dispatch turns");
+        }
+    }
+
     private static final class RecordingSource implements ZLinkJavaMeshDispatchPump.Source {
         private final List<Integer> domains = new ArrayList<>();
         private IntUnaryOperator readyHandler;
@@ -102,6 +139,38 @@ class ZLinkJavaMeshDispatchPumpTest {
         @Override
         public void close() {
             closed = true;
+        }
+    }
+
+    private static final class TimeCappedSource
+        implements ZLinkJavaMeshDispatchPump.Source {
+        private final AtomicInteger drains = new AtomicInteger();
+        private IntUnaryOperator readyHandler;
+
+        @Override
+        public void setReadyHandler(IntUnaryOperator handler) {
+            readyHandler = handler;
+        }
+
+        @Override
+        public boolean drain(
+            int readyDomains,
+            Function<ZLinkMeshDispatchRecord, CompletionStage<Void>> receiver,
+            IntConsumer released) {
+            int count = drains.incrementAndGet();
+            receiver.apply(null);
+            if (count == 1) {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException interruption) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return count < 6;
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

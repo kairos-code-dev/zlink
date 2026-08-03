@@ -3626,6 +3626,12 @@ public final class ZLinkSpotRuntime
                     if (result instanceof systems.zlink.framework.runtime.internal.locations
                             .ZLinkAuthorityStored stored) {
                         activation.markSealedStoreVersion(stored.storeVersion());
+                        ZLinkInternalMeshNode routeNode = routeMeshNodesByName.get(
+                            activation.context.meshName());
+                        if (routeNode != null) {
+                            routeNode.forgetInstanceIntent(
+                                activation.authorityRouteFence());
+                        }
                         return true;
                     }
                     return false;

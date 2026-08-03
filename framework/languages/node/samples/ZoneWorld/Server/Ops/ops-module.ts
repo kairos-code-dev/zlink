@@ -8,6 +8,7 @@ import { NodeRegistry } from './node-registry';
 import { OpsSessionFactory } from './ops-session';
 import { OpsConsoleRegistry } from './ops-console-registry';
 import { MaintenanceStore } from '../Configuration/maintenance-store';
+import { OpsRuntimeStatusObserver } from './ops-runtime-events';
 
 function createOpsModule() {
   class OpsModule {}
@@ -44,7 +45,8 @@ function createOpsModule() {
       NodeRegistry,
       MaintenanceStore,
       OpsConsoleRegistry,
-      OpsSessionFactory
+      OpsSessionFactory,
+      OpsRuntimeStatusObserver
     ]
   })(OpsModule);
   return OpsModule;

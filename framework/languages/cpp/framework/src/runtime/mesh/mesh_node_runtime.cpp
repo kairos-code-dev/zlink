@@ -140,12 +140,6 @@ std::uint64_t next_connection_intent_id ()
     return next.fetch_add (1, std::memory_order_relaxed);
 }
 
-std::pair<std::uint64_t, std::uint64_t>
-operation_key (const host::operation_id_t &operation)
-{
-    return {operation.high, operation.low};
-}
-
 void trace_mesh_actor (std::string_view stage,
                        const actor_ref_t &actor,
                        const host::operation_id_t &operation = {},
@@ -1378,7 +1372,7 @@ result_t<void> mesh_node_runtime_t::submit_application_actor_entry_spot_join (
           framework_error_kind_t::internal_failure,
           "Actor entry Spot join was not submitted");
     const auto [_, inserted] = _actor_join_continuations.emplace (
-      operation_key (operation),
+      operation,
       actor_join_continuation_t{actor, std::move (completion)});
     if (!inserted)
         return result_t<void>::failure (
@@ -1396,13 +1390,13 @@ bool mesh_node_runtime_t::complete_application_actor_entry_spot_join (
     {
         std::lock_guard lock (_completion_mutex);
         const auto found = _actor_join_continuations.find (
-          operation_key (record.operation_id));
+          record.operation_id);
         if (found == _actor_join_continuations.end ())
             return false;
         actor = found->second.actor;
         completion = std::move (found->second.completion);
         _actor_join_continuations.erase (found);
-        _completed_operations.erase (operation_key (record.operation_id));
+        (void) _completed_operations.erase (record.operation_id);
     }
     completion (actor_join_reply_from_completion (record, parts, actor));
     return true;
@@ -2194,16 +2188,17 @@ mesh_node_runtime_t::wait_for_completion (
   std::chrono::milliseconds timeout)
 {
     std::unique_lock lock (_completion_mutex);
-    const auto key = operation_key (operation);
     if (!_completion_ready.wait_for (
-          lock, timeout, [&] { return _completed_operations.find (key)
-                                     != _completed_operations.end (); })) {
+          lock, timeout, [&] { return _completed_operations.contains (operation); })) {
         return result_t<operation_completion_t>::failure (
           framework_error_kind_t::internal_failure, "MeshNode operation timed out");
     }
-    auto ready = _completed_operations.find (key);
-    auto completion = std::move (ready->second);
-    _completed_operations.erase (ready);
+    operation_completion_t completion;
+    if (!_completed_operations.take (operation, completion)) {
+        return result_t<operation_completion_t>::failure (
+          framework_error_kind_t::internal_failure,
+          "MeshNode operation completion was consumed concurrently");
+    }
     return result_t<operation_completion_t>::success (std::move (completion));
 }
 
@@ -2368,8 +2363,8 @@ std::size_t mesh_node_runtime_t::dispatch_ready (
             if (record.kind == host::record_kind_t::completion) {
                 {
                     std::lock_guard lock (_completion_mutex);
-                    _completed_operations[operation_key (record.operation_id)] =
-                      operation_completion_t{record, parts};
+                    (void) _completed_operations.complete (
+                      record.operation_id, operation_completion_t{record, parts});
                 }
                 _completion_ready.notify_all ();
             }

@@ -26,6 +26,7 @@ test('ZoneWorld roles use one physical MeshNode with automatic logical handlers'
   const ops = read('samples/ZoneWorld/Server/Ops/ops-module.ts');
   const nodeHandlers = read('samples/ZoneWorld/Server/ZoneNode/Infrastructure/ZLink/Handlers/node-channel-handlers.ts');
   const opsHandlers = read('samples/ZoneWorld/Server/Ops/ops-handlers.ts');
+  const opsModule = read('samples/ZoneWorld/Server/Ops/ops-module.ts');
   assert.match(zoneNode, /addRouteMesh\(ZoneWorldNames\.zoneMesh\)[\s\S]*?setRoutingIdPrefix\('zn'\)/);
   assert.doesNotMatch(zoneNode, /useAllocatedRoutingId|setRoutingIdAllocationGroup|\.setRoutingId\(/);
   for (const module of [zoneNode, gateway, ops]) {
@@ -40,6 +41,9 @@ test('ZoneWorld roles use one physical MeshNode with automatic logical handlers'
   assert.match(nodeHandlers, /@zlinkRequestHandler\('zone-ops', PacketNames\.applyNodeMaintenanceReq\)/);
   assert.doesNotMatch(nodeHandlers, /ensurePlayerActor|nodeRid/);
   assert.match(opsHandlers, /@zlinkSendHandler\('ops', PacketNames\.reportNodeStatusMsg\)/);
+  assert.match(opsHandlers, /ZLinkRouteSendHandler<ReportNodeStatusMsg>/);
+  assert.match(opsHandlers, /sourceNodeRid/);
+  assert.match(opsModule, /OpsRuntimeStatusObserver/);
   assert.doesNotMatch(zoneNode, /addRouteMesh\(ZoneWorldNames\.(?:bridgeMesh|reportChannel)\)/);
 });
 
@@ -146,22 +150,27 @@ test('ZoneWorld Ops translates public diagnostics requests to the node channel c
   );
 });
 
-test('ZoneWorld node status uses only the logical node identity', () => {
+test('ZoneWorld node status combines logical identity with live routing status', () => {
   const { NodeRegistry } = require(path.join(
     nodeRoot,
     'samples/ZoneWorld/dist/Server/Ops/node-registry.js'
   ));
   const registry = new NodeRegistry();
+  registry.applyLiveRoutingIds(new Set(['zn-1']));
   registry.report({
     nodeId: 'zone-node-1',
     maintenance: false,
     zones: ['zone-nw', 'zone-sw'],
     playerCount: 0
-  });
+  }, 'zn-1');
 
   assert.deepEqual(registry.snapshot().map(({ registered, connected }) => ({ registered, connected })), [
     { registered: true, connected: true }
   ]);
+  assert.deepEqual(
+    registry.applyLiveRoutingIds(new Set()).map(({ registered, connected }) => ({ registered, connected })),
+    [{ registered: false, connected: false }]
+  );
 });
 
 test('ZoneWorld alert replay is bounded and begins only when WatchNodes is handled', () => {

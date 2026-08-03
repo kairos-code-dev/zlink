@@ -2,7 +2,15 @@
 
 #include "runtime/fanout/raw_fanout_owner.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/context.hpp>
+#include <zlink/Contracts/Eventing/poll_event.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
+#include <zlink/Contracts/Messaging/topic_message.hpp>
+#include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/pubsub_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 
 #include <algorithm>
 #include <cerrno>

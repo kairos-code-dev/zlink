@@ -173,7 +173,7 @@ final class ChannelMessagingTest {
 
             assertEquals(
                 systems.zlink.framework.errors.ZLinkFrameworkErrorKind
-                    .REQUEST_TARGET_NOT_FOUND,
+                    .NOT_FOUND,
                 failure.kind());
         }
     }

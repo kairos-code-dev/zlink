@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Locations;
@@ -841,6 +842,27 @@ public sealed class ActorHandoffTests
 
         creation.SetException(new InvalidOperationException("test creation failure"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => operation.Task);
+    }
+
+    [Fact]
+    public void NewActivationAfterMigration_ReopensTheClosedActorActivation()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var state = new ZLinkActorRuntimeState("actor-1", services: services);
+        var source = ActorRef("node-a", 1);
+
+        state.BindNativeActorRef(source);
+        state.Handoff.BeginCapture();
+        _ = Cutover(state, 0, source, ActorRef("node-b", 2));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
+        state.RetireMigratedActorInstance(source);
+
+        Assert.Throws<InvalidOperationException>(() => state.HandlerInstances);
+
+        state.PrepareForTransferredActivation();
+
+        Assert.False(state.ContextInvalidated);
+        Assert.NotNull(state.HandlerInstances);
     }
 
     [Fact]

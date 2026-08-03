@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <array>
+#include "runtime/operations/operation_id.hpp"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -13,7 +14,7 @@
 namespace zlink::framework::runtime::foundation
 {
 
-using operation_id_t = std::array<std::uint8_t, 16>;
+using operation_id_t = runtime::operation_id_t;
 
 enum class operation_terminal_t
 {
@@ -44,10 +45,7 @@ class operation_registry_t
     std::size_t size () const;
 
   private:
-    struct id_hash_t
-    {
-        std::size_t operator() (const operation_id_t &id) const noexcept;
-    };
+    using id_hash_t = runtime::operation_id_hash_t;
 
     struct pending_t
     {

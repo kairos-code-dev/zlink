@@ -94,9 +94,9 @@ public final class ZLinkAsyncSerialQueue {
             null,
             releaseOnIncompleteStage,
             pendingCapacity,
-            Long.MAX_VALUE,
+            DEFAULT_APPLICATION_BYTE_CAPACITY,
             pendingCapacity,
-            Long.MAX_VALUE,
+            DEFAULT_LIFECYCLE_BYTE_CAPACITY,
             DEFAULT_FIXED_WORK_BYTE_COST,
             DEFAULT_LIFECYCLE_BURST_LIMIT,
             DEFAULT_OWNER_TIME_BUDGET);
@@ -110,9 +110,9 @@ public final class ZLinkAsyncSerialQueue {
             executor,
             releaseOnIncompleteStage,
             pendingCapacity,
-            Long.MAX_VALUE,
+            DEFAULT_APPLICATION_BYTE_CAPACITY,
             pendingCapacity,
-            Long.MAX_VALUE,
+            DEFAULT_LIFECYCLE_BYTE_CAPACITY,
             DEFAULT_FIXED_WORK_BYTE_COST,
             DEFAULT_LIFECYCLE_BURST_LIMIT,
             DEFAULT_OWNER_TIME_BUDGET);

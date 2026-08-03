@@ -424,12 +424,27 @@ internal sealed class ZLinkAutoConnectReconciler
             _retainedMemberRids = retained;
         }
 
+        var endpointsReleasedThisTick = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (key, target) in desired)
         {
             if (!_active.TryGetValue(key, out var current))
             {
                 // A draining descriptor is not selected for new connections.
                 if (target.Draining) continue;
+                // Do not let a stale target re-claim an endpoint after a
+                // newer target released it earlier in this same snapshot.
+                if (endpointsReleasedThisTick.Contains(target.Endpoint))
+                    continue;
+                if (!ReleaseEndpointConflicts(target, out var endpointReleased))
+                    continue;
+                // Core closes the old endpoint-scoped transport synchronously
+                // from the framework's perspective, but its reconnect state
+                // is asynchronous. Submit the replacement on the next tick.
+                if (endpointReleased)
+                {
+                    endpointsReleasedThisTick.Add(target.Endpoint);
+                    continue;
+                }
                 var accepted = _executor.Connect(target);
                 ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"autoconnect_add local={_local.NodeRid?.ToString() ?? "<unknown>"} "
@@ -488,6 +503,59 @@ internal sealed class ZLinkAutoConnectReconciler
             }
         }
 
+    }
+
+    private bool ReleaseEndpointConflicts(
+        ZLinkAutoConnectTarget target,
+        out bool endpointReleased)
+    {
+        endpointReleased = false;
+        // A restarted process may publish a new RID before the old lease row
+        // expires. The endpoint is still one Core transport candidate, so an
+        // old RID cannot retain the framework's auto-connect claim while the
+        // new descriptor is admitted. Release only a different active target
+        // on the same endpoint; the same-RID owner refresh remains transport
+        // managed and does not trigger a second dial.
+        var conflicts = _active
+            .Where(entry =>
+                !string.Equals(entry.Key, target.TargetKey, StringComparison.Ordinal)
+                && string.Equals(
+                    entry.Value.Endpoint,
+                    target.Endpoint,
+                    StringComparison.Ordinal))
+            .ToArray();
+        if (conflicts.Any(entry => !SupersedesEndpointTarget(target, entry.Value)))
+            return false;
+
+        foreach (var (key, current) in conflicts)
+        {
+            var disconnected = _executor.Disconnect(current);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"autoconnect_endpoint_handover local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                + $"old={current.NodeRid}@{current.Endpoint} new={target.NodeRid}@{target.Endpoint} "
+                + $"disconnect={disconnected}");
+            if (!disconnected) return false;
+            _active.Remove(key);
+            endpointReleased = true;
+        }
+
+        return true;
+    }
+
+    private static bool SupersedesEndpointTarget(
+        ZLinkAutoConnectTarget target,
+        ZLinkAutoConnectTarget current)
+    {
+        var updatedAt = target.UpdatedAt.CompareTo(current.UpdatedAt);
+        if (updatedAt != 0) return updatedAt > 0;
+        if (target.OwnerLeaseGeneration != current.OwnerLeaseGeneration)
+            return target.OwnerLeaseGeneration > current.OwnerLeaseGeneration;
+        if (target.LifecycleGeneration != current.LifecycleGeneration)
+            return target.LifecycleGeneration > current.LifecycleGeneration;
+        // The store normally supplies UpdatedAt and a lease generation. Keep
+        // the tie deterministic for test stores or clocks with coarse
+        // resolution instead of allowing two RIDs to oscillate per tick.
+        return string.CompareOrdinal(target.TargetKey, current.TargetKey) > 0;
     }
 
     private void EnterStoreFailure()

@@ -8,6 +8,7 @@
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
+#include "runtime/operations/exactly_once_table.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
 #include "runtime/stateful/maintenance_runtime.hpp"
 
@@ -104,16 +105,11 @@ class spot_node_builder_state_t
     std::set<std::string> actor_created_keys;
     std::set<std::string> destroying_actors;
     std::set<std::string> destroyed_actor_keys;
-    // Request id -> cached reply for requests already dispatched at this node
-    // (§10.2-1 exactly-once). A preserved-then-retried request carries a stable
-    // id: the first arrival (commit replay or the sender's retry) dispatches and
-    // caches its reply; later arrivals with the same id return the cached reply
-    // instead of dispatching again. nullopt means dispatch is still in flight.
-    // Guarded by its own mutex: the sender's retry runs on the packet-drain
-    // thread while the commit replay's completion runs on the spot serial queue.
-    std::map<std::string, std::map<std::string, std::optional<zlink::message_t>>>
+    // A request id is reserved before dispatch and receives one terminal
+    // reply. The table owns both states so replay and retry use the same
+    // exactly-once transition.
+    runtime::exactly_once_table_t<std::string, zlink::message_t>
       dispatched_request_replies;
-    std::mutex dispatched_request_replies_mutex;
     // Requests currently dispatched to each actor and not yet replied. Sampled
     // once per transfer right at the moving transition (runtime-metrics §4.3
     // pending_requests). Guarded by its own mutex: dispatch runs on the
@@ -385,8 +381,7 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
       user_spot_execution_mode_t::spot_wide;
     spot_relocation_readiness_mode_t relocation_readiness =
       spot_relocation_readiness_mode_t::any_turn_boundary;
-    bool entry_spot = false;
-    bool instance_spot = false;
+    detail::spot_runtime_kind_t kind = detail::spot_runtime_kind_t::user;
     bool relocation_boundary_active = false;
     bool relocation_ready_deferred = false;
     std::vector<spot_packet_descriptor_t> packets;
@@ -430,6 +425,16 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
         return callback_depth > 0;
     }
 
+    bool is_entry_spot () const noexcept
+    {
+        return kind == detail::spot_runtime_kind_t::entry;
+    }
+
+    bool is_instance_spot () const noexcept
+    {
+        return kind == detail::spot_runtime_kind_t::instance;
+    }
+
     bool try_close_idle ()
     {
         auto owner = node;
@@ -437,7 +442,7 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
             return false;
         }
         std::lock_guard<std::recursive_mutex> node_lock (owner->mutex);
-        if (closed || actor_count != 0 || !instance_spot) {
+        if (closed || actor_count != 0 || !is_instance_spot ()) {
             return false;
         }
         {

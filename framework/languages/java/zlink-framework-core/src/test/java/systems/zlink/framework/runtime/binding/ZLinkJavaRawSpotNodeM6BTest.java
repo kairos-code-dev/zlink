@@ -1006,14 +1006,22 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             }
             assertNotNull(activated);
             assertEquals(41, activated.lifecycleGeneration());
+            var routeDeadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
             var received = activated.recvRoute(
                 ZLinkBackendRecvMode.DONT_WAIT);
+            while (received == null && System.nanoTime() < routeDeadline) {
+                Thread.sleep(1);
+                received = activated.recvRoute(
+                    ZLinkBackendRecvMode.DONT_WAIT);
+            }
             assertNotNull(received);
-            try (received) {
+            var delivered = received;
+            try (delivered) {
                 assertEquals(
                     "activate",
-                    received.parts().getLast().toUtf8String());
-                assertEquals(3, received.applicationMetadata()[0]);
+                    delivered.parts().getLast().toUtf8String());
+                assertEquals(3, delivered.applicationMetadata()[0]);
             }
 
             var stale = new ZLinkServiceM6BWireCodec.InstanceRouteFence(

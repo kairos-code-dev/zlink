@@ -184,6 +184,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
             header: parts[0].data(),
             payload: parts[1].data(),
             bindingActorRef: actor,
+            actorRef: actor,
             returnResponse: false,
             messageFollowContext: messageFollow
           }),
@@ -404,6 +405,12 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
         header: parts[0].data(),
         payload: parts[1].data(),
         bindingActorRef: {
+          actorId: actor.actorId,
+          objectGeneration: actor.generation,
+          meshName,
+          nodeRid: actor.nodeRid as unknown as RoutingId
+        },
+        actorRef: {
           actorId: actor.actorId,
           objectGeneration: actor.generation,
           meshName,

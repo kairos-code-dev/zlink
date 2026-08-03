@@ -35,6 +35,8 @@ import {
 import { requestRoutedJsonReply } from '../actors/actor-routed-json-request';
 import {
   attachActorMessageFollowContext,
+  createInitialActorMessageFollowContext,
+  createMessageFollowId,
   verifyActorMessageFollowPayload
 } from '../actors/actor-message-follow-context';
 import { streamMetadataMap } from '../actors/bound-session-wire';
@@ -450,15 +452,37 @@ export class ZLinkActorPacketRelay {
     if (remoteTarget === undefined) {
       return false;
     }
-    const request = encodeRemoteActorPacketRelayPayload({
-      actorId: actor.actorId,
-      routerChannelId: remoteTarget.routerChannelId,
-      boundSessionTargetNodeRid: localNodeRid === undefined ? undefined : String(localNodeRid),
-      boundSessionSpotId: localNodeRid === undefined ? undefined : String(localNodeRid),
-      bindingActorRef: actor.ref,
-      header: encodeStreamHeader(frameHeader),
-      payload: messageToBytes(payload)
-    });
+    const returnResponse = frameHeader.kind === ZLinkStreamMessageKind.Request
+      && frameHeader.requestSeq !== undefined;
+    const header = BindingMessage.from(Buffer.from(encodeStreamHeader(frameHeader)));
+    let request: Record<string, unknown>;
+    try {
+      const messageFollowContext = resolvedRoute === undefined
+        ? undefined
+        : createInitialActorMessageFollowContext(
+            resolvedRoute,
+            [header, payload],
+            returnResponse,
+            undefined,
+            isValidMessageFollowId(frameHeader.correlationId)
+              ? frameHeader.correlationId
+              : createMessageFollowId()
+          );
+      request = encodeRemoteActorPacketRelayPayload({
+        actorId: actor.actorId,
+        routerChannelId: remoteTarget.routerChannelId,
+        boundSessionTargetNodeRid: localNodeRid === undefined ? undefined : String(localNodeRid),
+        boundSessionSpotId: localNodeRid === undefined ? undefined : String(localNodeRid),
+        bindingActorRef: actor.ref,
+        header: messageToBytes(header),
+        payload: messageToBytes(payload),
+        returnResponse,
+        actorRef: resolvedRoute?.actorRef,
+        messageFollowContext
+      });
+    } finally {
+      header.close();
+    }
     const remoteAddress = {
       ...remoteTarget,
       routerChannelId: remoteTarget.routerChannelId,
@@ -797,4 +821,10 @@ function actorPacketTargetFromResolvedRoute(
     spotId: route.actorRef.nodeRid,
     spotKind: ZLinkSpotKind.Entry
   };
+}
+
+function isValidMessageFollowId(value: string | undefined): value is string {
+  return value !== undefined
+    && /^[0-9a-f]{32}$/.test(value)
+    && !/^0+$/.test(value);
 }

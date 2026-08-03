@@ -251,7 +251,13 @@ final class ZLinkInstanceSpotActivation
         }
         CompletableFuture<Boolean> result = new CompletableFuture<>();
         closeFuture = result;
-        host.sealInstanceSpotAuthority(this)
+        CompletionStage<Boolean> seal;
+        try {
+            seal = host.sealInstanceSpotAuthority(this);
+        } catch (RuntimeException failure) {
+            seal = CompletableFuture.failedFuture(failure);
+        }
+        seal
             .thenCompose(sealed -> {
                 if (!sealed) {
                     closeResources();

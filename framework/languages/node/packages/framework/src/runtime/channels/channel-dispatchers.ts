@@ -48,6 +48,11 @@ import {
 export interface ZLinkChannelRequestDispatcherOptions {
   readonly meshName?: string;
   readonly channelName: string;
+  /**
+   * Mesh channels use the routed message context so a handler can associate
+   * a report with the node that sent it.
+   */
+  readonly routeMesh?: boolean;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly dispatchErrors: ZLinkDispatchErrorReporter;
   readonly handlers: ReadonlyMap<string, ZLinkChannelRequestHandler>;
@@ -216,14 +221,7 @@ export class ZLinkChannelRequestDispatcher {
         envelope,
         codecs: this.options.codecs,
         handler: this.options.sendHandlers?.get(packetName),
-        context: {
-          meshName: this.options.meshName,
-          channelName: this.options.channelName,
-          contentType: envelope.header.contentType,
-          packetName,
-          metadata: zlinkMessageMetadata(envelope.header.metadata),
-          correlationId
-        },
+        context: this.createMeshContext(envelope, record.sourceNodeRid),
         signal
       });
       return;
@@ -243,14 +241,7 @@ export class ZLinkChannelRequestDispatcher {
       envelope,
       codecs: this.options.codecs,
       handler: this.options.handlers.get(packetName),
-      context: {
-        meshName: this.options.meshName,
-        channelName: this.options.channelName,
-        contentType: envelope.header.contentType,
-        packetName,
-        metadata: zlinkMessageMetadata(envelope.header.metadata),
-        correlationId
-      },
+      context: this.createMeshContext(envelope, record.sourceNodeRid),
       signal,
       missingHandlerMessage: `No channel request handler is registered for '${this.options.channelName}:${packetName}'.`,
       writeReply: async (reply) => {
@@ -275,6 +266,28 @@ export class ZLinkChannelRequestDispatcher {
       throw new ZLinkConfigurationException('Channel reply submit was backpressured but no submitter is available.');
     }
     return Promise.resolve();
+  }
+
+  private createMeshContext(
+    envelope: ReturnType<typeof decodeChannelEnvelope>,
+    sourceNodeRid: unknown
+  ): ZLinkMessageContext {
+    const base = {
+      meshName: this.options.meshName,
+      channelName: this.options.channelName,
+      contentType: envelope.header.contentType,
+      packetName: envelope.packetName!,
+      metadata: zlinkMessageMetadata(envelope.header.metadata),
+      correlationId: envelope.header.correlationId ?? undefined
+    };
+    if (!this.options.routeMesh) {
+      return base;
+    }
+    return {
+      ...base,
+      meshName: this.options.meshName!,
+      sourceNodeRid: String(sourceNodeRid ?? '')
+    } as ZLinkRouteMessageContext;
   }
 }
 

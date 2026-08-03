@@ -29,7 +29,8 @@ internal sealed record ZLinkAutoConnectTarget(
     string? OwnerId = null,
     bool InitiatesConnection = true,
     ulong LifecycleGeneration = 0,
-    long OwnerLeaseGeneration = 0);
+    long OwnerLeaseGeneration = 0,
+    DateTimeOffset UpdatedAt = default);
 
 /// <summary>
 /// Pure desired-target-set computation over a mesh descriptor snapshot,
@@ -66,7 +67,8 @@ internal static class ZLinkAutoConnectPlanner
                     or ZLinkLocationAutoConnectType.SpotMesh)
                 || LocalIsInitiator(local, descriptor),
                 descriptor.LifecycleGeneration,
-                descriptor.LeaseGeneration);
+                descriptor.LeaseGeneration,
+                descriptor.UpdatedAt);
             desired[target.TargetKey] = target;
         }
 

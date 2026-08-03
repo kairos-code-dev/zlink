@@ -30,7 +30,13 @@
 
 #include <zlink/framework/contracts/channels/call.hpp>
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Eventing/timers.hpp>
+#include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Messaging/received.hpp>
+#include <zlink/Contracts/Messaging/topic_message.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -56,6 +62,19 @@ constexpr std::size_t max_spot_relocation_state_bytes =
   64u * 1024u * 1024u;
 
 constexpr std::uint32_t actor_recv_info_no_bind_flag = 1u;
+
+std::string actor_request_dedup_prefix (std::string_view actor_key)
+{
+    return std::to_string (actor_key.size ()) + ":" + std::string (actor_key);
+}
+
+std::string actor_request_dedup_key (std::string_view actor_key,
+                                     std::string_view request_id)
+{
+    auto result = actor_request_dedup_prefix (actor_key);
+    result.append (request_id);
+    return result;
+}
 
 std::optional<std::string>
 actor_type_from_authority (runtime::live_location_reader_t &store,
@@ -162,7 +181,7 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
       std::make_shared<runtime::serial_execution_queue_t> (
         *state->serial_executor, runtime::serial_execution_queue_options_t{},
         runtime::serial_execution_queue_t::error_handler_t{},
-        !state->entry_spot
+        !state->is_entry_spot ()
           && state->execution_mode == user_spot_execution_mode_t::spot_wide);
     state->worker_scheduler = make_spot_worker_scheduler (state);
 }
@@ -542,10 +561,9 @@ void deactivate_actor_location (std::weak_ptr<detail::spot_node_builder_state_t>
         detail::erase_actor_instance_index_unlocked (*state, actor.actor_type (),
                                                      actor.actor_id ());
         state->actor_mailboxes.erase (key);
-        {
-            const std::lock_guard<std::mutex> dedup_lock (state->dispatched_request_replies_mutex);
-            state->dispatched_request_replies.erase (key);
-        }
+        (void) state->dispatched_request_replies.erase_if ([&] (const auto &request_key) {
+            return request_key.starts_with (actor_request_dedup_prefix (key));
+        });
         destroy_actor_registry = state->destroy_actor_registry;
     }
     if (destroy_actor_registry) {
@@ -1089,7 +1107,7 @@ void spot_context_state_t::defer_relocation_ready ()
     if (execution_mode != user_spot_execution_mode_t::spot_wide
         || relocation_readiness
              != spot_relocation_readiness_mode_t::application_signaled
-        || entry_spot || instance_spot
+        || is_entry_spot () || is_instance_spot ()
         || !owns_current_serial_turn ()) {
         throw framework_exception_t (
           framework_error_kind_t::not_configured,
@@ -1814,11 +1832,10 @@ task_t<void> entry_spot_context_t::destroy_actor_erased (const actor_ref_t &acto
         detail::erase_actor_instance_index_unlocked (*_state->node, actor.actor_type (),
                                                      actor.actor_id ());
         _state->node->actor_mailboxes.erase (key);
-        {
-            const std::lock_guard<std::mutex> dedup_lock (
-              _state->node->dispatched_request_replies_mutex);
-            _state->node->dispatched_request_replies.erase (key);
-        }
+        (void) _state->node->dispatched_request_replies.erase_if (
+          [&] (const auto &request_key) {
+              return request_key.starts_with (actor_request_dedup_prefix (key));
+          });
         decrement_actor_count_unlocked (*_state);
         if (_state->node->destroy_actor_registry) {
             auto cleanup = _state->node->destroy_actor_registry (actor);
@@ -2547,13 +2564,14 @@ spot_node_builder_t::accept_implicit_route_mesh (std::string route_channel_name,
 spot_node_builder_t &spot_node_builder_t::add_spot_factory_erased (
   std::string spot_name,
   std::type_index spot_type,
-  bool entry_spot,
+  detail::spot_runtime_kind_t kind,
   user_spot_execution_mode_t execution_mode,
-  bool instance_spot,
   std::int32_t stable_type_limit,
   spot_relocation_readiness_mode_t relocation_readiness,
   detail::factory_relocation_configuration_t relocation)
 {
+    const bool entry_spot = kind == detail::spot_runtime_kind_t::entry;
+    const bool instance_spot = kind == detail::spot_runtime_kind_t::instance;
     if (entry_spot && execution_mode != user_spot_execution_mode_t::spot_wide) {
         throw framework_exception_t (
           framework_error_kind_t::not_configured,
@@ -3185,7 +3203,9 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
       previous_context && previous_context->_state->owns_current_serial_turn ();
     auto &target_state = *context._state;
     bool created_entry_actor = false;
-    if (create_entry_actor && admission.entry_spot && !_state->actor_created_keys.contains (key)
+    if (create_entry_actor
+        && admission.kind == detail::spot_runtime_kind_t::entry
+        && !_state->actor_created_keys.contains (key)
         && admission.on_create_actor) {
         auto &serializers = *target_state.channel_runtime->serializers;
         result_t<actor_create_response_t> create_result =
@@ -4680,11 +4700,9 @@ spot_node_runtime_t::finalize_remote_actor_to_spot (
                 replay_request_id = id_it->second;
                 report_actor_handoff_request_trace (
                   _state, "backlog_request_frame", committed, replay_request_id, transfer_id);
-                const std::lock_guard<std::mutex> dedup_lock (
-                  _state->dispatched_request_replies_mutex);
-                if (!_state->dispatched_request_replies[key]
-                       .emplace (replay_request_id, std::nullopt)
-                       .second) {
+                const auto claim = _state->dispatched_request_replies.claim (
+                  actor_request_dedup_key (key, replay_request_id));
+                if (claim.state != runtime::exactly_once_claim_state::claimed) {
                     continue;
                 }
             }
@@ -4703,20 +4721,12 @@ spot_node_runtime_t::finalize_remote_actor_to_spot (
               if (replay_request_id.empty ()) {
                   return;
               }
-              const std::lock_guard<std::mutex> lock (
-                node_state->dispatched_request_replies_mutex);
-              auto replies = node_state->dispatched_request_replies.find (key);
-              if (replies == node_state->dispatched_request_replies.end ()) {
-                  return;
-              }
-              const auto entry = replies->second.find (replay_request_id);
-              if (entry == replies->second.end ()) {
-                  return;
-              }
+              const auto dedup_key = actor_request_dedup_key (key, replay_request_id);
               if (completed) {
-                  entry->second = completed.value ();
+                  (void) node_state->dispatched_request_replies.complete (
+                    dedup_key, completed.value ());
               } else {
-                  replies->second.erase (entry);
+                  (void) node_state->dispatched_request_replies.erase (dedup_key);
               }
           });
     }
@@ -5085,20 +5095,19 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         const auto id_it = metadata.values.find ("__zlink.actorRequestId");
         if (id_it != metadata.values.end () && !id_it->second.empty ()) {
             dedup_request_id = id_it->second;
-            const std::lock_guard<std::mutex> dedup_lock (
-              _state->dispatched_request_replies_mutex);
-            auto &replies = _state->dispatched_request_replies[key];
-            const auto existing = replies.find (dedup_request_id);
-            if (existing != replies.end ()) {
-                if (existing->second) {
+            const auto claim = _state->dispatched_request_replies.claim (
+              actor_request_dedup_key (key, dedup_request_id));
+            if (claim.state == runtime::exactly_once_claim_state::completed) {
+                if (claim.value) {
                     return result_t<std::optional<zlink::message_t>>::success (
-                      *existing->second);
+                      *claim.value);
                 }
+            }
+            if (claim.state == runtime::exactly_once_claim_state::pending) {
                 return result_t<std::optional<zlink::message_t>>::failure (
                   framework_error_kind_t::unavailable,
                   "actor request dispatch is in flight");
             }
-            replies.emplace (dedup_request_id, std::nullopt);
         }
     }
     // In-flight request window for the transfer pending sample (runtime-metrics
@@ -5146,9 +5155,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         .result ();
     if (!reply) {
         if (!dedup_request_id.empty ()) {
-            const std::lock_guard<std::mutex> dedup_lock (
-              _state->dispatched_request_replies_mutex);
-            _state->dispatched_request_replies[key].erase (dedup_request_id);
+            (void) _state->dispatched_request_replies.erase (
+              actor_request_dedup_key (key, dedup_request_id));
         }
         const auto *error = reply.error ();
         const framework_exception_t exception (
@@ -5164,8 +5172,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                 dispatch_error_surface_t::spot_actor, dispatch_kind, packet_name,
                                 {}, current_spot_id, actor_ref.actor_id ());
     if (!dedup_request_id.empty ()) {
-        const std::lock_guard<std::mutex> dedup_lock (_state->dispatched_request_replies_mutex);
-        _state->dispatched_request_replies[key][dedup_request_id] = reply.value ();
+        (void) _state->dispatched_request_replies.complete (
+          actor_request_dedup_key (key, dedup_request_id), reply.value ());
     }
     return result_t<std::optional<zlink::message_t>>::success (std::move (reply.value ()));
 }
@@ -5323,10 +5331,14 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
         .count (),
       std::memory_order_relaxed);
     context_state->spot_name = spot_name;
-    context_state->entry_spot =
+    const auto entry_spot =
       _state->snapshot.entry_spot_name
       && *_state->snapshot.entry_spot_name == spot_name;
-    context_state->instance_spot = instance_spot;
+    context_state->kind = entry_spot
+                            ? detail::spot_runtime_kind_t::entry
+                            : instance_spot
+                                ? detail::spot_runtime_kind_t::instance
+                                : detail::spot_runtime_kind_t::user;
     if (const auto mode = _state->snapshot.spot_execution_modes.find (spot_name);
         mode != _state->snapshot.spot_execution_modes.end ()) {
         context_state->execution_mode = mode->second;
@@ -5342,7 +5354,7 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
           std::make_shared<service_scope_t> (
             service_scope_t::create (
               *_state->root_services,
-              context_state->entry_spot
+              context_state->is_entry_spot ()
                 ? service_scope_kind_t::entry_spot
                 : service_scope_kind_t::spot_activation));
     }
@@ -5413,7 +5425,7 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
                 attach_native_spot_locked (context_state);
                 node_lock.unlock ();
                 response =
-                  !instance_spot && lifecycle.on_create
+                  !context_state->is_instance_spot () && lifecycle.on_create
                     ? lifecycle.on_create (
                         context_state->spot_instance.get (),
                         request, serializers)
@@ -5906,11 +5918,10 @@ result_t<bool> spot_node_runtime_t::destroy_actor (const actor_ref_t &actor_ref)
           std::string (actor_ref.actor_id ()));
         _state->core_actor_membership_epochs.erase (
           std::string (actor_ref.actor_id ()));
-        {
-            const std::lock_guard<std::mutex> dedup_lock (
-              _state->dispatched_request_replies_mutex);
-            _state->dispatched_request_replies.erase (key);
-        }
+        (void) _state->dispatched_request_replies.erase_if (
+          [&] (const auto &request_key) {
+              return request_key.starts_with (actor_request_dedup_prefix (key));
+          });
         {
             const std::lock_guard<std::mutex> pending_lock (
               _state->actor_pending_requests_mutex);
@@ -6204,7 +6215,7 @@ void spot_node_runtime_t::evict_idle_spots () noexcept
             for (auto &[rid, context] : _state->spot_contexts_by_id) {
                 (void) rid;
                 auto state = context._state;
-                if (!state || state->closed || !state->instance_spot
+                if (!state || state->closed || !state->is_instance_spot ()
                     || !state->spot_instance || state->actor_count != 0
                     || state->relocation_boundary_active
                     || state->relocation_ready_deferred
@@ -6490,7 +6501,7 @@ spot_node_runtime_t::deferred_relocation_ready_spots () const
     for (const auto &[_, context] :
          _state->spot_contexts_by_id) {
         const auto state = context._state;
-        if (!state || state->entry_spot || state->instance_spot)
+        if (!state || state->is_entry_spot () || state->is_instance_spot ())
             continue;
         std::lock_guard callback_lock (state->callback_mutex);
         if (state->relocation_ready_deferred)
@@ -6510,7 +6521,7 @@ spot_node_runtime_t::application_relocation_units () const
     for (const auto &[_, context] :
          _state->spot_contexts_by_id) {
         const auto state = context._state;
-        if (!state || state->entry_spot || state->instance_spot
+        if (!state || state->is_entry_spot () || state->is_instance_spot ()
             || state->execution_mode
                  != user_spot_execution_mode_t::spot_wide
             || state->relocation_readiness
@@ -6552,7 +6563,7 @@ void spot_node_runtime_t::begin_relocation_readiness ()
     for (const auto &[_, context] :
          _state->spot_contexts_by_id) {
         const auto state = context._state;
-        if (!state || state->entry_spot || state->instance_spot
+        if (!state || state->is_entry_spot () || state->is_instance_spot ()
             || state->execution_mode
                  != user_spot_execution_mode_t::spot_wide
             || state->relocation_readiness

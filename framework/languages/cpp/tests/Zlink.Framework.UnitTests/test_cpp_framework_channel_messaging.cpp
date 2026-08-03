@@ -25,7 +25,19 @@
 #include "runtime/spots/spot_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/byte_count.hpp>
+#include <zlink/Contracts/Core/context.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Eventing/events.hpp>
+#include <zlink/Contracts/Eventing/monitor.hpp>
+#include <zlink/Contracts/Eventing/poll_event.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
+#include <zlink/Contracts/Messaging/received.hpp>
+#include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
+#include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
 
 #include <algorithm>
 #include <atomic>

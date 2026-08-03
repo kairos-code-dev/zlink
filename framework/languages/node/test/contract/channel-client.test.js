@@ -3352,6 +3352,46 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
   }
 });
 
+test('ZLinkChannelRequestDispatcher preserves source node identity for RouteMesh channels', async () => {
+  let invocation;
+  const dispatcher = new framework.ZLinkChannelRequestDispatcher({
+    meshName: 'zone-mesh',
+    channelName: 'report',
+    routeMesh: true,
+    dispatchErrors: noDispatchErrorReporter(),
+    handlers: new Map(),
+    sendHandlers: new Map([
+      ['NodeStatus', {
+        async handle(payload, context) {
+          invocation = { payload, context };
+        }
+      }]
+    ])
+  });
+  const parts = encodeDotnetEnvelope({
+    kind: 3,
+    channelName: 'report',
+    messageName: 'NodeStatus',
+    contentType: 'application/json',
+    correlationId: null,
+    deadline: null,
+    topic: null,
+    errorCode: null,
+    errorMessage: null
+  }, { nodeId: 'zone-node-1' }).map(fakeMessagePart);
+
+  await dispatcher.dispatchMesh({
+    parts,
+    sourceNodeRid: 'node-rid-1'
+  });
+
+  assert.deepEqual(invocation.payload, { nodeId: 'zone-node-1' });
+  assert.equal(invocation.context.meshName, 'zone-mesh');
+  assert.equal(invocation.context.channelName, 'report');
+  assert.equal(invocation.context.sourceNodeRid, 'node-rid-1');
+  parts.forEach((part) => part.close());
+});
+
 test('ZLinkChannelRequestDispatcher replies error and reports observer for missing request handler', async () => {
   const events = [];
   class DispatchObserver {

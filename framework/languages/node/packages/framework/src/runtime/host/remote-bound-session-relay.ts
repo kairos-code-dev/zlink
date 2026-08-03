@@ -251,14 +251,9 @@ export class ZLinkRemoteBoundSessionRelay {
       readonly bindingGeneration?: bigint;
       readonly ownershipGeneration?: bigint;
       readonly ownerLeaseGeneration?: bigint;
-      readonly acceptedHighWater?: bigint;
     };
     const currentOwnershipGeneration = this.actorOwnershipGenerations.get(value.actorId)
       ?? currentFence.ownershipGeneration;
-    // acceptedHighWater is owned by the binding registry. Older ActorRef
-    // instances do not carry the optional diagnostic copy, so an absent
-    // field must not invalidate a seal that was already verified above.
-    const currentAcceptedHighWater = currentFence.acceptedHighWater;
     const rememberedHighWaterMatches = rememberedSeal?.sealId === value.sealId
       && rememberedSeal.acceptedHighWater === acceptedHighWater;
     const targetAlreadyPublished =
@@ -266,9 +261,7 @@ export class ZLinkRemoteBoundSessionRelay {
       currentOwnershipGeneration === ownershipGeneration &&
       currentFence.bindingGeneration === bindingGeneration &&
       currentFence.ownerLeaseGeneration === targetOwnerLeaseGeneration &&
-      (currentAcceptedHighWater === undefined
-        ? rememberedHighWaterMatches
-        : currentAcceptedHighWater === acceptedHighWater);
+      (activeSeal || rememberedHighWaterMatches);
     if (targetAlreadyPublished) {
       this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
       return encodeRemoteBoundSessionOwnershipAck(value);
@@ -279,8 +272,7 @@ export class ZLinkRemoteBoundSessionRelay {
     if (
       currentOwnershipGeneration !== previousOwnershipGeneration ||
       currentFence.bindingGeneration !== bindingGeneration ||
-      currentFence.ownerLeaseGeneration !== previousOwnerLeaseGeneration ||
-      (currentAcceptedHighWater !== undefined && currentAcceptedHighWater !== acceptedHighWater)
+      currentFence.ownerLeaseGeneration !== previousOwnerLeaseGeneration
     ) {
       throw new Error(`Actor '${value.actorId}' bound-session ownership update was fenced by its binding identity.`);
     }

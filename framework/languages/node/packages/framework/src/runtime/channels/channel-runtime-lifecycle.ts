@@ -197,17 +197,22 @@ export class ZLinkChannelRuntimeLifecycle {
         this.meshChannelDispatchers.set(meshChannelKey(meshName, channelName), new ZLinkChannelRequestDispatcher({
           meshName,
           channelName,
+          routeMesh: true,
           codecs: this.options.codecs,
           dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
           handlers: new Map(channel.requestHandlers?.map((handler) => [
             handler.packetName,
             (handler as typeof handler & { readonly handler?: ZLinkRequestHandler<unknown, unknown> }).handler
-              ?? this.options.dispatchServices.channelRequestHandler(handler.handlerType)
+              ?? adaptRouteRequestHandler(
+                this.options.dispatchServices.routeRequestHandler(handler.handlerType)
+              )
           ])),
           sendHandlers: new Map(channel.sendHandlers?.map((handler) => [
             handler.packetName,
             (handler as typeof handler & { readonly handler?: ZLinkSendHandler<unknown> }).handler
-              ?? this.options.dispatchServices.channelSendHandler(handler.handlerType)
+              ?? adaptRouteSendHandler(
+                this.options.dispatchServices.routeSendHandler(handler.handlerType)
+              )
           ])),
           filters: this.options.dispatchServices.handlerFilters(),
           unhandled: this.options.registration.dispatch?.unhandled
@@ -588,6 +593,24 @@ export class ZLinkChannelRuntimeLifecycle {
     this.options.spotRouteBridges.set(channelName, bridge);
     return bridge;
   }
+}
+
+function adaptRouteRequestHandler(
+  handler: ZLinkRouteRuntimeRequestHandler
+): ZLinkRequestHandler<unknown, unknown> {
+  return {
+    handle: async (payload, context) => handler.handle(payload, context as never)
+  };
+}
+
+function adaptRouteSendHandler(
+  handler: ZLinkRouteRuntimeSendHandler
+): ZLinkSendHandler<unknown> {
+  return {
+    handle: async (payload, context) => {
+      await handler.handle(payload, context as never);
+    }
+  };
 }
 
 function requireChannelHandlerType(

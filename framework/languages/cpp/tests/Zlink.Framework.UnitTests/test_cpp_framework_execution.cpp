@@ -437,6 +437,117 @@ bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expect
     return *order == expected;
 }
 
+bool verify_serial_resume_capacity_failure_is_terminal_and_deferred ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::runtime;
+
+    offload_executor_t executor (2);
+    serial_execution_queue_options_t options;
+    options.application_message_capacity = 1;
+    options.application_byte_capacity = serial_execution_queue_t::fixed_work_byte_cost;
+    options.lifecycle_message_capacity = 1;
+    options.lifecycle_byte_capacity = serial_execution_queue_t::fixed_work_byte_cost;
+    serial_execution_queue_t queue (executor, options, {}, true);
+
+    auto reply = std::make_shared<detail::task_completion_source_t<int>> ();
+    auto task_finished = std::make_shared<std::atomic_bool> (false);
+    auto observed_kind = std::make_shared<std::atomic_int> (-1);
+
+    if (!queue.try_post_async (
+          "resume-capacity",
+          [reply, task_finished, observed_kind] (auto complete) {
+              auto task = std::make_shared<task_t<void>> (
+                run_request_turn_probe (
+                  reply,
+                  std::make_shared<std::vector<int>> (),
+                  std::make_shared<std::mutex> (),
+                  true));
+              observe_task_completion (
+                *task,
+                [task, task_finished, observed_kind,
+                 complete = std::move (complete)] (const auto &result) mutable {
+                    if (!result) {
+                        observed_kind->store (
+                          static_cast<int> (result.error_kind ()),
+                          std::memory_order_release);
+                    }
+                    task_finished->store (true, std::memory_order_release);
+                    complete ([] {});
+                });
+          },
+          serial_work_options_t{serial_work_lane_t::application,
+                                serial_execution_queue_t::fixed_work_byte_cost})) {
+        return false;
+    }
+
+    // The probe uses its own order vector above; the first turn must still
+    // release before the filler can occupy the only application slot.
+    std::mutex filler_gate;
+    std::condition_variable filler_changed;
+    bool filler_entered = false;
+    bool release_filler = false;
+    bool filler_posted = false;
+    for (int attempt = 0; attempt < 100 && !filler_posted; ++attempt) {
+        filler_posted = queue.try_post (
+          "resume-filler",
+          [&] {
+              std::unique_lock lock (filler_gate);
+              filler_entered = true;
+              filler_changed.notify_all ();
+              filler_changed.wait (lock, [&] { return release_filler; });
+          },
+          serial_work_options_t{serial_work_lane_t::application,
+                                serial_execution_queue_t::fixed_work_byte_cost});
+        if (!filler_posted)
+            std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    if (!filler_posted) {
+        queue.cancel_pending ();
+        return false;
+    }
+    {
+        std::unique_lock lock (filler_gate);
+        if (!filler_changed.wait_for (
+              lock, std::chrono::seconds (1), [&] { return filler_entered; })) {
+            queue.cancel_pending ();
+            return false;
+        }
+    }
+
+    reply->complete (result_t<int>::success (7));
+    if (!wait_until ([&] {
+            return task_finished->load (std::memory_order_acquire);
+        })) {
+        {
+            std::lock_guard lock (filler_gate);
+            release_filler = true;
+        }
+        filler_changed.notify_all ();
+        queue.drain ();
+        return false;
+    }
+    const auto terminal = observed_kind->load (std::memory_order_acquire);
+    if (terminal
+        != static_cast<int> (framework_error_kind_t::capacity_exceeded)) {
+        {
+            std::lock_guard lock (filler_gate);
+            release_filler = true;
+        }
+        filler_changed.notify_all ();
+        queue.drain ();
+        return false;
+    }
+
+    {
+        std::lock_guard lock (filler_gate);
+        release_filler = true;
+    }
+    filler_changed.notify_all ();
+    queue.drain ();
+    return true;
+}
+
 bool verify_serial_queue_lanes_and_byte_budget ()
 {
     using namespace zlink::framework::runtime;
@@ -677,7 +788,7 @@ bool verify_idle_instance_spot_eviction_closes_local_context ()
     context->node = node;
     context->spot_id = "instance-1";
     context->spot_name = "instance-player";
-    context->instance_spot = true;
+    context->kind = detail::spot_runtime_kind_t::instance;
     context->object_generation = 7;
     context->authority_owner_generation = 11;
     context->spot_instance = std::make_shared<int> (1);
@@ -794,6 +905,9 @@ int main ()
     }
     if (!verify_request_turn_mode (true, {1, 2, 3})) {
         return 26;
+    }
+    if (!verify_serial_resume_capacity_failure_is_terminal_and_deferred ()) {
+        return 54;
     }
     if (!verify_serial_queue_lanes_and_byte_budget ()) {
         return 50;

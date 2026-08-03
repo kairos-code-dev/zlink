@@ -25,12 +25,6 @@ final class ZLinkAdmissionRuntime {
     private static final Logger LOGGER =
         Logger.getLogger(ZLinkAdmissionRuntime.class.getName());
     private static final Map<ZLinkBackendObject, Source> SOURCES = new WeakHashMap<>();
-    private static final ScheduledExecutorService DEADLINES =
-        Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "zlink-java-submit-deadline");
-            thread.setDaemon(true);
-            return thread;
-        });
 
     private ZLinkAdmissionRuntime() {
     }
@@ -147,6 +141,14 @@ final class ZLinkAdmissionRuntime {
 
     private static final class Source {
         private final int pendingCapacity;
+        private final ScheduledExecutorService deadlines =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(
+                    runnable,
+                    "zlink-java-submit-deadline");
+                thread.setDaemon(true);
+                return thread;
+            });
         private final Object lock = new Object();
         private final Map<ZLinkBackendAdmissionKey, ArrayDeque<Pending>> queues =
             new HashMap<>();
@@ -174,7 +176,7 @@ final class ZLinkAdmissionRuntime {
             item.deadlineNanos = System.nanoTime()
                 + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             if (item.attemptOnce() == AttemptResult.RETRY) {
-                item.deadline = DEADLINES.schedule(
+                item.deadline = deadlines.schedule(
                     item::timeout,
                     timeoutMillis,
                     TimeUnit.MILLISECONDS);
@@ -224,6 +226,7 @@ final class ZLinkAdmissionRuntime {
                 item.completeExceptionallyMarked(
                     ZLinkOneWayAdmission.result(ZLinkOneWayAdmissionStatus.SHUTDOWN));
             }
+            deadlines.shutdownNow();
         }
 
         private void drive(Pending item, int timeoutMillis) {
@@ -346,7 +349,7 @@ final class ZLinkAdmissionRuntime {
                 promoted.reserved = true;
                 pendingCount++;
                 Pending retry = promoted;
-                DEADLINES.execute(() -> drive(retry, 0));
+                deadlines.execute(() -> drive(retry, 0));
                 return;
             }
         }

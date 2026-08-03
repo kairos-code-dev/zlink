@@ -24,10 +24,11 @@ import { SpotRuntimeStatusObserver } from './Infrastructure/ZLink/Handlers/spot-
 import { OpsReportAdapter } from './Infrastructure/ZLink/Monitoring/ops-report-adapter';
 
 
-function createZoneNodeModule() {
+function createZoneNodeModule(includeZoneRuntime = true) {
   class ZoneNodeModule {}
   const configuration = createZoneWorldConfigurationModule('zoneNode');
-  zlinkModule(__dirname, {
+  zlinkModule({
+    providerDiscovery: includeZoneRuntime ? [__dirname] : [],
     imports: [
       configuration,
       ZLinkModule.forRootFactory({
@@ -88,15 +89,17 @@ function createZoneNodeModule() {
       })
     ],
     providers: [
-      PlayerActorFactory,
       MaintenanceStore,
       NodeRuntimeState,
-      PlayerActorRelocationAdapter,
-      ZoneEntrySpot,
-      ZoneSpot,
-      PlayerMovement,
-      SpotRuntimeStatusObserver,
-      OpsReportAdapter
+      ...(includeZoneRuntime ? [
+        PlayerActorFactory,
+        PlayerActorRelocationAdapter,
+        ZoneEntrySpot,
+        ZoneSpot,
+        PlayerMovement,
+        SpotRuntimeStatusObserver,
+        OpsReportAdapter
+      ] : [])
     ]
   })(ZoneNodeModule);
   return ZoneNodeModule;

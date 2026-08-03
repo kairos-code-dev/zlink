@@ -3,7 +3,7 @@
 
 #include "runtime/diagnostics/monitoring_runtime.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Eventing/events.hpp>
 
 #include <optional>
 

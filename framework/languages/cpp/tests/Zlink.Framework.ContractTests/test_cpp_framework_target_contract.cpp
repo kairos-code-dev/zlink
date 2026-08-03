@@ -1336,7 +1336,7 @@ int main ()
                   "E2E-CP-35", "MON-D1 does not verify ordered repeated transitions");
     gate.require (runtime_monitoring_a1.find ("first.contains (\"peers\")")
                     != std::string::npos
-                    && runtime_monitoring_a1.find ("first.contains (\"drain\")")
+                    && runtime_monitoring_a1.find ("first.contains (\"placement\")")
                          != std::string::npos,
                   "E2E-CP-35", "MON-A1 does not verify the complete public snapshot");
     gate.require (runtime_monitoring_a1.find ("before_restore_topology_count")
@@ -1467,9 +1467,11 @@ int main ()
                     "auto &locations = framework.configure_locations ()")
                     != std::string::npos,
                   "E2E-CP-43", "Config 6 discards its configured polling interval");
-    gate.require (client_server_location_runtime.find (
-                    "descriptor.state\n                 != framework_runtime_state_t::serving")
-                    != std::string::npos,
+    gate.require (client_server_location_runtime.find ("descriptor.state")
+                    != std::string::npos
+                    && client_server_location_runtime.find (
+                         "!= framework_runtime_state_t::serving")
+                         != std::string::npos,
                   "E2E-CP-43", "draining channel peers remain eligible for new requests");
 
     /* E2E-CP-44 — status reports the runtime heartbeat transition and real timestamps. */

@@ -31,7 +31,9 @@ import type {
   ZLinkFanoutClient,
   ZLinkMessage,
   ZLinkMessageContext,
+  ZLinkRouteMessageContext,
   ZLinkRouteClient,
+  ZLinkRouteSendHandler,
   ZLinkSendHandler,
   ZLinkSessionContext,
   ZLinkSessionDispatchContext
@@ -39,12 +41,12 @@ import type {
 
 @Injectable()
 @zlinkSendHandler('ops', PacketNames.reportNodeStatusMsg)
-class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
+class ReportNodeStatusHandler implements ZLinkRouteSendHandler<ReportNodeStatusMsg> {
   constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
-  async handle(message: ReportNodeStatusMsg, _context: ZLinkMessageContext): Promise<void> {
+  async handle(message: ReportNodeStatusMsg, context: ZLinkRouteMessageContext): Promise<void> {
     console.log(`node status received node=${message.nodeId}`);
-    this.consoles.publish(this.nodes.report(message));
+    this.consoles.publish(this.nodes.report(message, context.sourceNodeRid));
   }
 }
 

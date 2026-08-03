@@ -966,7 +966,7 @@ void verify_session_binding_and_terminal_once ()
 
     foundation::operation_registry_t operations (1);
     foundation::operation_id_t id{};
-    id[15] = 1;
+    id.low = 1;
     std::size_t terminal_count = 0;
     assert (operations.register_operation (
       id, foundation::operation_registry_t::clock_t::now () + 1s,

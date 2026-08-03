@@ -838,7 +838,6 @@ void public_host_runtime_t::close () noexcept
         std::lock_guard lock (_mutex);
         _started = false;
         _completions.clear ();
-        _completion_slots.clear ();
         _session_seal_terminals.clear ();
         _session_journal_terminals.clear ();
         _session_route_terminals.clear ();
@@ -4364,15 +4363,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
     count += dispatch_user_spot_operations ();
     bool application_dispatch_started = false;
 
-    std::map<std::pair<std::uint64_t, std::uint64_t>,
-             std::pair<receive_record_t, std::vector<zlink::message_t>>>
-      completions;
-    {
-        std::lock_guard lock (_mutex);
-        completions.swap (_completions);
-        for (const auto &[operation, _] : completions)
-            _completion_slots.erase (operation);
-    }
+    auto completions = _completions.take_completed ();
     for (auto &[_, completion] : completions) {
         ready_record_t owner;
         owner.owner_kind = owner_kind_t::node;
@@ -4766,21 +4757,13 @@ operation_id_t public_host_runtime_t::next_operation ()
 bool public_host_runtime_t::try_reserve_completion (
   operation_id_t operation)
 {
-    std::lock_guard lock (_mutex);
-    if (_completion_slots.size () >= completion_capacity)
-        return false;
-    return _completion_slots.emplace (
-      operation.high, operation.low).second;
+    return _completions.reserve (operation);
 }
 
 void public_host_runtime_t::release_completion (
   operation_id_t operation) noexcept
 {
-    std::lock_guard lock (_mutex);
-    const auto key = std::make_pair (
-      operation.high, operation.low);
-    _completions.erase (key);
-    _completion_slots.erase (key);
+    (void) _completions.erase (operation);
 }
 
 bool public_host_runtime_t::enqueue_completion (
@@ -4788,15 +4771,8 @@ bool public_host_runtime_t::enqueue_completion (
   receive_record_t record,
   std::vector<zlink::message_t> parts)
 {
-    std::lock_guard lock (_mutex);
-    const auto key = std::make_pair (
-      operation.high, operation.low);
-    if (!_completion_slots.contains (key))
-        return false;
-    return _completions.emplace (
-      key,
-      std::make_pair (std::move (record), std::move (parts)))
-      .second;
+    return _completions.complete (
+      operation, std::make_pair (std::move (record), std::move (parts)));
 }
 
 zlink::submit_result_t public_host_runtime_t::begin_local_actor_join (

@@ -3,7 +3,8 @@
 
 #include <zlink/framework/contracts/errors/error.hpp>
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Messaging/request_result.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 
 #include <string>
 #include <utility>

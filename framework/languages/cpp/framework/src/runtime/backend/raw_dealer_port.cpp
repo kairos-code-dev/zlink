@@ -2,7 +2,15 @@
 
 #include "runtime/backend/raw_dealer_port.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Eventing/poll_event.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
+#include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Messaging/operation_contracts.hpp>
+#include <zlink/Contracts/Messaging/received.hpp>
+#include <zlink/Contracts/Messaging/request_result.hpp>
+#include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 
 #include <cerrno>
 #include <stdexcept>

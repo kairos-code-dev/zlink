@@ -29,7 +29,7 @@ runtime이 무엇을 고쳐야 하는지 정리한 목록이다. 배경과 판�
 |---|---|---|
 | C++ | A1(둘 다) · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2 | Channel DEALER fan 경로에 **효과 없는 선택 로직**이 남아 있다. 삭제하고 core `lb_t`를 고쳐야 한다 |
 | .NET | A1(둘 다) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4 · D2 · D3 · D4 | 관찰자 두 stream이 합치지 않고 버린다 |
-| Java | A2 · A3 · A4(기본값·payload 회계) · A5(wire) · A6(D6) · A8 · A9(전체 topology) · A10 · A11 · D4 · D6 | public error kind와 queue 구조는 공통 방향으로 정리했지만 relay wire·idle eviction·전체 수신 경로·내부 copy 회계가 남아 있다 |
+| Java | A2(wire) · A3(cross-node 경쟁 규칙) · A4(D6) · A5(wire) · A6(D6) · A8(payload audit) · A9(process matrix) · A10(D6) · D4 · D6 | public error kind, queue 구조, idle eviction local path와 수신 budget은 구현했지만 공통 wire·기본값·전체 process evidence·내부 copy 회계가 남아 있다 |
 | Node | A1(RouteMesh) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4b · B5 · D1 · D4 | Spot·Actor queue에 한도가 아예 없다 |
 
 ### 선행 과제 (구현 전에 정해야 하는 것)
@@ -284,7 +284,7 @@ Instance Spot이 유휴 기준을 넘겨 local instance를 내릴 때 호출하�
 |---|---|---|
 | C++ | `cpp-inc/contracts/spots/spot.hpp:101-106` | **갭** |
 | .NET | `dotnet/Contracts/Spots/ZLinkSpot.cs:92-97` | **갭** |
-| Java | `java/spots/ZLinkSpotCloseReason.java` | **부분 구현.** `IDLE_EVICTED=3`과 timeout 표면은 있지만 실제 eviction은 남아 있다 |
+| Java | `java/spots/ZLinkSpotCloseReason.java`, `java/runtime/spots/ZLinkInstanceSpotActivation.java`, `java/runtime/spots/ZLinkSpotRuntime.java` | **구현.** timer·quiescence·READY→CLOSING CAS·admission cache 봉인·조건부 delete까지 연결했고 local integration evidence가 있다 |
 | Node | `node/contracts/Spots/ZLinkSpot.ts:19-23` | **갭** |
 
 **enum 추가만으로 닫지 않는다.** 한 단위로 함께 구현해야 하는 것은 다음이다.
@@ -310,21 +310,24 @@ Instance Spot이 유휴 기준을 넘겨 local instance를 내릴 때 호출하�
 기본값 `0`(= 정리 안 함), 음수는 시작 시 설정 오류, MeshNode 시작 전 고정, 실행 중 setter
 없음까지 네 언어에 동일하게 적었다. Kotlin은 Java 계약을 그대로 쓰므로 별도 반영이 없다.
 
-**남은 것은 아래 경쟁 조건 정의다.** 그것이 정해져야 구현을 시작할 수 있다.
+Java는 아래 local 전이와 admission 경계를 구현했다. 유휴 후보는 마지막 활동 시각과
+active route receive·timer·quiescence를 함께 검사한다. authority를 `CLOSING`으로 바꾸는
+CAS가 성공하면 같은 route fence를 cache에서 제거하고, closing callback과 조건부 delete를
+순서대로 수행한다. `InstanceSpotRuntimeIntegrationTest`는 authority 삭제 뒤 일반
+message가 `NOT_FOUND`가 되고 명시적인 instance intent가 새 instance를 활성화하는지
+확인한다.
 
-**정의가 더 필요한 자리.** 다음은 조항이 아직 답하지 않으며 구현 전에 정해야 한다.
+공통 계약으로 남은 정의는 다음과 같다.
 
 - 마지막 활동과 새 call이 경쟁할 때 admission을 언제 닫는가
   (`Active → IdleEligible → Closing(IdleEvicted) → Deactivated` 전이와 seal 시점)
 - owner record 제거가 조건부인가 — generation·fence 또는 CAS 조건이 필요한가
 - `OnClosingAsync`가 실패하거나 시간을 넘기면 정리를 취소하는가, 그대로 진행하는가
 
-**선행 과제 — Location Store에 봉인 전이가 없다.** 유휴 검사와 owner record `Delete`
-사이에 들어온 call이 사라진다. 일반 direct call은 Ready owner를 확인한 뒤 local queue에
-제출할 수 있기 때문이다(`18-object-routing`). 그런데 Location Store의 변경 목록에는
-`Delete`만 있고 `Active → Closing` 전이가 없다(`21-location-runtime`). 현재 `StoreVersion`과
-owner lease, queue turn을 묶어 **admission을 먼저 봉인하는 CAS 전이**를 정의하고, 봉인 뒤
-재검사 → callback → `Delete` 순서와 그 사이 도착한 call의 오류 결과를 고정해야 한다.
+**공통 설계 blocker — Location Store 봉인 전이의 cross-node 의미가 고정되지 않았다.** Java는
+현재 `StoreVersion`, owner lease, object generation과 route fence를 함께 검사하는
+`READY → CLOSING` CAS를 사용한다. 네 언어가 같은 전이와 그 사이 도착한 call의 오류 결과를
+사용할지는 공통 spec과 process interoperability test에서 확정해야 한다.
 
 **구현 비용 — timer 구조를 함께 정해야 한다.** Instance Spot마다 timer를 만들면 객체 수만큼
 timer 자원이 늘고, 전체 map을 주기 scan하면 주기마다 `O(활성 Spot 수)`다.
@@ -374,16 +377,18 @@ node/runtime/foundation/service-mailbox.ts:89-93
 
 **Java의 구조는 구현되었지만 기본값은 provisional이다.** 작업당 고정 비용과 기본 건수·byte
 한도에 대한 측정·공통 판정이 없어, 같은 입력·같은 한도에서 언어마다 포화 지점이 달라질 수
-있다(D6). 일반 `enqueue`는 payload 길이를 전달받지 않으므로 relocatable record 외의
-payload byte는 고정 비용으로만 계산된다.
+있다(D6). count-only production constructor는 application/lifecycle 기본 byte capacity를
+사용하도록 고쳤지만, 일반 `enqueue`는 payload 길이를 전달받지 않으므로 relocatable record
+외의 payload byte는 고정 비용으로만 계산된다.
 
 **수정 방향.** 실행 queue를 `service_mailbox` 계열과 같은 두 축 구조로 맞추고, 건수와
 byte를 **원자적으로** 예약·반납한다. Java는 이 구조와 runtime wiring을 구현했으며, 남은
 작업은 기본값 측정과 payload 크기 전달 경계 결정이다.
 
 > Java `ZLinkAsyncSerialQueue`는 `canReserve`에서 두 lane의 건수·byte를 함께 검사하고
-> `enqueue`도 같은 예약 경로를 사용한다. `MeshApplicationDispatcher`는 socket pending
-> 한도와 active execution slot의 차이를 반영해 queue 한도를 구성한다.
+> `enqueue`도 같은 예약 경로를 사용한다. `MeshApplicationDispatcher`의 count-only 생성
+> 경로도 socket pending 한도와 active execution slot의 차이를 반영한 기본 byte capacity를
+> 사용한다. 실제 payload 길이를 일반 제출 경로에 전달하는 경계와 공통 값은 D6으로 남아 있다.
 
 ### A5. `CapacityExceeded` 오류 kind — `32-framework-error-model`
 
@@ -492,19 +497,23 @@ D6이 값을 정하기 전까지는 구조만 만들고 상한값은 설정으�
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
 | C++ | 한 subscriber를 `for(;;)`로 완전히 drain한다. 내부 connection 순회도 매번 처음부터 시작한다 | `cpp/runtime/fanout/fanout_location_runtime.cpp:298-340`, `cpp/runtime/fanout/raw_fanout_owner.cpp:266-333` | **갭** |
-| Java | fanout connection마다 최대 64건. RouteMesh·ClientServer·service·STREAM은 별도 loop를 사용한다 | `java/runtime/channels/ZLinkFanoutLocationRuntime.java:49,393-404`, `java/runtime/channels/ZLinkChannelReceiveLoops.java`, `java/runtime/streams/ZLinkStreamRuntime.java` | **부분 충족.** 전체 topology의 byte·시간 상한과 회전 cursor audit은 남아 있다 |
+| Java | 공통 batch가 64건·1 MiB·2 ms를 제한하고 fanout·STREAM·ClientServer control·Spot activation·raw mesh 경로가 회전 cursor 또는 재등록을 사용한다 | `java/runtime/internal/dispatch/ZLinkReceiveBatchBudget.java`, `java/runtime/binding/ZLinkJavaMeshDispatchPump.java`, `java/runtime/channels/`, `java/runtime/streams/` | **부분 충족.** bridge의 opaque `drain()`과 전체 topology process matrix evidence는 남아 있다 |
 | .NET | subscriber별 loop가 한 record씩 처리 | `dotnet/Runtime/Channels/ZLinkChannelReceiveLoop.cs:227-251` | 충족 |
 | Node | connection별 loop가 한 record 처리 후 event loop에 양보 | `node/runtime/channels/channel-receive-loops.ts:283-306` | 충족 |
 
-**위 표는 fanout·channel 경로만 본 것이다.** `29`의 조항은 이제 RouteMesh, ClientServer,
-service connection, STREAM을 포함한 **모든 multi-connection 수신 경로**에 적용되므로,
-Java·.NET·Node의 `충족`은 **부분 확인**으로 내려야 한다. 예를 들어 Node의 STREAM은 별도
-frame batch와 event loop 양보를 쓰므로(`node/runtime/streams/stream-session-runtime.ts:835-841`)
-channel loop 판정으로 증명되지 않는다.
+Java는 `29`의 조항을 기준으로 RouteMesh, ClientServer, service, STREAM, fanout을
+각각 코드 감사했다. `ZLinkJavaMeshDispatchPump`는 residue가 2 ms를 넘으면 같은 `run()`의
+바깥 loop로 계속 진입하지 않고 pending domain을 다음 scheduled task로 넘긴다. 다만
+`ZLinkSpotRouteBridgeDrainer`의 backend `drain()`은 처리 건수만 반환하고 Java production
+경로에서는 활성화되지 않으므로 이 부분은 process evidence로 닫지 않는다.
+
+**전체 topology의 process matrix는 여전히 별도 확인이다.** 코드에 budget이 있다는 사실만으로
+실제 연결이 계속 유입될 때 뒤쪽 connection과 control 신호가 진행된다는 결론을 내리지 않는다.
 
 **감사를 `언어 × RouteMesh × ClientServer × service × STREAM × fanout` 행렬로 다시
 한다.** framework loop뿐 아니라 core·binding의 `recv` 한 번이 내부에서 특정 connection을
-완전히 drain하는지도 확인한다.
+완전히 drain하는지도 확인한다. Java의 남은 항목은 이 행렬에 대한 multi-process 실행
+기록이다.
 
 C++은 fanout 외에 **ClientServer도 확정 갭이다.** 각 server·client의 `pump_one()`을
 데이터가 없어질 때까지 무제한 반복한 뒤에야 liveness tick과 다음 connection을 처리한다
@@ -631,7 +640,8 @@ optional `canSerialize`를 타입 단언으로 읽고 검사한다(`node/runtime
 
 `java/execution/ZLinkAsyncSerialQueue.java`의 전역 executor를 제거했다. registration이
 runtime-owned virtual-thread executor를 만들고 actor·channel·spot·stream queue에 주입하며,
-runtime close가 handler executor와 serial executor를 모두 종료한다.
+runtime close가 handler executor와 serial executor를 모두 종료한다. `ZLinkAdmissionRuntime`
+의 one-way deadline scheduler도 backend source가 소유하고 source shutdown에서 종료한다.
 
 **판정 — 해소.** production 경로의 static executor 검색과 core 전체 unit test로 확인했다.
 
@@ -678,12 +688,11 @@ application이 알아챌 수 없으므로 spec 위반은 아니다. 우선순위
   쓰지 않으면 제거
 
 **Java**
-- `ZLinkOneWayCalls` 중복 **5곳**(channels, binding, streams, spots, actors)
-- `runtime/messaging/`의 **세 파일**이 `package …runtime.host;`를 선언 —
-  `ZLinkAdmissionRuntime.java:1`, `ZLinkOneWayAdmissionStatus.java:1`,
-  `ZLinkOneWayAdmission.java:1`
-- 빈 디렉터리 **3개** — `systems/zlink/contracts/service`, `runtime/internal/binding`,
-  `runtime/service`
+- `ZLinkOneWayCalls`는 `runtime/internal/calls/`의 공통 구현으로 통합했다.
+- `ZLinkAdmissionRuntime`, `ZLinkOneWayAdmissionStatus`, `ZLinkOneWayAdmission`은
+  `runtime/host/` package와 실제 경로를 일치시켰다.
+- `runtime/internal/binding`과 `runtime/service` 빈 디렉터리는 제거했다. 생성 계약 namespace인
+  `systems/zlink/contracts/service` 빈 디렉터리는 남아 있다.
 
 **Node**
 - 직렬 실행 원시 타입 4종 통합([9. Session과 Actor 연결
@@ -785,14 +794,16 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 
 | 위치 | 복사 지점 |
 |---|---|
-| `java/ZLinkEncodedPayload.java:13,18` | 생성 시 한 번, `bytes()` 접근 시 또 한 번 |
-| `java/messaging/ZLinkMessage.java:31,50` | 생성과 decode에서 위 복사를 다시 수행 |
+| `java/ZLinkEncodedPayload.java` | 공개 경계에서 생성과 `bytes()` 접근 시 방어적 복사 |
+| `java/messaging/ZLinkMessage.java`, `ZLinkMessageOwnershipTest` | `fromEncoded`가 payload 객체 identity를 유지하지만 empty 판정·serializer 경로는 `bytes()`를 호출 |
 | `node/contracts/Common/ZLinkEncodedPayload.ts:4,12` | 생성과 `data()`에서 각각 복사 |
 | `dotnet/Runtime/Messaging/ZLinkMessageRuntime.cs:82` | envelope에서 payload 복사 |
 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:257` | queue 수락 시 이동 기록용 배열 생성 |
 
 **수정 방향.** 공개 API의 불변성은 유지하되 runtime 내부 소유권 이전에는 복사하지 않는
-경로를 따로 둔다. `.NET`의 이동 기록은 봉인 이후에만 만든다
+경로를 따로 둔다. Java는 encoded message 객체 재사용을 구현했지만, `ZLinkPayloadEncoding`
+과 serializer가 public byte accessor를 거치는 경로까지 내부 copy 회계를 닫지는 않았다.
+.NET의 이동 기록은 봉인 이후에만 만든다
 ([11. Payload 소유권과 복사 §3](../../framework/common/internals/11-message-ownership.ko.md)).
 
 **Node는 payload를 두 번 parse한다.** `isJsonPayload()`가 `JSON.parse`를 수행하고
@@ -859,6 +870,12 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 추가한다. 값을 정하려면 측정이 선행되므로 이 항목은 **측정 후 판정**이다. A6와
 `14-actor-model` §3의 starvation 보장이 이 값에 걸려 있다.
 
+Java는 공통 판정 전의 provisional 값을 사용한다. 현재 owner time budget은 10 ms,
+lifecycle burst limit은 8 turns, receive batch는 64 messages·1 MiB·2 ms이고, 작업당 고정
+비용은 256 bytes다. application queue 기본값은 1,024 messages·64 MiB, lifecycle queue
+기본값은 128 messages·4 MiB다. 이 값은 unit test와 runtime 동작을 고정하는 값이지 네
+언어의 공통 contract를 닫는 값이 아니며, 측정 결과와 허용 범위를 정한 뒤 D6을 갱신해야 한다.
+
 ---
 
 ## 감사 필요 (구현 갭과 분리)
@@ -897,6 +914,50 @@ payload 크기 분포별 benchmark로 비교한 뒤 고른다.
 관련 test/sample target까지 통과했지만, 별도 `zlink_cpp_e2e_store_failure_consumer`
 target이 `main` 없는 소스를 링크하는 기존 aggregate build 오류로 전체 target build는
 완료되지 않았다.
+
+### 2026-08-04 C++ plan 구현 갱신 및 최종 gate
+
+위 기록 뒤 C++ build cache와 sample runner의 package provenance를 다시 맞췄다. 기존
+`samples/sample-build-common.sh`는 cache를 읽는다고 설명하면서 `zlink_cpp` 11.1.0을
+하드코딩하고 있었고, 현재 CMake/package 계약인 11.2.0으로 sample을 재구성하지 못했다.
+runner가 기존 build cache의 `ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION`과
+`ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION`을 사용하고, cache가 없을 때만 11.2.0/11.1.0
+기본값을 사용하도록 고쳤다.
+
+공통 internals와 비교한 뒤 C++에 반영한 owner-layer 항목은 다음과 같다.
+
+- `serial_execution_queue`의 application·lifecycle 두 FIFO lane, 건수·byte 회계,
+  lifecycle burst/debt, after-active phase와 비-inline continuation failure
+- RouteMesh Node RID 및 ClientServer Server RID tiebreak, 후보 변경 시 선택 상태 갱신,
+  topology 수신 경로의 batch budget과 회전 cursor
+- Instance Spot idle eviction, observer dispatcher의 bounded/coalesced/terminal 전달,
+  HWM pending 회계, 주소 게시 후 `serving` 공개 순서
+- operation ID와 exactly-once table 공통화, Spot kind enum화, 내부 test의 umbrella
+  `<zlink.hpp>` 제거
+
+공통 문서는 `02-serialization`, `06-routing-and-cache`, `07-dispatch-loop`,
+`08-object-lifecycle`, `09-session-binding`, `10-liveness-and-state`,
+`11-message-ownership`와 `service-wire-protocol`을 기준으로 대조했다. STREAM은 현재
+session마다 독립 blocking worker가 수신하므로 shared connection cursor를 적용하지 않는
+구조 차이가 남아 있다. 따라서 STREAM을 포함한 전체 topology 행렬의 공정성은 별도 process
+검증 조건으로 남긴다.
+
+현재 source 기준 검증 결과는 다음과 같다.
+
+| 검증 | 결과 |
+|---|---|
+| `cmake --build framework/languages/cpp/build -j2` | 100% target build PASS |
+| `ctest ... -L framework-unit` | 31/31 PASS |
+| `ctest ... -L framework-contract` | 8/8 PASS |
+| installed package consumer 및 tooling configure | PASS, `zlink_cpp` 11.2.0 |
+| 전체 CTest | 56/56 PASS |
+| framework sample smoke | 6/6 PASS |
+| RegistryMessaging `RM-C7` | 실제 provider process 결과 `api-a=180`, `api-b=60`, PASS |
+
+W3(A2·D5)는 relay 성공 통지의 command ID·body·인증·fence가 공통 service wire의 closed
+command set에 고정되지 않아 구현하지 않았다. D6의 상한 값은 현재 C++ 기본값과 unit
+evidence가 있어도 공통 contract의 측정·허용 범위가 확정된 것은 아니며, STREAM 전체
+process matrix와 함께 남은 조건으로 관리한다.
 
 ---
 

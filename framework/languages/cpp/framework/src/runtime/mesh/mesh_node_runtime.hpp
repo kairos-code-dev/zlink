@@ -5,6 +5,7 @@
 #include <runtime/locations/location_repository.hpp>
 
 #include "runtime/channels/route_handler_registry.hpp"
+#include "runtime/operations/exactly_once_table.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
 
@@ -19,6 +20,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace zlink::framework
@@ -376,15 +378,19 @@ class mesh_node_runtime_t
     std::map<std::string, std::uint64_t> _peer_connection_intents;
     std::mutex _completion_mutex;
     std::condition_variable _completion_ready;
-    std::map<std::pair<std::uint64_t, std::uint64_t>, operation_completion_t>
+    zlink::framework::runtime::exactly_once_table_t<
+      host::operation_id_t,
+      operation_completion_t,
+      zlink::framework::runtime::operation_id_hash_t>
       _completed_operations;
     struct actor_join_continuation_t
     {
         actor_ref_t actor;
         actor_join_completion_t completion;
     };
-    std::map<std::pair<std::uint64_t, std::uint64_t>,
-             actor_join_continuation_t>
+    std::unordered_map<host::operation_id_t,
+                       actor_join_continuation_t,
+                       zlink::framework::runtime::operation_id_hash_t>
       _actor_join_continuations;
 };
 

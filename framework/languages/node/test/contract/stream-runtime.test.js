@@ -2493,6 +2493,23 @@ test('runtime host relays bound remote actor request through route channel and c
       };
     }
   });
+  host.createActorLocationResolver = () => ({
+    resolveDirectActorRoute: async () => ({
+      meshName: 'room.route',
+      actorRef: {
+        actorId: 'actor-remote',
+        objectGeneration: 7n,
+        meshName: 'room.route',
+        nodeRid: 'play-node'
+      },
+      actorType: 'Player',
+      ownerNodeGeneration: 1n,
+      ownerId: 'owner-a',
+      ownerLeaseGeneration: 1n,
+      authorityOwnerGeneration: 1n,
+      authorityStoreVersion: '1'
+    })
+  });
   host.routeTransport.requestRawToSpot = async (remoteAddress, request, options) => {
     const payload = JSON.parse(request.data().toString());
     const routedHeader = streamProtocol.decodeStreamHeader(Buffer.from(payload.header, 'base64'));
@@ -2540,6 +2557,15 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.equal(routeRequests[0].packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.actorId, 'actor-remote');
+  assert.equal(routeRequests[0].request.returnResponse, true);
+  assert.equal(routeRequests[0].request.messageFollowContext.request, true);
+  assert.equal(routeRequests[0].request.messageFollowContext.objectGeneration, '7');
+  assert.equal(typeof routeRequests[0].request.messageFollowContext.correlationId, 'string');
+  assert.equal(routeRequests[0].request.messageFollowContext.replyRouteId.length > 0, true);
+  assert.match(
+    routeRequests[0].request.messageFollowContext.payloadChecksumSha256,
+    /^[0-9a-f]{64}$/
+  );
   assert.equal(stream.writes.length, 1);
   const frame = decodeFrame(bytesOf(stream.writes[0]));
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);

@@ -5,7 +5,7 @@
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/configuration/service_scope.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
 
 #include <algorithm>
 #include <chrono>

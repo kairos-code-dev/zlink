@@ -16,6 +16,7 @@ final class ZLinkSpotRouteBridgeDrainer {
     private final BooleanSupplier running;
     private final BiConsumer<String, Throwable> failureReporter;
     private volatile Runnable dispatchDrainer;
+    private int nextChannelCursor;
     private volatile boolean started;
 
     ZLinkSpotRouteBridgeDrainer(
@@ -72,7 +73,14 @@ final class ZLinkSpotRouteBridgeDrainer {
         if (!running.getAsBoolean()) {
             return;
         }
-        for (String channelName : List.copyOf(bridges.keySet())) {
+        List<String> channelNames = bridges.keySet().stream().sorted().toList();
+        if (channelNames.isEmpty()) {
+            return;
+        }
+        int start = Math.floorMod(nextChannelCursor, channelNames.size());
+        nextChannelCursor = (start + 1) % channelNames.size();
+        for (int offset = 0; offset < channelNames.size(); offset++) {
+            String channelName = channelNames.get((start + offset) % channelNames.size());
             try {
                 drainNow(channelName);
             } catch (RuntimeException error) {

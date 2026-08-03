@@ -8,8 +8,12 @@
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
+#include "runtime/operations/exactly_once_table.hpp"
+#include "runtime/operations/operation_id.hpp"
 
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Messaging/message.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
@@ -35,13 +39,7 @@ class raw_relocation_replay_coordinator_t;
 namespace zlink::framework::runtime::host
 {
 
-struct operation_id_t
-{
-    std::uint64_t high = 0;
-    std::uint64_t low = 0;
-
-    friend bool operator== (const operation_id_t &, const operation_id_t &) = default;
-};
+using operation_id_t = runtime::operation_id_t;
 
 enum class record_kind_t
 {
@@ -727,12 +725,14 @@ class public_host_runtime_t :
     std::function<void ()> _maintenance_started;
     std::function<void ()> _maintenance_closing;
     mutable std::mutex _mutex;
-    std::map<std::pair<std::uint64_t, std::uint64_t>,
-             std::pair<receive_record_t, std::vector<zlink::message_t>>>
-      _completions;
-    std::set<std::pair<std::uint64_t, std::uint64_t>>
-      _completion_slots;
     static constexpr std::size_t completion_capacity = 65'536;
+    using completion_value_t =
+      std::pair<receive_record_t, std::vector<zlink::message_t>>;
+    zlink::framework::runtime::exactly_once_table_t<
+      operation_id_t,
+      completion_value_t,
+      zlink::framework::runtime::operation_id_hash_t>
+      _completions{completion_capacity};
     struct local_application_dispatch_t
     {
         ready_record_t owner;

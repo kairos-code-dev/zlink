@@ -552,6 +552,37 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task New_Rid_At_A_Reused_Endpoint_Releases_The_Stale_Auto_Target()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.PublishPeerAsync("old-rid", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        // A replacement process can publish its new RID before the previous
+        // lease row expires. The endpoint must be handed over so the new RID
+        // can complete admission instead of leaving the old auto target in
+        // the active set.
+        fixture.Time.Advance(TimeSpan.FromSeconds(1));
+        await fixture.PublishPeerAsync("new-rid", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Equal(["old-rid"], fixture.Executor.Connected.Select(target => target.NodeRid.ToString()));
+        Assert.Equal("old-rid", Assert.Single(fixture.Executor.Disconnected).NodeRid.ToString());
+        Assert.Empty(fixture.Reconciler.ActiveTargets);
+
+        // The next reconcile submits the replacement after Core has completed
+        // the endpoint-scoped disconnect from the previous tick.
+        await fixture.Reconciler.TickAsync();
+
+        Assert.Equal(
+            ["old-rid", "new-rid"],
+            fixture.Executor.Connected.Select(target => target.NodeRid.ToString()));
+        var active = Assert.Single(fixture.Reconciler.ActiveTargets);
+        Assert.Equal("new-rid", active.NodeRid.ToString());
+        Assert.Equal("tcp://r:1", active.Endpoint);
+    }
+
+    [Fact]
     public async Task Local_Row_Publish_Rejects_A_Conflicting_Routing_Id()
     {
         var fixture = await FixtureAsync();

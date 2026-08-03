@@ -20,7 +20,7 @@ import type {
   ZLinkRouteMeshRuntimeOptions,
   ZLinkSpotManager
 } from '@zlink-systems/framework';
-import { ZONEWORLD_CONFIG } from '../Configuration/configuration';
+import { readConfigPath, ZONEWORLD_CONFIG } from '../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { closeRuntime, waitForShutdown } from '../runtime-support';
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
@@ -34,7 +34,7 @@ import { botRoutes } from './Domain/bot-patrol';
 let statusTimer: NodeJS.Timeout | undefined;
 
 async function bootstrap(): Promise<void> {
-  const ZoneNodeModule = createZoneNodeModule();
+  const ZoneNodeModule = createZoneNodeModule(hasConfiguredZones());
   const app = await NestFactory.createApplicationContext(ZoneNodeModule, {
     logger: false,
     abortOnError: false
@@ -103,6 +103,15 @@ async function bootstrap(): Promise<void> {
     if (statusTimer !== undefined) clearInterval(statusTimer);
     await closeRuntime(app);
   }
+}
+
+function hasConfiguredZones(): boolean {
+  const configPath = readConfigPath(process.argv.slice(2));
+  const document = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+    sample?: { zoneNode?: { nodeId?: unknown } };
+  };
+  const nodeId = document.sample?.zoneNode?.nodeId;
+  return typeof nodeId === 'string' && zonesOf(nodeId).length > 0;
 }
 
 bootstrap().catch((error: unknown) => {

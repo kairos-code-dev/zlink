@@ -428,6 +428,49 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public async Task ManagedNode_ReadmitsPeerAfterLivenessExpiry()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var local = new ZLinkManagedMeshNode(context, "orders");
+        var suffix = Guid.NewGuid().ToString("N");
+        var localRid = RoutingId.From($"liveness-local-{suffix}");
+        var remoteRid = RoutingId.From($"liveness-remote-{suffix}");
+        var localEndpoint = $"inproc://liveness-local-{suffix}";
+        var remoteEndpoint = $"inproc://liveness-remote-{suffix}";
+
+        local.SetRoutingId(localRid);
+        local.SetBind(localEndpoint);
+        local.ConnectPeer(remoteEndpoint, remoteRid);
+
+        await using (var firstRemote = new ZLinkManagedMeshNode(context, "orders"))
+        {
+            firstRemote.SetRoutingId(remoteRid);
+            firstRemote.SetBind(remoteEndpoint);
+            firstRemote.Start();
+            local.Start();
+
+            await WaitUntilAsync(() =>
+                local.Status().AdmittedPeerCount == 1
+                && firstRemote.Status().AdmittedPeerCount == 1);
+        }
+
+        // Mesh liveness expires after 15 seconds without an acknowledgement.
+        // Reusing the same endpoint and RID verifies that the old admission
+        // does not make the replacement Hello idempotent forever.
+        await Task.Delay(TimeSpan.FromSeconds(16));
+
+        await using var replacement = new ZLinkManagedMeshNode(context, "orders");
+        replacement.SetRoutingId(remoteRid);
+        replacement.SetBind(remoteEndpoint);
+        replacement.ConnectPeer(localEndpoint, localRid);
+        replacement.Start();
+
+        await WaitUntilAsync(() =>
+            local.Status().AdmittedPeerCount == 1
+            && replacement.Status().AdmittedPeerCount == 1);
+    }
+
+    [Fact]
     public async Task EntrySpotUsesItsMeshNodeLifecycleAsTheDescriptorFence()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();

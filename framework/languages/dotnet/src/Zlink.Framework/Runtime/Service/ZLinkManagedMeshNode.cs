@@ -5805,6 +5805,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 {
                     peer.Admitted = false;
                     peer.State = MeshPeerState.Connecting;
+                    // A liveness failure ends the current admission epoch. The
+                    // next Hello must be evaluated as a fresh admission so the
+                    // peer can receive a new liveness deadline.
+                    peer.Admission = null;
+                    peer.Liveness = null;
                     if (_peersByRid.TryGetValue(peer.RoutingId, out var indexed)
                         && ReferenceEquals(indexed, peer))
                         _peersByRid.Remove(peer.RoutingId);
@@ -6917,7 +6922,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (command == ServiceWireConstants.Command.Hello)
             return _peersByIntent.Values.FirstOrDefault(peer =>
                 peer.Direction == ZLinkServiceConnectionDirection.Inbound
-                && peer.State == MeshPeerState.NotRequired
+                && !peer.Admitted
+                && (peer.State == MeshPeerState.NotRequired
+                    || peer.State == MeshPeerState.Connecting)
                 && peer.RoutingId == sourceRid);
         var candidates = _peersByIntent.Values
             .Where(peer =>

@@ -167,3 +167,48 @@ W1·W6은 [2. 직렬 실행](../../framework/common/internals/02-serialization.k
 [7. 수신과 dispatch 루프](../../framework/common/internals/07-dispatch-loop.ko.md)의
 "확인할 결과"를 그대로 쓴다. W2는 같은 weight와 다른 weight 두 경우에서 실제 server
 process가 받은 순서를 확인하는 process test가 필요하다.
+
+## 2026-08-04 구현 및 검증 기록
+
+현재 C++ 구현에 반영할 수 있는 계획 항목은 owner layer와 public contract를 기준으로
+구현했다. W1은 `serial_execution_queue`에서 application·lifecycle 두 FIFO lane을 건수와
+byte로 함께 예약하고, lifecycle burst/debt와 after-active phase를 사용한다. queue가
+포화된 뒤 await continuation을 호출자 stack에서 실행하지 않고 별도 executor turn에서
+`capacity_exceeded` terminal 결과로 끝내는 회귀 test도 추가했다.
+
+W2·D1은 RouteMesh 후보의 Node RID와 ClientServer 후보의 Server RID를 tiebreak 기준으로
+사용하고, 후보 변경 시 선택 상태를 다시 계산한다. W4는 Instance Spot idle eviction과
+admission seal을, W5는 공유 observer dispatcher·bounded/coalesced delivery·terminal
+보관 상한을, W6은 RouteMesh·ClientServer·service·fanout 수신 경로의 회전 cursor와
+message·byte·time batch를 사용한다. D2의 HWM pending 회계와 B3의 주소 게시 후
+`serving` 공개 순서도 현재 경로에서 확인했다. operation ID와 exactly-once table을 공통
+runtime helper로 모으고, Spot kind를 bool이 아닌 enum으로 바꾸며, C++ 내부 test의
+umbrella `<zlink.hpp>` 의존도 제거했다.
+
+구현 비교에는 공통 internals의 [직렬 실행](../../framework/common/internals/02-serialization.ko.md),
+[대상 선택과 위치 캐시](../../framework/common/internals/06-routing-and-cache.ko.md),
+[수신과 dispatch 루프](../../framework/common/internals/07-dispatch-loop.ko.md),
+[객체 lifecycle](../../framework/common/internals/08-object-lifecycle.ko.md),
+[Session과 Actor 연결](../../framework/common/internals/09-session-binding.ko.md),
+[Liveness와 상태 공개](../../framework/common/internals/10-liveness-and-state.ko.md),
+[Payload 소유권과 복사](../../framework/common/internals/11-message-ownership.ko.md)와
+`service-wire-protocol.ko.md`를 사용했다. STREAM은 현재 session마다 blocking worker가
+독립적으로 수신하므로 shared connection cursor를 사용하지 않는다는 차이를 남겼다.
+따라서 STREAM을 포함한 전체 topology 행렬의 공정성은 이 기록만으로 완료 판정하지 않는다.
+
+검증은 다음과 같다.
+
+- `cmake --build framework/languages/cpp/build -j2`: 100% target build 통과
+- `framework-unit`: 31/31 PASS
+- `framework-contract`: 8/8 PASS
+- `test_cpp_framework_install_consumer`, `test_cpp_framework_tooling_contract`: PASS
+- 전체 CTest: 56/56 PASS
+- framework sample smoke: Bingo, TicTacToe, DeliveryDispatch, GameQuest, ShoppingMall,
+  SupportChat 6/6 PASS
+- `RegistryMessaging/run_e2e.sh RM-C7`: 두 provider process가 `api-a=180`, `api-b=60`을
+  기록하고 PASS
+
+W3(A2·D5)는 relay 성공 통지의 command ID·body·인증·fence가 공통 service wire의 closed
+command set에 아직 추가되지 않았으므로 구현하지 않았다. D6의 batch·owner 점유 상한 값은
+현재 C++ 기본값과 unit evidence가 있지만 공통 contract의 측정·허용 범위가 확정된 것은
+아니다. 이 두 조건과 STREAM 전체 process matrix는 남은 설계·검증 항목으로 분리한다.

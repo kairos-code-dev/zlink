@@ -2,6 +2,7 @@
 
 #include "runtime/streams/stream_host_service.hpp"
 #include "runtime/configuration/service_scope.hpp"
+#include "runtime/dispatch/receive_batch_budget.hpp"
 #include "runtime/messaging/async_submit_runtime.hpp"
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
@@ -2056,13 +2057,20 @@ class stream_host_service_t::listener_t
             register_active_stream (stream, liveness,
                                     [this, connection] { close_connection (*connection); });
             flush_writes (*connection, stream, flushed, *write_mutex);
+            receive_batch_budget_t batch;
             while (!_stop->load (std::memory_order_acquire)) {
+                if (!batch.can_receive ()) {
+                    batch = {};
+                    std::this_thread::yield ();
+                    continue;
+                }
                 if (_inbound_budget
                     && !_inbound_budget->wait_for_application_capacity (
                       [this] { return _stop->load (std::memory_order_acquire); })) {
                     break;
                 }
                 auto frame = read_frame (*connection);
+                batch.account (frame.payload.size ());
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
                         liveness->record_pong ();
@@ -2243,13 +2251,20 @@ class stream_host_service_t::listener_t
             register_active_stream (stream, liveness,
                                     [this, connection] { close_connection (*connection); });
             flush_writes_native (*connection, stream, flushed, *write_mutex);
+            receive_batch_budget_t batch;
             while (!_stop->load (std::memory_order_acquire)) {
+                if (!batch.can_receive ()) {
+                    batch = {};
+                    std::this_thread::yield ();
+                    continue;
+                }
                 if (_inbound_budget
                     && !_inbound_budget->wait_for_application_capacity (
                       [this] { return _stop->load (std::memory_order_acquire); })) {
                     break;
                 }
                 auto frame = read_frame_native (*connection);
+                batch.account (frame.payload.size ());
                 if (frame.header.kind () == stream_message_kind_t::control) {
                     if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
                         liveness->record_pong ();

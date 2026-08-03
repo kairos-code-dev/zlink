@@ -461,6 +461,15 @@ class spot_node_builder_state_t;
 class spot_node_runtime_state_t;
 class spot_node_runtime_t;
 
+// Internal state distinguishes the three Spot lifecycles without parallel
+// boolean flags that can represent contradictory combinations.
+enum class spot_runtime_kind_t : std::uint8_t
+{
+    entry,
+    user,
+    instance
+};
+
 struct spot_actor_admission_callbacks_t
 {
     std::function<spot_actor_join_result_t (
@@ -472,7 +481,7 @@ struct spot_actor_admission_callbacks_t
       on_create_actor;
     std::function<task_t<void> (void *, void *)> on_leave_actor;
     std::function<task_t<void> (void *, void *)> on_disconnect_actor;
-    bool entry_spot = false;
+    spot_runtime_kind_t kind = spot_runtime_kind_t::user;
 };
 
 template <typename T> struct spot_member_function_traits_t;
@@ -1680,7 +1689,9 @@ class spot_handler_registry_t
           std::same_as<TActor, typename TSpot::actor_type>,
           "SPOT actor handler type must match the Spot base actor_type");
         detail::spot_actor_admission_callbacks_t callbacks;
-        callbacks.entry_spot = detail::entry_spot_type<TSpot>;
+        callbacks.kind = detail::entry_spot_type<TSpot>
+                           ? detail::spot_runtime_kind_t::entry
+                           : detail::spot_runtime_kind_t::user;
         callbacks.join = [] (void *spot, std::string_view actor_id,
                              const zlink::message_t &request,
                              serializer_registry_t &serializers) {
@@ -1951,7 +1962,8 @@ class spot_node_builder_t
         }
         auto &builder =
           add_spot_factory_erased (
-            std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
+            std::string ("entry"), std::type_index (typeid (TEntrySpot)),
+            detail::spot_runtime_kind_t::entry,
             user_spot_execution_mode_t::spot_wide);
         register_context_lifecycle<TEntrySpot> ("entry", std::move (factory));
         return builder;
@@ -1988,8 +2000,9 @@ class spot_node_builder_t
         factory_builder->seal ();
         const auto registered_type = stable_type;
         auto &builder = add_spot_factory_erased (
-          std::move (stable_type), std::type_index (typeid (TSpot)), false,
-          execution_mode, false, stable_type_limit, relocation_readiness,
+          std::move (stable_type), std::type_index (typeid (TSpot)),
+          detail::spot_runtime_kind_t::user, execution_mode,
+          stable_type_limit, relocation_readiness,
           relocation);
         register_context_lifecycle<TSpot> (
           registered_type, std::move (factory));
@@ -2024,8 +2037,9 @@ class spot_node_builder_t
         factory_builder->seal ();
         const auto registered_type = stable_type;
         auto &builder = add_spot_factory_erased (
-          std::move (stable_type), std::type_index (typeid (TSpot)), false,
-          user_spot_execution_mode_t::spot_wide, true,
+          std::move (stable_type), std::type_index (typeid (TSpot)),
+          detail::spot_runtime_kind_t::instance,
+          user_spot_execution_mode_t::spot_wide,
           stable_type_limit,
           spot_relocation_readiness_mode_t::any_turn_boundary,
           relocation);
@@ -2071,9 +2085,8 @@ class spot_node_builder_t
     add_spot_factory_erased (
       std::string spot_name,
       std::type_index spot_type,
-      bool entry_spot,
+      detail::spot_runtime_kind_t kind,
       user_spot_execution_mode_t execution_mode,
-      bool instance_spot = false,
       std::int32_t stable_type_limit = 0,
       spot_relocation_readiness_mode_t relocation_readiness =
         spot_relocation_readiness_mode_t::any_turn_boundary,

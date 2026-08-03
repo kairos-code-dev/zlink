@@ -3,7 +3,16 @@
 #include "runtime/client_server/raw_client_server_owner.hpp"
 
 #include <zlink/Contracts/Eventing/poller.hpp>
-#include <zlink.hpp>
+#include <zlink/Contracts/Core/byte_count.hpp>
+#include <zlink/Contracts/Core/context.hpp>
+#include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Eventing/events.hpp>
+#include <zlink/Contracts/Eventing/monitor.hpp>
+#include <zlink/Contracts/Eventing/poll_event.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
+#include <zlink/Contracts/Sockets/message_socket_contracts.hpp>
+#include <zlink/Contracts/Sockets/results.hpp>
+#include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -1141,15 +1150,7 @@ raw_client_server_client_t::operation_id (
   std::uint64_t lifecycle_generation,
   std::uint64_t correlation)
 {
-    foundation::operation_id_t id{};
-    for (std::size_t index = 0; index < 8; ++index) {
-        const auto shift = static_cast<unsigned int> ((7 - index) * 8);
-        id[index] = static_cast<std::uint8_t> (
-          (lifecycle_generation >> shift) & 0xffu);
-        id[index + 8] =
-          static_cast<std::uint8_t> ((correlation >> shift) & 0xffu);
-    }
-    return id;
+    return foundation::operation_id_t{lifecycle_generation, correlation};
 }
 
 } // namespace zlink::framework::runtime::client_server

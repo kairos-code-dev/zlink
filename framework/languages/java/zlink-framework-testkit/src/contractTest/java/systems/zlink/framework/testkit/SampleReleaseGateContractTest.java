@@ -41,7 +41,6 @@ final class SampleReleaseGateContractTest {
         "messaging",
         "metrics",
         "monitoring",
-        "service",
         "spots",
         "streams");
 

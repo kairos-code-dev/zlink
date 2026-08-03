@@ -15,6 +15,7 @@ import java.util.function.IntUnaryOperator;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.binding.spot.ReadyDomain;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkReceiveBatchBudget;
 
 /**
  * Converts native ready callbacks into serialized pull-dispatch work.
@@ -23,6 +24,8 @@ import systems.zlink.framework.runtime.internal.binding.spot.ReadyDomain;
  * It never drains a claim or invokes application code.
  */
 final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
+    private static final long MAX_DISPATCH_TURN_NANOS =
+        ZLinkReceiveBatchBudget.DEFAULT_MAX_ELAPSED_NANOS;
     private static final Logger LOGGER =
         Logger.getLogger(ZLinkJavaMeshDispatchPump.class.getName());
     interface Source extends AutoCloseable {
@@ -101,6 +104,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
 
     private void run() {
         try {
+            dispatchLoop:
             while (!closed.get()) {
                 int domains = pendingDomains.getAndSet(0);
                 if (domains == 0) {
@@ -116,6 +120,7 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
                 if (domains == 0) {
                     break;
                 }
+                long turnStartedNanos = System.nanoTime();
                 boolean residue;
                 do {
                     if (!canReceiveApplication.getAsBoolean()) {
@@ -129,6 +134,15 @@ final class ZLinkJavaMeshDispatchPump implements AutoCloseable {
                         }
                     }
                     residue = source.drain(domains, receiver, this::requestDrain);
+                    if (residue
+                        && !closed.get()
+                        && System.nanoTime() - turnStartedNanos
+                            >= MAX_DISPATCH_TURN_NANOS) {
+                        int turnDomains = domains;
+                        pendingDomains.getAndUpdate(
+                            current -> current | turnDomains);
+                        break dispatchLoop;
+                    }
                 } while (residue && !closed.get());
             }
         } catch (RuntimeException error) {

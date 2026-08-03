@@ -45,6 +45,8 @@ export function encodeRemoteActorPacketRelayPayload(input: {
   readonly header: Uint8Array;
   readonly payload: Uint8Array;
   readonly bindingActorRef?: ActorRef;
+  /** The actor reference used to preserve relocation context at the target Spot. */
+  readonly actorRef?: ActorRef;
   readonly returnResponse?: boolean;
   readonly messageFollowContext?: ZLinkActorMessageFollowContext;
 }): Record<string, unknown> {
@@ -54,6 +56,11 @@ export function encodeRemoteActorPacketRelayPayload(input: {
     routerChannelId: input.routerChannelId,
     boundSessionTargetNodeRid: input.boundSessionTargetNodeRid,
     boundSessionSpotId: input.boundSessionSpotId,
+    actorNodeRid: input.actorRef === undefined ? undefined : String(input.actorRef.nodeRid),
+    actorNodeRidHex: input.actorRef === undefined
+      ? undefined
+      : routingIdWireHex(input.actorRef.nodeRid),
+    actorGeneration: input.actorRef?.objectGeneration.toString(),
     bindingActorNodeRid: input.bindingActorRef === undefined ? undefined : String(input.bindingActorRef.nodeRid),
     bindingActorNodeRidHex: input.bindingActorRef === undefined
       ? undefined

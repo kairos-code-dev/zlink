@@ -155,14 +155,14 @@ class NativeMonitorSocket:
     def close(self):
         if not self._handle:
             return
-        self._handler = None
-        self._dispatcher.close()
-        self._handler_cb = None
         handle = ctypes.c_void_p(self._handle)
         rc = lib().zlink_monitor_close(ctypes.byref(handle))
-        self._handle = None
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+        self._handle = None
+        self._handler = None
+        self._handler_cb = None
+        self._dispatcher.close()
 
     def recv(self, *, flags=0):
         native = ZlinkMonitorEvent()

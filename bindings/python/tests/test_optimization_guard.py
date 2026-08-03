@@ -63,3 +63,12 @@ def test_public_operations_remain_builder_only():
     assert not hasattr(zlink.PairSocket, "try_send")
     assert not hasattr(zlink.RouterSocket, "send_to_spot")
     assert not hasattr(zlink.StreamSocket, "send_bound_actor")
+
+
+def test_obsolete_service_examples_are_not_distributed():
+    examples = ROOT / "examples"
+    assert not (examples / "spot_callback.py").exists()
+    assert not (examples / "spot_recv.py").exists()
+    for path in examples.glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert "create_spot_node" not in text, path

@@ -37,6 +37,13 @@ ownership and error handling. The public contract is:
 - callback removal by passing `None` is not part of the public contract;
   callback lifecycle ends with socket close
 
+The raw FFI declarations `zlink_recv_handler()` and
+`zlink_router_completion_control_handler()` are private implementation
+primitives. The public Python surface uses `on_packet` for STREAM packets,
+`on_send_ready` for send readiness, `on_event` for monitor events, and the
+`request(...)` callback path for ROUTER request completion. Python does not
+add separate direct raw-receive or completion-control registration methods.
+
 ## Surface Summary
 
 Socket capabilities are split by type instead of one generic bag of unrelated

@@ -77,12 +77,12 @@ class NativeTimer:
         if not self._handle:
             return
         handle = ctypes.c_void_p(self._handle)
-        self._handle = None
-        self._handler = None
-        self._handler_cb = None
         rc = lib().zlink_timer_destroy(ctypes.byref(handle))
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+        self._handle = None
+        self._handler = None
+        self._handler_cb = None
 
     def __enter__(self):
         return self

@@ -13,10 +13,11 @@ Linux x86_64에서 source test, clean wheel consumer, raw sample process와 perf
   evidence가 같은 candidate identity인지 확인되지 않았다. 이전 `11.1.0` evidence를 `11.2.0`의 승인으로
   재사용하지 않는다.
 - CPython 3.9 Docker clean consumer와 host CPython 3.12 clean consumer를 각각 같은 candidate 절차로
-  실행했다. Pyright target도 Python 3.9로 유지한다.
+  실행했다. Pyright target도 Python 3.9로 유지한다. 이번 source 수정 뒤에는 두 consumer와 package를
+  다시 생성해야 한다.
 - release 지원 target은 Linux x86_64로 한정했고, 다른 target은 setup·loader에서 fail-fast하도록 정리했다.
-- 구현자와 분리된 frontier reviewer의 최종 read-only `CLEAN` 판정이 없다. 현재 POSD·DDD 검토는 이 작업의
-  self-review 기록이며 독립 review를 대신하지 않는다.
+- 독립 frontier reviewer는 초기 candidate를 `NOT CLEAN`으로 판정했다. Python source의 High·Medium
+  finding은 수정했지만, 최종 source manifest와 fresh package evidence를 다시 읽은 `CLEAN` 판정은 아직 없다.
 
 이 조건들은 source test나 local package 결과를 실패로 바꾸는 것이 아니라, 완료 gate와 local implementation
 evidence를 구분하기 위한 것이다.
@@ -76,7 +77,8 @@ DDD 기준의 경계는 다음과 같다.
 - no-data는 함수군별 계약에 따라 `False` 또는 `None`으로 반환하고 native failure를 숨기지 않는다.
 - submit, request, receive, bind, connect, config와 close error가 result와 native errno를 보존한다.
 - message send 후 move, caller-provided receive storage, callback reference와 idempotent close를 test로
-  고정했다.
+  고정했다. native close가 `EBUSY`를 반환하면 socket, monitor, timer, context의 handle과 callback owner를
+  유지하고 성공 뒤에만 정리한다. invalid payload는 backpressure인 `False`로 바꾸지 않는다.
 
 ### PY-04 — POSD·DDD와 hot-path cost — PASS (self-review)
 
@@ -126,7 +128,8 @@ repository `src`를 import하지 않는다. Single·multi perf runner는 `ZLINK_
 
 한국어·영문 Python spec과 한국어 guide는 raw Core 11 public surface, ownership, no-data, error, Python 3.9
 type policy와 현재 `11.2.0` candidate를 설명한다. 구현에 없는 Framework 기능과 이전 Core runtime을 지원
-목록으로 제공하지 않는다. `single_part()` draft는 승인 전이므로 정식 문서는 현재 accessor 이름을 유지한다.
+목록으로 제공하지 않는다. Python callback 표면과 private FFI callback의 경계를 명시하고, `single_part()`
+draft는 승인 전이므로 정식 문서는 현재 accessor 이름을 유지한다.
 
 ## 4. Platform 범위와 검증
 
@@ -194,7 +197,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 | 승인 prefix native build | `PASS` | candidate build가 `ZLINK_CORE_PREFIX`로 wheel build |
 | Raw FFI·symbol·layout | `PASS` | source tests, candidate manifest symbol/layout hash |
 | Public API와 Framework surface 부재 | `PASS` | export/guard test와 source scan |
-| Contract·unit test | `PASS` | `pytest`: 52 passed |
+| Contract·unit test | `PASS` | `pytest`: 63 passed; close retry, callback ownership, invalid payload, surface guard 포함 |
 | `single_part` naming draft | `PASS` | 현재 public contract인 `single_part_or_throw()`를 유지; 별도 draft는 승인 전 설계 후보로 분리 |
 | Python 3.9 runtime와 최고 version | `PASS` | CPython 3.9 Docker와 host CPython 3.12 clean consumer |
 | `pyright`·`py.typed` | `PASS` | public contracts 대상 pyright 0 errors, wheel file check |
@@ -205,7 +208,7 @@ ZLINK_LIBRARY_PATH="$PWD/core/build/lib/libzlink.so.11.2.0" \
 | Linux x86_64 platform | `PASS` | candidate wheel과 clean consumer |
 | Support target decision | `PASS` | release package 범위를 Linux x86_64로 한정하고 unsupported target은 fail-fast |
 | POSD·DDD Codex self-review | `PASS` | 검토 log와 cost inventory; independent review 아님 |
-| 독립 frontier review | `BLOCKED` | 같은 최종 manifest와 fresh evidence를 읽은 reviewer 필요 |
+| 독립 frontier review | `RECHECK REQUIRED` | 초기 reviewer의 High·Medium finding은 수정했으며 같은 최종 manifest와 fresh evidence로 재검토 필요 |
 | 정식 spec·guide | `PASS` | 현재 구현과 일치하도록 갱신 |
 
 ## 6. 완료 조건과 재개 순서
@@ -220,6 +223,6 @@ clean consumer, 지원 platform 범위와 독립 review를 결정해야 한다. 
 3. release 지원 target은 Linux x86_64로 한정한다. 추가 target을 지원하려면 별도 candidate payload와
    consumer evidence를 만든 뒤 범위 변경으로 검토한다.
 4. 독립 reviewer가 최종 Python source manifest, 전체 diff, POSD·DDD cost inventory와 fresh test/package
-   evidence를 read-only로 확인한다. 미해결 `Critical`·`High`·`Medium` finding이 없을 때만 `CLEAN`으로
+   evidence를 read-only로 재확인한다. 미해결 `Critical`·`High`·`Medium` finding이 없을 때만 `CLEAN`으로
    갱신한다.
 5. 위 조건을 충족한 뒤에만 final ledger와 release-facing 문서의 완료 상태를 갱신한다.

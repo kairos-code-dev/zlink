@@ -85,9 +85,9 @@ class NativeContext:
     def close(self):
         if self._handle:
             rc = lib().zlink_ctx_term(self._handle)
-            self._handle = None
             if rc != 0:
                 _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+            self._handle = None
 
     def __enter__(self):
         return self

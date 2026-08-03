@@ -92,7 +92,30 @@ Python binding에서 호출자가 관찰하거나 책임지는 사건을 먼저 
 - Package provenance를 setup script와 candidate builder에 모았다. build는 명시적인 `ZLINK_CORE_PREFIX`를
   받고 clean consumer는 repository `src`와 `core/build`를 fallback으로 사용하지 않는다.
 - POSD red flag를 다시 읽은 결과, 이 변경에는 새 public pass-through facade, 중복 codec/provider, caller에
-  native 결정 노출이 없다. 확인 가능한 Critical·High·Medium finding은 없었다.
+  native 결정 노출이 없다. 이 문장은 아래 독립 review 전의 self-review snapshot이다.
 
 이 결과는 같은 checkout에서 수행한 Codex self-review다. 독립 reviewer가 동일한 source manifest와 fresh
 evidence를 승인하기 전에는 전체 작업을 `CLEAN`으로 표시하지 않는다.
+
+## 독립 review와 수정 결과
+
+2026-08-03에 구현자와 분리된 bounded read-only review를 수행했다. Python reviewer `Banach`은 당시
+candidate의 source/spec/evidence를 확인하고 `NOT CLEAN`을 판정했다. Core reviewer `Parfit`은 Core source를
+`CLEAN`으로 읽었지만, 이전 candidate에 묶인 package·ASAN·aggregate evidence를 확인해 최종 gate는
+`NOT CLEAN`으로 남겼다. 두 결과 모두 장시간 build를 대신하지 않는 독립 source/evidence review다.
+
+Python review에서 확인된 finding과 현재 owning-layer 조치는 다음과 같다.
+
+| 등급 | 확인된 경로와 의미 | 조치 |
+|------|--------------------|------|
+| High | `socket_base.py`가 Core 11에 없는 `set_channel_name()`·`get_channel_name()`을 모든 socket에 상속 | 두 메서드와 legacy FFI 호출을 제거하고 public-surface test 추가 |
+| High | socket, monitor, timer close가 native 실패 전에 handle·callback·dispatcher를 지움 | native close/destroy 성공 뒤에만 owner state를 정리하고 `EBUSY` 재시도 test 추가 |
+| Medium | native bridge의 `BufferError`·`TypeError`를 backpressure `False`로 변환 | 예외를 caller에게 전달하고 두 입력 오류 regression 추가 |
+| Medium | raw recv/completion callback primitive와 Python public callback의 관계가 문서에서 불명확 | 공통 spec과 일치하는 private FFI/public callback projection을 Python README·spec에 기록 |
+| Medium | `_LEGACY_SOCKET_TYPE_MAP`이 Core enum 값을 다른 값으로 재해석 | mapping 제거, raw enum 전달 regression 추가 |
+| Medium | `examples/spot_*.py`가 제거된 service API를 호출 | 두 obsolete example 삭제와 source guard 추가 |
+
+이번 수정 뒤 `ZLINK_LIBRARY_PATH=core/build/lib/libzlink.so.11.2.0 PYTHONPATH=bindings/python/src`
+환경에서 `python3 -m pytest -q bindings/python/tests`는 `63 passed`를 반환했다. 이는 source regression
+증거이며, 최종 판단에는 새 source manifest, CPython 3.9/3.12 package·clean consumer·sample·perf와
+candidate-bound independent re-review가 계속 필요하다.

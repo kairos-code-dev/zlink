@@ -1,6 +1,7 @@
 import unittest
 
 import zlink
+from zlink._runtime.sockets.socket_base import _native_socket_type
 
 
 class BoundaryValidationContractTests(unittest.TestCase):
@@ -11,13 +12,24 @@ class BoundaryValidationContractTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 zlink.RoutingId.from_(invalid)
 
-    def test_endpoint_and_channel_name_reject_fixed_buffer_overflow(self):
+    def test_endpoint_rejects_fixed_buffer_overflow(self):
         with zlink.create_context() as ctx:
             with zlink.create_router_socket(ctx) as socket:
                 with self.assertRaises(ValueError):
                     socket.bind("inproc://" + ("x" * 248))
                 with self.assertRaises(ValueError):
                     socket.bind("inproc://bad\0endpoint")
+
+    def test_socket_type_values_are_not_reinterpreted_before_native_call(self):
+        self.assertEqual(_native_socket_type(zlink.SocketType.ANY), 0)
+        self.assertEqual(_native_socket_type(zlink.SocketType.PAIR), 0x1001)
+        self.assertEqual(_native_socket_type(1), 1)
+
+    def test_removed_channel_name_surface_is_not_public(self):
+        self.assertFalse(hasattr(zlink.PairSocket, "set_channel_name"))
+        self.assertFalse(hasattr(zlink.PairSocket, "get_channel_name"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "set_channel_name"))
+        self.assertFalse(hasattr(zlink.RouterSocket, "get_channel_name"))
 
     def test_typed_numeric_options_reject_native_width_overflow(self):
         with zlink.create_context() as ctx:

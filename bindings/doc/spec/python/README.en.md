@@ -48,6 +48,16 @@ interpreted against the public Core header.
 - Callback references remain retained until the native callback registration
   no longer needs them. Callback failures follow the binding callback policy.
 
+## Callback surface
+
+The Core FFI declarations `zlink_recv_handler()` and
+`zlink_router_completion_control_handler()` are private implementation
+primitives and are not exposed directly by the Python package. Python's public
+callback surface is fixed to `on_packet` for STREAM packets, `on_send_ready`
+for send readiness, `on_event` for monitor events, and the `request(...)`
+callback path for ROUTER request completion. There is no separate public
+method for registering a raw receive callback or a completion-control handler.
+
 ## Send, receive, and no-data
 
 Send builders add message parts and then call `submit()`. Blocking send follows

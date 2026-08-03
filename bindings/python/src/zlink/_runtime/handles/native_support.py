@@ -212,18 +212,6 @@ _REPLY_HANDLER = ctypes.CFUNCTYPE(
     ctypes.c_size_t,
     ctypes.c_void_p,
 )
-_LEGACY_SOCKET_TYPE_MAP = {
-    0: 0x1001,
-    1: 0x1002,
-    2: 0x1003,
-    5: 0x1004,
-    6: 0x1005,
-    9: 0x1006,
-    10: 0x1007,
-    11: 0x1008,
-}
-
-
 def _copy_routing_id(routing_id):
     view = _as_bytes_view(routing_id)
     size = view.nbytes

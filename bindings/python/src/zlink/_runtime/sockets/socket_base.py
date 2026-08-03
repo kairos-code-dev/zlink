@@ -56,7 +56,6 @@ from ..handles.native_support import (
     _SOCKET_SEND_READY_HANDLER,
     _BytesReceivedPartsOwner,
     _ReceivedPartsOwner,
-    _LEGACY_SOCKET_TYPE_MAP,
     _as_bytes_view,
     _clone_native_msg,
     _copy_routing_id,
@@ -67,7 +66,6 @@ from ..handles.native_support import (
     _report_unhandled_callback_exception,
     _raise_result_error,
     _routing_id_bytes,
-    _validated_c_string_bytes,
     _validated_c_string_text,
     _validated_c_string_value,
     _validated_int32,
@@ -125,7 +123,9 @@ def _clone_received_owner(parts_ptr, part_count):
 
 
 def _native_socket_type(sock_type):
-    return _LEGACY_SOCKET_TYPE_MAP.get(int(sock_type), int(sock_type))
+    # Core 11 owns the numeric enum values. Do not reinterpret values from an
+    # older binding surface before passing them to the raw socket factory.
+    return int(sock_type)
 
 
 def _socket_type_name(socket_type):
@@ -191,12 +191,13 @@ class _SocketHandle:
         if not self.handle:
             return
         handle = self.handle
-        self.handle = None
         if not self.own:
+            self.handle = None
             return
         rc = lib().zlink_close(handle)
         if rc != 0:
             _raise_result_error(CloseError, CloseResult, rc, lib().zlink_errno())
+        self.handle = None
 
     async def __aenter__(self):
         return self
@@ -312,27 +313,21 @@ class _BaseSocket:
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
             return None
-        try:
-            result = _native_extension.send_parts(
-                int(self._socket_handle.handle), payload, int(flags)
-            )
-        except (BufferError, TypeError):
-            return False
+        result = _native_extension.send_parts(
+            int(self._socket_handle.handle), payload, int(flags)
+        )
         return self._submit_bridge_result(result, flags)
 
     def _send_routed_payload_via_native_bridge(self, routing_id, payload, flags):
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
             return None
-        try:
-            result = _native_extension.send_parts_rid(
-                int(self._socket_handle.handle),
-                _validated_routing_id_bytes(routing_id),
-                payload,
-                int(flags),
-            )
-        except (BufferError, TypeError):
-            return False
+        result = _native_extension.send_parts_rid(
+            int(self._socket_handle.handle),
+            _validated_routing_id_bytes(routing_id),
+            payload,
+            int(flags),
+        )
         return self._submit_bridge_result(result, flags)
 
     def _send_routed_payload_bytes_via_native_bridge(
@@ -341,27 +336,21 @@ class _BaseSocket:
         _ensure_not_in_callback("blocking send")
         if _native_extension is None:
             return None
-        try:
-            result = _native_extension.send_parts_rid(
-                int(self._socket_handle.handle),
-                routing_id_bytes,
-                payload,
-                int(flags),
-            )
-        except (BufferError, TypeError):
-            return False
+        result = _native_extension.send_parts_rid(
+            int(self._socket_handle.handle),
+            routing_id_bytes,
+            payload,
+            int(flags),
+        )
         return self._submit_bridge_result(result, flags)
 
     def _publish_payload_via_native_bridge(self, topic_bytes, payload, flags):
         _ensure_not_in_callback("blocking publish")
         if _native_extension is None:
             return None
-        try:
-            result = _native_extension.publish_parts(
-                int(self._socket_handle.handle), topic_bytes, payload, int(flags)
-            )
-        except (BufferError, TypeError):
-            return False
+        result = _native_extension.publish_parts(
+            int(self._socket_handle.handle), topic_bytes, payload, int(flags)
+        )
         return self._submit_bridge_result(result, flags)
 
     def _recv_parts_via_native_bridge(self, flags):
@@ -476,29 +465,6 @@ class _BaseSocket:
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
         return _routing_id_bytes(rid)
 
-    def set_channel_name(self, channel_name):
-        channel_bytes = _validated_c_string_bytes(
-            channel_name,
-            field="channel_name",
-            max_length=255,
-        )
-        rc = lib().zlink_socket_set_channel_name(self._handle, channel_bytes)
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-
-    def get_channel_name(self):
-        buf = ctypes.create_string_buffer(256)
-        out_size = ctypes.c_size_t()
-        rc = lib().zlink_socket_get_channel_name(
-            self._handle,
-            buf,
-            len(buf),
-            ctypes.byref(out_size),
-        )
-        if rc != 0:
-            _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
-        return buf.raw[: out_size.value].decode("utf-8")
-
     def _send_result(self, native_result):
         if int(native_result) < 0:
             _raise_result_error(SubmitError, SubmitResult, SubmitResult.INTERNAL_ERROR, lib().zlink_errno())
@@ -539,6 +505,10 @@ class _BaseSocket:
         return open_socket_monitor(self, events)
 
     def close(self):
+        # Core may return EBUSY while a callback or admitted API is in flight.
+        # Keep every Python-side owner reference until native close succeeds so
+        # the caller can retry without losing callback state.
+        self._socket_handle.close()
         self._recv_handler = None
         self._send_ready_handler = None
         self._packet_handler = None
@@ -548,7 +518,6 @@ class _BaseSocket:
         self._recv_handler_cb = None
         self._send_ready_handler_cb = None
         self._packet_handler_cb = None
-        self._socket_handle.close()
 
     def __enter__(self):
         return self

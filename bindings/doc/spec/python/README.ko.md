@@ -45,6 +45,15 @@ handle, FFI symbol, native struct를 public type으로 노출하지 않는다.
 - callback을 등록하면 callback과 필요한 Python 참조는 native callback 등록보다 먼저 해제되지 않는다.
   callback 예외는 binding의 callback error policy에 따라 전달된다.
 
+## Callback 표면
+
+Core FFI의 `zlink_recv_handler()`와
+`zlink_router_completion_control_handler()`는 Python package가 직접 노출하지 않는
+private 구현 primitive다. Python의 공개 callback 표면은 STREAM packet의 `on_packet`,
+send readiness의 `on_send_ready`, monitor event의 `on_event`, 그리고 ROUTER request
+completion을 전달하는 `request(...)` callback 경로로 고정한다. raw receive callback이나
+completion-control handler를 등록하는 별도 public method는 제공하지 않는다.
+
 ## 송수신과 no-data
 
 송신 builder는 message part를 추가한 뒤 `submit()`한다. blocking send는 socket option과 Core의

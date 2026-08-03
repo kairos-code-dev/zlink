@@ -452,8 +452,8 @@ class DealerSocket(
         )
 
     def close(self):
-        self._cancel_pending_requests(RequestResult.TERMINATED)
         super().close()
+        self._cancel_pending_requests(RequestResult.TERMINATED)
 
     def _request_callback(self, payload, callback, *, flags=0, timeout=0):
         pending = _PendingRequest(callback=callback)
@@ -685,8 +685,8 @@ class RouterSocket(
             _raise_result_error(SubmitError, SubmitResult, rc, err)
 
     def close(self):
-        self._cancel_pending_requests(RequestResult.TERMINATED)
         super().close()
+        self._cancel_pending_requests(RequestResult.TERMINATED)
 
     def _cancel_pending_requests(self, result):
         for handle, pending in list(self._pending_requests.items()):

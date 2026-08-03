@@ -23,8 +23,9 @@ CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 - Go package는 현재 Core candidate의 `V11-M3-CORE-PKG` pass evidence와 연결되지만, V11-R2 review가
   `independent: false`이므로 독립 review gate는 닫히지 않았다.
 - Linux arm64와 macOS payload의 Core 11 runtime 및 native consumer가 검증되지 않았다.
-- Go–Rust parity inventory와 공통 submit 반환 초안의 승인 전이다. 현재 Go send/request terminal method는
-  `(bool, error)`를 유지하므로 “성공 값 없는 submit은 `error`만 반환한다”는 목표를 완료로 표시하지 않는다.
+- Go–Rust parity inventory의 대응 행은 채워졌지만 공통 submit 반환 초안과 parity 판정은 아직 승인 전이다. 현재
+  Go send/request terminal method는 `(bool, error)`를 유지하므로 “성공 값 없는 submit은 `error`만 반환한다”는
+  목표를 완료로 표시하지 않는다.
 - 구현자가 아닌 frontier reviewer의 POSD·DDD·성능 비용·dead code 판정이 없어 `CLEAN`으로 닫을 수 없다.
 
 Candidate verify 입력은 다음과 같다.
@@ -193,8 +194,8 @@ Go 정식 spec의 한국어·영문 문서는 `/v11` module, Core 11 raw public 
 surface와 package boundary에 맞춰 갱신했다. `bindings/go/README.godoc.md`, `tests/run_tests.sh`와 sample
 entrypoint도 현재 구현과 맞는다.
 
-공통 bindings spec의 submit 반환 초안 승인, Go–Rust parity inventory와 공통 문구 통합은 아직 남아 있다.
-따라서 언어별 Go spec 갱신만으로 전체 public contract parity 완료를 주장하지 않는다.
+공통 bindings spec의 submit 반환 초안 승인, 채워진 Go–Rust parity inventory의 최종 판정과 공통 문구 통합은
+아직 남아 있다. 따라서 언어별 Go spec 갱신만으로 전체 public contract parity 완료를 주장하지 않는다.
 
 ## 5. Platform 검증
 
@@ -270,7 +271,7 @@ scripts/local-package/go/build-wsl.sh \
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
 | Perf runner smoke | `PASS` | single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
 | 구현 후 POSD·DDD·성능 비용·dead code Codex review | `NOT CLEAN` | 현재 독립 frontier review와 fresh finding report 없음 |
-| Go·Rust parity inventory | `PENDING` | `go-rust-return-parity.ko.md`의 Go–Rust 공통 비교 미완료 |
+| Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 submit 승인, contract test와 parity `CLEAN` 판정이 남음 |
 | Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |
 | Raw sample process runner | `PASS` | `samples: pass=7 fail=0` |
 | File proxy package contents | `PASS` | candidate-bound zip에 Linux runtime 포함, service/build/results forbidden-entry 없음 |

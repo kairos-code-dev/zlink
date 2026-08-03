@@ -48,5 +48,5 @@ Go raw cgo boundary, ownership·error mapping, request progress owner와 hot-pat
    independent review evidence를 현재 candidate `d318...`에 재사용하지 않는다.
 3. Linux arm64 payload는 Core 9 `libzlink.so.9`이고, Darwin payload는 이 candidate runtime과 native
    consumer로 검증되지 않았다. Windows는 현재 Go 계획 범위 밖이다.
-4. 따라서 Go·Rust parity inventory, 정식 common contract 문서와 GO-07의 독립 `CLEAN` review를 완료로
-   기록하지 않는다.
+4. 따라서 parity inventory의 행이 채워졌더라도 최종 parity 판정, 정식 common contract 문서와 GO-07의 독립
+   `CLEAN` review를 완료로 기록하지 않는다.

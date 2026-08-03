@@ -4,6 +4,8 @@
 `/home/hep7/project/kairos/zlink`이다. 이번 기록은 runtime source fix,
 regression unit, 승인 package process evidence를 분리한다.
 
+runtime source·test·runner 변경은 commit `06b03c9bf1`에 포함했다.
+
 ## 발견한 runtime gap과 수정
 
 SubmitAdmission에서 target process를 종료한 뒤 public RouteMesh snapshot이

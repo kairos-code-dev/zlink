@@ -17,8 +17,9 @@
 승인 package SubmitAdmission process를 재실행했다. 명령·exit code·evidence는
 [`log/20260803-0925-java-kotlin-runtime-submit-admission-follow-up.ko.md`](log/20260803-0925-java-kotlin-runtime-submit-admission-follow-up.ko.md)에
 기록했다.
-이번 runtime·package·workstream 변경을 담은 implementation commit은
-`d9be6bacfd3a8c5b8c179d8482ee91e6e0b5ba42`이다.
+이번 runtime·package·workstream 변경은 기존
+`d9be6bacfd3a8c5b8c179d8482ee91e6e0b5ba42`에 이어
+`06b03c9bf1`에 커밋했다. 두 commit은 같은 branch에 push할 대상이다.
 
 이 ledger는 Java framework와 Kotlin framework를 하나의 작업 단위로 관리한다. Java와
 Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항목에서

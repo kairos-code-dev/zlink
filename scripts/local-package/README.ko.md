@@ -205,6 +205,32 @@ PowerShell에서 실행한다.
 | Node.js | `node/build-wsl.sh`, `node/build-windows.ps1` | npm tarball |
 | C++ | `cpp/build-wsl.sh`, `cpp/build-windows.ps1` | 버전별 CMake install prefix |
 
+### Rust candidate package
+
+Rust crate는 승인된 Core candidate와 설치된 Core provenance를 입력으로 받아야 한다. 다음 명령은 Linux
+x86_64 payload만 포함한 `zlink-11.1.0` crate를 만들고, package contents, workspace test, clippy, samples와
+path dependency 없는 clean consumer를 같은 candidate 기준으로 검증한다.
+
+```bash
+scripts/local-package/rust/build-wsl.sh \
+  --platforms linux-x86_64 \
+  --core-candidate-manifest /absolute/path/candidate-reply-match-completion-hwm-20260801.json \
+  --core-package-evidence /absolute/path/core-package-20260801.json \
+  --output-root /absolute/path/.artifacts/wsl/rust-candidate
+```
+
+`bindings/rust/perf/run_benchmarks.sh`, `run_benchmarks_multi.sh`와 `tests/run_tests.sh`는 각각
+`--rust-package-evidence FILE` 또는 `ZLINK_RUST_PACKAGE_EVIDENCE`를 받을 수 있다. 내부 resolver는 package
+evidence의 source revision, candidate manifest와 runtime SHA-256, clean consumer 상태를 다시 확인한 뒤
+`ZLINK_RUST_NATIVE_DIR`와 runtime identity를 설정한다. 따라서 perf·source test가 다른 `core/build` runtime을
+조용히 선택하지 않는다.
+
+Clean consumer evidence의 `LD_LIBRARY_PATH=unset` 조건은 package 내부 runtime load를 확인한다. 현재 Cargo
+dependency의 build-script linker argument는 downstream consumer에 자동 전파되지 않으므로, 이 local gate는
+package source에서 계산한 RPATH를 `RUSTFLAGS`로 주입한다. 이 조건은 evidence에
+`linkerRpath: package-derived-rustflags`로 기록되며, 일반 crate 사용자가 별도 설정 없이 RPATH를 얻는다는
+의미로 해석하지 않는다.
+
 ## HTTP client 트랙 (framework component)
 
 bindings 외에 framework HTTP client도 같은 정책으로 local package를 만든다.

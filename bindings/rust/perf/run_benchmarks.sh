@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+RUST_RUNTIME_RESOLVER="${REPO_DIR}/scripts/local-package/rust/resolve-candidate-runtime.sh"
 PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 START_SECONDS="$(date +%s)"
 TOTAL_TIME_ENABLED=0
@@ -32,10 +33,12 @@ RUNS="${PERF_RUNS:-1}"
 RESULTS_ROOT="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 OUTPUT_FILE=""
+SMOKE=0
 REUSE_BUILD=0
 CLEAN_BUILD=0
 PIN_CPU=0
 BUILD_DIR=""
+RUST_PACKAGE_EVIDENCE="${ZLINK_RUST_PACKAGE_EVIDENCE:-}"
 IO_THREADS="${PERF_IO_THREADS:-}"
 HWM=""
 SEND_HWM=""
@@ -57,7 +60,10 @@ Options:
   --msg-sizes LIST
   --transports LIST
   --runs N
+  --smoke
   --build-dir PATH
+  --rust-package-evidence FILE
+                             Rust candidate package evidence for completion-gate runs.
   --reuse-build
   --clean-build
   --pin-cpu
@@ -91,7 +97,9 @@ while [[ $# -gt 0 ]]; do
         --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
         --transports) TRANSPORTS="$2"; shift 2 ;;
         --runs)      RUNS="$2";      shift 2 ;;
+        --smoke)     SMOKE=1;         shift ;;
         --build-dir) BUILD_DIR="$2"; shift 2 ;;
+        --rust-package-evidence) RUST_PACKAGE_EVIDENCE="$2"; shift 2 ;;
         --io-threads) IO_THREADS="$2"; shift 2 ;;
         --hwm) HWM="$2"; shift 2 ;;
         --send-hwm) SEND_HWM="$2"; shift 2 ;;
@@ -150,13 +158,36 @@ is_supported_transport_for_pattern() {
 }
 
 prepare_core_runtime() {
-    if [[ ! -f "${CORE_LIB}" ]]; then
-        echo "core runtime not found: ${CORE_LIB}" >&2
-        echo "Build core/build before running Rust perf." >&2
+    if [[ -n "${RUST_PACKAGE_EVIDENCE}" ]]; then
+        [[ -f "${RUST_RUNTIME_RESOLVER}" ]] || {
+            echo "Rust candidate runtime resolver not found: ${RUST_RUNTIME_RESOLVER}" >&2
+            exit 1
+        }
+        # Candidate package evidence owns the runtime path, hash and Core identity.
+        # The resolver also requires this source revision to match the package.
+        source "${RUST_RUNTIME_RESOLVER}"
+        resolve_rust_package_runtime "${RUST_PACKAGE_EVIDENCE}" "linux-x86_64" \
+            "$(git -C "${REPO_DIR}" rev-parse HEAD)"
+        echo "Rust candidate package evidence: ${RUST_PACKAGE_EVIDENCE}"
+        echo "Rust candidate manifest sha256: ${RUST_CANDIDATE_MANIFEST_SHA256}"
+        echo "Rust candidate aggregate sha256: ${RUST_CANDIDATE_AGGREGATE_SHA256}"
+        echo "Rust perf runtime: ${RUST_CANDIDATE_RUNTIME}"
+        echo "Rust perf runtime sha256: ${RUST_CANDIDATE_RUNTIME_SHA256}"
+        export ZLINK_RUST_NATIVE_DIR="${RUST_CANDIDATE_NATIVE_DIR}"
+        export LD_LIBRARY_PATH="${RUST_CANDIDATE_NATIVE_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        return
+    fi
+
+    local native_dir="${ZLINK_RUST_NATIVE_DIR:-${CORE_LIB_DIR}}"
+    local runtime="${native_dir}/libzlink.so"
+    [[ -f "${runtime}" ]] || runtime="${native_dir}/libzlink.so.11.1.0"
+    if [[ ! -f "${runtime}" ]]; then
+        echo "Rust perf runtime not found: ${native_dir}" >&2
+        echo "Build core/build or pass --rust-package-evidence." >&2
         exit 1
     fi
     local resolved_lib
-    resolved_lib="$(readlink -f "${CORE_LIB}" 2>/dev/null || echo "${CORE_LIB}")"
+    resolved_lib="$(readlink -f "${runtime}" 2>/dev/null || echo "${runtime}")"
     local newer_source
     newer_source="$(
         find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
@@ -164,14 +195,15 @@ prepare_core_runtime() {
     )"
     if [[ -n "${newer_source}" ]]; then
         echo "Error: stale core runtime detected for bindings/rust/perf." >&2
-        echo "  runtime: ${CORE_LIB}" >&2
+        echo "  runtime: ${resolved_lib}" >&2
         echo "  newer source: ${newer_source}" >&2
         echo "Rebuild core/build before running run_benchmarks.sh." >&2
         exit 1
     fi
-    echo "Perf core build dir: ${CORE_BUILD_DIR}"
-    echo "Perf runtime libzlink: ${resolved_lib}"
-    export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    echo "Rust perf development runtime: ${resolved_lib}"
+    echo "Rust perf runtime sha256: $(sha256sum "${resolved_lib}" | awk '{print $1}')"
+    export ZLINK_RUST_NATIVE_DIR="${native_dir}"
+    export LD_LIBRARY_PATH="${native_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -181,7 +213,9 @@ if [[ -n "${RESULTS_TAG}" ]]; then
 fi
 REPORT_DIR="${RESULTS_ROOT}/single/report"
 RESULTS_FILE="${REPORT_DIR}/perf_rust_single_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
-mkdir -p "${REPORT_DIR}"
+if [[ "${SMOKE}" -eq 0 ]]; then
+    mkdir -p "${REPORT_DIR}"
+fi
 
 prune_reports() {
     local report_dir="$1"
@@ -210,6 +244,8 @@ sleep_millis() {
 TARGET_DIR="${BUILD_DIR:-${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/perf-single}}"
 SINGLE_DIR="${TARGET_DIR}/release"
 
+prepare_core_runtime
+
 if [[ "${REUSE_BUILD}" -eq 0 ]]; then
     if [[ "${CLEAN_BUILD}" -eq 1 ]]; then
         (cd "${SCRIPT_DIR}/single" && CARGO_TARGET_DIR="${TARGET_DIR}" cargo clean --quiet)
@@ -219,8 +255,6 @@ elif [[ ! -x "${SINGLE_DIR}/perf_pair" ]]; then
     echo "existing single perf binaries not found for --reuse-build: ${SINGLE_DIR}" >&2
     exit 1
 fi
-
-prepare_core_runtime
 TOTAL_TIME_ENABLED=1
 [[ -n "${IO_THREADS}" ]] && export PERF_IO_THREADS="${IO_THREADS}"
 if [[ -n "${SEND_HWM}" ]]; then
@@ -349,6 +383,17 @@ for pat in "${PATTERNS[@]}"; do
         done
     done
 done
+
+if [[ "${SMOKE}" -eq 1 ]]; then
+    SMOKE_CASES="$(wc -l < "${TMP_CASES}" | tr -d ' ')"
+    SMOKE_NON_SUCCESS="$(awk -F',' '$4 != "success" { count++ } END { print count + 0 }' "${TMP_CASES}")"
+    if [[ "${SMOKE_CASES}" -eq 0 || "${SMOKE_NON_SUCCESS}" -ne 0 ]]; then
+        echo "SMOKE FAIL cases=${SMOKE_CASES} non_success=${SMOKE_NON_SUCCESS}" >&2
+        exit 1
+    fi
+    echo "SMOKE PASS cases=${SMOKE_CASES} pattern=${PATTERN} transports=${TRANSPORTS:-default}"
+    exit 0
+fi
 
 python3 "${PERF_REPORT_PY}" render-single \
   --metrics "${TMP_METRICS}" \

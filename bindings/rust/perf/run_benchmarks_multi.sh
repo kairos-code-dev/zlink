@@ -7,6 +7,7 @@ REPO_DIR="$(cd "${PROJECT_DIR}/../.." && pwd)"
 CORE_BUILD_DIR="${REPO_DIR}/core/build"
 CORE_LIB_DIR="${CORE_BUILD_DIR}/lib"
 CORE_LIB="${CORE_LIB_DIR}/libzlink.so"
+RUST_RUNTIME_RESOLVER="${REPO_DIR}/scripts/local-package/rust/resolve-candidate-runtime.sh"
 PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 START_SECONDS="$(date +%s)"
 TOTAL_TIME_ENABLED=0
@@ -38,8 +39,10 @@ RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
 RESULTS_ROOT="${PERF_RESULTS_DIR:-${SCRIPT_DIR}/results}"
 RESULTS_TAG="${PERF_RESULTS_TAG:-}"
 OUTPUT_FILE=""
+SMOKE=0
 PIN_CPU=0
 BUILD_DIR=""
+RUST_PACKAGE_EVIDENCE="${ZLINK_RUST_PACKAGE_EVIDENCE:-}"
 EXPLICIT_MSG_SIZES=0
 COMMON_IO_THREADS="${PERF_IO_THREADS:-}"
 SERVER_IO_THREADS=""
@@ -91,7 +94,10 @@ Options:
   --transports LIST
   --runs N
   --clients N
+  --smoke
   --build-dir PATH
+  --rust-package-evidence FILE
+                             Rust candidate package evidence for completion-gate runs.
   --reuse-build
   --clean-build
   --pin-cpu
@@ -138,7 +144,9 @@ while [[ $# -gt 0 ]]; do
         --transports)  TRANSPORTS="$2";  shift 2 ;;
         --runs)        RUNS="$2";        shift 2 ;;
         --clients)     CLIENTS="$2"; EXPLICIT_CLIENTS=1; shift 2 ;;
+        --smoke)       SMOKE=1; shift ;;
         --build-dir)   BUILD_DIR="$2";   shift 2 ;;
+        --rust-package-evidence) RUST_PACKAGE_EVIDENCE="$2"; shift 2 ;;
         --io-threads) COMMON_IO_THREADS="$2"; shift 2 ;;
         --server-io-threads) SERVER_IO_THREADS="$2"; shift 2 ;;
         --client-io-threads) CLIENT_IO_THREADS="$2"; shift 2 ;;
@@ -184,7 +192,9 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 TAG_SUFFIX=""; [[ -n "${RESULTS_TAG}" ]] && TAG_SUFFIX="_${RESULTS_TAG}"
 REPORT_DIR="${RESULTS_ROOT}/multi/report"
 RESULTS_FILE="${REPORT_DIR}/perf_rust_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
-mkdir -p "${REPORT_DIR}"
+if [[ "${SMOKE}" -eq 0 ]]; then
+    mkdir -p "${REPORT_DIR}"
+fi
 
 prune_reports() {
     local report_dir="$1"
@@ -280,17 +290,39 @@ memory_available_kb() {
 }
 
 prepare_core_runtime() {
-    if [[ ! -f "${CORE_LIB}" ]]; then
-        echo "core runtime not found: ${CORE_LIB}" >&2
-        echo "Build core/build before running Rust perf." >&2
-        exit 1
+    if [[ -n "${RUST_PACKAGE_EVIDENCE}" ]]; then
+        [[ -f "${RUST_RUNTIME_RESOLVER}" ]] || {
+            echo "Rust candidate runtime resolver not found: ${RUST_RUNTIME_RESOLVER}" >&2
+            exit 1
+        }
+        # Candidate package evidence owns the runtime path, hash and Core identity.
+        source "${RUST_RUNTIME_RESOLVER}"
+        resolve_rust_package_runtime "${RUST_PACKAGE_EVIDENCE}" "linux-x86_64" \
+            "$(git -C "${REPO_DIR}" rev-parse HEAD)"
+        echo "Rust candidate package evidence: ${RUST_PACKAGE_EVIDENCE}"
+        echo "Rust candidate manifest sha256: ${RUST_CANDIDATE_MANIFEST_SHA256}"
+        echo "Rust candidate aggregate sha256: ${RUST_CANDIDATE_AGGREGATE_SHA256}"
+        echo "Rust perf runtime: ${RUST_CANDIDATE_RUNTIME}"
+        echo "Rust perf runtime sha256: ${RUST_CANDIDATE_RUNTIME_SHA256}"
+        export ZLINK_RUST_NATIVE_DIR="${RUST_CANDIDATE_NATIVE_DIR}"
+        export LD_LIBRARY_PATH="${RUST_CANDIDATE_NATIVE_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        return
     fi
+
     # Compare against the resolved runtime, not the libzlink.so symlink: the
     # symlink keeps its original creation mtime when only the versioned .so is
     # rebuilt, which made this guard false-positive "stale" after every core
     # rebuild (the Go runner already compares the versioned file directly).
+    local native_dir="${ZLINK_RUST_NATIVE_DIR:-${CORE_LIB_DIR}}"
+    local runtime="${native_dir}/libzlink.so"
+    [[ -f "${runtime}" ]] || runtime="${native_dir}/libzlink.so.11.1.0"
+    if [[ ! -f "${runtime}" ]]; then
+        echo "Rust perf runtime not found: ${native_dir}" >&2
+        echo "Build core/build or pass --rust-package-evidence." >&2
+        exit 1
+    fi
     local resolved_lib
-    resolved_lib="$(readlink -f "${CORE_LIB}" 2>/dev/null || echo "${CORE_LIB}")"
+    resolved_lib="$(readlink -f "${runtime}" 2>/dev/null || echo "${runtime}")"
     local newer_source
     newer_source="$(
         find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
@@ -298,14 +330,15 @@ prepare_core_runtime() {
     )"
     if [[ -n "${newer_source}" ]]; then
         echo "Error: stale core runtime detected for bindings/rust/perf." >&2
-        echo "  runtime: ${CORE_LIB}" >&2
+        echo "  runtime: ${resolved_lib}" >&2
         echo "  newer source: ${newer_source}" >&2
         echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
         exit 1
     fi
-    echo "Perf core build dir: ${CORE_BUILD_DIR}"
-    echo "Perf runtime libzlink: ${resolved_lib}"
-    export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    echo "Rust perf development runtime: ${resolved_lib}"
+    echo "Rust perf runtime sha256: $(sha256sum "${resolved_lib}" | awk '{print $1}')"
+    export ZLINK_RUST_NATIVE_DIR="${native_dir}"
+    export LD_LIBRARY_PATH="${native_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
 resolve_memory_max_clients() {
@@ -967,6 +1000,15 @@ done
 done
 TOTAL_CASES="$(wc -l < "${TMP_CASES}" | tr -d ' ')"
 NON_SKIP_CASES="$(awk -F',' '$4 != "skip" {count++} END {print count+0}' "${TMP_CASES}")"
+if [[ "${SMOKE}" -eq 1 ]]; then
+    SMOKE_NON_SUCCESS="$(awk -F',' '$4 != "success" { count++ } END { print count + 0 }' "${TMP_CASES}")"
+    if [[ "${TOTAL_CASES}" -eq 0 || "${SMOKE_NON_SUCCESS}" -ne 0 ]]; then
+        echo "SMOKE FAIL cases=${TOTAL_CASES} non_success=${SMOKE_NON_SUCCESS}" >&2
+        exit 1
+    fi
+    echo "SMOKE PASS cases=${TOTAL_CASES} pattern=${PATTERN} transports=${TRANSPORTS} clients=${CLIENTS}"
+    exit 0
+fi
 if [[ "${TOTAL_CASES}" -gt 0 && "${NON_SKIP_CASES}" -eq 0 ]]; then
     python3 "${PERF_REPORT_PY}" render-skips --cases "${TMP_CASES}" --output "${OUTPUT_FILE}"
     exit 0

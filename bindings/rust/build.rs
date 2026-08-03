@@ -17,9 +17,19 @@ fn main() {
         (os, arch) => panic!("unsupported platform: {os}-{arch}"),
     };
 
-    let native_dir = manifest_dir
-        .join("native")
-        .join(format!("{os_dir}-{arch_dir}"));
+    println!("cargo:rerun-if-env-changed=ZLINK_RUST_NATIVE_DIR");
+    let native_dir = match env::var_os("ZLINK_RUST_NATIVE_DIR") {
+        Some(path) => PathBuf::from(path),
+        None => manifest_dir
+            .join("native")
+            .join(format!("{os_dir}-{arch_dir}")),
+    };
+    if !native_dir.is_dir() {
+        panic!(
+            "Rust native runtime directory does not exist: {}",
+            native_dir.display()
+        );
+    }
     // The crate payload is the only implicit runtime source. In particular,
     // do not discover or prefer a repository `core/build` directory here:
     // that would let a clean consumer silently execute a different Core

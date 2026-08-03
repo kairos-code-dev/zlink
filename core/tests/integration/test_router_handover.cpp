@@ -115,7 +115,8 @@ void set_connect_routing_id (void *router_, const char *routing_id_)
 
 void send_request_to_activate_callback_dispatch (void *client_,
                                                  void *server_,
-                                                 const char *peer_rid_)
+                                                 const char *peer_rid_,
+                                                 const char *expected_source_rid_ = NULL)
 {
     reply_completed.store (false);
     zlink_routing_id_t peer_rid;
@@ -138,6 +139,13 @@ void send_request_to_activate_callback_dispatch (void *client_,
                            zlink_router_recv (server_, &source_rid,
                                               &request_seq, &parts, &part_count, 0));
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
+    if (expected_source_rid_) {
+        TEST_ASSERT_NOT_NULL (source_rid);
+        TEST_ASSERT_EQUAL_UINT8 (static_cast<uint8_t> (strlen (expected_source_rid_)),
+                                 source_rid->size);
+        TEST_ASSERT_EQUAL_MEMORY (expected_source_rid_, source_rid->data,
+                                  source_rid->size);
+    }
 
     zlink_msg_t reply;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init_size (&reply, 4));
@@ -309,6 +317,11 @@ void test_callback_dispatch_cross_direction_duplicate_converges ()
     }
     TEST_ASSERT_TRUE_MESSAGE (
       recovered, "standby connector did not restore the route after selected pipe loss");
+
+    //  The promoted reciprocal standby still carries the peer's stable node
+    //  identity. The routed receive surface must not expose its internal
+    //  five-byte standby routing ID to request handlers.
+    send_request_to_activate_callback_dispatch (client, server_two, "A", "Z");
 
     test_context_socket_close_zero_linger (client);
     test_context_socket_close_zero_linger (server_two);

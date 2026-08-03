@@ -126,13 +126,6 @@ struct start_order_req_t
     std::string idempotency_key;
 };
 
-struct start_order_res_t
-{
-    static constexpr const char *packet_name = "StartOrderRes";
-    std::string order_id;
-    std::string status;
-};
-
 struct get_order_state_req_t
 {
     static constexpr const char *packet_name = "GetOrderStateReq";
@@ -143,13 +136,20 @@ struct order_state_t
 {
     std::string order_id;
     std::string status;
-    std::string shipping_address_id;
-    std::string reservation_id;
-    std::string payment_id;
-    std::string reason;
+    std::optional<std::string> shipping_address_id;
+    std::optional<std::string> reservation_id;
+    std::optional<std::string> payment_id;
+    std::optional<std::string> reason;
     std::optional<decimal_t> amount;
-    std::string currency;
+    std::optional<std::string> currency;
     std::int64_t updated_at_unix_ms{};
+};
+
+struct start_order_res_t
+{
+    static constexpr const char *packet_name = "StartOrderRes";
+    std::string order_id;
+    order_state_t state;
 };
 
 struct get_order_state_res_t
@@ -224,7 +224,8 @@ struct authorize_payment_result_t
     std::string reason;
 };
 
-/* self-check 시드(§11). */
+/* Test/evidence-only self-check seed. These values initialize the sample's deterministic stores;
+ * they are not part of the order application message contract. */
 struct cart_seed_t
 {
     std::string cart_id;
@@ -254,6 +255,7 @@ struct start_order_workflow_req_t
     std::string shipping_address_id;
     std::string payment_method_id;
     std::string idempotency_key;
+    std::string source_command_id;
     std::vector<order_line_input_t> lines;
     decimal_t amount;
     std::string currency;
@@ -276,6 +278,7 @@ struct continue_order_workflow_req_t
 {
     static constexpr const char *packet_name = "ContinueOrderWorkflowReq";
     std::string order_id;
+    std::string source_command_id;
 };
 
 struct continue_order_workflow_res_t
@@ -288,6 +291,7 @@ struct rebuild_order_projection_req_t
 {
     static constexpr const char *packet_name = "RebuildOrderProjectionReq";
     std::string order_id;
+    std::string source_command_id;
 };
 
 struct rebuild_order_projection_res_t
@@ -315,6 +319,8 @@ struct ok_res_t
     bool ok{true};
 };
 
+/* Test/evidence-only HTTP assertion messages. They expose runner evidence and are not a public
+ * order API. */
 struct server_assertion_req_t
 {
     static constexpr const char *packet_name = "ServerAssertionReq";
@@ -342,12 +348,12 @@ inline std::string json_string (const nlohmann::json &json,
                                  : json.value (snake, std::string{});
 }
 
-inline std::string json_nullable_string (const nlohmann::json &json,
-                                         const char *camel,
-                                         const char *snake)
+inline std::optional<std::string> json_nullable_string (const nlohmann::json &json,
+                                                        const char *camel,
+                                                        const char *snake)
 {
-    const auto read = [&json] (const char *name) {
-        if (!json.contains (name) || json[name].is_null ()) return std::string{};
+    const auto read = [&json] (const char *name) -> std::optional<std::string> {
+        if (!json.contains (name) || json[name].is_null ()) return std::nullopt;
         return json.value (name, std::string{});
     };
     return json.contains (camel) ? read (camel) : read (snake);
@@ -454,17 +460,6 @@ inline void from_json (const nlohmann::json &json, start_order_req_t &value)
     value.idempotency_key = json_string (json, "idempotencyKey", "idempotency_key");
 }
 
-inline void to_json (nlohmann::json &json, const start_order_res_t &value)
-{
-    json = {{"orderId", value.order_id}, {"status", value.status}};
-}
-
-inline void from_json (const nlohmann::json &json, start_order_res_t &value)
-{
-    value.order_id = json_string (json, "orderId", "order_id");
-    value.status = json.value ("status", "");
-}
-
 inline void to_json (nlohmann::json &json, const get_order_state_req_t &value)
 {
     json = {{"orderId", value.order_id}};
@@ -479,11 +474,17 @@ inline void to_json (nlohmann::json &json, const order_state_t &value)
 {
     json = {{"orderId", value.order_id},
             {"status", value.status},
-            {"shippingAddressId", value.shipping_address_id},
-            {"reservationId", value.reservation_id.empty () ? nullptr : nlohmann::json (value.reservation_id)},
-            {"paymentId", value.payment_id.empty () ? nullptr : nlohmann::json (value.payment_id)},
-            {"reason", value.reason.empty () ? nullptr : nlohmann::json (value.reason)},
-            {"currency", value.currency},
+            {"shippingAddressId", value.shipping_address_id
+                                      ? nlohmann::json (*value.shipping_address_id)
+                                      : nlohmann::json (nullptr)},
+            {"reservationId", value.reservation_id ? nlohmann::json (*value.reservation_id)
+                                                     : nlohmann::json (nullptr)},
+            {"paymentId", value.payment_id ? nlohmann::json (*value.payment_id)
+                                             : nlohmann::json (nullptr)},
+            {"reason", value.reason ? nlohmann::json (*value.reason)
+                                      : nlohmann::json (nullptr)},
+            {"currency", value.currency ? nlohmann::json (*value.currency)
+                                          : nlohmann::json (nullptr)},
             {"updatedAtUnixMs", value.updated_at_unix_ms}};
     json["amount"] = value.amount ? nlohmann::json (*value.amount) : nlohmann::json (nullptr);
 }
@@ -492,13 +493,24 @@ inline void from_json (const nlohmann::json &json, order_state_t &value)
 {
     value.order_id = json_string (json, "orderId", "order_id");
     value.status = json.value ("status", "");
-    value.shipping_address_id = json_string (json, "shippingAddressId", "shipping_address_id");
+    value.shipping_address_id = json_nullable_string (json, "shippingAddressId", "shipping_address_id");
     value.reservation_id = json_nullable_string (json, "reservationId", "reservation_id");
     value.payment_id = json_nullable_string (json, "paymentId", "payment_id");
     value.reason = json_nullable_string (json, "reason", "reason");
     value.amount = json_nullable_decimal (json, "amount", "amount");
-    value.currency = json.value ("currency", "");
+    value.currency = json_nullable_string (json, "currency", "currency");
     value.updated_at_unix_ms = json.value ("updatedAtUnixMs", std::int64_t{0});
+}
+
+inline void to_json (nlohmann::json &json, const start_order_res_t &value)
+{
+    json = {{"orderId", value.order_id}, {"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, start_order_res_t &value)
+{
+    value.order_id = json_string (json, "orderId", "order_id");
+    value.state = json.value ("state", order_state_t{});
 }
 
 inline void to_json (nlohmann::json &json, const get_order_state_res_t &value)
@@ -518,6 +530,7 @@ inline void to_json (nlohmann::json &json, const start_order_workflow_req_t &val
             {"shippingAddressId", value.shipping_address_id},
             {"paymentMethodId", value.payment_method_id},
             {"idempotencyKey", value.idempotency_key},
+            {"sourceCommandId", value.source_command_id},
             {"lines", value.lines},
             {"amount", value.amount},
             {"currency", value.currency}};
@@ -530,6 +543,7 @@ inline void from_json (const nlohmann::json &json, start_order_workflow_req_t &v
     value.shipping_address_id = json_string (json, "shippingAddressId", "shipping_address_id");
     value.payment_method_id = json_string (json, "paymentMethodId", "payment_method_id");
     value.idempotency_key = json_string (json, "idempotencyKey", "idempotency_key");
+    value.source_command_id = json_string (json, "sourceCommandId", "source_command_id");
     value.lines = json.value ("lines", std::vector<order_line_input_t>{});
     value.amount = json_decimal (json, "amount", "amount");
     value.currency = json.value ("currency", "");
@@ -547,12 +561,13 @@ inline void from_json (const nlohmann::json &json, start_order_workflow_res_t &v
 
 inline void to_json (nlohmann::json &json, const continue_order_workflow_req_t &value)
 {
-    json = {{"orderId", value.order_id}};
+    json = {{"orderId", value.order_id}, {"sourceCommandId", value.source_command_id}};
 }
 
 inline void from_json (const nlohmann::json &json, continue_order_workflow_req_t &value)
 {
     value.order_id = json_string (json, "orderId", "order_id");
+    value.source_command_id = json_string (json, "sourceCommandId", "source_command_id");
 }
 
 inline void to_json (nlohmann::json &json, const continue_order_workflow_res_t &value)
@@ -567,12 +582,13 @@ inline void from_json (const nlohmann::json &json, continue_order_workflow_res_t
 
 inline void to_json (nlohmann::json &json, const rebuild_order_projection_req_t &value)
 {
-    json = {{"orderId", value.order_id}};
+    json = {{"orderId", value.order_id}, {"sourceCommandId", value.source_command_id}};
 }
 
 inline void from_json (const nlohmann::json &json, rebuild_order_projection_req_t &value)
 {
     value.order_id = json_string (json, "orderId", "order_id");
+    value.source_command_id = json_string (json, "sourceCommandId", "source_command_id");
 }
 
 inline void to_json (nlohmann::json &json, const rebuild_order_projection_res_t &value)

@@ -27,6 +27,7 @@ int main (int argc, char **argv)
         ps_server::configure_codecs (options.codecs ());
         ps_server::add_redis_location_store (options, pubsub.redis_endpoint, pubsub.redis_key_prefix);
         options.add_fanout_channel (zlink::framework::e2e::pubsub::event_channel)
+          .set_routing_id (zlink::routing_id_t::from ("pubsub-publisher"))
           .enable_publisher (pubsub.publisher_endpoint);
         options.http ()
           .listen (pubsub.http_endpoint)

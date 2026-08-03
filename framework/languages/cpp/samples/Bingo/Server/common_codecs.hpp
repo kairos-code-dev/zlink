@@ -28,7 +28,6 @@ struct bingo_protobuf_codecs_t
         ZLINK_BINGO_REGISTER_PROTOBUF (report_bingo_result_req_t, ReportBingoResultReq);
         ZLINK_BINGO_REGISTER_PROTOBUF (report_bingo_result_res_t, ReportBingoResultRes);
         ZLINK_BINGO_REGISTER_PROTOBUF (ensure_player_actor_req_t, EnsurePlayerActorReq);
-        ZLINK_BINGO_REGISTER_PROTOBUF (ensure_player_actor_res_t, EnsurePlayerActorRes);
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_req_t, MatchBingoReq);
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_res_t, MatchBingoRes);
         ZLINK_BINGO_REGISTER_PROTOBUF (match_bingo_api_req_t, MatchBingoApiReq);

@@ -241,6 +241,10 @@ request_failure_mapper_t::reply_header_exception (
         case 108:
             return completion_exception (
               request_result_t::busy, operation_name);
+        case 113:
+            return framework_exception_t (
+              framework_error_kind_t::capacity_exceeded,
+              operation_name + " exceeded capacity.");
         case 109:
             return completion_exception (
               request_result_t::not_connected, operation_name);

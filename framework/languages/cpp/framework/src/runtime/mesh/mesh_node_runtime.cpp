@@ -2409,6 +2409,12 @@ std::string mesh_node_runtime_t::listen_endpoint () const
     return _state->listen_endpoint;
 }
 
+object_role_t mesh_node_runtime_t::object_role () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->object_role;
+}
+
 std::vector<std::string> mesh_node_runtime_t::channel_names () const
 {
     std::lock_guard lock (_state->mutex);

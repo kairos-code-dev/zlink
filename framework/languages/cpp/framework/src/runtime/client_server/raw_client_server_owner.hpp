@@ -103,9 +103,10 @@ class raw_client_server_server_t
     std::unique_ptr<zlink::socket_monitor_t> _monitor;
     std::shared_ptr<detail::backend::raw_route_port_t> _port;
     mesh::service_mailbox_t _mailbox;
-    std::optional<detail::backend::raw_received_t> _pending_hello;
     std::optional<mesh::service_mailbox_record_t> _pending_received;
     mesh::service_liveness_registry_t _liveness;
+    // The route id is the stable identity available from the public monitor
+    // surface; monitor event values are ready counts or disconnect reasons.
     std::map<std::vector<std::uint8_t>, std::vector<std::uint8_t>,
              byte_vector_less_t>
       _connections;
@@ -141,6 +142,7 @@ class raw_client_server_client_t
       const protocol::application_payload_t &payload,
       std::chrono::milliseconds timeout,
       client_server_request_callback_t callback);
+    std::size_t pending_request_count () const noexcept;
     std::size_t expire_requests (
       foundation::operation_registry_t::clock_t::time_point now);
 

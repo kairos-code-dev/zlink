@@ -27,14 +27,14 @@ class bingo_room_game_t
 
     explicit bingo_room_game_t (bingo_room_state_t state) :
         _state (std::move (state)),
-        _game (_state.last_drawn_number + 1)
+        _game (_state.last_drawn_number.value_or (0) + 1)
     {
     }
 
     void restore (bingo_room_state_t state)
     {
         _state = std::move (state);
-        _game = bingo_game_t (_state.last_drawn_number + 1);
+        _game = bingo_game_t (_state.last_drawn_number.value_or (0) + 1);
     }
 
     bingo_room_join_result_t join (std::string actor_id,

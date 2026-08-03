@@ -132,6 +132,10 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
     boost::asio::strand<boost::asio::io_context::executor_type> delivery_strand;
     std::shared_ptr<stream_connection_t> connection;
+    // Registered lifecycle callbacks must not outlive close(). Operation
+    // completions use a separate path because close() completes them with a
+    // closed result.
+    std::atomic_bool lifecycle_callbacks_enabled{true};
     mutable std::mutex lifecycle_mutex;
     std::condition_variable lifecycle_changed;
     bool connect_attempt_active = false;
@@ -175,6 +179,8 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                                     std::chrono::milliseconds timeout);
 void deliver_received_packet (connector_state_t &state, packet_t packet);
 void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<void ()> callback);
+void schedule_lifecycle_delivery (std::shared_ptr<connector_state_t> state,
+                                  std::function<void ()> callback);
 void publish_error (connector_state_t &state, error_t error) noexcept;
 void post_runtime_operation (std::function<void ()> operation);
 void post_connect_operation (std::function<void ()> operation);

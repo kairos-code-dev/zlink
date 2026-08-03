@@ -27,9 +27,11 @@ namespace zlink::samples::deliverydispatch
 
 using namespace framework;
 
-inline std::string now_text ()
+inline std::int64_t now_unix_ms ()
 {
-    return std::to_string (static_cast<long long> (std::time (nullptr)));
+    return std::chrono::duration_cast<std::chrono::milliseconds> (
+             std::chrono::system_clock::now ().time_since_epoch ())
+      .count ();
 }
 
 /* 진행 중인 제안 상태. 배차는 배송원의 결정을 기다리지 않고 이 기록으로 다음 단계를 정한다
@@ -176,7 +178,7 @@ class delivery_status_publisher_t
                           const std::string &courier_id)
     {
         delivery_status_changed_req_t changed{delivery.delivery_id, delivery.customer_id, status,
-                                              courier_id, now_text ()};
+                                              courier_id, now_unix_ms ()};
         (void) co_await _channels.request (sample_names_t::tracking_route_channel, changed)
           .submit<delivery_status_changed_res_t> ();
     }
@@ -417,7 +419,7 @@ class offer_deadline_sweeper_t final : public hosted_service_t
                          offer_delivery_result_msg_t decision)
     {
         try {
-            co_await worker.settle (offer, decision.accepted, decision.reason);
+            co_await worker.settle (offer, decision.accepted, decision.reason.value_or (""));
         }
         catch (const std::exception &error) {
             std::cerr << "deliverydispatch dispatch: decision failed delivery="

@@ -78,4 +78,14 @@ inventory다. C++ 샘플은 public framework API와 Stream Connector public wait
 
 ## 남은 gap
 
-Actual multi-process 검증은 stable Core·bindings handoff 뒤 실행한다.
+현재 Bingo sample의 Protobuf contract와 Linux multi-process process gate는 통과했다. 인증 실패
+응답, 관찰 room의 nullable `lastDrawnNumber`와 optional `observedRoomId`를 typed Protobuf
+payload로 확인하며, `EnsurePlayerActorReq`는 Session과 Play 사이의 내부 request다. 공통 문서에
+없는 응답 type을 다시 추가하지 않는다. native Windows runner, package provenance와 common
+E2E 14-config 전체 추적은 아직 별도 gate다.
+
+## 현재 검증
+
+- 2026-08-03: 개별 Bingo runner와 official six-sample aggregate가 exit code 0이다.
+- 2026-08-03: PowerShell aggregate도 Linux에서 같은 six-sample manifest를 호출해 exit code
+  0을 반환했다. 이 결과는 native Windows process 검증으로 승격하지 않는다.

@@ -179,6 +179,13 @@ shared_operation_runner_t &shared_connect_runner ()
 
 boost::asio::io_context &shared_io_context ()
 {
+    /* connector_state_t owns strands that reference both shared contexts.
+     * Initialize the callback runner first so its io_context and strand
+     * service outlive the operation runner's pending handlers during static
+     * teardown. Without this ordering, a handler released while the
+     * operation runner is shutting down can destroy a delivery strand after
+     * its callback io_context has already destroyed the strand service. */
+    (void) shared_callback_runner ();
     return shared_operation_runner ().io_context ();
 }
 
@@ -271,7 +278,7 @@ void publish_error (connector_state_t &state, error_t error) noexcept
     if (handlers.empty ()) {
         return;
     }
-    schedule_delivery (
+    schedule_lifecycle_delivery (
       state.shared_from_this (),
       [handlers = std::move (handlers), error = std::move (error)] {
           for (const auto &handler : handlers) {
@@ -287,6 +294,22 @@ void publish_error (connector_state_t &state, error_t error) noexcept
 void schedule_delivery (std::shared_ptr<void> state, std::function<void ()> callback)
 {
     schedule_delivery (state_from (state), std::move (callback));
+}
+
+void schedule_lifecycle_delivery (std::shared_ptr<connector_state_t> state,
+                                  std::function<void ()> callback)
+{
+    if (!callback) {
+        return;
+    }
+    auto callback_state = state;
+    schedule_delivery (
+      state,
+      [state = std::move (callback_state), callback = std::move (callback)] () mutable {
+          if (state->lifecycle_callbacks_enabled.load (std::memory_order_acquire)) {
+              callback ();
+          }
+      });
 }
 
 void post_runtime_operation (std::function<void ()> operation)
@@ -363,7 +386,7 @@ void change_state (std::shared_ptr<connector_state_t> state,
     state->state_changed.notify_all ();
     connection_state_changed_t changed{previous, next, error, close_reason};
     if (!state_handlers.empty () || !disconnected_handlers.empty ()) {
-        detail::schedule_delivery (
+        detail::schedule_lifecycle_delivery (
           state, [state_handlers = std::move (state_handlers),
                   disconnected_handlers = std::move (disconnected_handlers),
                   changed = std::move (changed)] {
@@ -965,6 +988,17 @@ namespace
 result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
 {
     state->close_requested.store (true);
+    // Operation completions still run below with a closed result. Registered
+    // lifecycle callbacks are different: a queued callback can hold a
+    // caller-owned capture, so it must not cross the synchronous close
+    // boundary.
+    state->lifecycle_callbacks_enabled.store (false, std::memory_order_release);
+    {
+        std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+        state->state_handlers.clear ();
+        state->error_handlers.clear ();
+        state->disconnected_handlers.clear ();
+    }
     std::shared_ptr<boost::asio::steady_timer> reconnect_timer;
     {
         std::lock_guard<std::mutex> lock (state->lifecycle_mutex);

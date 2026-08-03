@@ -30,8 +30,7 @@ class create_game_http_handler_t
 
     task_t<create_game_http_res_t> handle (const create_game_http_req_t &request)
     {
-        const auto game_name =
-          request.game_name.empty () ? std::string ("tictactoe-game") : request.game_name;
+        const auto game_name = request.game_name.value_or ("tictactoe-game");
         _logger.info ("http POST /games");
         _logger.info (std::string ("recv ") + create_game_http_req_t::packet_name);
         // --8<-- [start:doc-create]
@@ -46,7 +45,6 @@ class create_game_http_handler_t
         co_return create_game_http_res_t{
           room.spot.spot_id (),
           game_name,
-          _topology.selected_stream_endpoint (),
           {_topology.play_a_stream_endpoint, _topology.play_b_stream_endpoint},
           {{_topology.play_a_stream_endpoint}, {_topology.play_b_stream_endpoint}},
           sample_names_t::required_level};

@@ -37,7 +37,12 @@
 
 ## 남은 gap
 
-SupportChat C++ 샘플 범위에서 남은 gap은 없다.
+현재 sample process에서 확인하지 못한 SupportChat runtime gap은 없다. 공통 계약에 없는
+`AuthenticateUser*`, `EnsureSupportUserActor*`, `EnsureAgentConversation*`,
+`ConversationCreate*`는 role 사이의 내부 message이고, `supportchat_server_assertion_*`는
+test/evidence-only HTTP message다. 이 message들은 public client contract에 추가된 것으로
+계산하지 않는다. 6개 sample 전체의 exact inventory와 common E2E 14-config 추적은 별도
+ledger gate이므로 이 inventory의 sample process 통과만으로 전체 S1 closure를 판정하지 않는다.
 
 ## 검증 기록
 
@@ -50,6 +55,12 @@ SupportChat C++ 샘플 범위에서 남은 gap은 없다.
     `supportchat conversation-assignment=verified`, `supportchat bound-push=verified`,
     `supportchat reconnect=verified`, `supportchat idle-close=verified`, `supportchat=completed`를
     확인한다.
+- 2026-08-03: `framework/languages/cpp/samples/run_samples.sh`와
+  `pwsh -NoProfile -File framework/languages/cpp/samples/run_samples.ps1`
+  - 결과: 두 aggregate 모두 exit code 0
+  - 의미: 두 runner가 같은 6개 sample manifest를 선택하고, SupportChat의 public stream,
+    role evidence, cleanup 결과를 확인했다. PowerShell 실행은 Linux에서 `bash` runner를
+    호출한 결과이므로 native Windows process evidence와는 구분한다.
 
 C++ Support role은 Support-owned actor, Entry Spot, `supportchat.conversation` Conversation Spot을
 함께 호스팅한다. Entry Spot은 availability와 open request를 받고, Conversation Spot은 join, message,

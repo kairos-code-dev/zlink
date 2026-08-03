@@ -258,12 +258,12 @@ try {
     Wait-Grep "observer-win-milestone=verified actor=player-x wins=100" $clientLog
     Wait-Grep "tictactoe completed" $clientLog
     Wait-Grep "tictactoe=completed" $clientLog
-    Wait-Grep "actor: LeaveGameReq completed. actor=player-x" (Join-Path $LogDir "play-*.log")
-    Wait-Grep "actor: LeaveGameReq completed. actor=player-o" (Join-Path $LogDir "play-*.log")
+    Wait-Grep "actor: LeaveGameMsg completed. actor=player-x" (Join-Path $LogDir "play-*.log")
+    Wait-Grep "actor: LeaveGameMsg completed. actor=player-o" (Join-Path $LogDir "play-*.log")
     Wait-Grep "entry spot: actor destroy completed. actor=player-x" (Join-Path $LogDir "play-*.log")
     Wait-Grep "entry spot: actor destroy completed. actor=player-o" (Join-Path $LogDir "play-*.log")
-    if (-not (Select-String -Path (Join-Path $env:TICTACTOE_LOG_DIR "*.log") -Pattern "packet=LeaveGameReq" -Quiet)) {
-        throw "TicTacToe C++ sample logs did not contain LeaveGameReq evidence."
+    if (-not (Select-String -Path (Join-Path $env:TICTACTOE_LOG_DIR "*.log") -Pattern "packet=LeaveGameMsg" -Quiet)) {
+        throw "TicTacToe C++ sample logs did not contain LeaveGameMsg evidence."
     }
     if (-not (Select-String -Path (Join-Path $env:TICTACTOE_LOG_DIR "*.log") -Pattern "message flow" -Quiet)) {
         throw "TicTacToe C++ sample logs did not contain message-flow evidence."

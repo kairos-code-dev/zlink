@@ -67,6 +67,7 @@ struct raw_mesh_byte_vector_less_t
 struct raw_mesh_connection_candidate_t
 {
     std::vector<std::uint8_t> connection_id;
+    std::string remote_endpoint;
     service_connection_direction_t direction =
       service_connection_direction_t::inbound;
     std::uint64_t ready_sequence = 0;
@@ -78,7 +79,8 @@ class raw_mesh_connection_candidates_t
     void ready (
       const std::vector<std::uint8_t> &node_routing_id,
       std::vector<std::uint8_t> connection_id,
-      service_connection_direction_t direction);
+      service_connection_direction_t direction,
+      std::string remote_endpoint = {});
     std::optional<raw_mesh_connection_candidate_t>
     for_handshake (
       const std::vector<std::uint8_t> &node_routing_id,
@@ -270,6 +272,12 @@ class raw_mesh_node_owner_t
         raw_mesh_pump_result_t accepted_result;
     };
 
+    struct pending_unadmitted_application_t
+    {
+        detail::backend::raw_received_t received;
+        std::size_t bytes = 0;
+    };
+
     static std::string owner_key (const std::vector<std::uint8_t> &routing_id);
     static foundation::operation_id_t operation_id (
       std::uint64_t lifecycle_generation,
@@ -301,6 +309,24 @@ class raw_mesh_node_owner_t
         const detail::backend::raw_message_t &)> &decode_reply,
       std::chrono::milliseconds timeout,
       foundation::operation_registry_t::callback_t callback);
+    struct pending_request_t
+    {
+        std::vector<std::uint8_t> target_routing_id;
+        detail::backend::raw_message_t wire;
+        foundation::operation_id_t operation;
+        std::uint64_t correlation = 0;
+    };
+    bool submit_request (
+      const std::shared_ptr<detail::backend::raw_route_port_t> &port,
+      const pending_request_t &request,
+      std::chrono::milliseconds timeout);
+    void trace_admission_phase (
+      const std::vector<std::uint8_t> &node_routing_id,
+      std::uint64_t lifecycle_generation,
+      protocol::command command,
+      peer_admission_result_t result);
+    void discard_pending_unadmitted_applications (
+      const std::vector<std::uint8_t> &node_routing_id);
     bool reply_infrastructure (
       const service_mailbox_record_t &request,
       std::vector<std::uint8_t> header);
@@ -327,6 +353,9 @@ class raw_mesh_node_owner_t
     service_liveness_registry_t _liveness;
     service_mailbox_t _mailbox;
     std::optional<pending_received_mailbox_record_t> _pending_received;
+    std::deque<pending_unadmitted_application_t>
+      _pending_unadmitted_applications;
+    std::size_t _pending_unadmitted_application_bytes = 0;
     struct pending_completion_control_t
     {
         detail::backend::raw_received_t received;

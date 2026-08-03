@@ -14,6 +14,7 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <thread>
@@ -29,18 +30,16 @@ static constexpr const char *gamequest_player_actor_type = "gamequest-player";
 class game_api_store_t
 {
   public:
-    void bind (const std::string &player_id, const std::string &api_name, const stream_t &stream)
+    void bind (const std::string &player_id, const std::string &api_name)
     {
         const std::lock_guard lock (_mutex);
         _bindings[player_id] = api_name;
-        _session_ids[player_id] = stream.session_id ();
     }
 
     void unbind (const std::string &player_id)
     {
         const std::lock_guard lock (_mutex);
         _bindings.erase (player_id);
-        _session_ids.erase (player_id);
     }
 
     void merge_projection (const std::string &player_id,
@@ -89,15 +88,11 @@ class game_api_store_t
         return count + (unpublished == _unpublished_kills.end () ? 0 : unpublished->second);
     }
 
-    std::optional<std::string> record_notify (const notify_quest_progress_msg_t &notify)
+    bool record_notify (const notify_quest_progress_msg_t &notify)
     {
         const std::lock_guard lock (_mutex);
         _projections[notify.player_id] = notify.projection;
-        const auto found = _session_ids.find (notify.player_id);
-        if (found == _session_ids.end ()) {
-            return std::nullopt;
-        }
-        return found->second;
+        return true;
     }
 
     server_assertion_res_t assert_state () const
@@ -105,7 +100,6 @@ class game_api_store_t
         const std::lock_guard lock (_mutex);
         std::vector<std::string> evidence;
         bool alice_first_hunt = false;
-        bool alice_auction = false;
         bool bob_herb = false;
         for (const auto &[player_id, projection] : _projections) {
             for (const auto &progress : projection) {
@@ -116,10 +110,6 @@ class game_api_store_t
                                    || (progress.player_id == "player-alice"
                                        && progress.quest_id == quest_ids_t::first_hunt
                                        && progress.status == quest_status_t::reward_granted);
-                alice_auction = alice_auction
-                                || (progress.player_id == "player-alice"
-                                    && progress.quest_id == quest_ids_t::open_auction
-                                    && progress.status == quest_status_t::reward_granted);
                 bob_herb = bob_herb
                            || (progress.player_id == "player-bob"
                                && progress.quest_id == quest_ids_t::herb_gathering
@@ -136,13 +126,12 @@ class game_api_store_t
         for (const auto &[player, count] : _unpublished_kills) {
             evidence.push_back ("unpublished-kills:" + player + ":" + std::to_string (count));
         }
-        return {alice_first_hunt || alice_auction || bob_herb, evidence};
+        return {alice_first_hunt || bob_herb, evidence};
     }
 
   private:
     mutable std::mutex _mutex;
     std::map<std::string, std::string> _bindings;
-    std::map<std::string, std::string> _session_ids;
     std::map<std::string, std::vector<quest_progress_t>> _projections;
     std::vector<gameplay_msg_t> _events;
     std::map<std::string, int> _unpublished_kills;
@@ -219,7 +208,7 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
                                      message_context_t &,
                                      const join_session_req_t &request)
     {
-        return {_store.projection (request.player_id)};
+        return {request.player_id, _store.projection (request.player_id)};
     }
 
     void quest_progress_notified (player_actor_t &actor,
@@ -229,10 +218,12 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
         /* The actor may be hosted by another GameApi process. The local store
          * records the projection, while Framework bound_session() routes the
          * push to the current session owner. */
-        const auto session_id = _store.record_notify (notify).value_or ("");
+        if (!_store.record_notify (notify)) {
+            return;
+        }
         for (const auto &progress : notify.projection) {
             actor.actor_context.bound_session ()
-              .send (quest_progress_notify_t{notify.player_id, session_id, progress})
+              .send (quest_progress_notify_t{notify.player_id, progress})
               .submit ();
         }
         if (!notify.completed_quest_id.empty ()) {
@@ -244,7 +235,7 @@ class player_entry_spot_t : public entry_spot_t<player_actor_t>
             if (completed != notify.projection.end ()) {
                 actor.actor_context.bound_session ()
                   .send (quest_completed_notify_t{
-                    notify.player_id, session_id, *completed, true})
+                    notify.player_id, *completed, true})
                   .submit ();
             }
         }
@@ -302,7 +293,7 @@ class gamequest_session_t final : public packet_stream_session_t
             }
             auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
             _player_id = request.player_id;
-            _store.bind (request.player_id, _topology.api_name, stream);
+        _store.bind (request.player_id, _topology.api_name);
             auto synced = co_await sync_projection (request.player_id);
             _store.merge_projection (request.player_id, synced.updated_quests);
             auto current = _actors.find (std::string (bound.actor_id ()));
@@ -368,18 +359,6 @@ class gamequest_session_t final : public packet_stream_session_t
             const auto event = event_for (request.player_id, request.idempotency_key,
                                           "ItemCollected", request.item_id, request.count);
             co_await apply_event (event);
-            stream.reply_packet (zlink::message_t::from_json (collect_item_res_t{event.event_id}))
-              .submit ();
-            co_return;
-        }
-        if (packet == complete_mission_req_t::packet_name) {
-            const auto request = payload.parse_json<complete_mission_req_t> ();
-            const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "MissionCompleted", request.mission_id, 1);
-            co_await apply_event (event);
-            stream
-              .reply_packet (zlink::message_t::from_json (complete_mission_res_t{event.event_id}))
-              .submit ();
             co_return;
         }
         if (packet == enter_area_req_t::packet_name) {
@@ -387,17 +366,6 @@ class gamequest_session_t final : public packet_stream_session_t
             const auto event = event_for (request.player_id, request.idempotency_key, "AreaEntered",
                                           request.area_id, 1);
             co_await apply_event (event);
-            stream.reply_packet (zlink::message_t::from_json (enter_area_res_t{event.event_id}))
-              .submit ();
-            co_return;
-        }
-        if (packet == unlock_feature_req_t::packet_name) {
-            const auto request = payload.parse_json<unlock_feature_req_t> ();
-            const auto event = event_for (request.player_id, request.idempotency_key,
-                                          "FeatureUnlocked", request.feature_id, 1);
-            co_await apply_event (event);
-            stream.reply_packet (zlink::message_t::from_json (unlock_feature_res_t{event.event_id}))
-              .submit ();
             co_return;
         }
         throw framework_exception_t (framework_error_kind_t::internal_failure,
@@ -423,8 +391,8 @@ class gamequest_session_t final : public packet_stream_session_t
         auto synced = co_await _routes
                         .request_to_spot (
                           player_spot_id (player_id),
-                          sync_quest_progress_req_t{player_id,
-                                                    _store.snapshot_kill_count (player_id)})
+                          sync_quest_progress_owner_req_t{
+                            player_id, _store.snapshot_kill_count (player_id)})
                         .instance_spot (
                           sample_names_t::player_quest_spot)
                         .template submit<sync_quest_progress_res_t> ();
@@ -471,6 +439,51 @@ class server_assertion_http_handler_t
     game_api_store_t &_store;
 };
 
+class route_ready_http_handler_t
+{
+  public:
+    using dependency_types = dependency_list_t<route_mesh_runtime_t>;
+
+    explicit route_ready_http_handler_t (route_mesh_runtime_t &runtime) :
+        _runtime (runtime)
+    {
+    }
+
+    http_response_t handle (const http_request_t &request)
+    {
+        const auto found = request.query_values.find ("targetRid");
+        if (found == request.query_values.end () || found->second.empty ()) {
+            return {.status = 400, .body = R"({"error":"targetRid is required"})"};
+        }
+
+        const auto snapshot = _runtime.snapshot ("gamequest");
+        for (const auto &peer : snapshot.peers) {
+            if (peer.node_rid.to_string () == found->second
+                && snapshot.is_ready
+                && snapshot.placement.is_available
+                && peer.state == peer_state_t::ready) {
+                return {.body = nlohmann::json{{"ready", true},
+                                               {"targetRid", found->second}}
+                                  .dump ()};
+            }
+        }
+
+        nlohmann::json peers = nlohmann::json::array ();
+        for (const auto &peer : snapshot.peers) {
+            peers.push_back ({{"rid", peer.node_rid.to_string ()},
+                              {"state", static_cast<int> (peer.state)}});
+        }
+        return {.status = 503,
+                .body = nlohmann::json{{"ready", false},
+                                       {"targetRid", found->second},
+                                       {"peers", std::move (peers)}}
+                          .dump ()};
+    }
+
+  private:
+    route_mesh_runtime_t &_runtime;
+};
+
 } // namespace zlink::samples::gamequest
 
 int main (int argc, char **argv)
@@ -500,7 +513,22 @@ int main (int argc, char **argv)
           .set_routing_id (zlink::routing_id_t::from (
             "gamequest-" + topology.api_name + "-spot"))
           .set_object_role (object_role_t::server)
-          .listen (topology.selected_api_spot_route_endpoint ())
+          .listen (topology.selected_api_spot_route_endpoint ());
+        /* GameApi hosts the player Entry Spot and also sends gameplay and
+         * projection requests to either QuestMission owner. Keep both
+         * object-server peers in the same public RouteMesh path so owner
+         * placement is resolved by the Framework runtime. */
+        gamequest.peer_connections ().connect (
+          zlink::routing_id_t::from ("gamequest-mission-a-spot"),
+          topology.mission_a_spot_route_endpoint);
+        gamequest.peer_connections ().connect (
+          zlink::routing_id_t::from ("gamequest-mission-b-spot"),
+          topology.mission_b_spot_route_endpoint);
+        /* Location Store discovery owns the peer set for this shared
+         * RouteMesh. Do not add a one-time API-to-API manual connection:
+         * manual endpoints are excluded from discovery reconciliation and a
+         * startup race could otherwise leave a required peer disconnected. */
+        gamequest
           .add_entry_spot<player_entry_spot_t> ([store_ptr] (
                                                   entry_spot_context_t context) {
               return std::make_shared<player_entry_spot_t> (
@@ -515,7 +543,8 @@ int main (int argc, char **argv)
           .register_session<gamequest_session_t> ();
         options.http ()
           .listen (topology.selected_api_http_url ())
-          .map_health ("/health")
+            .map_health ("/health")
+          .map_get<route_ready_http_handler_t> ("/ready")
           .map_post<server_assertion_http_handler_t> ("/self-check/assert");
     });
     return app.run (argc, argv);

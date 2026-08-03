@@ -10,9 +10,11 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
+#include <zlink/framework/contracts/monitoring/client_server_runtime.hpp>
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -29,7 +31,7 @@ mesh::service_node_state_t client_server_service_state (
 framework_runtime_state_t client_server_framework_state (
   mesh::service_node_state_t state);
 
-class client_server_location_runtime_t
+class client_server_location_runtime_t final : public client_server_runtime_t
 {
   public:
     client_server_location_runtime_t (
@@ -53,6 +55,16 @@ class client_server_location_runtime_t
     void stop () noexcept;
     bool empty () const noexcept;
 
+    client_server_channel_snapshot_t snapshot (
+      std::string channel_name) const override;
+    std::unique_ptr<mesh_runtime_observation_t> observe (
+      std::string channel_name,
+      std::size_t capacity,
+      std::function<void (const client_server_runtime_event_t &)> observer) override;
+    bool is_ready (std::string channel_name) const override;
+
+    struct observer_t;
+
   private:
     struct server_entry_t;
     struct client_connection_t;
@@ -67,6 +79,7 @@ class client_server_location_runtime_t
     void reconcile_channel (client_channel_t &channel);
     void publish_servers ();
     void pump ();
+    void publish_snapshot_changes ();
     void dispatch_server (server_entry_t &server);
     void stop_servers () noexcept;
     void stop_clients () noexcept;
@@ -101,6 +114,11 @@ class client_server_location_runtime_t
       const location_owner_token_t &owner);
     bool owner_is_live (
       const client_server_server_descriptor_t &descriptor) const;
+    client_server_channel_snapshot_t build_snapshot_locked (
+      const std::string &channel_name) const;
+    static bool snapshot_equivalent (
+      const client_server_channel_snapshot_t &left,
+      const client_server_channel_snapshot_t &right) noexcept;
 
     message_bus_t _bus;
     detail::channel_runtime_t _channel_runtime;
@@ -108,7 +126,7 @@ class client_server_location_runtime_t
     location_runtime_t *_locations;
     location_repository_t *_store;
     location_repository_t *_leases;
-    service_provider_t *_services;
+    service_provider_t _services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
     std::map<std::string, std::string> _advertise_hosts;
@@ -116,6 +134,9 @@ class client_server_location_runtime_t
     std::condition_variable _ready;
     std::map<std::string, std::unique_ptr<server_entry_t>> _servers;
     std::map<std::string, std::unique_ptr<client_channel_t>> _clients;
+    std::map<std::string, std::uint64_t> _snapshot_sequences;
+    std::map<std::string, client_server_channel_snapshot_t> _last_snapshots;
+    std::map<std::string, std::vector<std::weak_ptr<observer_t>>> _observers;
     std::atomic_bool _stop{false};
     std::thread _thread;
 };

@@ -5,11 +5,16 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/spots/spot_runtime.hpp"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <map>
+#include <mutex>
+#include <vector>
 
 namespace
 {
@@ -27,6 +32,23 @@ struct request_t
 };
 
 struct reply_t
+{
+    int value{};
+};
+
+struct traced_event_t
+{
+    static constexpr const char *packet_name = "instance.traced.event";
+    int value{};
+};
+
+struct traced_request_t
+{
+    static constexpr const char *packet_name = "instance.traced.request";
+    int value{};
+};
+
+struct traced_reply_t
 {
     int value{};
 };
@@ -70,6 +92,46 @@ class resolver_t final : public zlink::framework::runtime::spot_address_resolver
 
     std::atomic_int reads{0};
     std::map<std::string, zlink::framework::runtime::spot_address_t> addresses;
+};
+
+class traced_instance_spot_t final : public zlink::framework::instance_spot_t
+{
+  public:
+    explicit traced_instance_spot_t (zlink::framework::instance_spot_context_t context) :
+        _context (std::move (context))
+    {
+    }
+
+    zlink::framework::instance_spot_context_t &context () noexcept override
+    {
+        return _context;
+    }
+
+    const zlink::framework::instance_spot_context_t &context () const noexcept override
+    {
+        return _context;
+    }
+
+    void configure () override
+    {
+        _context.handlers ().add_handler<&traced_instance_spot_t::on_event> ();
+        _context.handlers ().add_handler<&traced_instance_spot_t::on_request> ();
+    }
+
+    void on_event (const traced_event_t &event)
+    {
+        last_event = event.value;
+    }
+
+    traced_reply_t on_request (const traced_request_t &request)
+    {
+        return {request.value + 1};
+    }
+
+    int last_event = 0;
+
+  private:
+    zlink::framework::instance_spot_context_t _context;
 };
 
 TEST (ZLinkFrameworkInstanceSpotActivation,
@@ -274,6 +336,108 @@ TEST (ZLinkFrameworkInstanceSpotActivation,
 
     EXPECT_EQ (2, resolver.reads.load ());
     EXPECT_EQ (2, activations.load ());
+}
+
+TEST (ZLinkFrameworkInstanceSpotActivation,
+      ColdActivationDispatchEmitsReceivedAndTerminalFlowEvents)
+{
+    zlink::framework::serializer_registry_t serializers;
+    add_int_serializer<traced_event_t> (serializers);
+    add_int_serializer<traced_request_t> (serializers);
+    add_int_serializer<traced_reply_t> (serializers);
+
+    std::mutex events_mutex;
+    std::condition_variable events_changed;
+    std::vector<zlink::framework::message_flow_event_t> events;
+    zlink::framework::dispatch_options_t dispatch;
+    dispatch.message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
+      .set_message_flow_observer (
+        [&] (const zlink::framework::message_flow_event_t &event) {
+            {
+                const std::lock_guard lock (events_mutex);
+                events.push_back (event);
+            }
+            events_changed.notify_all ();
+        });
+
+    zlink::framework::zlink_builder_t builder;
+    zlink::framework::detail::apply_dispatch_options (builder, dispatch);
+    auto mesh = builder.add_route_mesh ("instance-trace");
+    mesh.add_instance_spot_factory<traced_instance_spot_t> (
+      "traced-player",
+      [] (zlink::framework::instance_spot_context_t context) {
+          return std::make_shared<traced_instance_spot_t> (std::move (context));
+      },
+      [] (auto &factory) { factory.disable_relocation (); });
+    auto runtime = zlink::framework::detail::spot_node_runtime_t::from (
+      builder, "instance-trace");
+    ASSERT_TRUE (runtime);
+    auto channel_runtime = zlink::framework::detail::channel_runtime_t::from (
+      builder.message_bus ());
+    channel_runtime.bind_serializers (serializers);
+
+    const auto created = runtime->get_or_create_spot (
+      "traced-player", zlink::framework::spot_id_t ("traced-player-1"));
+    ASSERT_EQ (zlink::framework::spot_create_state_t::created, created.state);
+
+    zlink::framework::service_collection_t services;
+    auto provider = services.build_provider ();
+    const std::string activation_flow_id =
+      "019fc5b9-9df3-786b-bb69-d55358f6d48b";
+    const auto event_payload = zlink::framework::detail::encoded_payload_to_raw (
+      serializers.get<traced_event_t> ().serialize (traced_event_t{7}));
+    const auto event_result = runtime->dispatch_instance_activation (
+      zlink::framework::spot_id_t ("traced-player-1"), traced_event_t::packet_name,
+      "application/json", event_payload.to_bytes (), {}, false, "operation-send", provider,
+      serializers, activation_flow_id, zlink::framework::flow_origin_t::application)
+                                 .result ();
+    ASSERT_TRUE (event_result);
+
+    const auto request_payload = zlink::framework::detail::encoded_payload_to_raw (
+      serializers.get<traced_request_t> ().serialize (traced_request_t{9}));
+    const auto request_result = runtime->dispatch_instance_activation (
+      zlink::framework::spot_id_t ("traced-player-1"), traced_request_t::packet_name,
+      "application/json", request_payload.to_bytes (), {}, true, "operation-request", provider,
+      serializers, activation_flow_id, zlink::framework::flow_origin_t::application)
+                                   .result ();
+    ASSERT_TRUE (request_result);
+    const auto decoded_reply = serializers.get<traced_reply_t> ().deserialize (
+      zlink::framework::detail::encoded_payload_from_raw (request_result.value ()));
+    EXPECT_EQ (10, decoded_reply.value);
+
+    {
+        std::unique_lock lock (events_mutex);
+        ASSERT_TRUE (events_changed.wait_for (
+          lock, std::chrono::seconds (2), [&] { return events.size () >= 4; }));
+    }
+
+    const auto has_event_transition = [&] (std::string_view packet,
+                                           zlink::framework::message_flow_outcome_t outcome,
+                                           std::string_view correlation) {
+        const std::lock_guard lock (events_mutex);
+        return std::any_of (events.begin (), events.end (), [&] (const auto &event) {
+            return event.packet_name && *event.packet_name == packet
+                   && event.outcome == outcome
+                   && event.surface == zlink::framework::dispatch_error_surface_t::spot_route
+                   && event.spot_id && *event.spot_id == "traced-player-1"
+                   && event.correlation_id && *event.correlation_id == correlation
+                   && event.flow_id && *event.flow_id == activation_flow_id
+                   && event.flow_origin
+                   && *event.flow_origin == zlink::framework::flow_origin_t::application;
+        });
+    };
+    EXPECT_TRUE (has_event_transition (
+      traced_event_t::packet_name, zlink::framework::message_flow_outcome_t::received,
+      "operation-send"));
+    EXPECT_TRUE (has_event_transition (
+      traced_event_t::packet_name, zlink::framework::message_flow_outcome_t::dispatched,
+      "operation-send"));
+    EXPECT_TRUE (has_event_transition (
+      traced_request_t::packet_name, zlink::framework::message_flow_outcome_t::received,
+      "operation-request"));
+    EXPECT_TRUE (has_event_transition (
+      traced_request_t::packet_name, zlink::framework::message_flow_outcome_t::replied,
+      "operation-request"));
 }
 
 } // namespace

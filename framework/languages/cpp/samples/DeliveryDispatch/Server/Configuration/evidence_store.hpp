@@ -27,7 +27,7 @@ class evidence_store_t
         const std::lock_guard lock (_mutex);
         std::ofstream file (_path, std::ios::app);
         file << status.delivery_id << ":" << status.status << ":"
-             << (status.courier_id.empty () ? "none" : status.courier_id) << "\n";
+             << status.courier_id.value_or ("none") << "\n";
     }
 
     std::vector<std::string> read_lines () const

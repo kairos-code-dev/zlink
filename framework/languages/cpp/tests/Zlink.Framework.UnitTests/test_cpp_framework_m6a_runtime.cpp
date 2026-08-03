@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <future>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -325,10 +326,12 @@ void verify_physical_candidates_preserve_survivor ()
     const auto late_inbound = bytes ("late-inbound-physical");
     candidates.ready (
       peer, inbound,
-      mesh::service_connection_direction_t::inbound);
+      mesh::service_connection_direction_t::inbound,
+      "tcp://127.0.0.1:7101");
     candidates.ready (
       peer, outbound,
-      mesh::service_connection_direction_t::outbound);
+      mesh::service_connection_direction_t::outbound,
+      "tcp://127.0.0.1:7102");
     assert (candidates.size (peer) == 2);
     assert (candidates.for_handshake (
               peer,
@@ -337,13 +340,24 @@ void verify_physical_candidates_preserve_survivor ()
             == inbound);
     assert (candidates.for_handshake (
               peer,
+              mesh::service_connection_direction_t::inbound)
+              ->remote_endpoint
+            == "tcp://127.0.0.1:7101");
+    assert (candidates.for_handshake (
+              peer,
               mesh::service_connection_direction_t::outbound)
               ->connection_id
             == outbound);
+    assert (candidates.for_handshake (
+              peer,
+              mesh::service_connection_direction_t::outbound)
+              ->remote_endpoint
+            == "tcp://127.0.0.1:7102");
 
     candidates.ready (
       peer, late_inbound,
-      mesh::service_connection_direction_t::inbound);
+      mesh::service_connection_direction_t::inbound,
+      "tcp://127.0.0.1:7103");
     assert (candidates.size (peer) == 3);
     assert (candidates.for_handshake (
               peer,
@@ -956,7 +970,7 @@ void verify_client_server_independent_raw_path ()
       100,
       mesh::service_node_state_t::preparing,
       "security-a",
-      1024 * 1024,
+      16u * 1024u * 1024u,
       "tcp://127.0.0.1:0"};
     client_server::raw_client_server_server_t server (
       {{server_descriptor}});
@@ -968,7 +982,9 @@ void verify_client_server_independent_raw_path ()
     manual_server.descriptor_revision = 0;
     client_server::raw_client_server_client_options_t client_options{
       bytes ("client-a"),
-      {expected_server.channel_name, "security-a", 1024 * 1024},
+      {expected_server.channel_name,
+       "security-a",
+       16u * 1024u * 1024u},
       std::move (manual_server)};
     client_server::raw_client_server_client_t client (
       std::move (client_options));
@@ -1128,6 +1144,124 @@ void verify_client_server_independent_raw_path ()
       == static_cast<std::uint32_t> (
         protocol::framework_error_code::requestRejected));
     assert (rejected.payload.empty ());
+
+    // The advertised ClientServer limit must remain usable for a frame that
+    // is larger than the core automatic HWM default.
+    const auto large_payload = std::vector<std::uint8_t> (
+      1024u * 1024u, static_cast<std::uint8_t> ('p'));
+    std::promise<request_result_t> large_promise;
+    auto large_future = large_promise.get_future ();
+    assert (client.request (
+      {"LargePayloadRequest", "application/json", large_payload},
+      3s,
+      [&large_promise] (request_result_t completion) {
+          large_promise.set_value (std::move (completion));
+      }));
+    const auto large_deadline = std::chrono::steady_clock::now () + 5s;
+    auto large_claim = server.mailbox ().try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 2u * 1024u * 1024u);
+    while (!large_claim
+           && std::chrono::steady_clock::now () < large_deadline) {
+        const auto pump = server.pump_one (
+          std::chrono::steady_clock::now ());
+        assert (
+          pump != client_server::client_server_pump_result_t::protocol_error);
+        large_claim = server.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::application,
+          1,
+          2u * 1024u * 1024u);
+        if (!large_claim)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (large_claim && large_claim->records.size () == 1);
+    const auto large_reply = bytes ("large payload accepted");
+    assert (server.reply (
+      large_claim->records.front (),
+      {"LargePayloadReply", "application/json", large_reply}));
+    assert (server.mailbox ().release (*large_claim));
+    while (large_future.wait_for (0ms) != std::future_status::ready
+           && std::chrono::steady_clock::now () < large_deadline) {
+        const auto pump = client.pump_one (std::chrono::steady_clock::now ());
+        assert (
+          pump != client_server::client_server_pump_result_t::protocol_error);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (large_future.wait_for (0ms) == std::future_status::ready);
+    const auto large_result = large_future.get ();
+    assert (large_result.terminal
+            == foundation::operation_terminal_t::completed);
+    assert (large_result.reply_header.terminal_result == 0);
+    const protocol::application_payload_t expected_large_reply{
+      "LargePayloadReply", "application/json", large_reply};
+    assert (protocol::decode_application_payload (large_result.payload)
+            == expected_large_reply);
+}
+
+void verify_client_server_admits_before_monitor_drain ()
+{
+    protocol::client_server_server_admission_t server_descriptor{
+      "client-server-monitor-order",
+      bytes ("server-monitor-order"),
+      41,
+      1,
+      100,
+      mesh::service_node_state_t::preparing,
+      "security-monitor-order",
+      1024 * 1024,
+      "tcp://127.0.0.1:0"};
+    client_server::raw_client_server_server_t server (
+      {{server_descriptor}});
+    server.start ();
+    const auto expected_server = server.descriptor ();
+
+    std::vector<std::unique_ptr<client_server::raw_client_server_client_t>>
+      clients;
+    for (const auto &client_id : {"client-monitor-a", "client-monitor-b"}) {
+        clients.push_back (
+          std::make_unique<client_server::raw_client_server_client_t> (
+            client_server::raw_client_server_client_options_t{
+              bytes (client_id),
+              {expected_server.channel_name,
+               expected_server.security_identity,
+               expected_server.effective_max_message_bytes},
+              expected_server}));
+        clients.back ()->start ();
+    }
+
+    const auto deadline = std::chrono::steady_clock::now () + 5s;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto now = std::chrono::steady_clock::now ();
+        for (auto &client : clients) {
+            (void) client->drain_monitor_events (now);
+            const auto client_pump = client->pump_one (now);
+            assert (
+              client_pump
+              != client_server::client_server_pump_result_t::protocol_error);
+        }
+
+        // The server monitor queue is deliberately not drained here. A
+        // received hello already identifies the route that must receive the
+        // admission response.
+        const auto server_pump = server.pump_one (now);
+        assert (
+          server_pump
+          != client_server::client_server_pump_result_t::protocol_error);
+
+        bool all_ready = true;
+        for (auto &client : clients) {
+            (void) client->pump_one (now);
+            all_ready = all_ready && client->ready ();
+        }
+        if (all_ready)
+            break;
+        std::this_thread::sleep_for (1ms);
+    }
+
+    for (const auto &client : clients)
+        assert (client->ready ());
+    for (auto &client : clients)
+        client->close ();
+    server.close ();
 }
 
 void verify_client_server_weighted_selection ()
@@ -1530,6 +1664,7 @@ int main ()
     verify_location_descriptor_cas_snapshot_and_watch ();
     verify_manual_and_automatic_classic_fanout ();
     verify_client_server_independent_raw_path ();
+    verify_client_server_admits_before_monitor_drain ();
     verify_client_server_weighted_selection ();
     verify_raw_owner_node_send_and_liveness ();
     return 0;

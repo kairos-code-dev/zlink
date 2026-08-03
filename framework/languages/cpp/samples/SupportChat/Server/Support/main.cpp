@@ -131,7 +131,7 @@ class support_user_actor_t : public actor_t
             if (std::holds_alternative<actor_join_rejected_t> (completion)) {
                 co_await actor_context.bound_session ()
                   .send (join_conversation_failed_notify_t{
-                    conversation_id, "Rejected", false})
+                    conversation_id, "Rejected"})
                   .metadata (conversation_id_metadata_key, conversation_id)
                   .submit ();
             } else {
@@ -139,10 +139,7 @@ class support_user_actor_t : public actor_t
                 co_await actor_context.bound_session ()
                   .send (join_conversation_failed_notify_t{
                     conversation_id,
-                    std::to_string (static_cast<int> (failed.error_kind)),
-                    failed.error_kind == framework_error_kind_t::unavailable
-                      || failed.error_kind == framework_error_kind_t::capacity_exceeded
-                      || failed.error_kind == framework_error_kind_t::deadline_exceeded})
+                    std::to_string (static_cast<int> (failed.error_kind))})
                   .metadata (conversation_id_metadata_key, conversation_id)
                   .submit ();
             }
@@ -374,7 +371,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
           .add_actor_request<&conversation_spot_t::join> (join_conversation_req_t::packet_name)
           .add_actor_request<&conversation_spot_t::send_message> (
             send_chat_message_req_t::packet_name)
-          .add_actor_send<&conversation_spot_t::set_typing> (set_typing_req_t::packet_name)
+          .add_actor_send<&conversation_spot_t::set_typing> (set_typing_msg_t::packet_name)
           .add_actor_request<&conversation_spot_t::close> (close_conversation_req_t::packet_name);
     }
 
@@ -488,7 +485,7 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
 
     task_t<void> set_typing (support_user_actor_t &actor,
                              message_context_t &,
-                             const set_typing_req_t &request)
+                             const set_typing_msg_t &request)
     {
         auto typing = require_conversation ().set_typing (actor.participant_id,
                                                           request.is_typing);
@@ -739,7 +736,7 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
                                         actor.actor_id, actor.display_name,
                                         request.subject})
             .submit<open_conversation_api_res_t> ();
-        const auto conversation_id = allocated.conversation_id;
+        const auto conversation_id = allocated.state.conversation_id;
         auto scheduled =
           actor.schedule_conversation_join (conversation_id, false);
         co_return open_conversation_res_t{

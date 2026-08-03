@@ -26,11 +26,11 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 40); do
+      for _ in $(seq 1 300); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.05
+        sleep 0.1
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
         echo "forced cleanup process ${pid}" >&2

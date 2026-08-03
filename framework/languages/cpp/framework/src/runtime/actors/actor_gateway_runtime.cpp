@@ -8,6 +8,7 @@
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace zlink::framework
@@ -73,6 +74,11 @@ actor_ref_t::actor_ref_t (actor_id_t actor_id,
     _mesh_name (std::move (mesh_name)),
     _node_rid (std::move (node_rid))
 {
+    if (object_generation == 0
+        || object_generation > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ())) {
+        throw std::invalid_argument (
+          "ActorRef ObjectGeneration must be from 1 through INT64_MAX");
+    }
 }
 
 actor_ref_t::actor_ref_t (node_rid_t node_rid,
@@ -84,6 +90,11 @@ actor_ref_t::actor_ref_t (node_rid_t node_rid,
     _node_rid (std::move (node_rid)),
     _actor_type (std::move (actor_type))
 {
+    if (generation == 0
+        || generation > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ())) {
+        throw std::invalid_argument (
+          "ActorRef ObjectGeneration must be from 1 through INT64_MAX");
+    }
 }
 
 const node_rid_t &actor_ref_t::node_rid () const noexcept

@@ -49,7 +49,12 @@
 
 ## 남은 gap
 
-ShoppingMall C++ 샘플 범위에서 남은 gap은 없다.
+현재 ShoppingMall sample process에서 확인하지 못한 runtime gap은 없다. `StartOrderRes`는
+`{orderId, state}`를 반환하고 `OrderState`의 nullable field와 workflow command의
+`sourceCommandId`를 typed JSON으로 보존한다. workflow readiness endpoint는 두 API가 두
+workflow peer를 확인한 뒤 public client call을 시작하도록 한다. cart/inventory/payment seed와
+`server_assertion_*`는 self-check/evidence-only다. package provenance, native Windows와 common
+E2E 전체 분모는 이 sample inventory와 별도로 ledger에서 판정한다.
 
 ## 검증 기록
 
@@ -59,3 +64,6 @@ ShoppingMall C++ 샘플 범위에서 남은 gap은 없다.
 현재 runner는 `shoppingmall-server-evidence=completed`와 `PASS ShoppingMall.Cpp`까지 통과한다. 또한
 workflow-a와 workflow-b log에서 `shoppingmall order: started ... spot=` marker도 확인해
 workflow command가 route handler group이 아니라 order spot handler에서 실행됐음을 검증한다.
+
+- 2026-08-03: ShoppingMall readiness 정적 regression과 개별 process runner 4회가 통과했고,
+  official six-sample aggregate와 PowerShell aggregate도 exit code 0이다.

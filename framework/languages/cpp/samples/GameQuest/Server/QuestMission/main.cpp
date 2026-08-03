@@ -66,8 +66,8 @@ class quest_event_store_t
         auto &stream = _streams[event.player_id];
         const auto already_applied =
           std::any_of (stream.begin (), stream.end (), [&] (const stored_quest_event_t &stored) {
-              return !stored.source_event_id.empty ()
-                     && stored.source_event_id == event.event_id;
+              return stored.source_event_id
+                     && *stored.source_event_id == event.event_id;
           });
         if (already_applied) {
             /* reward 멱등: 이미 반영한 gameplay event는 stream을 늘리지 않고 현재 projection만
@@ -176,14 +176,8 @@ class quest_event_store_t
         if (event.type == "SnapshotKillCount") {
             return quest_rule_t{quest_ids_t::first_hunt, event.count, 3};
         }
-        if (event.type == "FeatureUnlocked" && event.value == "auction") {
-            return quest_rule_t{quest_ids_t::open_auction, 1, 1};
-        }
         if (event.type == "ItemCollected" && event.value == "healing-herb") {
             return quest_rule_t{quest_ids_t::herb_gathering, event.count, 5};
-        }
-        if (event.type == "MissionCompleted" && event.value == "tutorial") {
-            return quest_rule_t{quest_ids_t::clear_tutorial, 1, 1};
         }
         if (event.type == "AreaEntered" && event.value == "ruins") {
             return quest_rule_t{quest_ids_t::visit_ruins, 1, 1};
@@ -213,9 +207,9 @@ class quest_event_store_t
         stored.quest_id = rule.quest_id;
         stored.type = type;
         stored.source_event_id = source.event_id;
-        stored.delta = delta;
-        stored.current_count = current_count;
-        stored.required_count = rule.required_count;
+        stored.payload = nlohmann::json{{"delta", delta},
+                                        {"currentCount", current_count},
+                                        {"requiredCount", rule.required_count}};
         stored.version = static_cast<long long> (stream.size ()) + 1;
         stored.created_at_unix_ms = source.occurred_at_unix_ms;
         stream.push_back (std::move (stored));
@@ -244,8 +238,8 @@ class quest_event_store_t
             }
             if (stored.type == stored_quest_event_t::progressed
                 || stored.type == stored_quest_event_t::reconciled) {
-                found->current_count = stored.current_count;
-                found->required_count = stored.required_count;
+                found->current_count = stored.payload.value ("currentCount", 0);
+                found->required_count = stored.payload.value ("requiredCount", 0);
             } else if (stored.type == stored_quest_event_t::completed) {
                 found->status = quest_status_t::completed;
             } else if (stored.type == stored_quest_event_t::reward_granted) {
@@ -292,9 +286,10 @@ class player_quest_spot_t : public instance_spot_t
     {
         _context.handlers ()
           .add_handler<&player_quest_spot_t::apply> (gameplay_msg_t::packet_name)
-          .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_owner_req_t::packet_name)
           .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name)
-          .add_handler<&player_quest_spot_t::admin> (projection_admin_req_t::packet_name);
+          .add_handler<&player_quest_spot_t::admin> (projection_admin_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::close> (close_player_quest_msg_t::packet_name);
     }
 
     task_t<void> on_initialize () override
@@ -332,7 +327,7 @@ class player_quest_spot_t : public instance_spot_t
         co_return;
     }
 
-    sync_quest_progress_res_t sync (const sync_quest_progress_req_t &request)
+    sync_quest_progress_res_t sync (const sync_quest_progress_owner_req_t &request)
     {
         if (request.snapshot_kill_count > 0) {
             const gameplay_msg_t snapshot{
@@ -351,6 +346,11 @@ class player_quest_spot_t : public instance_spot_t
         return {_store.projection (request.player_id)};
     }
 
+    void close (const close_player_quest_msg_t &)
+    {
+        _context.close ();
+    }
+
     projection_admin_res_t admin (const projection_admin_req_t &request)
     {
         if (request.operation == "delete") {
@@ -362,7 +362,7 @@ class player_quest_spot_t : public instance_spot_t
         }
         if (request.operation == "deactivate") {
             const auto projection = _store.projection (request.player_id);
-            _context.close ();
+            close (close_player_quest_msg_t{});
             return {true, projection};
         }
         return {false, _store.projection (request.player_id)};
@@ -406,6 +406,10 @@ int main (int argc, char **argv)
             "gamequest-" + topology.mission_name + "-spot"))
           .set_object_role (object_role_t::server)
           .listen (topology.selected_mission_spot_route_endpoint ());
+        /* GameApi owns the outbound peer connections for this RouteMesh. A
+         * RouteMesh connection carries traffic in both directions, so the
+         * owner spot can send notifications over the accepted API link
+         * without creating a duplicate admission path here. */
         auto spot_services = options.services ().build_provider ();
         gamequest.add_instance_spot_factory<player_quest_spot_t> (
             sample_names_t::player_quest_spot,

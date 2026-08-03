@@ -29,6 +29,26 @@ cleanup() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done
+  for _ in $(seq 1 300); do
+    local any_alive=0
+    for pid in "${PIDS[@]}"; do
+      if kill -0 "$pid" >/dev/null 2>&1; then
+        any_alive=1
+        break
+      fi
+    done
+    if [[ "$any_alive" == "0" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      echo "forced cleanup process $pid" >&2
+      kill -9 "$pid" >/dev/null 2>&1 || true
+      cleanup_failed=1
+    fi
+  done
   for pid in "${PIDS[@]}"; do
     set +e
     wait "$pid" >/dev/null 2>&1
@@ -144,6 +164,25 @@ wait_http() {
   return 1
 }
 
+wait_route_ready() {
+  local api_url="$1"
+  local target_rid="$2"
+  for _ in $(seq 1 150); do
+    if curl --connect-timeout 0.2 --max-time 0.5 -fsS \
+      "$api_url/ready?targetRid=${target_rid}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  curl --connect-timeout 0.2 --max-time 1 -sS \
+    "$api_url/ready?targetRid=${target_rid}" >&2 || true
+  echo "timed out waiting for ShoppingMall RouteMesh peer ${target_rid} from ${api_url}" >&2
+  for log in "$LOG_DIR"/*.log "$FLOW_LOG_DIR"/*.log; do
+    [[ -f "$log" ]] && { echo "===== $log" >&2; cat "$log" >&2; }
+  done
+  return 1
+}
+
 start_role() {
   local name="$1"
   shift
@@ -230,6 +269,11 @@ wait_port api-a-route "$SHOPPINGMALL_API_A_ROUTE"
 wait_http api-a "$SHOPPINGMALL_API_A_HTTP_URL"
 wait_port api-b-route "$SHOPPINGMALL_API_B_ROUTE"
 wait_http api-b "$SHOPPINGMALL_API_B_HTTP_URL"
+
+wait_route_ready "$SHOPPINGMALL_API_A_HTTP_URL" "shoppingmall-workflow-a-workflow"
+wait_route_ready "$SHOPPINGMALL_API_A_HTTP_URL" "shoppingmall-workflow-b-workflow"
+wait_route_ready "$SHOPPINGMALL_API_B_HTTP_URL" "shoppingmall-workflow-a-workflow"
+wait_route_ready "$SHOPPINGMALL_API_B_HTTP_URL" "shoppingmall-workflow-b-workflow"
 
 "$BIN_DIR/sample_cpp_framework_shoppingmall_client" \
   --api-a-http-url "$SHOPPINGMALL_API_A_HTTP_URL" \

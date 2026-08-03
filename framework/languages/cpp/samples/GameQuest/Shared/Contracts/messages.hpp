@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <optional>
 #include <vector>
 
 namespace zlink::samples::gamequest
@@ -13,9 +14,7 @@ namespace zlink::samples::gamequest
 struct quest_ids_t
 {
     static constexpr const char *first_hunt = "first-hunt";
-    static constexpr const char *open_auction = "open-auction";
     static constexpr const char *herb_gathering = "herb-gathering";
-    static constexpr const char *clear_tutorial = "clear-tutorial";
     static constexpr const char *visit_ruins = "visit-ruins";
 };
 
@@ -51,52 +50,12 @@ struct collect_item_req_t
     std::string idempotency_key;
 };
 
-struct collect_item_res_t
-{
-    static constexpr const char *packet_name = "CollectItemRes";
-    std::string event_id;
-};
-
-struct complete_mission_req_t
-{
-    static constexpr const char *packet_name = "CompleteMissionReq";
-    std::string player_id;
-    std::string mission_id;
-    std::string idempotency_key;
-};
-
-struct complete_mission_res_t
-{
-    static constexpr const char *packet_name = "CompleteMissionRes";
-    std::string event_id;
-};
-
 struct enter_area_req_t
 {
     static constexpr const char *packet_name = "EnterAreaReq";
     std::string player_id;
     std::string area_id;
     std::string idempotency_key;
-};
-
-struct enter_area_res_t
-{
-    static constexpr const char *packet_name = "EnterAreaRes";
-    std::string event_id;
-};
-
-struct unlock_feature_req_t
-{
-    static constexpr const char *packet_name = "UnlockFeatureReq";
-    std::string player_id;
-    std::string feature_id;
-    std::string idempotency_key;
-};
-
-struct unlock_feature_res_t
-{
-    static constexpr const char *packet_name = "UnlockFeatureRes";
-    std::string event_id;
 };
 
 struct join_session_req_t
@@ -118,10 +77,8 @@ struct stored_quest_event_t
     std::string player_id;
     std::string quest_id;
     std::string type;
-    std::string source_event_id;
-    int delta = 0;
-    int current_count = 0;
-    int required_count = 0;
+    nlohmann::json payload = nlohmann::json::object ();
+    std::optional<std::string> source_event_id;
     long long version = 0;
     long long created_at_unix_ms = 0;
 };
@@ -134,7 +91,7 @@ struct quest_progress_t
     int current_count = 0;
     int required_count = 0;
     /* 이 진행을 만든 마지막 gameplay event(idempotency 판정용)와 event stream fold의 버전. */
-    std::string last_source_event_id;
+    std::optional<std::string> last_source_event_id;
     long long version = 0;
     long long updated_at_unix_ms = 0;
 };
@@ -142,6 +99,7 @@ struct quest_progress_t
 struct join_session_res_t
 {
     static constexpr const char *packet_name = "JoinSessionRes";
+    std::string player_id;
     std::vector<quest_progress_t> active_quests;
 };
 
@@ -161,8 +119,15 @@ struct sync_quest_progress_req_t
 {
     static constexpr const char *packet_name = "SyncQuestProgressReq";
     std::string player_id;
-    /* GameApi가 보관한 authoritative gameplay fact다. client wire에서는 생략되고,
-     * owner spot으로 전달할 때 GameApi가 채운다. */
+};
+
+/* Internal server-to-server message. This is not part of the common client contract. GameApi
+ * sends the authoritative snapshot to the owner Spot without adding server-only fields to the
+ * public SyncQuestProgressReq. */
+struct sync_quest_progress_owner_req_t
+{
+    static constexpr const char *packet_name = "SyncQuestProgressOwnerReq";
+    std::string player_id;
     int snapshot_kill_count = 0;
 };
 
@@ -176,7 +141,6 @@ struct quest_progress_notify_t
 {
     static constexpr const char *packet_name = "QuestProgressNotify";
     std::string player_id;
-    std::string target_connection_id;
     quest_progress_t progress;
 };
 
@@ -184,7 +148,6 @@ struct quest_completed_notify_t
 {
     static constexpr const char *packet_name = "QuestCompletedNotify";
     std::string player_id;
-    std::string target_connection_id;
     quest_progress_t progress;
     bool reward_granted = false;
 };
@@ -196,22 +159,29 @@ struct gameplay_msg_t
     std::string event_id;
     std::string player_id;
     std::string type;
-    std::vector<std::uint8_t> payload;
+    nlohmann::json payload = nlohmann::json::object ();
     long long occurred_at_unix_ms = 0;
 };
 
-inline std::vector<std::uint8_t> gameplay_payload (const std::string &value, int count)
+inline nlohmann::json gameplay_payload (const std::string &value, int count)
 {
-    return nlohmann::json::to_msgpack (nlohmann::json{{"value", value}, {"count", count}});
+    return nlohmann::json{{"value", value}, {"count", count}};
 }
 
 inline nlohmann::json gameplay_payload (const gameplay_msg_t &message)
 {
-    return nlohmann::json::from_msgpack (message.payload);
+    return message.payload;
 }
 
-/* owner spot → player의 현재 연결 노드. 응답 없는 one-way이며, 대상 노드는 location store의
- * session binding이 정한다(§12). */
+struct close_player_quest_msg_t
+{
+    static constexpr const char *packet_name = "ClosePlayerQuestMsg";
+    std::optional<std::string> reason;
+};
+
+/* Internal server-to-server message. The owner Spot sends the projection to GameApi, and
+ * GameApi relays the common QuestProgressNotify to the bound client session. The framework
+ * session binding selects the destination; this message is not a client API. */
 struct notify_quest_progress_msg_t
 {
     static constexpr const char *packet_name = "NotifyQuestProgressMsg";
@@ -220,20 +190,9 @@ struct notify_quest_progress_msg_t
     std::string completed_quest_id;
 };
 
-struct notify_quest_progress_req_t
-{
-    static constexpr const char *packet_name = "NotifyQuestProgressReq";
-    std::string player_id;
-    std::vector<quest_progress_t> projection;
-    std::string completed_quest_id;
-};
-
-struct notify_quest_progress_res_t
-{
-    static constexpr const char *packet_name = "NotifyQuestProgressRes";
-    bool delivered = false;
-};
-
+/* Test/evidence-only maintenance request. These messages exercise projection deletion,
+ * rehydration and explicit owner deactivation from the sample self-check; they are not part of
+ * the common GameQuest client contract. */
 struct projection_admin_req_t
 {
     static constexpr const char *packet_name = "GameQuestProjectionAdminReq";
@@ -262,6 +221,8 @@ struct unpublished_kill_res_t
     bool ok = false;
 };
 
+/* Test/evidence-only HTTP assertion request. It exposes runner evidence, not framework routing
+ * identity or a supported application API. */
 struct server_assertion_req_t
 {
     static constexpr const char *packet_name = "GameQuestServerAssertReq";
@@ -306,33 +267,6 @@ inline void from_json (const nlohmann::json &json, collect_item_req_t &value)
     json.at ("count").get_to (value.count);
     json.at ("idempotencyKey").get_to (value.idempotency_key);
 }
-inline void to_json (nlohmann::json &json, const collect_item_res_t &value)
-{
-    json = {{"eventId", value.event_id}};
-}
-inline void from_json (const nlohmann::json &json, collect_item_res_t &value)
-{
-    json.at ("eventId").get_to (value.event_id);
-}
-inline void to_json (nlohmann::json &json, const complete_mission_req_t &value)
-{
-    json = {{"playerId", value.player_id}, {"missionId", value.mission_id},
-            {"idempotencyKey", value.idempotency_key}};
-}
-inline void from_json (const nlohmann::json &json, complete_mission_req_t &value)
-{
-    json.at ("playerId").get_to (value.player_id);
-    json.at ("missionId").get_to (value.mission_id);
-    json.at ("idempotencyKey").get_to (value.idempotency_key);
-}
-inline void to_json (nlohmann::json &json, const complete_mission_res_t &value)
-{
-    json = {{"eventId", value.event_id}};
-}
-inline void from_json (const nlohmann::json &json, complete_mission_res_t &value)
-{
-    json.at ("eventId").get_to (value.event_id);
-}
 inline void to_json (nlohmann::json &json, const enter_area_req_t &value)
 {
     json = {{"playerId", value.player_id}, {"areaId", value.area_id},
@@ -343,33 +277,6 @@ inline void from_json (const nlohmann::json &json, enter_area_req_t &value)
     json.at ("playerId").get_to (value.player_id);
     json.at ("areaId").get_to (value.area_id);
     json.at ("idempotencyKey").get_to (value.idempotency_key);
-}
-inline void to_json (nlohmann::json &json, const enter_area_res_t &value)
-{
-    json = {{"eventId", value.event_id}};
-}
-inline void from_json (const nlohmann::json &json, enter_area_res_t &value)
-{
-    json.at ("eventId").get_to (value.event_id);
-}
-inline void to_json (nlohmann::json &json, const unlock_feature_req_t &value)
-{
-    json = {{"playerId", value.player_id}, {"featureId", value.feature_id},
-            {"idempotencyKey", value.idempotency_key}};
-}
-inline void from_json (const nlohmann::json &json, unlock_feature_req_t &value)
-{
-    json.at ("playerId").get_to (value.player_id);
-    json.at ("featureId").get_to (value.feature_id);
-    json.at ("idempotencyKey").get_to (value.idempotency_key);
-}
-inline void to_json (nlohmann::json &json, const unlock_feature_res_t &value)
-{
-    json = {{"eventId", value.event_id}};
-}
-inline void from_json (const nlohmann::json &json, unlock_feature_res_t &value)
-{
-    json.at ("eventId").get_to (value.event_id);
 }
 inline void to_json (nlohmann::json &json, const join_session_req_t &value)
 {
@@ -385,10 +292,9 @@ inline void to_json (nlohmann::json &json, const stored_quest_event_t &value)
             {"playerId", value.player_id},
             {"questId", value.quest_id},
             {"type", value.type},
-            {"sourceEventId", value.source_event_id},
-            {"delta", value.delta},
-            {"currentCount", value.current_count},
-            {"requiredCount", value.required_count},
+            {"payload", value.payload},
+            {"sourceEventId", value.source_event_id ? nlohmann::json (*value.source_event_id)
+                                                       : nlohmann::json (nullptr)},
             {"version", value.version},
             {"createdAtUnixMs", value.created_at_unix_ms}};
 }
@@ -398,10 +304,12 @@ inline void from_json (const nlohmann::json &json, stored_quest_event_t &value)
     json.at ("playerId").get_to (value.player_id);
     json.at ("questId").get_to (value.quest_id);
     json.at ("type").get_to (value.type);
-    value.source_event_id = json.value ("sourceEventId", std::string{});
-    value.delta = json.value ("delta", 0);
-    value.current_count = json.value ("currentCount", 0);
-    value.required_count = json.value ("requiredCount", 0);
+    value.payload = json.value ("payload", nlohmann::json::object ());
+    if (!json.contains ("sourceEventId") || json.at ("sourceEventId").is_null ()) {
+        value.source_event_id = std::nullopt;
+    } else {
+        value.source_event_id = json.at ("sourceEventId").get<std::string> ();
+    }
     value.version = json.value ("version", 0LL);
     value.created_at_unix_ms = json.value ("createdAtUnixMs", 0LL);
 }
@@ -410,7 +318,10 @@ inline void to_json (nlohmann::json &json, const quest_progress_t &value)
     json = {{"playerId", value.player_id}, {"questId", value.quest_id},
             {"status", value.status}, {"currentCount", value.current_count},
             {"requiredCount", value.required_count},
-            {"lastSourceEventId", value.last_source_event_id}, {"version", value.version},
+            {"lastSourceEventId", value.last_source_event_id
+                                      ? nlohmann::json (*value.last_source_event_id)
+                                      : nlohmann::json (nullptr)},
+            {"version", value.version},
             {"updatedAtUnixMs", value.updated_at_unix_ms}};
 }
 inline void from_json (const nlohmann::json &json, quest_progress_t &value)
@@ -420,16 +331,21 @@ inline void from_json (const nlohmann::json &json, quest_progress_t &value)
     json.at ("status").get_to (value.status);
     json.at ("currentCount").get_to (value.current_count);
     json.at ("requiredCount").get_to (value.required_count);
-    value.last_source_event_id = json.value ("lastSourceEventId", std::string{});
+    if (!json.contains ("lastSourceEventId") || json.at ("lastSourceEventId").is_null ()) {
+        value.last_source_event_id = std::nullopt;
+    } else {
+        value.last_source_event_id = json.at ("lastSourceEventId").get<std::string> ();
+    }
     value.version = json.value ("version", 0LL);
     json.at ("updatedAtUnixMs").get_to (value.updated_at_unix_ms);
 }
 inline void to_json (nlohmann::json &json, const join_session_res_t &value)
 {
-    json = {{"activeQuests", value.active_quests}};
+    json = {{"playerId", value.player_id}, {"activeQuests", value.active_quests}};
 }
 inline void from_json (const nlohmann::json &json, join_session_res_t &value)
 {
+    value.player_id = json.value ("playerId", std::string{});
     json.at ("activeQuests").get_to (value.active_quests);
 }
 inline void to_json (nlohmann::json &json, const get_quest_progress_req_t &value)
@@ -451,11 +367,18 @@ inline void from_json (const nlohmann::json &json, get_quest_progress_res_t &val
 inline void to_json (nlohmann::json &json, const sync_quest_progress_req_t &value)
 {
     json = {{"playerId", value.player_id}};
-    if (value.snapshot_kill_count > 0) {
-        json["snapshotKillCount"] = value.snapshot_kill_count;
-    }
 }
 inline void from_json (const nlohmann::json &json, sync_quest_progress_req_t &value)
+{
+    json.at ("playerId").get_to (value.player_id);
+}
+
+inline void to_json (nlohmann::json &json, const sync_quest_progress_owner_req_t &value)
+{
+    json = {{"playerId", value.player_id}, {"snapshotKillCount", value.snapshot_kill_count}};
+}
+
+inline void from_json (const nlohmann::json &json, sync_quest_progress_owner_req_t &value)
 {
     json.at ("playerId").get_to (value.player_id);
     value.snapshot_kill_count = json.value ("snapshotKillCount", 0);
@@ -470,24 +393,22 @@ inline void from_json (const nlohmann::json &json, sync_quest_progress_res_t &va
 }
 inline void to_json (nlohmann::json &json, const quest_progress_notify_t &value)
 {
-    json = {{"playerId", value.player_id}, {"targetConnectionId", value.target_connection_id},
-            {"progress", value.progress}};
+    json = {{"playerId", value.player_id}, {"progress", value.progress}};
 }
 inline void from_json (const nlohmann::json &json, quest_progress_notify_t &value)
 {
     json.at ("playerId").get_to (value.player_id);
-    value.target_connection_id = json.value ("targetConnectionId", "");
     json.at ("progress").get_to (value.progress);
 }
 inline void to_json (nlohmann::json &json, const quest_completed_notify_t &value)
 {
-    json = {{"playerId", value.player_id}, {"targetConnectionId", value.target_connection_id},
-            {"progress", value.progress}, {"rewardGranted", value.reward_granted}};
+    json = {{"playerId", value.player_id},
+            {"progress", value.progress},
+            {"rewardGranted", value.reward_granted}};
 }
 inline void from_json (const nlohmann::json &json, quest_completed_notify_t &value)
 {
     json.at ("playerId").get_to (value.player_id);
-    value.target_connection_id = json.value ("targetConnectionId", "");
     json.at ("progress").get_to (value.progress);
     json.at ("rewardGranted").get_to (value.reward_granted);
 }
@@ -507,6 +428,23 @@ inline void from_json (const nlohmann::json &json, gameplay_msg_t &value)
     json.at ("payload").get_to (value.payload);
     json.at ("occurredAtUnixMs").get_to (value.occurred_at_unix_ms);
 }
+
+inline void to_json (nlohmann::json &json, const close_player_quest_msg_t &value)
+{
+    json = nlohmann::json::object ();
+    if (value.reason) {
+        json["reason"] = *value.reason;
+    }
+}
+
+inline void from_json (const nlohmann::json &json, close_player_quest_msg_t &value)
+{
+    if (!json.contains ("reason") || json.at ("reason").is_null ()) {
+        value.reason = std::nullopt;
+    } else {
+        value.reason = json.at ("reason").get<std::string> ();
+    }
+}
 inline void to_json (nlohmann::json &json, const notify_quest_progress_msg_t &value)
 {
     json = {{"playerId", value.player_id},
@@ -518,26 +456,6 @@ inline void from_json (const nlohmann::json &json, notify_quest_progress_msg_t &
     json.at ("playerId").get_to (value.player_id);
     json.at ("projection").get_to (value.projection);
     value.completed_quest_id = json.value ("completedQuestId", std::string{});
-}
-inline void to_json (nlohmann::json &json, const notify_quest_progress_req_t &value)
-{
-    json = {{"playerId", value.player_id},
-            {"projection", value.projection},
-            {"completedQuestId", value.completed_quest_id}};
-}
-inline void from_json (const nlohmann::json &json, notify_quest_progress_req_t &value)
-{
-    json.at ("playerId").get_to (value.player_id);
-    json.at ("projection").get_to (value.projection);
-    value.completed_quest_id = json.value ("completedQuestId", "");
-}
-inline void to_json (nlohmann::json &json, const notify_quest_progress_res_t &value)
-{
-    json = {{"delivered", value.delivered}};
-}
-inline void from_json (const nlohmann::json &json, notify_quest_progress_res_t &value)
-{
-    json.at ("delivered").get_to (value.delivered);
 }
 inline void to_json (nlohmann::json &json, const projection_admin_req_t &value)
 {

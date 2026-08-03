@@ -45,9 +45,6 @@ class tictactoe_client_scenario_t
                           .timeout (std::chrono::seconds (45))
                           .body (create_game_request)
                           .fetch<create_game_http_res_t> ();
-            if (room.owner_play_endpoint.empty ()) {
-                throw std::runtime_error ("API returned an empty play endpoint.");
-            }
             if (room.play_endpoints.size () < 2) {
                 throw std::runtime_error ("API must return at least two Play endpoints.");
             }
@@ -62,9 +59,10 @@ class tictactoe_client_scenario_t
                            })
                          == 1;
               }));
+            const auto owner_endpoint = room.play_endpoints.front ();
             std::string guest_endpoint;
             for (const auto &endpoint : room.play_endpoints) {
-                if (endpoint != room.owner_play_endpoint) {
+                if (endpoint != owner_endpoint) {
                     guest_endpoint = endpoint;
                     break;
                 }
@@ -74,7 +72,7 @@ class tictactoe_client_scenario_t
             }
 
             zlink::stream_connector::connector_options_t connector_options;
-            connector_options.endpoint = room.owner_play_endpoint;
+            connector_options.endpoint = owner_endpoint;
             connector_options.connect_timeout = options.stream_timeout;
             connector_options.request_timeout = options.stream_timeout;
             connector_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
@@ -175,7 +173,7 @@ class tictactoe_client_scenario_t
         try {
             ensure (!room.room_id.empty ());
             ensure (!room.room_id.empty ());
-            ensure (room.owner_play_endpoint.rfind ("tcp://127.0.0.1:", 0) == 0);
+            ensure (room.play_endpoints.front ().rfind ("tcp://127.0.0.1:", 0) == 0);
             ensure (room.required_level == 3);
             ensure (room.game_name == options.game_name);
 
@@ -284,7 +282,7 @@ class tictactoe_client_scenario_t
             auto premature_terminal_state = client2.expect_none<game_state_notify_t> ()
                                               .within (std::chrono::milliseconds (250))
                                               .async ();
-            client1.send (leave_game_req_t{room.room_id}).submit ();
+            client1.send (leave_game_msg_t{room.room_id}).submit ();
             co_await premature_terminal_state;
 
             auto client2_wait_first_move =
@@ -415,9 +413,9 @@ class tictactoe_client_scenario_t
             std::cout << "observer-win-milestone=verified actor=" << milestone.actor_id
                       << " wins=" << milestone.wins << '\n';
 
-            const auto client1_leave_request = leave_game_req_t{room.room_id};
+            const auto client1_leave_request = leave_game_msg_t{room.room_id};
             client1.send (client1_leave_request).submit ();
-            const auto client2_leave_request = leave_game_req_t{room.room_id};
+            const auto client2_leave_request = leave_game_msg_t{room.room_id};
             client2.send (client2_leave_request).submit ();
 
             co_await client1.close ().async ();
@@ -487,7 +485,7 @@ class tictactoe_client_scenario_t
     static std::string non_owner_endpoint (const create_game_http_res_t &room)
     {
         for (const auto &endpoint : room.play_endpoints) {
-            if (endpoint != room.owner_play_endpoint) {
+            if (endpoint != room.play_endpoints.front ()) {
                 return endpoint;
             }
         }

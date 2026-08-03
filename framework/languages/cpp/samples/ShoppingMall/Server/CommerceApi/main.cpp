@@ -10,11 +10,53 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <thread>
 
 namespace zlink::samples::shoppingmall
 {
 using namespace zlink::framework;
+
+class route_ready_http_handler_t
+{
+  public:
+    using dependency_types = dependency_list_t<route_mesh_runtime_t>;
+
+    explicit route_ready_http_handler_t (route_mesh_runtime_t &runtime) :
+        _runtime (runtime)
+    {
+    }
+
+    http_response_t handle (const http_request_t &request)
+    {
+        const auto found = request.query_values.find ("targetRid");
+        if (found == request.query_values.end () || found->second.empty ())
+            return {.status = 400,
+                    .body = R"({"error":"targetRid is required"})"};
+
+        const auto snapshot = _runtime.snapshot (sample_names_t::order_workflow_channel);
+        for (const auto &peer : snapshot.peers) {
+            if (peer.node_rid.to_string () == found->second
+                && peer.state == peer_state_t::ready)
+                return {.body = nlohmann::json{{"ready", true},
+                                               {"targetRid", found->second}}
+                                  .dump ()};
+        }
+
+        nlohmann::json peers = nlohmann::json::array ();
+        for (const auto &peer : snapshot.peers)
+            peers.push_back ({{"rid", peer.node_rid.to_string ()},
+                              {"state", static_cast<int> (peer.state)}});
+        return {.status = 503,
+                .body = nlohmann::json{{"ready", false},
+                                       {"targetRid", found->second},
+                                       {"peers", std::move (peers)}}
+                          .dump ()};
+    }
+
+  private:
+    route_mesh_runtime_t &_runtime;
+};
 
 class commerce_api_handlers_t
 {
@@ -55,6 +97,7 @@ class commerce_api_handlers_t
                                               request.shipping_address_id,
                                               request.payment_method_id,
                                               request.idempotency_key,
+                                              "start:" + request.idempotency_key,
                                               cart.lines,
                                               cart.amount,
                                               cart.currency};
@@ -64,7 +107,7 @@ class commerce_api_handlers_t
           (co_await request_workflow<start_order_workflow_res_t> (command)).state;
         std::cerr << "shoppingmall api: start order=" << state.order_id
                   << " status=" << state.status << "\n";
-        co_return start_order_res_t{state.order_id, state.status};
+        co_return start_order_res_t{state.order_id, state};
     }
 
     get_order_state_res_t get_order (const get_order_state_req_t &request)
@@ -118,7 +161,7 @@ class commerce_api_handlers_t
             saved["testHooks"]["stopAt"].erase (response.order_id);
             return true;
         });
-        co_return start_order_res_t{response.order_id, state.status};
+        co_return start_order_res_t{response.order_id, state};
     }
 
     task_t<continue_order_workflow_res_t> continue_order (const continue_order_workflow_req_t &request)
@@ -295,6 +338,7 @@ int main (int argc, char **argv)
         options.http ()
           .listen (instance.http_url)
           .map_health ("/health")
+          .map_get<route_ready_http_handler_t> ("/ready")
           .map_post<start_order_handler_t> ("/orders/start")
           .map_post<get_order_handler_t> ("/orders/get")
           .map_post<pending_handler_t> ("/self-check/idempotency/pending")

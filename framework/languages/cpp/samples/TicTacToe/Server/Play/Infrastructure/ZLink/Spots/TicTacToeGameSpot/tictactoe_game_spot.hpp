@@ -103,7 +103,7 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
 
     void leave_game (const player_actor_t &actor,
                      const message_context_t &,
-                     const leave_game_req_t &request);
+                     const leave_game_msg_t &request);
 
     task_t<void> on_actor_joined (player_actor_t &actor) override
     {

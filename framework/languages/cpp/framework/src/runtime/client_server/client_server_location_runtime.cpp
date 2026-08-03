@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/client_server/client_server_location_runtime.hpp"
+#include "runtime/client_server/client_server_failure_mapper.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/client_server/weighted_selector.hpp"
@@ -41,6 +44,12 @@ std::string connection_key (
            + std::to_string (descriptor.lifecycle_generation);
 }
 
+std::string stable_key (
+  const client_server_server_descriptor_t &descriptor)
+{
+    return descriptor.server_rid.to_hex ();
+}
+
 struct client_server_wire_failure_t
 {
     std::uint32_t terminal_result;
@@ -70,15 +79,52 @@ wire_failure (const framework_exception_t &error)
     }
 }
 
-std::string stable_key (
-  const client_server_server_descriptor_t &descriptor)
+void report_client_server_dispatch_error (
+  const dispatch_options_t &options,
+  const mesh::service_mailbox_record_t &record,
+  std::string_view packet_name,
+  dispatch_message_kind_t message_kind,
+  dispatch_error_action_t action,
+  const framework_exception_t &error) noexcept
 {
-    return descriptor.server_rid.to_hex ();
+    std::optional<std::string> correlation;
+    if (record.correlation)
+        correlation = std::to_string (*record.correlation);
+    zlink::framework::detail::dispatch_error_reporter_t (options)
+      .report (message_dispatch_error_event_t{
+        dispatch_error_surface_t::channel,
+        message_kind,
+        zlink::framework::detail::dispatch_reason_from_error (&error),
+        action,
+        std::string (packet_name),
+        record.owner,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        std::nullopt,
+        correlation,
+        std::make_exception_ptr (error)});
 }
 
 std::string manual_connection_key (std::string_view endpoint)
 {
     return "manual|" + std::string (endpoint);
+}
+
+void trace_client_server_runtime_failure (
+  std::string_view stage,
+  std::string_view error) noexcept
+{
+    try {
+        const auto *trace = std::getenv ("ZLINK_CPP_CLIENT_SERVER_TRACE");
+        if (trace == nullptr || std::string_view (trace) == "0"
+            || std::string_view (trace).empty ())
+            return;
+        std::cerr << "zlink-cpp-client-server-trace stage=" << stage
+                  << " error=" << error << std::endl;
+    }
+    catch (...) {
+    }
 }
 
 client_server_server_descriptor_t manual_descriptor (
@@ -168,6 +214,140 @@ struct client_server_location_runtime_t::client_channel_t
     smooth_weighted_selector_t selector;
 };
 
+struct client_server_location_runtime_t::observer_t :
+    public std::enable_shared_from_this<observer_t>
+{
+    observer_t (
+      std::size_t capacity_,
+      std::function<void (const client_server_runtime_event_t &)> callback_) :
+        capacity (std::max<std::size_t> (1, capacity_)),
+        callback (std::move (callback_))
+    {
+    }
+
+    ~observer_t () { close (); }
+
+    void start ()
+    {
+        const auto self = shared_from_this ();
+        worker = std::thread ([self] {
+            for (;;) {
+                std::optional<client_server_runtime_event_t> event;
+                {
+                    std::unique_lock lock (self->mutex);
+                    self->ready.wait (
+                      lock, [&] {
+                          return self->closed || !self->pending.empty ();
+                      });
+                    if (self->closed && self->pending.empty ())
+                        return;
+                    event.emplace (std::move (self->pending.front ()));
+                    self->pending.pop_front ();
+                }
+                try {
+                    self->callback (*event);
+                }
+                catch (...) {
+                    std::lock_guard lock (self->mutex);
+                    self->closed = true;
+                    self->pending.clear ();
+                    return;
+                }
+            }
+        });
+    }
+
+    void enqueue (client_server_runtime_event_t event)
+    {
+        std::lock_guard lock (mutex);
+        if (closed)
+            return;
+        if (pending.size () == capacity)
+            pending.pop_front ();
+        pending.push_back (std::move (event));
+        ready.notify_one ();
+    }
+
+    void close () noexcept
+    {
+        {
+            std::lock_guard lock (mutex);
+            closed = true;
+            pending.clear ();
+        }
+        ready.notify_all ();
+        if (worker.joinable ())
+            worker.detach ();
+    }
+
+    std::size_t capacity;
+    std::function<void (const client_server_runtime_event_t &)> callback;
+    std::mutex mutex;
+    std::condition_variable ready;
+    std::deque<client_server_runtime_event_t> pending;
+    bool closed = false;
+    std::thread worker;
+};
+
+namespace
+{
+
+class client_server_observation_t final : public mesh_runtime_observation_t
+{
+  public:
+    explicit client_server_observation_t (
+      std::shared_ptr<client_server_location_runtime_t::observer_t> observer) :
+        _observer (std::move (observer))
+    {
+    }
+
+    ~client_server_observation_t () override { close (); }
+
+    void close () override
+    {
+        if (_observer) {
+            _observer->close ();
+            _observer.reset ();
+        }
+    }
+
+  private:
+    std::shared_ptr<client_server_location_runtime_t::observer_t> _observer;
+};
+
+client_server_server_state_t snapshot_state (
+  framework_runtime_state_t state,
+  bool transport_ready)
+{
+    switch (state) {
+        case framework_runtime_state_t::preparing:
+            return client_server_server_state_t::configured;
+        case framework_runtime_state_t::serving:
+            return transport_ready ? client_server_server_state_t::ready
+                                    : client_server_server_state_t::connecting;
+        case framework_runtime_state_t::relocating:
+        case framework_runtime_state_t::relocated:
+        case framework_runtime_state_t::draining:
+            return client_server_server_state_t::draining;
+        case framework_runtime_state_t::stopped:
+            return client_server_server_state_t::disconnected;
+        case framework_runtime_state_t::error:
+            return client_server_server_state_t::rejected;
+    }
+    return client_server_server_state_t::rejected;
+}
+
+client_server_role_t local_role (const channel_snapshot_t &channel)
+{
+    if (channel.client.enabled && channel.server.enabled)
+        return client_server_role_t::client_and_server;
+    if (channel.server.enabled)
+        return client_server_role_t::server;
+    return client_server_role_t::client;
+}
+
+} // namespace
+
 client_server_location_runtime_t::client_server_location_runtime_t (
   message_bus_t bus,
   std::vector<channel_snapshot_t> channels,
@@ -184,7 +364,7 @@ client_server_location_runtime_t::client_server_location_runtime_t (
     _locations (&locations),
     _store (&store),
     _leases (&leases),
-    _services (&services),
+    _services (services),
     _serializers (&serializers),
     _handlers (&handlers),
     _advertise_hosts (std::move (advertise_hosts))
@@ -206,6 +386,215 @@ bool client_server_location_runtime_t::empty () const noexcept
                      && (channel.client.discovery
                          || !channel.client.connect_endpoints.empty ()));
       });
+}
+
+client_server_channel_snapshot_t
+client_server_location_runtime_t::build_snapshot_locked (
+  const std::string &channel_name) const
+{
+    client_server_channel_snapshot_t result;
+    result.channel_name = channel_name;
+    result.observed_at = std::chrono::system_clock::now ();
+    const auto configured = std::find_if (
+      _channels.begin (), _channels.end (), [&] (const auto &channel) {
+          return channel.name == channel_name;
+      });
+    if (configured == _channels.end ()) {
+        result.location.store_healthy = false;
+        return result;
+    }
+
+    result.local_role = local_role (*configured);
+    if (_locations != nullptr) {
+        const auto error = _locations->last_error ();
+        result.location.store_healthy = !error.has_value ();
+        result.location.last_refresh_at =
+          _locations->owner_lease_renewed_at ();
+        result.location.owner_lease_healthy =
+          _locations->owner_lease_healthy ();
+        result.location.owner_lease_renewed_at =
+          _locations->owner_lease_renewed_at ();
+    }
+
+    const auto to_count = [] (std::size_t value) {
+        return value > static_cast<std::size_t> (
+                          std::numeric_limits<int>::max ())
+                 ? std::numeric_limits<int>::max ()
+                 : static_cast<int> (value);
+    };
+    const auto append_server = [&] (
+      client_server_server_snapshot_t server,
+      bool count_as_client_target) {
+        if (count_as_client_target && server.ready && server.weight > 0)
+            ++result.ready_server_count;
+        result.servers.push_back (std::move (server));
+    };
+
+    std::set<std::string> client_target_identities;
+    const auto client = _clients.find (channel_name);
+    if (client != _clients.end ()) {
+        result.connection_intent_count =
+          to_count (client->second->connections.size ());
+        for (const auto &[key, connection] : client->second->connections) {
+            const bool ready =
+              connection.owner->ready ()
+              && connection.descriptor.state
+                   == framework_runtime_state_t::serving
+              && connection.descriptor.weight > 0;
+            client_server_server_snapshot_t snapshot{
+              .server_rid = connection.descriptor.server_rid,
+              .lifecycle_generation =
+                connection.descriptor.lifecycle_generation,
+              .weight = connection.descriptor.weight,
+              .ready = ready,
+              .state = snapshot_state (
+                connection.descriptor.state, ready),
+              .descriptor_source =
+                key.starts_with ("manual|") ? "manual" : "location_store",
+              .last_failure = std::nullopt};
+            client_target_identities.insert (
+              snapshot.server_rid.to_hex () + "|"
+              + std::to_string (snapshot.lifecycle_generation));
+            append_server (std::move (snapshot), true);
+            const auto pending = connection.owner->pending_request_count ();
+            const auto current = static_cast<std::size_t> (
+              std::max (0, result.pending_request_count));
+            result.pending_request_count = to_count (
+              current + pending < current
+                ? static_cast<std::size_t> (
+                    std::numeric_limits<int>::max ())
+                : current + pending);
+        }
+    }
+
+    const auto local_server = _servers.find (channel_name);
+    if (local_server != _servers.end () && local_server->second->owner) {
+        const auto admission = local_server->second->owner->descriptor ();
+        const auto local_rid = zlink::routing_id_t::from (
+          admission.server_routing_id);
+        const auto local_identity =
+          local_rid.to_hex () + "|"
+          + std::to_string (admission.lifecycle_generation);
+        if (!client_target_identities.contains (local_identity)) {
+            const auto transport_ready =
+              admission.state == mesh::service_node_state_t::serving
+              && admission.weight > 0;
+            append_server (client_server_server_snapshot_t{
+              .server_rid = local_rid,
+              .lifecycle_generation = admission.lifecycle_generation,
+              .weight = static_cast<int> (admission.weight),
+              .ready = transport_ready,
+              .state = snapshot_state (
+                client_server_framework_state (admission.state),
+                transport_ready),
+              .descriptor_source = "local",
+              .last_failure = std::nullopt},
+              false);
+        }
+    }
+    result.selectable = configured->client.enabled
+                        && result.ready_server_count > 0;
+    const auto sequence = _snapshot_sequences.find (channel_name);
+    result.sequence = sequence == _snapshot_sequences.end ()
+                        ? 0
+                        : sequence->second;
+    return result;
+}
+
+bool client_server_location_runtime_t::snapshot_equivalent (
+  const client_server_channel_snapshot_t &left,
+  const client_server_channel_snapshot_t &right) noexcept
+{
+    return left.channel_name == right.channel_name
+           && left.local_role == right.local_role
+           && left.selectable == right.selectable
+           && left.ready_server_count == right.ready_server_count
+           && left.connection_intent_count == right.connection_intent_count
+           && left.pending_request_count == right.pending_request_count
+           && left.servers == right.servers
+           && left.location == right.location;
+}
+
+client_server_channel_snapshot_t
+client_server_location_runtime_t::snapshot (std::string channel_name) const
+{
+    std::lock_guard lock (_gate);
+    return build_snapshot_locked (channel_name);
+}
+
+std::unique_ptr<mesh_runtime_observation_t>
+client_server_location_runtime_t::observe (
+  std::string channel_name,
+  std::size_t capacity,
+  std::function<void (const client_server_runtime_event_t &)> observer)
+{
+    if (channel_name.empty () || !observer)
+        throw std::invalid_argument (
+          "ClientServer observation requires a channel and callback");
+    auto value = std::make_shared<observer_t> (
+      capacity, std::move (observer));
+    value->start ();
+    {
+        std::lock_guard lock (_gate);
+        _observers[channel_name].push_back (value);
+        const auto current = build_snapshot_locked (channel_name);
+        value->enqueue (client_server_runtime_event_t{
+          .identifier = "zlink.runtime.client_server.channel_changed",
+          .sequence = current.sequence,
+          .timestamp = current.observed_at,
+          .channel_name = channel_name,
+          .reason = std::string ("initial_snapshot")});
+    }
+    return std::make_unique<client_server_observation_t> (std::move (value));
+}
+
+bool client_server_location_runtime_t::is_ready (std::string channel_name) const
+{
+    return snapshot (std::move (channel_name)).selectable;
+}
+
+void client_server_location_runtime_t::publish_snapshot_changes ()
+{
+    std::vector<std::pair<std::shared_ptr<observer_t>,
+                          client_server_runtime_event_t>> notifications;
+    {
+        std::lock_guard lock (_gate);
+        std::set<std::string> channel_names;
+        for (const auto &channel : _channels)
+            channel_names.insert (channel.name);
+        for (const auto &[channel_name, _] : _servers)
+            channel_names.insert (channel_name);
+        for (const auto &[channel_name, _] : _clients)
+            channel_names.insert (channel_name);
+
+        for (const auto &channel_name : channel_names) {
+            auto current = build_snapshot_locked (channel_name);
+            const auto previous = _last_snapshots.find (channel_name);
+            if (previous != _last_snapshots.end ()
+                && snapshot_equivalent (previous->second, current))
+                continue;
+            current.sequence = ++_snapshot_sequences[channel_name];
+            current.observed_at = std::chrono::system_clock::now ();
+            _last_snapshots.insert_or_assign (channel_name, current);
+            client_server_runtime_event_t event{
+              .identifier = "zlink.runtime.client_server.channel_changed",
+              .sequence = current.sequence,
+              .timestamp = current.observed_at,
+              .channel_name = channel_name,
+              .reason = std::string ("snapshot_changed")};
+            auto &registered = _observers[channel_name];
+            auto write = registered.begin ();
+            for (auto read = registered.begin (); read != registered.end (); ++read) {
+                if (auto current_observer = read->lock ()) {
+                    notifications.emplace_back (current_observer, event);
+                    *write++ = *read;
+                }
+            }
+            registered.erase (write, registered.end ());
+        }
+    }
+    for (auto &notification : notifications)
+        notification.first->enqueue (std::move (notification.second));
 }
 
 void client_server_location_runtime_t::start ()
@@ -345,7 +734,27 @@ void client_server_location_runtime_t::run ()
             next_reconcile =
               now + _locations->options ().polling_interval;
         }
-        pump ();
+        try {
+            pump ();
+            publish_snapshot_changes ();
+        }
+        catch (const std::exception &error) {
+            trace_client_server_runtime_failure ("runtime-loop-error", error.what ());
+            try {
+                _locations->record_store_error ();
+            }
+            catch (...) {
+            }
+        }
+        catch (...) {
+            trace_client_server_runtime_failure (
+              "runtime-loop-error", "unknown exception");
+            try {
+                _locations->record_store_error ();
+            }
+            catch (...) {
+            }
+        }
         std::this_thread::sleep_for (pump_interval);
     }
 }
@@ -598,6 +1007,11 @@ void client_server_location_runtime_t::dispatch_server (
                       std::to_string (*record.correlation);
                 detail::message_flow_tracer_t flow (
                   _channel_runtime.dispatch_options_ref ());
+                auto flow_scope = runtime::flow_context_t::enter (
+                  payload.flow_id,
+                  payload.flow_origin,
+                  flow.capture_enabled (),
+                  flow_origin_t::inbound);
                 flow.trace (message_flow_outcome_t::received, [&] {
                     return message_flow_event_t{
                       message_flow_outcome_t::received,
@@ -616,7 +1030,7 @@ void client_server_location_runtime_t::dispatch_server (
                 });
                 auto scope =
                   zlink::framework::detail::service_scope_t::create (
-                    *_services,
+                    _services,
                     zlink::framework::detail::service_scope_kind_t::
                       handler_invocation);
                 if (record.request_sequence && record.correlation) {
@@ -639,19 +1053,51 @@ void client_server_location_runtime_t::dispatch_server (
                           reply.error () != nullptr
                             ? reply.error ()->what ()
                             : "ClientServer request handler failed");
+                        report_client_server_dispatch_error (
+                          _channel_runtime.dispatch_options_ref (),
+                          record,
+                          payload.packet_name,
+                          dispatch_message_kind_t::request,
+                          dispatch_error_action_t::reply_error,
+                          error);
                         const auto failure = wire_failure (error);
                         (void) server.owner->reply (
                           record, failure.terminal_result,
                           failure.failure_code);
                     }
                 } else {
-                    (void) _channel_runtime.dispatch_send (
+                    auto result = _channel_runtime.dispatch_send (
                       record.owner, {}, payload.packet_name,
                       scope.provider (), *_serializers, *_handlers,
                       message, inbound);
+                    if (!result) {
+                        const framework_exception_t error (
+                          result.error_kind (),
+                          result.error () != nullptr
+                            ? result.error ()->what ()
+                            : "ClientServer send handler failed");
+                        report_client_server_dispatch_error (
+                          _channel_runtime.dispatch_options_ref (),
+                          record,
+                          payload.packet_name,
+                          dispatch_message_kind_t::send,
+                          dispatch_error_action_t::drop,
+                          error);
+                    }
                 }
             }
             catch (const framework_exception_t &error) {
+                report_client_server_dispatch_error (
+                  _channel_runtime.dispatch_options_ref (),
+                  record,
+                  record.parts.size () > 1 ? "<decoded>" : "<unknown>",
+                  record.request_sequence
+                    ? dispatch_message_kind_t::request
+                    : dispatch_message_kind_t::send,
+                  record.request_sequence
+                    ? dispatch_error_action_t::reply_error
+                    : dispatch_error_action_t::drop,
+                  error);
                 if (record.request_sequence
                     && record.correlation) {
                     const auto failure = wire_failure (error);
@@ -661,27 +1107,49 @@ void client_server_location_runtime_t::dispatch_server (
                 }
             }
             catch (const std::exception &error) {
+                const framework_exception_t failure (
+                  framework_error_kind_t::internal_failure,
+                  error.what ());
+                report_client_server_dispatch_error (
+                  _channel_runtime.dispatch_options_ref (),
+                  record,
+                  record.parts.size () > 1 ? "<decoded>" : "<unknown>",
+                  record.request_sequence
+                    ? dispatch_message_kind_t::request
+                    : dispatch_message_kind_t::send,
+                  record.request_sequence
+                    ? dispatch_error_action_t::reply_error
+                    : dispatch_error_action_t::drop,
+                  failure);
                 if (record.request_sequence
                     && record.correlation) {
-                    const auto failure = wire_failure (
-                      framework_exception_t (
-                        framework_error_kind_t::internal_failure,
-                        error.what ()));
+                    const auto wire = wire_failure (failure);
                     (void) server.owner->reply (
-                      record, failure.terminal_result,
-                      failure.failure_code);
+                      record, wire.terminal_result,
+                      wire.failure_code);
                 }
             }
             catch (...) {
+                const framework_exception_t failure (
+                  framework_error_kind_t::internal_failure,
+                  "ClientServer dispatch failed");
+                report_client_server_dispatch_error (
+                  _channel_runtime.dispatch_options_ref (),
+                  record,
+                  record.parts.size () > 1 ? "<decoded>" : "<unknown>",
+                  record.request_sequence
+                    ? dispatch_message_kind_t::request
+                    : dispatch_message_kind_t::send,
+                  record.request_sequence
+                    ? dispatch_error_action_t::reply_error
+                    : dispatch_error_action_t::drop,
+                  failure);
                 if (record.request_sequence
                     && record.correlation) {
-                    const auto failure = wire_failure (
-                      framework_exception_t (
-                        framework_error_kind_t::internal_failure,
-                        "ClientServer dispatch failed"));
+                    const auto wire = wire_failure (failure);
                     (void) server.owner->reply (
-                      record, failure.terminal_result,
-                      failure.failure_code);
+                      record, wire.terminal_result,
+                      wire.failure_code);
                 }
             }
         }
@@ -763,9 +1231,10 @@ client_server_location_runtime_t::request (
           if (completion.terminal
               != foundation::operation_terminal_t::completed) {
               promise->set_value (
-                result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::internal_failure,
-                  "ClientServer request did not complete"));
+                zlink::framework::detail::result_access_t::failure<
+                  zlink::message_t> (
+                  client_server_operation_exception (
+                    completion.terminal, "ClientServer request")));
               return;
           }
           if (completion.reply_header.terminal_result != 0) {
@@ -800,9 +1269,10 @@ client_server_location_runtime_t::request (
           framework_error_kind_t::unavailable,
           "ClientServer request lost its admitted server");
     if (future.wait_until (deadline) != std::future_status::ready)
-        return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::internal_failure,
-          "ClientServer request timed out");
+        return zlink::framework::detail::result_access_t::failure<
+          zlink::message_t> (client_server_operation_exception (
+          foundation::operation_terminal_t::timed_out,
+          "ClientServer request"));
     return future.get ();
 }
 

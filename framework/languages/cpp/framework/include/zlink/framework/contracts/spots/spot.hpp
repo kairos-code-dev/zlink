@@ -25,6 +25,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -293,9 +294,11 @@ class spot_ref_t final
         _node_rid (std::move (node_rid))
     {
         detail::require_spot_id (_spot_id);
-        if (_object_generation == 0)
+        if (_object_generation == 0
+            || _object_generation
+                 > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ()))
             throw std::invalid_argument (
-              "SpotRef object generation must be positive");
+              "SpotRef ObjectGeneration must be from 1 through INT64_MAX");
     }
 
     const spot_id_t &spot_id () const noexcept { return _spot_id; }

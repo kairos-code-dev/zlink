@@ -25,7 +25,7 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 20); do
+      for _ in $(seq 1 300); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi

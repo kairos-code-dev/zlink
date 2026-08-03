@@ -31,6 +31,8 @@
 #include "runtime/locations/actor_authority_payload.hpp"
 #include "runtime/locations/sha256.hpp"
 #include "runtime/configuration/endpoint_connections.hpp"
+#include "runtime/diagnostics/flow_context.hpp"
+#include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/stateful/public_store_adapters.hpp"
@@ -703,6 +705,48 @@ bool host_stop_trace_enabled ()
 {
     const char *value = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
     return value != nullptr && std::string_view (value) != "0" && std::string_view (value) != "";
+}
+
+std::string instance_spot_activation_correlation (
+  const zlink::framework::runtime::protocol::instance_spot_activation_header_t &header)
+{
+    return std::to_string (header.operation.high) + ":"
+           + std::to_string (header.operation.low);
+}
+
+void trace_instance_spot_activation (
+  const zlink::framework::dispatch_options_t &dispatch,
+  const std::optional<zlink::framework::runtime::flow_value_t> &flow,
+  zlink::framework::message_flow_outcome_t outcome,
+  zlink::framework::dispatch_message_kind_t message_kind,
+  std::string packet_name,
+  std::string mesh_name,
+  const zlink::routing_id_t &target_node,
+  const zlink::framework::spot_id_t &spot_id,
+  std::string correlation_id)
+{
+    zlink::framework::message_flow_event_t event{
+      outcome,
+      zlink::framework::dispatch_error_surface_t::spot_route,
+      message_kind,
+      std::move (packet_name),
+      std::move (mesh_name),
+      std::nullopt,
+      std::move (correlation_id),
+      target_node.to_string (),
+      std::string (spot_id),
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      std::exception_ptr{},
+      std::nullopt,
+      std::nullopt};
+    if (flow) {
+        event.flow_id = flow->flow_id;
+        event.flow_origin = flow->origin;
+    }
+    zlink::framework::detail::message_flow_tracer_t (dispatch).trace (std::move (event));
 }
 
 std::optional<std::uint64_t> read_finite_memory_limit (
@@ -1720,14 +1764,19 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           };
         channel_runtime.bind_instance_spot_activator (
           [select_instance_target, make_activation,
-           serializers = &_state->serializers] (
+           serializers = &_state->serializers,
+           dispatch = options.dispatch_options ()] (
             const spot_id_t &spot_id,
             const detail::spot_activation_intent_t &intent,
             const std::string &packet_name,
             std::type_index message_type,
-            std::function<encoded_payload_t (serializer_registry_t &)>
+              std::function<encoded_payload_t (serializer_registry_t &)>
               encode_payload,
-            const std::map<std::string, std::string> &metadata) {
+              const std::map<std::string, std::string> &metadata) {
+              auto flow_scope = runtime::flow_context_t::enter_current_or_create (
+                flow_origin_t::application,
+                detail::message_flow_tracer_t (dispatch).capture_enabled ());
+              const auto flow = runtime::flow_context_t::current ();
               auto selected = select_instance_target (spot_id, intent);
               const auto deadline = std::chrono::steady_clock::now ()
                                     + std::chrono::seconds (30);
@@ -1758,15 +1807,27 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 selected.value (), spot_id, false,
                 !metadata_frame.empty (), std::chrono::seconds (30));
               const auto payload = encode_payload (*serializers);
+              runtime::protocol::application_payload_t application_payload{
+                packet_name,
+                serializers->content_type (message_type),
+                payload.to_bytes ()};
+              if (flow) {
+                  application_payload.flow_id = flow->flow_id;
+                  application_payload.flow_origin = flow->origin;
+              }
+              const auto correlation_id = instance_spot_activation_correlation (header);
+              trace_instance_spot_activation (
+                dispatch, flow, message_flow_outcome_t::sent,
+                dispatch_message_kind_t::send, packet_name,
+                selected.value ().target.mesh_name, selected.value ().target.rid, spot_id,
+                correlation_id);
               const auto submitted = selected.value ().source
                 ->send_instance_spot_activation_remote (
                   selected.value ().target.rid, std::move (header),
                   metadata_frame.empty ()
                     ? std::optional<std::vector<std::uint8_t>>{}
                     : std::make_optional (std::move (metadata_frame)),
-                  {packet_name,
-                   serializers->content_type (message_type),
-                   payload.to_bytes ()});
+                  std::move (application_payload));
               return submitted
                 ? result_t<void>::success ()
                 : result_t<void>::failure (
@@ -1774,7 +1835,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                     "Instance Spot activation was not admitted");
           },
           [select_instance_target, make_activation,
-           serializers = &_state->serializers] (
+           serializers = &_state->serializers,
+           dispatch = options.dispatch_options ()] (
             const spot_id_t &spot_id,
             const detail::spot_activation_intent_t &intent,
             std::string packet_name,
@@ -1784,6 +1846,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             std::chrono::milliseconds timeout,
             std::map<std::string, std::string> metadata)
             -> task_t<zlink::message_t> {
+              auto flow_scope = runtime::flow_context_t::enter_current_or_create (
+                flow_origin_t::application,
+                detail::message_flow_tracer_t (dispatch).capture_enabled ());
+              const auto flow = runtime::flow_context_t::current ();
               auto selected = select_instance_target (spot_id, intent);
               const auto deadline = std::chrono::steady_clock::now () + timeout;
               while (!selected
@@ -1816,6 +1882,23 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 selected.value (), spot_id, true,
                 !metadata_frame.empty (), timeout);
               const auto payload = encode_payload (*serializers);
+              runtime::protocol::application_payload_t application_payload{
+                packet_name,
+                serializers->content_type (request_type),
+                payload.to_bytes ()};
+              if (flow) {
+                  application_payload.flow_id = flow->flow_id;
+                  application_payload.flow_origin = flow->origin;
+              }
+              const auto correlation_id = instance_spot_activation_correlation (header);
+              const auto trace_mesh_name = selected.value ().target.mesh_name;
+              const auto trace_target_node = selected.value ().target.rid;
+              const auto trace_spot_id = spot_id;
+              const auto trace_packet_name = packet_name;
+              trace_instance_spot_activation (
+                dispatch, flow, message_flow_outcome_t::sent,
+                dispatch_message_kind_t::request, trace_packet_name, trace_mesh_name,
+                trace_target_node, trace_spot_id, correlation_id);
               auto completion = std::make_shared<
                 detail::task_completion_source_t<zlink::message_t>> ();
               auto output = completion->task ();
@@ -1825,16 +1908,20 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   metadata_frame.empty ()
                     ? std::optional<std::vector<std::uint8_t>>{}
                     : std::make_optional (std::move (metadata_frame)),
-                  {std::move (packet_name),
-                   serializers->content_type (request_type),
-                   payload.to_bytes ()}, timeout,
-                  [completion] (
+                  std::move (application_payload), timeout,
+                  [completion, dispatch, flow, trace_packet_name, trace_mesh_name,
+                   trace_target_node, trace_spot_id, correlation_id] (
                     runtime::foundation::operation_terminal_t terminal,
                     runtime::protocol::reply_header_t reply,
                     std::optional<runtime::protocol::application_payload_t>
                       application_reply) {
                       if (terminal
                           != runtime::foundation::operation_terminal_t::completed) {
+                          trace_instance_spot_activation (
+                            dispatch, flow, message_flow_outcome_t::error,
+                            dispatch_message_kind_t::request, trace_packet_name,
+                            trace_mesh_name, trace_target_node, trace_spot_id,
+                            correlation_id);
                           completion->complete (
                             result_t<zlink::message_t>::failure (
                               framework_error_kind_t::unavailable,
@@ -1842,6 +1929,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                           return;
                       }
                       if (reply.terminal_result != 0) {
+                          trace_instance_spot_activation (
+                            dispatch, flow, message_flow_outcome_t::error,
+                            dispatch_message_kind_t::request, trace_packet_name,
+                            trace_mesh_name, trace_target_node, trace_spot_id,
+                            correlation_id);
                           completion->complete (
                             detail::result_access_t::failure<zlink::message_t> (
                               runtime::messaging::request_failure_mapper_t{}
@@ -1852,12 +1944,22 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                           return;
                       }
                       if (!application_reply) {
+                          trace_instance_spot_activation (
+                            dispatch, flow, message_flow_outcome_t::error,
+                            dispatch_message_kind_t::request, trace_packet_name,
+                            trace_mesh_name, trace_target_node, trace_spot_id,
+                            correlation_id);
                           completion->complete (
                             result_t<zlink::message_t>::failure (
                               framework_error_kind_t::protocol_error,
                               "Instance Spot activation reply payload is missing"));
                           return;
                       }
+                      trace_instance_spot_activation (
+                        dispatch, flow, message_flow_outcome_t::reply_received,
+                        dispatch_message_kind_t::response, trace_packet_name,
+                        trace_mesh_name, trace_target_node, trace_spot_id,
+                        correlation_id);
                       completion->complete (
                         result_t<zlink::message_t>::success (
                           zlink::message_t::from (
@@ -1865,10 +1967,16 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                               application_reply->payload))));
                   });
               if (!submitted)
+              {
+                  trace_instance_spot_activation (
+                    dispatch, flow, message_flow_outcome_t::error,
+                    dispatch_message_kind_t::request, trace_packet_name, trace_mesh_name,
+                    trace_target_node, trace_spot_id, correlation_id);
                   completion->complete (
                     result_t<zlink::message_t>::failure (
                       framework_error_kind_t::unavailable,
                       "Instance Spot activation was not admitted"));
+              }
               return output;
           });
     }
@@ -2258,6 +2366,26 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
     }
     const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
+    std::shared_ptr<runtime::client_server::client_server_location_runtime_t>
+      client_server_runtime;
+    if (!_state->services.contains (
+          std::type_index (typeid (client_server_runtime_t)))) {
+        auto provider = _state->services.build_provider ();
+        client_server_runtime =
+          std::make_shared<runtime::client_server::client_server_location_runtime_t> (
+            _state->zlink.message_bus (), channel_snapshot,
+            provider.get_required<runtime::location_runtime_t> (),
+            provider.get_required<location_repository_t> (),
+            provider.get_required<location_repository_t> (), provider,
+            _state->serializers, _state->handlers,
+            options.client_server_server_advertise_hosts ());
+        _state->services.add_factory<client_server_runtime_t> (
+          [client_server_runtime] (service_provider_t &) {
+              return std::static_pointer_cast<client_server_runtime_t> (
+                client_server_runtime);
+          },
+          service_lifetime_t::singleton);
+    }
     add_hosted_service (std::make_unique<runtime::location_auto_connect_host_service_t> (
       _state->zlink.message_bus (), channel_snapshot, _state->handlers,
       _state->serializers,
@@ -2266,7 +2394,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       [mesh_node_service] {
           return mesh_node_service == nullptr
                  || mesh_node_service->republish_after_store_recovery ();
-      }));
+      },
+      std::move (client_server_runtime)));
     if (detail::has_inbound_channel (channel_snapshot)) {
         add_hosted_service (std::make_unique<runtime::channel_host_service_t> (
           _state->zlink.message_bus (), channel_snapshot, _state->handlers,

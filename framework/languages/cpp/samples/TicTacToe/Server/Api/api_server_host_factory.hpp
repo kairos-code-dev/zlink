@@ -36,8 +36,9 @@ class api_server_host_factory_t
         app.add_zlink_framework ([&] (zlink_framework_options_t &options) {
             options.configure_dispatch ()
               .message_flow (message_flow_log_mode_t::key_transitions)
-              .trace_log_file (flow_log_path (topology.log_dir, "api"))
-              .trace_label ("tictactoe-api");
+              .trace_log_file (
+                flow_log_path (topology.log_dir, "api-" + topology.api_node))
+              .trace_label ("tictactoe-api-" + topology.api_node);
 
             add_sample_location_store (options, topology);
             options.services ().add_singleton<sample_topology_t> (

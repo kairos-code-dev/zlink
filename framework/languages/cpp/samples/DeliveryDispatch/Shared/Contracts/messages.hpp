@@ -3,7 +3,9 @@
 
 #include <zlink/Contracts/Messaging/message.hpp>
 
+#include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -102,7 +104,7 @@ struct offer_delivery_result_msg_t
     std::string courier_id;
     int attempt{0};
     bool accepted{false};
-    std::string reason;
+    std::optional<std::string> reason;
 };
 
 struct offer_delivery_notify_t
@@ -121,7 +123,7 @@ struct courier_decision_msg_t
     std::string delivery_id;
     std::string courier_id;
     bool accepted{false};
-    std::string reason;
+    std::optional<std::string> reason;
 };
 
 /* 공통 sample spec §10: 상태 변경에는 알림 대상 고객을 함께 전달한다. Tracking은 이 값을
@@ -132,8 +134,8 @@ struct delivery_status_changed_req_t
     std::string delivery_id;
     std::string customer_id;
     std::string status;
-    std::string courier_id;
-    std::string occurred_at;
+    std::optional<std::string> courier_id;
+    std::int64_t occurred_at_unix_ms{0};
 };
 
 struct delivery_status_updated_msg_t
@@ -142,8 +144,8 @@ struct delivery_status_updated_msg_t
     std::string delivery_id;
     std::string customer_id;
     std::string status;
-    std::string courier_id;
-    std::string occurred_at;
+    std::optional<std::string> courier_id;
+    std::int64_t occurred_at_unix_ms{0};
 };
 
 struct delivery_status_changed_res_t
@@ -158,10 +160,12 @@ struct delivery_status_notify_t
     static constexpr const char *packet_name = "DeliveryStatusNotify";
     std::string delivery_id;
     std::string status;
-    std::string courier_id;
-    std::string occurred_at;
+    std::optional<std::string> courier_id;
+    std::int64_t occurred_at_unix_ms{0};
 };
 
+/* Test/evidence-only HTTP assertion messages. They expose the runner's server evidence and do
+ * not belong to the DeliveryDispatch client or role-to-role contract. */
 struct server_assertion_req_t
 {
     static constexpr const char *packet_name = "ServerAssertionReq";
@@ -185,6 +189,16 @@ inline std::string json_string (const nlohmann::json &json,
         return json.value (camel, fallback);
     }
     return json.value (snake, fallback);
+}
+
+inline std::optional<std::string>
+json_optional_string (const nlohmann::json &json, const char *camel, const char *snake)
+{
+    const auto name = json.contains (camel) ? camel : snake;
+    if (!json.contains (name) || json.at (name).is_null ()) {
+        return std::nullopt;
+    }
+    return json.at (name).get<std::string> ();
 }
 
 inline void to_json (nlohmann::json &json, const create_delivery_req_t &value)
@@ -313,7 +327,7 @@ inline void to_json (nlohmann::json &json, const offer_delivery_result_msg_t &va
             {"courierId", value.courier_id},
             {"attempt", value.attempt},
             {"accepted", value.accepted},
-            {"reason", value.reason}};
+            {"reason", value.reason ? nlohmann::json (*value.reason) : nlohmann::json (nullptr)}};
 }
 
 inline void from_json (const nlohmann::json &json, offer_delivery_result_msg_t &value)
@@ -322,7 +336,7 @@ inline void from_json (const nlohmann::json &json, offer_delivery_result_msg_t &
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.attempt = json.value ("attempt", 0);
     value.accepted = json.value ("accepted", false);
-    value.reason = json.value ("reason", std::string{});
+    value.reason = json_optional_string (json, "reason", "reason");
 }
 
 inline void to_json (nlohmann::json &json, const offer_delivery_notify_t &value)
@@ -346,7 +360,7 @@ inline void to_json (nlohmann::json &json, const courier_decision_msg_t &value)
     json = {{"deliveryId", value.delivery_id},
             {"courierId", value.courier_id},
             {"accepted", value.accepted},
-            {"reason", value.reason}};
+            {"reason", value.reason ? nlohmann::json (*value.reason) : nlohmann::json (nullptr)}};
 }
 
 inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value)
@@ -354,7 +368,7 @@ inline void from_json (const nlohmann::json &json, courier_decision_msg_t &value
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.courier_id = json_string (json, "courierId", "courier_id");
     value.accepted = json.value ("accepted", false);
-    value.reason = json.value ("reason", "");
+    value.reason = json_optional_string (json, "reason", "reason");
 }
 
 inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &value)
@@ -362,8 +376,9 @@ inline void to_json (nlohmann::json &json, const delivery_status_changed_req_t &
     json = {{"deliveryId", value.delivery_id},
             {"customerId", value.customer_id},
             {"status", value.status},
-            {"courierId", value.courier_id},
-            {"occurredAt", value.occurred_at}};
+            {"courierId", value.courier_id ? nlohmann::json (*value.courier_id)
+                                             : nlohmann::json (nullptr)},
+            {"occurredAtUnixMs", value.occurred_at_unix_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, delivery_status_changed_req_t &value)
@@ -371,8 +386,8 @@ inline void from_json (const nlohmann::json &json, delivery_status_changed_req_t
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.customer_id = json_string (json, "customerId", "customer_id");
     value.status = json.value ("status", "");
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+    value.courier_id = json_optional_string (json, "courierId", "courier_id");
+    value.occurred_at_unix_ms = json.value ("occurredAtUnixMs", std::int64_t{0});
 }
 
 inline void to_json (nlohmann::json &json, const delivery_status_updated_msg_t &value)
@@ -380,8 +395,9 @@ inline void to_json (nlohmann::json &json, const delivery_status_updated_msg_t &
     json = {{"deliveryId", value.delivery_id},
             {"customerId", value.customer_id},
             {"status", value.status},
-            {"courierId", value.courier_id},
-            {"occurredAt", value.occurred_at}};
+            {"courierId", value.courier_id ? nlohmann::json (*value.courier_id)
+                                             : nlohmann::json (nullptr)},
+            {"occurredAtUnixMs", value.occurred_at_unix_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, delivery_status_updated_msg_t &value)
@@ -389,8 +405,8 @@ inline void from_json (const nlohmann::json &json, delivery_status_updated_msg_t
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.customer_id = json_string (json, "customerId", "customer_id");
     value.status = json.value ("status", "");
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+    value.courier_id = json_optional_string (json, "courierId", "courier_id");
+    value.occurred_at_unix_ms = json.value ("occurredAtUnixMs", std::int64_t{0});
 }
 
 inline void to_json (nlohmann::json &json, const delivery_status_changed_res_t &value)
@@ -408,16 +424,17 @@ inline void to_json (nlohmann::json &json, const delivery_status_notify_t &value
 {
     json = {{"deliveryId", value.delivery_id},
             {"status", value.status},
-            {"courierId", value.courier_id},
-            {"occurredAt", value.occurred_at}};
+            {"courierId", value.courier_id ? nlohmann::json (*value.courier_id)
+                                             : nlohmann::json (nullptr)},
+            {"occurredAtUnixMs", value.occurred_at_unix_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, delivery_status_notify_t &value)
 {
     value.delivery_id = json_string (json, "deliveryId", "delivery_id");
     value.status = json.value ("status", "");
-    value.courier_id = json_string (json, "courierId", "courier_id");
-    value.occurred_at = json_string (json, "occurredAt", "occurred_at");
+    value.courier_id = json_optional_string (json, "courierId", "courier_id");
+    value.occurred_at_unix_ms = json.value ("occurredAtUnixMs", std::int64_t{0});
 }
 
 inline void to_json (nlohmann::json &json, const server_assertion_req_t &value)

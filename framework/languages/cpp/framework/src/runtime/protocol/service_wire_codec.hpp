@@ -5,6 +5,8 @@
 
 #include <service_wire_constants.hpp>
 
+#include <zlink/framework/contracts/dispatch/execution.hpp>
+
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -40,6 +42,10 @@ struct application_payload_t
     std::string packet_name;
     std::string content_type;
     std::vector<std::uint8_t> payload;
+    /* Flow context is framework-owned and is present only on a traced
+     * activation payload. It is not application metadata. */
+    std::optional<std::string> flow_id;
+    std::optional<flow_origin_t> flow_origin;
 
     friend bool operator== (const application_payload_t &,
                             const application_payload_t &) = default;

@@ -37,7 +37,7 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/PlayActorObserveMilestoneHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play_actor_observe_milestone_handler.hpp` | spot-handler | done | observer actor를 local Entry Spot milestone observer로 등록한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/PlayerWinMilestoneEventHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/player_win_milestone_event_handler.hpp` | pubsub-handler | done | milestone pub/sub event를 observer bound session push로 바꾼다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/TicTacToeGame.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/tictactoe_game_spot.hpp`; `tictactoe_game_contract_mapper.hpp`; `tictactoe_game_models.hpp` | spot | done | room Spot lifecycle, join/leave, move, timer, domain 호출, push 전송이 대응한다. |
-| `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorLeaveGameHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play_actor_leave_game_handler.hpp` | spot-handler | done | `LeaveGameReq`는 reply 없는 actor send command로 등록하고 Entry Spot 복귀 흐름을 실행한다. |
+| `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorLeaveGameHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play_actor_leave_game_handler.hpp` | spot-handler | done | `LeaveGameMsg`는 reply 없는 actor send로 등록하고 Entry Spot 복귀 흐름을 실행한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/PlayActorPlaceMarkHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/play_actor_place_mark_handler.hpp` | spot-handler | done | mark request를 domain state 변경으로 연결한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/TicTacToeGameTimerHandler.cs` | `Server/Play/Infrastructure/ZLink/Spots/TicTacToeGameSpot/Handlers/tictactoe_game_spot_created_handler.hpp` | timer-handler | done | game Spot 생성 뒤 timer 등록과 timeout 흐름이 대응한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/TicTacToeGameRoomProvisioner.cs` | `Server/Play/Application/GameCreation/tictactoe_game_creator.hpp`; `Server/Play/Infrastructure/ZLink/Handlers/create_game_handler.hpp`; `Server/Configuration/location_store.hpp` | infrastructure | done | public Spot manager가 전역 `RoomId`를 get-or-create하고 Location Store가 current route를 관리한다. |
@@ -56,9 +56,21 @@ raw frame 조작, 샘플 전용 route helper로 공통 계약을 우회하지 �
 | `common: Spot pub/sub milestone fan-out` | `Server/Play/Infrastructure/ZLink/Spots/EntrySpot/tictactoe_entry_spot.hpp`; `Client/tictactoe_client_scenario.hpp` | message-flow | done | room Spot publish와 Entry Spot subscribe handler로 observer milestone push를 검증한다. |
 | `common: public connector wait interface로 push 대기` | `Client/tictactoe_client_scenario.hpp` | validation | done | wait filter와 future를 직접 사용하고 sample-local polling으로 push 대기를 숨기지 않는다. |
 | `common: tictactoe=completed marker` | `Client/main.cpp`; `run_sample.sh`; `run_sample.ps1` | validation | done | runner가 client log marker를 검사한다. |
-| `common: stream-inbound marker와 message-flow evidence` | `Client/main.cpp`; `run_sample.sh`; `run_sample.ps1`; role `main.cpp` trace option | validation | done | runner가 client marker, `LeaveGameReq` 완료, Entry Spot destroy 완료, sample log directory message-flow 기록을 검사한다. |
+| `common: stream-inbound marker와 message-flow evidence` | `Client/main.cpp`; `run_sample.sh`; `run_sample.ps1`; role `main.cpp` trace option | validation | done | runner가 client marker, `LeaveGameMsg` 완료, Entry Spot destroy 완료, sample log directory message-flow 기록을 검사한다. |
 | `common: Domain은 framework 타입을 모름` | `Server/Play/Domain/TicTacToe/tictactoe_match.hpp` | layering | done | board, turn, win/draw 판정은 domain type에 있고 framework 배선은 Infrastructure에 있다. |
 
 ## 남은 gap
 
-없음. TicTacToe 샘플은 현재 inventory 기준에서 `pending` 또는 `gap` 상태를 남기지 않는다.
+현재 sample process와 static contract 기준의 pending 항목은 없다. `CreateGameHttpReq.gameName`
+의 nullable 표현, `CreateGameHttpRes`의 `playEndpoints`·`playNodes`, `JoinGameFailedNotify`와
+`LeaveGameMsg`를 확인했다. `CreateGameReq`와 `TicTacToeGameJoin*`는 API와 Play 사이의
+internal message이며 public client contract에 추가하지 않는다. 전체 C++ S1 closure와 common
+E2E ID 추적은 이 sample inventory의 범위를 넘으므로 ledger에서 별도로 판정한다.
+
+## 현재 계약·process evidence
+
+- `LeaveGameMsg`는 actor send로 등록되고 reply를 기다리지 않는다.
+- API별 flow trace를 `api-a`와 `api-b` 파일로 분리해 source, dispatch, reply와 terminal
+  결과를 확인한다.
+- 2026-08-03 개별 runner 8회와 official six-sample aggregate가 모두 exit code 0이다.
+  최신 aggregate log는 `/tmp/zlink-cpp-official-sample-aggregate-final-20260803.log`다.

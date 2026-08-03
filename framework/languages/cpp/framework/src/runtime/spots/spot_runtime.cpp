@@ -314,7 +314,8 @@ void report_spot_dispatch_error (const std::shared_ptr<detail::spot_node_builder
                                  std::optional<std::string> topic = std::nullopt,
                                  std::optional<std::string> spot_id = std::nullopt,
                                  std::optional<std::string> actor_id = std::nullopt,
-                                 std::exception_ptr exception = nullptr)
+                                 std::exception_ptr exception = nullptr,
+                                 std::optional<std::string> correlation_id = std::nullopt)
 {
     if (!state) {
         return;
@@ -322,8 +323,8 @@ void report_spot_dispatch_error (const std::shared_ptr<detail::spot_node_builder
     detail::dispatch_error_reporter_t (state->dispatch)
       .report (message_dispatch_error_event_t{
         surface, message_kind, reason, action, std::move (packet_name), std::nullopt,
-        std::move (topic), std::move (spot_id), std::move (actor_id), std::nullopt, std::nullopt,
-        std::move (exception)});
+        std::move (topic), std::move (spot_id), std::move (actor_id), std::nullopt,
+        std::move (correlation_id), std::move (exception), std::nullopt, std::nullopt});
 }
 
 void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder_state_t> &state,
@@ -333,7 +334,8 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
                                  std::string_view packet_name = {},
                                  std::string_view topic = {},
                                  std::string_view spot_id = {},
-                                 std::string_view actor_id = {})
+                                 std::string_view actor_id = {},
+                                 std::string_view correlation_id = {})
 {
     if (!state) {
         return;
@@ -349,7 +351,7 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
         };
         return message_flow_event_t{
           outcome,          surface,          message_kind, field (packet_name),
-          std::nullopt,     field (topic),    std::nullopt, std::nullopt,
+          std::nullopt,     field (topic),    field (correlation_id), std::nullopt,
           field (spot_id), field (actor_id), std::nullopt};
     });
 }
@@ -711,27 +713,6 @@ encode_spot_route_parts (runtime::messaging::message_kind_t kind,
     return envelope.encode_raw_body_parts (header, std::move (payload));
 }
 
-framework_exception_t native_request_error (zlink::request_result_t result, std::string message)
-{
-    switch (result) {
-        case zlink::request_result_t::not_found:
-            return framework_exception_t (framework_error_kind_t::not_found,
-                                          std::move (message));
-        case zlink::request_result_t::timed_out:
-            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
-                                                    std::move (message));
-        case zlink::request_result_t::not_connected:
-            return detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                                    std::move (message));
-        case zlink::request_result_t::terminated:
-            return detail::make_boundary_exception (detail::boundary_error_t::shutdown,
-                                                    std::move (message));
-        default:
-            return framework_exception_t (framework_error_kind_t::internal_failure,
-                                          std::move (message));
-    }
-}
-
 std::optional<std::uint64_t> resolve_target_spot_generation (
   const std::shared_ptr<detail::spot_node_builder_state_t> &state,
   const zlink::routing_id_t &target_node_rid,
@@ -825,7 +806,8 @@ request_spot_mesh_parts (const std::shared_ptr<detail::spot_context_state_t> &st
     }
     catch (const zlink::request_error_t &error) {
         return detail::result_access_t::failure<runtime::messaging::message_parts_t> (
-          native_request_error (error.result (), error.what ()));
+          runtime::messaging::map_request_result_exception (
+            error.result (), error.what ()));
     }
     catch (const zlink::submit_error_t &error) {
         return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, error.what ());
@@ -917,6 +899,24 @@ bool spot_context_state_t::try_post_serial (std::string name, std::function<void
     if (!serial_queue) {
         work ();
         return true;
+    }
+    return serial_queue->try_post (std::move (name), std::move (work));
+}
+
+bool spot_context_state_t::try_post_serial_after_current_turn (
+  std::string name, std::function<void ()> work)
+{
+    if (!serial_queue) {
+        work ();
+        return true;
+    }
+    /* A handler may defer relocation readiness before its turn completes.
+     * Work posted as a normal next turn then observes that readiness fence and
+     * is rejected. Run lifecycle cleanup in the queue's after-active phase so
+     * it executes after the borrowed handler reference is released but before
+     * the normal next-turn continuation. */
+    if (owns_current_serial_turn ()) {
+        return serial_queue->try_post_deferred (std::move (name), std::move (work));
     }
     return serial_queue->try_post (std::move (name), std::move (work));
 }
@@ -1396,22 +1396,58 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
   void *actor,
   std::function<void (void *, const actor_ref_t &)> update_actor_ref)
 {
+    report_spot_dispatch_trace (
+      _state ? _state->node : nullptr, message_flow_outcome_t::received,
+      dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
+      "actor_leave", {}, _state ? _state->spot_id : std::string_view{},
+      actor_ref.empty () ? std::string_view{} : actor_ref.actor_id ());
     ensure_submission_open ();
     if (!_state || !_state->node || actor_ref.empty ()) {
         return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
           framework_error_kind_t::not_found, "actor ref is empty"));
     }
     if (_state->is_current_callback_thread ()) {
+        report_spot_dispatch_trace (
+          _state->node, message_flow_outcome_t::dispatched,
+          dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
+          "actor_leave_deferred", {}, _state->spot_id, actor_ref.actor_id ());
         auto state = _state;
         const auto deferred_ref = actor_ref;
-        const auto posted = state->try_post_serial (
+        const auto posted = state->try_post_serial_after_current_turn (
           "spot-actor-leave-after-handler",
           [state, deferred_ref, actor_type, actor,
            update_actor_ref = std::move (update_actor_ref)] () mutable {
-              (void) spot_context_t (state)
-                .leave_actor_erased (deferred_ref, actor_type, actor,
-                                     std::move (update_actor_ref))
-                .result ();
+              report_spot_dispatch_trace (
+                state->node, message_flow_outcome_t::dispatched,
+                dispatch_error_surface_t::spot_actor,
+                dispatch_message_kind_t::actor_request,
+                "actor_leave_deferred_execute", {}, state->spot_id,
+                deferred_ref.actor_id ());
+              try {
+                  const auto completed =
+                    spot_context_t (state)
+                      .leave_actor_erased (deferred_ref, actor_type, actor,
+                                           std::move (update_actor_ref))
+                      .result ();
+                  report_spot_dispatch_trace (
+                    state->node,
+                    completed ? message_flow_outcome_t::replied
+                              : message_flow_outcome_t::error,
+                    dispatch_error_surface_t::spot_actor,
+                    dispatch_message_kind_t::actor_request,
+                    completed ? "actor_leave_deferred_complete"
+                              : "actor_leave_deferred_failed",
+                    {}, state->spot_id, deferred_ref.actor_id ());
+              }
+              catch (...) {
+                  report_spot_dispatch_trace (
+                    state->node, message_flow_outcome_t::error,
+                    dispatch_error_surface_t::spot_actor,
+                    dispatch_message_kind_t::actor_request,
+                    "actor_leave_deferred_exception", {}, state->spot_id,
+                    deferred_ref.actor_id ());
+                  throw;
+              }
           });
         if (!posted) {
             return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
@@ -1430,6 +1466,10 @@ task_t<actor_ref_t> spot_context_t::leave_actor_erased (
       std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ());
     const auto found_location = node->actor_spot_ids.find (key);
     if (found_location == node->actor_spot_ids.end ()) {
+        report_spot_dispatch_trace (
+          node, message_flow_outcome_t::replied,
+          dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
+          "actor_leave_noop", {}, _state->spot_id, actor_ref.actor_id ());
         return task_t<actor_ref_t> (result_t<actor_ref_t>::success (actor_ref));
     }
     if (found_location->second != _state->spot_id) {
@@ -1679,7 +1719,7 @@ task_t<void> entry_spot_context_t::destroy_actor_erased (const actor_ref_t &acto
     if (_state->is_current_callback_thread ()) {
         auto state = _state;
         const auto deferred_actor = actor;
-        const auto posted = state->try_post_serial (
+        const auto posted = state->try_post_serial_after_current_turn (
           "entry-spot-actor-destroy-after-handler",
           [state, deferred_actor] {
               (void) entry_spot_context_t (state)
@@ -5524,23 +5564,57 @@ task_t<zlink::message_t> spot_node_runtime_t::dispatch_instance_activation (
   std::string content_type,
   std::vector<std::uint8_t> payload,
   std::map<std::string, std::string> metadata,
-  bool,
+  bool request,
   std::string correlation_id,
   service_provider_t &services,
-  serializer_registry_t &serializers)
+  serializer_registry_t &serializers,
+  std::optional<std::string> flow_id,
+  std::optional<flow_origin_t> flow_origin)
 {
+    /* Instance Spot cold activation carries the first application message
+     * outside the normal Spot route record. Keep it in the same diagnostic
+     * stream as a Ready Spot dispatch so an operator can follow activation,
+     * handler completion, and a reply in one file. The activation payload
+     * carries the framework-owned flow pair when tracing is enabled; a target
+     * creates a new inbound flow only when the source did not carry one. */
+    const auto capture_flow =
+      detail::message_flow_tracer_t (_state->dispatch).capture_enabled ();
+    auto flow_scope = capture_flow
+                        ? runtime::flow_context_t::enter (
+                            std::move (flow_id), flow_origin, true,
+                            flow_origin_t::inbound)
+                        : runtime::flow_context_t::enter_current_or_create (
+                            flow_origin_t::inbound, false);
     auto context = find_context (spot_id);
     if (!context || !context->_state->spot_instance
         || std::find (_state->snapshot.instance_spot_names.begin (),
                       _state->snapshot.instance_spot_names.end (),
                       context->_state->spot_name)
              == _state->snapshot.instance_spot_names.end ()) {
-        return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
+        const framework_exception_t error (
           framework_error_kind_t::not_found,
-          "Instance Spot activation target is not materialized"));
+          "Instance Spot activation target is not materialized");
+        report_spot_dispatch_error (
+          _state, dispatch_error_surface_t::spot_route,
+          request ? dispatch_message_kind_t::request : dispatch_message_kind_t::send,
+          dispatch_reason_from_error (error.kind ()),
+          request ? dispatch_error_action_t::reply_error : dispatch_error_action_t::drop,
+          packet_name, std::nullopt, std::string (spot_id), std::nullopt,
+          std::make_exception_ptr (error), correlation_id);
+        return task_t<zlink::message_t> (
+          detail::result_access_t::failure<zlink::message_t> (error));
     }
     auto state = context->_state;
-    return spot_handler_registry_t (state).invoke_erased (
+    const auto message_kind = request ? dispatch_message_kind_t::request
+                                      : dispatch_message_kind_t::send;
+    report_spot_dispatch_trace (
+      _state, message_flow_outcome_t::received,
+      dispatch_error_surface_t::spot_route, message_kind, packet_name, {},
+      std::string (spot_id), {}, correlation_id);
+    const auto trace_packet_name = packet_name;
+    const auto trace_spot_id = std::string (spot_id);
+    const auto trace_correlation_id = correlation_id;
+    auto handler_task = spot_handler_registry_t (state).invoke_erased (
       spot_handler_kind_t::packet, packet_name, {}, std::type_index (typeid (void)),
       state->spot_instance.get (), nullptr, services, serializers,
       zlink::message_t::from (payload),
@@ -5548,6 +5622,32 @@ task_t<zlink::message_t> spot_node_runtime_t::dispatch_instance_activation (
                              .values = std::move (metadata),
                              .mesh_name = state->mesh_name,
                              .correlation_id = std::move (correlation_id)});
+    detail::observe_task_completion (
+      handler_task,
+      [node = _state, request, message_kind, trace_packet_name, trace_spot_id,
+       trace_correlation_id] (const result_t<zlink::message_t> &result) {
+          if (result) {
+              report_spot_dispatch_trace (
+                node,
+                request ? message_flow_outcome_t::replied
+                        : message_flow_outcome_t::dispatched,
+                dispatch_error_surface_t::spot_route,
+                request ? dispatch_message_kind_t::response : message_kind,
+                trace_packet_name, {}, trace_spot_id, {}, trace_correlation_id);
+              return;
+          }
+          const auto *error = result.error ();
+          const framework_exception_t exception (
+            result.error_kind (),
+            error != nullptr ? error->what () : "Instance Spot handler failed");
+          report_spot_dispatch_error (
+            node, dispatch_error_surface_t::spot_route, message_kind,
+            dispatch_reason_from_error (exception.kind ()),
+            request ? dispatch_error_action_t::reply_error : dispatch_error_action_t::drop,
+            trace_packet_name, std::nullopt, trace_spot_id, std::nullopt,
+            std::make_exception_ptr (exception), trace_correlation_id);
+      });
+    return handler_task;
 }
 
 std::optional<spot_info_t> spot_node_runtime_t::find_spot (spot_id_t spot_id) const
@@ -6170,7 +6270,8 @@ result_t<runtime::messaging::message_parts_t> spot_node_runtime_t::request_spot_
     }
     catch (const zlink::request_error_t &error) {
         return detail::result_access_t::failure<runtime::messaging::message_parts_t> (
-          native_request_error (error.result (), error.what ()));
+          runtime::messaging::map_request_result_exception (
+            error.result (), error.what ()));
     }
     catch (const zlink::submit_error_t &error) {
         return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, error.what ());

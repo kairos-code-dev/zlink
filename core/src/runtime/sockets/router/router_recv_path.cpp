@@ -55,7 +55,10 @@ void format_blob_routing_id_debug (const zlink::blob_t &routing_id_, char *buf_,
     format_routing_id_debug (&rid, buf_, buf_size_);
 }
 
-void copy_router_pipe_source_rid (zlink::pipe_t *pipe_, zlink_routing_id_t *out_)
+}
+
+void zlink::router_t::copy_router_pipe_source_rid (pipe_t *pipe_,
+                                                    zlink_routing_id_t *out_) const
 {
     if (!out_)
         return;
@@ -64,19 +67,25 @@ void copy_router_pipe_source_rid (zlink::pipe_t *pipe_, zlink_routing_id_t *out_
     if (!pipe_)
         return;
 
-    const zlink::blob_t &routing_id = pipe_->get_routing_id ();
-    if (routing_id.size () > 0) {
-        zlink::copy_routing_id_from_bytes (routing_id.data (), routing_id.size (), out_);
+    //  A reciprocal duplicate keeps its physical pipe under an internal
+    //  standby ID, while the application-facing peer identity remains the
+    //  original node routing ID. Request replies still retain source_pipe,
+    //  so normalizing this metadata does not change the selected transport.
+    const std::map<pipe_t *, blob_t>::const_iterator standby =
+      _standby_pipes.find (pipe_);
+    const blob_t *routing_id =
+      standby != _standby_pipes.end () ? &standby->second : &pipe_->get_routing_id ();
+    if (routing_id->size () > 0) {
+        copy_routing_id_from_bytes (routing_id->data (), routing_id->size (), out_);
         return;
     }
 
-    zlink::pipe_t *peer = pipe_->get_peer ();
+    pipe_t *peer = pipe_->get_peer ();
     if (!peer)
         return;
 
-    const zlink::blob_t &peer_routing_id = peer->get_routing_id ();
-    zlink::copy_routing_id_from_bytes (peer_routing_id.data (), peer_routing_id.size (), out_);
-}
+    const blob_t &peer_routing_id = peer->get_routing_id ();
+    copy_routing_id_from_bytes (peer_routing_id.data (), peer_routing_id.size (), out_);
 }
 
 void zlink::router_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)

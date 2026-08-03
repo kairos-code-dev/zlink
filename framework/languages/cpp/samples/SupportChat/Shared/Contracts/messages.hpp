@@ -85,6 +85,8 @@ struct authenticate_res_t
     std::string role;
 };
 
+/* Internal role-to-role messages. They create and locate application actors and conversation
+ * state; they are not messages that a sample user sends through the public client contract. */
 struct authenticate_user_req_t
 {
     static constexpr const char *packet_name = "AuthenticateUserReq";
@@ -112,8 +114,7 @@ struct open_conversation_api_req_t
 struct open_conversation_api_res_t
 {
     static constexpr const char *packet_name = "OpenConversationApiRes";
-    std::string conversation_id;
-    std::string status;
+    conversation_state_t state;
 };
 
 struct conversation_create_req_t
@@ -121,6 +122,7 @@ struct conversation_create_req_t
     std::string customer_actor_id;
     std::string customer_display_name;
     std::string subject;
+    std::int64_t created_at_unix_ms{0};
 };
 
 struct conversation_create_res_t
@@ -204,7 +206,6 @@ struct join_conversation_failed_notify_t
     static constexpr const char *packet_name = "JoinConversationFailedNotify";
     std::string conversation_id;
     std::string error;
-    bool is_retriable{false};
 };
 
 struct send_chat_message_req_t
@@ -220,9 +221,9 @@ struct send_chat_message_res_t
     conversation_state_t state;
 };
 
-struct set_typing_req_t
+struct set_typing_msg_t
 {
-    static constexpr const char *packet_name = "SetTypingReq";
+    static constexpr const char *packet_name = "SetTypingMsg";
     bool is_typing{false};
 };
 
@@ -419,20 +420,20 @@ inline void from_json (const nlohmann::json &json, open_conversation_api_req_t &
 
 inline void to_json (nlohmann::json &json, const open_conversation_api_res_t &value)
 {
-    json = {{"conversationId", value.conversation_id}, {"status", value.status}};
+    json = {{"state", value.state}};
 }
 
 inline void from_json (const nlohmann::json &json, open_conversation_api_res_t &value)
 {
-    value.conversation_id = json.value ("conversationId", "");
-    value.status = json.value ("status", "");
+    value.state = json.value ("state", conversation_state_t{});
 }
 
 inline void to_json (nlohmann::json &json, const conversation_create_req_t &value)
 {
     json = {{"customerActorId", value.customer_actor_id},
             {"customerDisplayName", value.customer_display_name},
-            {"subject", value.subject}};
+            {"subject", value.subject},
+            {"createdAtUnixMs", value.created_at_unix_ms}};
 }
 
 inline void from_json (const nlohmann::json &json, conversation_create_req_t &value)
@@ -440,6 +441,7 @@ inline void from_json (const nlohmann::json &json, conversation_create_req_t &va
     value.customer_actor_id = json.value ("customerActorId", "");
     value.customer_display_name = json.value ("customerDisplayName", "");
     value.subject = json.value ("subject", "");
+    value.created_at_unix_ms = json.value ("createdAtUnixMs", std::int64_t{0});
 }
 
 inline void to_json (nlohmann::json &json, const conversation_create_res_t &value)
@@ -565,9 +567,7 @@ inline void from_json (const nlohmann::json &json, join_conversation_res_t &valu
 inline void to_json (nlohmann::json &json,
                      const join_conversation_failed_notify_t &value)
 {
-    json = {{"conversationId", value.conversation_id},
-            {"error", value.error},
-            {"isRetriable", value.is_retriable}};
+    json = {{"conversationId", value.conversation_id}, {"error", value.error}};
 }
 
 inline void from_json (const nlohmann::json &json,
@@ -575,7 +575,6 @@ inline void from_json (const nlohmann::json &json,
 {
     value.conversation_id = json.value ("conversationId", "");
     value.error = json.value ("error", "");
-    value.is_retriable = json.value ("isRetriable", false);
 }
 
 inline void to_json (nlohmann::json &json, const send_chat_message_res_t &value)
@@ -589,12 +588,12 @@ inline void from_json (const nlohmann::json &json, send_chat_message_res_t &valu
     value.state = json.value ("state", conversation_state_t{});
 }
 
-inline void to_json (nlohmann::json &json, const set_typing_req_t &value)
+inline void to_json (nlohmann::json &json, const set_typing_msg_t &value)
 {
     json = {{"isTyping", value.is_typing}};
 }
 
-inline void from_json (const nlohmann::json &json, set_typing_req_t &value)
+inline void from_json (const nlohmann::json &json, set_typing_msg_t &value)
 {
     value.is_typing = json.value ("isTyping", false);
 }
@@ -683,6 +682,8 @@ inline void from_json (const nlohmann::json &json, typing_changed_notify_t &valu
     value.state = json.value ("state", conversation_state_t{});
 }
 
+/* Test/evidence-only HTTP assertion messages. The runner uses them to inspect server-owned
+ * evidence; they are not a public SupportChat application API. */
 struct supportchat_server_assertion_req_t
 {
 };

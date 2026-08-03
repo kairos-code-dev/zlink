@@ -25,6 +25,9 @@ namespace
 constexpr std::size_t max_completion_control_parts = 64;
 constexpr std::size_t max_completion_control_bytes = 256u * 1024u;
 constexpr std::size_t max_pending_completion_controls = 1024;
+constexpr std::size_t max_pending_unadmitted_applications = 1024;
+constexpr std::size_t max_pending_unadmitted_application_bytes =
+  16u * 1024u * 1024u;
 
 bool mesh_trace_enabled ()
 {
@@ -36,6 +39,13 @@ void trace_mesh (const std::string &message)
 {
     if (mesh_trace_enabled ())
         std::cerr << "zlink mesh " << message << '\n';
+}
+
+std::string trace_owner_key (const void *owner)
+{
+    std::ostringstream stream;
+    stream << std::hex << reinterpret_cast<std::uintptr_t> (owner);
+    return stream.str ();
 }
 
 bool completion_control_command (protocol::command kind) noexcept
@@ -73,6 +83,35 @@ bool completion_control_size_is_bounded (
         total += part.size ();
     }
     return true;
+}
+
+bool application_command (protocol::command kind) noexcept
+{
+    switch (kind) {
+        case protocol::command::nodeSend:
+        case protocol::command::nodeRequest:
+        case protocol::command::channelSend:
+        case protocol::command::channelRequest:
+        case protocol::command::spotSend:
+        case protocol::command::spotRequest:
+        case protocol::command::actorSend:
+        case protocol::command::actorRequest:
+            return true;
+        default:
+            return false;
+    }
+}
+
+std::size_t raw_received_bytes (
+  const detail::backend::raw_received_t &received) noexcept
+{
+    std::size_t total = 0;
+    for (const auto &part : received.parts) {
+        if (part.size () > std::numeric_limits<std::size_t>::max () - total)
+            return std::numeric_limits<std::size_t>::max ();
+        total += part.size ();
+    }
+    return total;
 }
 
 std::string advertised_endpoint (
@@ -134,7 +173,8 @@ bool raw_mesh_byte_vector_less_t::operator() (
 void raw_mesh_connection_candidates_t::ready (
   const std::vector<std::uint8_t> &node_routing_id,
   std::vector<std::uint8_t> connection_id,
-  service_connection_direction_t direction)
+  service_connection_direction_t direction,
+  std::string remote_endpoint)
 {
     if (node_routing_id.empty () || connection_id.empty ())
         return;
@@ -143,7 +183,7 @@ void raw_mesh_connection_candidates_t::ready (
     physical.insert_or_assign (
       std::move (key),
       raw_mesh_connection_candidate_t{
-        std::move (connection_id), direction,
+        std::move (connection_id), std::move (remote_endpoint), direction,
         _next_ready_sequence++});
     if (_next_ready_sequence == 0)
         _next_ready_sequence = 1;
@@ -306,6 +346,8 @@ void raw_mesh_node_owner_t::close () noexcept
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
         _closed = true;
+        _pending_unadmitted_applications.clear ();
+        _pending_unadmitted_application_bytes = 0;
         port = std::move (_port);
         monitor = std::move (_monitor);
         monitor_poller = std::move (_monitor_poller);
@@ -455,6 +497,7 @@ peer_admission_result_t raw_mesh_node_owner_t::admit_peer (
         return peer_admission_result_t::invalid_descriptor;
     }
     auto node_routing_id = descriptor.node_routing_id;
+    const auto lifecycle_generation = descriptor.lifecycle_generation;
     auto liveness_connection_id = connection_id;
     const auto admitted =
       _topology.admit (std::move (descriptor), std::move (connection_id));
@@ -470,19 +513,9 @@ bool raw_mesh_node_owner_t::send_to_node (
   const std::vector<std::uint8_t> &target_routing_id,
   const protocol::application_payload_t &application_payload)
 {
-    std::shared_ptr<detail::backend::raw_route_port_t> port;
-    {
-        std::lock_guard lifecycle_lock (_lifecycle_mutex);
-        port = _port;
-    }
-    if (!port) {
-        return false;
-    }
-    detail::backend::raw_message_t wire;
-    wire.reserve (2);
-    wire.push_back (protocol::encode_node_send_header ());
-    wire.push_back (protocol::encode_application_payload (application_payload));
-    return port->send (target_routing_id, wire);
+    return send_with_header (
+      target_routing_id, protocol::encode_node_send_header (),
+      application_payload);
 }
 
 bool raw_mesh_node_owner_t::request_to_node (
@@ -529,52 +562,30 @@ bool raw_mesh_node_owner_t::request_to_target (
       application_payload, timeout, std::move (callback));
 }
 
-bool raw_mesh_node_owner_t::request_with_header (
-  const std::vector<std::uint8_t> &target_routing_id,
-  const std::function<std::vector<std::uint8_t> (std::uint64_t)> &header,
-  const protocol::application_payload_t &application_payload,
-  std::chrono::milliseconds timeout,
-  foundation::operation_registry_t::callback_t callback)
+bool raw_mesh_node_owner_t::submit_request (
+  const std::shared_ptr<detail::backend::raw_route_port_t> &port,
+  const pending_request_t &request,
+  std::chrono::milliseconds timeout)
 {
-    if (timeout <= std::chrono::milliseconds::zero ()) {
-        throw std::invalid_argument ("raw mesh request timeout must be positive");
-    }
-    std::shared_ptr<detail::backend::raw_route_port_t> port;
-    std::uint64_t correlation = 0;
-    const auto local = _topology.local_descriptor ();
-    {
-        std::lock_guard lifecycle_lock (_lifecycle_mutex);
-        port = _port;
-        if (!port) {
-            return false;
-        }
-        correlation = _next_correlation++;
-        if (correlation == 0 || _next_correlation == 0) {
-            _next_correlation = 1;
-            throw std::overflow_error ("raw mesh request correlation is exhausted");
-        }
-    }
-    const auto id =
-      operation_id (local.lifecycle_generation, correlation);
-    if (!_operations->register_operation (
-          id, foundation::operation_registry_t::clock_t::now () + timeout,
-          std::move (callback))) {
+    if (!port || timeout <= std::chrono::milliseconds::zero ()) {
+        (void) _operations->fail (
+          request.operation, foundation::operation_terminal_t::transport_failed);
         return false;
     }
-    detail::backend::raw_message_t wire{
-      header (correlation),
-      protocol::encode_application_payload (application_payload)};
     const auto operations = _operations;
     trace_mesh (
-      "request-submit correlation=" + std::to_string (correlation)
-        + " targetBytes=" + std::to_string (target_routing_id.size ()));
+      "request-submit correlation="
+        + std::to_string (request.correlation)
+        + " targetBytes="
+        + std::to_string (request.target_routing_id.size ()));
     const auto submitted = port->request (
-      target_routing_id, wire, timeout,
-      [operations, id, correlation] (
+      request.target_routing_id, request.wire, timeout,
+      [operations, id = request.operation, correlation = request.correlation] (
         detail::backend::raw_request_result_t result,
         detail::backend::raw_message_t parts) {
           trace_mesh (
-            "request-completion correlation=" + std::to_string (correlation)
+            "request-completion correlation="
+              + std::to_string (correlation)
               + " result="
               + std::to_string (static_cast<int> (result))
               + " parts=" + std::to_string (parts.size ()));
@@ -622,9 +633,106 @@ bool raw_mesh_node_owner_t::request_with_header (
       });
     if (!submitted) {
         (void) _operations->fail (
-          id, foundation::operation_terminal_t::transport_failed);
+          request.operation, foundation::operation_terminal_t::transport_failed);
     }
     return submitted;
+}
+
+void raw_mesh_node_owner_t::trace_admission_phase (
+  const std::vector<std::uint8_t> &node_routing_id,
+  std::uint64_t lifecycle_generation,
+  protocol::command command,
+  peer_admission_result_t result)
+{
+    if (result == peer_admission_result_t::not_required) {
+        return;
+    }
+    const auto peer = _topology.peer (node_routing_id);
+    const auto peer_generation =
+      peer ? peer->descriptor.lifecycle_generation : 0;
+    const auto admission_context =
+      " owner=" + trace_owner_key (this)
+      + " source=" + owner_key (node_routing_id)
+      + " result=" + std::to_string (static_cast<int> (result))
+      + " peer=" + (peer ? std::string ("present") : "absent")
+      + " peerGeneration=" + std::to_string (peer_generation);
+    if (command == protocol::command::hello
+        && result == peer_admission_result_t::admitted) {
+        trace_mesh (
+          "handshake phase=local-admission-awaiting-remote-admit"
+          + admission_context);
+        return;
+    }
+    if (command != protocol::command::admit
+        || (result != peer_admission_result_t::admitted
+            && result != peer_admission_result_t::duplicate_connection))
+        return;
+    if (lifecycle_generation != 0)
+        trace_mesh ("handshake phase=bilateral-ready" + admission_context);
+}
+
+void raw_mesh_node_owner_t::discard_pending_unadmitted_applications (
+  const std::vector<std::uint8_t> &node_routing_id)
+{
+    std::lock_guard lifecycle_lock (_lifecycle_mutex);
+    std::size_t discarded = 0;
+    for (auto pending = _pending_unadmitted_applications.begin ();
+         pending != _pending_unadmitted_applications.end ();) {
+        if (pending->received.source_routing_id != node_routing_id) {
+            ++pending;
+            continue;
+        }
+        _pending_unadmitted_application_bytes -= pending->bytes;
+        pending = _pending_unadmitted_applications.erase (pending);
+        ++discarded;
+    }
+    if (discarded != 0)
+        trace_mesh (
+          "application-discard reason=peer-disconnected count="
+            + std::to_string (discarded)
+            + " pending="
+            + std::to_string (_pending_unadmitted_applications.size ()));
+}
+
+bool raw_mesh_node_owner_t::request_with_header (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const std::function<std::vector<std::uint8_t> (std::uint64_t)> &header,
+  const protocol::application_payload_t &application_payload,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw std::invalid_argument ("raw mesh request timeout must be positive");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    std::uint64_t correlation = 0;
+    const auto local = _topology.local_descriptor ();
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+        if (!port) {
+            return false;
+        }
+        correlation = _next_correlation++;
+        if (correlation == 0 || _next_correlation == 0) {
+            _next_correlation = 1;
+            throw std::overflow_error ("raw mesh request correlation is exhausted");
+        }
+    }
+    const auto id =
+      operation_id (local.lifecycle_generation, correlation);
+    if (!_operations->register_operation (
+          id, foundation::operation_registry_t::clock_t::now () + timeout,
+          std::move (callback))) {
+        return false;
+    }
+    pending_request_t request{
+      target_routing_id,
+      {header (correlation),
+       protocol::encode_application_payload (application_payload)},
+      id,
+      correlation};
+    return submit_request (port, request, timeout);
 }
 
 bool raw_mesh_node_owner_t::send_with_header (
@@ -882,6 +990,7 @@ bool raw_mesh_node_owner_t::reply_failure (
 std::size_t raw_mesh_node_owner_t::expire_requests (
   foundation::operation_registry_t::clock_t::time_point now)
 {
+    static_cast<void> (now);
     return _operations->expire (now);
 }
 
@@ -893,19 +1002,10 @@ bool raw_mesh_node_owner_t::send_to_channel (
     if (!selected) {
         return false;
     }
-    std::shared_ptr<detail::backend::raw_route_port_t> port;
-    {
-        std::lock_guard lifecycle_lock (_lifecycle_mutex);
-        port = _port;
-    }
-    if (!port) {
-        return false;
-    }
-    detail::backend::raw_message_t wire;
-    wire.reserve (2);
-    wire.push_back (protocol::encode_channel_send_header (channel_name));
-    wire.push_back (protocol::encode_application_payload (application_payload));
-    return port->send (selected->descriptor.node_routing_id, wire);
+    return send_with_header (
+      selected->descriptor.node_routing_id,
+      protocol::encode_channel_send_header (channel_name),
+      application_payload);
 }
 
 bool raw_mesh_node_owner_t::send_to_spot (
@@ -1630,6 +1730,43 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         _pending_received.reset ();
         return accepted_result;
     }
+    if (!received && accept_application_receive) {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        if (!_pending_unadmitted_applications.empty ()) {
+            const auto &pending = _pending_unadmitted_applications.front ();
+            const auto peer =
+              _topology.peer (pending.received.source_routing_id);
+            trace_mesh (
+              "application-pending-check count="
+                + std::to_string (_pending_unadmitted_applications.size ())
+                + " owner="
+                + trace_owner_key (this)
+                + " source="
+                + owner_key (pending.received.source_routing_id)
+                + " peer="
+                + (peer ? std::string ("present") : std::string ("absent"))
+                + " received=0 accept=1");
+        }
+        for (auto pending = _pending_unadmitted_applications.begin ();
+             pending != _pending_unadmitted_applications.end (); ++pending) {
+            const auto peer = _topology.peer (pending->received.source_routing_id);
+            if (!peer)
+                continue;
+            trace_mesh (
+              "application-drain reason=peer-admitted owner="
+                + trace_owner_key (this)
+                + " source="
+                + owner_key (pending->received.source_routing_id)
+                + " peerGeneration="
+                + std::to_string (peer->descriptor.lifecycle_generation)
+                + " pending="
+                + std::to_string (_pending_unadmitted_applications.size ()));
+            received.emplace (std::move (pending->received));
+            _pending_unadmitted_application_bytes -= pending->bytes;
+            _pending_unadmitted_applications.erase (pending);
+            break;
+        }
+    }
     if (!received && accept_application_receive)
         received = port->receive_if_ready (readiness);
     if (!received) {
@@ -1664,6 +1801,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             std::vector<std::uint8_t> connection_id;
             service_connection_direction_t direction =
               preferred_direction;
+            std::string remote_endpoint;
             std::optional<service_node_descriptor_t>
               expected_descriptor;
             {
@@ -1673,10 +1811,16 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     received->source_routing_id,
                     preferred_direction);
                 if (!connection) {
+                    trace_mesh (
+                      "admission-drop reason=no-physical-candidate kind="
+                        + std::to_string (static_cast<int> (header.kind))
+                        + " sourceBytes="
+                        + std::to_string (received->source_routing_id.size()));
                     return raw_mesh_pump_result_t::protocol_error;
                 }
                 connection_id = connection->connection_id;
                 direction = connection->direction;
+                remote_endpoint = connection->remote_endpoint;
                 const auto expected =
                   _expected_peers.find (received->source_routing_id);
                 if (expected != _expected_peers.end ()
@@ -1707,6 +1851,10 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 : _topology.admit (
                     descriptor, connection_id, direction);
             if (admission == peer_admission_result_t::not_required) {
+                trace_admission_phase (
+                  received->source_routing_id,
+                  descriptor.lifecycle_generation,
+                  header.kind, admission);
                 if (header.kind == protocol::command::hello) {
                     (void) send_completion_control (
                       received->source_routing_id,
@@ -1718,7 +1866,9 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                     try {
                         std::lock_guard socket_lock (_socket_mutex);
                         _router->disconnect (
-                          descriptor.advertised_endpoint);
+                          remote_endpoint.empty ()
+                            ? descriptor.advertised_endpoint
+                            : remote_endpoint);
                     }
                     catch (...) {
                     }
@@ -1730,6 +1880,10 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             }
             if (admission
                 == peer_admission_result_t::duplicate_connection) {
+                trace_admission_phase (
+                  received->source_routing_id,
+                  descriptor.lifecycle_generation,
+                  header.kind, admission);
                 if (header.kind == protocol::command::hello) {
                     (void) send_completion_control (
                       received->source_routing_id,
@@ -1750,6 +1904,10 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                   {protocol::encode_reject (reason)});
                 return raw_mesh_pump_result_t::infrastructure;
             }
+            trace_admission_phase (
+              received->source_routing_id,
+              descriptor.lifecycle_generation,
+              header.kind, admission);
             _liveness.admit (
               descriptor.node_routing_id, connection_id, now);
             if (header.kind == protocol::command::hello) {
@@ -1777,11 +1935,46 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
         }
         const auto admitted = _topology.peer (received->source_routing_id);
         if (!admitted) {
+            if (application_command (header.kind)
+                && header.flags == 0
+                && received->parts.size () == 2) {
+                const auto bytes = raw_received_bytes (*received);
+                std::lock_guard lifecycle_lock (_lifecycle_mutex);
+                if (bytes <= max_pending_unadmitted_application_bytes
+                    && _pending_unadmitted_applications.size ()
+                         < max_pending_unadmitted_applications
+                    && bytes <= max_pending_unadmitted_application_bytes
+                         - _pending_unadmitted_application_bytes) {
+                    _pending_unadmitted_application_bytes += bytes;
+                    _pending_unadmitted_applications.push_back (
+                      pending_unadmitted_application_t{
+                        std::move (*received), bytes});
+                    trace_mesh (
+                      "application-deferred reason=peer-not-admitted kind="
+                        + std::to_string (static_cast<int> (header.kind))
+                        + " pending="
+                        + std::to_string (
+                          _pending_unadmitted_applications.size ()));
+                    return raw_mesh_pump_result_t::application;
+                }
+                trace_mesh (
+                  "application-drop reason=unadmitted-queue-full kind="
+                    + std::to_string (static_cast<int> (header.kind)));
+                return raw_mesh_pump_result_t::backpressured;
+            }
+            trace_mesh (
+              "application-drop reason=peer-not-admitted kind="
+                + std::to_string (static_cast<int> (header.kind))
+                + " sourceBytes="
+                + std::to_string (received->source_routing_id.size ()));
             return raw_mesh_pump_result_t::protocol_error;
         }
         if (completion_peer_generation
             && admitted->descriptor.lifecycle_generation
                  != *completion_peer_generation) {
+            trace_mesh (
+              "application-drop reason=peer-generation-mismatch kind="
+                + std::to_string (static_cast<int> (header.kind)));
             return raw_mesh_pump_result_t::protocol_error;
         }
         if (header.kind == protocol::command::livenessProbe
@@ -2191,6 +2384,10 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
              && header.kind != protocol::command::actorSend
              && header.kind != protocol::command::actorRequest)
             || header.flags != 0 || received->parts.size () != 2) {
+            trace_mesh (
+              "application-drop reason=invalid-application-shape kind="
+                + std::to_string (static_cast<int> (header.kind))
+                + " parts=" + std::to_string (received->parts.size ()));
             return raw_mesh_pump_result_t::protocol_error;
         }
         (void) protocol::decode_application_payload (received->parts[1]);
@@ -2275,7 +2472,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
               actor.operation.high, actor.operation.low};
             mailbox_owner = "actor:" + actor.target.actor_id;
         }
-        return enqueue_received_or_retain (
+        auto result = enqueue_received_or_retain (
           service_mailbox_record_t{
             std::move (mailbox_owner),
             service_mailbox_domain_t::application,
@@ -2286,6 +2483,13 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
             admitted->descriptor.lifecycle_generation,
             operation},
           raw_mesh_pump_result_t::application);
+        trace_mesh (
+          "application-enqueue result="
+            + std::to_string (static_cast<int> (result))
+            + " pending="
+            + std::to_string (
+              _mailbox.pending_messages (service_mailbox_domain_t::application)));
+        return result;
     }
     catch (const protocol::service_wire_error_t &) {
         return raw_mesh_pump_result_t::protocol_error;
@@ -2370,7 +2574,8 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
                   node_routing_id, connection_id,
                   outbound
                     ? service_connection_direction_t::outbound
-                    : service_connection_direction_t::inbound);
+                    : service_connection_direction_t::inbound,
+                  event->remote_addr);
                 port = _port;
             }
             if (port) {
@@ -2399,10 +2604,14 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
                   node_routing_id, connection_id);
             }
             if (known) {
-                (void) _topology.disconnect (
+                const auto removed = _topology.disconnect (
                   node_routing_id, connection_id);
                 (void) _liveness.disconnect (
                   node_routing_id, connection_id);
+                if (removed) {
+                    discard_pending_unadmitted_applications (
+                      node_routing_id);
+                }
             }
         }
         static_cast<void> (now);
@@ -2430,8 +2639,11 @@ service_liveness_tick_t raw_mesh_node_owner_t::tick_liveness (
     for (const auto &timed_out : result.timed_out_nodes) {
         const auto peer = _topology.peer (timed_out);
         if (peer) {
-            (void) _topology.disconnect (
+            const auto removed = _topology.disconnect (
               timed_out, peer->connection_id);
+            if (removed) {
+                discard_pending_unadmitted_applications (timed_out);
+            }
         }
     }
     return result;

@@ -176,35 +176,51 @@ class channel_request_call_t
         return *this;
     }
 
-    template <typename TReply> task_t<TReply> submit ()
-    {
-        co_return co_await start<TReply> (false);
-    }
+    template <typename TReply> task_t<TReply> submit () { return start<TReply> (false); }
 
-    template <typename TReply> task_t<TReply> yield ()
-    {
-        co_return co_await start<TReply> (true);
-    }
+    template <typename TReply> task_t<TReply> yield () { return start<TReply> (true); }
 
   protected:
     template <typename TReply> task_t<TReply> start (bool release_turn)
     {
+        /* `submit()` and `yield()` are commonly called on a temporary returned
+         * by MessageBus::request(). Copy every value needed by the coroutine
+         * before the call object can be destroyed. The suspended operation must
+         * own its request state instead of retaining this object's address. */
+        return start_owned<TReply> (
+          release_turn, _packet_name, _serializers, _submit, _timeout, _metadata);
+    }
+
+    template <typename TReply>
+    static task_t<TReply> start_owned (bool release_turn,
+                                      std::string packet_name,
+                                      serializer_registry_t *serializers,
+                                      submit_fn_t submit,
+                                      std::chrono::milliseconds timeout,
+                                      metadata_map_t metadata)
+    {
         if (release_turn && !detail::current_serial_turn_allows_yield ()) {
             co_return co_await detail::unsupported_yield_task<TReply> ();
         }
-        if (!_submit) {
+        if (!submit) {
             co_return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                                  "request call is not bound to a channel client");
         }
         zlink::message_t reply;
         auto turn_plan = detail::prepare_serial_turn_await (release_turn);
         if (!turn_plan) {
-            reply = co_await _submit (_packet_name, _timeout, _metadata);
+            reply = co_await submit (packet_name, timeout, metadata);
         } else {
             auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> (
               std::move (turn_plan->scheduler));
             auto pending = source->task ();
-            if (!detail::submit_blocking_call ([source, submit = blocking_submit ()] () mutable {
+            auto blocking_submit = [submit = std::move (submit),
+                                    packet_name = std::move (packet_name),
+                                    timeout, metadata = std::move (metadata)] () mutable {
+                return submit (packet_name, timeout, metadata).result ();
+            };
+            if (!detail::submit_blocking_call ([source,
+                                                submit = std::move (blocking_submit)] () mutable {
                 try {
                     source->complete (submit ());
                 }
@@ -222,17 +238,19 @@ class channel_request_call_t
             }
             reply = co_await pending;
         }
-        co_return decode<TReply> (reply);
+        co_return decode<TReply> (serializers, reply);
     }
 
-    template <typename TReply> result_t<TReply> decode (const zlink::message_t &reply)
+    template <typename TReply>
+    static result_t<TReply> decode (serializer_registry_t *serializers,
+                                    const zlink::message_t &reply)
     {
-        if (_serializers == nullptr) {
+        if (serializers == nullptr) {
             return result_t<TReply>::failure (framework_error_kind_t::protocol_error,
                                               "channel request has no serializer registry");
         }
         try {
-            return result_t<TReply>::success (_serializers->get<TReply> ().deserialize (
+            return result_t<TReply>::success (serializers->get<TReply> ().deserialize (
               detail::encoded_payload_from_raw (reply)));
         }
         catch (const framework_exception_t &error) {

@@ -40,18 +40,18 @@ class authenticate_session_handler_t
         const auto authenticate_request = authenticate_player_req_t{request.access_token};
         auto authenticated = co_await _client.request (
             sample_names_t::api_channel, authenticate_request).submit<authenticate_player_res_t> ();
-        if (!authenticated.accepted || authenticated.actor_id.empty ()
-            || authenticated.display_name.empty ()) {
+        if (!authenticated.accepted || !authenticated.actor_id
+            || !authenticated.display_name) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::internal_failure,
-                                                          authenticated.reason.empty ()
+                                                          !authenticated.reason
                                                             ? "Player authentication failed."
-                                                            : authenticated.reason);
+                                                            : *authenticated.reason);
         }
 
         auto create_request = ensure_player_actor_req_t{
-            authenticated.actor_id, authenticated.display_name};
+            *authenticated.actor_id, *authenticated.display_name};
         auto located = actors.get_or_create (
-          sample_names_t::player_actor_type, authenticated.actor_id, create_request);
+          sample_names_t::player_actor_type, *authenticated.actor_id, create_request);
         if (!located) {
             co_return result_t<session_actor_t>::failure (
               located.error_kind (),
@@ -60,10 +60,10 @@ class authenticate_session_handler_t
         }
         auto bound =
           co_await actors.bind_or_get (located.value ().ref ()).submit ();
-        auto actor = actors.find (authenticated.actor_id).value_or (bound);
+        auto actor = actors.find (*authenticated.actor_id).value_or (bound);
 
         const auto reply_payload = authenticate_res_t{
-            authenticated.actor_id, authenticated.display_name
+            *authenticated.actor_id, *authenticated.display_name
         };
         const auto reply_message = to_stream_payload (reply_payload);
         stream.reply_packet (reply_message).submit ();

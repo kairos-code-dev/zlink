@@ -20,9 +20,9 @@ message AuthenticatePlayerReq {
 
 message AuthenticatePlayerRes {
   bool accepted = 1;
-  string actor_id = 2;
-  string display_name = 3;
-  string reason = 4;
+  optional string actor_id = 2;
+  optional string display_name = 3;
+  optional string reason = 4;
 }
 
 message GetPlayerRecordReq {
@@ -51,12 +51,6 @@ message ReportBingoResultRes {
 message EnsurePlayerActorReq {
   string actor_id = 1;
   string display_name = 2;
-  reserved 3;
-}
-
-message EnsurePlayerActorRes {
-  string actor_id = 1;
-  string actor_type = 2;
   reserved 3;
 }
 

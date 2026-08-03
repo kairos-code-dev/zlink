@@ -68,6 +68,8 @@ class router_t : public routing_socket_base_t
     bool duplicate_pipe_should_replace (const out_pipe_t &existing_outpipe_,
                                         const blob_t &routing_id_,
                                         bool locally_initiated_) const;
+    void copy_router_pipe_source_rid (pipe_t *pipe_,
+                                      zlink_routing_id_t *out_) const;
     void promote_anonymous_pipe_for_dispatch (pipe_t *pipe_);
     int apply_peer_weight (pipe_t *pipe_, uint32_t weight_) ZLINK_OVERRIDE;
 

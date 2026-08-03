@@ -23,6 +23,21 @@ struct location_runtime_status_t
     std::optional<std::chrono::system_clock::time_point> owner_lease_renewed_at;
 };
 
+/* A compact location projection embedded in channel runtime snapshots.  The
+ * channel contracts expose only the health and refresh facts needed to judge
+ * whether a location-backed target projection is trustworthy.  Detailed
+ * provider diagnostics remain on location_runtime_status_t. */
+struct location_runtime_snapshot_t
+{
+    bool store_healthy = false;
+    std::optional<std::chrono::system_clock::time_point> last_refresh_at;
+    bool owner_lease_healthy = false;
+    std::optional<std::chrono::system_clock::time_point> owner_lease_renewed_at;
+
+    friend bool operator== (const location_runtime_snapshot_t &,
+                            const location_runtime_snapshot_t &) = default;
+};
+
 enum class location_topology_state_t
 {
     discovered = 1,

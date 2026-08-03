@@ -1310,7 +1310,7 @@ int main ()
         std::atomic_bool reconnecting_seen{false};
         reconnect_connector.on_connection_state_changed ([&reconnecting_seen] (const auto &state) {
             if (state.current == zlink::stream_connector::connection_state_t::reconnecting) {
-                reconnecting_seen = true;
+                reconnecting_seen.store (true, std::memory_order_release);
             }
         });
         if (!reconnect_connector.connect ()) {
@@ -1364,7 +1364,7 @@ int main ()
         const auto pending_completed =
           pending_request_completed.wait_for (std::chrono::milliseconds (250));
         reconnect_connector.close ();
-        if (!reconnecting_seen || !second_connection_seen
+        if (!reconnecting_seen.load (std::memory_order_acquire) || !second_connection_seen
             || !second_connection_received_fresh_send || !pending_completed
             || pending_request_callback_count != 1
             || pending_request_error != zlink::stream_connector::error_code_t::disconnected
@@ -1685,6 +1685,14 @@ int main ()
             }
             return predicate ();
         };
+        const auto no_pending_requests = [] (const auto &state) {
+            std::lock_guard<std::mutex> lock (state->transport_mutex);
+            return state->pending_requests.empty ();
+        };
+        const auto no_pending_waits = [] (const auto &state) {
+            std::lock_guard<std::mutex> lock (state->transport_mutex);
+            return state->pending_waits.empty ();
+        };
         zlink::stream_connector::connector_options_t async_send_options;
         async_send_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         auto async_send_state =
@@ -1861,7 +1869,7 @@ int main ()
           });
         if (!eventually ([&] {
                 return async_request_write_failure_seen.load ()
-                       && async_request_write_failure_state->pending_requests.size () == 0;
+                       && no_pending_requests (async_request_write_failure_state);
             })) {
             return 166;
         }
@@ -1894,14 +1902,14 @@ int main ()
                 return !early_reply_connection->written.empty ()
                        && static_cast<bool> (early_reply_connection->write_completion)
                        && early_reply_seen.load () && early_reply_callback_count.load () == 1
-                       && early_reply_state->pending_requests.empty ();
+                       && no_pending_requests (early_reply_state);
             })) {
             return 171;
         }
         early_reply_connection->complete_write ();
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
         if (!early_reply_seen.load () || early_reply_callback_count.load () != 1
-            || !early_reply_state->pending_requests.empty ()) {
+            || !no_pending_requests (early_reply_state)) {
             return 173;
         }
 
@@ -1931,7 +1939,7 @@ int main ()
           });
         if (!eventually ([&] {
                 return mismatched_reply_completed.load ()
-                       && mismatched_reply_state->pending_requests.empty ();
+                       && no_pending_requests (mismatched_reply_state);
             })) {
             return 179;
         }
@@ -1963,7 +1971,7 @@ int main ()
           });
         if (!eventually ([&] {
                 return invalid_error_rejected.load ()
-                       && invalid_error_state->pending_requests.empty ();
+                       && no_pending_requests (invalid_error_state);
             })) {
             return 180;
         }
@@ -2012,15 +2020,15 @@ int main ()
                        && interleaved_push_seen.load ()
                        && interleaved_wait_callback_count.load () == 1
                        && interleaved_reply_seen.load ()
-                       && interleaved_state->pending_requests.empty ()
-                       && interleaved_state->pending_waits.empty ();
+                       && no_pending_requests (interleaved_state)
+                       && no_pending_waits (interleaved_state);
             })) {
             return 174;
         }
         interleaved_connection->complete_write ();
         if (!interleaved_push_seen.load () || interleaved_wait_callback_count.load () != 1
-            || !interleaved_reply_seen.load () || !interleaved_state->pending_requests.empty ()
-            || !interleaved_state->pending_waits.empty ()) {
+            || !interleaved_reply_seen.load () || !no_pending_requests (interleaved_state)
+            || !no_pending_waits (interleaved_state)) {
             return 175;
         }
 

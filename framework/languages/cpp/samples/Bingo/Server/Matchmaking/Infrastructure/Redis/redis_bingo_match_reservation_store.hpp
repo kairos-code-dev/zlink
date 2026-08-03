@@ -55,7 +55,7 @@ class redis_bingo_match_reservation_store_t final
            new_room_id, settings.room_name, settings.mode,
            std::to_string (settings.required_players),
            std::to_string (settings.max_draw_number), settings.purpose,
-           settings.observed_room_id, now});
+           settings.observed_room_id.value_or (""), now});
         if (reply.size () != 7) {
             throw std::runtime_error ("Redis match queue returned an invalid reservation.");
         }

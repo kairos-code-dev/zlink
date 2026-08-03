@@ -98,6 +98,7 @@ struct player_actor_t : framework::actor_t
         if (processed_join_operations.contains (operation))
             co_return;
 
+        const auto room_id = pending_join_rooms.empty () ? std::string{} : pending_join_rooms.front ();
         if (const auto *accepted =
               std::get_if<actor_join_accepted_t> (&completion);
             accepted != nullptr && accepted->reply) {
@@ -105,6 +106,14 @@ struct player_actor_t : framework::actor_t
               accepted->reply->decode<tictactoe_game_join_res_t> ();
             actor_context->bound_session ()
               .send (join_game_res_t{joined.state})
+              .submit ();
+        } else if (std::holds_alternative<actor_join_rejected_t> (completion)) {
+            actor_context->bound_session ()
+              .send (join_game_failed_notify_t{room_id, "room admission rejected"})
+              .submit ();
+        } else if (std::holds_alternative<actor_join_failed_t> (completion)) {
+            actor_context->bound_session ()
+              .send (join_game_failed_notify_t{room_id, "room admission failed"})
               .submit ();
         }
         processed_join_operations.emplace (operation);

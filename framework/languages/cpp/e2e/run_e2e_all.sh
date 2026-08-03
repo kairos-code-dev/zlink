@@ -2,24 +2,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAX_ATTEMPTS=3
 SCENARIO_TIMEOUT_SECONDS=1800
-BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|already bound|errno=98"
+
+# Bind errors such as "already bound" are terminal for the selected config.
+# The aggregate runner must expose that failure instead of classifying it as
+# retryable, so a broken fixture cannot be reported as a later success.
 
 POSITIONAL_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    --max-attempts=*) MAX_ATTEMPTS="${arg#*=}" ;;
     --scenario-timeout-seconds=*) SCENARIO_TIMEOUT_SECONDS="${arg#*=}" ;;
     --*) echo "Unknown C++ E2E runner option '${arg}'." >&2; exit 2 ;;
     *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
 set -- "${POSITIONAL_ARGS[@]}"
-if [[ ! "$MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "--max-attempts must be a positive integer." >&2
-  exit 2
-fi
 if [[ ! "$SCENARIO_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
   echo "--scenario-timeout-seconds must be a positive integer." >&2
   exit 2
@@ -155,52 +152,40 @@ else
   done
 fi
 
-run_config_with_retry() {
+run_config_once() {
   local config="$1"
   local scenario="$2"
   local start_order="$3"
-  local attempt output status started_at ended_at
+  local output status started_at ended_at
   local -a runner_command=(./run_e2e.sh "${scenario}")
   if uses_start_order_axis "${config}"; then
     runner_command+=("--start-order=${start_order}")
   fi
   output="$(mktemp)"
 
-  for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
-    : >"${output}"
-    started_at="$(date +%s)"
-    set +e
-    (
-      cd "${SCRIPT_DIR}/${config}" &&
-        exec timeout "${SCENARIO_TIMEOUT_SECONDS}s" "${runner_command[@]}"
-    ) > >(tee "${output}") 2>&1 &
-    active_config_pid="$!"
-    wait "${active_config_pid}"
-    status="$?"
-    active_config_pid=""
-    set -e
-    ended_at="$(date +%s)"
+  : >"${output}"
+  started_at="$(date +%s)"
+  set +e
+  (
+    cd "${SCRIPT_DIR}/${config}" &&
+      exec timeout "${SCENARIO_TIMEOUT_SECONDS}s" "${runner_command[@]}"
+  ) > >(tee "${output}") 2>&1 &
+  active_config_pid="$!"
+  wait "${active_config_pid}"
+  status="$?"
+  active_config_pid=""
+  set -e
+  ended_at="$(date +%s)"
 
-    if [[ "${status}" == "0" ]]; then
-      rm -f "${output}"
-      echo "[cpp-e2e] ${config} PASS ($((ended_at - started_at))s, start_order=${start_order})"
-      return 0
-    fi
+  if [[ "${status}" == "0" ]]; then
+    rm -f "${output}"
+    echo "[cpp-e2e] ${config} PASS ($((ended_at - started_at))s, start_order=${start_order})"
+    return 0
+  fi
 
-    echo "[cpp-e2e] ${config} FAIL ($((ended_at - started_at))s, attempt ${attempt}, start_order=${start_order})" >&2
-    if ! grep -Eq "${BIND_RETRY_PATTERN}" "${output}"; then
-      rm -f "${output}"
-      return "${status}"
-    fi
-
-    if [[ "${attempt}" == "${MAX_ATTEMPTS}" ]]; then
-      rm -f "${output}"
-      return "${status}"
-    fi
-
-    echo "[cpp-e2e] ${config} retry after transient bind failure (${attempt}/${MAX_ATTEMPTS}, start_order=${start_order})" >&2
-    sleep 1
-  done
+  echo "[cpp-e2e] ${config} FAIL ($((ended_at - started_at))s, start_order=${start_order})" >&2
+  echo "[cpp-e2e] preserved output=${output}" >&2
+  return "${status}"
 }
 
 all_started_at="$(date +%s)"
@@ -212,7 +197,7 @@ for i in "${!SELECTED_CONFIGS[@]}"; do
   mapfile -t selected_start_orders < <(start_orders_for "$config")
   for start_order in "${selected_start_orders[@]}"; do
     echo "[cpp-e2e] ${config} start scenario=${scenario} start_order=${start_order}"
-    run_config_with_retry "${config}" "${scenario}" "${start_order}"
+    run_config_once "${config}" "${scenario}" "${start_order}"
   done
 done
 all_ended_at="$(date +%s)"

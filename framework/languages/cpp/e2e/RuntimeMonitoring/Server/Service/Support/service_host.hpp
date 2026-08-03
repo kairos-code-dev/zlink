@@ -33,19 +33,15 @@ inline int run_service_host (int argc, char **argv)
         auto *gate_ptr = gate.get ();
         framework.services ().add_singleton<application_gate_t> (
           std::move (gate));
-        framework.services ()
-          .add_transient<mesh_profile_request_dispatch_handler_t,
-                         server::evidence_store_t> ();
-        framework.services ()
-          .add_transient<mesh_application_gate_dispatch_handler_t,
-                         application_gate_t,
-                         server::evidence_store_t> ();
         server::add_redis_location_store (framework, options.redis_endpoint,
                                           options.redis_key_prefix);
+        const auto channel_endpoint = parse_tcp_endpoint (options.channel_endpoint);
         framework.add_client_server_channel (profile_channel)
-          .enable_server (options.channel_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .use_handler_group (handler_group);
+          .server ()
+          .set_bind_host (channel_endpoint.host)
+          .set_advertise_host (channel_endpoint.host)
+          .listen (channel_endpoint.port)
+          .add_handler_group (handler_group);
         if (!options.log_dir.empty ()) {
             framework.configure_dispatch ()
               .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
@@ -55,10 +51,10 @@ inline int run_service_host (int argc, char **argv)
         framework.handlers ().group (handler_group).add<profile_request_handler_t> ();
         auto mesh = framework.add_route_mesh (route_mesh_name);
         mesh.listen (options.mesh_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (options.rid))
-          .channel_name (route_mesh_channel)
-          .use_handler_group (handler_group);
+          .set_routing_id (zlink::routing_id_t::from (options.rid));
         mesh.channel_name (route_mesh_channel)
+          .server ()
+          .use_handler_group (handler_group)
           .add_request_handler<mesh_profile_request_dispatch_handler_t,
                                profile_req_t,
                                profile_res_t> ()

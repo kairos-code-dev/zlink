@@ -4,6 +4,7 @@
 #include <zlink/stream_connector.hpp>
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/streams/stream_host_service.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
@@ -1264,5 +1265,52 @@ int main ()
     }
     ::close (rejected_client);
     rejected_host.stop ();
+
+    /* A Core STREAM listener owns a poller that is stopped from the host
+     * lifecycle thread. Closing the Core socket is not itself a portable
+     * cross-thread poller wake-up, so stop must still join the listener within
+     * the bounded poll interval. */
+    const auto core_mesh_port = reserve_loopback_port ();
+    const auto core_stream_port = reserve_loopback_port ();
+    zlink::framework::service_collection_t core_services;
+    zlink::framework::handler_registry_t core_handlers;
+    zlink::framework::serializer_registry_t core_serializers;
+    zlink::framework::zlink_builder_t core_zlink;
+    zlink::framework::zlink_framework_options_t core_options (
+      core_services, core_handlers, core_serializers, core_zlink);
+    core_options.add_route_mesh ("core-stream-mesh")
+      .set_routing_id (zlink::routing_id_t::from ("core-stream-node"))
+      .listen ("tcp://127.0.0.1:" + std::to_string (core_mesh_port));
+    core_options.add_stream_node ("core-stream")
+      .bind ("tcp://127.0.0.1:" + std::to_string (core_stream_port))
+      .register_session ("core-session");
+    core_options.apply ();
+    auto core_provider = core_services.build_provider ();
+    auto core_mesh = zlink::framework::detail::mesh_node_runtime_t::from (
+      core_zlink, "core-stream-mesh");
+    if (!core_mesh) {
+        return 38;
+    }
+    core_mesh->bind_serializers (core_serializers);
+    core_mesh->start ();
+    auto core_stream_runtime =
+      zlink::framework::detail::stream_runtime_t::from (core_zlink);
+    sample_session_t core_session;
+    zlink::framework::runtime::stream_host_service_t core_host (
+      core_stream_runtime, core_stream_runtime.snapshots (),
+      {{"core-session",
+        [&core_session] (zlink::framework::service_provider_t &)
+          -> zlink::framework::packet_stream_session_t & { return core_session; }}},
+      core_mesh);
+    core_host.start (core_provider);
+    const auto core_stop_started = std::chrono::steady_clock::now ();
+    core_host.stop ();
+    const auto core_stop_elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::steady_clock::now () - core_stop_started);
+    core_mesh->stop ();
+    if (core_stop_elapsed > std::chrono::seconds (2)) {
+        return 38;
+    }
     return 0;
 }

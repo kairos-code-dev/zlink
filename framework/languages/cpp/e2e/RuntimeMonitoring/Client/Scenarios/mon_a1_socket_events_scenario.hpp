@@ -40,21 +40,17 @@ inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
     const auto second = runtime_snapshot (options.service_url);
     ensure (first.at ("meshName") == route_mesh_name,
             "MON-A1 MeshName mismatch");
-    ensure (!first.at ("rid").get<std::string> ().empty (),
-            "MON-A1 RID missing");
-    ensure (first.contains ("generation") && first.contains ("revision")
-              && first.contains ("endpoint")
-              && first.contains ("descriptorSources")
+    ensure (first.contains ("state") && first.contains ("isReady")
+              && first.contains ("readyPeerCount")
               && first.contains ("peers") && first.contains ("channels")
-              && first.contains ("claims")
-              && first.contains ("location") && first.contains ("drain"),
+              && first.contains ("placement"),
             "MON-A1 full snapshot fields missing");
     ensure (second.at ("sequence").get<std::uint64_t> ()
               > first.at ("sequence").get<std::uint64_t> (),
             "MON-A1 snapshot sequence did not advance");
     ensure (!second.at ("peers").empty (), "MON-A1 ready peer missing");
     ensure (!second.at ("channels").empty (), "MON-A1 channel snapshot missing");
-    ensure (second.at ("channels").front ().at ("selectable").get<bool> (),
+    ensure (second.at ("channels").front ().at ("isReady").get<bool> (),
             "MON-A1 channel is not selectable");
 
     std::cout << "scenario MON-A1 passed\n";

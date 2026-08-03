@@ -82,6 +82,8 @@ set(known_labels
   ${required_labels}
   ${sample_labels}
   framework-extension
+  framework-client-server
+  framework-monitoring
   parity
   ActorGateway
   CH-001

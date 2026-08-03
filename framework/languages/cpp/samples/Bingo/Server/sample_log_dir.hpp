@@ -29,7 +29,11 @@ inline void observe_runtime_metrics (zlink::framework::app_t &app,
     auto sink = std::make_shared<std::ofstream> (log_dir + "/bingo-" + role + "-metrics.log",
                                                  std::ios::app);
     auto gate = std::make_shared<std::mutex> ();
-    app.logging ().use_callback_sink (
+    /* Runtime metrics are emitted at debug level. The sample deliberately
+     * enables that level when it installs the evidence sink; otherwise the
+     * callback exists but the metric records are filtered before delivery. */
+    app.logging ().set_min_level (zlink::framework::log_level_t::debug)
+      .use_callback_sink (
       [sink, gate] (const zlink::framework::log_record_t &record) {
           if (record.message != "zlink.runtime.metric.recorded") {
               return;

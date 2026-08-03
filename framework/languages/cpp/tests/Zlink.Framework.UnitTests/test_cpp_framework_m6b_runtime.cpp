@@ -4,6 +4,8 @@
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include "runtime/mesh/mesh_node_runtime.hpp"
+#include "runtime/mesh/route_mesh_connection_policy.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/sha256.hpp"
 #include "runtime/locations/source_creation_cleanup.hpp"
@@ -19,6 +21,7 @@
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -38,6 +41,30 @@ using namespace std::chrono_literals;
 
 namespace
 {
+
+void verify_mesh_node_role_is_available_before_local_descriptor_publish ()
+{
+    auto state = std::make_shared<
+      zlink::framework::detail::mesh_node_builder_state_t> (
+        "discovery-role");
+    state->object_role = zlink::framework::object_role_t::client;
+    state->channels.emplace (
+      "object-channel",
+      zlink::framework::detail::mesh_channel_registration_t{
+        .weight = 100,
+        .role_selected = true,
+        .server = false});
+
+    zlink::framework::detail::mesh_node_runtime_t mesh_runtime (state);
+    assert (mesh_runtime.object_role () == zlink::framework::object_role_t::client);
+    assert (mesh_runtime.channel_weights ().empty ());
+
+    zlink::framework::mesh_node_descriptor_t remote;
+    remote.object_role = zlink::framework::object_role_t::client;
+    assert (zlink::framework::runtime::mesh::route_mesh_connection_not_required (
+      mesh_runtime.object_role (), !mesh_runtime.channel_weights ().empty (),
+      remote.object_role, !remote.channel_weights.empty ()));
+}
 
 class memory_relocation_repository_t final :
     public stateful::relocation_store_port_t
@@ -185,6 +212,22 @@ void verify_spot_id_contract ()
     try {
         (void) spot_ref_t (
           std::string (256, 'x'), 1, "mesh",
+          node_rid_t::from_string ("node"));
+    }
+    catch (const std::invalid_argument &) {
+        rejected = true;
+    }
+    assert (rejected);
+
+    const auto max_generation = static_cast<std::uint64_t> (
+      std::numeric_limits<std::int64_t>::max ());
+    const auto max_ref = spot_ref_t (
+      "room", max_generation, "mesh", node_rid_t::from_string ("node"));
+    assert (max_ref.object_generation () == max_generation);
+    rejected = false;
+    try {
+        (void) spot_ref_t (
+          "room", max_generation + 1, "mesh",
           node_rid_t::from_string ("node"));
     }
     catch (const std::invalid_argument &) {
@@ -1685,8 +1728,11 @@ void verify_raw_spot_and_actor_routing ()
     while (actor_pump != mesh::raw_mesh_pump_result_t::application
            && mesh::service_liveness_registry_t::clock_t::now ()
                 < deadline) {
-        actor_pump = target.pump_one (
-          mesh::service_liveness_registry_t::clock_t::now ());
+        const auto pump_now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        const auto source_pump = source.pump_one (pump_now);
+        assert (source_pump != mesh::raw_mesh_pump_result_t::protocol_error);
+        actor_pump = target.pump_one (pump_now);
         assert (actor_pump != mesh::raw_mesh_pump_result_t::protocol_error);
     }
     assert (actor_pump == mesh::raw_mesh_pump_result_t::application);
@@ -1763,8 +1809,11 @@ void verify_raw_spot_and_actor_routing ()
     while (actor_pump != mesh::raw_mesh_pump_result_t::application
            && mesh::service_liveness_registry_t::clock_t::now ()
                 < deadline) {
-        actor_pump = target.pump_one (
-          mesh::service_liveness_registry_t::clock_t::now ());
+        const auto pump_now =
+          mesh::service_liveness_registry_t::clock_t::now ();
+        const auto source_pump = source.pump_one (pump_now);
+        assert (source_pump != mesh::raw_mesh_pump_result_t::protocol_error);
+        actor_pump = target.pump_one (pump_now);
         assert (actor_pump != mesh::raw_mesh_pump_result_t::protocol_error);
     }
     assert (actor_pump == mesh::raw_mesh_pump_result_t::application);
@@ -1783,6 +1832,91 @@ void verify_raw_spot_and_actor_routing ()
     assert (stale_future.get ().first
             == foundation::operation_terminal_t::transport_failed);
     assert (stale_terminal_count == 1);
+    source.close ();
+    target.close ();
+}
+
+void verify_raw_request_survives_remote_admission_race ()
+{
+    mesh::raw_mesh_node_owner_t source (
+      mesh::raw_mesh_node_options_t{descriptor ("request-source")});
+    mesh::raw_mesh_node_owner_t target (
+      mesh::raw_mesh_node_options_t{descriptor ("request-target")});
+    source.start ();
+    target.start ();
+    const auto source_descriptor = source.topology ().local_descriptor ();
+    const auto target_descriptor = target.topology ().local_descriptor ();
+    target.expect_peer (source_descriptor);
+    assert (source.connect_peer (target.endpoint (), target_descriptor));
+
+    const auto deadline =
+      mesh::service_liveness_registry_t::clock_t::now () + 5s;
+    while (!source.topology ().peer (target_descriptor.node_routing_id)
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source.drain_monitor_events (now);
+        (void) target.drain_monitor_events (now);
+        const auto pumped = source.pump_one (now);
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (source.topology ().peer (target_descriptor.node_routing_id));
+    assert (!target.topology ().peer (source_descriptor.node_routing_id));
+
+    using request_result_t =
+      std::pair<foundation::operation_terminal_t,
+                std::vector<std::uint8_t>>;
+    std::promise<request_result_t> promise;
+    auto future = promise.get_future ();
+    assert (source.request_to_node (
+      target_descriptor.node_routing_id,
+      {"DeferredRequest", "application/json", bytes ("request")},
+      2s,
+      [&promise] (foundation::operation_terminal_t terminal,
+                  std::vector<std::uint8_t> payload) {
+          promise.set_value ({terminal, std::move (payload)});
+      }));
+
+    std::optional<mesh::service_mailbox_claim_t> claim;
+    while (!claim
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        (void) source.drain_monitor_events (now);
+        (void) target.drain_monitor_events (now);
+        const auto source_pump = source.pump_one (now);
+        const auto target_pump = target.pump_one (now);
+        assert (source_pump != mesh::raw_mesh_pump_result_t::protocol_error);
+        assert (target_pump != mesh::raw_mesh_pump_result_t::protocol_error);
+        claim = target.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::application, 1, 1024);
+        if (!claim)
+            std::this_thread::sleep_for (1ms);
+    }
+    assert (claim && claim->records.size () == 1);
+    const auto &request = claim->records.front ();
+    assert (protocol::decode_header (request.parts.front ()).kind
+            == protocol::command::nodeRequest);
+    assert (protocol::decode_application_payload (request.parts.at (1)).payload
+            == bytes ("request"));
+    assert (target.reply (
+      request, {"DeferredReply", "application/json", bytes ("reply")}));
+    assert (target.mailbox ().release (*claim));
+
+    while (future.wait_for (0ms) != std::future_status::ready
+           && mesh::service_liveness_registry_t::clock_t::now ()
+                < deadline) {
+        const auto now = mesh::service_liveness_registry_t::clock_t::now ();
+        const auto pumped = source.pump_one (now);
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (future.wait_for (0ms) == std::future_status::ready);
+    const auto result = future.get ();
+    assert (result.first == foundation::operation_terminal_t::completed);
+    assert (protocol::decode_application_payload (result.second).payload
+            == bytes ("reply"));
     source.close ();
     target.close ();
 }
@@ -3332,6 +3466,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
 
 int main ()
 {
+    verify_mesh_node_role_is_available_before_local_descriptor_publish ();
     verify_spot_id_contract ();
     verify_entry_spot_identity_claim_is_global_and_fenced ();
     verify_user_spot_execution_mode_registration ();
@@ -3348,6 +3483,7 @@ int main ()
     verify_remote_session_route_ack_and_atomic_switch ();
     verify_location_store_accepted_record_authority ();
     verify_raw_spot_and_actor_routing ();
+    verify_raw_request_survives_remote_admission_race ();
     verify_raw_relocation_replay_and_monotonic_ack ();
     verify_raw_reply_relay_and_exact_source_ack ();
     verify_durable_reply_relay_single_winner ();

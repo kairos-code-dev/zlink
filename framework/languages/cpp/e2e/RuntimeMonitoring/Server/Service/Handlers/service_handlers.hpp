@@ -20,6 +20,63 @@
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
 
+inline const char *mesh_state_name (zlink::framework::mesh_node_state_t state)
+{
+    switch (state) {
+        case zlink::framework::mesh_node_state_t::starting:
+            return "starting";
+        case zlink::framework::mesh_node_state_t::ready:
+            return "ready";
+        case zlink::framework::mesh_node_state_t::degraded:
+            return "degraded";
+        case zlink::framework::mesh_node_state_t::stopping:
+            return "stopping";
+        case zlink::framework::mesh_node_state_t::stopped:
+            return "stopped";
+        case zlink::framework::mesh_node_state_t::failed:
+            return "failed";
+    }
+    return "failed";
+}
+
+inline const char *peer_state_name (zlink::framework::peer_state_t state)
+{
+    switch (state) {
+        case zlink::framework::peer_state_t::connecting:
+            return "connecting";
+        case zlink::framework::peer_state_t::ready:
+            return "ready";
+        case zlink::framework::peer_state_t::draining:
+            return "draining";
+        case zlink::framework::peer_state_t::not_connected:
+            return "not_connected";
+        case zlink::framework::peer_state_t::not_required:
+            return "not_required";
+    }
+    return "not_connected";
+}
+
+inline const char *topology_reason_name (zlink::framework::topology_reason_t reason)
+{
+    switch (reason) {
+        case zlink::framework::topology_reason_t::runtime_not_ready:
+            return "runtime_not_ready";
+        case zlink::framework::topology_reason_t::no_ready_peer:
+            return "no_ready_peer";
+        case zlink::framework::topology_reason_t::no_ready_target:
+            return "no_ready_target";
+        case zlink::framework::topology_reason_t::location_unavailable:
+            return "location_unavailable";
+        case zlink::framework::topology_reason_t::capacity_exceeded:
+            return "capacity_exceeded";
+        case zlink::framework::topology_reason_t::draining:
+            return "draining";
+        case zlink::framework::topology_reason_t::internal_failure:
+            return "internal_failure";
+    }
+    return "internal_failure";
+}
+
 class application_gate_t
 {
   public:
@@ -214,7 +271,7 @@ class mesh_profile_request_dispatch_handler_t
 
     profile_res_t
     handle (const profile_req_t &request,
-            const zlink::framework::route_handler_context_t &)
+            const zlink::framework::route_message_context_t &)
     {
         _evidence.add (
           "mesh-profile-request|rid=" + _evidence.rid ()
@@ -246,7 +303,7 @@ class mesh_application_gate_dispatch_handler_t
 
     application_gate_res_t
     handle (const application_gate_req_t &request,
-            const zlink::framework::route_handler_context_t &)
+            const zlink::framework::route_message_context_t &)
     {
         _evidence.add ("application-gate|state=entered");
         _gate.wait_if_armed ();
@@ -441,9 +498,9 @@ class create_spot_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_node_manager_t, server::evidence_store_t>;
+      zlink::framework::spot_manager_t, server::evidence_store_t>;
 
-    create_spot_handler_t (zlink::framework::spot_node_manager_t &spots,
+    create_spot_handler_t (zlink::framework::spot_manager_t &spots,
                            server::evidence_store_t &evidence) :
         _spots (spots), _evidence (evidence)
     {
@@ -451,17 +508,26 @@ class create_spot_handler_t
 
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
-        const auto created = _spots.create_spot (spot_channel);
-        const auto spot_id = created.spot_id;
+        const auto created = _spots.create (spot_channel).submit ().result ();
+        if (!created) {
+            return {.status = 500, .body = R"({"error":"spot creation failed"})"};
+        }
+        const auto &result = created.value ();
+        const auto spot_id = result.spot.spot_id ();
         _evidence.add ("spot-create|rid=" + _evidence.rid () + "|spot_id="
                        + spot_id);
         zlink::framework::http_response_t response;
-        response.body = nlohmann::json{{"spotId", spot_id}, {"state", "created"}}.dump ();
+        response.body = nlohmann::json{
+          {"spotId", spot_id},
+          {"state", result.state == zlink::framework::spot_create_state_t::existing
+                       ? "existing"
+                       : "created"}}
+                          .dump ();
         return response;
     }
 
   private:
-    zlink::framework::spot_node_manager_t &_spots;
+    zlink::framework::spot_manager_t &_spots;
     server::evidence_store_t &_evidence;
 };
 
@@ -469,10 +535,10 @@ class create_subject_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_node_manager_t>;
+      zlink::framework::spot_manager_t>;
 
     explicit create_subject_handler_t (
-      zlink::framework::spot_node_manager_t &spots) :
+      zlink::framework::spot_manager_t &spots) :
         _spots (spots)
     {
     }
@@ -481,49 +547,59 @@ class create_subject_handler_t
     handle (const zlink::framework::http_request_t &request)
     {
         const auto spot_id = request.query_values.at ("spotId");
-        (void) _spots.get_or_create_spot (
-          monitoring_subject_spot,
-          (spot_id));
+        const auto created = _spots
+          .get_or_create (spot_id, monitoring_subject_spot)
+          .submit ()
+          .result ();
+        if (!created)
+            return {.status = 500, .body = R"({"error":"subject creation failed"})"};
         zlink::framework::http_response_t response;
         response.body =
-          nlohmann::json{{"status", "created"}, {"spotId", spot_id}}.dump ();
-        return response;
-    }
-
-  private:
-    zlink::framework::spot_node_manager_t &_spots;
-};
-
-class close_subject_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_node_manager_t>;
-
-    explicit close_subject_handler_t (
-      zlink::framework::spot_node_manager_t &spots) :
-        _spots (spots)
-    {
-    }
-
-    zlink::framework::http_response_t
-    handle (const zlink::framework::http_request_t &request)
-    {
-        const auto spot_id = request.query_values.at ("spotId");
-        const auto closed =
-          _spots.close_spot (
-            (spot_id))
-            .result ();
-        zlink::framework::http_response_t response;
-        response.body =
-          nlohmann::json{{"status", closed ? "closed" : "not-found"},
+          nlohmann::json{{"status", created.value ().state
+                                     == zlink::framework::spot_create_state_t::existing
+                                   ? "existing"
+                                   : "created"},
                          {"spotId", spot_id}}
             .dump ();
         return response;
     }
 
   private:
-    zlink::framework::spot_node_manager_t &_spots;
+    zlink::framework::spot_manager_t &_spots;
+};
+
+class close_subject_handler_t
+{
+  public:
+    using dependency_types = zlink::framework::dependency_list_t<
+      zlink::framework::spot_manager_t>;
+
+    explicit close_subject_handler_t (
+      zlink::framework::spot_manager_t &spots) :
+        _spots (spots)
+    {
+    }
+
+    zlink::framework::http_response_t
+    handle (const zlink::framework::http_request_t &request)
+    {
+        const auto spot_id = request.query_values.at ("spotId");
+        const auto found = _spots.find (spot_id).result ();
+        if (!found || !found.value ())
+            return {.body = nlohmann::json{{"status", "not-found"},
+                                           {"spotId", spot_id}}
+                                  .dump ()};
+        const auto closed = _spots.close (*found.value ()).result ();
+        zlink::framework::http_response_t response;
+        response.body =
+          nlohmann::json{{"status", closed && closed.value () ? "closed" : "not-found"},
+                         {"spotId", spot_id}}
+            .dump ();
+        return response;
+    }
+
+  private:
+    zlink::framework::spot_manager_t &_spots;
 };
 
 class publish_probe_handler_t
@@ -706,47 +782,40 @@ class runtime_snapshot_handler_t
         const auto snapshot = _runtime.snapshot (route_mesh_name);
         nlohmann::json peers = nlohmann::json::array ();
         for (const auto &peer : snapshot.peers) {
-            peers.push_back ({{"rid", peer.rid.to_string ()},
-                              {"generation", peer.lifecycle_generation},
-                              {"revision", peer.descriptor_revision},
-                              {"endpoint", peer.endpoint},
-                              {"admissionState", peer.admission_state},
-                              {"ready", peer.ready},
-                              {"channels", peer.channel_names}});
+            peers.push_back (
+              {{"rid", peer.node_rid.to_string ()},
+               {"state", peer_state_name (peer.state)},
+               {"unavailableReason",
+                peer.unavailable_reason
+                  ? nlohmann::json (topology_reason_name (*peer.unavailable_reason))
+                  : nlohmann::json (nullptr)}});
         }
         nlohmann::json channels = nlohmann::json::array ();
         for (const auto &channel : snapshot.channels) {
             channels.push_back ({{"name", channel.channel_name},
-                                 {"localWeight", channel.local_weight},
-                                 {"readyMemberCount", channel.ready_member_count},
-                                 {"selectable", channel.selectable}});
+                                 {"isReady", channel.is_ready},
+                                 {"readyTargetCount", channel.ready_target_count}});
         }
         zlink::framework::http_response_t response;
         response.body =
           nlohmann::json{{"meshName", snapshot.mesh_name},
-                         {"rid", snapshot.rid.to_string ()},
-                         {"generation", snapshot.lifecycle_generation},
-                         {"revision", snapshot.descriptor_revision},
-                         {"endpoint", snapshot.endpoint},
+                         {"state", mesh_state_name (snapshot.state)},
+                         {"isReady", snapshot.is_ready},
+                         {"readyPeerCount", snapshot.ready_peer_count},
                          {"sequence", snapshot.sequence},
-                         {"descriptorSources", snapshot.descriptor_sources},
                          {"peers", std::move (peers)},
                          {"channels", std::move (channels)},
-                         {"claims",
-                          {{"applicationActive", snapshot.claims.application_active},
-                           {"applicationPending",
-                            snapshot.claims.pending_application_work},
-                           {"infrastructureActive",
-                            snapshot.claims.infrastructure_active},
-                           {"infrastructurePending",
-                            snapshot.claims.pending_infrastructure_work}}},
-                         {"location",
-                          {{"state", snapshot.location.state},
-                           {"lastSuccessPresent",
-                            snapshot.location.last_success_at.has_value ()},
-                           {"lastFailurePresent",
-                            snapshot.location.last_failure_at.has_value ()}}},
-                         {"drain", {{"workSealed", snapshot.drain.work_sealed}}}}
+                         {"placement",
+                          {{"isAvailable", snapshot.placement.is_available},
+                           {"activeActorCount",
+                            snapshot.placement.active_actor_count},
+                           {"activeSpotCount",
+                            snapshot.placement.active_spot_count},
+                           {"unavailableReason",
+                            snapshot.placement.unavailable_reason
+                              ? nlohmann::json (topology_reason_name (
+                                  *snapshot.placement.unavailable_reason))
+                              : nlohmann::json (nullptr)}}}}
             .dump ();
         return response;
     }

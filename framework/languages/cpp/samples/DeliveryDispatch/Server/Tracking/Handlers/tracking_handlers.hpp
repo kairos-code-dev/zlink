@@ -47,11 +47,12 @@ class delivery_status_changed_handler_t
                           delivery_status_updated_msg_t{request.delivery_id,
                                                         request.customer_id,
                                                         request.status, request.courier_id,
-                                                        request.occurred_at})
+                                                        request.occurred_at_unix_ms})
           .submit ();
 
         std::cerr << "deliverydispatch tracking: status delivery=" << request.delivery_id
-                  << " status=" << request.status << " courier=" << request.courier_id << "\n";
+                  << " status=" << request.status << " courier="
+                  << request.courier_id.value_or ("none") << "\n";
         co_return delivery_status_changed_res_t{request.delivery_id, request.status};
     }
 

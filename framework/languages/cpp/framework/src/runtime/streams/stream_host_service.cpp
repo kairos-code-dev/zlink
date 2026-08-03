@@ -1007,8 +1007,13 @@ class stream_host_service_t::listener_t
                 }
 
                 zlink::poll_event_t event;
+                /* Closing the Core socket from request_stop() is not a
+                 * cross-thread wake-up guarantee for the poller. Keep the
+                 * stop observation bounded so service stop can join this
+                 * listener without depending on platform-specific close
+                 * behavior. */
                 const size_t event_count =
-                  poller.wait (&event, 1, std::chrono::milliseconds{-1});
+                  poller.wait (&event, 1, std::chrono::milliseconds{100});
                 if (_stop->load (std::memory_order_acquire))
                     break;
                 if (event_count == 0)

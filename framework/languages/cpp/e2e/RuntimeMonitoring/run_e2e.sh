@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
+BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-${ZLINK_CPP_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}}"
 SCENARIO="${1:-all}"
 SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
 case "$SCENARIO_LOWER" in
@@ -291,7 +291,7 @@ while time.monotonic() < deadline:
     with urllib.request.urlopen(f"{base}/runtime/snapshot", timeout=2) as response:
         snapshot = json.load(response)
     peers = [peer for peer in snapshot["peers"] if peer["rid"] == rid]
-    ready = any(peer["ready"] for peer in peers)
+    ready = any(peer["state"] == "ready" for peer in peers)
     if ready == wanted:
         break
     time.sleep(0.1)
@@ -308,7 +308,9 @@ start_service_a() {
   local http_endpoint="$4"
   local label="$5"
   local config_path="$CONFIG_DIR/$label.json"
-  local mesh_peers="$MESH_FILTERED,$MESH_THROW"
+  # Config 7 uses Location Store discovery. Manual peer endpoints would keep
+  # the route outside the discovery owner and hide removal/replacement state.
+  local mesh_peers=""
   write_service_config "$config_path" svc-a "$http_endpoint" "$channel_endpoint" \
     "$router_endpoint" "$pub_endpoint" "$LOG_DIR/$label.evidence.log" all \
     "$MESH_SERVICE" "$mesh_peers"
@@ -322,7 +324,7 @@ start_service_a() {
 start_service_b() {
   local label="$1"
   local config_path="$CONFIG_DIR/$label.json"
-  local mesh_peers="$MESH_SERVICE,$MESH_THROW"
+  local mesh_peers=""
   write_service_config "$config_path" svc-b "$HTTP_FILTERED" "$CHANNEL_FILTERED" \
     "$SPOT_ROUTER_FILTERED" "$SPOT_PUB_FILTERED" "$LOG_DIR/$label.evidence.log" \
     socket-filter "$MESH_FILTERED" "$mesh_peers"
@@ -337,10 +339,9 @@ start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
   "$HTTP_SERVICE" service
 start_service_b filtered
 
-THROW_MESH_PEERS="$MESH_SERVICE,$MESH_FILTERED"
 write_service_config "$CONFIG_DIR/throw.json" svc-throw "$HTTP_THROW" "$CHANNEL_THROW" \
   "$SPOT_ROUTER_THROW" "$SPOT_PUB_THROW" "$LOG_DIR/throw.evidence.log" throwing \
-  "$MESH_THROW" "$THROW_MESH_PEERS"
+  "$MESH_THROW" ""
 "$THROWING_SERVICE" --config="$CONFIG_DIR/throw.json" \
   >"$LOG_DIR/throw.stdout.log" 2>"$LOG_DIR/throw.stderr.log" &
 PIDS+=("$!")

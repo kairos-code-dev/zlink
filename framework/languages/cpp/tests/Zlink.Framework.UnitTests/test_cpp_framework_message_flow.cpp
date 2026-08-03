@@ -283,6 +283,46 @@ int main ()
         }
     }
 
+    // Classic fanout dispatch has no reply frame.  A missing subscriber handler
+    // must still be observable as publish/handler_missing/drop so the runtime
+    // owner can preserve the public negative-dispatch contract.
+    {
+        auto options = options_with_mode (message_flow_log_mode_t::key_transitions);
+        std::atomic_bool saw_fanout_failure{false};
+        options.set_message_flow_observer ([&] (const message_flow_event_t &event) {
+            if (event.outcome == message_flow_outcome_t::error
+                && event.surface == dispatch_error_surface_t::channel
+                && event.message_kind == dispatch_message_kind_t::publish
+                && event.packet_name && *event.packet_name == "MissingEventMsg"
+                && event.channel_name && *event.channel_name == "pubsub.events"
+                && event.topic && *event.topic == "fanout"
+                && event.error_reason
+                   == std::optional<dispatch_error_reason_t> (
+                     dispatch_error_reason_t::handler_missing)
+                && event.error_action
+                   == std::optional<dispatch_error_action_t> (
+                     dispatch_error_action_t::drop)) {
+                saw_fanout_failure.store (true, std::memory_order_release);
+            }
+        });
+        const framework_exception_t missing_handler (
+          framework_error_kind_t::not_found, "handler is not registered");
+        dispatch_error_reporter_t (options).report (message_dispatch_error_event_t{
+          .surface = dispatch_error_surface_t::channel,
+          .message_kind = dispatch_message_kind_t::publish,
+          .reason = detail::dispatch_reason_from_error (&missing_handler),
+          .action = dispatch_error_action_t::drop,
+          .packet_name = std::string ("MissingEventMsg"),
+          .channel_name = std::string ("pubsub.events"),
+          .topic = std::string ("fanout"),
+          .exception = std::make_exception_ptr (missing_handler)});
+        if (!wait_until ([&] {
+                return saw_fanout_failure.load (std::memory_order_acquire);
+            })) {
+            return 28;
+        }
+    }
+
     // enum names are stable grep tokens for logs and metric sinks.
     {
         using zlink::framework::detail::enum_name;

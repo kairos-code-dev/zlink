@@ -246,6 +246,24 @@ void trace_mesh_host_stop (const char *stage)
         std::cerr << "zlink-cpp-host-stop stage=mesh-host-" << stage << std::endl;
 }
 
+void trace_mesh_application (std::string_view stage,
+                             const host::receive_record_t &record,
+                             std::size_t parts,
+                             std::string_view detail = {})
+{
+    const char *value = std::getenv ("ZLINK_CPP_MESH_TRACE");
+    if (value == nullptr || std::string_view (value) == ""
+        || std::string_view (value) == "0")
+        return;
+    std::cerr << "zlink mesh-host stage=" << stage
+              << " kind=" << static_cast<int> (record.kind)
+              << " source=" << record.source_node_rid.to_string ()
+              << " parts=" << parts;
+    if (!detail.empty ())
+        std::cerr << " detail=" << detail;
+    std::cerr << '\n';
+}
+
 void reject_application_request (
   const host::receive_record_t &record,
                                  std::vector<zlink::message_t> parts)
@@ -1799,7 +1817,8 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                             std::to_string (request.operation.high)
                               + ":"
                               + std::to_string (request.operation.low),
-                            services, *_serializers)
+                            services, *_serializers, application.flow_id,
+                            application.flow_origin)
                           .result ().value ();
                         std::optional<protocol::application_payload_t>
                           application_reply;
@@ -1809,6 +1828,8 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                 application.packet_name,
                                 "application/octet-stream",
                                 reply.to_bytes ()};
+                            application_reply->flow_id = application.flow_id;
+                            application_reply->flow_origin = application.flow_origin;
                         }
                         return host::instance_spot_activation_result_t{
                           0, 0, std::move (application_reply)};
@@ -2138,6 +2159,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                   [&] (const host::ready_record_t &owner,
                        const host::receive_record_t &record,
                        std::vector<zlink::message_t> parts) {
+                      trace_mesh_application ("callback", record, parts.size ());
                       if (record.kind == host::record_kind_t::completion
                           && record.operation_kind
                                == host::operation_kind_t::actor_join
@@ -2241,11 +2263,15 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                           owned_part_bytes.reserve (parts.size ());
                           for (const auto &part : parts)
                               owned_part_bytes.push_back (part.to_bytes ());
+                          trace_mesh_application (
+                            "submit", record, owned_part_bytes.size ());
                           try {
                               _application_dispatch->submit (
                                 [this, node, registration, owner, record,
                                  application_payload_bytes,
                                  part_bytes = std::move (owned_part_bytes)] () mutable {
+                                    trace_mesh_application (
+                                      "start", record, part_bytes.size ());
                                     auto completion_permit =
                                       requires_completion_permit (record.kind)
                                         ? _completion_admission->acquire ()
@@ -2275,19 +2301,48 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                         detail::spot_node_runtime_t
                                           application_spot_runtime (
                                             registration->spot_state);
-                                        if (!application_spot_runtime
-                                               .dispatch_mesh_record (
-                                                 owner, record, owned_parts,
-                                                 *_services, *_serializers)) {
+                                        const auto framework_handled =
+                                          application_spot_runtime
+                                            .dispatch_mesh_record (
+                                              owner, record, owned_parts,
+                                              *_services, *_serializers);
+                                        trace_mesh_application (
+                                          "framework-dispatch", record,
+                                          owned_parts.size (),
+                                          framework_handled ? "handled"
+                                                             : "not-handled");
+                                        if (!framework_handled) {
                                             detail::mesh_record_dispatcher_t dispatcher (
                                               *_services, *_serializers,
                                               registration->handlers, *_filters,
                                               _dispatch_options);
-                                            (void) dispatcher.dispatch (
+                                            auto dispatched = dispatcher.dispatch (
                                               record, std::move (owned_parts));
+                                            if (dispatched) {
+                                                trace_mesh_application (
+                                                  "route-dispatch", record, 0,
+                                                  "success");
+                                            } else {
+                                                trace_mesh_application (
+                                                  "route-dispatch", record, 0,
+                                                  "failure");
+                                            }
                                         }
                                     }
+                                    catch (const std::exception &error) {
+                                        trace_mesh_application (
+                                          "exception", record, part_bytes.size (),
+                                          error.what ());
+                                        _inbound_budget->completed (
+                                          application_payload_bytes, true);
+                                        node->application_work_finished ();
+                                        _dispatch_gate_changed.notify_all ();
+                                        return;
+                                    }
                                     catch (...) {
+                                        trace_mesh_application (
+                                          "exception", record, part_bytes.size (),
+                                          "unknown");
                                         _inbound_budget->completed (
                                           application_payload_bytes, true);
                                         node->application_work_finished ();

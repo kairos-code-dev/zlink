@@ -16,11 +16,15 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <exception>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -41,12 +45,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
       std::map<std::string, std::string> client_server_advertise_hosts = {},
       std::set<std::string> route_mesh_client_channels = {},
       std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes = {},
-      std::function<bool ()> republish_after_store_recovery = {}) :
+      std::function<bool ()> republish_after_store_recovery = {},
+      std::shared_ptr<client_server::client_server_location_runtime_t>
+        client_server_runtime = nullptr) :
         _bus (std::move (bus)), _channels (std::move (channels)),
         _handlers (&handlers), _serializers (&serializers),
         _client_server_advertise_hosts (std::move (client_server_advertise_hosts)),
         _route_mesh_client_channels (std::move (route_mesh_client_channels)),
         _mesh_nodes (std::move (mesh_nodes)),
+        _client_server (std::move (client_server_runtime)),
         _republish_after_store_recovery (
           std::move (republish_after_store_recovery))
     {
@@ -77,10 +84,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                              || !channel.client.connect_endpoints.empty ()));
           });
         if (needs_client_server) {
-            _client_server =
-              std::make_unique<client_server::client_server_location_runtime_t> (
-                _bus, _channels, *_runtime, *_store, *_store, services,
-                *_serializers, *_handlers, _client_server_advertise_hosts);
+            if (!_client_server)
+                _client_server =
+                  std::make_shared<client_server::client_server_location_runtime_t> (
+                    _bus, _channels, *_runtime, *_store, *_store, services,
+                    *_serializers, *_handlers, _client_server_advertise_hosts);
             _client_server->start ();
         }
 
@@ -101,8 +109,20 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             auto &route = manager.get_route_channel (route_channel_id);
             configured_meshes.insert (route.router_channel_id ());
             const auto manual = route.manual_connections ();
+            std::optional<object_role_t> local_object_role;
+            bool local_has_server_channel = false;
+            for (const auto &mesh_node : _mesh_nodes) {
+                if (mesh_node
+                    && mesh_node->mesh_name () == route.router_channel_id ()) {
+                    local_object_role = mesh_node->object_role ();
+                    local_has_server_channel =
+                      !mesh_node->channel_weights ().empty ();
+                    break;
+                }
+            }
             add_loop (
               route.router_channel_id (), route.routing_id (), route.bind_endpoint (),
+              local_object_role, local_has_server_channel,
               [this, &route, manual] (const target_t &target) {
                   if (std::find (manual.begin (), manual.end (), target.endpoint)
                       != manual.end ())
@@ -148,6 +168,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             add_loop (
               mesh_node->mesh_name (), mesh_node->routing_id (),
               mesh_node->listen_endpoint (),
+              mesh_node->object_role (),
+              !mesh_node->channel_weights ().empty (),
               [mesh_node] (const target_t &target) {
                   mesh_node->expect_peer (
                     target.node_rid, target.endpoint,
@@ -189,7 +211,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             if (loop.thread.joinable ())
                 loop.thread.join ();
             for (const auto &[_, target] : loop.active)
-                disconnect (loop, target);
+                stop_target (loop, target);
         }
         _loops.clear ();
     }
@@ -211,6 +233,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::string mesh_name;
         std::optional<zlink::routing_id_t> local_rid;
         std::string local_endpoint;
+        std::optional<object_role_t> local_object_role;
+        bool local_has_server_channel = false;
         std::map<std::string, target_t> active;
         std::map<std::string, target_t> last_desired;
         std::function<void (const target_t &)> connect_target;
@@ -220,9 +244,32 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::thread thread;
     };
 
+    static void trace_failure (
+      std::string_view stage,
+      std::string_view mesh_name,
+      std::string_view endpoint,
+      std::string_view error) noexcept
+    {
+        try {
+            const auto *trace = std::getenv ("ZLINK_CPP_HOST_STOP_TRACE");
+            if (trace == nullptr || std::string_view (trace) == "0"
+                || std::string_view (trace).empty ())
+                return;
+            std::cerr << "zlink-cpp-auto-connect-trace stage=" << stage
+                      << " mesh=" << mesh_name;
+            if (!endpoint.empty ())
+                std::cerr << " endpoint=" << endpoint;
+            std::cerr << " error=" << error << std::endl;
+        }
+        catch (...) {
+        }
+    }
+
     void add_loop (std::string mesh_name,
                    std::optional<zlink::routing_id_t> local_rid,
                    std::string local_endpoint,
+                   std::optional<object_role_t> local_object_role,
+                   bool local_has_server_channel,
                    std::function<void (const target_t &)> connect_target,
                    std::function<void (const target_t &)> disconnect_target)
     {
@@ -230,6 +277,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         loop.mesh_name = std::move (mesh_name);
         loop.local_rid = std::move (local_rid);
         loop.local_endpoint = std::move (local_endpoint);
+        loop.local_object_role = std::move (local_object_role);
+        loop.local_has_server_channel = local_has_server_channel;
         loop.connect_target = std::move (connect_target);
         loop.disconnect_target = std::move (disconnect_target);
         _loops.push_back (std::move (loop));
@@ -241,14 +290,57 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             try {
                 tick (loop);
             }
+            catch (const std::exception &error) {
+                handle_loop_failure (loop, "tick", error.what ());
+            }
             catch (...) {
-                if (!loop.failure_started_at)
-                    loop.failure_started_at = std::chrono::steady_clock::now ();
-                loop.recovering_from_store_failure = true;
-                retry_pending_targets (loop);
-                _runtime->record_store_error ();
+                handle_loop_failure (loop, "tick", "unknown exception");
             }
             std::this_thread::sleep_for (_runtime->options ().polling_interval);
+        }
+    }
+
+    void handle_loop_failure (
+      loop_t &loop,
+      std::string_view stage,
+      std::string_view error) noexcept
+    {
+        trace_failure (stage, loop.mesh_name, {}, error);
+        if (!loop.failure_started_at)
+            loop.failure_started_at = std::chrono::steady_clock::now ();
+        loop.recovering_from_store_failure = true;
+        try {
+            retry_pending_targets (loop);
+        }
+        catch (const std::exception &retry_error) {
+            trace_failure (
+              "recovery-failed", loop.mesh_name, {}, retry_error.what ());
+        }
+        catch (...) {
+            trace_failure (
+              "recovery-failed", loop.mesh_name, {}, "unknown exception");
+        }
+        try {
+            _runtime->record_store_error ();
+        }
+        catch (...) {
+        }
+    }
+
+    void stop_target (loop_t &loop, const target_t &target) noexcept
+    {
+        try {
+            disconnect (loop, target);
+        }
+        catch (const std::exception &error) {
+            trace_failure (
+              "stop-disconnect-failed", loop.mesh_name,
+              target.endpoint, error.what ());
+        }
+        catch (...) {
+            trace_failure (
+              "stop-disconnect-failed", loop.mesh_name,
+              target.endpoint, "unknown exception");
         }
     }
 
@@ -334,7 +426,15 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 || descriptor.state == framework_runtime_state_t::stopped
                 || descriptor.state == framework_runtime_state_t::error)
                 continue;
-            if (local != descriptors.end ()
+            const auto remote_has_server_channel =
+              !descriptor.channel_weights.empty ();
+            if (loop.local_object_role
+                && mesh::route_mesh_connection_not_required (
+                  *loop.local_object_role, loop.local_has_server_channel,
+                  descriptor.object_role, remote_has_server_channel))
+                continue;
+            if (!loop.local_object_role
+                && local != descriptors.end ()
                 && mesh::route_mesh_connection_not_required (
                   *local, descriptor))
                 continue;
@@ -392,7 +492,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     store_location_resolvers_t *_route_cache = nullptr;
     std::atomic_bool _stop{false};
     std::vector<loop_t> _loops;
-    std::unique_ptr<client_server::client_server_location_runtime_t> _client_server;
+    std::shared_ptr<client_server::client_server_location_runtime_t> _client_server;
     std::unique_ptr<fanout::fanout_location_runtime_t> _fanout;
     std::function<bool ()> _republish_after_store_recovery;
 };

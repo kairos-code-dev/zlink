@@ -153,7 +153,7 @@ class customer_entry_spot_t : public entry_spot_t<customer_actor_t>
                   << status.delivery_id << " status=" << status.status << "\n";
         actor.context ().bound_session ()
           .send (delivery_status_notify_t{status.delivery_id, status.status, status.courier_id,
-                                          status.occurred_at})
+                                          status.occurred_at_unix_ms})
           .submit ();
     }
 

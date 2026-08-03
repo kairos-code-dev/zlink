@@ -19,6 +19,7 @@
 #include "../../samples/DeliveryDispatch/Shared/Contracts/messages.hpp"
 #include "../../samples/GameQuest/Shared/Contracts/messages.hpp"
 #include "../../samples/ShoppingMall/Shared/Contracts/messages.hpp"
+#include "../../samples/SupportChat/Shared/Contracts/messages.hpp"
 
 #include <gtest/gtest.h>
 
@@ -26,6 +27,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -105,6 +107,8 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     authenticate_player_handler_t auth;
     const auto authenticated = auth.handle ({"player-1"});
     ASSERT_TRUE (authenticated.accepted);
+    ASSERT_TRUE (authenticated.actor_id);
+    ASSERT_TRUE (authenticated.display_name);
 
     sample_topology_t topology;
     const reserve_bingo_room_res_t allocated{
@@ -113,18 +117,18 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
 
     player_actor_factory_t actor_factory;
     const auto player_actor =
-      actor_factory.create (authenticated.actor_id, authenticated.display_name);
-    EXPECT_EQ (player_actor.actor_id, authenticated.actor_id);
+      actor_factory.create (*authenticated.actor_id, *authenticated.display_name);
+    EXPECT_EQ (player_actor.actor_id, *authenticated.actor_id);
 
     bingo_room_spot_t room_spot (allocated.room_id);
     const auto joined = room_spot
                           .on_actor_join (
-                            authenticated.actor_id,
+                            *authenticated.actor_id,
                             zlink::framework::message_t::from (
                               bingo_room_join_req_t{
                                 allocated.room_id,
-                                authenticated.actor_id,
-                                authenticated.display_name}))
+                                *authenticated.actor_id,
+                                *authenticated.display_name}))
                           .result ()
                           .value ();
     ASSERT_TRUE (joined.accepted);
@@ -328,6 +332,30 @@ TEST (CppFrameworkSampleParity, SupportChatSessionRelaysOpenConversationUnchange
                std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, SupportChatJoinFailureUsesOnlyCommonFields)
+{
+    using namespace zlink::samples::supportchat;
+
+    const auto wire = nlohmann::json (join_conversation_failed_notify_t{
+      "conversation-1", "Unavailable"});
+    EXPECT_EQ (wire.size (), 2U);
+    EXPECT_EQ (wire.at ("conversationId"), "conversation-1");
+    EXPECT_EQ (wire.at ("error"), "Unavailable");
+    EXPECT_FALSE (wire.contains ("isRetriable"));
+
+    const auto common_doc = read_file (
+      repository_root () / "framework/doc/framework/common/sample/supportchat/README.ko.md");
+    const auto declaration_start = common_doc.find ("message JoinConversationFailedNotify");
+    const auto declaration_end = common_doc.find ("message SendChatMessageReq", declaration_start);
+    ASSERT_NE (declaration_start, std::string::npos);
+    ASSERT_NE (declaration_end, std::string::npos);
+    const auto declaration = common_doc.substr (declaration_start,
+                                                declaration_end - declaration_start);
+    EXPECT_NE (declaration.find ("conversationId: string"), std::string::npos);
+    EXPECT_NE (declaration.find ("error: string"), std::string::npos);
+    EXPECT_EQ (declaration.find ("isRetriable"), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;
@@ -349,11 +377,10 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     const create_game_http_res_t created{
       std::string ("room-1"),
       std::string ("tictactoe-game"),
-      topology.stream_endpoint,
       {topology.stream_endpoint, topology.play_b_stream_endpoint},
       {{topology.stream_endpoint}, {topology.play_b_stream_endpoint}},
       sample_names_t::required_level};
-    EXPECT_EQ (created.owner_play_endpoint, topology.stream_endpoint);
+    EXPECT_EQ (created.play_endpoints.front (), topology.stream_endpoint);
     EXPECT_EQ (created.game_name, "tictactoe-game");
     tictactoe_match_t room (created.room_id);
     EXPECT_EQ (room.join (sample_names_t::x_actor_id, created.room_id).state.x_actor_id,
@@ -486,8 +513,15 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
 
     const auto status_wire = nlohmann::json (
       delivery_status_notify_t{"delivery-1", delivery_status_t::assigned, "courier-1",
-                               "2026-07-15T00:00:00Z"});
+                               1721001600000LL});
     EXPECT_EQ (status_wire.at ("status"), "Assigned");
+    EXPECT_EQ (status_wire.at ("courierId"), "courier-1");
+    EXPECT_EQ (status_wire.at ("occurredAtUnixMs"), 1721001600000LL);
+
+    const auto missing_courier_wire = nlohmann::json (delivery_status_notify_t{
+      "delivery-1", delivery_status_t::assigned, std::nullopt, 1721001600001LL});
+    EXPECT_TRUE (missing_courier_wire.at ("courierId").is_null ());
+    EXPECT_EQ (missing_courier_wire.at ("occurredAtUnixMs"), 1721001600001LL);
 
     const auto bind_request_wire =
       nlohmann::json (bind_courier_session_req_t{"courier-1"});
@@ -502,7 +536,7 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
 
     const auto changed_wire = nlohmann::json (delivery_status_changed_req_t{
       "delivery-1", "customer-2", delivery_status_t::assigned, "courier-1",
-      "2026-07-15T00:00:00Z"});
+      1721001600000LL});
     EXPECT_EQ (changed_wire.at ("customerId"), "customer-2");
 
     const auto common_doc = read_file (
@@ -567,11 +601,12 @@ TEST (CppFrameworkSampleParity, GameQuestUsesFlatOneWayGameplayMessage)
     using namespace zlink::samples::gamequest;
 
     const auto wire = nlohmann::json (gameplay_msg_t{
-      "event-1", "player-1", "MonsterKilled", std::vector<std::uint8_t>{1, 2, 3}, 42});
+      "event-1", "player-1", "MonsterKilled", nlohmann::json{{"value", "wolf"}}, 42});
+    const auto expected_payload = nlohmann::json{{"value", "wolf"}};
     EXPECT_EQ (wire.at ("eventId"), "event-1");
     EXPECT_EQ (wire.at ("playerId"), "player-1");
     EXPECT_EQ (wire.at ("type"), "MonsterKilled");
-    EXPECT_EQ (wire.at ("payload"), nlohmann::json::array ({1, 2, 3}));
+    EXPECT_EQ (wire.at ("payload"), expected_payload);
     EXPECT_EQ (wire.at ("occurredAtUnixMs"), 42);
     EXPECT_EQ (wire.find ("event"), wire.end ())
       << "GameplayMsg must not wrap a private gameplay envelope";
@@ -582,6 +617,60 @@ TEST (CppFrameworkSampleParity, GameQuestUsesFlatOneWayGameplayMessage)
       << "entry-to-owner gameplay is the one-way GameplayMsg, not a parallel request";
     EXPECT_NE (contracts.find ("lastSourceEventId"), std::string::npos);
     EXPECT_NE (contracts.find ("\"version\""), std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, GameQuestActionsMatchCommonRequestAndSendSemantics)
+{
+    using namespace zlink::samples::gamequest;
+
+    EXPECT_STREQ (collect_item_req_t::packet_name, "CollectItemReq");
+    EXPECT_STREQ (enter_area_req_t::packet_name, "EnterAreaReq");
+
+    const auto collect_wire = nlohmann::json (
+      collect_item_req_t{"player-1", "healing-herb", 2, "collect-1"});
+    const auto expected_collect_wire = nlohmann::json{{"playerId", "player-1"},
+                                                       {"itemId", "healing-herb"},
+                                                       {"count", 2},
+                                                       {"idempotencyKey", "collect-1"}};
+    EXPECT_EQ (collect_wire, expected_collect_wire);
+
+    const auto enter_wire = nlohmann::json (
+      enter_area_req_t{"player-1", "ruins", "enter-1"});
+    const auto expected_enter_wire = nlohmann::json{{"playerId", "player-1"},
+                                                     {"areaId", "ruins"},
+                                                     {"idempotencyKey", "enter-1"}};
+    EXPECT_EQ (enter_wire, expected_enter_wire);
+
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/GameQuest/Shared/Contracts/messages.hpp");
+    for (const auto *extra : {"CollectItemRes", "EnterAreaRes", "CompleteMissionReq",
+                              "CompleteMissionRes", "UnlockFeatureReq", "UnlockFeatureRes"}) {
+        EXPECT_EQ (contracts.find (extra), std::string::npos)
+          << "GameQuest must not expose an undeclared public message " << extra;
+    }
+
+    const auto scenario = read_file (
+      cpp_language_root () / "samples/GameQuest/Client/gamequest_client_scenario.hpp");
+    EXPECT_NE (scenario.find ("api_a.send (collect_item_req_t"), std::string::npos);
+    EXPECT_NE (scenario.find ("api_b.send (collect_item_req_t"), std::string::npos);
+    EXPECT_NE (scenario.find ("alice_b.send (enter_area_req_t"), std::string::npos);
+    EXPECT_EQ (scenario.find ("collect_item_res_t"), std::string::npos);
+    EXPECT_EQ (scenario.find ("unlock_feature_req_t"), std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, GameQuestDoesNotExposeUnusedOrEvidenceMessagesAsCommonApi)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/GameQuest/Shared/Contracts/messages.hpp");
+
+    EXPECT_EQ (contracts.find ("NotifyQuestProgressReq"), std::string::npos)
+      << "unused notification request must not remain in the shared sample contract";
+    EXPECT_EQ (contracts.find ("NotifyQuestProgressRes"), std::string::npos)
+      << "unused notification response must not remain in the shared sample contract";
+    EXPECT_NE (contracts.find ("Internal server-to-server message"), std::string::npos)
+      << "internal GameQuest messages must state their non-public boundary";
+    EXPECT_NE (contracts.find ("Test/evidence-only"), std::string::npos)
+      << "self-check messages must state their evidence-only boundary";
 }
 
 TEST (CppFrameworkSampleParity, GameQuestProgressChecksRejectOvercount)
@@ -605,6 +694,24 @@ TEST (CppFrameworkSampleParity, BingoAndGameQuestStartAfterObservedReadiness)
     EXPECT_EQ (gamequest_runner.find ("GAMEQUEST_CPP_STARTUP_SETTLE_SECONDS"),
                std::string::npos)
       << "GameQuest must not use a fixed delay as topology readiness";
+}
+
+TEST (CppFrameworkSampleParity, ShoppingMallStartsAfterWorkflowPeerReadiness)
+{
+    const auto api = read_file (
+      cpp_language_root () / "samples/ShoppingMall/Server/CommerceApi/main.cpp");
+    const auto runner = read_file (
+      cpp_language_root () / "samples/ShoppingMall/run_sample.sh");
+
+    EXPECT_NE (api.find ("map_get<route_ready_http_handler_t> (\"/ready\")"),
+               std::string::npos)
+      << "ShoppingMall CommerceApi must expose a bounded RouteMesh readiness check";
+    EXPECT_NE (runner.find ("wait_route_ready"), std::string::npos)
+      << "ShoppingMall runner must wait for workflow peer admission";
+    EXPECT_NE (runner.find ("shoppingmall-workflow-a-workflow"), std::string::npos)
+      << "ShoppingMall runner must check workflow-a readiness";
+    EXPECT_NE (runner.find ("shoppingmall-workflow-b-workflow"), std::string::npos)
+      << "ShoppingMall runner must check workflow-b readiness";
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
@@ -1398,7 +1505,7 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_EQ (client.find (".json ()"), std::string::npos);
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);
-    EXPECT_NE (client.find ("connector_options.endpoint = room.owner_play_endpoint"),
+    EXPECT_NE (client.find ("connector_options.endpoint = owner_endpoint"),
                std::string::npos);
     EXPECT_NE (client.find ("observe_milestone_req_t"), std::string::npos);
     EXPECT_NE (client.find ("win_milestone_notify_t"), std::string::npos);
@@ -1632,6 +1739,27 @@ TEST (CppFrameworkSampleParity, ShoppingMallUsesNullableDecimalAmounts)
 
     const nlohmann::json projected = zlink::samples::shoppingmall::order_state_t{};
     EXPECT_TRUE (projected.at ("amount").is_null ());
+    for (const auto *nullable_field : {"shippingAddressId", "reservationId", "paymentId",
+                                       "amount", "currency", "reason"}) {
+        EXPECT_TRUE (projected.at (nullable_field).is_null ()) << nullable_field;
+    }
+
+    const auto common_doc = read_file (
+      repository_root () / "framework/doc/framework/common/sample/event/shoppingmall.ko.md");
+    const auto declaration_start = common_doc.find ("message OrderState");
+    const auto declaration_end = common_doc.find ("```", declaration_start + 1);
+    ASSERT_NE (declaration_start, std::string::npos);
+    ASSERT_NE (declaration_end, std::string::npos);
+    const auto declaration = common_doc.substr (declaration_start,
+                                                declaration_end - declaration_start);
+    for (const auto *nullable_field : {"shippingAddressId?: string | null",
+                                       "reservationId?: string | null",
+                                       "paymentId?: string | null",
+                                       "amount?: number | null",
+                                       "currency?: string | null",
+                                       "reason?: string | null"}) {
+        EXPECT_NE (declaration.find (nullable_field), std::string::npos) << nullable_field;
+    }
 
     const auto amount = zlink::samples::shoppingmall::decimal_t ("120.01");
     const nlohmann::json amount_wire = amount;

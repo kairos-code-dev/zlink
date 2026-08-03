@@ -1,6 +1,7 @@
 # GameQuest C++ sample porting inventory
 
-최신 검증: 2026-07-15에 Redis 지원 root build에서 아래 명령을 실행했고,
+최신 검증: 2026-08-03에 canonical `framework/languages/cpp/build`에서 아래 명령과
+six-sample aggregate를 실행했고,
 `PASS GameQuest.Cpp`, `gamequest sample result=passed`, `gamequest-server-evidence=completed`,
 `gamequest=completed`를 확인했다.
 
@@ -10,7 +11,7 @@ framework/languages/cpp/samples/GameQuest/run_sample.sh
 
 | 기준 | C++ 위치 | 상태 | 설명 |
 |------|----------|------|------|
-| `.NET Shared/Messages.cs` | `Shared/Contracts/messages.hpp` | done | `GameplayMsg`는 event id·player id·type·payload bytes·발생 시각을 최상위 필드로 갖는 응답 없는 메시지다. 별도 envelope나 request/reply wrapper를 사용하지 않으며 projection의 version과 마지막 source event id는 유지한다. |
+| `.NET Shared/Messages.cs` | `Shared/Contracts/messages.hpp` | done | `GameplayMsg`는 event id·player id·type·typed JSON payload·발생 시각을 최상위 필드로 갖는 응답 없는 메시지다. 별도 envelope나 request/reply wrapper를 사용하지 않으며 projection의 version과 마지막 source event id는 유지한다. |
 | `.NET Server/Configuration/SampleConfiguration.cs` | `Server/Configuration/sample_topology.hpp` | done | api-a/api-b, mission-a/mission-b endpoint와 Redis location store prefix를 환경 변수로 받는다. |
 | `.NET GameApi session` | `Server/GameApi/main.cpp` | done | stream session이 client request를 받고, 먼저 owner QuestMission에 player quest Spot 생성을 보장한 뒤 public spot route request로 progress sync와 gameplay event 적용을 보낸다. |
 | `.NET PlayerQuestSpotProvisioner.cs` | `Server/GameApi/main.cpp`, `Server/QuestMission/main.cpp` | done | C++는 `EnsurePlayerQuestSpotReq` channel request와 `spot_node_manager_t::get_or_create_spot`으로 player owner Spot을 보장한다. |
@@ -46,6 +47,20 @@ event store가 wire 형식에 의존하지 않는다. 샘플 코드에서 raw fr
   - 결과: 통과
   - 출력: `PASS GameQuest.Cpp`, `gamequest sample result=passed`
   - 의미: flat one-way gameplay 메시지로 idempotency, progress 동기화, completion notify가 끝까지 동작한다.
+
+- 2026-08-03: `framework/languages/cpp/samples/GameQuest/run_sample.sh`
+  - 결과: `PASS GameQuest.Cpp`, `gamequest-server-evidence=completed`, `gamequest=completed`
+  - 의미: 자동 RouteMesh discovery readiness, typed `GameplayMsg` payload, reconnect, owner
+    rehydration, projection reconcile와 scale-out을 실제 client/server process로 확인했다.
+
+## Message 분류
+
+`SyncQuestProgressReq`, `GameplayMsg`, `ClosePlayerQuestMsg`와 client action request/reply는
+공통 sample 계약이다. `SyncQuestProgressOwnerReq`와 `NotifyQuestProgressMsg`는 GameApi와
+QuestMission 사이의 internal message다. `ProjectionAdmin*`, `GameQuestUnpublishedKill*`와
+`GameQuestServerAssert*`는 projection 복구·유실 fact·server evidence를 확인하는
+test/evidence-only message다. 이 분류는 public client API를 추가하지 않으며, 사용처가 없는
+`NotifyQuestProgressReq/Res` declaration은 제거했다.
 
 ## 설계 재검토
 

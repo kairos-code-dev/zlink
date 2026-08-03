@@ -107,6 +107,8 @@ struct authenticate_player_res_t
     std::string reason;
 };
 
+/* Internal Play-role request. The public client uses CreateGameHttpReq; this message crosses the
+ * API-to-Play application boundary and must not be treated as an additional client API. */
 struct create_game_req_t
 {
     static constexpr const char *packet_name = "CreateGameReq";
@@ -117,7 +119,7 @@ struct create_game_req_t
 struct create_game_http_req_t
 {
     static constexpr const char *packet_name = "CreateGameHttpReq";
-    std::string game_name;
+    std::optional<std::string> game_name;
 };
 
 struct create_game_http_res_t
@@ -125,7 +127,6 @@ struct create_game_http_res_t
     static constexpr const char *packet_name = "CreateGameHttpRes";
     std::string room_id;
     std::string game_name;
-    std::string owner_play_endpoint;
     std::vector<std::string> play_endpoints;
     std::vector<play_node_info_t> play_nodes;
     int required_level = 0;
@@ -139,6 +140,8 @@ struct join_game_req_t
     std::string room_id;
 };
 
+/* Internal Play-role messages. The Entry Spot uses them to pass the authenticated player to the
+ * room Spot; the public client sees JoinGameReq/Res only. */
 struct tictactoe_game_join_req_t
 {
     std::string room_id;
@@ -167,6 +170,13 @@ struct join_game_res_t
 {
     static constexpr const char *packet_name = "JoinGameRes";
     tictactoe_state_t state;
+};
+
+struct join_game_failed_notify_t
+{
+    static constexpr const char *packet_name = "JoinGameFailedNotify";
+    std::string room_id;
+    std::string error;
 };
 
 struct place_mark_req_t
@@ -203,9 +213,9 @@ struct observe_milestone_res_t
     bool subscribed = false;
 };
 
-struct leave_game_req_t
+struct leave_game_msg_t
 {
-    static constexpr const char *packet_name = "LeaveGameReq";
+    static constexpr const char *packet_name = "LeaveGameMsg";
     std::string room_id;
 };
 
@@ -306,12 +316,12 @@ inline void from_json (const nlohmann::json &json, create_game_req_t &value)
 
 inline void to_json (nlohmann::json &json, const create_game_http_req_t &value)
 {
-    json = {{"gameName", value.game_name}};
+    write_nullable (json, "gameName", value.game_name);
 }
 
 inline void from_json (const nlohmann::json &json, create_game_http_req_t &value)
 {
-    value.game_name = json.value ("gameName", "");
+    value.game_name = read_nullable<std::string> (json, "gameName");
 }
 
 inline void to_json (nlohmann::json &json, const join_game_req_t &value)
@@ -395,7 +405,6 @@ inline void to_json (nlohmann::json &json, const create_game_http_res_t &value)
 {
     json = {{"roomId", value.room_id},
             {"gameName", value.game_name},
-            {"ownerPlayEndpoint", value.owner_play_endpoint},
             {"playEndpoints", value.play_endpoints},
             {"playNodes", value.play_nodes},
             {"requiredLevel", value.required_level}};
@@ -405,7 +414,6 @@ inline void from_json (const nlohmann::json &json, create_game_http_res_t &value
 {
     value.room_id = json.value ("roomId", "");
     value.game_name = json.value ("gameName", "");
-    value.owner_play_endpoint = json.value ("ownerPlayEndpoint", "");
     value.play_endpoints = json.value ("playEndpoints", std::vector<std::string>{});
     value.play_nodes = json.value ("playNodes", std::vector<play_node_info_t>{});
     value.required_level = json.value ("requiredLevel", 0);
@@ -419,6 +427,17 @@ inline void to_json (nlohmann::json &json, const join_game_res_t &value)
 inline void from_json (const nlohmann::json &json, join_game_res_t &value)
 {
     value.state = json.value ("state", tictactoe_state_t{});
+}
+
+inline void to_json (nlohmann::json &json, const join_game_failed_notify_t &value)
+{
+    json = {{"roomId", value.room_id}, {"error", value.error}};
+}
+
+inline void from_json (const nlohmann::json &json, join_game_failed_notify_t &value)
+{
+    value.room_id = json.value ("roomId", "");
+    value.error = json.value ("error", "");
 }
 
 inline void to_json (nlohmann::json &json, const place_mark_res_t &value)
@@ -468,12 +487,12 @@ inline void from_json (const nlohmann::json &json, observe_milestone_res_t &valu
     value.subscribed = json.value ("subscribed", false);
 }
 
-inline void to_json (nlohmann::json &json, const leave_game_req_t &value)
+inline void to_json (nlohmann::json &json, const leave_game_msg_t &value)
 {
     json = {{"roomId", value.room_id}};
 }
 
-inline void from_json (const nlohmann::json &json, leave_game_req_t &value)
+inline void from_json (const nlohmann::json &json, leave_game_msg_t &value)
 {
     value.room_id = json.value ("roomId", "");
 }

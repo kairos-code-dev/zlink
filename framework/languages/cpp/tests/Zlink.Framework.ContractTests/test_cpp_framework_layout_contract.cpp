@@ -1357,6 +1357,21 @@ int main ()
     ok &= require_exists (root / "samples/TicTacToe/run_sample.ps1");
     ok &= require_exists (root / "samples/run_samples.sh");
     ok &= require_exists (root / "samples/run_samples.ps1");
+    const auto sample_shell_aggregate = root / "samples/run_samples.sh";
+    const auto sample_powershell_aggregate = root / "samples/run_samples.ps1";
+    for (const auto &runner : {"TicTacToe", "Bingo", "DeliveryDispatch", "SupportChat",
+                               "GameQuest", "ShoppingMall"}) {
+        ok &= file_contains (sample_shell_aggregate,
+                             std::string (runner) + "/run_sample.sh");
+        ok &= file_contains (sample_powershell_aggregate,
+                             std::string (runner) + "/run_sample.sh");
+    }
+    ok &= file_does_not_contain (
+      sample_shell_aggregate, "MAX_ATTEMPTS",
+      "the C++ sample aggregate must not retry a bind failure");
+    ok &= file_does_not_contain (
+      sample_shell_aggregate, "BIND_RETRY_PATTERN",
+      "the C++ sample aggregate must not classify bind failure as retryable");
     ok &= require_exists (root / "samples/TicTacToe/Shared/Contracts/messages.hpp");
     ok &= require_absent (root / "samples/TicTacToe/Shared" / "Configuration",
                           "TicTacToe Shared must contain message contracts only");

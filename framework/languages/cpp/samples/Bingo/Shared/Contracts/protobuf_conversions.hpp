@@ -54,8 +54,8 @@ inline void to_protobuf (const bingo_room_state_t &value, pb::BingoRoomState &me
     message.set_host_actor_id (value.host_actor_id);
     message.set_can_start (value.can_start);
     message.set_draw_seq (value.draw_seq);
-    if (value.last_drawn_number != 0) {
-        message.set_last_drawn_number (value.last_drawn_number);
+    if (value.last_drawn_number) {
+        message.set_last_drawn_number (*value.last_drawn_number);
     }
     for (const auto number : value.drawn_numbers) {
         message.add_drawn_numbers (number);
@@ -75,7 +75,9 @@ inline void from_protobuf (const pb::BingoRoomState &message, bingo_room_state_t
     value.host_actor_id = message.host_actor_id ();
     value.can_start = message.can_start ();
     value.draw_seq = message.draw_seq ();
-    value.last_drawn_number = message.has_last_drawn_number () ? message.last_drawn_number () : 0;
+    value.last_drawn_number = message.has_last_drawn_number ()
+                                ? std::optional<int> (message.last_drawn_number ())
+                                : std::nullopt;
     value.drawn_numbers.assign (message.drawn_numbers ().begin (), message.drawn_numbers ().end ());
     value.players.clear ();
     value.players.reserve (message.players_size ());
@@ -123,18 +125,24 @@ inline void from_protobuf (const pb::AuthenticatePlayerReq &message,
 inline void to_protobuf (const authenticate_player_res_t &value, pb::AuthenticatePlayerRes &message)
 {
     message.set_accepted (value.accepted);
-    message.set_actor_id (value.actor_id);
-    message.set_display_name (value.display_name);
-    message.set_reason (value.reason);
+    if (value.actor_id) message.set_actor_id (*value.actor_id);
+    if (value.display_name) message.set_display_name (*value.display_name);
+    if (value.reason) message.set_reason (*value.reason);
 }
 
 inline void from_protobuf (const pb::AuthenticatePlayerRes &message,
                            authenticate_player_res_t &value)
 {
     value.accepted = message.accepted ();
-    value.actor_id = message.actor_id ();
-    value.display_name = message.display_name ();
-    value.reason = message.reason ();
+    value.actor_id = message.has_actor_id ()
+                       ? std::optional<std::string> (message.actor_id ())
+                       : std::nullopt;
+    value.display_name = message.has_display_name ()
+                            ? std::optional<std::string> (message.display_name ())
+                            : std::nullopt;
+    value.reason = message.has_reason ()
+                     ? std::optional<std::string> (message.reason ())
+                     : std::nullopt;
 }
 
 inline void to_protobuf (const get_player_record_req_t &value,
@@ -212,19 +220,6 @@ inline void from_protobuf (const pb::EnsurePlayerActorReq &message,
     value.display_name = message.display_name ();
 }
 
-inline void to_protobuf (const ensure_player_actor_res_t &value, pb::EnsurePlayerActorRes &message)
-{
-    message.set_actor_id (value.actor_id);
-    message.set_actor_type (value.actor_type);
-}
-
-inline void from_protobuf (const pb::EnsurePlayerActorRes &message,
-                           ensure_player_actor_res_t &value)
-{
-    value.actor_id = message.actor_id ();
-    value.actor_type = message.actor_type ();
-}
-
 inline void to_protobuf (const match_bingo_req_t &value, pb::MatchBingoReq &message)
 {
     message.set_mode (value.mode);
@@ -294,8 +289,8 @@ inline void to_protobuf (const bingo_room_settings_payload_t &value,
     message.set_required_players (value.required_players);
     message.set_max_draw_number (value.max_draw_number);
     message.set_purpose (value.purpose);
-    if (!value.observed_room_id.empty ()) {
-        message.set_observed_room_id (value.observed_room_id);
+    if (value.observed_room_id) {
+        message.set_observed_room_id (*value.observed_room_id);
     }
 }
 
@@ -307,7 +302,9 @@ inline void from_protobuf (const pb::BingoRoomSettingsPayload &message,
     value.required_players = message.required_players ();
     value.max_draw_number = message.max_draw_number ();
     value.purpose = message.purpose ();
-    value.observed_room_id = message.has_observed_room_id () ? message.observed_room_id () : "";
+    value.observed_room_id = message.has_observed_room_id ()
+                               ? std::optional<std::string> (message.observed_room_id ())
+                               : std::nullopt;
 }
 
 inline void to_protobuf (const reserve_bingo_room_res_t &value, pb::ReserveBingoRoomRes &message)
@@ -546,7 +543,6 @@ ZLINK_BINGO_STREAM_PAYLOAD (get_player_record_res_t, GetPlayerRecordRes)
 ZLINK_BINGO_STREAM_PAYLOAD (report_bingo_result_req_t, ReportBingoResultReq)
 ZLINK_BINGO_STREAM_PAYLOAD (report_bingo_result_res_t, ReportBingoResultRes)
 ZLINK_BINGO_STREAM_PAYLOAD (ensure_player_actor_req_t, EnsurePlayerActorReq)
-ZLINK_BINGO_STREAM_PAYLOAD (ensure_player_actor_res_t, EnsurePlayerActorRes)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_req_t, MatchBingoReq)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_res_t, MatchBingoRes)
 ZLINK_BINGO_STREAM_PAYLOAD (match_bingo_api_req_t, MatchBingoApiReq)

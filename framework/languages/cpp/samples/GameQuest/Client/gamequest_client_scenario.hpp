@@ -93,32 +93,7 @@ class gamequest_client_scenario_t
             ensure (duplicate && duplicate.value ().event_id == third_kill.value ().event_id,
                     "duplicate kill idempotency mismatch");
 
-            auto auction_completed = api_a.wait_for<quest_completed_notify_t> ()
-                                       .where ([] (const quest_completed_notify_t &notify) {
-                                           return notify.player_id == "player-alice"
-                                                  && notify.progress.quest_id
-                                                       == quest_ids_t::open_auction
-                                                  && notify.reward_granted;
-                                       })
-                                       .timeout (std::chrono::seconds (12))
-                                       .to_future ("auction quest completion wait failed");
-            auto auction =
-              api_a.request (unlock_feature_req_t{"player-alice", "auction", "unlock-auction"})
-                .packet_name (unlock_feature_req_t::packet_name)
-                .async<unlock_feature_res_t> ()
-                .result ();
-            ensure (auction && auction.value ().event_id == "player-alice-unlock-auction",
-                    "auction event id mismatch");
-            ensure (auction_completed.get ().progress.status == quest_status_t::reward_granted,
-                    "auction completion push mismatch");
-
-            auto offline_item =
-              api_a.request (collect_item_req_t{"player-bob", "healing-herb", 1, "herb-1"})
-                .packet_name (collect_item_req_t::packet_name)
-                .async<collect_item_res_t> ()
-                .result ();
-            ensure (offline_item && offline_item.value ().event_id == "player-bob-herb-1",
-                    "offline herb event id mismatch");
+            api_a.send (collect_item_req_t{"player-bob", "healing-herb", 1, "herb-1"}).submit ();
 
             auto bob_joined = api_b.request (join_session_req_t{"player-bob"})
                                 .packet_name (join_session_req_t::packet_name)
@@ -139,13 +114,7 @@ class gamequest_client_scenario_t
                                     })
                                     .timeout (std::chrono::seconds (12))
                                     .to_future ("herb completion wait failed");
-            auto online_item =
-              api_b.request (collect_item_req_t{"player-bob", "healing-herb", 4, "herb-2"})
-                .packet_name (collect_item_req_t::packet_name)
-                .async<collect_item_res_t> ()
-                .result ();
-            ensure (online_item && online_item.value ().event_id == "player-bob-herb-2",
-                    "online herb event id mismatch");
+            api_b.send (collect_item_req_t{"player-bob", "healing-herb", 4, "herb-2"}).submit ();
             ensure (herb_completed.get ().progress.status == quest_status_t::reward_granted,
                     "herb completion push mismatch");
 
@@ -243,12 +212,7 @@ class gamequest_client_scenario_t
                                      })
                                      .timeout (std::chrono::seconds (12))
                                      .to_future ("ruins completion wait after reconnect failed");
-            auto ruins = alice_b.request (enter_area_req_t{"player-alice", "ruins", "enter-ruins"})
-                           .packet_name (enter_area_req_t::packet_name)
-                           .async<enter_area_res_t> ()
-                           .result ();
-            ensure (ruins && ruins.value ().event_id == "player-alice-enter-ruins",
-                    "ruins event id mismatch");
+            alice_b.send (enter_area_req_t{"player-alice", "ruins", "enter-ruins"}).submit ();
             ensure (ruins_completed.get ().progress.status == quest_status_t::reward_granted,
                     "reconnected player did not receive the notify on the new node");
 
@@ -270,6 +234,52 @@ class gamequest_client_scenario_t
                       && has_progress (rehydrated.value ().active_quests,
                                        quest_ids_t::first_hunt, 4),
                     "owner reactivation did not rehydrate the event stream");
+
+            /* scale-out (§18): two independent player owners exercise both
+             * API streams and let the RouteMesh placement select the two
+             * QuestMission owners. The client observes only typed progress;
+             * owner placement remains a server-side concern. */
+            auto scale_a_core = connect (api_a_stream_endpoint);
+            auto scale_b_core = connect (api_b_stream_endpoint);
+            auto scale_a = zlink::stream_e2e_client::use (scale_a_core);
+            auto scale_b = zlink::stream_e2e_client::use (scale_b_core);
+            auto scale_a_joined = scale_a.request (join_session_req_t{"player-scale-a"})
+                                    .packet_name (join_session_req_t::packet_name)
+                                    .async<join_session_res_t> ()
+                                    .result ();
+            auto scale_b_joined = scale_b.request (join_session_req_t{"player-scale-b"})
+                                    .packet_name (join_session_req_t::packet_name)
+                                    .async<join_session_res_t> ()
+                                    .result ();
+            ensure (scale_a_joined && scale_b_joined,
+                    "GameQuest scale-out player join failed");
+            auto scale_a_progress = scale_a.wait_for<quest_progress_notify_t> ()
+                                      .where ([] (const quest_progress_notify_t &notify) {
+                                          return notify.player_id == "player-scale-a"
+                                                 && notify.progress.current_count == 1;
+                                      })
+                                      .timeout (std::chrono::seconds (12))
+                                      .to_future ("scale-a progress wait failed");
+            auto scale_b_progress = scale_b.wait_for<quest_progress_notify_t> ()
+                                      .where ([] (const quest_progress_notify_t &notify) {
+                                          return notify.player_id == "player-scale-b"
+                                                 && notify.progress.current_count == 1;
+                                      })
+                                      .timeout (std::chrono::seconds (12))
+                                      .to_future ("scale-b progress wait failed");
+            auto scale_a_event = scale_a.request (
+                                      kill_monster_req_t{"player-scale-a", "wolf", "forest",
+                                                         "scale-kill-1"})
+                                   .packet_name (kill_monster_req_t::packet_name)
+                                   .async<kill_monster_res_t> ()
+                                   .result ();
+            scale_b.send (collect_item_req_t{"player-scale-b", "healing-herb", 1, "scale-herb-1"})
+              .submit ();
+            ensure (scale_a_event && scale_a_event.value ().event_id == "player-scale-a-scale-kill-1",
+                    "GameQuest scale-out event id mismatch");
+            ensure (scale_a_progress.get ().progress.current_count == 1
+                      && scale_b_progress.get ().progress.current_count == 1,
+                    "GameQuest scale-out progress push mismatch");
 
             assert_server (api_a_http_url);
             assert_server (api_b_http_url);
@@ -319,7 +329,7 @@ class gamequest_client_scenario_t
             std::cerr << "gamequest initial join quest"
                       << " questId=" << quest.quest_id
                       << " creatorPlayer=" << quest.player_id
-                      << " lastEventId=" << quest.last_source_event_id
+                      << " lastEventId=" << quest.last_source_event_id.value_or ("<none>")
                       << " updatedAtUnixMs=" << quest.updated_at_unix_ms
                       << " status=" << quest.status
                       << " count=" << quest.current_count << "/"

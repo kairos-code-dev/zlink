@@ -128,6 +128,18 @@ wait_grep() {
   grep -q "$pattern" "$file"
 }
 
+wait_any_grep() {
+  local pattern="$1"
+  shift
+  for _ in $(seq 1 300); do
+    if grep -q "$pattern" "$@"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  grep -q "$pattern" "$@"
+}
+
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
@@ -147,6 +159,26 @@ cleanup() {
   cleanup_done=true
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     kill "${PIDS[$i]}" 2>/dev/null || true
+  done
+  for _ in $(seq 1 300); do
+    local any_alive=0
+    for pid in "${PIDS[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        any_alive=1
+        break
+      fi
+    done
+    if [[ "$any_alive" == "0" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "forced cleanup process $pid" >&2
+      kill -9 "$pid" 2>/dev/null || true
+      cleanup_failed=1
+    fi
   done
   for pid in "${PIDS[@]}"; do
     set +e
@@ -255,7 +287,12 @@ start_server() {
   local name="$1"
   local binary="$2"
   shift 2
-  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  # Keep application readiness markers separate from diagnostic trace. Both
+  # streams are still preserved in the failure bundle, but independent file
+  # descriptors prevent concurrent stdout/stderr writes from splitting a
+  # marker that the runner must verify.
+  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.stdout.log" \
+    2>"$LOG_DIR/${name}.trace.log" &
   PIDS+=("$!")
 }
 
@@ -280,10 +317,10 @@ wait_port api-b-channel "$API_B_ENDPOINT"
 wait_port api-b-http "$API_B_HTTP_ENDPOINT"
 wait_port api-b-object-route "$API_B_ROUTE_ENDPOINT"
 
-wait_grep "tictactoe play route ready node=a peer=tictactoe-play-b" "$LOG_DIR/play-a.log"
-wait_grep "tictactoe play route ready node=b peer=tictactoe-play-a" "$LOG_DIR/play-b.log"
-wait_grep "tictactoe play api channel ready node=a" "$LOG_DIR/play-a.log"
-wait_grep "tictactoe play api channel ready node=b" "$LOG_DIR/play-b.log"
+wait_grep "tictactoe play route ready node=a peer=tictactoe-play-b" "$LOG_DIR/play-a.stdout.log"
+wait_grep "tictactoe play route ready node=b peer=tictactoe-play-a" "$LOG_DIR/play-b.stdout.log"
+wait_grep "tictactoe play api channel ready node=a" "$LOG_DIR/play-a.stdout.log"
+wait_grep "tictactoe play api channel ready node=b" "$LOG_DIR/play-b.stdout.log"
 
 wait_route_ready() {
   local target_rid="$1"
@@ -303,27 +340,26 @@ wait_route_ready() {
 wait_route_ready "tictactoe-play-a"
 wait_route_ready "tictactoe-play-b"
 
-"$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
-  cat "$LOG_DIR/client.log" >&2
-  cat "$LOG_DIR/play-a.log" >&2
-  cat "$LOG_DIR/play-b.log" >&2
-  cat "$LOG_DIR/api-a.log" >&2
-  cat "$LOG_DIR/api-b.log" >&2
+"$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" \
+  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.trace.log" || {
+  for log in "$LOG_DIR"/*.log; do
+    [[ -f "$log" ]] && cat "$log" >&2
+  done
   exit 1
 }
 
-wait_grep "observer-connected endpoint=tcp://127.0.0.1:" "$LOG_DIR/client.log"
-wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.log"
-wait_grep "observer-win-milestone=verified actor=player-x wins=100" "$LOG_DIR/client.log"
-wait_grep "tictactoe completed" "$LOG_DIR/client.log"
-grep -q "stream-inbound sample=TicTacToe" "$LOG_DIR/client.log"
-grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "$LOG_DIR/client.log"
-wait_grep "tictactoe=completed" "$LOG_DIR/client.log"
-grep -q "actor: LeaveGameReq completed. actor=player-x" "$LOG_DIR"/play-*.log
-grep -q "actor: LeaveGameReq completed. actor=player-o" "$LOG_DIR"/play-*.log
-grep -q "entry spot: actor destroy completed. actor=player-x" "$LOG_DIR"/play-*.log
-grep -q "entry spot: actor destroy completed. actor=player-o" "$LOG_DIR"/play-*.log
-grep -Rq "packet=LeaveGameReq" "$FLOW_LOG_DIR"
+wait_grep "observer-connected endpoint=tcp://127.0.0.1:" "$LOG_DIR/client.stdout.log"
+wait_grep "observer-subscription=verified subscribed=true" "$LOG_DIR/client.stdout.log"
+wait_grep "observer-win-milestone=verified actor=player-x wins=100" "$LOG_DIR/client.stdout.log"
+wait_grep "tictactoe completed" "$LOG_DIR/client.stdout.log"
+grep -q "stream-inbound sample=TicTacToe" "$LOG_DIR/client.stdout.log"
+grep -Eq "stream-inbound sample=TicTacToe .* seq=[0-9]" "$LOG_DIR/client.stdout.log"
+wait_grep "tictactoe=completed" "$LOG_DIR/client.stdout.log"
+wait_any_grep "actor: LeaveGameMsg completed. actor=player-x" "$LOG_DIR"/play-*.stdout.log
+wait_any_grep "actor: LeaveGameMsg completed. actor=player-o" "$LOG_DIR"/play-*.stdout.log
+wait_any_grep "entry spot: actor destroy completed. actor=player-x" "$LOG_DIR"/play-*.stdout.log
+wait_any_grep "entry spot: actor destroy completed. actor=player-o" "$LOG_DIR"/play-*.stdout.log
+grep -Rq "packet=LeaveGameMsg" "$FLOW_LOG_DIR"
 grep -Rq "message flow" "$FLOW_LOG_DIR"
 
 cleanup

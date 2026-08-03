@@ -4,6 +4,7 @@
 #include <zlink/framework/codecs/json.hpp>
 #include <nlohmann/json.hpp>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <array>
@@ -29,6 +30,25 @@ inline T json_value (const nlohmann::json &json, const char *camel, const char *
         return json.value (camel, fallback);
     }
     return json.value (snake, fallback);
+}
+
+inline std::optional<std::string>
+json_optional_string (const nlohmann::json &json, const char *name)
+{
+    if (!json.contains (name) || json.at (name).is_null ()) {
+        return std::nullopt;
+    }
+    return json.at (name).get<std::string> ();
+}
+
+template <typename T>
+inline void set_optional (nlohmann::json &json,
+                          const char *name,
+                          const std::optional<T> &value)
+{
+    if (value) {
+        json[name] = *value;
+    }
 }
 
 struct bingo_sample_modes_t
@@ -80,9 +100,9 @@ struct authenticate_player_res_t
 {
     static constexpr const char *packet_name = "AuthenticatePlayerRes";
     bool accepted = false;
-    std::string actor_id;
-    std::string display_name;
-    std::string reason;
+    std::optional<std::string> actor_id;
+    std::optional<std::string> display_name;
+    std::optional<std::string> reason;
 };
 
 struct get_player_record_req_t
@@ -123,13 +143,6 @@ struct ensure_player_actor_req_t
     std::string display_name;
 };
 
-struct ensure_player_actor_res_t
-{
-    static constexpr const char *packet_name = "EnsurePlayerActorRes";
-    std::string actor_id;
-    std::string actor_type;
-};
-
 struct match_bingo_req_t
 {
     static constexpr const char *packet_name = "MatchBingoReq";
@@ -166,7 +179,7 @@ struct bingo_room_settings_payload_t
     int required_players = 2;
     int max_draw_number = 75;
     std::string purpose = "Game";
-    std::string observed_room_id;
+    std::optional<std::string> observed_room_id;
 };
 
 struct reserve_bingo_room_res_t
@@ -196,7 +209,7 @@ struct bingo_room_state_t
     std::string host_actor_id;
     bool can_start = false;
     int draw_seq = 0;
-    int last_drawn_number = 0;
+    std::optional<int> last_drawn_number;
     std::vector<int> drawn_numbers;
     std::vector<bingo_player_state_t> players;
     std::vector<std::string> winners;
@@ -337,18 +350,18 @@ inline void from_json (const nlohmann::json &json, authenticate_player_req_t &va
 
 inline void to_json (nlohmann::json &json, const authenticate_player_res_t &value)
 {
-    json = {{"accepted", value.accepted},
-            {"actorId", value.actor_id},
-            {"displayName", value.display_name},
-            {"reason", value.reason}};
+    json = {{"accepted", value.accepted}};
+    set_optional (json, "actorId", value.actor_id);
+    set_optional (json, "displayName", value.display_name);
+    set_optional (json, "reason", value.reason);
 }
 
 inline void from_json (const nlohmann::json &json, authenticate_player_res_t &value)
 {
     value.accepted = json.value ("accepted", false);
-    value.actor_id = json_string (json, "actorId", "actor_id");
-    value.display_name = json_string (json, "displayName", "display_name");
-    value.reason = json.value ("reason", "");
+    value.actor_id = json_optional_string (json, "actorId");
+    value.display_name = json_optional_string (json, "displayName");
+    value.reason = json_optional_string (json, "reason");
 }
 
 inline void to_json (nlohmann::json &json, const get_player_record_req_t &value)
@@ -413,17 +426,6 @@ inline void from_json (const nlohmann::json &json, ensure_player_actor_req_t &va
     value.display_name = json_string (json, "displayName", "display_name");
 }
 
-inline void to_json (nlohmann::json &json, const ensure_player_actor_res_t &value)
-{
-    json = {{"actorId", value.actor_id}, {"actorType", value.actor_type}};
-}
-
-inline void from_json (const nlohmann::json &json, ensure_player_actor_res_t &value)
-{
-    value.actor_id = json_string (json, "actorId", "actor_id");
-    value.actor_type = json_string (json, "actorType", "actor_type");
-}
-
 inline void to_json (nlohmann::json &json, const match_bingo_req_t &value)
 {
     json = {{"mode", value.mode}};
@@ -479,9 +481,7 @@ inline void to_json (nlohmann::json &json, const bingo_room_settings_payload_t &
             {"requiredPlayers", value.required_players},
             {"maxDrawNumber", value.max_draw_number},
             {"purpose", value.purpose}};
-    if (!value.observed_room_id.empty ()) {
-        json["observedRoomId"] = value.observed_room_id;
-    }
+    set_optional (json, "observedRoomId", value.observed_room_id);
 }
 
 inline void from_json (const nlohmann::json &json, bingo_room_settings_payload_t &value)
@@ -491,7 +491,7 @@ inline void from_json (const nlohmann::json &json, bingo_room_settings_payload_t
     value.required_players = json_value (json, "requiredPlayers", "required_players", 2);
     value.max_draw_number = json_value (json, "maxDrawNumber", "max_draw_number", 75);
     value.purpose = json.value ("purpose", "Game");
-    value.observed_room_id = json_string (json, "observedRoomId", "observed_room_id");
+    value.observed_room_id = json_optional_string (json, "observedRoomId");
 }
 
 inline void to_json (nlohmann::json &json, const reserve_bingo_room_res_t &value)
@@ -565,10 +565,10 @@ inline void to_json (nlohmann::json &json, const bingo_room_state_t &value)
             {"hostActorId", value.host_actor_id},
             {"canStart", value.can_start},
             {"drawSeq", value.draw_seq},
-            {"lastDrawnNumber", value.last_drawn_number},
             {"drawnNumbers", value.drawn_numbers},
             {"players", value.players},
             {"winners", value.winners}};
+    set_optional (json, "lastDrawnNumber", value.last_drawn_number);
 }
 
 inline void from_json (const nlohmann::json &json, bingo_room_state_t &value)
@@ -578,7 +578,17 @@ inline void from_json (const nlohmann::json &json, bingo_room_state_t &value)
     value.host_actor_id = json_string (json, "hostActorId", "host_actor_id");
     value.can_start = json_value (json, "canStart", "can_start", false);
     value.draw_seq = json_value (json, "drawSeq", "draw_seq", 0);
-    value.last_drawn_number = json_value (json, "lastDrawnNumber", "last_drawn_number", 0);
+    if (json.contains ("lastDrawnNumber")) {
+        value.last_drawn_number = json.at ("lastDrawnNumber").is_null ()
+                                     ? std::nullopt
+                                     : std::optional<int> (json.at ("lastDrawnNumber").get<int> ());
+    } else if (json.contains ("last_drawn_number")) {
+        value.last_drawn_number = json.at ("last_drawn_number").is_null ()
+                                     ? std::nullopt
+                                     : std::optional<int> (json.at ("last_drawn_number").get<int> ());
+    } else {
+        value.last_drawn_number = std::nullopt;
+    }
     value.drawn_numbers =
       json_value (json, "drawnNumbers", "drawn_numbers", std::vector<int>{});
     value.players = json.value ("players", std::vector<bingo_player_state_t>{});

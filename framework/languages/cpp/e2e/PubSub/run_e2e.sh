@@ -8,7 +8,10 @@ BUILD_DIR="$CPP_DIR/build"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
+# Fanout subscribers connect after their HTTP listener is ready.  The native
+# publisher emits its first readiness beacon at five seconds, so application
+# publishes must wait past that beacon instead of relying on process readiness.
+SCENARIO_SETTLE_SECONDS=6
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(

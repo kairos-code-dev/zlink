@@ -104,6 +104,18 @@ CMake sample target과 runner를 둔다.
     `gamequest sample result=passed`, `PASS ShoppingMall.Cpp`
   - 의미: 상위 sample runner가 여섯 C++ 샘플을 모두 실행하고 DeliveryDispatch를 빠뜨리지 않는지 다시 확인했다.
 
+- 2026-08-03: `framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh`
+  - 결과: exit code 0, `deliverydispatch sample result=passed`
+  - 의미: `occurredAtUnixMs`, nullable courier/reason, timeout reassignment, customer actor
+    routing, server evidence와 role별 message-flow file log를 실제 process에서 확인했다.
+
+## Message 분류
+
+`CreateDelivery*`, `SubscribeDelivery*`, `BindCourierSession*`, `DeliveryStatus*`와
+`OfferDelivery*`·`CourierDecisionMsg`는 공통 sample 계약에 속한다. `EnsureCustomerActorReq`와
+`EnsureCourierActorReq`는 role 사이의 internal request다. `server_assertion_*`는 runner가
+server evidence를 읽는 test/evidence-only message이며 public client contract가 아니다.
+
 ## 설계 재검토
 
 Tracking이 고객 actor를 찾는 방법으로 delivery id에 대한 별도 색인을 유지하는 안과 상태 변경 메시지의

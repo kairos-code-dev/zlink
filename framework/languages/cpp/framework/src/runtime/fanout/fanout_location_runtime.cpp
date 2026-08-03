@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/fanout/fanout_location_runtime.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/configuration/service_scope.hpp"
 
@@ -327,12 +328,28 @@ void fanout_location_runtime_t::pump ()
                   *_services,
                   zlink::framework::detail::service_scope_kind_t::
                     handler_invocation);
-                (void) _channel_runtime.dispatch_send (
+                auto dispatched = _channel_runtime.dispatch_send (
                   subscriber->channel_name,
                   received->topic,
                   received->payload.packet_name,
                   scope.provider (), *_serializers, *_handlers,
                   message, inbound);
+                if (!dispatched) {
+                    zlink::framework::detail::dispatch_error_reporter_t (
+                      _channel_runtime.dispatch_options ())
+                      .report (message_dispatch_error_event_t{
+                        .surface = dispatch_error_surface_t::channel,
+                        .message_kind = dispatch_message_kind_t::publish,
+                        .reason = zlink::framework::detail::dispatch_reason_from_error (
+                          dispatched.error ()),
+                        .action = dispatch_error_action_t::drop,
+                        .packet_name = received->payload.packet_name,
+                        .channel_name = subscriber->channel_name,
+                        .topic = received->topic,
+                        .exception = dispatched.error ()
+                          ? std::make_exception_ptr (*dispatched.error ())
+                          : std::exception_ptr{}});
+                }
             }
             catch (...) {
             }

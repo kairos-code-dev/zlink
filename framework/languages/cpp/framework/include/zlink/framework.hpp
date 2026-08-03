@@ -27,6 +27,7 @@
 #include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
+#include <zlink/framework/contracts/monitoring/client_server_runtime.hpp>
 #include <zlink/framework/contracts/monitoring/framework_runtime.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>

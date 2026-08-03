@@ -127,8 +127,9 @@ set(ZLINK_FRAMEWORK_CPP_M6C_RUNTIME_SOURCES
 add_library(zlink_framework_m6a_runtime STATIC
   ${ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES})
 target_compile_features(zlink_framework_m6a_runtime PUBLIC cxx_std_20)
+target_include_directories(zlink_framework_m6a_runtime PUBLIC
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include)
 target_include_directories(zlink_framework_m6a_runtime PRIVATE
-  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
   ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
   ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
 target_link_libraries(zlink_framework_m6a_runtime PUBLIC
@@ -1092,6 +1093,15 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_app_host.cpp
     "framework-unit;framework-host;framework-config;framework-http;framework-http-e2e")
   add_zlink_framework_test(
+    test_cpp_framework_client_server_runtime
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_client_server_runtime.cpp
+    "framework-unit;framework-regression;framework-client-server;framework-monitoring")
+  target_include_directories(test_cpp_framework_client_server_runtime PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  set_tests_properties(test_cpp_framework_client_server_runtime PROPERTIES
+    RESOURCE_LOCK "zlink_cpp_heavy_runtime"
+    TIMEOUT 30)
+  add_zlink_framework_test(
     test_cpp_framework_actor_gateway
     tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp
     "framework-unit;framework-regression;framework-actor;stream")
@@ -1280,6 +1290,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_instance_spot_activation
     tests/Zlink.Framework.UnitTests/test_cpp_framework_instance_spot_activation.cpp
     "framework-unit;framework-regression;spot;instance-activation")
+  target_include_directories(test_cpp_framework_instance_spot_activation PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   target_link_libraries(test_cpp_framework_instance_spot_activation PRIVATE
     GTest::gtest_main)
   # The channel messaging test reaches the service wire codec headers, which include the
@@ -1298,6 +1310,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     zlink::stream_connector)
   zlink_framework_cpp_add_boost_headers(
     test_cpp_framework_stream_framework)
+  target_include_directories(test_cpp_framework_stream_framework PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   if(OpenSSL_FOUND AND ZLINK_HTTP_CLIENT_TEST_WITH_OPENSSL)
     target_compile_definitions(test_cpp_framework_stream_framework PRIVATE
       ZLINK_FRAMEWORK_STREAM_TEST_WITH_OPENSSL
@@ -1398,6 +1412,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     COMMAND sample_stream_connector_core_client)
   set_tests_properties(sample_stream_connector_core_client PROPERTIES
     LABELS "connector-e2e;connector-contract"
+    RESOURCE_LOCK zlink_cpp_heavy_runtime
     TIMEOUT 30)
 
   add_executable(sample_stream_e2e_client
@@ -1408,6 +1423,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     COMMAND sample_stream_e2e_client)
   set_tests_properties(sample_stream_e2e_client PROPERTIES
     LABELS "connector-e2e"
+    RESOURCE_LOCK zlink_cpp_heavy_runtime
     TIMEOUT 30)
 
   add_executable(connector_perf_client
@@ -1456,6 +1472,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   add_test(NAME test_unreal_stream_connector COMMAND test_unreal_stream_connector)
   set_tests_properties(test_unreal_stream_connector PROPERTIES
     LABELS "connector-unreal-contract;connector-unreal-compile;connector-unreal-smoke"
+    RESOURCE_LOCK zlink_cpp_heavy_runtime
     TIMEOUT 30)
 endif()
 
@@ -2077,6 +2094,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
       COMMAND "${ZLINK_FRAMEWORK_CPP_DIR}/samples/${sample_name}/run_sample.sh")
     set_tests_properties(sample_smoke_sample_cpp_framework_${sample_name} PROPERTIES
       LABELS "${labels};framework-sample-smoke"
+      RESOURCE_LOCK "zlink-cpp-sample-runtime"
       TIMEOUT ${timeout_seconds})
   endfunction()
 

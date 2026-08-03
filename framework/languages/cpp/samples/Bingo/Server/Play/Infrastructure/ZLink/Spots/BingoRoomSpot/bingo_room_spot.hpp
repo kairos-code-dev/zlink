@@ -88,7 +88,7 @@ class bingo_room_spot_t : public spot_t<player_actor_t>
         if (!request.empty ()) {
             auto settings = request.decode<bingo_room_settings_payload_t> ();
             _is_observer = settings.purpose == "Observer";
-            _observed_room_id = settings.observed_room_id;
+        _observed_room_id = settings.observed_room_id.value_or ("");
         }
         co_return spot_create_response_t::accept ();
     }

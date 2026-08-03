@@ -29,7 +29,9 @@ inline nlohmann::json wait_channel_weight (const std::string &base_url,
       std::chrono::steady_clock::now () + std::chrono::seconds (10);
     do {
         const auto channel = channel_snapshot (runtime_snapshot (base_url));
-        if (channel.at ("localWeight").get<int> () == expected_weight)
+        const auto expected_ready = expected_weight > 0;
+        if (channel.at ("isReady").get<bool> () == expected_ready
+            && (expected_ready || channel.at ("readyTargetCount").get<std::uint64_t> () == 0))
             return channel;
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     } while (std::chrono::steady_clock::now () < deadline);
@@ -47,8 +49,8 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
     ensure (changed && changed.value ().status < 400,
             "MON-A3 weight 0 public runtime-options call failed");
     const auto zero = wait_channel_weight (options.filtered_service_url, 0);
-    ensure (!zero.at ("selectable").get<bool> ()
-              || zero.at ("readyMemberCount").get<std::uint64_t> () > 0,
+    ensure (!zero.at ("isReady").get<bool> ()
+              && zero.at ("readyTargetCount").get<std::uint64_t> () == 0,
             "MON-A3 local weight 0 readiness is inconsistent");
 
     changed =
@@ -57,7 +59,7 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
             "MON-A3 weight restore public runtime-options call failed");
     const auto restored =
       wait_channel_weight (options.filtered_service_url, 100);
-    ensure (restored.at ("selectable").get<bool> (),
+    ensure (restored.at ("isReady").get<bool> (),
             "MON-A3 restored channel is not selectable");
     std::cout << "scenario MON-A3 passed\n";
 }

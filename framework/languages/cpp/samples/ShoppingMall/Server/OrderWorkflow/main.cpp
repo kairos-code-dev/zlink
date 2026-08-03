@@ -81,7 +81,7 @@ class order_workflow_spot_t : public instance_spot_t
      * 호출이든 코드는 같다. */
     continue_order_workflow_res_t continue_ (const continue_order_workflow_req_t &request)
     {
-        return {run_to_completion (request.order_id)};
+        return {run_to_completion (request.order_id, request.source_command_id)};
     }
 
     void continue_scheduled (const continue_order_workflow_msg_t &message)
@@ -112,14 +112,16 @@ class order_workflow_spot_t : public instance_spot_t
   private:
     static std::string source_command_id (const start_order_workflow_req_t &request)
     {
-        /* 같은 IdempotencyKey의 시작 요청은 같은 SourceCommandId를 만든다(§9.4). */
-        return "start:" + request.idempotency_key;
+        /* 같은 IdempotencyKey의 시작 요청은 같은 SourceCommandId를 사용한다(§9.4). */
+        return request.source_command_id.empty () ? "start:" + request.idempotency_key
+                                                   : request.source_command_id;
     }
 
-    order_state_t run_to_completion (const std::string &order_id)
+    order_state_t run_to_completion (const std::string &order_id,
+                                     const std::string &source_command_id = {})
     {
         return _store.update ([&] (nlohmann::json &json) {
-            return run_workflow (json, order_id, /*source_command_id=*/{}, nullptr,
+            return run_workflow (json, order_id, source_command_id, nullptr,
                                  /*max_steps=*/16);
         });
     }

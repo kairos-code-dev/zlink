@@ -172,7 +172,9 @@ cleanup() {
     local pid="${PIDS[$i]}"
     kill "$pid" 2>/dev/null || true
   done
-  for _ in $(seq 1 20); do
+  # The Framework host shutdown deadline is bounded to 30 seconds. Allow the
+  # role to finish its location operation and host teardown within that bound.
+  for _ in $(seq 1 300); do
     local any_alive=0
     for pid in "${PIDS[@]}"; do
       if kill -0 "$pid" 2>/dev/null; then
@@ -317,7 +319,11 @@ start_server() {
   local name="$1"
   local binary="$2"
   shift 2
-  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.log" 2>&1 &
+  # Keep application readiness/cleanup markers separate from diagnostic
+  # trace. This prevents concurrent stdout/stderr writes from splitting a
+  # marker while preserving both streams in the failure bundle.
+  stdbuf -oL -eL "$binary" "$@" >"$LOG_DIR/${name}.stdout.log" \
+    2>"$LOG_DIR/${name}.trace.log" &
   PIDS+=("$!")
   PID_ROLES+=("$name")
 }
@@ -347,55 +353,44 @@ wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 wait_port session-b-play-route "$SESSION_B_PLAY_ROUTE_ENDPOINT"
 
 wait_log_contains "play-a API channel readiness" \
-  "bingo play api channel ready node=a" "$LOG_DIR/play-a.log"
+  "bingo play api channel ready node=a" "$LOG_DIR/play-a.stdout.log"
 wait_log_contains "play-b API channel readiness" \
-  "bingo play api channel ready node=b" "$LOG_DIR/play-b.log"
+  "bingo play api channel ready node=b" "$LOG_DIR/play-b.stdout.log"
 wait_log_contains "api-a matchmaking route readiness" \
-  "bingo route ready node=api-a mesh=matchmaking" "$LOG_DIR/api-a.log"
+  "bingo route ready node=api-a mesh=matchmaking" "$LOG_DIR/api-a.stdout.log"
 wait_log_contains "api-a room route readiness" \
-  "bingo route ready node=api-a mesh=room" "$LOG_DIR/api-a.log"
+  "bingo route ready node=api-a mesh=room" "$LOG_DIR/api-a.stdout.log"
 wait_log_contains "api-b matchmaking route readiness" \
-  "bingo route ready node=api-b mesh=matchmaking" "$LOG_DIR/api-b.log"
+  "bingo route ready node=api-b mesh=matchmaking" "$LOG_DIR/api-b.stdout.log"
 wait_log_contains "api-b room route readiness" \
-  "bingo route ready node=api-b mesh=room" "$LOG_DIR/api-b.log"
+  "bingo route ready node=api-b mesh=room" "$LOG_DIR/api-b.stdout.log"
 wait_log_contains "session-a room route readiness" \
-  "bingo route ready node=session-a mesh=room" "$LOG_DIR/session-a.log"
+  "bingo route ready node=session-a mesh=room" "$LOG_DIR/session-a.stdout.log"
 wait_log_contains "session-b room route readiness" \
-  "bingo route ready node=session-b mesh=room" "$LOG_DIR/session-b.log"
+  "bingo route ready node=session-b mesh=room" "$LOG_DIR/session-b.stdout.log"
 
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \
-  --session-b-stream-endpoint "$SESSION_B_STREAM_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
+  --session-b-stream-endpoint "$SESSION_B_STREAM_ENDPOINT" \
+  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.trace.log" || {
   echo "=== bingo client ===" >&2
-  cat "$LOG_DIR/client.log" >&2
-  echo "=== bingo session-a ===" >&2
-  cat "$LOG_DIR/session-a.log" >&2
-  echo "=== bingo session-b ===" >&2
-  cat "$LOG_DIR/session-b.log" >&2
-  echo "=== bingo play-a ===" >&2
-  cat "$LOG_DIR/play-a.log" >&2
-  echo "=== bingo play-b ===" >&2
-  cat "$LOG_DIR/play-b.log" >&2
-  echo "=== bingo matchmaking ===" >&2
-  cat "$LOG_DIR/matchmaking.log" >&2
-  echo "=== bingo api-a ===" >&2
-  cat "$LOG_DIR/api-a.log" >&2
-  echo "=== bingo api-b ===" >&2
-  cat "$LOG_DIR/api-b.log" >&2
+  for log in "$LOG_DIR"/*.log; do
+    [[ -f "$log" ]] && cat "$log" >&2
+  done
   exit 1
 }
 
-grep -q "bingo=completed" "$LOG_DIR/client.log"
-grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.log"
-grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.log"
-grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.log"
+grep -q "bingo=completed" "$LOG_DIR/client.stdout.log"
+grep -q "stream-inbound sample=Bingo" "$LOG_DIR/client.stdout.log"
+grep -Eq "stream-inbound sample=Bingo .* seq=[0-9]" "$LOG_DIR/client.stdout.log"
+grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "$LOG_DIR/client.stdout.log"
 wait_log_contains "player-1 actor destroy completion" \
-  "entry spot: actor destroy completed. actor=player-1" "$LOG_DIR"/play-*.log
+  "entry spot: actor destroy completed. actor=player-1" "$LOG_DIR"/play-*.stdout.log
 wait_log_contains "player-2 actor destroy completion" \
-  "entry spot: actor destroy completed. actor=player-2" "$LOG_DIR"/play-*.log
+  "entry spot: actor destroy completed. actor=player-2" "$LOG_DIR"/play-*.stdout.log
 wait_log_contains "observer return to Entry Spot" \
-  "observer returned to entry spot" "$LOG_DIR"/play-*.log
-if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/play-*.log; then
+  "observer returned to entry spot" "$LOG_DIR"/play-*.stdout.log
+if grep -Rq "entry spot: actor destroy completed. actor=observer" "$LOG_DIR"/play-*.stdout.log; then
   echo "Observer actor must not be destroyed during Bingo player cleanup." >&2
   exit 1
 fi

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <string_view>
 #include <type_traits>
 
 namespace zlink::framework::runtime::protocol
@@ -15,6 +16,34 @@ namespace
 constexpr std::size_t liveness_size = 13;
 constexpr std::size_t prefix_size = 5;
 constexpr std::uint8_t application_payload_version = 1;
+constexpr std::uint8_t application_payload_flow_version = 2;
+
+bool valid_flow_id (std::string_view value) noexcept
+{
+    if (value.size () != 36)
+        return false;
+    for (std::size_t index = 0; index < value.size (); ++index) {
+        const char ch = value[index];
+        if (index == 8 || index == 13 || index == 18 || index == 23) {
+            if (ch != '-')
+                return false;
+            continue;
+        }
+        const bool hex = (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+        if (!hex)
+            return false;
+    }
+    if (value[14] != '7')
+        return false;
+    const char variant = value[19];
+    return variant == '8' || variant == '9' || variant == 'a' || variant == 'b';
+}
+
+bool valid_flow_origin (std::uint8_t value) noexcept
+{
+    return value >= static_cast<std::uint8_t> (flow_origin_t::inbound)
+           && value <= static_cast<std::uint8_t> (flow_origin_t::lifecycle);
+}
 
 std::uint32_t crc32c (std::span<const std::uint8_t> payload) noexcept
 {
@@ -3423,6 +3452,13 @@ decode_channel_send_header (std::span<const std::uint8_t> bytes)
 std::vector<std::uint8_t>
 encode_application_payload (const application_payload_t &payload)
 {
+    if (payload.flow_id.has_value () != payload.flow_origin.has_value ()) {
+        throw service_wire_error_t (
+          "application payload flow id and origin must be present together");
+    }
+    if (payload.flow_id && !valid_flow_id (*payload.flow_id)) {
+        throw service_wire_error_t ("application payload flow id is invalid");
+    }
     if (payload.payload.size ()
         > std::numeric_limits<std::uint32_t>::max ()) {
         throw service_wire_error_t ("application payload exceeds u32");
@@ -3432,12 +3468,17 @@ encode_application_payload (const application_payload_t &payload)
     append_text8 (body, payload.content_type, "content type");
     append_u32 (body, static_cast<std::uint32_t> (payload.payload.size ()));
     body.insert (body.end (), payload.payload.begin (), payload.payload.end ());
+    if (payload.flow_id) {
+        append_text8 (body, *payload.flow_id, "flow id");
+        body.push_back (static_cast<std::uint8_t> (*payload.flow_origin));
+    }
     if (body.size () > std::numeric_limits<std::uint32_t>::max ()) {
         throw service_wire_error_t ("application payload envelope exceeds u32");
     }
     std::vector<std::uint8_t> result;
     result.reserve (5 + body.size ());
-    result.push_back (application_payload_version);
+    result.push_back (payload.flow_id ? application_payload_flow_version
+                                      : application_payload_version);
     append_u32 (result, static_cast<std::uint32_t> (body.size ()));
     result.insert (result.end (), body.begin (), body.end ());
     return result;
@@ -3446,9 +3487,12 @@ encode_application_payload (const application_payload_t &payload)
 application_payload_t
 decode_application_payload (std::span<const std::uint8_t> bytes)
 {
-    if (bytes.size () < 5 || bytes[0] != application_payload_version) {
+    if (bytes.size () < 5
+        || (bytes[0] != application_payload_version
+            && bytes[0] != application_payload_flow_version)) {
         throw service_wire_error_t ("invalid application payload version");
     }
+    const auto has_flow = bytes[0] == application_payload_flow_version;
     std::size_t offset = 1;
     const auto body_length = read_u32 (bytes, offset);
     if (body_length != bytes.size () - offset) {
@@ -3459,12 +3503,25 @@ decode_application_payload (std::span<const std::uint8_t> bytes)
     result.packet_name = read_text8 (bytes, offset, "packet name");
     result.content_type = read_text8 (bytes, offset, "content type");
     const auto payload_length = read_u32 (bytes, offset);
-    if (payload_length != bytes.size () - offset) {
+    if (payload_length > bytes.size () - offset) {
         throw service_wire_error_t (
           "application payload length does not match frame");
     }
     result.payload.assign (bytes.begin () + static_cast<std::ptrdiff_t> (offset),
-                           bytes.end ());
+                           bytes.begin () + static_cast<std::ptrdiff_t> (offset + payload_length));
+    offset += payload_length;
+    if (has_flow) {
+        result.flow_id = read_text8 (bytes, offset, "flow id");
+        if (!valid_flow_id (*result.flow_id) || offset >= bytes.size ()
+            || !valid_flow_origin (bytes[offset])) {
+            throw service_wire_error_t ("application payload flow context is invalid");
+        }
+        result.flow_origin = static_cast<flow_origin_t> (bytes[offset++]);
+    }
+    if (offset != bytes.size ()) {
+        throw service_wire_error_t (
+          "application payload has trailing fields");
+    }
     return result;
 }
 

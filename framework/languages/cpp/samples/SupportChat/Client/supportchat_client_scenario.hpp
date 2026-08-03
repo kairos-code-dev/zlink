@@ -120,7 +120,7 @@ class supportchat_client_scenario_t
         expect (agent_message.get ().message.text == "Payment keeps failing.",
                 "agent did not receive customer message");
 
-        agent.send (set_typing_req_t{true})
+        agent.send (set_typing_msg_t{true})
           .metadata (conversation_id_metadata_key, opened.conversation_id)
           .submit ();
         expect (customer_typing.get ().is_typing, "customer did not receive typing notification");

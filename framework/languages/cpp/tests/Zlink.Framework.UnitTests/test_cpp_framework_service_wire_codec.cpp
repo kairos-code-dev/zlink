@@ -184,6 +184,15 @@ int main ()
       protocol::encode_application_payload (application);
     assert (protocol::decode_application_payload (application_wire)
             == application);
+    const protocol::application_payload_t traced_application{
+      "Probe", "application/json", {4, 5, 6},
+      "019fc5b9-9df3-786b-bb69-d55358f6d48b",
+      zlink::framework::flow_origin_t::application};
+    const auto traced_application_wire =
+      protocol::encode_application_payload (traced_application);
+    assert (traced_application_wire.front () == 2);
+    assert (protocol::decode_application_payload (traced_application_wire)
+            == traced_application);
     auto admission_descriptor = mesh::service_node_descriptor_t{
       "codec-mesh", std::vector<std::uint8_t>{'n', 'o', 'd', 'e'},
       1, 7, "tcp://127.0.0.1:7000",

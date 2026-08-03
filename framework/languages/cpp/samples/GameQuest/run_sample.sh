@@ -27,11 +27,11 @@ cleanup() {
   for pid in "${PIDS[@]}"; do
     if kill -0 "${pid}" >/dev/null 2>&1; then
       kill "${pid}" >/dev/null 2>&1 || true
-      for _ in $(seq 1 40); do
+      for _ in $(seq 1 300); do
         if ! kill -0 "${pid}" >/dev/null 2>&1; then
           break
         fi
-        sleep 0.05
+        sleep 0.1
       done
       if kill -0 "${pid}" >/dev/null 2>&1; then
         echo "forced cleanup process ${pid}" >&2
@@ -232,6 +232,32 @@ wait_port api-a-stream "$GAMEQUEST_API_A_STREAM_ENDPOINT"
 wait_port api-a-http "$GAMEQUEST_API_A_HTTP_URL"
 wait_port api-b-stream "$GAMEQUEST_API_B_STREAM_ENDPOINT"
 wait_port api-b-http "$GAMEQUEST_API_B_HTTP_URL"
+
+wait_route_ready() {
+  local api_url="$1"
+  local target_rid="$2"
+  for _ in $(seq 1 150); do
+    if curl --connect-timeout 0.2 --max-time 0.5 -fsS \
+      "$api_url/ready?targetRid=${target_rid}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  curl --connect-timeout 0.2 --max-time 1 -sS \
+    "$api_url/ready?targetRid=${target_rid}" >&2 || true
+  echo "timed out waiting for GameQuest RouteMesh peer ${target_rid} from ${api_url}" >&2
+  dump_logs
+  return 1
+}
+
+# TCP listen readiness does not imply RouteMesh peer admission. Wait until both API
+# nodes can route to both QuestMission owners before issuing gameplay messages.
+wait_route_ready "$GAMEQUEST_API_A_HTTP_URL" "gamequest-mission-a-spot"
+wait_route_ready "$GAMEQUEST_API_A_HTTP_URL" "gamequest-mission-b-spot"
+wait_route_ready "$GAMEQUEST_API_A_HTTP_URL" "gamequest-api-b-spot"
+wait_route_ready "$GAMEQUEST_API_B_HTTP_URL" "gamequest-mission-a-spot"
+wait_route_ready "$GAMEQUEST_API_B_HTTP_URL" "gamequest-mission-b-spot"
+wait_route_ready "$GAMEQUEST_API_B_HTTP_URL" "gamequest-api-a-spot"
 
 echo "topology=ready"
 

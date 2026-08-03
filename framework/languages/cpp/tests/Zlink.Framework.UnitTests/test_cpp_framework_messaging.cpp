@@ -206,6 +206,7 @@ int main ()
 
         zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
         using zlink::framework::framework_error_kind_t;
+        using zlink::framework::runtime::messaging::map_request_result_exception;
         using zlink::framework::runtime::messaging::map_submit_result_error_kind;
         if (map_submit_result_error_kind (zlink::submit_result_t::backpressured)
                 != framework_error_kind_t::capacity_exceeded
@@ -222,6 +223,31 @@ int main ()
             || map_submit_result_error_kind (zlink::submit_result_t::invalid_state)
                  != framework_error_kind_t::invalid_operation) {
             return 25;
+        }
+        const auto native_timeout = map_request_result_exception (
+          zlink::request_result_t::timed_out, "native request");
+        const auto native_disconnected = map_request_result_exception (
+          zlink::request_result_t::not_connected, "native request");
+        const auto native_shutdown = map_request_result_exception (
+          zlink::request_result_t::terminated, "native request");
+        const auto native_rejected = map_request_result_exception (
+          zlink::request_result_t::rejected, "native request");
+        const auto native_busy = map_request_result_exception (
+          zlink::request_result_t::busy, "native request");
+        if (zlink::framework::detail::boundary_state (native_timeout)
+                != zlink::framework::detail::boundary_error_t::timed_out
+            || zlink::framework::detail::boundary_state (native_disconnected)
+                 != zlink::framework::detail::boundary_error_t::disconnected
+            || native_disconnected.code ()
+                 != std::make_error_code (std::errc::not_connected)
+            || zlink::framework::detail::boundary_state (native_shutdown)
+                 != zlink::framework::detail::boundary_error_t::shutdown
+            || native_shutdown.kind () != framework_error_kind_t::shutting_down
+            || native_rejected.kind () != framework_error_kind_t::rejected
+            || native_busy.kind () != framework_error_kind_t::capacity_exceeded
+            || mapper.reply_header_exception (113, 0, "native request").kind ()
+                 != framework_error_kind_t::capacity_exceeded) {
+            return 26;
         }
         const auto not_connected = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::not_connected, "profile request");

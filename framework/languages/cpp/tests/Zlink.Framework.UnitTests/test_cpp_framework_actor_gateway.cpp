@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -43,6 +44,59 @@ int relay_dispatch_scope_restores_nested_and_exception_state ()
         }
     }
     return current_stream_relay_dispatch () ? 3 : 0;
+}
+
+int actor_identity_validation_is_bounded_and_utf8_exact ()
+{
+    using namespace zlink::framework;
+
+    const actor_id_t unicode_id ("사용자");
+    if (unicode_id.value () != "사용자")
+        return 1;
+
+    const auto rejects = [] (std::string value) {
+        try {
+            actor_id_t invalid (std::move (value));
+            static_cast<void> (invalid);
+        }
+        catch (const std::invalid_argument &) {
+            return true;
+        }
+        return false;
+    };
+    if (!rejects ({})
+        || !rejects (std::string ("\xc3\x28"))
+        || !rejects (std::string ("\xc0\x80"))
+        || !rejects (std::string ("\xed\xa0\x80"))
+        || !rejects (std::string ("\xf4\x90\x80\x80"))
+        || !rejects (std::string (256, 'a'))) {
+        return 2;
+    }
+
+    const auto node = node_rid_t::from_string ("actor-node");
+    const auto max_generation = static_cast<std::uint64_t> (
+      std::numeric_limits<std::int64_t>::max ());
+    const actor_ref_t maximum (
+      actor_id_t ("actor"), max_generation, "game", node);
+    if (maximum.object_generation () != max_generation)
+        return 3;
+
+    const auto rejects_generation = [&] (std::uint64_t generation) {
+        try {
+            actor_ref_t invalid (
+              actor_id_t ("actor"), generation, "game", node);
+            static_cast<void> (invalid);
+        }
+        catch (const std::invalid_argument &) {
+            return true;
+        }
+        return false;
+    };
+    if (!rejects_generation (0)
+        || !rejects_generation (max_generation + 1)) {
+        return 4;
+    }
+    return 0;
 }
 
 class recording_actor_client_t final : public zlink::framework::actor_client_t
@@ -408,6 +462,10 @@ int bound_session_route_preserves_private_fences ()
 
 int main ()
 {
+    if (const auto identity = actor_identity_validation_is_bounded_and_utf8_exact ();
+        identity != 0) {
+        return 120 + identity;
+    }
     if (const auto relay_scope =
           relay_dispatch_scope_restores_nested_and_exception_state ();
         relay_scope != 0) {

@@ -341,6 +341,8 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     bool is_current_callback_thread () const;
 
     bool try_post_serial (std::string name, std::function<void ()> work);
+    bool try_post_serial_after_current_turn (std::string name,
+                                             std::function<void ()> work);
     bool try_post_serial_async (std::string name,
                                 runtime::serial_execution_queue_t::async_work_t work);
     result_t<void> run_serial_task (std::string name,
@@ -505,7 +507,9 @@ class spot_node_runtime_t
       bool request,
       std::string correlation_id,
       service_provider_t &services,
-      serializer_registry_t &serializers);
+      serializer_registry_t &serializers,
+      std::optional<std::string> flow_id = std::nullopt,
+      std::optional<flow_origin_t> flow_origin = std::nullopt);
     std::optional<spot_info_t> find_spot (spot_id_t spot_id) const;
     std::vector<spot_info_t> list_spots () const;
     task_t<bool> close_spot (spot_id_t spot_id);

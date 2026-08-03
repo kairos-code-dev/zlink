@@ -308,6 +308,7 @@ class mesh_node_runtime_t
     std::string mesh_name () const;
     std::optional<zlink::routing_id_t> routing_id () const;
     std::string listen_endpoint () const;
+    object_role_t object_role () const;
     std::vector<std::string> channel_names () const;
     std::map<std::string, int> channel_weights () const;
     std::size_t max_pending () const noexcept;

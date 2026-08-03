@@ -13,6 +13,7 @@
 
 #include <zlink/framework.hpp>
 
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -98,7 +99,12 @@ class open_conversation_api_handler_t
           co_await _spots.create (sample_names_t::conversation_spot)
             .in_mesh (sample_names_t::mesh)
             .creation_request (conversation_create_req_t{
-              request.customer_actor_id, request.customer_display_name, request.subject})
+              request.customer_actor_id,
+              request.customer_display_name,
+              request.subject,
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                std::chrono::system_clock::now ().time_since_epoch ())
+                .count()})
             .submit ();
         if (created.state == spot_create_state_t::rejected || !created.reply) {
             throw framework_exception_t (
@@ -109,8 +115,7 @@ class open_conversation_api_handler_t
         std::cerr << "supportchat api: conversation created id="
                   << response.state.conversation_id << " status=" << response.state.status
                   << "\n";
-        co_return open_conversation_api_res_t{
-          response.state.conversation_id, response.state.status};
+        co_return open_conversation_api_res_t{response.state};
     }
 
   private:

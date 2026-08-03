@@ -8,11 +8,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace zlink::framework::runtime::host
@@ -22,6 +25,36 @@ namespace
 
 constexpr std::string_view multipart_content_type =
   "application/x-zlink-framework-multipart";
+
+bool mesh_trace_enabled ()
+{
+    const char *value = std::getenv ("ZLINK_CPP_MESH_TRACE");
+    return value != nullptr && *value != '\0' && std::string_view (value) != "0";
+}
+
+void trace_mesh_host (std::string_view stage, std::string_view detail)
+{
+    if (mesh_trace_enabled ())
+        std::cerr << "zlink mesh-host stage=" << stage << " " << detail << '\n';
+}
+
+const char *pump_result_name (mesh::raw_mesh_pump_result_t result) noexcept
+{
+    switch (result) {
+        case mesh::raw_mesh_pump_result_t::no_data:
+            return "no-data";
+        case mesh::raw_mesh_pump_result_t::infrastructure:
+            return "infrastructure";
+        case mesh::raw_mesh_pump_result_t::application:
+            return "application";
+        case mesh::raw_mesh_pump_result_t::backpressured:
+            return "backpressured";
+        case mesh::raw_mesh_pump_result_t::protocol_error:
+            return "protocol-error";
+    }
+    return "unknown";
+}
+
 bool user_spot_operation_replay_expired (
   std::uint64_t deadline_unix_ms,
   std::int64_t now_unix_ms,
@@ -4093,6 +4126,13 @@ std::size_t public_host_runtime_t::dispatch_ready (
     for (; count < 64; ++count) {
         const auto pumped = _transport->pump_one (
           now, accept_application_receive);
+        trace_mesh_host (
+          "pump",
+          std::string ("result=") + pump_result_name (pumped)
+            + " pending="
+            + std::to_string (
+              _transport->mailbox ().pending_messages (
+                mesh::service_mailbox_domain_t::application)));
         if (pumped == mesh::raw_mesh_pump_result_t::no_data) {
             break;
         }
@@ -4265,6 +4305,9 @@ std::size_t public_host_runtime_t::dispatch_ready (
           16u * 1024u * 1024u);
         if (!claim)
             break;
+        trace_mesh_host (
+          "mailbox-claim",
+          std::string ("records=") + std::to_string (claim->records.size ()));
         for (auto &mailbox_record : claim->records) {
             try {
                 const auto wire =
@@ -4338,6 +4381,18 @@ std::size_t public_host_runtime_t::dispatch_ready (
                 const auto payload =
                   protocol::decode_application_payload (
                     mailbox_record.parts[1]);
+                auto source = std::string ("-");
+                if (!mailbox_record.source_routing_id.empty ()) {
+                    source = zlink::routing_id_t::from (
+                      mailbox_record.source_routing_id).to_string ();
+                }
+                trace_mesh_host (
+                  "dispatch",
+                  std::string ("kind=")
+                    + std::to_string (static_cast<int> (kind))
+                    + " source=" + source
+                    + " parts="
+                    + std::to_string (mailbox_record.parts.size ()));
                 dispatch (
                   owner, record, decode_application (payload));
                 ++count;

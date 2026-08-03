@@ -135,7 +135,7 @@ internal static class Program
                 count,
                 idempotencyKey,
                 cancellationToken);
-            return Results.Ok(new CollectItemRes(eventId));
+            return Results.Ok(new { accepted = true, eventId });
         });
 
         app.MapPost("/self-check/sync/{playerId}", async (
@@ -178,14 +178,14 @@ internal static class Program
             var events = await store.ReadQuestEventsAsync(cancellationToken);
             var rehydrates = await store.ReadOwnerRehydrateEvidenceAsync(cancellationToken);
             var passed = alice.Any(p => p is { QuestId: QuestIds.FirstHunt, Status: QuestStatuses.RewardGranted })
-                         && alice.Any(p => p is { QuestId: QuestIds.OpenAuction, Status: QuestStatuses.RewardGranted })
+                         && alice.Any(p => p is { QuestId: QuestIds.VisitRuins, Status: QuestStatuses.RewardGranted })
                          && bob.Any(p => p is { QuestId: QuestIds.HerbGathering, Status: QuestStatuses.RewardGranted })
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestProgressedEvent)) == 3
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestCompletedEvent)) == 1
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestRewardGrantedEvent)) == 1
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestReconciled)) == 1
-                         && Count(events, "player-alice", QuestIds.OpenAuction, nameof(QuestCompletedEvent)) == 1
-                         && Count(events, "player-alice", QuestIds.OpenAuction, nameof(QuestRewardGrantedEvent)) == 1
+                         && Count(events, "player-alice", QuestIds.VisitRuins, nameof(QuestCompletedEvent)) == 1
+                         && Count(events, "player-alice", QuestIds.VisitRuins, nameof(QuestRewardGrantedEvent)) == 1
                          && Count(events, "player-bob", QuestIds.HerbGathering, nameof(QuestCompletedEvent)) == 1
                          && Count(events, "player-bob", QuestIds.HerbGathering, nameof(QuestRewardGrantedEvent)) == 1
                          && rehydrates.GetValueOrDefault("player-alice") >= 2

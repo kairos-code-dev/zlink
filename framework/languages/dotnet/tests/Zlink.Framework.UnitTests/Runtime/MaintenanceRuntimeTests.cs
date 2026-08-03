@@ -1,4 +1,5 @@
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Runtime.Host;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.UnitTests;
@@ -80,6 +81,22 @@ public sealed class MaintenanceRuntimeTests
         Assert.Equal(ZLinkFrameworkRelocationReason.TargetUnavailable, result.Reason);
         Assert.Equal(ZLinkFrameworkRuntimeState.Serving, fixture.Runtime.Status.State);
         Assert.Null(fixture.Runtime.Status.RelocationResult);
+    }
+
+    [Fact]
+    public async Task Target_wait_deadline_preserves_target_unavailable_reason()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var wait = ZLinkFrameworkRuntime.WaitForTargetAvailabilityAsync(
+                TimeSpan.FromHours(1),
+                cancellation.Token)
+            .AsTask();
+
+        cancellation.Cancel();
+
+        Assert.Equal(
+            ZLinkFrameworkRelocationReason.TargetUnavailable,
+            await wait);
     }
 
     [Fact]

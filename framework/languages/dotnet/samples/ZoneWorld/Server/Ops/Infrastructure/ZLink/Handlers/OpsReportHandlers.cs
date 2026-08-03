@@ -53,7 +53,15 @@ internal sealed class ReportNodeStatusHandler(
         var route = context as ZLinkRouteMessageContext
                     ?? throw new InvalidOperationException(
                         "Zone reports require RouteMesh source identity.");
-        await nodes.ApplyReportAsync(message, route.SourceNodeRid, cancellationToken);
+        var connectionCorrelated = await nodes.ApplyReportAsync(
+            message,
+            route.SourceNodeRid,
+            cancellationToken);
+        if (connectionCorrelated)
+            logger.LogInformation(
+                "node connection observed. node={NodeId}, connected={Connected}",
+                message.NodeId,
+                true);
         logger.LogInformation(
             "node status observed. node={NodeId}, rid={NodeRid}",
             message.NodeId,

@@ -166,4 +166,73 @@ public sealed partial class RegressionTests
             runner,
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ZoneWorld_Assigns_Adjacent_Zones_To_Different_Node_Owners()
+    {
+        var sampleRoot = ResolveSampleRoot("ZoneWorld");
+        var topology = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "Configuration",
+            "ZoneTopology.cs"));
+        var bootstrap = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "ZoneNode",
+            "Infrastructure",
+            "ZLink",
+            "Actors",
+            "BotSpawner.cs"));
+        var fanout = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "ZoneNode",
+            "Infrastructure",
+            "ZLink",
+            "Handlers",
+            "FanoutSubscribers.cs"));
+        var program = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "ZoneNode",
+            "Program.cs"));
+
+        Assert.Contains("public static IReadOnlyList<string> ZonesOf(string nodeId)", topology,
+            StringComparison.Ordinal);
+        Assert.Contains("NodeIds.West => [ZoneIds.NorthWest, ZoneIds.SouthWest]", topology,
+            StringComparison.Ordinal);
+        Assert.Contains("NodeIds.East => [ZoneIds.NorthEast, ZoneIds.SouthEast]", topology,
+            StringComparison.Ordinal);
+        Assert.Contains("ZoneTopology.ZonesOf(maintenance.OwnNodeId)", bootstrap,
+            StringComparison.Ordinal);
+        Assert.Contains("ZoneTopology.ZonesOf(maintenance.OwnNodeId)", fanout,
+            StringComparison.Ordinal);
+        Assert.Contains(".StableTypeLimit(2)", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ZoneWorld_Same_Zone_Move_Uses_Update_Position_Message_Boundary()
+    {
+        var sampleRoot = ResolveSampleRoot("ZoneWorld");
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts",
+            "ZoneWorldMessages.cs"));
+        var movement = File.ReadAllText(Path.Combine(sampleRoot, "Server", "ZoneNode",
+            "Infrastructure", "ZLink", "Spots", "Handlers", "PlayerMoveHandlers.cs"));
+        var handlers = File.ReadAllText(Path.Combine(sampleRoot, "Server", "ZoneNode",
+            "Infrastructure", "ZLink", "Spots", "Handlers", "ZoneSpotHandlers.cs"));
+        var spot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "ZoneNode",
+            "Infrastructure", "ZLink", "Spots", "ZoneSpot.cs"));
+
+        Assert.Contains("record UpdatePositionMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotClient spots", movement, StringComparison.Ordinal);
+        Assert.Contains("SendToSpot(", movement, StringComparison.Ordinal);
+        Assert.Contains("new UpdatePositionMsg", movement, StringComparison.Ordinal);
+        Assert.DoesNotContain("spot.UpdatePosition(", movement, StringComparison.Ordinal);
+        Assert.Contains("ZLinkSpotPacketHandler(nameof(UpdatePositionMsg))", handlers,
+            StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotPacketHandler<ZoneSpot, UpdatePositionMsg>", handlers,
+            StringComparison.Ordinal);
+        Assert.Contains("ApplyPositionUpdate", spot, StringComparison.Ordinal);
+    }
 }

@@ -18,6 +18,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly ZLinkCompletionAdmissionOwner _completionAdmission;
+    private readonly ZLinkLocationLifecycle? _locationLifecycle;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
     private IDisposable? _manualConnectionAttachment;
@@ -59,6 +60,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         Registration = registration;
         Node = node;
         _completionAdmission = completionAdmission;
+        _locationLifecycle = locationLifecycle;
         if (node is IZLinkBackendActorMessageFollowIngress
             messageFollowIngress)
             messageFollowIngress.SetActorMessageFollowIngressHandler(
@@ -749,10 +751,11 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public async ValueTask InitializeEntrySpotAsync()
     {
         WireNodeRouteDispatch();
+        _entrySpot ??= Node.EntrySpot();
+        await TrackEntrySpotLocationAsync().ConfigureAwait(false);
         if (_instanceSpotActivationTarget is not null)
             await _instanceSpotActivationTarget.RecoverAsync(_stopSource.Token)
                 .ConfigureAwait(false);
-        _entrySpot ??= Node.EntrySpot();
         _entryOutbound ??= new ZLinkSpotOutboundTransport(
             _entrySpot,
             Registration.Router?.SocketConfig.SendTimeout
@@ -986,6 +989,16 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public bool DisconnectPeerAuto(string endpoint)
         => _peerConnector.DisconnectPeerAuto(endpoint);
 
+    internal bool DisconnectPeerAuto(RoutingId peerRid, string endpoint)
+        => _peerConnector.DisconnectPeerAuto(peerRid, endpoint);
+
+    internal bool DisconnectPeerBeforeAdmission(
+        ZLinkAutoConnectTarget target)
+        => _peerConnector.DisconnectPeerBeforeAdmission(
+            target.NodeRid,
+            target.Endpoint,
+            target.LifecycleGeneration);
+
     private async ValueTask<ZLinkEntrySpotActivation?> CreateEntrySpotActivationAsync(
         IZLinkBackendSpot entrySpot)
     {
@@ -1100,6 +1113,35 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 failures.Add(exception);
             }
         }
+    }
+
+    private async ValueTask TrackEntrySpotLocationAsync()
+    {
+        if (_locationLifecycle is null || string.IsNullOrWhiteSpace(EntrySpotId))
+            return;
+
+        var nodeGeneration = Node.MeshStatus().LifecycleGeneration;
+        var status = await _locationLifecycle.SpotLocations.ClaimAsync(
+                Registration.SpotMeshChannelName ?? Registration.SpotNodeName,
+                EntrySpotId,
+                _entrySpot!.LifecycleGeneration,
+                Registration.EntrySpotType?.FullName,
+                Node.RoutingId,
+                nodeGeneration,
+                ZLinkSpotKind.Entry,
+                _entrySpot.LifecycleGeneration,
+                deactivate: null,
+                _stopSource.Token)
+            .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"entry_spot_location_tracked node={Node.RoutingId} "
+            + $"spot={EntrySpotId} spot_gen={_entrySpot.LifecycleGeneration} "
+            + $"node_gen={nodeGeneration} authority_gen={_entrySpot.LifecycleGeneration} "
+            + $"status={status}");
+        if (status != ZLinkLocationWriteStatus.Stored)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InternalFailure,
+                $"Entry Spot '{EntrySpotId}' could not be tracked in the location lifecycle: {status}.");
     }
 }
 

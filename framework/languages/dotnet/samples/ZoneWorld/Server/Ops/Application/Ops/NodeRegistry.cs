@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Systems.Zlink;
-using ZoneWorld.Server.Configuration;
 using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Server.Ops.Application.Ops;
@@ -70,18 +69,24 @@ public sealed class NodeRegistry
         }
     }
 
-    public async ValueTask ApplyReportAsync(
+    public async ValueTask<bool> ApplyReportAsync(
         ReportNodeStatusMsg report,
         RoutingId sourceNodeRid,
         CancellationToken cancellationToken)
     {
         var routingId = sourceNodeRid.ToString();
+        var isLive = _liveRoutingIds.Contains(routingId);
+        _routingIdByNode.TryGetValue(report.NodeId, out var previousRoutingId);
+        var connectionCorrelated = isLive
+            && (!_nodes.TryGetValue(report.NodeId, out var previousState)
+                || !previousState.View.Connected
+                || previousRoutingId is null
+                || !string.Equals(previousRoutingId, routingId, StringComparison.Ordinal));
         if (_nodeByRoutingId.TryGetValue(routingId, out var previousNodeId)
             && previousNodeId != report.NodeId)
             _routingIdByNode.TryRemove(previousNodeId, out _);
-        if (_routingIdByNode.TryGetValue(report.NodeId, out var previousRoutingId)
-            && previousRoutingId != routingId)
-            _nodeByRoutingId.TryRemove(previousRoutingId, out _);
+        if (previousRoutingId is { } previous && previous != routingId)
+            _nodeByRoutingId.TryRemove(previous, out _);
         _routingIdByNode[report.NodeId] = routingId;
         _nodeByRoutingId[routingId] = report.NodeId;
         await UpdateAsync(report.NodeId, state => state with
@@ -89,13 +94,14 @@ public sealed class NodeRegistry
             TransportConnected = true,
             View = state.View with
             {
-                Registered = _liveRoutingIds.Contains(routingId),
-                Connected = _liveRoutingIds.Contains(routingId),
+                Registered = isLive,
+                Connected = isLive,
                 Zones = report.Zones,
                 PlayerCount = report.PlayerCount,
                 Maintenance = report.Maintenance
             }
         }, cancellationToken);
+        return connectionCorrelated;
     }
 
     private async ValueTask UpdateAsync(

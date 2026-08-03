@@ -280,8 +280,26 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             }
 
             ShutdownStep("drain_stream_sessions");
-            if (!await _operations.DrainStreamSessions(deadlineToken).ConfigureAwait(false))
-                return Result(ZLinkDrainForceReason.TeardownFailed);
+            var streamSessionsDrained = await _operations
+                .DrainStreamSessions(deadlineToken)
+                .ConfigureAwait(false);
+            if (!streamSessionsDrained)
+            {
+                // A session reports false both when its terminal close failed
+                // and when the drain token expired while waiting for that
+                // close. Preserve the cancellation cause at this boundary so
+                // the coordinator reports the original deadline instead of a
+                // misleading teardown failure.
+                var forceReason = deadlineToken.IsCancellationRequested
+                    ? ZLinkDrainForceReason.DeadlineExceeded
+                    : ZLinkDrainForceReason.TeardownFailed;
+                Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog
+                    .SpotDiscovery(
+                        $"stream_session_drain_failed cancellation_requested="
+                        + $"{deadlineToken.IsCancellationRequested} "
+                        + $"reason={forceReason}");
+                return Result(forceReason);
+            }
 
             ShutdownStep("freeze_owner_writes");
             if (_operations.HasAutoConnect)
@@ -472,22 +490,22 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         CancellationToken cancellationToken)
     {
         _ = reason;
-        using var notificationBound = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        notificationBound.CancelAfter(TimeSpan.FromSeconds(2));
-        try
-        {
-            _ = await _operations.DrainStreamSessions(notificationBound.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (notificationBound.IsCancellationRequested)
-        {
-        }
-
+        // The runtime force-stop owner sends the ServerDrain notification and
+        // cancels session work before disposing the component state. Waiting
+        // for the same sessions here would consume the entire force budget
+        // before that owner can perform the actual bounded teardown.
         var failures = new List<Exception>();
         Capture(_stopMeshMonitoring, failures);
-        await CaptureAsync(() => _operations.ForceStopRuntime(cancellationToken), failures)
+        await CaptureAsync(
+                "force_runtime",
+                () => _operations.ForceStopRuntime(cancellationToken),
+                failures)
             .ConfigureAwait(false);
         if (_operations.HasAutoConnect)
-            await CaptureAsync(() => _operations.StopAutoConnect(cancellationToken), failures)
+            await CaptureAsync(
+                    "stop_auto_connect",
+                    () => _operations.StopAutoConnect(cancellationToken),
+                    failures)
                 .ConfigureAwait(false);
         var ownerCleanupFailed = false;
         if (_operations.HasLocationRuntime)
@@ -503,8 +521,12 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             {
                 ownerCleanupFailed = true;
                 failures.Add(error);
+                LogCleanupFailure("cleanup_owner", error);
             }
-            await CaptureAsync(() => _operations.StopLocation(cancellationToken), failures)
+            await CaptureAsync(
+                    "stop_location",
+                    () => _operations.StopLocation(cancellationToken),
+                    failures)
                 .ConfigureAwait(false);
         }
         if (ownerCleanupFailed)
@@ -607,6 +629,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
     }
 
     private static async ValueTask CaptureAsync(
+        string stage,
         Func<ValueTask> operation,
         List<Exception> failures)
     {
@@ -617,7 +640,18 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         catch (Exception error)
         {
             failures.Add(error);
+            LogCleanupFailure(stage, error);
         }
+    }
+
+    private static void LogCleanupFailure(string stage, Exception error)
+    {
+        Zlink.Framework.Runtime.Diagnostics.ZLinkFrameworkDebugLog
+            .SpotDiscovery(
+                $"force_stop_cleanup_failed stage={stage} "
+                + $"type={error.GetType().Name} "
+                + $"message={error.Message.Replace('\r', ' ').Replace('\n', ' ')} "
+                + $"detail={error.ToString().Replace('\r', ' ').Replace("\n", " | ")}");
     }
 }
 

@@ -466,6 +466,31 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
+    public async Task Entry_Spot_Claim_Tracks_Full_Width_Lifecycle_Generation()
+    {
+        await using var fixture = await LifecycleFixture.CreateAsync();
+        var node = await fixture.NodeAsync("node-a");
+        const string entrySpotId = "play-entry-full-width";
+
+        var status = await node.SpotLocations.ClaimAsync(
+            MeshName,
+            entrySpotId,
+            ulong.MaxValue,
+            "entry",
+            RoutingId.From("node-a"),
+            ulong.MaxValue,
+            ZLinkSpotKind.Entry,
+            authorityOwnerGeneration: ulong.MaxValue,
+            deactivate: null);
+
+        Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
+        Assert.True(node.SpotLocations.TryGetTrackedGeneration(
+            entrySpotId,
+            out var trackedGeneration));
+        Assert.Equal(ulong.MaxValue, trackedGeneration);
+    }
+
+    [Fact]
     public async Task Moved_Actor_Uses_The_Source_Fence_After_Local_Ownership_Is_Lost()
     {
         await using var fixture = await LifecycleFixture.CreateAsync();

@@ -1,19 +1,26 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: 2026-08-03 09:28 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
-> 현재 runtime 변경은 `FullyQualifiedName~Runtime` unit `740/740`, bound-session·entry
-> targeted `136/136`, staged-route targeted `10/10`으로 통과했다. 기존 전체 solution
-> `1890/1890`, package contract·clean consumer gate와 native Core 11.1.0 evidence도 유지한다.
-> Actor transfer process는 ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6가 통과했지만 aggregate가
-> ST-B2 fixture의 낡은 source-cleanup barrier 기대에서 중단됐다. reconnect lifetime contract,
-> 남은 공통 E2E process evidence, 중앙 matrix와 독립 최종 audit도 남아 있다.
-> Phase B (common sample gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
+> 상태: 2026-08-03 17:27 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
+> 최신 `FullyQualifiedName~Runtime` unit filter는 `747/747`로 exit `0`을 반환했다. 실행 중
+> negative startup 검증이 `ZlinkBindException`, `errno 93` stack trace를 남겼지만 testhost는
+> 중단되지 않았다. 새 handoff state 재사용 회귀를 포함한 영향 묶음은 `249/249`로 통과했다.
+> 현재 dirty source를 사용한 9개 package manifest·dependency·clean consumer와
+> standalone HTTP package consumer도 통과했다. Public API snapshot hash는
+> `399d5e99932d10574db163537bf6858f49a221331512358f06b2140c083e549a`다.
+> Actor transfer process는 ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6와 최신 ST-B2 standalone 실행이
+> 통과했다. Aggregate와 남은 공통 E2E process evidence, 중앙 matrix와 독립 최종 audit은 아직
+> 남아 있다.
+> 사용자 지정 순서에 따라 Phase B의 sample source conformance는 runtime source·unit gate 뒤에 시작한다.
+> 현재 Phase B source conformance와 source regression은 통과했으며, 실제 process evidence·wire capture·
+> package consumer·독립 audit은 아직 열린 상태다. 상세 결과는
+> [`log/20260803-1106-sample-contract-posd-ddd.ko.md`](log/20260803-1106-sample-contract-posd-ddd.ko.md)에
+> 기록한다.
+> Sample process evidence와 최종 완료 판정은 Phase A process/audit와 함께 마지막 E2E 단계에서 진행한다.
 >
 >
 > 작업 시작 기준: `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2`와 2026-08-02 working tree.
-> 마지막 .NET runtime scoped commit은 `095dbdb2dc8ac1b752d07d32992118b6fffb10a6`이며,
 > 현재 branch `HEAD`와 `origin/agent/framework-contract-runtime-update`는
-> `ee1dbccbb5ba72a9defc4158206b4fd23fa36c62`에서 일치한다. 기준점과 working-tree manifest는
+> `e619ac5bc05`에서 일치한다. 기준점과 working-tree manifest는
 > [`log/20260802-092859-ledger-review.ko.md`](log/20260802-092859-ledger-review.ko.md)에 기록하고, 기존
 > Phase A 실행 결과는 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md),
 > 최신 poller/HWM 수정과 Codex 검증 결과는
@@ -22,6 +29,21 @@
 > [`log/20260803-071702-current-progress.ko.md`](log/20260803-071702-current-progress.ko.md)에 기록한다.
 > 현재 runtime unit와 Actor transfer process 실행 결과는
 > [`log/20260803-092806-runtime-unit-and-e2e.ko.md`](log/20260803-092806-runtime-unit-and-e2e.ko.md)에 기록한다.
+> Owner lease 만료 뒤 stale peer intent cleanup 수정과 message trace·file log 검증 결과는
+> [`log/20260803-101951-runtime-autoconnect-cleanup.ko.md`](log/20260803-101951-runtime-autoconnect-cleanup.ko.md)에 기록한다.
+> Runtime unit 분모 분해와 POSD·DDD 점검 결과는
+> [`log/20260803-1049-runtime-unit-posd-ddd.ko.md`](log/20260803-1049-runtime-unit-posd-ddd.ko.md)에 기록한다.
+> disconnect relay operation fence와 staged relocation disconnect cleanup의 최신 수정·unit·process
+> trace 결과는 [`log/20260803-1210-runtime-disconnect-relocation-posd-ddd.ko.md`](log/20260803-1210-runtime-disconnect-relocation-posd-ddd.ko.md)에 기록한다.
+> Handoff source tombstone 재사용 수정, remote session push trace와 최신 `ZW-B1` process 결과는
+> [`log/20260803-1247-runtime-handoff-reuse-push-posd-ddd.ko.md`](log/20260803-1247-runtime-handoff-reuse-push-posd-ddd.ko.md)에
+> 기록한다.
+> 최신 ZoneWorld 전체 process 실행과 `ZW-C3` 단독 비교 결과는
+> [`log/20260803-1727-zoneworld-process-progress.ko.md`](log/20260803-1727-zoneworld-process-progress.ko.md)에
+> 기록한다. 전체 실행은 `ZW-C2` 뒤 `zone-node-2`의 remote actor creation에서 실패했고,
+> 단독 `ZW-C3`는 통과했으므로 sample 전체 완료로 표시하지 않는다.
+> Sample source 계약 수정, regression `141/141`과 POSD·DDD 점검 결과는
+> [`log/20260803-1106-sample-contract-posd-ddd.ko.md`](log/20260803-1106-sample-contract-posd-ddd.ko.md)에 기록한다.
 >
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
@@ -30,15 +52,17 @@
 
 마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. 현재 `.NET` production
 runtime source와 관련 unit test에는 dirty 변경이 있고, 이 변경은 runtime filter와 targeted unit
-test로 재검증했다. Package version/export에는 변경이 없으므로 기존 clean consumer evidence를
-유지한다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
+test로 재검증했다. Package version/export에는 변경이 없지만, 이전 public XML documentation 변경으로
+생긴 package snapshot hash drift를 현재 source hash로 갱신하고 verifier와 clean consumer를 다시
+통과시켰다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
 
 | 범위 | 현재 상태 | 다음 조건 |
 |---|---|---|
-| Runtime·contract·package | 현재 runtime filter `740/740`, bound-session·entry targeted `136/136`, staged-route targeted `10/10`이 통과했다. 기존 UnitTests `1431/1431`, solution `1890/1890`, ContractTests `76/76`, package verifier exit 0도 유지한다. | reconnect lifetime contract와 target OS 실행 증거를 별도로 닫는다. |
-| E2E source·selector·runner | ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6의 실제 process log가 있다. Aggregate는 ST-B2의 source-cleanup barrier fixture 기대에서 중단됐다. | ST-B2를 공통 Actor Join 계약에 맞춰 수정하고 remaining process evidence를 수집한다. |
+| Runtime·contract·package | 최신 전체 Runtime filter `747/747`, 핵심 runtime regression subset `541/541`, configuration·fanout·endpoint subset `54/54`와 ContractTests `76/76`이 통과했다. 새 handoff 재사용·push trace를 포함한 영향 묶음은 `249/249`다. 실행 중 negative startup 검증의 `errno 93` log는 별도 evidence로 남겼다. | 새 source를 반영한 package verifier·clean consumer를 갱신한다. |
+| E2E source·selector·runner | 기존 ST process evidence와 최신 ZoneWorld 전체 실행의 `ZW-B4`, `ZW-C2` 및 client batch 일부가 있다. 전체 실행은 C2 뒤 새 `zone-node-2`의 `bot-ne-y` remote actor creation에서 exit `1`로 실패했다. 단독 `ZW-C3`는 exit `0`이지만 전체 process gate를 대체하지 않는다. | C3 lifecycle-order dependency를 Framework runtime에서 재현·수정하고, ZoneWorld 전체 runner를 다시 통과시킨 뒤 7종 aggregate process evidence를 수집한다. |
+| Phase B sample source conformance | 공통 7종의 source 계약 수정과 regression `141/141`이 통과했다. GameQuest payload/action, ShoppingMall response, Delivery timestamp, Bingo optional/public 범위, ZoneWorld `UpdatePositionMsg`, TicTacToe·SupportChat one-way와 shell·PowerShell inventory가 포함된다. | 실제 process self-check·server evidence·cleanup, raw wire capture, package-only process와 독립 review를 실행한다. ZoneWorld는 전체 runner가 C3 lifecycle gap에서 아직 실패했다. |
 | Config 14 | `InstanceSpot/run_e2e.sh`는 feature-map만 확인하고 exit 2로 종료한다. role server와 client는 없다. | process fixture, role server, client와 36개 scenario evidence를 추가한다. |
-| Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | A-G6, A-G7 조건을 모두 통과하기 전에는 Phase B를 시작하지 않는다. |
+| Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | runtime source/unit gate는 통과했으므로 사용자 지정 순서에 따라 sample source conformance를 진행할 수 있다. Phase A process/audit와 Phase B process 완료 판정은 뒤에서 함께 닫는다. |
 
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
@@ -163,10 +187,11 @@ review 위험도에 따라 결정한다. 이 문서 갱신 시점의 guide는 `g
 7. Core, bindings 또는 공통 contract 변경이 필요한 항목은 선행 card로 분리한다. 원인을 소유한
    layer에서 regression test와 수정을 끝내고 package를 다시 배포해 Framework가 그 package를 사용하는
    것까지 확인하기 전에는 `.NET` 완료로 처리하지 않는다.
-8. Phase A의 모든 implementation·E2E·regression·package gap을 닫고, A-G7 독립 audit에서 unresolved
-   `Critical`·`High`·`Medium` finding이 0건이어야 Phase B를 시작한다.
-9. Phase B의 common sample gap은 이 문서의 sample phase에서만 진행한다. Phase A 완료 전에는 sample
-   source 수정, sample card 완료 판정과 sample process evidence 수집을 시작하지 않는다.
+8. Phase A의 runtime implementation·unit gate를 먼저 닫는다. Phase A의 process·regression·package
+   evidence와 A-G7 독립 audit은 sample source conformance 뒤 마지막 E2E 단계에서 함께 닫는다.
+9. 사용자 지정 순서는 `runtime source·unit` → `sample source spec conformance` → `모든 process
+   E2E·package consumer·독립 audit`이다. Runtime unit gate 전에는 sample source를 수정하지 않으며,
+   sample source conformance 중에는 process evidence를 완료로 표시하지 않는다.
 
 ## 2. 판정 기준과 조사 범위
 
@@ -355,7 +380,10 @@ Phase A의 과거 evidence이며, 현재 `HEAD`의 완료 증거로 다시 사�
 | 2026-08-02 `LocationMessaging:RM-A2` process E2E | `LocationMessaging PASS`, `total PASS`, exit 0, 15초 | aggregate runner로 실행했다. log는 `framework/languages/dotnet/e2e/LocationMessaging/logs/20260802-120542-77932/`에 있다. |
 | 2026-08-02 Config 12·14 aggregate guard | 두 runner 모두 exit 2 | Config 12는 `CH-E2E-03`, `CH-E2E-08`, `CH-REG-02`, `CH-REG-05`가 없고, Config 14는 process fixture·role server·client evidence가 없어 fail-closed 된다. |
 | 2026-08-03 current E2E worktree check | 변경된 E2E project build는 warning 0/error 0, 관련 sample regression은 `3/3`, `1/1`, `1/1`, 변경 runner `bash -n`은 exit 0 | Config 2·4·7·8·11·12의 source·selector·runner 진행만 확인했다. 현재 변경을 사용한 actual process E2E는 실행하지 않았으며 상세 상태는 [`current progress log`](log/20260803-071702-current-progress.ko.md)에 둔다. |
-| 2026-08-03 runtime·Actor transfer follow-up | Runtime `740/740`, bound-session·entry `136/136`, staged-route `10/10`; ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6 process PASS. Aggregate는 ST-B2에서 중단 | Runtime implementation과 unit gate는 통과했다. ST-B2 fixture가 source cleanup을 completion barrier로 요구해 공통 spec과 충돌하며, 상세 evidence는 [`runtime unit and E2E log`](log/20260803-092806-runtime-unit-and-e2e.ko.md)에 둔다. |
+| 2026-08-03 09:28 runtime·Actor transfer follow-up | Runtime `740/740`, bound-session·entry `136/136`, staged-route `10/10`; ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6 process PASS. Aggregate는 ST-B2에서 중단 | 이전 snapshot이다. ST-B2 fixture와 stale peer cleanup의 재검증 결과는 아래 최신 행에 둔다. 상세 evidence는 [`runtime unit and E2E log`](log/20260803-092806-runtime-unit-and-e2e.ko.md)에 있다. |
+| 2026-08-03 10:32 runtime auto-connect cleanup follow-up | Runtime `744/744`, cleanup targeted `3/3`; `ST-B2` standalone process PASS, message trace와 file log 확인, package verifier·clean consumer·standalone HTTP consumer PASS, `git diff --check` PASS | Owner lease 만료 뒤 non-initiating side의 admission-pending peer intent를 정리하고 admitted transport는 보존했다. 상세 evidence는 [`runtime auto-connect cleanup log`](log/20260803-101951-runtime-autoconnect-cleanup.ko.md)에 있다. |
+| 2026-08-03 10:49 runtime unit gate decomposition | Runtime `744/744`, focused runtime architecture/regression `541/541`, configuration·fanout·endpoint `54/54` | DN-IMP-001~018의 source/unit gate가 통과했다. 541은 744와 일부 중복되며, process E2E·package-only process·독립 audit은 아직 남아 있다. POSD·DDD 대안과 책임 경계는 [`runtime unit POSD·DDD log`](log/20260803-1049-runtime-unit-posd-ddd.ko.md)에 기록했다. |
+| 2026-08-03 current source ContractTests | `76/76` 통과 | Package snapshot 갱신과 runtime 내부 cleanup 변경 뒤 public exact-interface, source/package export와 contract test를 다시 확인했다. |
 | 2026-08-02 `git diff --check` | 통과 | 현재 변경의 whitespace 오류가 없다. |
 
 최신 Phase A 실행 세부 사항은 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md)에,
@@ -404,6 +432,7 @@ public contract를 비교한 결과다.
 | Actor failure mapping | Capture·restore·Store·deadline과 commit 뒤 failure를 typed reason/commit phase로 host result에 전달한다. | targeted/full unit 통과. process failure evidence는 남아 있다. |
 | Metrics | Spot retire scheduler와 standalone/remote actor relocation에 object kind와 terminal outcome metric을 연결한다. | source 반영. object-kind metric assertion과 process evidence는 남아 있다. |
 | Public completion shape | `ZLinkActorJoinCompletion.Failed`는 `OperationId`와 `Kind`만 public으로 노출한다. | Contract 76/76과 package gate 통과. |
+| Owner lease와 stale peer | Descriptor가 사라져도 admitted transport를 즉시 닫지 않고, liveness가 끝난 뒤 admission-pending intent만 정리한다. | `RemovePeerConnectionIfNotAdmitted(...)`와 non-initiating auto-connect path를 source·unit에 반영했다. ST-B2 process, message trace/file log와 current-source package consumer가 통과했다. |
 
 ## 4. implementation gap inventory와 카드 상태
 
@@ -855,6 +884,33 @@ unit test가 pre/post-commit mapping과 source rollback 경계를 통과하며 p
 2. Capture·factory·restore·Store·deadline failure를 owner commit 전후에 따라 정확히 매핑한다.
 3. Target rejection과 retryable availability를 terminal failure와 구분하고, source rollback은 commit 전
    결과에만 허용한다.
+
+### DN-IMP-024 — Owner lease 만료 뒤 non-initiating stale peer intent 정리
+
+**현재 판정: source·unit·ST-B2 process·package 수정 완료.** Owner lease가 만료되어
+Location descriptor가 사라진 뒤에도 non-initiating side의 physical peer가 `Connecting` intent로 남아
+RouteMesh를 `Degraded`로 유지하던 runtime gap을 확인했다. `Admitted` 또는 `Draining` transport는
+descriptor 부재만으로 닫지 않고, admission이 끝나지 않은 intent만 정리해야 한다.
+
+[Transport liveness §5](../../framework/common/spec/29-transport-liveness.ko.md#5-ready와-장애-판정)는
+connection의 ready 상태와 descriptor·owner lease를 분리하고, [§7](../../framework/common/spec/29-transport-liveness.ko.md#7-location-store와-host-종료)은
+이미 수락한 처리에 필요한 connection을 즉시 끊지 않도록 한다. [§9](../../framework/common/spec/29-transport-liveness.ko.md#9-구현과-contract-test-검증-요구)은
+peer 실패를 다른 connection이나 host 전체 오류로 확대하지 않는지 검증하도록 한다.
+
+`IMeshNode.RemovePeerConnectionIfNotAdmitted(...)`는 peer state 확인과 intent 제거를 한
+lock 안에서 수행한다. Non-initiating auto-connect target은 discovery row가 사라져도 admitted peer가
+liveness transition을 끝낼 때까지 reconciler target을 유지한다. 이후 `Connecting`으로 바뀐 intent만
+backend wrapper에서 제거한다. 이 경계는 다음 unit test로 고정했다.
+
+- `SpotPeerConnectorTests.Auto_NonInitiator_Delegates_Admission_Pending_Cleanup`
+- `ServiceRuntimeFoundationTests.AutoConnect_Cleans_Connecting_Peer_And_Preserves_Admitted_Peer`
+
+`ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1`과 Framework message trace를 켠 최신 ST-B2 process가
+`PASS`했다. `JoinTargetReq`, `__zlink.actor.join_spot.admission`·`commit`·`handoff_completion`,
+그리고 target의 `ProbeReq` 수신·reply가 같은 file log의 flow ID로 연결되며, source process loss 뒤
+target authority와 application handler가 유지된다. 현재 source package verifier, clean NuGet
+consumer와 standalone HTTP package consumer가 통과했다. 독립 final audit은 전체 Phase A gate에서
+계속 남아 있다.
 
 ### DN-IMP-019 — Location runtime status의 exact interface와 source public shape 불일치
 
@@ -1367,6 +1423,7 @@ actual process evidence로 승격하지 않았다. `구현`은 source와 적합�
 | Host preflight와 relocation commit boundary | accepted operation gate, absolute deadline, typed terminal result와 partial restore path가 반영되었고 targeted/full unit test가 통과했다. multi-process failure evidence와 독립 audit은 남아 있다. |
 | Actor Join lifecycle | source leave, Session route commit, caller deadline, Entry Spot admission과 startup recovery 경계를 source와 unit test에 반영했다. cross-node process evidence는 남아 있다. |
 | Maintenance observer와 structured log | terminal-preserving status stream, transient blocked observation과 표준 host identifier를 반영했고 targeted/full unit test가 통과했다. slow observer process evidence는 남아 있다. |
+| Owner lease와 non-initiating peer cleanup | Descriptor가 사라진 뒤에도 admitted transport는 유지하고, liveness가 끝난 admission-pending intent만 제거하도록 source를 수정했다. Runtime `744/744`, cleanup targeted `3/3`, ST-B2 process, message trace/file log와 package consumer가 통과했다. |
 | ClientServer public surface와 runtime | Builder, discovery, local·remote selection, liveness와 monitoring 구현 및 contract/unit test가 존재한다. |
 | Automatic classic fanout | 전용 publisher descriptor, automatic subscriber connection과 discovery runtime이 존재한다. automatic process coverage는 E2E gap으로 유지한다. |
 | Framework error surface와 non-JSON content type | `ZLinkFrameworkErrorKind` contract, internal retry policy와 decode 전 content type 거부 test가 통과한다. |
@@ -1591,6 +1648,7 @@ repo-wide blocker를 결과에서 분리한다.
 | DN-REG-038 | E2E runner | `all`은 실행·제외 ID와 제외 사유를 출력하고, `부분`·`미구현`·`diagnostic_only`를 성공 분모로 세지 않으며 누락 ID에서 실패한다. |
 | DN-REG-039 | E2E architecture | Client에는 `AddZLinkFramework`, `Host.CreateDefaultBuilder`, framework runtime/client 호출, reflection/private/internal API가 없고 framework 호출은 role server endpoint에서 수행된다. |
 | DN-REG-040 | process E2E | ST-B2는 process 종료 뒤 no takeover/no replay/unavailable을, ST-B3/B4는 `RecreateOnRelocation`과 empty-state restore를 공통 spec과 같은 terminal 의미로 검증한다. |
+| DN-REG-041 | unit·process E2E | Owner lease 만료 뒤 non-initiating side의 admission-pending peer intent만 정리하고 admitted transport는 보존하는지 `AutoConnect_Cleans_Connecting_Peer_And_Preserves_Admitted_Peer`와 ST-B2 file evidence로 확인한다. |
 
 ## 9. Phase A Spec 완료 판정 checklist
 
@@ -1598,14 +1656,15 @@ repo-wide blocker를 결과에서 분리한다.
 - [ ] DN-IMP-002를 수정하고 DN-REG-009~010을 통과했다.
 - [x] DN-IMP-003의 exact interface를 먼저 확정하고 source와 package를 맞췄다. ContractTests `76/76`과 package gate가 통과했다. Listener process evidence는 남아 있다.
 - [ ] DN-IMP-004~018을 수정하고 DN-REG-014~034를 통과했다.
+- [x] DN-IMP-024의 source·unit·ST-B2 process·package 수정이 통과했다. Package verifier, clean NuGet consumer와 standalone HTTP package consumer가 exit 0이다.
 - [x] DN-IMP-019~023의 exact-interface declaration·owner, source·package export와 관련 regression을 모두 닫았다.
 - [x] DN-TEST-001~004와 DN-TEST-007~008을 모두 닫았다.
 - [x] DN-TEST-006의 이전 compile blocker를 확인하고 현재 targeted test 305/305 통과를 기록했다.
-- [ ] DN-E2E-IMP-001~017을 수정하고 DN-REG-035~040을 통과했다.
+- [ ] DN-E2E-IMP-001~017을 수정하고 DN-REG-035~041을 통과했다.
 - [ ] Config 1~14의 공통 scenario와 `.NET` feature-map·selector·aggregate runner 차이가 0개다.
 - [ ] Contract, unit, provider, connector와 HTTP client regression이 모두 통과했다.
 - [ ] Sample regression은 Phase B에서 별도로 실행하며 Phase A 완료를 대신하지 않는다.
-- [x] 실제 NuGet package export가 source와 exact interface에 일치한다. `verify_packaged_contract.sh`가 exit 0으로 통과했다.
+- [x] 실제 NuGet package export가 현재 runtime source와 exact interface에 일치한다. `verify_packaged_contract.sh`와 clean consumer가 exit 0이고 public API snapshot hash는 `399d5e99932d10574db163537bf6858f49a221331512358f06b2140c083e549a`다.
 - [ ] Process E2E 전체에서 `부분`이나 `미구현`으로 남은 항목은 이 ledger의 열린 gap과 일대일로 연결된다.
 - [ ] 모든 구현 card가 2.2절의 risk-based Codex review, finding 수정과 재검토 gate를 통과했다.
 - [ ] 모든 POSD·DDD finding에 원칙, 책임 경계, 대안, 처리 결과와 Sol 재검토 판정이 기록되었다.
@@ -1617,10 +1676,12 @@ repo-wide blocker를 결과에서 분리한다.
 - [ ] 마지막 독립 audit에서 기록하지 않은 `.NET` gap이 0개다.
 - [ ] 마지막 독립 audit을 새 Sol Max reviewer가 수행했고 unresolved `Critical`·`High`·`Medium` finding이 0개다.
 
-## 10. Phase B — common sample gap (Phase A 완료 후 시작)
+## 10. Phase B — common sample gap (runtime source·unit gate 후 시작)
 
-Phase B는 Phase A의 `## 9. Phase A Spec 완료 판정 checklist`와 A-G7 독립 audit의 모든 항목이 통과된 뒤에만 시작한다.
-Phase A 완료 전에는 아래 sample card를 구현 완료로 표시하거나 sample process evidence를 수집하지 않는다.
+Phase B의 source conformance는 Phase A runtime source·unit gate가 통과된 뒤 시작한다. 아래 sample
+card는 common spec에 맞춘 source 수정과 static regression까지만 이 단계에서 진행한다. Sample
+process evidence, package-only process와 완료 표기는 Phase A process/audit를 포함한 마지막 E2E
+단계에서 진행한다.
 
 ### 10.1 목적과 완료 조건
 
@@ -1656,8 +1717,10 @@ Phase A 완료 전에는 아래 sample card를 구현 완료로 표시하거나 
    다른 artifact로 기록하며 한쪽 결과로 다른 쪽을 통과 처리하지 않는다.
 7. 마지막 독립 재검토에서 기록되지 않은 `.NET` sample spec·구현 gap이 0개다.
 
-이 Phase B 계획 단계에서는 구현과 test source를 바꾸지 않는다. 구현 phase는 이 ledger의 선행 조건을
-충족하고 모든 `contract 선행` 항목의 계약을 확정한 뒤 시작한다.
+현재 Phase B source conformance 단계에서는 runtime source·unit gate 뒤에 sample 구현과 regression을
+진행했다. source build와 static regression은 통과했지만, sample process evidence, package-only process,
+Framework process gate와 독립 audit은 아직 완료되지 않았다. 남은 구현 또는 test 변경은 process 실행에서
+재현된 원인에 한해 책임 계층에 반영하고, 그때마다 POSD·DDD 판단과 regression을 같은 log에 기록한다.
 
 ### 10.2 기준 문서와 조사 범위
 
@@ -1781,16 +1844,17 @@ adapter로 하위 layer 실패를 숨기는 변경은 완료로 인정하지 않
 
 ### 10.3 선행 조건과 gap 상태
 
-#### 10.3.1 선행 framework ledger gate
+#### 10.3.1 process E2E 단계의 선행 framework ledger gate
 
-sample 실행이 의존하는 Framework runtime 의미를 sample source에서 우회해서는 안 된다. 따라서 다음
-조건을 충족하기 전에는 이 ledger의 구현 card를 시작하지 않는다.
+sample 실행이 의존하는 Framework runtime 의미를 sample source에서 우회해서는 안 된다. 사용자가 지정한
+순서에 따라 runtime source·unit gate 뒤에는 sample source conformance를 진행할 수 있다. 다음 표는
+source 수정 착수 조건이 아니라 실제 process E2E와 최종 완료 판정으로 넘어갈 때 필요한 선행 조건이다.
 
 | 선행 조건 | 완료 판정 |
 |---|---|
-| Framework implementation audit | Phase A `DN-IMP-001`~`DN-IMP-023`이 source, targeted test와 reviewer evidence로 닫힘 |
+| Framework implementation audit | Phase A `DN-IMP-001`~`DN-IMP-024`가 source, targeted test와 reviewer evidence로 닫힘 |
 | Framework process E2E | Phase A `DN-E2E-IMP-001`~`DN-E2E-IMP-017`에 실제 process 결과와 failure semantics가 기록됨 |
-| Framework regression | Phase A의 contract·unit·package·E2E regression card, 특히 `DN-REG-035`~`DN-REG-040`이 통과함 |
+| Framework regression | Phase A의 contract·unit·package·E2E regression card, 특히 `DN-REG-035`~`DN-REG-041`이 통과함 |
 | Core·bindings package | 수정한 하위 layer가 있으면 package version, native runtime hash, consumer test와 `.NET` package cache가 일치함 |
 | 독립 review | 선행 ledger의 final auditor가 sample이 사용할 public contract와 runtime 경계를 `CLEAN`으로 판정함 |
 
@@ -1812,10 +1876,9 @@ sample regression의 기준 commit, working-tree 조건, 실행 명령과 결과
 
 | ID | 현재 근거 | 초기 판정 |
 |---|---|---|
-| `DS-IMP-008` | `run_samples.sh`의 `SAMPLES`에는 `ZoneWorld`가 있지만 `run_samples.ps1`의 `$knownSamples`에는 없다. | 확인된 runner parity gap |
-| `DS-IMP-007` | `framework/languages/dotnet/samples/README.md`는 Framework `10.0.0` contract를 설명하지만 정식 Framework public contract governance는 `11.0.0`을 기준으로 한다. `Directory.Packages.props`의 `11.1.0`은 별도 `Systems.Zlink` bindings dependency version이다. | Framework 문서 version gap 확인, bindings version과의 직접 비교는 제외 |
-| `DS-IMP-007` | `.NET` guide의 integrated runner 설명은 여섯 sample과 ZoneWorld 별도 실행을 말하지만 현재 shell runner는 일곱 sample을 포함한다. | 확인된 guide·runner inventory gap |
-| `DS-IMP-009` | sample regression은 여러 구조 규칙을 검증하지만, 공통 sample의 모든 message·field·flow·evidence와 `.NET` client/server path를 한 번에 대조하는 inventory test가 없다. | 확인된 test/evidence gap |
+| `DS-IMP-008` | shell·PowerShell integrated runner의 기본 목록과 dispatch를 현재 공통 7종으로 맞추고 source regression에 고정했다. | source 수정 완료, Windows process/browser/cleanup pending |
+| `DS-IMP-007` | sample README와 `.NET` server guide를 Framework `11.0.0` 및 7종 integrated runner 설명으로 맞췄다. `Directory.Packages.props`의 `11.1.0`은 별도 `Systems.Zlink` bindings dependency version이다. | source·guide 수정 완료, version owner review pending |
+| `DS-IMP-009` | 공통 7종 문서의 message declaration을 직접 읽어 `.NET` source에 존재하는지 확인하는 regression을 추가했고 전체 suite `141/141`이 통과했다. | source inventory 보강 완료, field/transport/process evidence pending |
 
 ### 10.4 gap 판정 규칙
 
@@ -1838,12 +1901,12 @@ sample regression의 기준 commit, working-tree 조건, 실행 명령과 결과
 
 #### DS-IMP-001 — one-way message의 이름과 의미가 공통 문서와 다름
 
-**현재 판정: `확인`; 공통 문서 변경 diff를 먼저 동결한 뒤 최종 수정 방향을 정한다.**
+**현재 판정: `source 수정 완료`; sample process evidence와 최종 review가 남아 있다.**
 
 공통 TicTacToe 문서는 `LeaveGameMsg`를 선언하고, actor가 보내는 one-way message이며 response를
-기다리지 않는다고 설명한다. 현재 `.NET` shared contract, handler, client와 runner는
-`LeaveGameReq`를 사용한다. 공통 SupportChat 문서는 같은 규칙으로 `SetTypingMsg`를 선언하지만 `.NET`
-은 `SetTypingReq`를 사용한다.
+기다리지 않는다고 설명한다. 과거 `.NET` shared contract, handler, client와 runner는
+`LeaveGameReq`를 사용했고, SupportChat도 `SetTypingReq`를 사용했다. 현재 두 sample의 shared
+contract, handler, client send path와 runner evidence는 공통 이름과 one-way handler를 사용한다.
 
 근거:
 
@@ -1853,48 +1916,33 @@ sample regression의 기준 commit, working-tree 조건, 실행 명령과 결과
   `TicTacToe/Client/TicTacToeClientScenario.cs`, `SupportChat/Shared/Contracts/Messages.cs`,
   `SupportChat/.../SetTypingHandler.cs`
 
-수정 전에 확인할 내용은 다음과 같다.
-
-1. 공통 sample의 `Req/Res`, `Msg`, `Notify`, `Event` 명명 규칙이 public wire contract인지, 문서상의
-   역할 설명인지 확인한다.
-2. one-way send가 실제로 response subscription이나 implicit completion을 사용하지 않는지 확인한다.
-3. 계약이 확정되면 모든 `.NET` shared contract, handler attribute, client scenario, runner evidence와
-   회귀 test를 같은 이름·transport 의미로 맞춘다. 이름만 바꾸고 request/reply path를 남기지 않는다.
+source regression은 `SupportChat_Typing_Uses_The_Common_One_Way_Message`와 TicTacToe 관련
+regression을 통과했다. 실제 process에서 response subscription이 없고 server file log와 cleanup이
+남는지는 최종 E2E 단계에서 확인한다.
 
 #### DS-IMP-002 — GameQuest action inventory와 `GameplayMsg.payload`가 공통 계약과 다름
 
-**현재 판정: `contract 선행`과 `확인`이 함께 있다. action 범위는 계약 review 후 수정하고, payload wire
-shape는 실제 serializer 결과까지 확인한다.**
+**현재 판정: `source 수정 완료`; raw wire capture와 process evidence가 남아 있다.**
 
-공통 GameQuest 문서는 `KillMonsterReq/Res`, `CollectItemReq`, `EnterAreaReq`,
-`GetQuestProgressReq/Res`, `SyncQuestProgressReq/Res`를 선언하며 `GameplayMsg.payload`를 `object`로
-설명한다. 현재 `.NET`은 `CollectItemRes`, `CompleteMissionReq/Res`, `EnterAreaRes`,
-`UnlockFeatureReq/Res`를 추가하고, client가 이 응답을 요청한다. `GameplayMsg.Payload`는 `byte[]`이며
-`GameplayEventOwnerDispatcher`와 `QuestContractMapper`가 UTF-8 byte payload를 직접 직렬화·역직렬화한다.
-또한 공통 문서의 durable domain record 이름과 `.NET`의 `QuestProgressedEvent` 등 이름에 `Event` 접미어
-차이가 있다.
+공통 GameQuest 문서는 `KillMonsterReq/Res`, response 없는 `CollectItemReq`와 `EnterAreaReq`,
+`GetQuestProgressReq/Res`, `SyncQuestProgressReq/Res`를 선언하며 `GameplayMsg.payload`와
+`StoredQuestEvent.payload`를 `object`로 설명한다. 현재 `.NET` source는 공통 목록에 없는
+`CompleteMission*`, `UnlockFeature*`, `CollectItemRes`, `EnterAreaRes`를 제거했고, 두 action을 one-way
+send handler로 맞췄다. payload는 `JsonElement` object로 전달하고 typed conversion은
+`QuestContractMapper`가 수행한다. 공통 문서의 durable record 명칭과 source 내부 domain event 명칭은
+transport contract와 application record를 구분하는 범위에서 유지한다.
 
-공통 문서의 action 설명 일부는 각 action response가 EventId를 만든다고 서술하므로 declaration과
-본문이 완전히 일치하지 않는다. 따라서 `.NET`의 추가 action을 바로 제거하거나 공통 문서에 바로 추가하지
-않는다.
-
-수정 순서:
-
-1. action별 request/reply 유무, EventId 반환, public client surface 여부를 공통 sample contract에서
-   하나의 표로 확정한다.
-2. `GameplayMsg.payload`가 typed JSON object인지, envelope 안의 bytes인지, domain record의 저장
-   payload와 transport payload를 어떻게 구분하는지 결정한다.
-3. 계약 확정 뒤 `.NET` shared message, handler, client scenario와 mapper를 한 경계에서 수정한다.
-   호출부에 `encode`, `decode`, `serialize`, `parse`를 추가하는 우회는 허용하지 않는다.
-4. durable domain record 명칭은 transport message와 분리해 문서·source·store mapper의 용어를 같은
-   의미로 맞춘다.
+공통 문서의 action response 설명은 `KillMonsterReq/Res`와 두 one-way action의 차이를 명시하도록
+갱신했다. source regression은 action inventory, `JsonElement` payload와 domain/mapper 경계를 직접
+확인한다. 실제 JSON number/object wire 값과 replay/reconcile 결과는 process 단계에서 확인한다.
 
 #### DS-IMP-003 — ShoppingMall 접수 응답의 field shape가 공통 계약과 다름
 
-**현재 판정: `확인`; `StartOrderRes` wire shape만 gap이며 in-process port DTO 이름은 `충족`이다.**
+**현재 판정: `source 수정 완료`; 실제 wire payload와 process idempotency evidence가 남아 있다.**
 
-공통 ShoppingMall 문서는 `StartOrderRes { orderId: string; state: OrderState }`를 선언한다. 현재 `.NET`
-`ShoppingMall/Shared/Contracts/Messages.cs`의 `StartOrderRes`는 `OrderId`와 `Status` 문자열을 가진다.
+공통 ShoppingMall 문서는 `StartOrderRes { orderId: string; state: OrderState }`를 선언한다. `.NET`
+`ShoppingMall/Shared/Contracts/Messages.cs`와 client assertion은 현재 `OrderId`와 `OrderState State`를
+사용한다. workflow application port의 `Command/Result`는 계속 내부 DTO로 유지한다.
 
 `.NET`의 `ReserveInventoryCommand/Result`, `ReleaseInventoryCommand/Result`와
 `AuthorizePaymentCommand/Result`는 `Server/Shared/Ports/Outbound`를 통해 같은 process의 application
@@ -1902,121 +1950,74 @@ port를 호출하는 DTO다. ZLink로 dispatch되는 wire message가 아니므�
 port 예외에 따라 `Command/Result` 이름을 유지한다. 이 이름을 `Req/Res`로 바꾸거나 새 application
 message로 노출하지 않는다.
 
-확인할 항목:
-
-- `StartOrderRes`가 실제 client wire payload에서 `state` enum 또는 named string을 보내는지
-- `Status`가 public contract의 `OrderState`와 같은 값 집합·nullable 의미를 갖는지
-- idempotency 재호출, workflow failure와 compensation에서 접수 응답과 event 순서가 공통 flow와 같은지
-
-수정은 `StartOrderRes` public wire shape와 client assertion에 한정한다. Regression은 application port
-DTO가 ZLink handler나 shared wire contract로 이동하지 않는 조건도 함께 유지한다.
+source regression은 `StartOrderRes`의 exact declaration과 port DTO 비노출 조건을 확인한다. 실제 client
+wire payload, idempotency 재호출, workflow failure와 compensation의 응답·event 순서는 process E2E에서
+확인한다.
 
 #### DS-IMP-004 — DeliveryDispatch timestamp의 wire type이 다름
 
-**현재 판정: `확인`; JSON 또는 Protobuf의 실제 wire 값을 직접 캡처해 최종 판정한다.**
+**현재 판정: `source 수정 완료`; JSON wire number와 ordering을 process에서 직접 확인해야 한다.**
 
-공통 DeliveryDispatch 문서는 `DeliveryStatusChangedReq`, `DeliveryStatusNotify`,
-`DeliveryStatusUpdatedMsg`의 `occurredAtUnixMs: int64`를 요구한다. 현재 `.NET`
-`DeliveryDispatch/Shared/Contracts/Messages.cs`는 해당 값에 `DateTimeOffset OccurredAt`을 사용한다.
-server evidence에서 `ToUnixTimeMilliseconds()`를 호출하는 부분이 있어 저장·로그 표현과 transport
-payload가 다를 가능성이 있다.
-
-수정 순서:
-
-1. client가 수신한 raw application payload를 업무 코드에서 해석하지 않는 별도 test harness로 확인한다.
-2. 공통 계약의 `int64`와 `.NET` serializer가 실제로 같은 JSON number를 만드는지 확인한다.
-3. 다르면 shared contract와 모든 handler·client assertion을 Unix milliseconds로 맞추고, 같다면
-   `DateTimeOffset` 표현을 내부 type으로 명시하여 public wire contract와 혼동되지 않도록 문서화한다.
-4. status ordering, late decision과 reassign test에 timestamp 비교를 포함한다.
+공통 DeliveryDispatch 문서는 세 status message의 `occurredAtUnixMs: int64`를 요구한다. `.NET`
+shared contract, tracking handler, dispatch 생성, evidence store와 customer notify는 현재
+`long OccurredAtUnixMs`를 같은 값으로 전달한다. source regression은 `DateTimeOffset OccurredAt`의
+public field가 없음을 확인한다. client 수신 JSON number, status ordering, late decision과 reassign
+timestamp 비교는 process E2E에서 확인한다.
 
 #### DS-IMP-005 — Bingo client-facing message와 optional field가 공통 목록과 다름
 
-**현재 판정: `확인`; extra message의 public 범위는 contract review가 필요하다.**
+**현재 판정: `source 수정 완료`; public 범위 결정은 기록했고 Protobuf presence와 process failure
+evidence가 남아 있다.**
 
-공통 Bingo message 목록에는 `BingoJoinFailedNotify`와 `BingoActorEntrySpotNotify`가 명시되어 있지
-않지만 `.NET` Protobuf schema에는 두 message가 있고 `PlayerActor`와 Entry Spot이 session으로
-전송한다. 공통 `AuthenticatePlayerRes`는 `actor_id`, `display_name`, `reason`을 optional로
-설명하지만 `.NET` proto는 plain `string` field로 선언한다.
+공통 Bingo message 목록에 없는 두 notify는 `.NET` Protobuf schema와 전송 path에서 제거했다.
+`AuthenticatePlayerRes`의 `actor_id`, `display_name`, `reason`은 Protobuf `optional`로 선언했다.
 
-확인할 항목:
-
-- 두 notify가 client가 관찰해야 하는 public push인지, sample 내부 evidence인지
-- optional field가 미설정·빈 문자열·null을 구분해야 하는지
-- 모든 언어가 같은 field presence와 default 값을 제공해야 하는지
-- notify를 공통 계약에 추가할지, client-facing surface가 아니면 `.NET` shared contract에서 분리할지
-
-계약이 확정되기 전에는 다른 언어 구현을 근거로 새 public message를 추가하지 않는다. 확정 후 Protobuf
-schema, client assertion, handler와 공통 문서의 message·flow·completion 조건을 함께 변경한다.
+source regression은 unlisted message 부재와 optional 선언을 확인한다. 실제 미설정·빈 값 presence와
+join failure의 actor completion·server file log는 process E2E에서 확인한다.
 
 #### DS-IMP-006 — ZoneWorld 이동이 공통 message 경계를 우회함
 
-**현재 판정: `확인`; 기능 존재가 아니라 Actor → Zone Spot 전달 방식의 차이다.**
+**현재 판정: `source 수정 완료`; same-zone runtime/process와 relocation/message follow evidence가
+남아 있다.**
 
 공통 ZoneWorld 문서는 `UpdatePositionMsg`를 선언하고, 같은 zone의 이동은 Actor가 이 message를 Zone
-Spot에 보내 state를 변경한다고 설명한다. 현재 `.NET` `ZoneWorld/Shared/Contracts/ZoneWorldMessages.cs`
-에는 `UpdatePositionMsg`가 없으며, `PlayerMoveHandlers.cs`가 `actor.MoveTo(...)` 뒤 `ZoneSpot.UpdatePosition(...)`
-을 직접 호출한다. `ZoneSpot.UpdatePosition`은 internal method다.
+Spot에 보내 state를 변경한다고 설명한다. `.NET` source는 현재 shared contract와 packet handler를
+추가했고, `PlayerMoveHandlers.cs`는 기존 public `IZLinkSpotClient.SendToSpot`으로 message를 보낸다.
+projection 변경은 `ZoneSpot.ApplyPositionUpdate`를 호출하는 packet handler에만 남아 있다.
 
 이 차이는 단순한 이름 차이가 아니다. message route, queue·handler 순서, owner commit과 state
 publication이 Framework runtime의 public path를 거치지 않게 된다.
 
-수정 순서:
-
-1. `UpdatePositionMsg`의 sender, target, one-way semantics와 same-zone·border relocation의 commit
-   경계를 공통 문서에서 고정한다.
-2. Framework public message handler를 통해 Zone Spot state를 갱신하도록 production path를 바꾼다.
-3. application code가 internal `ZoneSpot.UpdatePosition`이나 actor reference를 직접 호출하지 않는지
-   정적 test로 고정한다.
-4. same-zone move, border crossing, actor relocation과 message follow를 실제 process E2E에서 확인한다.
+source regression은 movement의 direct `ZoneSpot.UpdatePosition` 호출이 없고 `UpdatePositionMsg` packet
+handler가 등록되는지 확인한다. same-zone move, border crossing, actor relocation과 message follow의
+실제 순서와 cleanup은 process E2E에서 확인한다.
 
 #### DS-IMP-007 — `.NET` sample 문서·guide·version 설명이 현재 실행 경로와 다름
 
-**현재 판정: `documentation gap`; source 수정과 섞지 않고 문서 owner에서 별도로 닫는다.**
+**현재 판정: `source·guide 수정 완료`; Windows process 실행과 version owner review가 남아 있다.**
 
-현재 `.NET` sample README는 Framework `10.0.0` contract를 설명하지만
-`framework/doc/framework/common/spec/00-public-contract-governance.ko.md`는 Framework `11.0.0` 공개
-계약을 기준으로 한다. `Directory.Packages.props`의 `ZLinkBindingsPackageVersion=11.1.0`은 sample이
-참조하는 `Systems.Zlink` bindings package version이며 Framework contract version과 같은 값일 필요가
-없다. `.NET` server guide는 integrated runner가 여섯 sample을 처리하고 ZoneWorld를 별도로 실행한다고
-설명하지만 shell integrated runner는 ZoneWorld를 포함한 일곱 sample을 선택한다.
-
-수정 전에 다음을 확인한다.
-
-- README가 historical contract 예제인지 현재 package contract 안내인지
-- guide가 generated output인지 source owner가 어디인지
-- Framework contract version을 문서에 고정할지 정식 governance를 링크할지
-- `Systems.Zlink` bindings version은 dependency evidence로 별도 표시할지
-- ZoneWorld browser runner를 integrated sample 완료 조건에 포함할지
-
-확정 후 README의 Framework contract 기준, guide·runner 목록과 bindings dependency evidence를 각각
-해당 owner에서 맞춘다. Framework contract와 bindings package version의 숫자 일치를 강제하지 않는다.
-Generated guide라면 생성 source를 고친다.
+`.NET` sample README와 server guide는 현재 Framework `11.0.0` contract와 7종 integrated runner를
+설명하도록 고쳤다. `Directory.Packages.props`의 `ZLinkBindingsPackageVersion=11.1.0`은 별도
+`Systems.Zlink` bindings package version으로 유지한다. source regression은 guide·runner 문구와
+dependency version을 각각 확인한다.
 
 #### DS-IMP-008 — PowerShell 통합 runner가 ZoneWorld를 제외함
 
-**현재 판정: `확인`; 지원 OS 범위를 먼저 결정한다.**
+**현재 판정: `source 수정 완료`; Windows ZoneWorld process와 browser/cleanup evidence가 남아 있다.**
 
-`run_samples.sh`의 기본 sample 목록은 `TicTacToe Bingo SupportChat ShoppingMall DeliveryDispatch
-GameQuest ZoneWorld`다. `run_samples.ps1`의 `$knownSamples`에는 `ZoneWorld`가 없다. 따라서 shell과
-PowerShell의 기본 실행 범위가 다르고, 공통 sample 7종을 모두 실행했다는 판정을 Windows runner가
-증명하지 못한다.
-
-지원 범위가 동일하다는 결정을 내리면 다음을 수정한다.
-
-1. PowerShell integrated runner에 ZoneWorld를 추가한다.
-2. ZoneWorld의 PowerShell per-sample runner와 browser/static configuration 전달 경로가 없으면
-   공통 runner 규칙에 맞춰 추가한다.
-3. Windows에서 dedicated Redis, readiness, browser self-check, cleanup을 실제로 실행한다.
-
-Windows에서 ZoneWorld를 지원하지 않기로 결정하면 공통 sample 문서와 `.NET` guide에 그 제한과 대체
-검증 명령을 명시하고, runner regression이 제한을 누락으로 오인하지 않도록 계약을 갱신한다.
+`run_samples.sh`와 `run_samples.ps1`의 기본 목록은 현재 모두
+`TicTacToe Bingo SupportChat ShoppingMall DeliveryDispatch GameQuest ZoneWorld`다. source regression은
+두 runner의 목록과 per-sample dispatch를 확인한다. Windows에서 dedicated Redis, readiness, browser
+self-check와 cleanup을 실제로 실행하는 gate는 아직 남아 있다.
 
 #### DS-IMP-009 — 공통 sample 전체를 덮는 exact inventory와 process evidence가 없음
 
-**현재 판정: `test gap`.**
+**현재 판정: `source inventory 보강 완료`; formal document 전체와 process evidence gate가 남아 있다.**
 
-현재 sample regression은 topology, codec 사용, runner 문자열, 일부 sample flow와 금지 API를 검사한다.
-하지만 다음 관계를 한 번에 검사하는 기준이 없다.
+현재 sample regression은 topology, codec 사용, runner 문자열, sample flow와 금지 API를 검사하고,
+공통 7종 문서의 `message` declaration 이름이 `.NET` source에 존재하는지 직접 읽어 확인한다.
+ShoppingMall의 `Req/Res`와 in-process `Command/Result` alias는 공통 port 예외로 명시한다. 다만 다음
+관계를 process 수준에서 한 번에 검사하는 증거는 아직 없다.
 
 - 공통 문서의 모든 message·field·transport kind와 `.NET` shared contract·handler의 대응
 - 공통 flow의 각 단계와 `.NET` client scenario의 response·push·ordering assertion
@@ -2024,11 +2025,10 @@ Windows에서 ZoneWorld를 지원하지 않기로 결정하면 공통 sample 문
 - shell·PowerShell runner의 sample inventory와 실제 completion marker
 - 공통 fixture의 topology와 `.NET` source가 사용하는 mesh·channel 값
 
-이 gap은 source를 형식적으로 스캔하는 test 하나로 끝내지 않는다. static inventory와 최소 한 번의 실제
-process smoke를 모두 추가한다.
-
-baseline regression의 통과 여부와 무관하게 `DS-REG-004`의 Entry Spot destroy 문서·실행 의미 대조와
-`DS-REG-001`의 전체 message inventory가 필요하다. 해당 실행 명령과 결과는 baseline log에서 확인한다.
+source inventory regression은 `Common_Sample_Message_Inventory_Is_Present_In_DotNet_Source`로
+`141/141` suite에 포함됐다. 이것은 field type·transport ordering·state commit·server cleanup을
+대신하지 않으므로 `DS-REG-001`~`DS-REG-018`의 process 적용 대상과 실제 smoke evidence는 별도 gate로
+남긴다. `DS-REG-004`의 Entry Spot destroy도 실제 runner log에서 다시 확인해야 한다.
 
 ### 10.6 Sample별 구현 path 검토 matrix
 
@@ -2053,15 +2053,16 @@ source를 기준으로 공통 문서를 축소하지 않는다.
 B-G0~B-G7의 각 card는 2.2절의 Luna Max 구현과 risk-based Codex review gate를 독립적으로 통과한다. Core
 또는 bindings 문제가 확인되면 2.3절의 하위 layer regression·수정·package gate를 먼저 닫는다.
 
-#### B-G0 — 선행 Framework ledger 완료 조건
+#### B-G0 — runtime source·unit 선행 gate와 process 선행 조건
 
-기존 `.NET Framework` ledger의 implementation·E2E·regression·package gate를 다시 실행한다. Framework
+기존 `.NET Framework` ledger의 runtime source·unit gate를 먼저 실행했고 현재 `747/747`, focused
+`541/541`, configuration subset `54/54`가 통과했다. 이 gate 뒤에 sample source conformance를 진행할 수
+있다. Framework process·regression·package·independent audit은 B-G6~B-G7에서 별도로 닫는다. Framework
 NuGet은 `verify_packaged_contract.sh`의 clean consumer로 public export와 dependency를 확인하고,
 `Systems.Zlink`는 bindings package version·native hash·consumer 결과를 별도로 확인한다. 현재 sample
-runner가 Framework `ProjectReference`를 사용한다는 사실도 manifest에 기록한다. 이 단계에서는 sample
-source를 수정하지 않는다.
+runner가 Framework `ProjectReference`를 사용한다는 사실과 package-only process 여부도 manifest에 기록한다.
 
-#### B-G1 — 공통 sample 계약과 모호성
+#### B-G1 — 공통 sample 계약과 모호성 — source gate 완료
 
 현재 working tree의 common sample 문서 diff를 별도 manifest로 보존한다. `DS-IMP-001`, `DS-IMP-002`,
 `DS-IMP-005`, `DS-IMP-008`처럼 public message 범위나 지원 OS를 바꾸는 항목은 공통 문서·guide·다른
@@ -2073,9 +2074,11 @@ source를 수정하지 않는다.
 - 지원 runner와 browser path
 - 계약 변경이 필요한 경우 관련 spec/guide owner와 review 결과
 
-계약이 확정되지 않은 항목은 구현 card로 이동하지 않는다.
+GameQuest action response/one-way 의미와 Bingo unlisted notify 범위를 공통 문서 기준으로 확정했고,
+결정과 대안은 `log/20260803-1106-sample-contract-posd-ddd.ko.md`에 기록했다. 계약이 확정되지 않은
+새 public API는 추가하지 않는다.
 
-#### B-G2 — exact contract inventory와 실패 regression
+#### B-G2 — exact contract inventory와 실패 regression — source gate 완료
 
 공통 sample 7종의 정식 문서를 inventory의 단일 계약 owner로 유지한다. 우선 문서의 structured message
 declaration과 table을 직접 읽어 `.NET` shared contract와 비교하고, 추출 결과는 기준 문서 path·hash를
@@ -2087,35 +2090,42 @@ Markdown 구조를 안정적으로 읽을 수 없다면 별도 test fixture를 �
 함께 사용하도록 공통 sample 정책을 먼저 변경하는 것이다. 기본 선택은 정식 문서를 직접 읽는 방식이며,
 fixture 승격은 공통 정책 변경 review를 통과한 경우에만 사용한다. Inventory의 한 행은 sample, message,
 direction, transport kind, response, field shape, nullable, owner, 기준 위치와 evidence를 포함한다. 이
-단계의 test가 먼저 실패해야 B-G3 이후 source 수정의 범위를 알 수 있다.
+`Common_Sample_Message_Inventory_Is_Present_In_DotNet_Source`와 sample별 contract regression을
+추가해 source suite `141/141`을 통과했다. 이는 정식 문서를 직접 읽은 static inventory이며, raw wire와
+process evidence는 B-G6에서 별도로 확인한다.
 
-#### B-G3 — wire contract와 public sample path
+#### B-G3 — wire contract와 public sample path — source gate 완료
 
-`DS-IMP-001`~`DS-IMP-005`를 계약 결정에 따라 수정한다. shared message와 client/server handler를 함께
-변경하고, serializer가 만드는 실제 payload를 assertion한다. `DS-IMP-003`의 in-process
+`DS-IMP-001`~`DS-IMP-005`를 계약 결정에 따라 shared message와 client/server handler까지 수정했다.
+source regression이 public shape를 확인했지만 serializer가 만드는 실제 payload assertion은 아직
+남아 있다. `DS-IMP-003`의 in-process
 `Command/Result`는 변경 대상에서 제외하고 public `StartOrderRes`만 정렬한다. 내부 workflow 이름이나
 domain event 이름은 public wire contract와 분리한다. 새 public API, raw frame, reflection 또는 호출부
 codec은 추가하지 않는다.
 
-#### B-G4 — runtime method path와 ownership
+#### B-G4 — runtime method path와 ownership — source gate 완료
 
-`DS-IMP-006`을 우선 수정하고 각 sample의 relocation, state commit, cleanup, retry·deadline 경계를
-실제 call path로 다시 검사한다. ZoneWorld처럼 internal method 직접 호출이 공통 message boundary를
-우회하는 경우 Framework public handler와 sample application 책임을 분리한다. B-G3의 wire 수정이
-runtime semantics에 영향을 주면 같은 card에서 process E2E를 다시 실행한다.
+`DS-IMP-006`의 ZoneWorld direct call을 기존 public `IZLinkSpotClient`와 `UpdatePositionMsg` packet
+handler로 수정했다. source regression은 internal direct call 부재를 확인한다. 각 sample의 relocation,
+state commit, cleanup, retry·deadline 경계와 B-G3 변경의 runtime semantics는 process E2E에서 다시
+검사한다.
 
-#### B-G5 — runner·guide·package 설명
+#### B-G5 — runner·guide·package 설명 — source gate 완료
 
-`DS-IMP-007`과 `DS-IMP-008`을 지원 OS 결정 뒤 수정한다. Shell·PowerShell 목록, per-sample runner,
-ZoneWorld browser configuration, dedicated Redis와 cleanup을 같은 template 규칙으로 맞춘다. Framework
+`DS-IMP-007`과 `DS-IMP-008`의 README, `.NET` guide와 Shell·PowerShell 목록을 수정했다. ZoneWorld
+per-sample runner와 browser configuration, dedicated Redis와 cleanup은 source에 존재하고,
+`run_sample.ps1`은 동일한 shell runner를 호출해 process·browser·cleanup 정책을 한 곳에서 사용한다.
+Windows 실행 evidence는 아직 없다. Framework
 contract version은 정식 governance, `Systems.Zlink` version은 `Directory.Packages.props`, Framework
 NuGet artifact는 package verification evidence를 각각 기준으로 사용한다. Generated 문서는 생성 source를
 수정한다.
 
-#### B-G6 — 회귀 test와 실제 process evidence
+#### B-G6 — 회귀 test와 실제 process evidence — pending
 
-B-G2에서 정식 문서로부터 읽은 inventory를 regression으로 고정하고, sample별 source runner를 실제로
-실행한다. 각 실행은 build → dedicated Redis/resource → server start → readiness → client self-check →
+B-G2에서 정식 문서로부터 읽은 inventory를 regression으로 고정했고, sample별 source build와 source
+regression은 통과했다. 최신 runtime source/unit과 ZoneWorld `ZW-B1` process도 통과했다. 다음으로
+sample별 runner를 실제로 실행한다. 각 실행은 build → dedicated
+Redis/resource → server start → readiness → client self-check → message trace/file log와 server
 evidence 수집 → cleanup 순서를 지켜야 한다. 한 sample의 로그가 남아 있다는 사실만으로 다른 sample의
 완료를 추론하지 않는다.
 
@@ -2156,8 +2166,10 @@ Framework NuGet evidence를 교차 대조한다. `확인`·`test gap`·`contract
 
 #### 10.8.2 수정 또는 추가할 regression
 
-아래 ID는 구현 phase에서 추가할 regression 목록이다. 현재 문서 작성 단계에서는 test source를 수정하지
-않는다.
+아래 ID는 source conformance와 process 단계에서 적용할 regression 목록이다. 현재 source 단계에서는
+sample별 contract regression과 공통 문서 declaration inventory를 추가했고, 전체
+`Zlink.Framework.SampleRegressionTests`가 `141/141`로 통과했다. 실제 serialized wire, process
+ordering, server evidence와 cleanup을 직접 확인하는 항목은 아직 process 단계의 열린 gate다.
 
 | ID | 대상 test | 추가·변경할 판정 |
 |---|---|---|

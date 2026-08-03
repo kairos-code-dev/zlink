@@ -22,7 +22,7 @@ This sample maps a scale-out tic-tac-toe flow onto `Zlink.Framework`:
 16. the room pushes `PlayerJoinedNotify` and `GameStateNotify`,
 17. the owner room publishes the win milestone through the Play RouteMesh channel
     and the observer receives `WinMilestoneNotify`,
-18. the host and guest send `LeaveGameReq`, and the server destroys both entry-spot actors.
+18. the host and guest send `LeaveGameMsg`, and the server destroys both entry-spot actors.
 
 Packet type names use `Req` for request packets, `Res` for response packets,
 and `Notify` for server push packets.
@@ -70,7 +70,7 @@ settings, starts `play-a`, `play-b`, `api-a`, and `api-b` with `--config`, waits
 for stream, MeshNode, HTTP, and Redis endpoints, and
 then runs the standalone client. The runner fails if the logs do not contain
 stream-inbound response and push evidence, observer milestone verification,
-`LeaveGameReq` completion for both players, entry-spot actor destroy evidence
+`LeaveGameMsg` completion for both players, entry-spot actor destroy evidence
 for both players. Framework diagnostics use the standard .NET
 `ActivitySource` and `Meter` surfaces instead of a sample-owned trace file.
 

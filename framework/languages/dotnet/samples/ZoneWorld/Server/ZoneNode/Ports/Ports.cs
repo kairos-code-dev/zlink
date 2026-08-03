@@ -16,6 +16,11 @@ public interface IMaintenanceStorePort
 /// </summary>
 public interface IOpsReportPort
 {
+    ValueTask ReportSpotEventAsync(
+        string kind,
+        string detail,
+        CancellationToken cancellationToken);
+
     ValueTask ReportNodeStatusAsync(
         IReadOnlyList<string> zones,
         int playerCount,

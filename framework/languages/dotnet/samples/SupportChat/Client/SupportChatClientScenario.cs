@@ -260,7 +260,7 @@ internal sealed class SupportChatClientScenario
 
         public ValueTask SendTypingAsync(bool isTyping, CancellationToken cancellationToken)
         {
-            return connector.Send(new SetTypingReq(isTyping)).Metadata(Cid, conversationId).Async(cancellationToken);
+            return connector.Send(new SetTypingMsg(isTyping)).Metadata(Cid, conversationId).Async(cancellationToken);
         }
 
         public ValueTask<CloseConversationRes> CloseAsync(string? reason, CancellationToken cancellationToken)

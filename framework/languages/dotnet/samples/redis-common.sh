@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+zlink_sample_copy_evidence() {
+  local run_dir="$1"
+  local sample_name="$2"
+  local evidence_root="${ZLINK_SAMPLE_EVIDENCE_DIR:-}"
+
+  [[ -n "${evidence_root}" ]] || return 0
+  mkdir -p "${evidence_root}/${sample_name}"
+  cp -a "${run_dir}/." "${evidence_root}/${sample_name}/"
+  printf 'evidenceDir=%s\n' "${evidence_root}/${sample_name}"
+}
+
 zlink_redis_start_scoped() {
   local scope="$1"
   local image="${2:-redis:7.2-alpine}"

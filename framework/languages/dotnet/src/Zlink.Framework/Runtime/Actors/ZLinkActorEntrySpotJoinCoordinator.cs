@@ -24,6 +24,28 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
                            $"Actor '{actor.Context.ActorId}' does not have a native Actor ref.");
         var previousActivation = actorState.LiveActivation;
 
+        // A target registered in this process has a managed Entry Spot
+        // activation that can perform admission and lifecycle updates without
+        // entering the native routed-operation path. Keep native JoinEntrySpot
+        // for targets that are genuinely outside this process; otherwise a
+        // local operation can wait for a route callback that this process does
+        // not produce.
+        if (getState().TryGetSpotNodeByRoutingId(spotNodeRid, out var localTarget))
+        {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"entry_join_local_managed actor={actor.Context.ActorId} "
+                + $"target_node={spotNodeRid}");
+            return await JoinLocalEntrySpotAsync(
+                    localTarget,
+                    actor,
+                    actorState,
+                    actorRef,
+                    previousActivation,
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         using var completion = new ZLinkNativeReplyCompletion<ZLinkBackendActorJoinEntrySpotResult>(
             cancellationToken);
 

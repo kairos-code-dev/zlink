@@ -32,15 +32,6 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "ItemCollected", itemId, count, sourceApi);
     }
 
-    public static GameplayEvent CreateMissionCompleted(
-        string playerId,
-        string missionId,
-        string idempotencyKey,
-        string sourceApi)
-    {
-        return Create(playerId, idempotencyKey, "MissionCompleted", missionId, 1, sourceApi);
-    }
-
     public static GameplayEvent CreateAreaEntered(
         string playerId,
         string areaId,
@@ -48,15 +39,6 @@ internal static class GameplayDomain
         string sourceApi)
     {
         return Create(playerId, idempotencyKey, "AreaEntered", areaId, 1, sourceApi);
-    }
-
-    public static GameplayEvent CreateFeatureUnlocked(
-        string playerId,
-        string featureId,
-        string idempotencyKey,
-        string sourceApi)
-    {
-        return Create(playerId, idempotencyKey, "FeatureUnlocked", featureId, 1, sourceApi);
     }
 
     private static GameplayEvent Create(

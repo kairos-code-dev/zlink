@@ -43,18 +43,22 @@ internal static class ObsC3UserSpotAggregateRelocationScenario
             "OBS-C3 initial aggregate generations were not published.");
 
         await source.Post("/operation-gate/arm")
-            .Query("maximumWaitMs", "10000").AsyncRaw();
+            .Query("maximumWaitMs", "30000").AsyncRaw();
         var acceptedTurn = source.Post("/operation/start")
             .Body(new PlayBoundedOperationReq(
                 roomId,
                 $"accepted-{suffix}"))
+            // The operation is intentionally held until the relocation gate
+            // is released. Keep this HTTP waiter open for the host deadline;
+            // the request must not cancel the accepted application turn.
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<PlayBoundedOperationRes>().AsTask();
         await source.Post("/operation-gate/wait-started")
             .Query("timeoutMs", "5000").AsyncRaw();
         await source.Post("/relocate?deadlineMs=30000").AsyncRaw();
 
         await WaitPeerRelocatingAsync(
-            target, sourceNode, TimeSpan.FromSeconds(10));
+            target, sourceNode, TimeSpan.FromSeconds(30));
         var newlyPlaced = (await target.Post("/rooms")
             .Body(new CreateRoomReq($"room-c3-new-{suffix}"))
             .Async<CreateRoomRes>()).Body;

@@ -71,6 +71,17 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void DisconnectPeer(string endpoint);
 
+    // Removes a matching peer only while admission has not completed. This is
+    // used when discovery removes a non-initiating target; an already admitted
+    // transport remains subject to its own liveness and lifecycle rules.
+    bool DisconnectPeerBeforeAdmission(
+        RoutingId peerRid,
+        string endpoint,
+        ulong lifecycleGeneration)
+    {
+        return false;
+    }
+
     // Retires an admitted peer lifetime by (RID, lifecycle generation). Core
     // queues a successor admission of the same RID behind this explicit
     // predecessor disconnect on every member that admitted the old lifetime.

@@ -53,6 +53,25 @@ internal static class ActorNodeEndpoints
                     SpotActorTransferNames.RelocationPayloadPerActorUserSpotType
                 ]));
         });
+        app.MapGet("/mesh/status", (
+            IZLinkRouteMeshRuntime meshRuntime) =>
+        {
+            var status = meshRuntime.GetStatus(SpotActorTransferNames.Mesh);
+            return Results.Ok(new
+            {
+                state = status.State.ToString(),
+                status.IsReady,
+                placementAvailable = status.Placement.IsAvailable,
+                placementUnavailableReason = status.Placement.UnavailableReason?.ToString(),
+                readyPeerCount = status.ReadyPeerCount,
+                peers = status.Peers.Select(peer => new
+                {
+                    rid = peer.NodeRid.ToString(),
+                    state = peer.State.ToString(),
+                    reason = peer.UnavailableReason?.ToString()
+                })
+            });
+        });
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
         app.MapGet(
             "/relocation-blobs",

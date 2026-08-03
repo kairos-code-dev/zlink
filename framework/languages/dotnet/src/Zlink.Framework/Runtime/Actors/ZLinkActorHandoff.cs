@@ -62,6 +62,15 @@ internal static class ZLinkActorHandoffFrames
         ZLinkSpotActorFrame frame,
         long arrivalIndex)
     {
+        // Bound-session requests do not use the direct reply-preservation
+        // registry. Their existing ReplyRequestId is the stable correlation
+        // needed when the accepted frame is frozen for target replay.
+        var relocationReplyRouteId = frame.RelocationReplyRouteId;
+        if (relocationReplyRouteId == 0
+            && (frame.Flags & 1U) != 0
+            && frame.RouteContext.IsBoundSessionRoute)
+            relocationReplyRouteId = frame.RouteContext.ReplyRequestId;
+
         return new ZLinkActorHandoffFrame(
             frame.ReplyActor.NodeRid.ToBytes().ToArray(),
             frame.ReplyActor.Generation,
@@ -75,7 +84,7 @@ internal static class ZLinkActorHandoffFrames
             frame.RouteContext,
             frame.SourceNodeGeneration,
             frame.RequestSource,
-            frame.RelocationReplyRouteId,
+            relocationReplyRouteId,
             BoundSessionSource: ZLinkActorBoundSessionHandoffMetadata.TryDecode(
                 frame.ApplicationMetadata.Span,
                 out var boundSession)
@@ -127,7 +136,8 @@ internal static class ZLinkActorHandoffFrames
                     frame.RequestSource,
                     applicationMetadata: frame.BoundSessionSource is { } bound
                         ? ZLinkActorBoundSessionHandoffMetadata.Encode(bound)
-                        : default);
+                        : default,
+                    handoffArrivalIndex: frame.ArrivalIndex);
                 if (frame.RelocationReplyRouteId != 0)
                     restoredFrame.BindRelocationReplyRoute(
                         frame.RelocationReplyRouteId);

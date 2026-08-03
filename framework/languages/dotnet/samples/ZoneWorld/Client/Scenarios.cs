@@ -58,7 +58,7 @@ public static class Scenarios
 
     private static async ValueTask A1EnterAndMove(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("a1"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("a1"), ct);
         var join = await player.JoinWorldAsync(ct);
 
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthWest, join.ZoneId), "a new player spawns in zone-nw");
@@ -86,7 +86,7 @@ public static class Scenarios
     /// </summary>
     private static async ValueTask A2RejectionOrder(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("a2"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("a2"), ct);
         var join = await player.JoinWorldAsync(ct);
 
         var waiting = player.Connector.WaitFor<MoveRejectedNotify>()
@@ -105,9 +105,9 @@ public static class Scenarios
         var firstId = Unique("a3-b");
         var secondId = Unique("a3-a");
 
-        await using var first = await GameClient.ConnectAsync(options.GatewayEndpoint, firstId, ct);
+        await using var first = await GameClient.ConnectAsync(options, firstId, ct);
         await first.JoinWorldAsync(ct);
-        await using var second = await GameClient.ConnectAsync(options.GatewayEndpoint, secondId, ct);
+        await using var second = await GameClient.ConnectAsync(options, secondId, ct);
         await second.JoinWorldAsync(ct);
 
         // Each client sees the other — the canonical says so of both, not of one (§11 ZW-A3).
@@ -137,7 +137,7 @@ public static class Scenarios
     /// in a zone that shares no edge with the current one, so it is refused (§2.2).</summary>
     private static async ValueTask A4DiagonalCrossing(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("a4"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("a4"), ct);
         await player.JoinWorldAsync(ct);
         foreach (var step in player.PlanWalkWithinZone(49, 49))
         {
@@ -164,7 +164,7 @@ public static class Scenarios
 
     private static async ValueTask A5SameZonePositionUpdate(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("a5"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("a5"), ct);
         var join = await player.JoinWorldAsync(ct);
 
         var targetX = join.X + 4;
@@ -194,11 +194,11 @@ public static class Scenarios
         var eastId = Unique("b1-e");
         var diagonalId = Unique("b1-d");
 
-        await using var west = await GameClient.ConnectAsync(options.GatewayEndpoint, westId, ct);
+        await using var west = await GameClient.ConnectAsync(options, westId, ct);
         await west.JoinWorldAsync(ct);
-        await using var east = await GameClient.ConnectAsync(options.GatewayEndpoint, eastId, ct);
+        await using var east = await GameClient.ConnectAsync(options, eastId, ct);
         await east.JoinWorldAsync(ct);
-        await using var diagonal = await GameClient.ConnectAsync(options.GatewayEndpoint, diagonalId, ct);
+        await using var diagonal = await GameClient.ConnectAsync(options, diagonalId, ct);
         await diagonal.JoinWorldAsync(ct);
 
         // The eastern player crosses into zone-ne, which shares zone-nw's X edge. The diagonal
@@ -315,9 +315,14 @@ public static class Scenarios
             pair.Error is null,
             "a release run requires adjacent Zone Spots with different current owners");
 
-        await using (var player = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct))
+        await using (var player = await GameClient.ConnectAsync(options, playerId, ct))
         {
+            var initialState = player.Connector.WaitFor<ZoneStateNotify>()
+                .Where(message => message.Payload.Players.Any(p => p.PlayerId == playerId))
+                .Timeout(TimeSpan.FromSeconds(15))
+                .Async(ct);
             await player.JoinWorldAsync(ct);
+            await initialState;
             var source = ZoneCenter(pair.SourceZoneId);
             var target = ZoneCenter(pair.TargetZoneId);
             await MoveToAsync(player, source.X, source.Y, ct);
@@ -350,7 +355,7 @@ public static class Scenarios
         }
 
         // Global player identity outlives the connection and its original owner.
-        await using var rejoined = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct);
+        await using var rejoined = await GameClient.ConnectAsync(options, playerId, ct);
         var resumed = await rejoined.JoinWorldAsync(ct);
         ZlinkStreamAssert.Ensure(
             object.Equals(pair.TargetZoneId, resumed.ZoneId),
@@ -370,8 +375,13 @@ public static class Scenarios
             pair.Error is null,
             "a release run requires adjacent Zone Spots with different current owners");
 
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct);
+        await using var player = await GameClient.ConnectAsync(options, playerId, ct);
+        var initialState = player.Connector.WaitFor<ZoneStateNotify>()
+            .Where(message => message.Payload.Players.Any(p => p.PlayerId == playerId))
+            .Timeout(TimeSpan.FromSeconds(15))
+            .Async(ct);
         await player.JoinWorldAsync(ct);
+        await initialState;
         var source = ZoneCenter(pair.SourceZoneId);
         var target = ZoneCenter(pair.TargetZoneId);
         await MoveToAsync(player, source.X, source.Y, ct);
@@ -453,7 +463,7 @@ public static class Scenarios
     /// <summary>The Y boundary stays inside one node, so no relocation happens (§2.6).</summary>
     private static async ValueTask B3IntraNodeZoneChange(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("b3"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("b3"), ct);
         await player.JoinWorldAsync(ct);
         foreach (var step in player.PlanWalkWithinZone(25, 48))
         {
@@ -540,7 +550,7 @@ public static class Scenarios
     /// </summary>
     private static async ValueTask D1AnnounceAllNodes(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("d1"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("d1"), ct);
         await player.JoinWorldAsync(ct);
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
 
@@ -593,7 +603,7 @@ public static class Scenarios
             if (reset.Error is null) await resetObserved;
             ZlinkStreamAssert.Ensure(!reset.Enabled, $"{nodeId} starts outside maintenance");
         }
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("e1"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("e1"), ct);
         await player.JoinWorldAsync(ct);
         foreach (var step in player.PlanWalkWithinZone(48, 25))
         {
@@ -707,8 +717,12 @@ public static class Scenarios
             if (reset.Error is null) await resetObserved;
             ZlinkStreamAssert.Ensure(!reset.Enabled, $"{nodeId} starts outside maintenance");
         }
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("e2"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("e2"), ct);
+        var initialState = player.Connector.WaitFor<ZoneStateNotify>()
+            .Timeout(TimeSpan.FromSeconds(15))
+            .Async(ct);
         await player.JoinWorldAsync(ct);
+        await initialState;
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
             .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
@@ -775,7 +789,7 @@ public static class Scenarios
             if (reset.Error is null) await resetObserved;
             ZlinkStreamAssert.Ensure(!reset.Enabled, $"{nodeId} starts outside maintenance");
         }
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("e3"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("e3"), ct);
         await player.JoinWorldAsync(ct);
         foreach (var step in player.PlanWalkWithinZone(48, 25))
         {
@@ -896,7 +910,7 @@ public static class Scenarios
         if (enabled.Error is null) await enabledObserved;
         try
         {
-            await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("e6"), ct);
+            await using var player = await GameClient.ConnectAsync(options, Unique("e6"), ct);
             var join = await player.JoinWorldAsync(ct);
             ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, join.Error), "the spawn node refuses a new entry");
         }
@@ -982,9 +996,9 @@ public static class Scenarios
         var westId = Unique("b4-w");
         var eastId = Unique("b4-e");
 
-        await using var west = await GameClient.ConnectAsync(options.GatewayEndpoint, westId, ct);
+        await using var west = await GameClient.ConnectAsync(options, westId, ct);
         await west.JoinWorldAsync(ct);
-        await using var east = await GameClient.ConnectAsync(options.GatewayEndpoint, eastId, ct);
+        await using var east = await GameClient.ConnectAsync(options, eastId, ct);
         await east.JoinWorldAsync(ct);
 
         foreach (var step in west.PlanWalkWithinZone(45, 25))
@@ -1134,7 +1148,7 @@ public static class Scenarios
     /// </summary>
     private static async ValueTask F1BotsPresent(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("f1"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("f1"), ct);
         await player.JoinWorldAsync(ct);
 
         var first = (await player.Connector.WaitFor<ZoneStateNotify>()
@@ -1172,7 +1186,7 @@ public static class Scenarios
     /// </summary>
     private static async ValueTask F3NoPushToBots(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("f3"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("f3"), ct);
         await player.JoinWorldAsync(ct);
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
 
@@ -1193,15 +1207,14 @@ public static class Scenarios
     }
 
     /// <summary>
-    /// A rejected move turns a bot around (§2.7). The rejection is arranged rather than waited
-    /// for: putting the eastern node under maintenance refuses the X-patrolling bot at the
-    /// boundary, and it walks back the way it came.
+    /// A rejected move turns a bot around (§2.7). The destination node is selected from the
+    /// bot that is actually at an X boundary. This keeps the assertion valid after earlier
+    /// relocation scenarios have changed which side owns each fixed bot.
     /// </summary>
     private static async ValueTask F4BotReversesOnRejection(ClientOptions options, CancellationToken ct)
     {
         await using var ops = await OpsClient.ConnectAsync(options.OpsEndpoint, ct);
         var observed = await ops.WatchNodesAsync(ct);
-        var targetNodeId = observed.Nodes.Single(node => node.Zones.Contains(ZoneIds.NorthEast)).NodeId;
         foreach (var nodeId in observed.Nodes.Where(node => node.Registered).Select(node => node.NodeId))
         {
             var resetObserved = ops.Connector.WaitFor<NodeStatusNotify>()
@@ -1212,8 +1225,22 @@ public static class Scenarios
             if (reset.Error is null) await resetObserved;
             ZlinkStreamAssert.Ensure(!reset.Enabled, $"{nodeId} starts outside maintenance");
         }
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("f4"), ct);
+        await using var player = await GameClient.ConnectAsync(options, Unique("f4"), ct);
         await player.JoinWorldAsync(ct);
+
+        var boundary = (await player.Connector.WaitFor<ZoneStateNotify>()
+            .Where(message => FindAboutToCross(message.Payload) is not null)
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async(ct)).Payload;
+        var botAtBoundary = FindAboutToCross(boundary)
+                            ?? throw new ScenarioFailure("the boundary observation lost its bot");
+        var sourceZone = botAtBoundary.ZoneId;
+        var targetZone = string.Equals(sourceZone, ZoneIds.NorthWest, StringComparison.Ordinal)
+            ? ZoneIds.NorthEast
+            : ZoneIds.NorthWest;
+        var targetNodeId = observed.Nodes
+            .Single(node => node.Zones.Contains(targetZone, StringComparer.Ordinal))
+            .NodeId;
 
         var enabledObserved = ops.Connector.WaitFor<NodeStatusNotify>()
             .Where(message => message.Payload.NodeId == targetNodeId && message.Payload.Maintenance)
@@ -1223,16 +1250,10 @@ public static class Scenarios
         if (enabled.Error is null) await enabledObserved;
         try
         {
-            // The bot to watch is an X patroller standing in zone-nw within one step of the
-            // boundary: its next step lands on the maintained node, so the refusal it is about
-            // to get is the one this scenario is about. Naming a bot up front would not work —
-            // the bots wander across zones, so which one is here depends on when this runs.
-            var atBoundary = (await player.Connector.WaitFor<ZoneStateNotify>()
-                .Where(message => AboutToCross(message.Payload) is not null)
-                .Timeout(TimeSpan.FromSeconds(15))
-                .Async(ct)).Payload;
-            var botId = AboutToCross(atBoundary)!.PlayerId;
-            var peak = BotX(atBoundary, botId)!.Value;
+            // The next X step enters the maintained destination. A rejected entry reverses
+            // the direction, so the same bot must move away from the boundary afterwards.
+            var botId = botAtBoundary.PlayerId;
+            var peak = botAtBoundary.X;
 
             // It is refused at the boundary and walks back the way it came.
             var reversed = (await player.Connector.WaitFor<ZoneStateNotify>()
@@ -1240,14 +1261,22 @@ public static class Scenarios
                 {
                     var x = BotX(message.Payload, botId);
                     if (x is null) return false;
-                    if (x > peak) peak = x.Value;
-                    return x < peak;
+                    if (string.Equals(sourceZone, ZoneIds.NorthWest, StringComparison.Ordinal))
+                    {
+                        if (x > peak) peak = x.Value;
+                        return x < peak;
+                    }
+
+                    if (x < peak) peak = x.Value;
+                    return x > peak;
                 })
-                .Timeout(TimeSpan.FromSeconds(15))
+                .Timeout(TimeSpan.FromSeconds(30))
                 .Async(ct)).Payload;
 
             ZlinkStreamAssert.Ensure(
-                BotX(reversed, botId) < peak,
+                string.Equals(sourceZone, ZoneIds.NorthWest, StringComparison.Ordinal)
+                    ? BotX(reversed, botId) < peak
+                    : BotX(reversed, botId) > peak,
                 "a bot refused entry to a node under maintenance turns around");
         }
         finally
@@ -1265,16 +1294,17 @@ public static class Scenarios
         state.Players.FirstOrDefault(p => p.PlayerId == botId)?.X;
 
     /// <summary>
-    /// An X-patrolling bot (its id ends in "-x", §2.7) that is in zone-nw and close enough to
-    /// the boundary that its next step crosses it. That is the bot whose next move the
-    /// maintained node has to refuse.
+    /// An X-patrolling bot (its id ends in "-x", §2.7) whose next step crosses either side of
+    /// the vertical boundary. The destination node is maintained after this observation.
     /// </summary>
-    private static PlayerView? AboutToCross(ZoneStateNotify state) =>
+    private static PlayerView? FindAboutToCross(ZoneStateNotify state) =>
         state.Players.FirstOrDefault(p =>
             p.IsBot
             && p.PlayerId.EndsWith("-x", StringComparison.Ordinal)
-            && p.ZoneId == ZoneIds.NorthWest
-            && p.X + ZoneWorldSpec.BotStep >= ZoneWorldSpec.ZoneSplit);
+            && ((p.ZoneId == ZoneIds.NorthWest
+                 && p.X + ZoneWorldSpec.BotStep >= ZoneWorldSpec.ZoneSplit)
+                || (p.ZoneId == ZoneIds.NorthEast
+                    && p.X - ZoneWorldSpec.BotStep < ZoneWorldSpec.ZoneSplit)));
 
     private static string Unique(string prefix) =>
         $"{prefix}-{Guid.NewGuid().ToString("n")[..6]}";

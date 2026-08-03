@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace GameQuest.Shared;
 
 public sealed record KillMonsterReq(string PlayerId, string MonsterId, string AreaId, string IdempotencyKey);
@@ -6,19 +8,7 @@ public sealed record KillMonsterRes(string EventId);
 
 public sealed record CollectItemReq(string PlayerId, string ItemId, int Count, string IdempotencyKey);
 
-public sealed record CollectItemRes(string EventId);
-
-public sealed record CompleteMissionReq(string PlayerId, string MissionId, string IdempotencyKey);
-
-public sealed record CompleteMissionRes(string EventId);
-
 public sealed record EnterAreaReq(string PlayerId, string AreaId, string IdempotencyKey);
-
-public sealed record EnterAreaRes(string EventId);
-
-public sealed record UnlockFeatureReq(string PlayerId, string FeatureId, string IdempotencyKey);
-
-public sealed record UnlockFeatureRes(string EventId);
 
 public sealed record JoinSessionReq(string PlayerId);
 
@@ -53,7 +43,7 @@ public sealed record GameplayMsg(
     string EventId,
     string PlayerId,
     string Type,
-    byte[] Payload,
+    JsonElement Payload,
     long OccurredAtUnixMs);
 
 public sealed record QuestProgressedEvent(
@@ -94,6 +84,6 @@ public sealed record StoredQuestEvent(
     string PlayerId,
     string QuestId,
     string Type,
-    byte[] Payload,
+    JsonElement Payload,
     long Version,
     long CreatedAtUnixMs);

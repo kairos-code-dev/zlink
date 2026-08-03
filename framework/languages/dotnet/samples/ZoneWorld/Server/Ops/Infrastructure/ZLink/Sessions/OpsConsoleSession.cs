@@ -17,10 +17,11 @@ public sealed class OpsConsoleSession(
 {
     public IZLinkSessionContext Context { get; } = context;
 
-    public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
+    public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        await consoles.AddAsync(Context, cancellationToken);
+        consoles.Add(Context);
         logger.LogInformation("ops console connected. session={SessionId}", Context.SessionId);
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)

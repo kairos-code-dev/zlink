@@ -91,9 +91,19 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         var matchesSealedTargetRoute =
             entry.RelocationHandoffId is not null
             && sourceNodeRid == targetNodeRid
+            // CommitRoute can install the target route before Unseal clears
+            // the handoff. A target push carrying the pre-commit identity is
+            // valid during that interval even when the route now names the
+            // target node.
+            // AuthorityOwnerGeneration is scoped to the owning node lifecycle;
+            // the target owner may therefore have a lower value than the
+            // source owner. The active handoff and a different target fence
+            // identify the provisional route during the transition.
             && entry.ObjectGeneration == identity.ObjectGeneration
-            && identity.AuthorityOwnerGeneration
-            > entry.AuthorityOwnerGeneration
+            && identity.AuthorityOwnerGeneration > 0
+            && (identity.AuthorityOwnerGeneration != entry.AuthorityOwnerGeneration
+                || identity.TargetNodeGeneration != entry.TargetNodeGeneration
+                || identity.OwnerLeaseGeneration != entry.OwnerLeaseGeneration)
             && !string.IsNullOrWhiteSpace(identity.MeshName)
             && identity.TargetNodeGeneration > 0
             && identity.OwnerLeaseGeneration > 0;
@@ -104,10 +114,28 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             || entry.Context.RoutingId is not { } boundRid
             || !boundRid.Equals(RoutingId.FromHex(identity.SessionRid)))
         {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"session_push_refused actor={identity.ActorId} "
+                + $"binding={entry.BindingGeneration == identity.BindingGeneration} "
+                + $"committed={matchesCommittedRoute} sealed={matchesSealedTargetRoute} "
+                + $"handoff={entry.RelocationHandoffId is not null} "
+                + $"source_matches={sourceNodeRid == targetNodeRid} "
+                + $"object={entry.ObjectGeneration == identity.ObjectGeneration} "
+                + $"authority={entry.AuthorityOwnerGeneration}/{identity.AuthorityOwnerGeneration} "
+                + $"mesh={string.Equals(entry.MeshName, identity.MeshName, StringComparison.Ordinal)} "
+                + $"target_generation={identity.TargetNodeGeneration} lease={identity.OwnerLeaseGeneration} "
+                + $"session_owner={entry.SessionOwnerNodeGeneration == identity.SessionOwnerNodeGeneration} "
+                + $"route_node={entry.Route.Ref.NodeRid.ToHex()} "
+                + $"target_node={identity.TargetNodeRid} "
+                + $"session_rid={entry.Context.RoutingId?.ToHex() ?? "none"} "
+                + $"identity_session_rid={identity.SessionRid}");
             return RemotePushDelivery.WrongSession;
         }
         using var message = Message.From(frame);
         var written = entry.Context.Write(message);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"session_push_deliver actor={identity.ActorId} source_node={sourceNodeRid} "
+            + $"target_node={identity.TargetNodeRid} written={written} bytes={frame.Length}");
         return written ? RemotePushDelivery.Delivered : RemotePushDelivery.Backpressured;
     }
 
@@ -122,6 +150,8 @@ internal sealed class ZLinkActorBoundSessionCoordinator
     {
         PendingRemoteRequest? pending;
         RemoteRequestKey pendingKey = default;
+        var actorRequestMatch = false;
+        var capabilityMatch = false;
         lock (_pendingRemoteRequests)
         {
             pending = null;
@@ -131,26 +161,46 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                         entry.Key.ActorId,
                         actorId,
                         StringComparison.Ordinal)
-                    || entry.Key.RequestId != requestId
-                    || !string.Equals(
+                    || entry.Key.RequestId != requestId)
+                    continue;
+                actorRequestMatch = true;
+                if (!string.Equals(
                         entry.Value.ReplyCapability,
                         replyCapability,
                         StringComparison.Ordinal))
                     continue;
+                capabilityMatch = true;
                 pendingKey = entry.Key;
                 pending = entry.Value;
                 break;
             }
+            var claimed = pending?.Claimed ?? false;
+            var flagsMatch = flags == ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind;
+            var responderMatch = sourceNodeRid == responderNodeRid;
+            var objectMatch = pending is not null
+                              && pending.Binding.ObjectGeneration
+                                 == pendingKey.ObjectGeneration;
+            var bindingMatch = pending is not null
+                               && string.Equals(
+                                   pending.Binding.BindingToken,
+                                   pendingKey.BindingToken,
+                                   StringComparison.Ordinal);
             if (pending is null
-                || pending.Claimed
-                || flags != ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind
-                || sourceNodeRid != responderNodeRid
-                || pending.Binding.ObjectGeneration != pendingKey.ObjectGeneration
-                || !string.Equals(
-                    pending.Binding.BindingToken,
-                    pendingKey.BindingToken,
-                    StringComparison.Ordinal))
+                || claimed
+                || !flagsMatch
+                || !responderMatch
+                || !objectMatch
+                || !bindingMatch)
             {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"remote_session_reply_claim_refused actor={actorId} "
+                    + $"request_id={requestId} pending_count={_pendingRemoteRequests.Count} "
+                    + $"actor_request_match={actorRequestMatch} "
+                    + $"capability_match={capabilityMatch} claimed={claimed} "
+                    + $"flags={flags} flags_match={flagsMatch} "
+                    + $"source_node={sourceNodeRid} responder_node={responderNodeRid} "
+                    + $"responder_match={responderMatch} object_match={objectMatch} "
+                    + $"binding_match={bindingMatch} capability={replyCapability}");
                 claim = null!;
                 return false;
             }
@@ -160,6 +210,11 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             // cannot overtake the reply that owns the completion.
             pending.Claimed = true;
         }
+
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"remote_session_reply_claimed actor={actorId} "
+            + $"request_id={requestId} object={pendingKey.ObjectGeneration} "
+            + $"binding={pendingKey.BindingToken}");
 
         claim = new RemoteReplyClaim(
             frame => DeliverClaimedRemoteSessionReply(
@@ -332,6 +387,10 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                     $"Actor '{actorId}' remote session request '{requestId}' is already pending.");
             }
         }
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"remote_session_request_tracked actor={actorId} "
+            + $"request_id={requestId} object={binding.ObjectGeneration} "
+            + $"binding={binding.BindingToken} capability={pending.ReplyCapability}");
         _ = ExpireRemoteSessionRequestAsync(key, pending);
         return pending.ReplyCapability;
     }
@@ -655,14 +714,24 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         var state = _getState(actorId);
         if (state.TryGetBoundSessionForOutbound(out var session))
         {
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"bound_session_send actor={actorId} session_node={session.SessionNodeRid} "
+                + $"session_rid={session.SessionRid} binding={session.BindingToken} "
+                + $"parts={parts.Count}");
             if (TryGetSessionActorContext(actorId, session.BindingToken, out var context))
             {
                 if (parts.Count != 1)
                     throw new InvalidOperationException("A local actor bound-session send requires one encoded stream frame.");
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"bound_session_send_local actor={actorId}");
                 return context.Write(parts[0]);
             }
             if (TryRelayRemotePush(actorId, session, ConcatParts(parts)))
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"bound_session_send_remote_submitted actor={actorId}");
                 return true;
+            }
             if (!ZLinkActorBoundSessionBindingToken.IsNative(session.BindingToken))
                 throw Error(ZLinkFrameworkErrorKind.InvalidOperation,
                     $"Actor '{actorId}' no longer has the selected local session binding.", ZLinkRetryAdvice.RetryAfterBackoff);
@@ -866,7 +935,11 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         {
             return false;
         }
-        return relay(actorId, session, frame);
+        var submitted = relay(actorId, session, frame);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"session_push_relay actor={actorId} source_node={localNode.RoutingId} "
+            + $"target_node={sessionNodeRid} submitted={submitted} bytes={frame.Length}");
+        return submitted;
     }
 
     private static byte[] ConcatParts(IReadOnlyList<Message> parts)
@@ -951,6 +1024,12 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             return ValueTask.CompletedTask;
         }
         var sourceNodeRid = node.RoutingId;
+        // A disconnect is a one-way bound-session frame, but it can be
+        // captured by an Actor handoff before the source route is released.
+        // Give it the same immutable operation identity as every other
+        // accepted frame so canonical journaling can preserve its ordering
+        // and authority fences.
+        var operationId = node.AllocateOperationId();
 
         var header = new ZlinkStreamHeader(ZlinkStreamMessageKind.Send, ZlinkStreamCodec.Raw,
             ZlinkStreamHeaderFlags.None, null, ZLinkRemoteActorJoinPackets.SessionDisconnectedPacketName,
@@ -965,7 +1044,7 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         //  the node it came from, and the relay validates that on the way out.
         //  Without it the disconnect never leaves this node.
         var routeContext = new ZLinkBackendActorRouteContext(
-            default,
+            operationId,
             0,
             binding.TargetNodeGeneration,
             binding.AuthorityOwnerGeneration,
@@ -981,6 +1060,10 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                 //  The fence rejects a zero sequence, and a disconnect carries
                 //  no frame of its own, so it names the last one it accepted.
                 binding.AcceptedHighWater == 0 ? 1 : binding.AcceptedHighWater));
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"disconnect_route_prepared actor={actorRef.ActorId} "
+            + $"operation={operationId.High:x16}{operationId.Low:x16} "
+            + $"target_node={actorRef.NodeRid} source_node={sourceNodeRid}");
         // The disconnect frame takes the same route as any session frame to
         // this actor: ForwardPart relays it to the actor's owner node when the
         // actor is remote and writes the native bound session when it is local.

@@ -187,7 +187,7 @@ internal sealed class ConversationSpot(
 
     public async ValueTask SetTypingAsync(
         SupportUserActor actor,
-        SetTypingReq request,
+        SetTypingMsg request,
         CancellationToken cancellationToken)
     {
         var change = RequireConversation().SetTyping(actor.ParticipantId, request.IsTyping);

@@ -10,7 +10,7 @@ internal static class QuestContractMapper
 
     public static GameplayFact ToDomain(GameplayMsg message)
     {
-        var payload = JsonSerializer.Deserialize<GameplayPayload>(message.Payload)
+        var payload = message.Payload.Deserialize<GameplayPayload>()
                       ?? throw new InvalidOperationException(
                           $"Gameplay message '{message.EventId}' has an empty payload.");
         return new GameplayFact(
@@ -79,7 +79,7 @@ internal static class QuestContractMapper
 
         QuestProgressed Progressed()
         {
-            var payload = JsonSerializer.Deserialize<QuestProgressedEvent>(stored.Payload)
+            var payload = stored.Payload.Deserialize<QuestProgressedEvent>()
                           ?? throw InvalidPayload(stored);
             return new QuestProgressed(
                 stored.EventId,
@@ -95,7 +95,7 @@ internal static class QuestContractMapper
 
         QuestRewardGranted RewardGranted()
         {
-            var payload = JsonSerializer.Deserialize<QuestRewardGrantedEvent>(stored.Payload)
+            var payload = stored.Payload.Deserialize<QuestRewardGrantedEvent>()
                           ?? throw InvalidPayload(stored);
             return new QuestRewardGranted(
                 stored.EventId,
@@ -109,7 +109,7 @@ internal static class QuestContractMapper
 
         QuestProgressReconciled Reconciled()
         {
-            var payload = JsonSerializer.Deserialize<QuestReconciled>(stored.Payload)
+            var payload = stored.Payload.Deserialize<QuestReconciled>()
                           ?? throw InvalidPayload(stored);
             return new QuestProgressReconciled(
                 stored.EventId,
@@ -129,7 +129,7 @@ internal static class QuestContractMapper
         {
             QuestProgressed progressed => (
                 nameof(QuestProgressedEvent),
-                JsonSerializer.SerializeToUtf8Bytes(new QuestProgressedEvent(
+                JsonSerializer.SerializeToElement(new QuestProgressedEvent(
                     progressed.EventId,
                     progressed.PlayerId,
                     progressed.QuestId,
@@ -139,7 +139,7 @@ internal static class QuestContractMapper
                     progressed.SourceEventId))),
             QuestCompleted completed => (
                 nameof(QuestCompletedEvent),
-                JsonSerializer.SerializeToUtf8Bytes(new QuestCompletedEvent(
+                JsonSerializer.SerializeToElement(new QuestCompletedEvent(
                     completed.EventId,
                     completed.PlayerId,
                     completed.QuestId,
@@ -147,7 +147,7 @@ internal static class QuestContractMapper
                     completed.OccurredAtUnixMs))),
             QuestRewardGranted granted => (
                 nameof(QuestRewardGrantedEvent),
-                JsonSerializer.SerializeToUtf8Bytes(new QuestRewardGrantedEvent(
+                JsonSerializer.SerializeToElement(new QuestRewardGrantedEvent(
                     granted.EventId,
                     granted.PlayerId,
                     granted.QuestId,
@@ -156,7 +156,7 @@ internal static class QuestContractMapper
                     granted.OccurredAtUnixMs))),
             QuestProgressReconciled reconciled => (
                 nameof(QuestReconciled),
-                JsonSerializer.SerializeToUtf8Bytes(new QuestReconciled(
+                JsonSerializer.SerializeToElement(new QuestReconciled(
                     reconciled.EventId,
                     reconciled.PlayerId,
                     reconciled.QuestId,

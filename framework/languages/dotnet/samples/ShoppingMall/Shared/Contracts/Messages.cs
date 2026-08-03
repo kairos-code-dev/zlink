@@ -8,7 +8,7 @@ public sealed record StartOrderReq(
 
 public sealed record StartOrderRes(
     string OrderId,
-    string Status);
+    OrderState State);
 
 public sealed record GetOrderStateReq(string OrderId);
 

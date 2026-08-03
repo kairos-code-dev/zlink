@@ -46,6 +46,6 @@ The observer sends `ObserveMilestoneReq` before the game starts.
 The client joins the host and guest actors to one game, receives
 `PlayerJoinedNotify` and `GameStateNotify` push packets, then plays a fixed
 five-move sequence where X wins. After the final state, the observer waits for
-`WinMilestoneNotify`, and the host and guest send `LeaveGameReq` so the server
+`WinMilestoneNotify`, and the host and guest send `LeaveGameMsg` so the server
 can leave and destroy both entry-spot actors. The game SPOT also owns a timer
 that ends the game with `TurnTimedOut` when the current player takes too long.

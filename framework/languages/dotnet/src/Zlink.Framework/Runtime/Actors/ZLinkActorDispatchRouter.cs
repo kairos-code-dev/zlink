@@ -211,6 +211,11 @@ internal sealed class ZLinkActorDispatchRouter(
         var placement = await state.ExecuteLockedAsync(
             () => state.SelectPlacementLocked(false),
             cancellationToken).ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_dispatch_placement actor={actor.Context.ActorId} "
+            + $"correlation_id={header.CorrelationId} "
+            + $"activation={placement.Activation?.SpotId ?? "<entry>"} "
+            + $"node={placement.Activation?.NodeRid.ToString() ?? "<entry>"}");
 
         if (placement.Activation is not null)
         {
@@ -223,7 +228,7 @@ internal sealed class ZLinkActorDispatchRouter(
                    != ZLinkUserSpotExecutionMode.PerActor)
                 throw new InvalidOperationException(
                     "SPOT Actor relocation replay has no target admission.");
-            return await placement.Activation.SubmitActorForReplyAsync(
+            var reply = await placement.Activation.SubmitActorForReplyAsync(
                     actor,
                     state,
                     header,
@@ -231,6 +236,11 @@ internal sealed class ZLinkActorDispatchRouter(
                     replayAdmission,
                     cancellationToken)
                 .ConfigureAwait(false);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_dispatch_placement_completed actor={actor.Context.ActorId} "
+                + $"correlation_id={header.CorrelationId} reply={reply is not null}");
+            return reply ?? throw new InvalidOperationException(
+                $"Actor request handler for '{header.Name}' returned no reply.");
         }
 
         var entryResult = await runtime.TrySubmitEntrySpotActorForReplyAsync(

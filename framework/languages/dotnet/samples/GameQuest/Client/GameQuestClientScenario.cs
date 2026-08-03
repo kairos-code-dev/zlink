@@ -10,7 +10,7 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
     // End-to-end client story:
     // 1. Subscribe player-alice on API A and verify quest progress/completion from combat events.
     // 2. Replay a duplicate event and confirm the same event id is treated idempotently.
-    // 3. Complete feature, mission, and area events that unlock later quest progress.
+    // 3. Send one-way item and area actions and verify their progress notifications.
     // 4. Create offline progress for player-bob, reconnect on API B, and finish the herb quest.
     // 5. Delete and rebuild a projection to prove stream queries see recovered quest state.
     // 6. Reconcile a missed publish through sync, then ask the server for final evidence.
@@ -52,31 +52,29 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
             .Async<KillMonsterRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(duplicate.EventId == thirdKill.EventId, "Assertion failed: duplicate.EventId == thirdKill.EventId");
 
-        var auctionComplete = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var auction = await apiAStream.Request(new UnlockFeatureReq("player-alice", "auction", "unlock-auction"))
-            .Async<UnlockFeatureRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(auction.EventId == "player-alice-unlock-auction", "Assertion failed: auction.EventId == \"player-alice-unlock-auction\"");
-        var auctionCompletePush = await auctionComplete;
-        ZlinkStreamAssert.Ensure(auctionCompletePush.Payload.PlayerId == "player-alice", "Assertion failed: auctionCompletePush.Payload.PlayerId == \"player-alice\"");
-        ZlinkStreamAssert.Ensure(auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction, "Assertion failed: auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction");
-        ZlinkStreamAssert.Ensure(auctionCompletePush.Payload.RewardGranted, "Assertion failed: auctionCompletePush.Payload.RewardGranted");
         using var mission = ZLinkHttpClient.Create(topology.MissionAHttpBaseUrl).Build();
         var closeOwner = await mission.Post("/self-check/owner/player-alice/close")
             .AsyncRaw(cancellationToken);
         ZlinkStreamAssert.Ensure(closeOwner.Status is >= 200 and < 300, "Assertion failed: closeOwner.Status is >= 200 and < 300");
+        var rehydratedAfterClose = await apiAStream.Request(new SyncQuestProgressReq("player-alice"))
+            .Async<SyncQuestProgressRes>(cancellationToken);
+        ZlinkStreamAssert.Ensure(
+            rehydratedAfterClose.UpdatedQuests.Any(progress =>
+                progress is { QuestId: QuestIds.FirstHunt, Status: QuestStatuses.RewardGranted }),
+            "Assertion failed: rehydratedAfterClose.UpdatedQuests contains rewarded first-hunt");
 
-        var tutorial = await apiAStream.Request(new CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
-            .Async<CompleteMissionRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(tutorial.EventId == "player-alice-mission-tutorial", "Assertion failed: tutorial.EventId == \"player-alice-mission-tutorial\"");
-
-        var ruins = await apiAStream.Request(new EnterAreaReq("player-alice", "ruins", "enter-ruins"))
-            .Async<EnterAreaRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(ruins.EventId == "player-alice-enter-ruins", "Assertion failed: ruins.EventId == \"player-alice-enter-ruins\"");
+        var ruinsCompleted = apiAStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
+        await apiAStream.Send(new EnterAreaReq("player-alice", "ruins", "enter-ruins"))
+            .Async(cancellationToken);
+        var ruinsCompletedPush = await ruinsCompleted;
+        ZlinkStreamAssert.Ensure(ruinsCompletedPush.Payload.PlayerId == "player-alice", "Assertion failed: ruinsCompletedPush.Payload.PlayerId == \"player-alice\"");
+        ZlinkStreamAssert.Ensure(ruinsCompletedPush.Payload.Progress.QuestId == QuestIds.VisitRuins, "Assertion failed: ruinsCompletedPush.Payload.Progress.QuestId == QuestIds.VisitRuins");
+        ZlinkStreamAssert.Ensure(ruinsCompletedPush.Payload.RewardGranted, "Assertion failed: ruinsCompletedPush.Payload.RewardGranted");
 
         // Simulate an authoritative server event while Bob has no bound session.
         var offlineItem = await apiA.Post("/self-check/gameplay/collect/player-bob/healing-herb/1/herb-1")
-            .Fetch<CollectItemRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(offlineItem.EventId == "player-bob-herb-1", "Assertion failed: offlineItem.EventId == \"player-bob-herb-1\"");
+            .AsyncRaw(cancellationToken);
+        ZlinkStreamAssert.Ensure(offlineItem.Status is >= 200 and < 300, "Assertion failed: offlineItem.Status is >= 200 and < 300");
 
         await apiBStream.Connect.Async(cancellationToken);
         var bobJoined = await apiBStream.Request(new JoinSessionReq("player-bob"))
@@ -92,9 +90,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
                 cancellationToken);
         ZlinkStreamAssert.Ensure(bobProgress.Any(p => p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 }), "Assertion failed: bobProgress.Any(p => p is { QuestId: QuestIds.HerbGathering, CurrentCount: 1 })");
         var herbCompletedOnReconnectedStream = apiBStream.WaitFor<QuestCompletedNotify>().Async(cancellationToken);
-        var onlineItem = await apiBStream.Request(new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
-            .Async<CollectItemRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(onlineItem.EventId == "player-bob-herb-2", "Assertion failed: onlineItem.EventId == \"player-bob-herb-2\"");
+        await apiBStream.Send(new CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
+            .Async(cancellationToken);
         var herbCompletedOnReconnectedStreamPush = await herbCompletedOnReconnectedStream;
         ZlinkStreamAssert.Ensure(herbCompletedOnReconnectedStreamPush.Payload.PlayerId == "player-bob", "Assertion failed: herbCompletedOnReconnectedStreamPush.Payload.PlayerId == \"player-bob\"");
         ZlinkStreamAssert.Ensure(herbCompletedOnReconnectedStreamPush.Payload.Progress.QuestId == QuestIds.HerbGathering, "Assertion failed: herbCompletedOnReconnectedStreamPush.Payload.Progress.QuestId == QuestIds.HerbGathering");

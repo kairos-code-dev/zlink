@@ -155,16 +155,30 @@ public sealed record ZoneBorderEvent(
 /// moves the actor between zones, and across nodes it is what triggers the actor
 /// relocation, so the zone change rides the join rather than a plain send (§2.6).
 /// The payload carries the global ActorId only. The framework resolves the current
-/// owner, so application messages never carry a cached ActorRef (§8.3).
+/// owner, so application messages never carry a cached ActorRef (§8.3). The logical
+/// source NodeId is included only for the target admission rule: maintenance allows a
+/// player to move between zones already hosted by the same node, but rejects a new or
+/// cross-node arrival.
 /// </summary>
 public sealed record EnterZoneMsg(
     string PlayerId,
     int X,
     int Y,
     bool IsBot,
-    bool InitialEntry);
+    bool InitialEntry,
+    string? FromNodeId);
 
 public sealed record EnterZoneRes(string ZoneId, string? Error = null);
+
+/// <summary>
+/// Player actor -> current Zone Spot. Same-zone movement updates the Spot's rendering
+/// projection through this message; the actor remains the coordinate authority (§2.1, §7.1).
+/// </summary>
+public sealed record UpdatePositionMsg(
+    string PlayerId,
+    int X,
+    int Y,
+    bool IsBot);
 
 /// <summary>
 /// Zone spot -> player actor. The actor forwards the snapshot through its current

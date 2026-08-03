@@ -110,6 +110,38 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
     private static bool IsBindingRebind(Exception error) =>
         error.ToString().Contains("session binding", StringComparison.Ordinal);
 
+    public static bool IsRemoteFrameworkError(
+        Exception error,
+        params string[] frameworkErrorKinds)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        ArgumentNullException.ThrowIfNull(frameworkErrorKinds);
+
+        return error is ZlinkStreamException
+            {
+                Error.Code: ZlinkStreamErrorCode.RemoteError,
+                Error.Message: { } message
+            }
+            && frameworkErrorKinds.Any(kind =>
+                !string.IsNullOrWhiteSpace(kind)
+                && message.StartsWith(kind + ":", StringComparison.Ordinal));
+    }
+
+    public static bool IsTransientTrafficFailure(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return error is ZlinkStreamException
+            {
+                Error.Code: ZlinkStreamErrorCode.RequestTimeout
+            }
+            || IsRemoteFrameworkError(
+                error,
+                "Unavailable",
+                "DeadlineExceeded",
+                "ShuttingDown");
+    }
+
     public async Task<ActorJoinCompletedNotify> JoinRoomAsync(
         IZlinkStreamConnector connector,
         string actorId,
@@ -201,6 +233,25 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
         throw new InvalidOperationException(
             $"Framework placement did not select observed node '{nodeRid}' "
             + "within the bounded setup attempts.");
+    }
+
+    public async Task SetPlayPlacementWeightAsync(string role, int weight)
+    {
+        var client = role switch
+        {
+            "play-a" => PlayA,
+            "play-b" => PlayB,
+            "play-c" => PlayC,
+            "play-d" => PlayD,
+            _ => throw new ArgumentOutOfRangeException(nameof(role))
+        };
+        var response = (await client.Post("/placement-weight")
+            .Body(new PlacementWeightReq(weight))
+            .Async<PlacementWeightRes>()).Body;
+        if (response.Weight != weight)
+            throw new InvalidOperationException(
+                $"Placement weight for '{role}' was not applied: "
+                + $"{response.Weight} != {weight}.");
     }
 
     public async Task<ActivateInstanceSpotRes> ActivateInstanceOnObservedNodeAsync(

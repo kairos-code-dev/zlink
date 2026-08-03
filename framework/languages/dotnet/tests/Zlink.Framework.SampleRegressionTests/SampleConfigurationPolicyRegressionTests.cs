@@ -340,6 +340,9 @@ public sealed partial class RegressionTests
         Assert.Contains("$0\" --g4-child ZW-G4", runner, StringComparison.Ordinal);
         Assert.Contains("if scenario_selected ZW-G3", runner, StringComparison.Ordinal);
         Assert.Contains("if scenario_selected ZW-G5", runner, StringComparison.Ordinal);
+        Assert.Contains("config_name=\"zone-node-replacement\"", runner, StringComparison.Ordinal);
+        Assert.Contains("start \"$name\" \"$SERVER_BIN\" --config \"$CONFIG_DIR/$config_name.json\"", runner,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("stop_node zone-node-replacement", runner, StringComparison.Ordinal);
         Assert.Contains("run_client ZW-G2", runner, StringComparison.Ordinal);
         Assert.Contains("fixed_rid_scan_status", runner, StringComparison.Ordinal);
@@ -397,14 +400,17 @@ public sealed partial class RegressionTests
         Assert.Contains("Dictionary<string, NodeStatusNotify> _latestNodes", registry,
             StringComparison.Ordinal);
         Assert.Contains("lock (_nodeGate)", registry, StringComparison.Ordinal);
-        Assert.Contains("version != _nodeVersion", registry, StringComparison.Ordinal);
+        Assert.Contains("ReplayNodesAsync", registry, StringComparison.Ordinal);
+        Assert.Contains("public void Add(", registry, StringComparison.Ordinal);
+        Assert.DoesNotContain("AddAsync(", registry, StringComparison.Ordinal);
         Assert.Contains("catch (Exception error)", registry, StringComparison.Ordinal);
-        Assert.Contains("throw new AggregateException", registry, StringComparison.Ordinal);
+        Assert.Contains("logger?.LogWarning", registry, StringComparison.Ordinal);
+        Assert.Contains("Remove(console)", registry, StringComparison.Ordinal);
         Assert.Contains("ICollection<KeyValuePair<string, IZLinkSessionContext>>", registry,
             StringComparison.Ordinal);
-        Assert.True(
-            registry.IndexOf("foreach (var node in snapshot)", StringComparison.Ordinal)
-            < registry.IndexOf("_consoles[context.SessionId] = context", StringComparison.Ordinal));
+        Assert.Contains("await context.Client.Reply(new WatchNodesRes", File.ReadAllText(
+            Path.Combine(sample, "Server", "Ops", "Infrastructure", "ZLink", "Handlers",
+                "OpsSessionHandlers.cs")), StringComparison.Ordinal);
         Assert.True(
             registry.IndexOf("consoles = _consoles.Values.ToArray()", StringComparison.Ordinal)
             < registry.IndexOf("foreach (var console in consoles)", StringComparison.Ordinal));
@@ -463,7 +469,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("TimeoutException or InvalidOperationException", scenario, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.Delay", scenario, StringComparison.Ordinal);
         Assert.Contains("if (response is not null)", scenario, StringComparison.Ordinal);
-        Assert.Contains("!response.Accepted", scenario, StringComparison.Ordinal);
+        Assert.Contains("ZlinkStreamAssert.Ensure(response.Accepted", scenario, StringComparison.Ordinal);
         Assert.Contains("pending_admission_expired actor={actorId}", scenario, StringComparison.Ordinal);
         Assert.Contains("WaitRuntimeEvidenceAsync(context.NodeB, 30000", scenario, StringComparison.Ordinal);
         Assert.DoesNotContain("DrainAsync(context.NodeB)", scenario, StringComparison.Ordinal);
@@ -532,6 +538,8 @@ public sealed partial class RegressionTests
     {
         var runner = File.ReadAllText(Path.Combine(
             ResolveDotnetRoot(), "samples", "run_samples.sh"));
+        var powershellRunner = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(), "samples", "run_samples.ps1"));
         var expectedSamples = new[]
         {
             "TicTacToe",
@@ -544,11 +552,26 @@ public sealed partial class RegressionTests
         };
         var defaultSampleList = runner.Split('\n').Single(static line =>
             line.StartsWith("SAMPLES=(", StringComparison.Ordinal));
+        var defaultPowerShellSampleList = powershellRunner.Split('\n').Single(static line =>
+            line.StartsWith("$knownSamples = @(", StringComparison.Ordinal));
 
         foreach (var sample in expectedSamples)
+        {
             Assert.Contains(sample, defaultSampleList, StringComparison.Ordinal);
+            Assert.Contains(sample, defaultPowerShellSampleList, StringComparison.Ordinal);
+            Assert.True(
+                File.Exists(Path.Combine(ResolveDotnetRoot(), "samples", sample, "run_sample.ps1")),
+                $"PowerShell runner is missing for {sample}.");
+        }
 
         Assert.Contains("${SCRIPT_DIR}/${sample}/run_sample.sh", runner, StringComparison.Ordinal);
+        Assert.Contains("$ScriptDir \"$sample/run_sample.ps1\"", powershellRunner,
+            StringComparison.Ordinal);
+
+        var zoneWorldPowerShellRunner = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(), "samples", "ZoneWorld", "run_sample.ps1"));
+        Assert.Contains("run_sample.sh", zoneWorldPowerShellRunner, StringComparison.Ordinal);
+        Assert.Contains("bash", zoneWorldPowerShellRunner, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -629,6 +652,38 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("FindAsync(playerId", spot, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, BotTickMsg>",
             handlers, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ZoneWorldBotEntryRecordsIdentityBeforeDeferredJoin()
+    {
+        var sampleRoot = ResolveSampleRoot("ZoneWorld");
+        var actor = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server", "ZoneNode", "Infrastructure", "ZLink", "Actors", "PlayerActor.cs"));
+        var entry = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server", "ZoneNode", "Infrastructure", "ZLink", "Spots", "ZoneEntrySpot.cs"));
+
+        Assert.Contains("public void PrepareEntry(bool isBot)", actor, StringComparison.Ordinal);
+        Assert.Contains("actor.PrepareEntry(message.IsBot);", entry, StringComparison.Ordinal);
+        Assert.True(
+            entry.IndexOf("actor.PrepareEntry(message.IsBot);", StringComparison.Ordinal)
+            < entry.IndexOf(".JoinSpot(", StringComparison.Ordinal),
+            "bot identity must be recorded before the deferred join is scheduled");
+    }
+
+    [Fact]
+    public void ZoneWorldPhysicalDisconnectUsesFrameworkLifecycleNotification()
+    {
+        var session = File.ReadAllText(Path.Combine(
+            ResolveSampleRoot("ZoneWorld"),
+            "Server", "Gateway", "Infrastructure", "ZLink", "Sessions", "PlayerSession.cs"));
+
+        Assert.Contains("Physical disconnect is delivered", session, StringComparison.Ordinal);
+        Assert.DoesNotContain("Context.Actors.Bound.ToArray()", session, StringComparison.Ordinal);
+        Assert.DoesNotContain("NotifyDisconnectedAsync(cancellationToken)", session,
+            StringComparison.Ordinal);
     }
 
     [Fact]

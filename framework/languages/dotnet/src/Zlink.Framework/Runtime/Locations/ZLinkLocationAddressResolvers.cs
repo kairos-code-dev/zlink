@@ -246,5 +246,5 @@ internal static class ZLinkSpotHandleRequestExecution
 
     internal static bool IsStaleRoute(ZLinkFrameworkException error) =>
         error.Kind is ZLinkFrameworkErrorKind.NotFound
-            or ZLinkFrameworkErrorKind.NotFound;
+            or ZLinkFrameworkErrorKind.Unavailable;
 }

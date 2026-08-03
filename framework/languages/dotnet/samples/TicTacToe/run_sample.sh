@@ -49,6 +49,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
     docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
+  zlink_sample_copy_evidence "${RUN_DIR}" "TicTacToe"
   if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
@@ -230,8 +231,8 @@ wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "$
 wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"
 wait_log_contains "observer milestone verification" "observer-win-milestone=verified" "${LOG_DIR}/client.log"
-wait_log_contains "player-x leave completion" "actor: LeaveGameReq completed. actor=player-x" "${LOG_DIR}"/play-*.log
-wait_log_contains "player-o leave completion" "actor: LeaveGameReq completed. actor=player-o" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-x leave completion" "actor: LeaveGameMsg completed. actor=player-x" "${LOG_DIR}"/play-*.log
+wait_log_contains "player-o leave completion" "actor: LeaveGameMsg completed. actor=player-o" "${LOG_DIR}"/play-*.log
 wait_log_contains "player-x actor destroy completion" "entry spot: actor destroy completed. actor=player-x" "${LOG_DIR}"/play-*.log
 wait_log_contains "player-o actor destroy completion" "entry spot: actor destroy completed. actor=player-o" "${LOG_DIR}"/play-*.log
 if grep -R -q "dispatch-error" "${LOG_DIR}"; then

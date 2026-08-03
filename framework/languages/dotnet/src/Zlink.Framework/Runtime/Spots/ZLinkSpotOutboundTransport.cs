@@ -136,7 +136,18 @@ internal sealed class ZLinkSpotOutboundTransport(
         ulong authorityOwnerGeneration,
         ulong ownerLeaseGeneration)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"spot_authority_observe target_node={targetNodeRid} "
+            + $"spot={targetSpotId} object_gen={targetSpotGeneration} "
+            + $"node_gen={targetNodeGeneration} "
+            + $"authority_gen={authorityOwnerGeneration} "
+            + $"lease_gen={ownerLeaseGeneration}");
         if (targetNodeRid == default
+            // Node-control routes and Entry Spot routes do not carry a
+            // user-Spot object generation. They are fenced by the node and
+            // owner generations, while the backend observer requires a
+            // positive object generation for a User Spot authority record.
+            || targetSpotGeneration == 0
             || targetNodeGeneration == 0
             || authorityOwnerGeneration == 0
             || ownerLeaseGeneration == 0)

@@ -25,7 +25,7 @@ internal sealed class ShoppingMallClientScenario
             "order-success-001");
         var success = await apiA.Post("/orders/start").Body(successReq)
             .Fetch<StartOrderRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(success.Status == OrderStatuses.Created, "Assertion failed: success.Status == OrderStatuses.Created");
+        ZlinkStreamAssert.Ensure(success.State.Status == OrderStatuses.Created, "Assertion failed: success.State.Status == OrderStatuses.Created");
         ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(success.OrderId), "Assertion failed: !string.IsNullOrWhiteSpace(success.OrderId)");
 
         var created = await GetOrderAsync(apiA, success.OrderId, cancellationToken);
@@ -75,7 +75,7 @@ internal sealed class ShoppingMallClientScenario
         var pending = await apiB.Post("/orders/start").Body(pendingReq)
             .Fetch<StartOrderRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(pending.OrderId == "order-pending-0001", "Assertion failed: pending.OrderId == \"order-pending-0001\"");
-        ZlinkStreamAssert.Ensure(pending.Status == OrderStatuses.Created, "Assertion failed: pending.Status == OrderStatuses.Created");
+        ZlinkStreamAssert.Ensure(pending.State.Status == OrderStatuses.Created, "Assertion failed: pending.State.Status == OrderStatuses.Created");
         var pendingCreated = await GetOrderAsync(apiA, pending.OrderId, cancellationToken);
         ZlinkStreamAssert.Ensure(IsStartedOrConfirmed(pendingCreated), "Assertion failed: IsStartedOrConfirmed(pendingCreated)");
         ZlinkStreamAssert.Ensure(pendingCreated.ShippingAddressId == pendingReq.ShippingAddressId, "Assertion failed: pendingCreated.ShippingAddressId == pendingReq.ShippingAddressId");
@@ -88,7 +88,7 @@ internal sealed class ShoppingMallClientScenario
         var inventoryReserved = await apiA.Post("/self-check/workflow/inventory-reserved")
             .Body(resumeReq)
             .Fetch<StartOrderRes>(cancellationToken);
-        ZlinkStreamAssert.Ensure(inventoryReserved.Status == OrderStatuses.InventoryReserved, "Assertion failed: inventoryReserved.Status == OrderStatuses.InventoryReserved");
+        ZlinkStreamAssert.Ensure(inventoryReserved.State.Status == OrderStatuses.InventoryReserved, "Assertion failed: inventoryReserved.State.Status == OrderStatuses.InventoryReserved");
         var resumed = await apiB.Post($"/self-check/workflow/{inventoryReserved.OrderId}/continue")
             .Fetch<ContinueOrderWorkflowRes>(cancellationToken);
         ZlinkStreamAssert.Ensure(resumed.State.Status == OrderStatuses.Confirmed, "Assertion failed: resumed.State.Status == OrderStatuses.Confirmed");

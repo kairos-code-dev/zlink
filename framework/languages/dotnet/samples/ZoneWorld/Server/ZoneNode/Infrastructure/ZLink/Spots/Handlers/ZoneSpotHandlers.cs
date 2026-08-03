@@ -5,25 +5,53 @@ using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 using ZoneWorld.Shared.Contracts;
 using ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
+using ZoneWorld.Server.ZoneNode.Ports;
 
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots.Handlers;
 
 /// <summary>The 100ms world tick (§2.5).</summary>
-internal sealed class ZoneTickHandler(ZoneNodeSettings settings) : IZLinkSpotTimerHandler<ZoneSpot>
+internal sealed class ZoneTickHandler(
+    ZoneNodeSettings settings,
+    IOpsReportPort ops) : IZLinkSpotTimerHandler<ZoneSpot>
 {
     private static int _faultsInjected;
 
-    public ValueTask HandleAsync(ZoneSpot spot, ZLinkTimerTick tick, CancellationToken cancellationToken)
+    public async ValueTask HandleAsync(
+        ZoneSpot spot,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
     {
-        // Fault injection for ZW-C4. The scenario has to see a real spot runtime event —
-        // a timer handler that throws — and the only way to get one is to make a timer
-        // handler throw. It fires once so the world keeps running afterwards.
-        var faultZone = settings.FaultTickZone;
-        if (faultZone == spot.ZoneId && Interlocked.Exchange(ref _faultsInjected, 1) == 0)
-            throw new InvalidOperationException(
-                $"injected tick failure for ZW-C4. zone={spot.ZoneId}");
+        try
+        {
+            // Fault injection for ZW-C4. The scenario has to see a real spot runtime event —
+            // a timer handler that throws — and the only way to get one is to make a timer
+            // handler throw. It fires once so the world keeps running afterwards.
+            var faultZone = settings.FaultTickZone;
+            if (faultZone == spot.ZoneId && Interlocked.Exchange(ref _faultsInjected, 1) == 0)
+                throw new InvalidOperationException(
+                    $"injected tick failure for ZW-C4. zone={spot.ZoneId}");
 
-        return spot.TickAsync(cancellationToken);
+            await spot.TickAsync(cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            try
+            {
+                await ops.ReportSpotEventAsync(
+                    NodeAlertKinds.TimerHandlerFailed,
+                    $"spot={spot.ZoneId}; timer=zone-tick-{spot.ZoneId}; detail={error.Message}",
+                    cancellationToken);
+            }
+            catch (Exception reportError)
+            {
+                // The Framework still owns timer failure logging. A report transport failure
+                // must not replace the original handler exception or change timer policy.
+                Console.Error.WriteLine(
+                    $"zone spot event report failed. zone={spot.ZoneId} error={reportError.Message}");
+            }
+
+            throw;
+        }
     }
 }
 
@@ -49,6 +77,24 @@ internal sealed class DeliverAnnounceHandler : IZLinkSpotPacketHandler<ZoneSpot,
         DeliverAnnounceMsg message,
         CancellationToken cancellationToken) =>
         spot.DeliverAnnounceAsync(message, cancellationToken);
+}
+
+/// <summary>
+/// Applies the actor's same-zone coordinate update to the Spot projection. The actor
+/// remains the authority; this handler only updates the copy used for rendering and
+/// border snapshots.
+/// </summary>
+[ZLinkSpotPacketHandler(nameof(UpdatePositionMsg))]
+internal sealed class UpdatePositionHandler : IZLinkSpotPacketHandler<ZoneSpot, UpdatePositionMsg>
+{
+    public ValueTask HandleAsync(
+        ZoneSpot spot,
+        UpdatePositionMsg message,
+        CancellationToken cancellationToken)
+    {
+        spot.ApplyPositionUpdate(message);
+        return ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>

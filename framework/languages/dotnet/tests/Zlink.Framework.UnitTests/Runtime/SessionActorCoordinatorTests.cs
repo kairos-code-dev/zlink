@@ -3,6 +3,7 @@ using System.Diagnostics.Metrics;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -1131,7 +1132,7 @@ public sealed class SessionActorCoordinatorTests
         Assert.True(runtime.TryGetSessionActorBinding(source.ActorId, out var identity));
         const string handoffId = "handoff-route-commit";
         Assert.True((await runtime.SealSessionActorRouteAsync(
-            new ZLinkSessionRouteSeal(
+                new ZLinkSessionRouteSeal(
                 source.ActorId,
                 identity.BindingToken,
                 identity.BindingGeneration,
@@ -1143,14 +1144,12 @@ public sealed class SessionActorCoordinatorTests
                 identity.SessionOwnerNodeGeneration,
                 handoffId),
             CancellationToken.None)).Acknowledged);
-        Assert.True(runtime.TryAcceptSessionActorFrame(
+        var sealedHighWater = identity.AcceptedHighWater;
+        Assert.False(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
             identity.BindingToken,
-            out var sealedHighWater));
-        Assert.Equal(identity.AcceptedHighWater + 1, sealedHighWater);
-        runtime.CompleteAcceptedSessionActorFrame(
-            source.ActorId,
-            identity.BindingToken);
+            out var rejectedHighWater));
+        Assert.Equal(sealedHighWater, rejectedHighWater);
 
         var stale = runtime.CommitSessionActorRoute(
             new ZLinkSessionRouteCommit(
@@ -1198,14 +1197,15 @@ public sealed class SessionActorCoordinatorTests
         Assert.True(retried.Acknowledged);
         Assert.Equal(target, bound.Ref);
         Assert.Equal(source.ObjectGeneration, bound.Ref.ObjectGeneration);
-        Assert.True(runtime.TryAcceptSessionActorFrame(
+        Assert.False(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
             identity.BindingToken,
             out var committedHighWater));
-        Assert.Equal(sealedHighWater + 1, committedHighWater);
-        runtime.CompleteAcceptedSessionActorFrame(
-            source.ActorId,
-            identity.BindingToken);
+        Assert.Equal(sealedHighWater, committedHighWater);
+        var retriedAfterCommit = runtime.CommitSessionActorRoute(command);
+        Assert.True(retriedAfterCommit.Acknowledged);
+        Assert.Equal(sealedHighWater, retriedAfterCommit.AcceptedHighWater);
+        Assert.True(runtime.UnsealCommittedSessionActorRoute(command));
         Assert.True(runtime.UnsealCommittedSessionActorRoute(command));
         Assert.True(runtime.TryAcceptSessionActorFrame(
             source.ActorId,
@@ -1215,6 +1215,119 @@ public sealed class SessionActorCoordinatorTests
         runtime.CompleteAcceptedSessionActorFrame(
             source.ActorId,
             identity.BindingToken);
+    }
+
+    [Fact]
+    public async Task Sealed_Route_Allows_Target_Push_When_Target_Authority_Generation_Is_Lower()
+    {
+        var runtime = CreateRuntime();
+        var stream = new TestStream(RoutingId.From("session-route-lower"));
+        var context = CreateSessionContext(runtime, stream);
+        var source = new ActorRef(
+            "actor-route-lower",
+            7,
+            "actors",
+            RoutingId.From("actor-node-a"));
+        var targetNode = RoutingId.From("actor-node-b");
+        _ = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            source,
+            CancellationToken.None);
+
+        Assert.True(runtime.TryGetSessionActorBinding(source.ActorId, out var identity));
+        const string handoffId = "handoff-route-lower";
+        Assert.True((await runtime.SealSessionActorRouteAsync(
+            new ZLinkSessionRouteSeal(
+                source.ActorId,
+                identity.BindingToken,
+                identity.BindingGeneration,
+                source.ObjectGeneration,
+                identity.AuthorityOwnerGeneration,
+                identity.MeshName,
+                identity.TargetNodeGeneration,
+                identity.OwnerLeaseGeneration,
+                identity.SessionOwnerNodeGeneration,
+                handoffId),
+            CancellationToken.None)).Acknowledged);
+
+        var relay = new ZLinkRemoteSessionPushRelay(
+            source.ActorId,
+            source.ObjectGeneration,
+            identity.MeshName,
+            targetNode.ToHex(),
+            TargetNodeGeneration: 11,
+            AuthorityOwnerGeneration: 14,
+            OwnerLeaseGeneration: 3,
+            identity.BindingToken,
+            identity.BindingGeneration,
+            identity.SessionOwnerNodeGeneration,
+            identity.Context.RoutingId!.Value.ToHex(),
+            [1, 2, 3]);
+
+        var wrongTargetNode = RoutingId.From("actor-node-c");
+        await runtime.DeliverRemoteSessionPushAsync(
+            relay with
+            {
+                TargetNodeRid = wrongTargetNode.ToHex(),
+                TargetNodeGeneration = identity.TargetNodeGeneration,
+                AuthorityOwnerGeneration = identity.AuthorityOwnerGeneration,
+                OwnerLeaseGeneration = identity.OwnerLeaseGeneration
+            },
+            [4, 5, 6],
+            wrongTargetNode,
+            CancellationToken.None);
+        Assert.Empty(stream.Writes);
+
+        await runtime.DeliverRemoteSessionPushAsync(
+            relay,
+            [1, 2, 3],
+            targetNode,
+            CancellationToken.None);
+
+        Assert.Single(stream.Writes);
+        Assert.Equal(new byte[] { 1, 2, 3 }, stream.Writes[0].Payload);
+
+        var target = new ActorRef(
+            source.ActorId,
+            source.ObjectGeneration,
+            source.MeshName,
+            targetNode);
+        var commit = runtime.CommitSessionActorRoute(
+            new ZLinkSessionRouteCommit(
+                source.ActorId,
+                identity.BindingToken,
+                identity.BindingGeneration,
+                source.ObjectGeneration,
+                identity.AuthorityOwnerGeneration,
+                identity.AuthorityOwnerGeneration + 1,
+                identity.MeshName,
+                identity.MeshName,
+                identity.TargetNodeGeneration,
+                identity.TargetNodeGeneration + 1,
+                identity.OwnerLeaseGeneration,
+                identity.OwnerLeaseGeneration + 1,
+                identity.SessionOwnerNodeGeneration,
+                identity.AcceptedHighWater,
+                handoffId,
+                target));
+        Assert.True(commit.Acknowledged);
+
+        // The target route is installed before Unseal. The in-flight target
+        // push can still carry the source-side fence and must not be dropped.
+        var preCommitIdentity = relay with
+        {
+            AuthorityOwnerGeneration = identity.AuthorityOwnerGeneration,
+            TargetNodeGeneration = identity.TargetNodeGeneration,
+            OwnerLeaseGeneration = identity.OwnerLeaseGeneration
+        };
+        await runtime.DeliverRemoteSessionPushAsync(
+            preCommitIdentity,
+            [7, 8, 9],
+            targetNode,
+            CancellationToken.None);
+
+        Assert.Equal(2, stream.Writes.Count);
+        Assert.Equal(new byte[] { 7, 8, 9 }, stream.Writes[1].Payload);
     }
 
     [Fact]
@@ -1260,14 +1373,11 @@ public sealed class SessionActorCoordinatorTests
 
         Assert.True(result.Acknowledged);
         Assert.Equal(acceptedHighWater, result.AcceptedHighWater);
-        Assert.True(runtime.TryAcceptSessionActorFrame(
+        Assert.False(runtime.TryAcceptSessionActorFrame(
             actor.ActorId,
             identity.BindingToken,
             out var postSealHighWater));
-        Assert.Equal(acceptedHighWater + 1, postSealHighWater);
-        runtime.CompleteAcceptedSessionActorFrame(
-            actor.ActorId,
-            identity.BindingToken);
+        Assert.Equal(acceptedHighWater, postSealHighWater);
     }
 
     [Fact]
@@ -1608,9 +1718,16 @@ public sealed class SessionActorCoordinatorTests
         ZLinkFrameworkRuntime runtime,
         string sessionRid)
     {
+        return CreateSessionContext(runtime, new TestStream(RoutingId.From(sessionRid)));
+    }
+
+    private static ZLinkSessionContext CreateSessionContext(
+        ZLinkFrameworkRuntime runtime,
+        TestStream stream)
+    {
         return new ZLinkSessionContext(
             runtime,
-            new TestStream(RoutingId.From(sessionRid)),
+            stream,
             new TestSessionHandlerRegistry(),
             static () => ValueTask.CompletedTask,
             static _ => ValueTask.CompletedTask);

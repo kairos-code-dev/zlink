@@ -27,12 +27,14 @@ public sealed class PlayerSession(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (var actor in Context.Actors.Bound.ToArray())
-            await actor.NotifyDisconnectedAsync(cancellationToken);
-
+        // Physical disconnect is delivered to each exact Actor binding by Framework after
+        // this callback. The session callback must not send a second logical notification:
+        // doing both races the relocation route fence and can retain a stale push route.
+        _ = cancellationToken;
         logger.LogInformation("client disconnected. session={SessionId}", Context.SessionId);
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)

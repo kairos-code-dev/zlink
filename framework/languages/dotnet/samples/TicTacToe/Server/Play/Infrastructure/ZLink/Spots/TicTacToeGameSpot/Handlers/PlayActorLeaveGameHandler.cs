@@ -5,15 +5,15 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
-[ZLinkSpotActorSendHandler(nameof(LeaveGameReq))]
+[ZLinkSpotActorSendHandler(nameof(LeaveGameMsg))]
 internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandler> logger)
-    : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, LeaveGameReq>
+    : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, LeaveGameMsg>
 {
     public async ValueTask HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
         IZLinkMessageContext context,
-        LeaveGameReq message,
+        LeaveGameMsg message,
         CancellationToken cancellationToken)
     {
         var roomId = actor.RequireJoinedRoom();
@@ -21,14 +21,14 @@ internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandle
             throw new InvalidOperationException($"Actor is joined to '{roomId}', not '{message.RoomId}'.");
 
         logger.LogInformation(
-            "actor: LeaveGameReq received. actor={ActorId}, roomId={RoomId}",
+            "actor: LeaveGameMsg received. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
             message.RoomId);
 
         await spot.LeaveGameAsync(actor, message.RoomId, cancellationToken);
 
         logger.LogInformation(
-            "actor: LeaveGameReq completed. actor={ActorId}, roomId={RoomId}",
+            "actor: LeaveGameMsg completed. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
             message.RoomId);
     }

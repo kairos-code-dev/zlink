@@ -26,6 +26,7 @@
 
     <ItemGroup>
         <Compile Include="BingoRegressionTests.cs"/>
+        <Compile Include="CommonSampleContractInventoryRegressionTests.cs"/>
         <Compile Include="DeliveryDispatchRegressionTests.cs"/>
         <Compile Include="GameQuestRegressionTests.cs"/>
         <Compile Include="E2ERunnerRegressionTests.cs"/>
@@ -36,9 +37,14 @@
         <Compile Include="SupportChatRegressionTests.cs"/>
         <Compile Include="TicTacToeRegressionTests.cs"/>
         <Compile Include="ZoneWorldOpsConsoleRegistryTests.cs"/>
+        <Compile Include="ZoneWorldMaintenancePolicyTests.cs"/>
         <Compile Include="ZoneWorldTopologyRegressionTests.cs"/>
         <Compile Include="../../samples/ZoneWorld/Server/Ops/Infrastructure/ZLink/Sessions/OpsConsoleRegistry.cs"
                  Link="ZoneWorld/OpsConsoleRegistry.cs"/>
+        <Compile Include="../../samples/ZoneWorld/Server/Ops/Application/Ops/NodeRegistry.cs"
+                 Link="ZoneWorld/NodeRegistry.cs"/>
+        <Compile Include="../../samples/ZoneWorld/Server/ZoneNode/Application/Node/NodeMaintenancePolicy.cs"
+                 Link="ZoneWorld/NodeMaintenancePolicy.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>
     </ItemGroup>
 

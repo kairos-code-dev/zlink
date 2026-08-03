@@ -37,18 +37,6 @@ internal sealed class GameplayActionService(
         return dispatched.EventId;
     }
 
-    public async ValueTask<string> CompleteMissionAsync(
-        string playerId,
-        string missionId,
-        string idempotencyKey,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateMissionCompleted(playerId, missionId, idempotencyKey, _apiName),
-            cancellationToken);
-        return dispatched.EventId;
-    }
-
     public async ValueTask<string> EnterAreaAsync(
         string playerId,
         string areaId,
@@ -57,18 +45,6 @@ internal sealed class GameplayActionService(
     {
         var dispatched = await StoreAndDispatchAsync(
             GameplayDomain.CreateAreaEntered(playerId, areaId, idempotencyKey, _apiName),
-            cancellationToken);
-        return dispatched.EventId;
-    }
-
-    public async ValueTask<string> UnlockFeatureAsync(
-        string playerId,
-        string featureId,
-        string idempotencyKey,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateFeatureUnlocked(playerId, featureId, idempotencyKey, _apiName),
             cancellationToken);
         return dispatched.EventId;
     }

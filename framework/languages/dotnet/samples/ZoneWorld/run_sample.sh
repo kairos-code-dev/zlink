@@ -11,6 +11,7 @@ SCENARIO="all"
 SCENARIO_SET=0
 G4_CHILD=0
 G4_PROVEN=0
+TRACE_STREAM="${ZLINK_SAMPLE_TRACE_STREAM:-0}"
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --browser-smoke)
@@ -71,6 +72,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  zlink_sample_copy_evidence "$RUN_DIR" "ZoneWorld"
 }
 trap cleanup EXIT
 
@@ -181,7 +183,10 @@ CLIENT_BIN="$ROOT_DIR/Client/$BIN_DIR/ZoneWorld.Client"
 
 start() {
   local name="$1"; shift
-  "$@" >>"$LOG_DIR/$name.log" 2>&1 &
+  # Keep Framework spot-discovery evidence in the same per-process files that the
+  # readiness gates inspect. This makes mesh admission and replacement routing
+  # observable without changing the sample's public traffic.
+  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 "$@" >>"$LOG_DIR/$name.log" 2>&1 &
   PIDS+=($!)
   NODE_PID[$name]=$!
   echo "    started $name (pid ${PIDS[-1]})"
@@ -238,11 +243,20 @@ is_zone_node_rid() {
 
 start_zone_node() {
   local name="$1"
-  local first_new_line first_new_ops_line
+  local config_name="$name"
+  local first_new_line first_new_ops_line first_peer_line
+  local local_rid peer_rid
+  # A restarted zone-node-2 uses the replacement endpoint. Reusing the original
+  # config would publish a new RID on the retired socket and would not exercise
+  # the different-endpoint replacement contract.
+  if [[ "$name" == "zone-node-2" ]]; then
+    config_name="zone-node-replacement"
+  fi
   first_new_line=$(($(wc -l <"$LOG_DIR/$name.log" 2>/dev/null || printf '0') + 1))
   first_new_ops_line=$(($(wc -l <"$LOG_DIR/ops.log" 2>/dev/null || printf '0') + 1))
+  first_peer_line=$(($(wc -l <"$LOG_DIR/zone-node-1.log" 2>/dev/null || printf '0') + 1))
   : >"$LOG_DIR/$name.restart.marker"
-  start "$name" "$SERVER_BIN" --config "$CONFIG_DIR/$name.json"
+  start "$name" "$SERVER_BIN" --config "$CONFIG_DIR/$config_name.json"
   # A restarted process gets a new RID. Wait for application readiness and the two independent
   # observations that prove Ops has received its report and accepted its new connection.
   wait_for_log_after "$name" "topology=ready" "$first_new_line" 450
@@ -250,11 +264,25 @@ start_zone_node() {
   # has submitted a status report, and Ops has observed the new socket connection.
   wait_for_log_after "$name" "node status report submitted. node=$name" "$first_new_line" 450
   wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line" 450
+
+  # Process readiness is complete only after the replacement RID has an admitted mesh
+  # connection in both directions. The status report and Ops socket observation above prove
+  # discovery and transport reachability, but they do not prove that routed application traffic
+  # can use the new peer.
+  if [[ "$name" == "zone-node-2" ]]; then
+    local_rid="$(routing_id_of zone-node-2 "$first_new_ops_line")"
+    peer_rid="$(routing_id_of zone-node-1)"
+    wait_for_log_after "$name" "mesh_peer_admit local=$local_rid peer=$peer_rid" \
+      "$first_new_line" 600
+    wait_for_log_after zone-node-1 "mesh_peer_admit local=$peer_rid peer=$local_rid" \
+      "$first_peer_line" 600
+  fi
 }
 
 client_config() {
   local scenarios="$1" path="$CONFIG_DIR/client.json"
-  python3 - "$CONFIG_DIR/ops.json" "$path" "$scenarios" "$GATEWAY_ENDPOINT" "$OPS_ENDPOINT" <<'PY'
+  python3 - "$CONFIG_DIR/ops.json" "$path" "$scenarios" "$GATEWAY_ENDPOINT" "$OPS_ENDPOINT" \
+    "$TRACE_STREAM" <<'PY'
 import json
 import pathlib
 import sys
@@ -265,6 +293,7 @@ source["client"] = {
     "gatewayEndpoint": sys.argv[4],
     "opsEndpoint": sys.argv[5],
     "scenarios": sys.argv[3],
+    "streamTrace": sys.argv[6] == "1",
 }
 pathlib.Path(sys.argv[2]).write_text(json.dumps(source), encoding="utf-8")
 PY
@@ -316,7 +345,10 @@ wait_for_log() {
 wait_for_log_after() {
   local name="$1" pattern="$2" first_line="$3" attempts="${4:-200}"
   for ((i = 0; i < attempts; i++)); do
-    if tail -n +"$first_line" "$LOG_DIR/$name.log" 2>/dev/null | grep -q "$pattern"; then
+    # Keep the bounded log wait compatible with `set -o pipefail`: grep -q can close its
+    # process-substitution input as soon as it finds a match, so tail cannot turn a valid
+    # readiness observation into a SIGPIPE false negative.
+    if grep -q "$pattern" <(tail -n +"$first_line" "$LOG_DIR/$name.log" 2>/dev/null); then
       return 0
     fi
     sleep 0.1
@@ -570,6 +602,55 @@ runner_scenario() {
   fi
 }
 
+# Passes only when each log contains its own half of the same cross-node scenario.
+runner_scenario_pair() {
+  local id="$1" description="$2"
+  selects "$id" || return 0
+
+  if [[ "$id" == "ZW-F2" ]]; then
+    # The fixed bot id is not a contract: all four X-axis bots are valid witnesses, and
+    # startup/replacement order can make any one of them cross first. Correlate a source
+    # leave with the same actor's non-initial entry on the other node.
+    local source_log target_log actor
+    for _ in $(seq 1 600); do
+      for source_log in zone-node-1.log zone-node-2.log; do
+        if [[ "$source_log" == "zone-node-1.log" ]]; then
+          target_log=zone-node-2.log
+        else
+          target_log=zone-node-1.log
+        fi
+        while IFS= read -r actor; do
+          [[ -n "$actor" ]] || continue
+          if grep -Fq "player=$actor, bot=True, initial=False" \
+              "$LOG_DIR/$target_log" 2>/dev/null; then
+            pass "$id"
+            return 0
+          fi
+        done < <(sed -nE 's/.*source_leave_completed actor=(bot-[^ ]+).*/\1/p' \
+          "$LOG_DIR/$source_log" 2>/dev/null)
+      done
+      sleep 0.1
+    done
+    fail "$id" "$description (no correlated cross-node bot handoff)"
+    return 0
+  fi
+
+  local first_log="$3" first_pattern="$4"
+  local second_log="$5" second_pattern="$6"
+  # A selected F2 run starts a fresh world and has no client traffic to keep the patrol
+  # advancing. Wait for the same process evidence that a full run observes later; a fixed
+  # sleep would make the assertion depend on machine speed.
+  if ! wait_for_log "${first_log%.log}" "$first_pattern" 600; then
+    fail "$id" "$description ($first_log)"
+    return 0
+  fi
+  if ! wait_for_log "${second_log%.log}" "$second_pattern" 600; then
+    fail "$id" "$description ($second_log)"
+    return 0
+  fi
+  pass "$id"
+}
+
 # Passes only when the pattern appears in *every* named log.
 runner_scenario_all() {
   local id="$1" description="$2" pattern="$3"; shift 3
@@ -654,8 +735,8 @@ runner_scenario ZW-D2 "zone-node-3 never received a world announcement" \
 
 # ZW-F2: a bot crossed to the other node. The bots run with no client attached, so a
 # relocation recorded here proves the actor moved without a bound session.
-runner_scenario ZW-F2 "no bot relocated across nodes" \
-  zone-node-2.log "player entered. zone=zone-ne, player=bot-nw-x, bot=True, from=zone-node-1"
+runner_scenario_pair ZW-F2 "no bot relocated across nodes" \
+  "" "" "" ""
 
 # ZW-G3 replaces a normally stopped node. Run this destructive ownership check after every
 # normal topology scenario so the replacement cannot become an accidental dependency of the

@@ -283,13 +283,13 @@ public sealed partial class RegressionTests
         Assert.Contains("stream-inbound sample=TicTacToe .* seq=[0-9]", shellRunner, StringComparison.Ordinal);
         Assert.Contains("stream-inbound sample=TicTacToe .* name=.*Notify", shellRunner, StringComparison.Ordinal);
         Assert.Contains("observer-win-milestone=verified", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("actor: LeaveGameReq completed. actor=player-x", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("actor: LeaveGameReq completed. actor=player-o", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameMsg completed. actor=player-x", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("actor: LeaveGameMsg completed. actor=player-o", shellRunner, StringComparison.Ordinal);
         Assert.Contains("entry spot: actor destroy completed. actor=player-x", shellRunner, StringComparison.Ordinal);
         Assert.Contains("entry spot: actor destroy completed. actor=player-o", shellRunner, StringComparison.Ordinal);
         Assert.Contains("grep -R -q \"dispatch-error\"", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("message flow", shellRunner, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("LeaveGameMsg", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("LeaveGameMsg", shellRunner, StringComparison.Ordinal);
 
         Assert.Contains("stream-inbound sample=TicTacToe", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("stream-inbound sample=TicTacToe .* seq=[0-9]", powershellRunner,
@@ -297,9 +297,9 @@ public sealed partial class RegressionTests
         Assert.Contains("stream-inbound sample=TicTacToe .* name=.*Notify", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("observer-win-milestone=verified", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("actor: LeaveGameReq completed. actor=player-x", powershellRunner,
+        Assert.Contains("actor: LeaveGameMsg completed. actor=player-x", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("actor: LeaveGameReq completed. actor=player-o", powershellRunner,
+        Assert.Contains("actor: LeaveGameMsg completed. actor=player-o", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("entry spot: actor destroy completed. actor=player-x", powershellRunner,
             StringComparison.Ordinal);
@@ -309,7 +309,7 @@ public sealed partial class RegressionTests
         Assert.Contains("Select-String -Pattern \"dispatch-error\" -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Select-String -Pattern \"dispatch-error\" -Quiet", powershellRunner,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("LeaveGameMsg", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("LeaveGameMsg", powershellRunner, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -334,8 +334,8 @@ public sealed partial class RegressionTests
         var authenticateHandler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure",
             "ZLink", "Sessions", "Handlers", "AuthenticatePlaySessionHandler.cs"));
 
-        Assert.Contains("record LeaveGameReq", messages, StringComparison.Ordinal);
-        Assert.DoesNotContain("LeaveGameMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("record LeaveGameMsg", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("LeaveGameReq", messages, StringComparison.Ordinal);
 
         Assert.Contains("client1SawClient2Join.Payload.RoomId == room.RoomId", clientScenario,
             StringComparison.Ordinal);
@@ -370,7 +370,7 @@ public sealed partial class RegressionTests
         Assert.Contains("`PlayEndpoints` and `PlayNodes`", readme, StringComparison.Ordinal);
         Assert.Contains("host, guest, and observer", readme, StringComparison.Ordinal);
         Assert.Contains("observer milestone verification", readme, StringComparison.Ordinal);
-        Assert.Contains("`LeaveGameReq` completion for both players", readme, StringComparison.Ordinal);
+        Assert.Contains("`LeaveGameMsg` completion for both players", readme, StringComparison.Ordinal);
         Assert.Contains("entry-spot actor destroy evidence", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("the play server to create a game", readme, StringComparison.Ordinal);
         Assert.DoesNotContain("creates the two stream connectors", readme, StringComparison.Ordinal);
@@ -380,7 +380,7 @@ public sealed partial class RegressionTests
         Assert.Contains("observer", clientReadme, StringComparison.Ordinal);
         Assert.Contains("ObserveMilestoneReq", clientReadme, StringComparison.Ordinal);
         Assert.Contains("WinMilestoneNotify", clientReadme, StringComparison.Ordinal);
-        Assert.Contains("LeaveGameReq", clientReadme, StringComparison.Ordinal);
+        Assert.Contains("LeaveGameMsg", clientReadme, StringComparison.Ordinal);
         Assert.DoesNotContain("opens two STREAM connections", clientReadme, StringComparison.Ordinal);
 
         Assert.Contains("Two API roles", samplesReadme, StringComparison.Ordinal);

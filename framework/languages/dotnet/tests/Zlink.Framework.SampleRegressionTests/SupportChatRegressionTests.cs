@@ -77,6 +77,24 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void SupportChat_Typing_Uses_The_Common_One_Way_Message()
+    {
+        var sampleRoot = ResolveSampleRoot("SupportChat");
+        var messages = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts", "Messages.cs"));
+        var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "SupportChatClientScenario.cs"));
+        var handler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Support",
+            "Infrastructure", "ZLink", "Spots", "ConversationSpot", "Handlers", "SetTypingHandler.cs"));
+
+        Assert.Contains("record SetTypingMsg", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetTypingReq", messages, StringComparison.Ordinal);
+        Assert.Contains("connector.Send(new SetTypingMsg", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("connector.Request(new SetTypingMsg", scenario, StringComparison.Ordinal);
+        Assert.Contains("IZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingMsg>",
+            handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequestHandler", handler, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SupportChat_Registers_Stateful_Actor_Relocation_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("SupportChat");

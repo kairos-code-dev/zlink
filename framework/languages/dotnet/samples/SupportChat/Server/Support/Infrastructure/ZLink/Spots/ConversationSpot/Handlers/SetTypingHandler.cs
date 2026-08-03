@@ -8,13 +8,13 @@ namespace SupportChat.Server.Support.Infrastructure.ZLink.Spots.ConversationSpot
 // Typing is a one-way fire-and-forget send: the sender gets no response and only
 // the other participant receives a TypingChangedNotify push.
 internal sealed class SetTypingHandler
-    : IZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingReq>
+    : IZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingMsg>
 {
     public async ValueTask HandleAsync(
         ConversationSpot spot,
         SupportUserActor actor,
         IZLinkMessageContext context,
-        SetTypingReq message,
+        SetTypingMsg message,
         CancellationToken cancellationToken)
     {
         await spot.SetTypingAsync(actor, message, cancellationToken);

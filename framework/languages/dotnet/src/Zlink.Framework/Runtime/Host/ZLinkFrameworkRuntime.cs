@@ -516,7 +516,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             });
     }
 
-    internal async ValueTask<ZLinkRelocationAdmissionFence?>
+    internal ValueTask<ZLinkRelocationAdmissionFence?>
         TryBeginRelocationAdmissionFenceAsync(
             ZLinkRuntimeOperationAdmissionSnapshot operationBaseline,
             ZLinkActorAdmissionSnapshot actorBaseline,
@@ -550,23 +550,19 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 return true;
             }
         });
-        if (!committed) return null;
+        if (!committed)
+            return ValueTask.FromResult<ZLinkRelocationAdmissionFence?>(null);
 
-        try
-        {
-            await WaitForAcceptedOperationsForDrainAsync()
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-            await WaitForAcceptedActorHandoffsAsync(cancellationToken)
-                .ConfigureAwait(false);
-            return fence;
-        }
-        catch
-        {
-            if (fence is { } expectedFence)
-                TryReopenRetireAdmissionsAfterRollback(expectedFence);
-            throw;
-        }
+        //  Relocation admission is now sealed, so no new host operation can
+        //  enter. Existing application turns must be drained by their owning
+        //  Spot, where the accepted-turn boundary and any relocation-ready
+        //  callback are known. Waiting for the host-wide count here would
+        //  block the marker publication that those turns may be waiting for.
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"relocation_admission_fence_committed active_operations="
+            + $"{operationBaseline.ActiveCount} "
+            + $"active_actor_admissions={actorBaseline.ActiveCount}");
+        return ValueTask.FromResult(fence);
     }
 
     internal async Task WaitForAcceptedActorHandoffsAsync(CancellationToken cancellationToken)

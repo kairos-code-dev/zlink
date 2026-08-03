@@ -19,7 +19,7 @@ internal sealed class GameplayEventOwnerDispatcher(
                     gameplayEvent.EventId,
                     gameplayEvent.PlayerId,
                     gameplayEvent.EventType,
-                    JsonSerializer.SerializeToUtf8Bytes(new GameplayPayload(
+                    JsonSerializer.SerializeToElement(new GameplayPayload(
                         gameplayEvent.Value,
                         gameplayEvent.Count,
                         gameplayEvent.SourceApi)),

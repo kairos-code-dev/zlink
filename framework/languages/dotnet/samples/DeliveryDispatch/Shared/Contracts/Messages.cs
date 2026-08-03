@@ -88,7 +88,7 @@ public sealed record DeliveryStatusChangedReq(
     string CustomerId,
     DeliveryStatus Status,
     string? CourierId,
-    DateTimeOffset OccurredAt);
+    long OccurredAtUnixMs);
 
 public sealed record DeliveryStatusChangedRes(
     string DeliveryId,
@@ -98,11 +98,11 @@ public sealed record DeliveryStatusNotify(
     string DeliveryId,
     DeliveryStatus Status,
     string? CourierId,
-    DateTimeOffset OccurredAt);
+    long OccurredAtUnixMs);
 
 public sealed record DeliveryStatusUpdatedMsg(
     string DeliveryId,
     string CustomerId,
     DeliveryStatus Status,
     string? CourierId,
-    DateTimeOffset OccurredAt);
+    long OccurredAtUnixMs);

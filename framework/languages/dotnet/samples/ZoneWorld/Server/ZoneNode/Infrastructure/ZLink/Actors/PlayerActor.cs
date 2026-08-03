@@ -31,6 +31,13 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZ
 
     public bool IsBot { get; private set; }
 
+    /// <summary>
+    /// Records the player kind before an asynchronous entry or relocation join starts.
+    /// A rejected deferred join still has to follow the bot policy even though the target
+    /// Spot has not called <see cref="Restore"/> yet.
+    /// </summary>
+    public void PrepareEntry(bool isBot) => IsBot = isBot;
+
     /// <summary>Patrol direction. Meaningful only for a bot; it reverses when a move is
     /// rejected so the bot walks back the way it came (§2.7).</summary>
     public int DirX { get; private set; }

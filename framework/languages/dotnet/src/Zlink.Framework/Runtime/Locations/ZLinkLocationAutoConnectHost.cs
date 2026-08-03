@@ -662,11 +662,13 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         {
             // Row absence alone must not tear down a live admitted transport
             // (store outages and lease expiry windows ride established
-            // connections, SF-B2); only the dialing side retires its own
-            // connect intent here.
+            // connections, SF-B2). The non-initiating side has no auto-connect
+            // intent of its own, so it removes only an admission-pending peer.
             node.ForgetPeerExpectation(target);
-            if (!connectRouter || !target.InitiatesConnection) return true;
-            return node.DisconnectPeerAuto(target.Endpoint);
+            if (!target.InitiatesConnection)
+                return node.DisconnectPeerBeforeAdmission(target);
+            if (!connectRouter) return true;
+            return node.DisconnectPeerAuto(target.NodeRid, target.Endpoint);
         }
     }
 

@@ -19,6 +19,7 @@ using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Service;
 using Zlink.Framework.Runtime.Spots;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -76,6 +77,60 @@ public sealed partial class EntrySpotActorDispatchTests
                 "entry-rid:entry-entry-",
                 node.InitializationEvents.ElementAt(4),
                 StringComparison.Ordinal);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Automatic_Route_Target_Convergence_Is_Unavailable_Not_NotFound()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            topology: new TestRouteMeshTopology(
+                ZLinkRouteMeshTargetClassification.Unknown,
+                CompleteSnapshot: null),
+            includeActorFactory: false);
+        try
+        {
+            var error = Assert.Throws<ZLinkFrameworkException>(() =>
+                runtime.EnsureKnownRouteMeshPeer(
+                    "entry",
+                    RoutingId.From("remote-node"),
+                    "SPOT 'remote'"));
+
+            Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
+            Assert.Equal(ZLinkRetryAdvice.RetryAfterBackoff, error.RetryAdvice);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Automatic_Route_Target_Absent_From_Complete_Snapshot_Is_NotFound()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            topology: new TestRouteMeshTopology(
+                ZLinkRouteMeshTargetClassification.Unknown,
+                CompleteSnapshot: Array.Empty<ZLinkRouteMeshPeerIdentity>()),
+            includeActorFactory: false);
+        try
+        {
+            var error = Assert.Throws<ZLinkFrameworkException>(() =>
+                runtime.EnsureKnownRouteMeshPeer(
+                    "entry",
+                    RoutingId.From("remote-node"),
+                    "SPOT 'remote'"));
+
+            Assert.Equal(ZLinkFrameworkErrorKind.NotFound, error.Kind);
+            Assert.Equal(ZLinkRetryAdvice.DoNotRetry, error.RetryAdvice);
         }
         finally
         {
@@ -1583,6 +1638,74 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task Remote_Disconnect_Relay_Allocates_An_Operation_Fence()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actor) = await CreateStartedRuntimeAsync(
+            node,
+            includeActorFactory: false);
+        try
+        {
+            var sessionRid = RoutingId.From("disconnect-session");
+            var context = new ZLinkSessionContext(
+                runtime,
+                new ZLinkManagedStream(
+                    new RelayStreamSocket(),
+                    sessionRid,
+                    runtime.Registration.Codecs,
+                    "test"),
+                new RelaySessionHandlerRegistry(),
+                static () => ValueTask.CompletedTask,
+                static _ => ValueTask.CompletedTask);
+            var actorRef = new ZLinkSessionActor(
+                context,
+                actor.ActorId,
+                sessionRid,
+                "disconnect-binding");
+            _ = runtime.BindSessionActor(
+                actor.ActorId,
+                context,
+                actorRef.BindingToken,
+                actorRef,
+                bindingGeneration: 7,
+                route: ZLinkSessionBindingRoute.Create(
+                    new ActorRef(
+                        actor.ActorId,
+                        actor.Generation,
+                        "entry",
+                        actor.NodeRid),
+                    "entry",
+                    targetNodeGeneration: 11,
+                    authorityOwnerGeneration: 13,
+                    ownerLeaseGeneration: 17),
+                sessionOwnerNodeGeneration: 19);
+
+            Assert.True(runtime.TryGetSessionActorBinding(
+                actor.ActorId,
+                out var binding));
+            await runtime.NotifyActorDisconnectedAsync(
+                binding,
+                CancellationToken.None);
+
+            var relay = JsonSerializer.Deserialize<ZLinkRemoteActorFrameRelay>(
+                node.NodeSendAttempts.Single()[1],
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            Assert.NotNull(relay);
+            Assert.True(
+                relay.OperationIdHigh != 0 || relay.OperationIdLow != 0);
+            Assert.Equal(actor.ActorId, relay.ActorId);
+            Assert.Equal(RoutingId.From("entry-node").ToHex(), relay.RelayNodeRid);
+            Assert.Equal(11UL, relay.TargetNodeGeneration);
+            Assert.Equal(13UL, relay.AuthorityOwnerGeneration);
+            Assert.Equal(17UL, relay.OwnerLeaseGeneration);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task MessageFollower_StopsFinalPartRetryWhenTheDurationExpires()
     {
         var node = new CapturingSpotNode();
@@ -1837,6 +1960,41 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.True(runtime.TryReopenRetireAdmissionsAfterRollback(nextFence.Value));
             using (runtime.EnterOperation())
             {
+            }
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Relocation_fence_commits_while_accepted_operation_is_active()
+    {
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            new CapturingSpotNode());
+        try
+        {
+            var operation = runtime.EnterOperation();
+            try
+            {
+                var fence = await runtime.TryBeginRelocationAdmissionFenceAsync(
+                        runtime.SnapshotOperationAdmissions(),
+                        runtime.DrainAdmission.SnapshotActorAdmissions(),
+                        new ZLinkActorHandoffDrainSnapshot(0, true),
+                        CancellationToken.None)
+                    .AsTask();
+
+                Assert.NotNull(fence);
+                Assert.False(runtime.IsAcceptingApplicationWork);
+
+                operation.Dispose();
+                Assert.True(
+                    runtime.TryReopenRetireAdmissionsAfterRollback(fence.Value));
+            }
+            finally
+            {
+                operation.Dispose();
             }
         }
         finally
@@ -5651,6 +5809,7 @@ public sealed partial class EntrySpotActorDispatchTests
         CapturingSpotNode node,
         CapturingMessageFlowObserver? messageFlowObserver = null,
         ZLinkDiagnosticsLevel? messageFlowMode = null,
+        IZLinkAutoConnectTopologyQuery? topology = null,
         bool includeJoinTarget = false,
         Type? entrySpotType = null,
         Type? userSpotType = null,
@@ -5703,7 +5862,8 @@ public sealed partial class EntrySpotActorDispatchTests
         var serviceCollection = new ServiceCollection()
             .AddSingleton<FlowJoinProbe>()
             .AddSingleton<LocalEntryJoinProbe>()
-            .AddSingleton<IZLinkAutoConnectTopologyQuery>(KnownRouteMeshTopology.Instance)
+            .AddSingleton<IZLinkAutoConnectTopologyQuery>(
+                topology ?? KnownRouteMeshTopology.Instance)
             .AddSingleton(locationRuntime)
             .AddSingleton(locationLifecycle)
             .AddSingleton(locationResolvers)
@@ -5921,6 +6081,28 @@ public sealed partial class EntrySpotActorDispatchTests
             return ZLinkRouteMeshTargetClassification.ReadyEligible;
         }
 
+    }
+
+    private sealed class TestRouteMeshTopology(
+        ZLinkRouteMeshTargetClassification classification,
+        IReadOnlyList<ZLinkRouteMeshPeerIdentity>? CompleteSnapshot)
+        : IZLinkAutoConnectTopologyQuery
+    {
+        public ZLinkRouteMeshTargetClassification ClassifyRouteMeshTarget(
+            string meshName,
+            RoutingId nodeRid)
+        {
+            _ = meshName;
+            _ = nodeRid;
+            return classification;
+        }
+
+        public IReadOnlyList<ZLinkRouteMeshPeerIdentity>? GetCompleteRouteMeshPeers(
+            string meshName)
+        {
+            _ = meshName;
+            return CompleteSnapshot;
+        }
     }
 
     private static void ConfigureNotConnectedEntryJoin(CapturingSpotNode node)

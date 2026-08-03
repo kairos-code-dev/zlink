@@ -106,6 +106,17 @@ internal sealed partial class ZLinkFrameworkRuntime
                 meshName,
                 targetNodeRid)
             ?? ZLinkRouteMeshTargetClassification.Unknown;
+
+        // A location row can become visible before the local reconciler has
+        // completed its first full descriptor snapshot. The target is then
+        // known to the placement layer but not yet classifiable on this send
+        // path. Keep that convergence window distinct from a RID that is
+        // absent from a completed snapshot.
+        if (classification == ZLinkRouteMeshTargetClassification.Unknown
+            && _topologyQuery is not null
+            && _topologyQuery.GetCompleteRouteMeshPeers(meshName) is null)
+            classification = ZLinkRouteMeshTargetClassification.RequiredNotConnected;
+
         if (classification
             != ZLinkRouteMeshTargetClassification.RequiredNotConnected)
             return classification;
@@ -163,8 +174,12 @@ internal sealed partial class ZLinkFrameworkRuntime
                     targetNodeRid))
         {
             case ZLinkRouteMeshTargetClassification.ReadyEligible:
-            case ZLinkRouteMeshTargetClassification.RequiredNotConnected:
                 return;
+            case ZLinkRouteMeshTargetClassification.RequiredNotConnected:
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    $"Route channel '{routerChannelId}' is not connected to node '{targetNodeRid}' for {targetDescription}.",
+                    retryAdvice: ZLinkRetryAdvice.RetryAfterBackoff);
             case ZLinkRouteMeshTargetClassification.ObjectClientTarget:
             case ZLinkRouteMeshTargetClassification.Unknown:
                 throw CreateUnknownRouteTargetException(

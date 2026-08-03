@@ -325,6 +325,15 @@ internal sealed class ZLinkSessionActorBindingTable
                 acceptedHighWater = 0;
                 return false;
             }
+            if (entry.RelocationHandoffId is not null)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_frame_refused reason=route_sealed actor={actorId} "
+                    + $"handoff={entry.RelocationHandoffId} "
+                    + $"accepted_high_water={entry.AcceptedHighWater}");
+                acceptedHighWater = entry.AcceptedHighWater;
+                return false;
+            }
             acceptedHighWater = checked(entry.AcceptedHighWater + 1);
             _entries[key] = entry with
             {
@@ -367,30 +376,56 @@ internal sealed class ZLinkSessionActorBindingTable
             var key = new ZLinkSessionBindingKey(
                 request.ActorId,
                 request.BindingToken);
-            if (!_entries.TryGetValue(key, out var entry)
-                || entry.BindingGeneration != request.BindingGeneration
-                || !entry.Route.MatchesFence(
-                    request.ActorId,
-                    request.ObjectGeneration,
-                    request.AuthorityOwnerGeneration,
-                    request.MeshName,
-                    request.TargetNodeGeneration,
-                    request.OwnerLeaseGeneration)
-                || entry.SessionOwnerNodeGeneration
-                != request.SessionOwnerNodeGeneration)
+            if (!_entries.TryGetValue(key, out var entry))
             {
-                //  A refused seal ends the join with one kind and no field, so
-                //  name which half of the binding identity disagreed.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_refused actor={request.ActorId} entry=false "
+                    + "binding=false route=false session_owner=false");
                 return new ZLinkSessionRouteSealResult(
                     false,
-                    entry?.AcceptedHighWater ?? 0);
+                    0);
+            }
+            var bindingMatches = entry.BindingGeneration == request.BindingGeneration;
+            var routeMatches = entry.Route.MatchesFence(
+                request.ActorId,
+                request.ObjectGeneration,
+                request.AuthorityOwnerGeneration,
+                request.MeshName,
+                request.TargetNodeGeneration,
+                request.OwnerLeaseGeneration);
+            var sessionOwnerMatches = entry.SessionOwnerNodeGeneration
+                                      == request.SessionOwnerNodeGeneration;
+            if (!bindingMatches || !routeMatches || !sessionOwnerMatches)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_refused actor={request.ActorId} entry=true "
+                    + $"binding={bindingMatches} route={routeMatches} "
+                    + $"session_owner={sessionOwnerMatches} "
+                    + $"current_authority={entry.AuthorityOwnerGeneration} "
+                    + $"request_authority={request.AuthorityOwnerGeneration} "
+                    + $"current_node={entry.TargetNodeGeneration} "
+                    + $"request_node={request.TargetNodeGeneration} "
+                    + $"current_lease={entry.OwnerLeaseGeneration} "
+                    + $"request_lease={request.OwnerLeaseGeneration} "
+                    + $"current_session_owner={entry.SessionOwnerNodeGeneration} "
+                    + $"request_session_owner={request.SessionOwnerNodeGeneration}");
+                return new ZLinkSessionRouteSealResult(
+                    false,
+                    entry.AcceptedHighWater);
             }
 
             if (entry.RelocationHandoffId is { } current
                 && !string.Equals(current, request.HandoffId, StringComparison.Ordinal))
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_refused actor={request.ActorId} entry=true "
+                    + "binding=true route=true session_owner=true "
+                    + $"handoff=false current_handoff={current} "
+                    + $"request_handoff={request.HandoffId}");
                 return new ZLinkSessionRouteSealResult(
                     false,
                     entry.AcceptedHighWater);
+            }
 
             var signal = entry.ActiveFrames == 0
                 ? null
@@ -418,16 +453,28 @@ internal sealed class ZLinkSessionActorBindingTable
             var key = new ZLinkSessionBindingKey(
                 request.ActorId,
                 request.BindingToken);
-            return _entries.TryGetValue(key, out var current)
-                   && string.Equals(
-                       current.RelocationHandoffId,
-                       request.HandoffId,
-                       StringComparison.Ordinal)
-                   && current.ActiveFrames == 0
-                ? new ZLinkSessionRouteSealResult(
-                    true,
-                    current.AcceptedHighWater)
-                : new ZLinkSessionRouteSealResult(false, acceptedHighWater);
+            if (!_entries.TryGetValue(key, out var current))
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_refused actor={request.ActorId} entry=false "
+                    + "binding=false route=false session_owner=false after_drain=true");
+                return new ZLinkSessionRouteSealResult(false, acceptedHighWater);
+            }
+            var handoffMatches = string.Equals(
+                current.RelocationHandoffId,
+                request.HandoffId,
+                StringComparison.Ordinal);
+            if (!handoffMatches || current.ActiveFrames != 0)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_seal_refused actor={request.ActorId} entry=true "
+                    + "binding=true route=true session_owner=true after_drain=true "
+                    + $"handoff={handoffMatches} active_frames={current.ActiveFrames}");
+                return new ZLinkSessionRouteSealResult(false, acceptedHighWater);
+            }
+            return new ZLinkSessionRouteSealResult(
+                true,
+                current.AcceptedHighWater);
         }
     }
 
@@ -479,17 +526,46 @@ internal sealed class ZLinkSessionActorBindingTable
             var key = new ZLinkSessionBindingKey(
                 request.ActorId,
                 request.BindingToken);
-            if (!_entries.TryGetValue(key, out var entry)
-                || entry.BindingGeneration != request.BindingGeneration
-                || entry.Route != targetRoute
-                || entry.SessionOwnerNodeGeneration
-                != request.SessionOwnerNodeGeneration
-                || entry.AcceptedHighWater < request.AcceptedHighWater
-                || !string.Equals(
-                    entry.RelocationHandoffId,
-                    request.HandoffId,
-                    StringComparison.Ordinal))
+            if (!_entries.TryGetValue(key, out var entry))
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_unseal_refused actor={request.ActorId} entry=false "
+                    + "binding=false route=false session_owner=false high_water=false handoff=false");
                 return false;
+            }
+            var bindingMatches = entry.BindingGeneration == request.BindingGeneration;
+            var routeMatches = entry.Route == targetRoute;
+            var sessionOwnerMatches = entry.SessionOwnerNodeGeneration
+                                      == request.SessionOwnerNodeGeneration;
+            var highWaterMatches = entry.AcceptedHighWater
+                                   >= request.AcceptedHighWater;
+            var handoffMatches = string.Equals(
+                entry.RelocationHandoffId,
+                request.HandoffId,
+                StringComparison.Ordinal);
+            var completedHandoffMatches = string.Equals(
+                entry.CompletedRelocationHandoffId,
+                request.HandoffId,
+                StringComparison.Ordinal);
+            if (!bindingMatches
+                || !routeMatches
+                || !sessionOwnerMatches
+                || !highWaterMatches
+                || (!handoffMatches && !completedHandoffMatches))
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_unseal_refused actor={request.ActorId} "
+                    + $"entry=true binding={bindingMatches} route={routeMatches} "
+                    + $"session_owner={sessionOwnerMatches} high_water={highWaterMatches} "
+                    + $"handoff={handoffMatches} completed={completedHandoffMatches}");
+                return false;
+            }
+            //  The first unseal must clear the active handoff even though the
+            //  commit has already recorded the same handoff as completed.
+            //  Only a later duplicate, after the active handoff is gone, is
+            //  the idempotent no-op.
+            if (!handoffMatches && completedHandoffMatches)
+                return true;
             _entries[key] = entry with
             {
                 RelocationHandoffId = null,
@@ -507,61 +583,145 @@ internal sealed class ZLinkSessionActorBindingTable
             var key = new ZLinkSessionBindingKey(
                 request.ActorId,
                 request.BindingToken);
-            if (!_entries.TryGetValue(key, out var entry)
-                || entry.BindingGeneration != request.BindingGeneration
-                || entry.ObjectGeneration != request.ObjectGeneration
-                || entry.SessionOwnerNodeGeneration
-                != request.SessionOwnerNodeGeneration
-                || entry.AcceptedHighWater != request.AcceptedHighWater)
+            if (!_entries.TryGetValue(key, out var entry))
             {
-                //  A refused commit is retried until the deadline and reported
-                //  as a timeout, so name the half that disagreed.
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_refused actor={request.ActorId} entry=false "
+                    + "binding=false object=false session_owner=false high_water=false "
+                    + "route=false handoff=false completed=false");
                 return new ZLinkSessionRouteCommitResult(
                     false,
-                    entry?.AcceptedHighWater ?? 0);
+                    0);
             }
-            if (!ZLinkSessionBindingRoute.TryCreate(
+
+            var bindingMatches = entry.BindingGeneration == request.BindingGeneration;
+            var objectMatches = entry.ObjectGeneration == request.ObjectGeneration;
+            var sessionOwnerMatches = entry.SessionOwnerNodeGeneration
+                                      == request.SessionOwnerNodeGeneration;
+            if (!bindingMatches
+                || !objectMatches
+                || !sessionOwnerMatches)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_refused actor={request.ActorId} entry=true "
+                    + $"binding={bindingMatches} object={objectMatches} "
+                    + $"session_owner={sessionOwnerMatches} high_water=false "
+                    + $"current_high_water={entry.AcceptedHighWater} "
+                    + $"request_high_water={request.AcceptedHighWater}");
+                return new ZLinkSessionRouteCommitResult(
+                    false,
+                    entry.AcceptedHighWater);
+            }
+
+            var targetRouteCreated = ZLinkSessionBindingRoute.TryCreate(
                     request.TargetActor,
                     request.TargetMeshName,
                     request.TargetNodeGeneration,
                     request.TargetAuthorityOwnerGeneration,
                     request.TargetOwnerLeaseGeneration,
-                    out var targetRoute)
-                || targetRoute.Ref.ObjectGeneration != request.ObjectGeneration
-                || request.TargetAuthorityOwnerGeneration
-                <= request.PreviousAuthorityOwnerGeneration)
+                    out var targetRoute);
+            var targetObjectMatches = targetRouteCreated
+                                       && targetRoute.Ref.ObjectGeneration
+                                       == request.ObjectGeneration;
+            var authorityOrderMatches = request.TargetAuthorityOwnerGeneration
+                                        > request.PreviousAuthorityOwnerGeneration;
+            if (!targetRouteCreated
+                || !targetObjectMatches
+                || !authorityOrderMatches)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_refused actor={request.ActorId} entry=true "
+                    + "binding=true object=true session_owner=true high_water=true "
+                    + $"target_route={targetRouteCreated} target_object={targetObjectMatches} "
+                    + $"authority_order={authorityOrderMatches}");
                 return new ZLinkSessionRouteCommitResult(
                     false,
                     entry.AcceptedHighWater);
+            }
+
+            var completedHandoffMatches = string.Equals(
+                entry.CompletedRelocationHandoffId,
+                request.HandoffId,
+                StringComparison.Ordinal);
+            // A completion retry can race with frames accepted after the first
+            // commit. The target route and completed handoff are the durable
+            // idempotency key; the returned high-water may therefore be newer
+            // than the retried request. A different handoff still requires the
+            // exact high-water fence below.
+            if (entry.Route == targetRoute
+                && completedHandoffMatches
+                && entry.AcceptedHighWater >= request.AcceptedHighWater)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_idempotent actor={request.ActorId} "
+                    + $"ack=true completed=true handoff={request.HandoffId} "
+                    + $"current_high_water={entry.AcceptedHighWater} "
+                    + $"request_high_water={request.AcceptedHighWater}");
+                return new ZLinkSessionRouteCommitResult(
+                    true,
+                    entry.AcceptedHighWater);
+            }
+
+            var highWaterMatches = entry.AcceptedHighWater
+                                   == request.AcceptedHighWater;
+            if (!highWaterMatches)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_refused actor={request.ActorId} entry=true "
+                    + $"binding=true object=true session_owner=true high_water=false "
+                    + $"current_high_water={entry.AcceptedHighWater} "
+                    + $"request_high_water={request.AcceptedHighWater}");
+                return new ZLinkSessionRouteCommitResult(
+                    false,
+                    entry.AcceptedHighWater);
+            }
 
             if (entry.Route == targetRoute)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_idempotent actor={request.ActorId} "
+                    + $"ack={completedHandoffMatches} completed={completedHandoffMatches} "
+                    + $"handoff={request.HandoffId}");
                 return new ZLinkSessionRouteCommitResult(
-                    string.Equals(
-                        entry.CompletedRelocationHandoffId,
-                        request.HandoffId,
-                        StringComparison.Ordinal),
+                    completedHandoffMatches,
                     entry.AcceptedHighWater);
+            }
 
-            if (!entry.Route.MatchesFence(
+            var previousRouteMatches = entry.Route.MatchesFence(
                     request.ActorId,
                     request.ObjectGeneration,
                     request.PreviousAuthorityOwnerGeneration,
                     request.PreviousMeshName,
                     request.PreviousTargetNodeGeneration,
-                    request.PreviousOwnerLeaseGeneration)
-                || !string.Equals(
-                    entry.RelocationHandoffId,
-                    request.HandoffId,
-                    StringComparison.Ordinal))
+                    request.PreviousOwnerLeaseGeneration);
+            var handoffMatches = string.Equals(
+                entry.RelocationHandoffId,
+                request.HandoffId,
+                StringComparison.Ordinal);
+            if (!previousRouteMatches || !handoffMatches)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"route_commit_refused actor={request.ActorId} entry=true "
+                    + "binding=true object=true session_owner=true high_water=true "
+                    + $"previous_route={previousRouteMatches} handoff={handoffMatches} "
+                    + $"completed={string.Equals(entry.CompletedRelocationHandoffId, request.HandoffId, StringComparison.Ordinal)} "
+                    + $"current_authority={entry.AuthorityOwnerGeneration} "
+                    + $"request_previous_authority={request.PreviousAuthorityOwnerGeneration} "
+                    + $"current_node={entry.TargetNodeGeneration} "
+                    + $"request_previous_node={request.PreviousTargetNodeGeneration}");
                 return new ZLinkSessionRouteCommitResult(
                     false,
                     entry.AcceptedHighWater);
+            }
 
             _entries[key] = entry with
             {
                 Route = targetRoute,
                 CompletedRelocationHandoffId = request.HandoffId
             };
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"route_commit_accepted actor={request.ActorId} handoff={request.HandoffId} "
+                + $"high_water={entry.AcceptedHighWater}");
             return new ZLinkSessionRouteCommitResult(
                 true,
                 entry.AcceptedHighWater);

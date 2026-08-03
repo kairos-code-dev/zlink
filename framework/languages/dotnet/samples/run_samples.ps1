@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$knownSamples = @("TicTacToe", "Bingo", "SupportChat", "ShoppingMall", "DeliveryDispatch", "GameQuest")
+$knownSamples = @("TicTacToe", "Bingo", "SupportChat", "ShoppingMall", "DeliveryDispatch", "GameQuest", "ZoneWorld")
 $selected = if ($args.Count -gt 0) { @($args) } else { $knownSamples }
 foreach ($sample in $selected) {
     if ($sample -notin $knownSamples) {

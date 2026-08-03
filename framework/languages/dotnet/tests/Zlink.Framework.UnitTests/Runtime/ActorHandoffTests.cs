@@ -1,7 +1,9 @@
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Runtime;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Locations;
@@ -96,6 +98,59 @@ public sealed class ActorHandoffTests
         Assert.Equal(source, captured.RequestSource);
         Assert.Equal("one-way", DecodeBody(captured));
         _ = state.Handoff.AbortCapture();
+    }
+
+    [Fact]
+    public void BoundSessionRequestDuringTargetReplay_IsCapturedWithExactBindingFence()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        Assert.True(state.Handoff.Import(CommitRequest("handoff-target-request", []), out _));
+        _ = state.Handoff.PrepareImportedReplay([]);
+
+        var sourceNode = RoutingId.From("session-node");
+        var sourceSession = RoutingId.From("session-1");
+        var source = new ZLinkServiceWireCodec.RequestSourceFence(
+            "session-owner", 11, sourceNode, 13);
+        var binding = new ZLinkActorBoundSessionHandoffFence(
+            "actor-1", 1, sourceSession,
+            "binding-token", 17, 19);
+        using var frame = new ZLinkSpotActorFrame(
+            ActorRef("node-b", 1),
+            ActorRef("node-b", 1),
+            sourceNode,
+            sourceSession,
+            requestId: 23,
+            flags: 1,
+            routeContext: new ZLinkBackendActorRouteContext(
+                new MeshOperationId(13, 19), 0, 23, 29, 31,
+                ReplyRequestId: 23,
+                ReplyFlags: 1,
+                IsBoundSessionRoute: true),
+            new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Request,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                new ZlinkStreamRequestSeq(23),
+                "Packet",
+                ZlinkStreamMetadata.Empty),
+            Message.From("request"u8.ToArray()),
+            sourceNodeGeneration: source.NodeGeneration,
+            requestSource: source,
+            applicationMetadata:
+                ZLinkActorBoundSessionHandoffMetadata.Encode(binding));
+
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            state.Handoff.TryCapture(frame));
+
+        var replay = state.Handoff.SnapshotFinalReplay();
+        var captured = Assert.Single(replay);
+        Assert.Equal((ulong)23, captured.RequestId);
+        Assert.Equal(1U, captured.Flags);
+        Assert.Equal(binding, captured.BoundSessionSource);
+        Assert.Equal(source, captured.RequestSource);
+        Assert.Equal((ulong)23, captured.RelocationReplyRouteId);
+        Assert.Equal("request", DecodeBody(captured));
     }
 
     [Fact]
@@ -407,6 +462,39 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public async Task DeferredJoinDuringTargetReplay_WaitsAndStartsSourceCaptureAfterCompletion()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        Assert.True(handoff.Import(CommitRequest("handoff-1", []), out _));
+        _ = handoff.PrepareImportedReplay([]);
+
+        var targetCompletion = handoff.BeginDeferredJoinCapture();
+
+        Assert.NotNull(targetCompletion);
+        Assert.False(targetCompletion.IsCompleted);
+        handoff.Complete("handoff-1");
+        await targetCompletion.WaitAsync(TimeSpan.FromSeconds(1));
+
+        using var body = Message.From("after-target-completion");
+        using var frame = Frame(body, ActorRef("node-a", 1), "session-1");
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(frame));
+
+        handoff.BeginCapture();
+        Assert.Equal(
+            ["after-target-completion"],
+            handoff.SnapshotFrames().Select(DecodeBody));
+
+        // A retry for the completed target remains idempotent while the next
+        // source handoff is collecting its own accepted journal.
+        handoff.Complete("handoff-1");
+        _ = handoff.AbortCapture();
+    }
+
+    [Fact]
     public void TargetArrivalBacklog_RemainsSealedThroughJoinedNotification()
     {
         var handoff = new ZLinkActorHandoffState(
@@ -647,6 +735,34 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void TransferredActivation_ClearsRetiredSourceFollow_ButKeepsImportedTarget()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var previousSource = ActorRef("node-a", 1);
+        var previousTarget = ActorRef("node-b", 2);
+        state.Handoff.BeginCapture();
+        _ = Cutover(state, 0, previousSource, previousTarget);
+        state.Handoff.CommitMessageFollow(TimeSpan.FromMinutes(1));
+        state.Handoff.CompleteSourceMigration();
+
+        var imported = HandoffFrame(3, arrivalIndex: 0);
+        Assert.True(
+            state.Handoff.Import(
+                CommitRequest("handoff-return", [imported]),
+                out _));
+
+        state.PrepareForTransferredActivation();
+
+        Assert.Equal(
+            ZLinkActorFrameRoute.Current,
+            state.Handoff.ResolveFrameRoute(previousSource, previousSource, out _));
+        Assert.Equal(
+            [imported.RequestId],
+            state.Handoff.PrepareImportedReplay([])
+                .Select(static frame => frame.RequestId));
+    }
+
+    [Fact]
     public void MigratedAndDestroyedTransitions_PreserveThenReleaseBoundSessionIdentity()
     {
         var state = new ZLinkActorRuntimeState("actor-1");
@@ -682,6 +798,49 @@ public sealed class ActorHandoffTests
         Assert.Null(state.NativeActorRef);
         Assert.Null(state.RetiredLocalActorRef);
         Assert.False(state.TryGetBoundSession(out _));
+    }
+
+    [Fact]
+    public void MigratedTransition_ClearsSourceBinding_BeforeTheNextLocalCreation()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var source = ActorRef("node-a", 1);
+
+        state.BindNativeActorRef(source);
+        state.Handoff.BeginCapture();
+        _ = Cutover(state, 0, source, ActorRef("node-b", 2));
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
+        state.RetireMigratedActorInstance(source);
+
+        Assert.Null(state.NativeActorRef);
+        Assert.Equal(source, state.RetiredLocalActorRef);
+    }
+
+    [Fact]
+    public async Task RecreatingAfterMigration_DropsThePreservedRemoteBinding()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var source = ActorRef("node-a", 1);
+        var target = ActorRef("node-b", 2);
+        state.BindNativeActorRef(target);
+        state.Handoff.BeginCapture();
+        _ = Cutover(state, 0, source, target);
+        state.Handoff.CommitMessageFollow(TimeSpan.FromSeconds(1));
+        state.RetireMigratedActorInstance(source);
+
+        var creation = new TaskCompletionSource<IZLinkActor>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var operation = await state.GetOrStartActorCreationAsync(
+            "warrior",
+            failIfExists: true,
+            () => creation.Task,
+            CancellationToken.None);
+
+        Assert.Null(state.NativeActorRef);
+        Assert.Equal(source, state.RetiredLocalActorRef);
+
+        creation.SetException(new InvalidOperationException("test creation failure"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation.Task);
     }
 
     [Fact]
@@ -760,6 +919,48 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void Relocation_Session_Route_Uses_Source_Fence_High_Water_Exactly_Once()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var targetNode = RoutingId.From("target-node");
+        var sessionNode = RoutingId.From("session-node");
+        var sessionRid = RoutingId.From("session-rid");
+        state.StageRelocationSessionRoute(
+            "handoff-1",
+            new ZLinkRemoteActorBoundSessionRoute(
+                sessionNode,
+                sessionRid,
+                "binding-1",
+                BindingGeneration: 4,
+                ObjectGeneration: 7,
+                AuthorityOwnerGeneration: 11,
+                MeshName: "play",
+                TargetNodeGeneration: 4,
+                OwnerLeaseGeneration: 8,
+                SessionOwnerNodeGeneration: 3,
+                AcceptedHighWater: 9));
+        state.MarkRelocationSessionAuthorityCommitted(
+            "handoff-1",
+            new ZLinkBackendActorRef(targetNode, "actor-1", 7),
+            targetAuthorityOwnerGeneration: 12,
+            targetMeshName: "play",
+            targetNodeGeneration: 5,
+            targetOwnerLeaseGeneration: 9);
+
+        state.RecordRelocatedSessionAccepted(sessionRid, acceptedHighWater: 13);
+        state.RecordRelocatedSessionAccepted(sessionRid, acceptedHighWater: 11);
+
+        Assert.True(state.TryGetCommittedRelocationSessionRoute(
+            "handoff-1",
+            out var committed));
+        Assert.Equal((ulong)13, committed.Route.AcceptedHighWater);
+
+        state.CompleteRelocationSessionRoute("handoff-1");
+        Assert.True(state.TryGetBoundSession(out var completed));
+        Assert.Equal((ulong)13, completed.AcceptedHighWater);
+    }
+
+    [Fact]
     public void Relocation_Session_Route_Allows_Target_Outbound_After_Authority_Commit()
     {
         var state = new ZLinkActorRuntimeState("actor-1");
@@ -805,6 +1006,57 @@ public sealed class ActorHandoffTests
         state.CompleteRelocationSessionRoute("handoff-1");
         Assert.True(state.TryGetBoundSession(out var completed));
         Assert.Equal(outbound, completed);
+    }
+
+    [Fact]
+    public void Pending_Relocation_Disconnect_Uses_The_Target_Projection_And_Cancels_It()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var targetNode = RoutingId.From("target-node");
+        var sessionNode = RoutingId.From("session-node");
+        var sessionRid = RoutingId.From("session-rid");
+        state.StageRelocationSessionRoute(
+            "handoff-1",
+            new ZLinkRemoteActorBoundSessionRoute(
+                sessionNode,
+                sessionRid,
+                "binding-1",
+                BindingGeneration: 4,
+                ObjectGeneration: 7,
+                AuthorityOwnerGeneration: 11,
+                MeshName: "play",
+                TargetNodeGeneration: 4,
+                OwnerLeaseGeneration: 8,
+                SessionOwnerNodeGeneration: 3,
+                AcceptedHighWater: 9));
+        state.MarkRelocationSessionAuthorityCommitted(
+            "handoff-1",
+            new ZLinkBackendActorRef(targetNode, "actor-1", 7),
+            targetAuthorityOwnerGeneration: 12,
+            targetMeshName: "play",
+            targetNodeGeneration: 5,
+            targetOwnerLeaseGeneration: 9);
+
+        using var disconnect = Message.From(
+            ZLinkActorBoundSessionRelay.EncodeSessionDisconnected(
+                "binding-1",
+                bindingGeneration: 4,
+                sessionOwnerNodeGeneration: 3));
+
+        Assert.True(ZLinkActorBoundSessionRelay.TryValidateDisconnectedBinding(
+            state,
+            sessionNode,
+            sessionRid,
+            disconnect,
+            out var bindingToken));
+        Assert.Equal("binding-1", bindingToken);
+
+        state.UnbindSession(bindingToken);
+
+        Assert.False(state.TryGetCommittedRelocationSessionRoute(
+            "handoff-1",
+            out _));
+        Assert.False(state.TryGetBoundSessionForInbound(out _));
     }
 
     [Fact]
@@ -992,6 +1244,28 @@ public sealed class ActorHandoffTests
 
         Assert.Equal(
             ["P2", "P3"],
+            state.Handoff.PrepareImportedReplay([]).Select(DecodeBody));
+    }
+
+    [Fact]
+    public void ReplayAcknowledgement_UsesTheRestoredFrameArrivalIdentity()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        state.Handoff.Import(CommitRequest("handoff-1", []), out _);
+        Capture(state, "P1", "session-1");
+        Capture(state, "P2", "session-1");
+        Capture(state, "P3", "session-1");
+
+        var replay = state.Handoff.PrepareImportedReplay([]);
+        Assert.Equal([0L, 1L, 2L], replay.Select(frame => frame.ArrivalIndex));
+
+        // Replay dispatch can overlap with another preserved snapshot. The
+        // acknowledgement must remove the frame that was actually dispatched,
+        // not whatever frame currently happens to be at the head.
+        state.Handoff.AcknowledgeReplayedFrame(replay[1].ArrivalIndex);
+
+        Assert.Equal(
+            ["P1", "P3"],
             state.Handoff.PrepareImportedReplay([]).Select(DecodeBody));
     }
 

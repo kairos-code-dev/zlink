@@ -15,7 +15,8 @@ internal sealed class ZLinkSpotActorFrame(
     ulong sourceNodeGeneration = 0,
     ZLinkServiceWireCodec.RequestSourceFence? requestSource = null,
     Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null,
-    ReadOnlyMemory<byte> applicationMetadata = default) : IDisposable
+    ReadOnlyMemory<byte> applicationMetadata = default,
+    long? handoffArrivalIndex = null) : IDisposable
 {
     private Message? _body = body;
 
@@ -43,6 +44,10 @@ internal sealed class ZLinkSpotActorFrame(
 
     public ReadOnlyMemory<byte> ApplicationMetadata { get; } =
         applicationMetadata;
+
+    // A restored handoff frame must acknowledge the exact journal entry that
+    // produced it. Live ingress frames do not have this identity.
+    internal long? HandoffArrivalIndex { get; } = handoffArrivalIndex;
 
     public ulong RelocationReplyRouteId { get; private set; }
 

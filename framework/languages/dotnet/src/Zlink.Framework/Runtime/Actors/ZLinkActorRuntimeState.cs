@@ -164,10 +164,11 @@ internal sealed class ZLinkActorRuntimeState(
 
     public bool IsTeardownPending => _teardownPending;
 
-    public ZLinkActorDispatchMailbox.BarrierReservation ReserveDeferredJoinBarrier()
+    public ZLinkActorDispatchMailbox.BarrierReservation?
+        ReserveDeferredJoinBarrier(out Task? targetCompletion)
     {
+        targetCompletion = null;
         if (IsDispatchBlocked
-            || Handoff.BlocksLocalDispatch
             || Interlocked.CompareExchange(ref _deferredJoinPending, 1, 0) != 0)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
@@ -175,7 +176,24 @@ internal sealed class ZLinkActorRuntimeState(
 
         try
         {
-            Handoff.BeginDeferredJoinCapture();
+            targetCompletion = Handoff.BeginDeferredJoinCapture();
+            if (targetCompletion is not null)
+                return null;
+            return _dispatchMailbox.ReserveBarrier();
+        }
+        catch
+        {
+            _ = Handoff.EndDeferredJoinCapture();
+            Volatile.Write(ref _deferredJoinPending, 0);
+            throw;
+        }
+    }
+
+    public ZLinkActorDispatchMailbox.BarrierReservation
+        ReserveDeferredJoinBarrierAfterTarget()
+    {
+        try
+        {
             return _dispatchMailbox.ReserveBarrier();
         }
         catch
@@ -208,12 +226,23 @@ internal sealed class ZLinkActorRuntimeState(
     public void BeginReservedCreation()
     {
         EnsureReusable();
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_reserved_begin actor={ActorId} "
+            + $"actor_present={Actor is not null} "
+            + $"native_generation={NativeActorRef?.Generation.ToString() ?? "<none>"} "
+            + $"retired_generation={RetiredLocalActorRef?.Generation.ToString() ?? "<none>"} "
+            + $"creation_task={_actorCreationTask is not null} "
+            + $"context_invalidated={ContextInvalidated}");
         _reservedCreationPending = true;
     }
 
     public void PublishReservedCreation()
     {
         _reservedCreationPending = false;
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_reserved_published actor={ActorId} "
+            + $"actor_present={Actor is not null} "
+            + $"native_generation={NativeActorRef?.Generation.ToString() ?? "<none>"}");
     }
 
     public ZLinkSpotActivation? LiveActivation
@@ -254,6 +283,10 @@ internal sealed class ZLinkActorRuntimeState(
     public void BindNativeActorRef(ZLinkBackendActorRef actorRef)
     {
         EnsureReusable();
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_native_bound actor={ActorId} "
+            + $"generation={actorRef.Generation} node={actorRef.NodeRid} "
+            + $"previous_generation={NativeActorRef?.Generation.ToString() ?? "<none>"}");
         NativeActorRef = actorRef;
     }
 
@@ -274,6 +307,10 @@ internal sealed class ZLinkActorRuntimeState(
         if (ReferenceEquals(Actor, actor)) return false;
 
         Actor = actor;
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_instance_bound actor={ActorId} "
+            + $"native_generation={NativeActorRef?.Generation.ToString() ?? "<none>"} "
+            + $"native_node={NativeActorRef?.NodeRid.ToString() ?? "<none>"}");
         EnsureActorMetric();
         IsConfigured = false;
         return true;
@@ -685,6 +722,45 @@ internal sealed class ZLinkActorRuntimeState(
         }
     }
 
+    // A relayed frame carries the sequence assigned by the Session owner.
+    // That value is authoritative across relay hops; incrementing it at
+    // every hop counts one accepted frame more than once.
+    public void RecordRelocatedSessionAccepted(
+        RoutingId sessionRid,
+        ulong acceptedHighWater)
+    {
+        if (acceptedHighWater == 0) return;
+
+        lock (_sessionGate)
+        {
+            if (_pendingSessionRoute is { } pending
+                && pending.Route.SessionRid is { } pendingSessionRid
+                && pendingSessionRid == sessionRid)
+            {
+                if (acceptedHighWater
+                    <= pending.Route.AcceptedHighWater)
+                    return;
+                _pendingSessionRoute = pending with
+                {
+                    Route = pending.Route with
+                    {
+                        AcceptedHighWater = acceptedHighWater
+                    }
+                };
+                return;
+            }
+
+            if (_boundSession is not { } current
+                || current.SessionRid != sessionRid
+                || acceptedHighWater <= current.AcceptedHighWater)
+                return;
+            _boundSession = current with
+            {
+                AcceptedHighWater = acceptedHighWater
+            };
+        }
+    }
+
     public void StageRelocationSessionRoute(
         string handoffId,
         ZLinkRemoteActorBoundSessionRoute route)
@@ -841,6 +917,18 @@ internal sealed class ZLinkActorRuntimeState(
                 if (_sessionReplacement is not null)
                     _sessionReplacement = null;
             }
+            else if (_pendingSessionRoute is
+                         { Route.BindingToken: var pendingToken }
+                     && string.Equals(pendingToken, bindingToken,
+                         StringComparison.Ordinal))
+            {
+                // A physical disconnect can be replayed while the target
+                // route is staged but before the session-owner commit. The
+                // exact token invalidates that pending route as well; keeping
+                // it would make completion retry a binding the session owner
+                // has already removed.
+                _pendingSessionRoute = null;
+            }
         }
         completion?.TrySetResult(
             new ZLinkFrameworkException(
@@ -995,6 +1083,10 @@ internal sealed class ZLinkActorRuntimeState(
 
     public void RetireMigratedActorInstance(ZLinkBackendActorRef sourceActor)
     {
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_migrated actor={ActorId} "
+            + $"source_generation={sourceActor.Generation} "
+            + $"current_generation={NativeActorRef?.Generation.ToString() ?? "<none>"}");
         _ = TransitionLocalInstance(
             ZLinkActorTerminalTransition.Migrated,
             sourceActor);
@@ -1053,6 +1145,13 @@ internal sealed class ZLinkActorRuntimeState(
             case ZLinkActorTerminalTransition.Migrated:
                 RetiredLocalActorRef = retiredLocalActor
                     ?? throw new ArgumentNullException(nameof(retiredLocalActor));
+                // A source migration keeps the old native reference only in
+                // RetiredLocalActorRef for delayed cleanup. If the current
+                // binding is that source reference, it must not be reused by
+                // the next reserved creation; a target reference that was
+                // already staged remains the current binding.
+                if (NativeActorRef == RetiredLocalActorRef)
+                    NativeActorRef = null;
                 Handoff.CompleteSourceMigration();
                 break;
             default:
@@ -1096,6 +1195,7 @@ internal sealed class ZLinkActorRuntimeState(
             throw new InvalidOperationException(
                 $"Actor '{ActorId}' already has an active local instance.");
 
+        Handoff.PrepareForTransferredActivation();
         NativeActorRef = null;
         Interlocked.Exchange(ref _contextInvalidated, 0);
         lock (_sessionGate)
@@ -1233,6 +1333,20 @@ internal sealed class ZLinkActorRuntimeState(
                 if (Actor is not null && ContextInvalidated)
                 {
                     Actor = null;
+                    Context = null;
+                    NativeActorRef = null;
+                    IsConfigured = false;
+                    Interlocked.Exchange(ref _contextInvalidated, 0);
+                }
+                else if (Actor is null
+                         && ContextInvalidated
+                         && _actorCreationTask is null)
+                {
+                    // A migrated source retains the target reference while
+                    // Message Follow can still drain. Once a new local
+                    // creation starts, that reference is no longer a local
+                    // materialization and must not be reused as its native
+                    // binding.
                     Context = null;
                     NativeActorRef = null;
                     IsConfigured = false;
@@ -1497,6 +1611,11 @@ internal sealed class ZLinkActorRuntimeState(
 
     private void ClearFailedActorCreationLocked()
     {
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_state_creation_failed_clear actor={ActorId} "
+            + $"native_generation={NativeActorRef?.Generation.ToString() ?? "<none>"} "
+            + $"actor_present={Actor is not null} "
+            + $"teardown={_teardownPending}");
         _actorCreationTask = null;
         if (_teardownPending) return;
 

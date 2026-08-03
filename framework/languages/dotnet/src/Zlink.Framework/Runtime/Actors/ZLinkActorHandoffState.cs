@@ -27,6 +27,7 @@ internal sealed class ZLinkActorHandoffState(
     private ZLinkRemoteActorJoinRequest? _joinRequest;
     private ZLinkActorSourceHandoffPhase _sourcePhase;
     private ZLinkActorTargetHandoffPhase _targetPhase;
+    private TaskCompletionSource? _targetCompletion;
     private long _arrivalIndex;
     private int _importedFrameCount;
     private int _sourceCommittedFrameCount = -1;
@@ -34,6 +35,7 @@ internal sealed class ZLinkActorHandoffState(
     private bool _sourceTrailingImported;
     private bool _sourceCaptureSealed;
     private bool _deferredJoinCapture;
+    private bool _deferredJoinAwaitingTarget;
     private bool _abortRestoreAdmissionsReleased;
     private TaskCompletionSource<ZLinkRemoteActorJoinReply>? _preparation;
     private TaskCompletionSource? _sourceCompletion;
@@ -58,12 +60,18 @@ internal sealed class ZLinkActorHandoffState(
             if (_deferredJoinCapture)
             {
                 _deferredJoinCapture = false;
-                _handoffId = null;
-                _joinRequest = null;
-                _preparation = null;
-                _canonicalMaintenanceDrain = null;
-                _canonicalMaintenanceReplayReservations.Clear();
-                _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
+                var preserveCompletedTarget =
+                    _targetPhase == ZLinkActorTargetHandoffPhase.Completed;
+                if (!preserveCompletedTarget)
+                {
+                    _handoffId = null;
+                    _joinRequest = null;
+                    _preparation = null;
+                    _targetCompletion = null;
+                    _canonicalMaintenanceDrain = null;
+                    _canonicalMaintenanceReplayReservations.Clear();
+                    _targetPhase = ZLinkActorTargetHandoffPhase.Idle;
+                }
                 _sourceTrailingImported = false;
                 _sourceCaptureSealed = false;
                 _sourceCommittedFrameCount = -1;
@@ -101,34 +109,69 @@ internal sealed class ZLinkActorHandoffState(
         }
     }
 
-    public void BeginDeferredJoinCapture()
+    public Task? BeginDeferredJoinCapture()
     {
         lock (_gate)
         {
             if (_deferredJoinCapture
+                || _deferredJoinAwaitingTarget
                 || _sourcePhase != ZLinkActorSourceHandoffPhase.Idle
-                || _targetPhase is ZLinkActorTargetHandoffPhase.Importing
-                    or ZLinkActorTargetHandoffPhase.Replaying
-                    or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
-                    or ZLinkActorTargetHandoffPhase.Failed
+                || _targetPhase is ZLinkActorTargetHandoffPhase.Failed
                     or ZLinkActorTargetHandoffPhase.Quarantined)
+            {
+                diagnostic?.Invoke(
+                    $"deferred_join_capture_refused actor={actorId} "
+                    + $"source_phase={_sourcePhase} target_phase={_targetPhase} "
+                    + $"handoff={_handoffId ?? "none"} "
+                    + $"deferred={_deferredJoinCapture}");
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' already has an active handoff transaction.");
+            }
 
-            _sourceIngressAdmission.ReleaseAll();
-            _sourceHoldAdmission.ReleaseAll();
-            _targetIngressAdmission.ReleaseAll();
-            _frames.Clear();
-            _sourceHoldFrames.Clear();
-            _arrivalIndex = 0;
-            _deferredJoinCapture = true;
+            if (IsTargetHandoffActiveLocked())
+            {
+                _deferredJoinAwaitingTarget = true;
+                diagnostic?.Invoke(
+                    $"deferred_join_waiting_for_target actor={actorId} "
+                    + $"target_phase={_targetPhase} handoff={_handoffId ?? "none"}");
+                return _targetCompletion?.Task
+                       ?? throw new InvalidOperationException(
+                           $"Actor '{actorId}' target handoff has no completion boundary.");
+            }
+
+            BeginDeferredJoinCaptureLocked();
+            return null;
         }
     }
+
+    private void BeginDeferredJoinCaptureLocked()
+    {
+        _sourceIngressAdmission.ReleaseAll();
+        _sourceHoldAdmission.ReleaseAll();
+        _targetIngressAdmission.ReleaseAll();
+        _frames.Clear();
+        _sourceHoldFrames.Clear();
+        _arrivalIndex = 0;
+        _deferredJoinCapture = true;
+    }
+
+    private bool IsTargetHandoffActiveLocked() =>
+        _targetPhase is ZLinkActorTargetHandoffPhase.Importing
+            or ZLinkActorTargetHandoffPhase.AuthorityCommitted
+            or ZLinkActorTargetHandoffPhase.NotifyingJoined
+            or ZLinkActorTargetHandoffPhase.Prepared
+            or ZLinkActorTargetHandoffPhase.Replaying
+            or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining;
 
     public IReadOnlyList<ZLinkActorHandoffFrame> EndDeferredJoinCapture()
     {
         lock (_gate)
         {
+            if (_deferredJoinAwaitingTarget)
+            {
+                _deferredJoinAwaitingTarget = false;
+                return [];
+            }
             if (!_deferredJoinCapture
                 || _sourcePhase != ZLinkActorSourceHandoffPhase.Idle)
                 return [];
@@ -212,6 +255,44 @@ internal sealed class ZLinkActorHandoffState(
         completion?.TrySetResult();
     }
 
+    /// <summary>
+    /// Clears the terminal state of the previous local source before this
+    /// state is reused for a transferred target activation. The target
+    /// import, including its replay queue, is already owned by this state and
+    /// must remain intact.
+    /// </summary>
+    internal void PrepareForTransferredActivation()
+    {
+        lock (_messageFollowGate)
+        {
+            lock (_gate)
+            {
+                if (_deferredJoinCapture)
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' still has a deferred source capture.");
+                if (_sourcePhase is not (ZLinkActorSourceHandoffPhase.Idle
+                    or ZLinkActorSourceHandoffPhase.Retired))
+                    throw new InvalidOperationException(
+                        $"Actor '{actorId}' cannot prepare target activation while "
+                        + $"source handoff is {_sourcePhase}.");
+
+                _sourcePhase = ZLinkActorSourceHandoffPhase.Idle;
+                _sourceIngressAdmission.ReleaseAll();
+                _sourceHoldAdmission.ReleaseAll();
+                _sourceHoldFrames.Clear();
+                _sourceCaptureSealed = false;
+                _sourceCommittedFrameCount = -1;
+                _sourceCommittedHoldCount = 0;
+                _abortRestoreAdmissionsReleased = false;
+                _sourceCompletion?.TrySetResult();
+                _sourceCompletion = null;
+                _staleSourceActor = null;
+                ClearMessageFollowRouteLocked();
+                diagnostic?.Invoke("source_handoff_state_cleared_for_target_activation");
+            }
+        }
+    }
+
     public Task WaitForSourceCompletionAsync(CancellationToken cancellationToken)
     {
         Task completion;
@@ -257,10 +338,13 @@ internal sealed class ZLinkActorHandoffState(
 
             if (!frame.RouteContext.IsDirectRoute)
             {
-                // A request keeps its live reply route and must drain before
-                // the session route seal. One-way work can cross the cutover
-                // because its exact binding and accepted sequence are frozen.
-                if ((frame.Flags & 1U) != 0)
+                // A source-ingress request keeps its live reply route and must
+                // drain before the session route seal. A target-ingress
+                // request is already at the committed authority and can be
+                // retained in the target replay queue when its exact binding
+                // fence is valid. One-way work can cross either boundary
+                // because its accepted sequence is frozen.
+                if ((frame.Flags & 1U) != 0 && !capturesTargetIngress)
                     return ZLinkActorHandoffCaptureResult.NotSealed;
                 if (!frame.RouteContext.IsBoundSessionRoute
                     || frame.RequestSource is not { } boundSource
@@ -373,6 +457,8 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = request;
             _preparation = new TaskCompletionSource<ZLinkRemoteActorJoinReply>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            _targetCompletion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             preparation = _preparation.Task;
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
             _sourceIngressAdmission.ReleaseAll();
@@ -435,6 +521,8 @@ internal sealed class ZLinkActorHandoffState(
             _handoffId = handoffId;
             _joinRequest = null;
             _preparation = null;
+            _targetCompletion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             _canonicalMaintenanceDrain = null;
             _canonicalMaintenanceReplayReservations.Clear();
             _targetPhase = ZLinkActorTargetHandoffPhase.Importing;
@@ -653,6 +741,10 @@ internal sealed class ZLinkActorHandoffState(
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' handoff joined notification cannot become terminally failed.");
             _targetPhase = ZLinkActorTargetHandoffPhase.Failed;
+            _targetCompletion?.TrySetException(
+                new InvalidOperationException(
+                    $"Actor '{actorId}' target handoff '{handoffId}' failed."));
+            _deferredJoinAwaitingTarget = false;
             _targetIngressAdmission.ReleaseAll();
             _frames.Clear();
             _sourceHoldFrames.Clear();
@@ -706,6 +798,10 @@ internal sealed class ZLinkActorHandoffState(
         lock (_gate)
         {
             if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal)) return;
+            _targetCompletion?.TrySetException(
+                new InvalidOperationException(
+                    $"Actor '{actorId}' target handoff '{handoffId}' was aborted."));
+            _deferredJoinAwaitingTarget = false;
             _sourceIngressAdmission.ReleaseAll();
             _sourceHoldAdmission.ReleaseAll();
             _targetIngressAdmission.ReleaseAll();
@@ -717,6 +813,7 @@ internal sealed class ZLinkActorHandoffState(
             _joinRequest = null;
             _targetPhase = ZLinkActorTargetHandoffPhase.RolledBack;
             _preparation = null;
+            _targetCompletion = null;
             _canonicalMaintenanceDrain = null;
             _canonicalMaintenanceReplayReservations.Clear();
         }
@@ -742,6 +839,15 @@ internal sealed class ZLinkActorHandoffState(
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
             _sourceTrailingImported = false;
             _canonicalMaintenanceReplayReservations.Clear();
+            if (_deferredJoinAwaitingTarget)
+            {
+                _deferredJoinAwaitingTarget = false;
+                BeginDeferredJoinCaptureLocked();
+                diagnostic?.Invoke(
+                    $"deferred_join_capture_started_after_target actor={actorId} "
+                    + $"handoff={handoffId}");
+            }
+            _targetCompletion?.TrySetResult();
         }
     }
 
@@ -952,8 +1058,44 @@ internal sealed class ZLinkActorHandoffState(
     {
         lock (_gate)
             return string.Equals(_handoffId, handoffId,
-                       StringComparison.Ordinal)
+                StringComparison.Ordinal)
                    && _targetPhase == ZLinkActorTargetHandoffPhase.Completed;
+    }
+
+    internal bool IsCanonicalMaintenanceHandoff(string handoffId)
+    {
+        lock (_gate)
+        {
+            // Canonical maintenance imports do not have a remote join request.
+            // That identity keeps recovery from starting a second replay of the
+            // same durable accepted journal.
+            return string.Equals(_handoffId, handoffId,
+                       StringComparison.Ordinal)
+                   && _joinRequest is null
+                   && _sourceTrailingImported
+                   && _targetPhase is
+                       ZLinkActorTargetHandoffPhase.Importing
+                       or ZLinkActorTargetHandoffPhase.AuthorityCommitted
+                       or ZLinkActorTargetHandoffPhase.NotifyingJoined
+                       or ZLinkActorTargetHandoffPhase.Prepared
+                       or ZLinkActorTargetHandoffPhase.Replaying
+                       or ZLinkActorTargetHandoffPhase.AdmissionOpenDraining
+                       or ZLinkActorTargetHandoffPhase.Completed;
+        }
+    }
+
+    internal Task WaitForTargetCompletionAsync(CancellationToken cancellationToken)
+    {
+        Task completion;
+        lock (_gate)
+        {
+            if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
+                return Task.CompletedTask;
+            completion = _targetCompletion?.Task
+                         ?? throw new InvalidOperationException(
+                             $"Actor '{actorId}' target handoff has no completion boundary.");
+        }
+        return completion.WaitAsync(cancellationToken);
     }
 
     internal bool TryOpenCanonicalMaintenanceAdmission(
@@ -1142,6 +1284,7 @@ internal sealed class ZLinkActorHandoffState(
             _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
             _sourceTrailingImported = false;
             _canonicalMaintenanceReplayReservations.Clear();
+            _targetCompletion?.TrySetResult();
             return true;
         }
     }
@@ -1386,6 +1529,11 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _targetCompletion?.TrySetException(
+                    new InvalidOperationException(
+                        $"Actor '{actorId}' target handoff was reset."));
+                _targetCompletion = null;
+                _deferredJoinAwaitingTarget = false;
                 _canonicalMaintenanceDrain = null;
                 _canonicalMaintenanceReplayReservations.Clear();
                 _sourceCompletion?.TrySetResult();
@@ -1420,6 +1568,9 @@ internal sealed class ZLinkActorHandoffState(
                 _handoffId = null;
                 _joinRequest = null;
                 _preparation = null;
+                _targetCompletion?.TrySetException(failure);
+                _targetCompletion = null;
+                _deferredJoinAwaitingTarget = false;
                 _canonicalMaintenanceDrain = null;
                 _canonicalMaintenanceReplayReservations.Clear();
                 _sourceCompletion?.TrySetException(failure);

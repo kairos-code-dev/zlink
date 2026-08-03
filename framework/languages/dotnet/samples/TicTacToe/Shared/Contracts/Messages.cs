@@ -66,7 +66,7 @@ public sealed record PlaceMarkReq(int Cell);
 
 public sealed record PlaceMarkRes(GameState State);
 
-public sealed record LeaveGameReq(string RoomId);
+public sealed record LeaveGameMsg(string RoomId);
 
 public sealed record PlayerJoinedNotify(
     string RoomId,

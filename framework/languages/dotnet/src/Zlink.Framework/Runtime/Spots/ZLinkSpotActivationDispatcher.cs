@@ -126,7 +126,7 @@ internal sealed class ZLinkSpotActivationDispatcher
 
     public ValueTask DispatchActorReplayFramesAsync(
         ZLinkSpotActorFrameBatch frames,
-        Action acknowledgeFrame,
+        Action<long> acknowledgeFrame,
         CancellationToken cancellationToken)
     {
         return _actorPipeline.DispatchReplayAsync(frames, acknowledgeFrame, cancellationToken);

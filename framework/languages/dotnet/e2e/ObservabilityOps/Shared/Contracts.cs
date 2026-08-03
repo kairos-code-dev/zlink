@@ -21,6 +21,10 @@ public sealed record ActivateInstanceSpotRes(
     string SpotId,
     string NodeRid,
     string Marker);
+// Runner-only control changes the local placement weight so a scenario can
+// establish the node-specific precondition stated by its E2E contract.
+public sealed record PlacementWeightReq(int Weight);
+public sealed record PlacementWeightRes(int Weight);
 public sealed record CreateRoomReq(string RoomRid, string Mode = "normal");
 public sealed record CreateRoomRes(string RoomRid, string NodeRid);
 public sealed record JoinRoomReq(string RoomRid);

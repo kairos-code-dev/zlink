@@ -142,6 +142,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("OwnerInstanceId", stores, StringComparison.Ordinal);
         Assert.DoesNotContain("ServerAssertionReq", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("ServerAssertionRes", messages, StringComparison.Ordinal);
+        Assert.Contains("record StartOrderRes", messages, StringComparison.Ordinal);
+        Assert.Contains("public sealed record StartOrderRes(\n    string OrderId,\n    OrderState State);",
+            messages, StringComparison.Ordinal);
         Assert.Contains("internal sealed record ServerAssertionReq", commerceApi, StringComparison.Ordinal);
         Assert.Contains("internal sealed record ServerAssertionReq", clientScenario, StringComparison.Ordinal);
         Assert.DoesNotContain("StartOrderWorkflowToInventoryReq", messages, StringComparison.Ordinal);

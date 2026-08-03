@@ -480,9 +480,38 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             else
             {
                 ZLinkMessageParts.DisposeAll(parts);
+                var failure = (ServiceWireConstants.FrameworkErrorCode)
+                    record.FailureErrno;
+                var kind = failure switch
+                {
+                    ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound =>
+                        ZLinkFrameworkErrorKind.NotFound,
+                    ServiceWireConstants.FrameworkErrorCode.ActorAlreadyExists =>
+                        ZLinkFrameworkErrorKind.AlreadyExists,
+                    ServiceWireConstants.FrameworkErrorCode.ActorTypeMismatch =>
+                        ZLinkFrameworkErrorKind.TypeMismatch,
+                    ServiceWireConstants.FrameworkErrorCode.ActorCreateRejected =>
+                        ZLinkFrameworkErrorKind.Rejected,
+                    ServiceWireConstants.FrameworkErrorCode.ActorLocationStale
+                        or ServiceWireConstants.FrameworkErrorCode.RouteNotConnected
+                        or ServiceWireConstants.FrameworkErrorCode.WorkerQueueFull =>
+                        ZLinkFrameworkErrorKind.Unavailable,
+                    ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut =>
+                        ZLinkFrameworkErrorKind.DeadlineExceeded,
+                    ServiceWireConstants.FrameworkErrorCode.RequestProtocolError =>
+                        ZLinkFrameworkErrorKind.ProtocolError,
+                    _ => ZLinkFrameworkErrorKind.InternalFailure
+                };
+                var retryAdvice = kind is
+                    ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded
+                    ? ZLinkRetryAdvice.RetryAfterBackoff
+                    : ZLinkRetryAdvice.DoNotRetry;
                 terminal.TrySetException(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.InternalFailure,
-                    "Remote Actor create failed."));
+                    kind,
+                    $"Remote Actor create failed. result={record.TerminalResult}; "
+                    + $"failure={failure}.",
+                    retryAdvice));
             }
         }))
             throw new InvalidOperationException(
@@ -644,6 +673,42 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             {
                 // Core may have retired the lifetime with the transport.
             }
+        }
+    }
+
+    public bool DisconnectPeerBeforeAdmission(
+        RoutingId peerRid,
+        string endpoint,
+        ulong lifecycleGeneration)
+    {
+        try
+        {
+            var admittedPeerFound = false;
+            foreach (var peer in _node.Peers())
+            {
+                if (!string.Equals(peer.Endpoint, endpoint, StringComparison.Ordinal)
+                    || (!peer.RoutingId.IsEmpty
+                        && !peerRid.IsEmpty
+                        && peer.RoutingId != peerRid)
+                    || (lifecycleGeneration != 0
+                        && peer.LifecycleGeneration != 0
+                        && peer.LifecycleGeneration != lifecycleGeneration))
+                    continue;
+                if (peer.State is MeshPeerState.Admitted or MeshPeerState.Draining)
+                {
+                    admittedPeerFound = true;
+                    continue;
+                }
+                _node.RemovePeerConnectionIfNotAdmitted(peer.ConnectionIntentId);
+            }
+            // Keep the reconciler target until an admitted peer loses liveness.
+            // That transition can leave a Connecting intent behind, which the
+            // next tick must still remove after the descriptor has disappeared.
+            return !admittedPeerFound;
+        }
+        catch (ZlinkException)
+        {
+            return false;
         }
     }
 

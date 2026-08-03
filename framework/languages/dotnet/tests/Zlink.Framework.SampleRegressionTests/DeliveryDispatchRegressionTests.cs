@@ -155,6 +155,10 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("record FindCourierActorReq", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("record FindCustomerActorReq", messages, StringComparison.Ordinal);
         Assert.Contains("record DeliveryStatusUpdatedMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("record DeliveryStatusChangedReq", messages, StringComparison.Ordinal);
+        Assert.Contains("record DeliveryStatusNotify", messages, StringComparison.Ordinal);
+        Assert.Contains("long OccurredAtUnixMs", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("DateTimeOffset OccurredAt", messages, StringComparison.Ordinal);
         Assert.Contains("record BindCourierSessionReq", messages, StringComparison.Ordinal);
         Assert.Contains("record BindCourierSessionRes", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("ActorRef", messages, StringComparison.Ordinal);

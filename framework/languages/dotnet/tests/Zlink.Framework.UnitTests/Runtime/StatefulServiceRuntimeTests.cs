@@ -1210,6 +1210,23 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task ObservedAuthorityAcceptsFullWidthEntrySpotGeneration()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "full-width-entry-source");
+
+        // Entry Spot routing uses the native MeshNode lifecycle generation,
+        // which is not the public SpotRef object-generation range.
+        source.ObserveSpotAuthority(
+            RoutingId.From("full-width-entry-target"),
+            "full-width-entry-target-spot",
+            ulong.MaxValue,
+            ulong.MaxValue,
+            ulong.MaxValue,
+            ulong.MaxValue);
+    }
+
+    [Fact]
     public async Task RemoteSpotAndActorDispatchPreserveExactOwnerMailbox()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();

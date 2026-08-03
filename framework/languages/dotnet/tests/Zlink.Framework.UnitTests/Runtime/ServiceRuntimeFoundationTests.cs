@@ -2,8 +2,11 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text.Json;
 using Systems.Zlink.Framework.Runtime.Protocol;
+using Zlink.Framework.Runtime.Backend.DotNet;
 using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
+using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -440,6 +443,51 @@ public sealed class ServiceRuntimeFoundationTests
     }
 
     [Fact]
+    public async Task BackendEntrySpotRoutingId_RekeysManagedSpotToDescriptorIdentity()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        node.SetRoutingId(RoutingId.From("orders-entry-owner"));
+        await using var backend = new ZLinkBackendSpotNodeWrapper(node);
+
+        var entry = backend.EntrySpot();
+        var descriptorEntrySpotId =
+            "orders-entry-00000000-0000-4000-8000-000000000001";
+
+        entry.SetRoutingId(ZLinkSpotId.ToNativeRoutingId(descriptorEntrySpotId));
+
+        var native = node.GetOrCreateSpot(descriptorEntrySpotId, out var created);
+        Assert.False(created);
+        Assert.Equal(
+            ZLinkSpotId.ToNativeRoutingId(descriptorEntrySpotId),
+            native.RoutingId);
+        Assert.Equal(
+            ZLinkSpotId.ToNativeRoutingId(descriptorEntrySpotId),
+            entry.RoutingId);
+    }
+
+    [Fact]
+    public async Task DispatchPump_RekeysEntrySpotStateWithDescriptorIdentity()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        node.SetRoutingId(RoutingId.From("orders-entry-owner"));
+        await using var pump = new ZLinkMeshDispatchPump(
+            node,
+            new ZLinkMeshCompletionTable());
+
+        var previousSpotId = "orders-entry-owner";
+        var descriptorEntrySpotId =
+            "orders-entry-00000000-0000-4000-8000-000000000001";
+        var state = pump.RegisterSpot(previousSpotId);
+
+        pump.RekeySpot(previousSpotId, descriptorEntrySpotId, state);
+
+        Assert.Same(state, pump.RegisterSpot(descriptorEntrySpotId));
+        Assert.NotSame(state, pump.RegisterSpot(previousSpotId));
+    }
+
+    [Fact]
     public async Task ManagedNode_AdvertisesTheActualEndpointAssignedForPortZero()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -568,6 +616,66 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal((int)RequestResult.Ok, received[0].TerminalResult);
         Assert.False(completionClaim.Receive(received, RecvFlags.DontWait));
     }
+
+    [Fact]
+    public async Task ManagedNode_Status_RemainsReadable_DuringConcurrentQueueDrain()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = new ZLinkManagedMeshNode(context, "orders");
+        var nodeRid = RoutingId.From("orders-status-race");
+        node.SetRoutingId(nodeRid);
+        using var stop = new CancellationTokenSource();
+        Exception? statusFailure = null;
+
+        var drainTask = Task.Run(async () =>
+        {
+            using var ready = new MeshReadyBatch();
+            using var received = new MeshReceiveBatch();
+            while (!stop.IsCancellationRequested)
+            {
+                ready.Reset();
+                node.DrainReady(
+                    MeshReadyDomains.Application,
+                    ready,
+                    RecvFlags.DontWait);
+                for (var index = 0; index < ready.Count; index++)
+                {
+                    using var claim = ready.TakeClaim(index);
+                    received.Reset();
+                    claim.Receive(received, RecvFlags.DontWait);
+                }
+                await Task.Yield();
+            }
+        });
+        var statusTask = Task.Run(() =>
+        {
+            try
+            {
+                for (var index = 0; index < 10_000; index++)
+                    _ = node.Status();
+            }
+            catch (Exception exception)
+            {
+                statusFailure = exception;
+            }
+        });
+
+        for (var index = 0; index < 2_000; index++)
+        {
+            using var part = Message.From(new byte[] { 1, 2, 3, 4 });
+            Assert.Equal(
+                SubmitResult.Ok,
+                node.SendToNode(nodeRid, [part]));
+        }
+
+        await statusTask;
+        stop.Cancel();
+        await drainTask;
+
+        Assert.Null(statusFailure);
+        Assert.Equal(0UL, node.Status().PendingBytes);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -665,6 +773,121 @@ public sealed class ServiceRuntimeFoundationTests
         }
         sourceBatch.Reset();
         Assert.False(sourceClaim.Receive(sourceBatch, RecvFlags.DontWait));
+    }
+
+    [Fact]
+    public async Task AutoConnect_Cleans_Connecting_Peer_And_Preserves_Admitted_Peer()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        var local = new ZLinkManagedMeshNode(context, "auto-cleanup");
+        await using var remote = new ZLinkManagedMeshNode(context, "auto-cleanup");
+        await using var localBackend = new ZLinkBackendSpotNodeWrapper(local);
+        var suffix = Guid.NewGuid().ToString("N");
+        var localRid = RoutingId.From($"auto-cleanup-local-{suffix}");
+        var remoteRid = RoutingId.From($"auto-cleanup-remote-{suffix}");
+        var staleRid = RoutingId.From($"auto-cleanup-stale-{suffix}");
+        var localEndpoint = $"inproc://auto-cleanup-local-{suffix}";
+        var remoteEndpoint = $"inproc://auto-cleanup-remote-{suffix}";
+        var staleEndpoint = $"inproc://auto-cleanup-stale-{suffix}";
+
+        local.SetRoutingId(localRid);
+        local.SetBind(localEndpoint);
+        local.ConnectPeer(remoteEndpoint, remoteRid);
+        local.ConnectPeer(staleEndpoint, staleRid);
+        remote.SetRoutingId(remoteRid);
+        remote.SetBind(remoteEndpoint);
+        remote.Start();
+        local.Start();
+
+        await WaitUntilAsync(() =>
+            local.Peers().Any(peer =>
+                peer.RoutingId == remoteRid
+                && peer.State == MeshPeerState.Admitted)
+            && local.Peers().Any(peer =>
+                peer.RoutingId == staleRid
+                && peer.State == MeshPeerState.Connecting));
+
+        var admitted = Assert.Single(
+            local.Peers(),
+            peer => peer.RoutingId == remoteRid);
+        var stale = Assert.Single(
+            local.Peers(),
+            peer => peer.RoutingId == staleRid);
+
+        Assert.True(localBackend.DisconnectPeerBeforeAdmission(
+            stale.RoutingId,
+            stale.Endpoint,
+            stale.LifecycleGeneration));
+
+        Assert.DoesNotContain(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == stale.ConnectionIntentId);
+        var retained = Assert.Single(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == admitted.ConnectionIntentId);
+        Assert.Equal(MeshPeerState.Admitted, retained.State);
+        Assert.False(localBackend.DisconnectPeerBeforeAdmission(
+            retained.RoutingId,
+            retained.Endpoint,
+            retained.LifecycleGeneration));
+        Assert.Contains(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == retained.ConnectionIntentId
+                    && peer.State == MeshPeerState.Admitted);
+    }
+
+    [Fact]
+    public async Task AutoConnect_Stale_SameEndpoint_Cleanup_Preserves_Replacement_Transport()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var local = new ZLinkManagedMeshNode(context, "auto-replacement");
+        await using var remote = new ZLinkManagedMeshNode(context, "auto-replacement");
+        await using var localBackend = new ZLinkBackendSpotNodeWrapper(local);
+        var suffix = Guid.NewGuid().ToString("N");
+        var localRid = RoutingId.From($"auto-replacement-local-{suffix}");
+        var oldRid = RoutingId.From($"auto-replacement-old-{suffix}");
+        var replacementRid = RoutingId.From($"auto-replacement-new-{suffix}");
+        var localEndpoint = $"inproc://auto-replacement-local-{suffix}";
+        var remoteEndpoint = $"inproc://auto-replacement-remote-{suffix}";
+
+        local.SetRoutingId(localRid);
+        local.SetBind(localEndpoint);
+        var oldIntent = local.ConnectPeer(remoteEndpoint, oldRid);
+        var replacementIntent = local.ConnectPeer(remoteEndpoint, replacementRid);
+        local.Start();
+
+        var oldPeer = Assert.Single(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == oldIntent);
+        Assert.Contains(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == replacementIntent
+                    && peer.State == MeshPeerState.Connecting);
+
+        Assert.True(localBackend.DisconnectPeerBeforeAdmission(
+            oldRid,
+            remoteEndpoint,
+            lifecycleGeneration: 0));
+
+        Assert.DoesNotContain(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == oldPeer.ConnectionIntentId);
+        Assert.Contains(
+            local.Peers(),
+            peer => peer.ConnectionIntentId == replacementIntent
+                    && peer.State == MeshPeerState.Connecting);
+
+        remote.SetRoutingId(replacementRid);
+        remote.SetBind(remoteEndpoint);
+        remote.Start();
+
+        await WaitUntilAsync(() =>
+            local.Peers().Any(peer =>
+                peer.RoutingId == replacementRid
+                && peer.State == MeshPeerState.Admitted)
+            && remote.Peers().Any(peer =>
+                peer.RoutingId == localRid
+                && peer.State == MeshPeerState.Admitted));
     }
 
 

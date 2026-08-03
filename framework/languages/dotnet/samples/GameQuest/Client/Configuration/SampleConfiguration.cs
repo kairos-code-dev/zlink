@@ -10,8 +10,8 @@ public static class SampleNames
 public static class QuestIds
 {
     public const string FirstHunt = "first-hunt";
-    public const string OpenAuction = "open-auction";
     public const string HerbGathering = "herb-gathering";
+    public const string VisitRuins = "visit-ruins";
 }
 
 public static class QuestStatuses

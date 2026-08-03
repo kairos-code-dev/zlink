@@ -87,9 +87,7 @@ internal static class QuestCatalog
     public static readonly QuestDefinition[] All =
     [
         new("first-hunt", "MonsterKilled", "*", 3),
-        new("open-auction", "FeatureUnlocked", "auction", 1),
         new("herb-gathering", "ItemCollected", "healing-herb", 5),
-        new("clear-tutorial", "MissionCompleted", "tutorial", 1),
         new("visit-ruins", "AreaEntered", "ruins", 1)
     ];
 

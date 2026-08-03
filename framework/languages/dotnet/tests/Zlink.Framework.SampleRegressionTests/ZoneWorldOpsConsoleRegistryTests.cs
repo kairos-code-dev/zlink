@@ -2,6 +2,7 @@ using Systems.Zlink;
 using Xunit;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Streams;
+using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Shared.Contracts;
 
@@ -10,18 +11,15 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed class ZoneWorldOpsConsoleRegistryTests
 {
     [Fact]
-    public async Task StaleConsoleFailureDoesNotBlockHealthyConsoleAndIsReported()
+    public async Task StaleConsoleFailureDoesNotBlockHealthyConsoleAndIsRemoved()
     {
         var registry = new OpsConsoleRegistry();
         var stale = new TestSessionContext("stale", failSend: true);
         var healthy = new TestSessionContext("healthy", failSend: false);
-        await registry.AddAsync(stale, CancellationToken.None);
-        await registry.AddAsync(healthy, CancellationToken.None);
+        registry.Add(stale);
+        registry.Add(healthy);
 
-        var error = await Assert.ThrowsAsync<AggregateException>(async () =>
-            await registry.BroadcastAsync(Status("node-a"), CancellationToken.None));
-
-        Assert.Single(error.InnerExceptions);
+        await registry.BroadcastAsync(Status("node-a"), CancellationToken.None);
         Assert.Equal(1, healthy.SendCount);
         await registry.BroadcastAsync(Status("node-a"), CancellationToken.None);
         Assert.Equal(2, healthy.SendCount);
@@ -34,14 +32,99 @@ public sealed class ZoneWorldOpsConsoleRegistryTests
         var registry = new OpsConsoleRegistry();
         var previous = new TestSessionContext("console", failSend: false);
         var replacement = new TestSessionContext("console", failSend: false);
-        await registry.AddAsync(previous, CancellationToken.None);
-        await registry.AddAsync(replacement, CancellationToken.None);
+        registry.Add(previous);
+        registry.Add(replacement);
 
         registry.Remove(previous);
         await registry.BroadcastAsync(Status("node-b"), CancellationToken.None);
 
         Assert.Equal(0, previous.SendCount);
         Assert.Equal(1, replacement.SendCount);
+    }
+
+    [Fact]
+    public async Task NodeStateReplayRunsAfterWatchReplyRatherThanConnectionLifecycle()
+    {
+        var registry = new OpsConsoleRegistry();
+        var console = new TestSessionContext("console", failSend: false);
+        registry.Add(console);
+
+        await registry.BroadcastAsync(Status("node-c"), CancellationToken.None);
+        await registry.ReplayNodesAsync(console, CancellationToken.None);
+
+        Assert.Equal(2, console.SendCount);
+    }
+
+    [Fact]
+    public async Task ReportCorrelatesAConnectionWhenTheRuntimePeerEventArrivedFirst()
+    {
+        var registry = new NodeRegistry();
+        var routingId = RoutingId.From("replacement-node-rid");
+
+        await registry.ApplyLiveRoutingIdsAsync(
+            new HashSet<string> { routingId.ToString() },
+            CancellationToken.None);
+
+        var correlated = await registry.ApplyReportAsync(
+            new ReportNodeStatusMsg(
+                NodeIds.East,
+                [ZoneIds.NorthEast, ZoneIds.SouthEast],
+                PlayerCount: 0,
+                Maintenance: false),
+            routingId,
+            CancellationToken.None);
+
+        Assert.True(correlated);
+        var node = Assert.Single(registry.Snapshot());
+        Assert.Equal(NodeIds.East, node.NodeId);
+        Assert.True(node.Registered);
+        Assert.True(node.Connected);
+
+        var duplicate = await registry.ApplyReportAsync(
+            new ReportNodeStatusMsg(
+                NodeIds.East,
+                [ZoneIds.NorthEast, ZoneIds.SouthEast],
+                PlayerCount: 1,
+                Maintenance: false),
+            routingId,
+            CancellationToken.None);
+
+        Assert.False(duplicate);
+    }
+
+    [Fact]
+    public async Task ReportCorrelatesAConnectionWhenALogicalNodePublishesANewRoutingId()
+    {
+        var registry = new NodeRegistry();
+        var previousRoutingId = RoutingId.From("previous-node-rid");
+        var replacementRoutingId = RoutingId.From("replacement-node-rid");
+        var zones = new[] { ZoneIds.NorthEast, ZoneIds.SouthEast };
+
+        await registry.ApplyLiveRoutingIdsAsync(
+            new HashSet<string> { previousRoutingId.ToString() },
+            CancellationToken.None);
+        Assert.True(await registry.ApplyReportAsync(
+            new ReportNodeStatusMsg(NodeIds.East, zones, 0, false),
+            previousRoutingId,
+            CancellationToken.None));
+
+        // The old lease can remain visible while the replacement publishes its
+        // new descriptor, so both RIDs are live at this observation boundary.
+        await registry.ApplyLiveRoutingIdsAsync(
+            new HashSet<string>
+            {
+                previousRoutingId.ToString(),
+                replacementRoutingId.ToString()
+            },
+            CancellationToken.None);
+
+        var correlated = await registry.ApplyReportAsync(
+            new ReportNodeStatusMsg(NodeIds.East, zones, 1, false),
+            replacementRoutingId,
+            CancellationToken.None);
+
+        Assert.True(correlated);
+        Assert.True(Assert.Single(registry.Snapshot()).Connected);
     }
 
     private static NodeStatusNotify Status(string nodeId) =>

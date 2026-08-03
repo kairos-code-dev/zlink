@@ -127,6 +127,7 @@ internal sealed class ZLinkDeferredActorJoin(
     private readonly IZLinkCurrentSpotActivation? _spotActivation =
         ZLinkSpotAmbientContext.CurrentOrDefault;
     private ZLinkActorDispatchMailbox.BarrierReservation? _barrier;
+    private Task? _targetCompletion;
 
     public void ReserveBarrier()
     {
@@ -135,7 +136,7 @@ internal sealed class ZLinkDeferredActorJoin(
                 ZLinkFrameworkErrorKind.ShuttingDown,
                 "Actor Join cannot be deferred while the Framework runtime is shutting down.");
         actorState.EnsureDeferredJoinIdentity(actor, objectGeneration);
-        _barrier = actorState.ReserveDeferredJoinBarrier();
+        _barrier = actorState.ReserveDeferredJoinBarrier(out _targetCompletion);
     }
 
     public void Activate()
@@ -174,6 +175,7 @@ internal sealed class ZLinkDeferredActorJoin(
     {
         var barrier = Interlocked.Exchange(ref _barrier, null);
         barrier?.Discard();
+        Interlocked.Exchange(ref _targetCompletion, null);
         var replay = actorState.Handoff.EndDeferredJoinCapture();
         actorState.ReleaseDeferredJoinBarrier();
         ReplayDeferredJoinFrames(replay);
@@ -181,18 +183,9 @@ internal sealed class ZLinkDeferredActorJoin(
 
     private async ValueTask RunAsync(CancellationToken cancellationToken)
     {
-        var barrier = Interlocked.Exchange(ref _barrier, null)
-                      ?? throw new InvalidOperationException(
-                          "Deferred Actor Join barrier was not reserved.");
+        var barrier = Interlocked.Exchange(ref _barrier, null);
         try
         {
-            using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
-            using var flow = ZLinkFlowContext.Enter(
-                _flow?.FlowId,
-                _flow?.Origin,
-                createIfAbsent: false,
-                ZLinkFlowOrigin.Application);
-            using var dispatch = actorState.EnterDeferredJoinExecution();
             var remaining = timeout - Stopwatch.GetElapsedTime(_registeredTimestamp);
             if (remaining <= TimeSpan.Zero)
             {
@@ -207,6 +200,37 @@ internal sealed class ZLinkDeferredActorJoin(
 
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(remaining);
+            if (_targetCompletion is { } targetCompletion)
+            {
+                try
+                {
+                    await targetCompletion.WaitAsync(deadline.Token)
+                        .ConfigureAwait(false);
+                    barrier = actorState.ReserveDeferredJoinBarrierAfterTarget();
+                }
+                catch (Exception exception)
+                {
+                    var kind = MapFailure(exception, deadline);
+                    Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"deferred_join_target_wait_failed kind={kind} {exception}");
+                    await NotifySourceAsync(
+                            new ZLinkActorJoinCompletion.Failed(_operationId, kind),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            if (barrier is not { } reservedBarrier)
+                throw new InvalidOperationException(
+                    "Deferred Actor Join barrier was not reserved.");
+            using var turn = await reservedBarrier.ClaimAsync().ConfigureAwait(false);
+            using var flow = ZLinkFlowContext.Enter(
+                _flow?.FlowId,
+                _flow?.Origin,
+                createIfAbsent: false,
+                ZLinkFlowOrigin.Application);
+            using var dispatch = actorState.EnterDeferredJoinExecution();
             ZLinkActorJoinCompletion? completion = null;
             try
             {

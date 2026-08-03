@@ -24,17 +24,57 @@ public sealed class GameClient(IZlinkStreamConnector connector, string playerId)
     public (int X, int Y) Position { get; internal set; }
 
     public static async ValueTask<GameClient> ConnectAsync(
-        string endpoint,
+        ClientOptions options,
         string playerId,
         CancellationToken cancellationToken)
     {
         var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            Endpoint = new Uri(endpoint),
+            Endpoint = new Uri(options.GatewayEndpoint),
             ConnectTimeout = TimeSpan.FromSeconds(10),
             RequestTimeout = TimeSpan.FromSeconds(10),
-            DispatchMode = ZlinkStreamDispatchMode.Immediate
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxInboundObserverPayloadPreviewBytes = options.StreamTrace ? 2048 : 0
         });
+
+        if (options.StreamTrace)
+        {
+            connector.WithInboundObserver((observation, _) =>
+            {
+                var preview = observation.PayloadPreview.IsEmpty
+                    ? string.Empty
+                    : Convert.ToBase64String(observation.PayloadPreview.Span);
+                Console.Error.WriteLine(
+                    "stream-trace inbound player={0} packet={1} kind={2} codec={3} "
+                    + "length={4} compressed={5} preview_b64={6}",
+                    playerId,
+                    observation.Name,
+                    observation.Kind,
+                    observation.Codec,
+                    observation.PayloadLength,
+                    observation.IsCompressed,
+                    preview);
+                return ValueTask.CompletedTask;
+            });
+            connector.ErrorReceived += (error, _) =>
+            {
+                Console.Error.WriteLine(
+                    "stream-trace error player={0} code={1} message={2}",
+                    playerId,
+                    error.Code,
+                    error.Message);
+                return ValueTask.CompletedTask;
+            };
+            connector.Disconnected += (disconnected, _) =>
+            {
+                Console.Error.WriteLine(
+                    "stream-trace disconnected player={0} reason={1}",
+                    playerId,
+                    disconnected.CloseReason);
+                return ValueTask.CompletedTask;
+            };
+        }
+
         await connector.Connect.Async(cancellationToken);
         return new GameClient(connector, playerId);
     }
@@ -162,8 +202,11 @@ public sealed class RelocationProbeClient(IZlinkStreamConnector connector) : IAs
     public ValueTask DisposeAsync() => connector.DisposeAsync();
 }
 
-public sealed record ClientOptions(string GatewayEndpoint, string OpsEndpoint)
+public sealed record ClientOptions(
+    string GatewayEndpoint,
+    string OpsEndpoint,
+    bool StreamTrace)
 {
     public static ClientOptions From(ZoneWorldClientSettings settings) =>
-        new(settings.GatewayEndpoint, settings.OpsEndpoint);
+        new(settings.GatewayEndpoint, settings.OpsEndpoint, settings.StreamTrace);
 }

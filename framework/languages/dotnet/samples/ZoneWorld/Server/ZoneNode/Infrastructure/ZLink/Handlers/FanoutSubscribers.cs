@@ -26,7 +26,7 @@ internal sealed class WorldAnnounceSubscriber(
         WorldAnnounceEvent message,
         CancellationToken cancellationToken)
     {
-        var zones = ZoneTopology.Zones;
+        var zones = ZoneTopology.ZonesOf(maintenance.OwnNodeId);
         logger.LogInformation(
             "fanout subscriber received announcement. node={NodeId}, announcement={AnnouncementId}, zones={ZoneCount}",
             maintenance.OwnNodeId,

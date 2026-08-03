@@ -56,14 +56,6 @@ internal sealed class BingoEntrySpot(
             return;
         }
 
-        if (!string.IsNullOrEmpty(actor.RoomId))
-            await actor.Context.BoundSession
-                .Send(new BingoActorEntrySpotNotify
-                {
-                    ActorId = actor.ActorId,
-                    RoomId = actor.RoomId
-                })
-                .Async(cancellationToken);
     }
 
     public ValueTask OnLeaveActorAsync(

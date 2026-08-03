@@ -75,84 +75,44 @@ internal sealed class KillMonsterHandler(GameplayActionService actions)
     }
 }
 
-[ZLinkSpotActorRequestHandler(nameof(CollectItemReq))]
+[ZLinkSpotActorSendHandler(nameof(CollectItemReq))]
 internal sealed class CollectItemHandler(GameplayActionService actions)
-    : IZLinkEntrySpotActorRequestHandler<GameQuestEntrySpot, PlayerSessionActor, CollectItemReq, CollectItemRes>
+    : IZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, PlayerSessionActor, CollectItemReq>
 {
-    public async ValueTask<CollectItemRes> HandleAsync(
+    public async ValueTask HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
         IZLinkMessageContext context,
-        CollectItemReq request,
+        CollectItemReq message,
         CancellationToken cancellationToken)
     {
-        actor.EnsurePlayer(request.PlayerId);
-        return new CollectItemRes(await actions.CollectItemAsync(
-            request.PlayerId,
-            request.ItemId,
-            request.Count,
-            request.IdempotencyKey,
-            cancellationToken));
+        actor.EnsurePlayer(message.PlayerId);
+        await actions.CollectItemAsync(
+            message.PlayerId,
+            message.ItemId,
+            message.Count,
+            message.IdempotencyKey,
+            cancellationToken);
     }
 }
 
-[ZLinkSpotActorRequestHandler(nameof(CompleteMissionReq))]
-internal sealed class CompleteMissionHandler(GameplayActionService actions)
-    : IZLinkEntrySpotActorRequestHandler<GameQuestEntrySpot, PlayerSessionActor, CompleteMissionReq, CompleteMissionRes>
-{
-    public async ValueTask<CompleteMissionRes> HandleAsync(
-        GameQuestEntrySpot entrySpot,
-        PlayerSessionActor actor,
-        IZLinkMessageContext context,
-        CompleteMissionReq request,
-        CancellationToken cancellationToken)
-    {
-        actor.EnsurePlayer(request.PlayerId);
-        return new CompleteMissionRes(await actions.CompleteMissionAsync(
-            request.PlayerId,
-            request.MissionId,
-            request.IdempotencyKey,
-            cancellationToken));
-    }
-}
-
-[ZLinkSpotActorRequestHandler(nameof(EnterAreaReq))]
+[ZLinkSpotActorSendHandler(nameof(EnterAreaReq))]
 internal sealed class EnterAreaHandler(GameplayActionService actions)
-    : IZLinkEntrySpotActorRequestHandler<GameQuestEntrySpot, PlayerSessionActor, EnterAreaReq, EnterAreaRes>
+    : IZLinkEntrySpotActorSendHandler<GameQuestEntrySpot, PlayerSessionActor, EnterAreaReq>
 {
-    public async ValueTask<EnterAreaRes> HandleAsync(
+    public async ValueTask HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
         IZLinkMessageContext context,
-        EnterAreaReq request,
+        EnterAreaReq message,
         CancellationToken cancellationToken)
     {
-        actor.EnsurePlayer(request.PlayerId);
-        return new EnterAreaRes(await actions.EnterAreaAsync(
-            request.PlayerId,
-            request.AreaId,
-            request.IdempotencyKey,
-            cancellationToken));
-    }
-}
-
-[ZLinkSpotActorRequestHandler(nameof(UnlockFeatureReq))]
-internal sealed class UnlockFeatureHandler(GameplayActionService actions)
-    : IZLinkEntrySpotActorRequestHandler<GameQuestEntrySpot, PlayerSessionActor, UnlockFeatureReq, UnlockFeatureRes>
-{
-    public async ValueTask<UnlockFeatureRes> HandleAsync(
-        GameQuestEntrySpot entrySpot,
-        PlayerSessionActor actor,
-        IZLinkMessageContext context,
-        UnlockFeatureReq request,
-        CancellationToken cancellationToken)
-    {
-        actor.EnsurePlayer(request.PlayerId);
-        return new UnlockFeatureRes(await actions.UnlockFeatureAsync(
-            request.PlayerId,
-            request.FeatureId,
-            request.IdempotencyKey,
-            cancellationToken));
+        actor.EnsurePlayer(message.PlayerId);
+        await actions.EnterAreaAsync(
+            message.PlayerId,
+            message.AreaId,
+            message.IdempotencyKey,
+            cancellationToken);
     }
 }
 

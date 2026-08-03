@@ -65,6 +65,9 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
 
         try
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_serial_submit_begin actor={runtimeState.ActorId} "
+                + $"correlation_id={header.CorrelationId}");
             var state = new ActorReplyDispatchState(dispatcher, actor, runtimeState, header, ownedPayload);
             var execution = queueReservation is not null
                 ? queueReservation.ExecuteAsync(
@@ -88,9 +91,13 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
                     cancellationToken);
             await execution.ConfigureAwait(false);
 
-            return state.Reply
-                   ?? throw new InvalidOperationException(
+            var reply = state.Reply
+                         ?? throw new InvalidOperationException(
                        $"SPOT actor packet reply for '{header.Name}' was null.");
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_serial_submit_completed actor={runtimeState.ActorId} "
+                + $"correlation_id={header.CorrelationId}");
+            return reply;
         }
         catch
         {

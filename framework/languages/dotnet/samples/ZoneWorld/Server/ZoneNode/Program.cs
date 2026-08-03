@@ -96,7 +96,15 @@ builder.Services.AddZLinkFramework(options =>
         .AddActorFactory<PlayerActor, PlayerActorFactory>(
             ZoneWorldNames.PlayerActorType, factory => factory.PreserveStateWith<PlayerActorRelocationAdapter>())
         .AddSpotFactory<ZoneSpot>(
-            ZoneWorldNames.ZoneSpotType, factory => factory.DisableRelocation());
+            ZoneWorldNames.ZoneSpotType,
+            factory => factory
+                // Two Zone Spots per eligible node make the two configured node pairs
+                // deterministic while keeping placement inside the public Location Store
+                // contract. The process-specific bootstrap requests only its logical pair;
+                // the capacity reservation prevents a startup race from placing both pairs
+                // on whichever process became ready first.
+                .StableTypeLimit(2)
+                .DisableRelocation());
     mesh.Channel(ZoneWorldNames.ZoneChannel).Server();
 
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)

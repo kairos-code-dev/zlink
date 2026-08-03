@@ -131,8 +131,8 @@ try {
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* name=.*Notify" "TicTacToe stream-inbound push marker"
     Wait-LogContains $clientLog "observer-win-milestone=verified" "TicTacToe observer win milestone notification"
     $playLogs = Join-Path $LogDir "play-*.log"
-    Wait-LogContains $playLogs "actor: LeaveGameReq completed. actor=player-x" "TicTacToe player-x LeaveGameReq completion"
-    Wait-LogContains $playLogs "actor: LeaveGameReq completed. actor=player-o" "TicTacToe player-o LeaveGameReq completion"
+    Wait-LogContains $playLogs "actor: LeaveGameMsg completed. actor=player-x" "TicTacToe player-x LeaveGameMsg completion"
+    Wait-LogContains $playLogs "actor: LeaveGameMsg completed. actor=player-o" "TicTacToe player-o LeaveGameMsg completion"
     Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-x" "TicTacToe player-x destroy completion"
     Wait-LogContains $playLogs "entry spot: actor destroy completed. actor=player-o" "TicTacToe player-o destroy completion"
     $dispatchError = Get-ChildItem -Path $LogDir -Filter "*.log" |

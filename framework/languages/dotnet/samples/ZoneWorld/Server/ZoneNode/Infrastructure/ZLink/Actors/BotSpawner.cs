@@ -31,7 +31,8 @@ internal sealed class ZoneNodeBootstrap(
     {
         await RestoreMaintenanceAsync(cancellationToken);
 
-        foreach (var zoneId in ZoneTopology.Zones)
+        var zones = ZoneTopology.ZonesOf(maintenance.OwnNodeId);
+        foreach (var zoneId in zones)
         {
             var result = await spots.GetOrCreate(zoneId, ZoneWorldNames.ZoneSpotType)
                 .InMesh(ZoneWorldNames.MeshName)
@@ -44,13 +45,13 @@ internal sealed class ZoneNodeBootstrap(
         }
 
         if (!settings.DisableBots)
-            foreach (var route in ZoneTopology.Zones.SelectMany(BotPatrolPolicy.RoutesOf))
+            foreach (var route in zones.SelectMany(BotPatrolPolicy.RoutesOf))
                 await SpawnBotAsync(route, cancellationToken);
 
         logger.LogInformation(
             "topology=ready node={NodeId} zones={Zones}",
             maintenance.OwnNodeId,
-            string.Join(',', ZoneTopology.Zones));
+            string.Join(',', zones));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

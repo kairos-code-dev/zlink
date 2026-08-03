@@ -101,12 +101,13 @@ public sealed class ZoneSpot(
         CancellationToken cancellationToken)
     {
         var enter = request.Decode<EnterZoneMsg>();
-        if (maintenance.IsOwnNodeUnderMaintenance)
+        if (maintenance.RejectsArrival(maintenance.OwnNodeId, enter.FromNodeId))
         {
             logger.LogInformation(
-                "zone spot: join rejected, node under maintenance. zone={ZoneId}, player={PlayerId}",
+                "zone spot: join rejected, node under maintenance. zone={ZoneId}, player={PlayerId}, from_node={FromNodeId}",
                 ZoneId,
-                enter.PlayerId);
+                enter.PlayerId,
+                enter.FromNodeId ?? "<new>");
             return ValueTask.FromResult<ZLinkSpotActorJoinResult>(
                 ZLinkSpotActorJoinResult.Reject(
                     new EnterZoneRes(ZoneId, MoveRejectReasons.ZoneMaintenance)));
@@ -174,8 +175,8 @@ public sealed class ZoneSpot(
         census.Record(ZoneId, _state.PlayerCount);
     }
 
-    internal void UpdatePosition(string playerId, int x, int y) =>
-        _state.UpdatePosition(playerId, x, y);
+    internal void ApplyPositionUpdate(UpdatePositionMsg message) =>
+        _state.UpdatePosition(message.PlayerId, message.X, message.Y, message.IsBot);
 
     /// <summary>
     /// Restores a disconnected human to this zone's projection after a new session binds to

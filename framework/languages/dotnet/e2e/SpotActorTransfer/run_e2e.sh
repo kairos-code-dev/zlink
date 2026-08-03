@@ -31,6 +31,7 @@ mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
 
 SERVER_PROJECT="$ROOT_DIR/Server/ActorNode/SpotActorTransfer.ActorNode.csproj"
+SERVER_BINARY="$ROOT_DIR/Server/ActorNode/bin/Debug/net8.0/SpotActorTransfer.ActorNode"
 SESSION_GATEWAY_PROJECT="$ROOT_DIR/Server/SessionGateway/SpotActorTransfer.SessionGateway.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/SpotActorTransfer.Client.csproj"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -38,6 +39,9 @@ PROCESS_EXIT_TIMEOUT_SECONDS=30
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS=60
 HTTP_PROBE_TIMEOUT_SECONDS=3
+PLACEMENT_READY_TIMEOUT_SECONDS=20
+OWNER_LEASE_TTL_SECONDS=10
+REPLACEMENT_READY_TIMEOUT_SECONDS=$((OWNER_LEASE_TTL_SECONDS + 20))
 
 pick_port() {
   python3 - <<'PY'
@@ -125,6 +129,39 @@ PY
   return 1
 }
 
+wait_placement_ready() {
+  local url="$1"
+  local name="$2"
+  local deadline=$((SECONDS + PLACEMENT_READY_TIMEOUT_SECONDS))
+  while (( SECONDS < deadline )); do
+    if curl --max-time 6 --connect-timeout 2 -fsS \
+      -H 'Content-Type: application/json' \
+      -X POST "$url/placement-weight" \
+      --data '{"weight":100}' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  local status
+  status="$(curl --max-time 2 --connect-timeout 1 -fsS "$url/mesh/status" 2>/dev/null || true)"
+  echo "Timed out waiting ${PLACEMENT_READY_TIMEOUT_SECONDS}s for $name placement readiness at $url status=$status" >&2
+  return 1
+}
+
+wait_all_mesh_ready() {
+  wait_mesh_ready "$NODE_A_URL" actor-a "actor-b,actor-c,actor-d,session-a,session-b"
+  wait_mesh_ready "$NODE_B_URL" actor-b "actor-a,actor-c,actor-d,session-a,session-b"
+  wait_mesh_ready "$NODE_C_URL" actor-c "actor-a,actor-b,actor-d,session-a,session-b"
+  wait_mesh_ready "$NODE_D_URL" actor-d "actor-a,actor-b,actor-c"
+}
+
+wait_all_placement_ready() {
+  wait_placement_ready "$NODE_A_URL" actor-a
+  wait_placement_ready "$NODE_B_URL" actor-b
+  wait_placement_ready "$NODE_C_URL" actor-c
+  wait_placement_ready "$NODE_D_URL" actor-d
+}
+
 wait_tcp_endpoint() {
   local endpoint="$1"
   local name="$2"
@@ -168,6 +205,44 @@ wait_process_exit() {
   return 1
 }
 
+wait_replacement_lease_expiry() {
+  # A SIGKILL cannot remove the owner rows. Replacement must wait for the
+  # exact old owner lease to expire before the new lifecycle is admitted.
+  # actor-b is still serving, so its topology is the observable source for
+  # the old actor-a descriptor disappearing.
+  local deadline=$((SECONDS + REPLACEMENT_READY_TIMEOUT_SECONDS))
+  local status
+  while (( SECONDS < deadline )); do
+    status="$(curl --max-time 2 --connect-timeout 1 -fsS \
+      "$NODE_B_URL/mesh/status" 2>/dev/null || true)"
+    if python3 - "$status" <<'PY'
+import json
+import sys
+
+try:
+    status = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    raise SystemExit(1)
+
+if status.get("state") != "Ready" or status.get("isReady") is not True:
+    raise SystemExit(1)
+if any(
+    peer.get("rid", "") == "actor-a"
+    or peer.get("rid", "").startswith("actor-a-")
+    for peer in status.get("peers", [])
+):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+    then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting ${REPLACEMENT_READY_TIMEOUT_SECONDS}s for the old actor-a owner lease to expire at $NODE_B_URL status=$status" >&2
+  return 1
+}
+
 start_node() {
   local rid="$1"
   local url="$2"
@@ -188,7 +263,7 @@ start_node() {
     --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
-  setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
+  setsid "$SERVER_BINARY" --config "$config" \
     9>&- \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -299,6 +374,7 @@ SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 9>&- >/dev/null
+test -x "$SERVER_BINARY"
 dotnet build "$SESSION_GATEWAY_PROJECT" --maxcpucount:1 9>&- >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 9>&- >/dev/null
 
@@ -355,7 +431,7 @@ if [[ "$SCENARIO" == "ST-B5" ]]; then
   wait "$TARGET_CRASH_WATCHER_PID"
   wait_process_exit "$NODE_B_PID" actor-b
   # Replacement is allowed only after the exact old owner lease expires.
-  sleep 11
+  wait_replacement_lease_expiry
   start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1
   NODE_B_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_B_URL" actor-b
@@ -364,20 +440,26 @@ elif [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F6"
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a
+  wait_replacement_lease_expiry
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   wait_mesh_ready "$NODE_A_URL" actor-a "actor-b,actor-c,actor-d,session-a,session-b"
+  wait_all_mesh_ready
+  wait_all_placement_ready
   run_client "ST-C2"
   wait_process_exit "$NODE_A_PID" actor-a
+  wait_replacement_lease_expiry
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
   wait_mesh_ready "$NODE_A_URL" actor-a "actor-b,actor-c,actor-d,session-a,session-b"
+  wait_all_mesh_ready
+  wait_all_placement_ready
   run_client "ST-C1"
 else
   run_client "$SCENARIO"

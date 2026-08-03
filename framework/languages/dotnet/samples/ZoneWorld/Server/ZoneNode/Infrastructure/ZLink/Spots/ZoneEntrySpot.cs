@@ -3,6 +3,7 @@ using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using ZoneWorld.Server.Configuration;
+using ZoneWorld.Server.ZoneNode.Application.Node;
 using ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
 using ZoneWorld.Server.ZoneNode.Domain.ZoneWorld;
 using ZoneWorld.Shared.Contracts;
@@ -57,7 +58,9 @@ internal sealed class PlayerEnterWorldHandler(ILogger<PlayerEnterWorldHandler> l
 /// what tells the node where to push.
 /// </summary>
 [ZLinkSpotActorRequestHandler(nameof(JoinWorldReq))]
-internal sealed class PlayerJoinWorldHandler(ILogger<PlayerJoinWorldHandler> logger)
+internal sealed class PlayerJoinWorldHandler(
+    ILogger<PlayerJoinWorldHandler> logger,
+    NodeMaintenancePolicy maintenance)
     : IZLinkEntrySpotActorRequestHandler<ZoneEntrySpot, PlayerActor, JoinWorldReq, JoinWorldRes>
 {
     public async ValueTask<JoinWorldRes> HandleAsync(
@@ -67,6 +70,20 @@ internal sealed class PlayerJoinWorldHandler(ILogger<PlayerJoinWorldHandler> log
         JoinWorldReq message,
         CancellationToken cancellationToken)
     {
+        // The actual User Spot admission remains the final authority. This early check
+        // only makes the request/reply contract deterministic: a deferred join cannot
+        // carry its later admission result back into this already-returning request.
+        var spawnNodeId = ZoneTopology.NodeOf(ZoneTopology.SpawnZone);
+        if (maintenance.IsUnderMaintenance(spawnNodeId))
+        {
+            return new JoinWorldRes(
+                message.PlayerId,
+                ZoneTopology.SpawnZone,
+                ZoneWorldSpec.SpawnX,
+                ZoneWorldSpec.SpawnY,
+                MoveRejectReasons.ZoneMaintenance);
+        }
+
         var entered = await EnterWorld.RunAsync(
             actor,
             new EnterWorldReq(ZoneWorldSpec.SpawnX, ZoneWorldSpec.SpawnY, IsBot: false),
@@ -93,12 +110,21 @@ internal static class EnterWorld
         // The patrol direction has to be on the actor before it joins, because the zone
         // spot preserves it across the join and relocation carries it to the next node.
         actor.SetPatrol(message.DirX, message.DirY);
+        // The join is deferred. Record the bot identity before scheduling it so a rejected
+        // admission cannot send a human-only notification to a bot with no session.
+        actor.PrepareEntry(message.IsBot);
 
         var zoneId = ZoneWorldSpec.ZoneOf(message.X, message.Y);
         actor.TrackDeferredJoin(new PlayerPosition(message.X, message.Y));
         actor.Context.JoinSpot(
                 zoneId,
-                new EnterZoneMsg(actor.ActorId, message.X, message.Y, message.IsBot, InitialEntry: true))
+            new EnterZoneMsg(
+                actor.ActorId,
+                message.X,
+                message.Y,
+                message.IsBot,
+                InitialEntry: true,
+                FromNodeId: null))
             .Defer();
 
         logger.LogInformation(

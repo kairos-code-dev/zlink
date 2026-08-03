@@ -45,6 +45,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  zlink_sample_copy_evidence "${RUN_DIR}" "DeliveryDispatch"
   if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
     rm -rf "${RUN_DIR}"
   else

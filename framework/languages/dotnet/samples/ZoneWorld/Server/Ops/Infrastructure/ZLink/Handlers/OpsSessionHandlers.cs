@@ -16,6 +16,7 @@ internal sealed class WatchNodesHandler(NodeRegistry nodes, OpsConsoleRegistry c
     {
         await context.Client.Reply(new WatchNodesRes(nodes.Snapshot()))
             .Async(cancellationToken);
+        await consoles.ReplayNodesAsync(context, cancellationToken);
         await consoles.ReplayAlertsAsync(context, cancellationToken);
     }
 }

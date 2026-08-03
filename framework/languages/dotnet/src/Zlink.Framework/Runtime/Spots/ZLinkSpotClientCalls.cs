@@ -262,10 +262,28 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
             {
                 handle.InvalidateRoute();
                 handle = await runtime.WaitForInstanceSpotRouteOrMissingAsync(
-                        target,
-                        deadline,
+                    target,
+                    deadline,
+                    cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ZLinkFrameworkException error)
+                when (!_instanceIntent
+                      && ZLinkSpotHandleRequestExecution.IsStaleRoute(error))
+            {
+                // A global Spot ID can retain a cached route after its owner
+                // has stopped. Refresh only the location row to distinguish a
+                // removed Spot (NotFound) from a still-existing Spot whose
+                // target route is temporarily unavailable. Do not resubmit
+                // the application request after a stale-route response: the
+                // target may have accepted it before the response was lost.
+                handle.InvalidateRoute();
+                handle = await runtime.ResolveSpotHandleAsync(
+                        target.SpotId,
                         cancellationToken)
                     .ConfigureAwait(false);
+                if (handle is not null)
+                    throw;
             }
         }
 

@@ -358,6 +358,9 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 var deadlineUnixMs = checked((ulong)deadlineAt.ToUnixTimeMilliseconds());
                 if (target.Rid == source.Node.RoutingId)
                 {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"actor_create_local actor={actorId} target={target.Rid} "
+                        + $"generation={target.LifecycleGeneration}");
                     var local = await source.CreateActorLocalAsync(
                             actorId,
                             actorType,
@@ -376,6 +379,9 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                     ActorCreateCompletion Completion,
                     IReadOnlyList<Message> Reply)> CreateRemoteAfterAdmissionAsync()
                 {
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"actor_create_remote actor={actorId} source={source.Node.RoutingId} "
+                        + $"target={target.Rid} generation={target.LifecycleGeneration}");
                     while (true)
                     {
                         var remaining = deadlineAt - DateTimeOffset.UtcNow;
@@ -431,6 +437,34 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                 await store.AbortAsync(reservation, CancellationToken.None)
                     .ConfigureAwait(false);
                 throw;
+            }
+            catch (ZLinkFrameworkException exception)
+            {
+                await store.AbortAsync(reservation, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (exception.Kind is not
+                    (ZLinkFrameworkErrorKind.Unavailable
+                    or ZLinkFrameworkErrorKind.CapacityExceeded
+                    or ZLinkFrameworkErrorKind.DeadlineExceeded))
+                    throw;
+
+                // A remote target can be selected from a fresh Store snapshot
+                // while its reverse peer admission is still converging. The
+                // reservation belongs to this attempt, so close it before
+                // refreshing candidates and retrying within the caller's
+                // absolute deadline.
+                reservationRefreshAttempt++;
+                descriptors = await store.ListAllMeshNodesAsync(
+                        selectedMesh,
+                        deadline.Token)
+                    .ConfigureAwait(false);
+                eligible = descriptors
+                    .Where(candidate => IsEligibleCandidate(candidate, actorType))
+                    .OrderBy(
+                        static candidate => candidate.Rid.ToHex(),
+                        StringComparer.Ordinal)
+                    .ToList();
+                continue;
             }
         }
     }

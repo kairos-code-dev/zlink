@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotPeerConnector(
@@ -55,52 +57,83 @@ internal sealed class ZLinkSpotPeerConnector(
     {
         lock (_gate)
         {
-            return ConnectAuto(
-                endpoint,
-                connections.TryAddPeerAuto,
-                connections.RollbackPeerAuto,
-                () =>
+            var claim = connections.AcquirePeerAuto(peerRid, endpoint);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"spot_peer_claim peer={peerRid?.ToString() ?? "<unknown>"} endpoint={endpoint} kind={claim.Kind} "
+                + $"previous={claim.PreviousPeerRid?.ToString() ?? "<unknown>"}");
+            if (claim.Kind is ZLinkSpotAutoPeerClaimKind.AlreadyOwned
+                or ZLinkSpotAutoPeerClaimKind.SuppressedByManual)
+                return true;
+
+            try
+            {
+                if (claim.Kind == ZLinkSpotAutoPeerClaimKind.Replaced)
                 {
-                    if (peerRid is { Size: > 0 } rid)
-                        ConnectPeer(rid, endpoint, expectedSecurityIdentity);
-                    else ConnectPeer(endpoint);
-                });
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"spot_peer_replace peer={peerRid?.ToString() ?? "<unknown>"} endpoint={endpoint}");
+                    node.DisconnectPeer(endpoint);
+                }
+
+                if (peerRid is { Size: > 0 } rid)
+                    ConnectPeer(rid, endpoint, expectedSecurityIdentity);
+                else ConnectPeer(endpoint);
+                return true;
+            }
+            catch
+            {
+                // A failed replacement leaves no physical connection that
+                // the old target can safely reuse. Remove the claim so the
+                // reconciler retries the currently desired target.
+                connections.RollbackPeerAuto(endpoint);
+                return false;
+            }
         }
     }
 
-    public bool DisconnectPeerAuto(string endpoint)
+    public bool DisconnectPeerAuto(string endpoint) =>
+        DisconnectPeerAuto(peerRid: null, endpoint);
+
+    public bool DisconnectPeerAuto(RoutingId? peerRid, string endpoint)
     {
         lock (_gate)
         {
-            return DisconnectAuto(endpoint, connections.RemovePeerAuto, connections.TryAddPeerAuto);
+            var result = DisconnectAuto(
+                endpoint,
+                () => connections.RemovePeerAuto(peerRid, endpoint),
+                () => connections.RestorePeerAuto(endpoint, peerRid));
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"spot_peer_release peer={peerRid?.ToString() ?? "<unknown>"} endpoint={endpoint} result={result}");
+            return result;
         }
     }
 
-    private static bool ConnectAuto(
+    public bool DisconnectPeerBeforeAdmission(
+        RoutingId peerRid,
         string endpoint,
-        Func<string, bool> acquire,
-        Action<string> rollback,
-        Action connect)
+        ulong lifecycleGeneration)
     {
-        if (!acquire(endpoint)) return true;
-        try
+        lock (_gate)
         {
-            connect();
-            return true;
-        }
-        catch
-        {
-            rollback(endpoint);
-            return false;
+            try
+            {
+                return node.DisconnectPeerBeforeAdmission(
+                    peerRid,
+                    endpoint,
+                    lifecycleGeneration);
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 
     private bool DisconnectAuto(
         string endpoint,
-        Func<string, bool> release,
-        Func<string, bool> restore)
+        Func<bool> release,
+        Action restore)
     {
-        if (!release(endpoint)) return true;
+        if (!release()) return true;
         try
         {
             node.DisconnectPeer(endpoint);
@@ -108,7 +141,7 @@ internal sealed class ZLinkSpotPeerConnector(
         }
         catch
         {
-            _ = restore(endpoint);
+            restore();
             return false;
         }
     }

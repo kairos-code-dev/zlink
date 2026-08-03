@@ -153,8 +153,7 @@ internal sealed class GameQuestStore : IGameplayEventStore, IQuestSessionStore, 
         long updatedAtUnixMs = 0;
         foreach (var @event in stream)
         {
-            using var payload = JsonDocument.Parse(@event.Payload);
-            var root = payload.RootElement;
+            var root = @event.Payload;
             if (@event.Type is nameof(QuestProgressedEvent) or nameof(QuestReconciled))
             {
                 currentCount = root.GetProperty("CurrentCount").GetInt32();

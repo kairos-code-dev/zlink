@@ -83,10 +83,24 @@ internal sealed class ZLinkBackendSpotWrapper :
 
     internal ISpot NativeSpot => _spot;
 
-    // Spot routing ids are assigned by the node (CreateSpot/GetOrCreateSpot); the
-    // binding ISpot has no setter, so this preserves callers as a no-op.
+    // Entry Spot identity is assigned after the MeshNode creates its reserved
+    // node-rid key. The managed ISpot owns the catalog rekey, so the backend
+    // wrapper must forward this lifecycle operation instead of dropping it.
     public void SetRoutingId(RoutingId routingId)
     {
+        var previousSpotId = SpotId;
+        var currentSpotId = ZLinkSpotId.FromNativeRoutingId(routingId);
+        ZLinkSpotId.Require(currentSpotId, nameof(routingId));
+        _pump.RekeySpot(previousSpotId, currentSpotId, _state);
+        try
+        {
+            _spot.SetRoutingId(routingId);
+        }
+        catch
+        {
+            _pump.RekeySpot(currentSpotId, previousSpotId, _state);
+            throw;
+        }
     }
 
     public void SetSubscription(string channelName, string topic)

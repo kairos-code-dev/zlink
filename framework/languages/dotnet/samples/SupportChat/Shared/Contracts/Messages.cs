@@ -63,7 +63,7 @@ public sealed record SendChatMessageRes(
     ConversationState State);
 
 // SetTyping is a one-way fire-and-forget send: no response record.
-public sealed record SetTypingReq(bool IsTyping);
+public sealed record SetTypingMsg(bool IsTyping);
 
 public sealed record CloseConversationReq(string? Reason);
 

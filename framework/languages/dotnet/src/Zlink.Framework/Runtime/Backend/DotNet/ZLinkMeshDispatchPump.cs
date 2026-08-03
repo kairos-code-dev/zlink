@@ -87,6 +87,38 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         return _spots.GetOrAdd(spotId, static _ => new SpotDispatchState());
     }
 
+    internal void RekeySpot(
+        string previousSpotId,
+        string currentSpotId,
+        SpotDispatchState state)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(previousSpotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentSpotId);
+        ArgumentNullException.ThrowIfNull(state);
+        if (string.Equals(previousSpotId, currentSpotId, StringComparison.Ordinal))
+            return;
+
+        if (!_spots.TryGetValue(previousSpotId, out var registered)
+            || !ReferenceEquals(registered, state))
+            throw new InvalidOperationException(
+                $"Spot dispatch state '{previousSpotId}' is not registered.");
+        if (_spots.TryGetValue(currentSpotId, out var existing)
+            && !ReferenceEquals(existing, state))
+            throw new InvalidOperationException(
+                $"Spot dispatch state '{currentSpotId}' is already registered.");
+
+        if (!((ICollection<KeyValuePair<string, SpotDispatchState>>)_spots)
+                .Remove(new(previousSpotId, state)))
+            throw new InvalidOperationException(
+                $"Spot dispatch state '{previousSpotId}' could not be rekeyed.");
+        if (_spots.TryAdd(currentSpotId, state))
+            return;
+
+        _spots.TryAdd(previousSpotId, state);
+        throw new InvalidOperationException(
+            $"Spot dispatch state '{currentSpotId}' could not be rekeyed.");
+    }
+
     public void SetDispatchHandler(
         string spotId,
         Action<ZLinkBackendSpotDispatchInfo> handler)

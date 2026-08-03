@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using Zlink.Framework.Contracts.Streams;
 using ZoneWorld.Shared.Contracts;
 
@@ -8,7 +9,7 @@ namespace ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 /// The consoles currently watching. Node state changes arrive from runtime events and node
 /// reports, which are not tied to any one session, so the push targets are kept here.
 /// </summary>
-public sealed class OpsConsoleRegistry
+public sealed class OpsConsoleRegistry(ILogger<OpsConsoleRegistry>? logger = null)
 {
     private const int RecentAlertCount = 20;
 
@@ -16,39 +17,28 @@ public sealed class OpsConsoleRegistry
     private readonly Dictionary<string, NodeStatusNotify> _latestNodes = new(StringComparer.Ordinal);
     private readonly Queue<NodeAlertNotify> _recentAlerts = new();
     private readonly object _nodeGate = new();
-    private long _nodeVersion;
 
     /// <summary>
-    /// Registers a console and gives a replacement stream session the latest node state. The
-    /// same gate also protects node broadcasts: a session added before a state change receives
-    /// that change, while a session added afterwards receives the cached result.
+    /// Registers a console without sending application data from the stream lifecycle callback.
+    /// The framework guarantees the callback ordering, but a route may still be unavailable for
+    /// an application push at that point. State replay therefore belongs to the request that
+    /// explicitly starts watching, after its reply has established the stream path.
     /// </summary>
-    public async ValueTask AddAsync(
+    public void Add(IZLinkSessionContext context) => _consoles[context.SessionId] = context;
+
+    /// <summary>
+    /// Replays the latest node state to a console that has completed the watch request. The
+    /// cache is updated by node broadcasts independently of any particular stream session.
+    /// </summary>
+    public async ValueTask ReplayNodesAsync(
         IZLinkSessionContext context,
         CancellationToken cancellationToken)
     {
-        while (true)
-        {
-            NodeStatusNotify[] snapshot;
-            long version;
-            lock (_nodeGate)
-            {
-                snapshot = _latestNodes.Values.ToArray();
-                version = _nodeVersion;
-            }
+        NodeStatusNotify[] snapshot;
+        lock (_nodeGate) snapshot = _latestNodes.Values.ToArray();
 
-            foreach (var node in snapshot)
-                await SendAsync(context, node, cancellationToken);
-
-            lock (_nodeGate)
-            {
-                // A broadcast that raced the replay did not yet know this session. Retry its
-                // newest snapshot before publishing the session to future broadcasts.
-                if (version != _nodeVersion) continue;
-                _consoles[context.SessionId] = context;
-                return;
-            }
-        }
+        foreach (var node in snapshot)
+            await SendAsync(context, node, cancellationToken);
     }
 
     /// <summary>
@@ -88,7 +78,6 @@ public sealed class OpsConsoleRegistry
         lock (_nodeGate)
         {
             _latestNodes[message.NodeId] = message;
-            _nodeVersion++;
             consoles = _consoles.Values.ToArray();
         }
 
@@ -107,7 +96,6 @@ public sealed class OpsConsoleRegistry
         TMessage message,
         CancellationToken cancellationToken)
     {
-        List<Exception>? failures = null;
         foreach (var console in consoles)
         {
             try
@@ -117,12 +105,18 @@ public sealed class OpsConsoleRegistry
             catch (Exception error)
             {
                 Remove(console);
-                (failures ??= []).Add(error);
+                // A stream can disconnect between the snapshot above and this send. The
+                // disconnected console is no longer an observer, so remove it and keep the
+                // node/alert broadcast alive for the remaining consoles. Propagating this
+                // expected transport race would stop the Ops background event handler and
+                // make the next node restart observe a false Ops outage.
+                logger?.LogWarning(
+                    error,
+                    "ops console push dropped. session={SessionId}, message={MessageType}",
+                    console.SessionId,
+                    typeof(TMessage).Name);
             }
         }
-
-        if (failures is not null)
-            throw new AggregateException("One or more ops console pushes failed.", failures);
     }
 
     private static async ValueTask SendAsync<TMessage>(

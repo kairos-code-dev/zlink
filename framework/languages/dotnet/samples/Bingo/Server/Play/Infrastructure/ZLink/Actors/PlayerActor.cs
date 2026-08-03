@@ -130,10 +130,6 @@ internal sealed class PlayerActor(
                     "actor join rejected. actor={ActorId}, room={RoomId}",
                     ActorId,
                     pending.RoomId);
-                await SendJoinFailureAsync(
-                    pending.RoomId,
-                    "Rejected",
-                    cancellationToken);
                 if (_pendingJoins.Count > 0) _pendingJoins.Dequeue();
                 RememberJoinCompletion(operationId, "Rejected");
                 return;
@@ -144,10 +140,6 @@ internal sealed class PlayerActor(
                     ActorId,
                     pending.RoomId,
                     failed.Kind);
-                await SendJoinFailureAsync(
-                    pending.RoomId,
-                    failed.Kind.ToString(),
-                    cancellationToken);
                 if (_pendingJoins.Count > 0) _pendingJoins.Dequeue();
                 RememberJoinCompletion(operationId, failed.Kind.ToString());
                 return;
@@ -183,16 +175,4 @@ internal sealed class PlayerActor(
         return (state.RoomId, false);
     }
 
-    private ValueTask SendJoinFailureAsync(
-        string roomId,
-        string error,
-        CancellationToken cancellationToken)
-    {
-        return Context.BoundSession.Send(new BingoJoinFailedNotify
-            {
-                RoomId = roomId,
-                Error = error
-            })
-            .Async(cancellationToken);
-    }
 }

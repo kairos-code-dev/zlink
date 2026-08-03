@@ -1519,6 +1519,18 @@ internal sealed class ZLinkStandaloneActorRelocationRuntime(
         }
 
         var handoffId = candidate.Envelope.AggregateId.ToString("N");
+        if (actorState.Handoff.IsKnown(handoffId)
+            && !actorState.Handoff.IsCanonicalMaintenanceHandoff(handoffId))
+        {
+            // A regular remote actor handoff already owns this target state.
+            // Standalone recovery must not start a second canonical replay for
+            // the same journal; the regular completion path owns its replies
+            // and source cleanup.
+            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"standalone_recovery_deferred actor={actorState.ActorId} "
+                + $"handoff={handoffId} reason=standard_handoff_active");
+            return;
+        }
         actorState.StageRelocationSessionRoute(
             handoffId,
             relocating.BoundSessionRoute);
@@ -2905,9 +2917,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                         {
                             queued.Add(pipeline.DispatchReplayAsync(
                                     batch,
-                                    () => actorState.Handoff
-                                        .AcknowledgeReplayedFrame(
-                                            frame.ArrivalIndex),
+                                    arrivalIndex => actorState.Handoff
+                                        .AcknowledgeReplayedFrame(arrivalIndex),
                                     CancellationToken.None)
                                 .AsTask());
                         }

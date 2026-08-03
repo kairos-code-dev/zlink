@@ -336,6 +336,30 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
     }
 
+    public bool RemovePeerConnectionIfNotAdmitted(ulong connectionIntentId)
+    {
+        lock (_gate)
+        {
+            if (!_peersByIntent.TryGetValue(connectionIntentId, out var peer))
+                return true;
+            if (peer.State is MeshPeerState.Admitted or MeshPeerState.Draining)
+                return false;
+            var replacementUsesEndpoint = _peersByIntent.Values.Any(otherPeer =>
+                !ReferenceEquals(otherPeer, peer)
+                && string.Equals(
+                    otherPeer.Endpoint,
+                    peer.Endpoint,
+                    StringComparison.Ordinal)
+                && otherPeer.State != MeshPeerState.Closed);
+            _peersByIntent.Remove(connectionIntentId);
+            // Socket disconnect is endpoint-scoped. A stale non-admitted intent
+            // must not tear down a replacement intent that already claimed the
+            // same endpoint during a rolling RID handover.
+            RemovePeer(peer, disconnect: !replacementUsesEndpoint);
+            return true;
+        }
+    }
+
     public void DisconnectPeer(RoutingId peerRid, ulong lifecycleGeneration = 0)
     {
         lock (_gate)
@@ -2048,7 +2072,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         _remoteUserSpotOperations.Clear();
         _remoteActorCreateOperations.Clear();
         foreach (var mailbox in _ownedMailboxes.Values)
-            mailbox.Dispose();
+            mailbox.Dispose(this);
         _ownedMailboxes.Clear();
         foreach (var spot in _spots.Values)
             await spot.DisposeAsync().ConfigureAwait(false);
@@ -4467,6 +4491,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (stateful.TargetNodeRid != _routingId
             || stateful.TargetNodeGeneration != _lifecycleGeneration)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"stateful_route_rejected reason=node_generation "
+                + $"source={sourceRid} target={stateful.TargetNodeRid} "
+                + $"wire_node_gen={stateful.TargetNodeGeneration} "
+                + $"local_node_gen={_lifecycleGeneration}");
             if (request)
                 Reply(
                     RequestResult.Conflict,
@@ -4506,14 +4535,26 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (stateful.Command is ServiceWireConstants.Command.SpotSend
             or ServiceWireConstants.Command.SpotRequest)
         {
-            if (!_spots.TryGetValue(stateful.TargetSpotId, out var spot)
-                || spot.LifecycleGeneration != stateful.TargetSpotGeneration
+            var hasTargetSpot = _spots.TryGetValue(stateful.TargetSpotId, out var spot);
+            var localOwnerLeaseGeneration = checked((ulong)Volatile.Read(
+                ref _localOwnerLeaseGeneration));
+            if (!hasTargetSpot
+                || spot!.LifecycleGeneration != stateful.TargetSpotGeneration
                 || spot.AuthorityOwnerGeneration
                     != stateful.AuthorityOwnerGeneration
-                || stateful.OwnerLeaseGeneration
-                    != checked((ulong)Volatile.Read(
-                        ref _localOwnerLeaseGeneration)))
+                || stateful.OwnerLeaseGeneration != localOwnerLeaseGeneration)
             {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"stateful_spot_rejected source={sourceRid} "
+                    + $"target_node={stateful.TargetNodeRid} "
+                    + $"spot={stateful.TargetSpotId} "
+                    + $"wire_spot_gen={stateful.TargetSpotGeneration} "
+                    + $"wire_authority_gen={stateful.AuthorityOwnerGeneration} "
+                    + $"wire_lease_gen={stateful.OwnerLeaseGeneration} "
+                    + $"has_spot={hasTargetSpot} "
+                    + $"local_spot_gen={(hasTargetSpot ? spot!.LifecycleGeneration : 0)} "
+                    + $"local_authority_gen={(hasTargetSpot ? spot!.AuthorityOwnerGeneration : 0)} "
+                    + $"local_lease_gen={localOwnerLeaseGeneration}");
                 DisposeParts(parts);
                 if (request)
                     Reply(
@@ -5063,9 +5104,23 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
 
         var operation = record.Operation;
-        if (peer is null
-            || !peer.Admitted
-            || operation.SourceNodeRid != sourceRid
+        if (peer is null || !peer.Admitted)
+        {
+            // The command crossed the transport before the reverse admission
+            // was visible in the target peer table. This is a route-readiness
+            // outcome, not a malformed Actor reservation; the source must be
+            // allowed to abort and retry the reservation within its deadline.
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"actor_create_rejected reason=peer_not_admitted source={sourceRid} "
+                + $"operation={operation.OperationId}");
+            SendActorCreateFailure(
+                sourceRid,
+                operation.Correlation,
+                RequestResult.InternalError,
+                ServiceWireConstants.FrameworkErrorCode.RouteNotConnected);
+            return;
+        }
+        if (operation.SourceNodeRid != sourceRid
             || operation.SourceNodeGeneration != peer.LifecycleGeneration)
         {
             SendActorCreateFailure(
@@ -5465,8 +5520,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ServiceWireConstants.Command command,
         ZLinkServiceWireCodec.AdmissionRecord admission)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"mesh_peer_admission_received local={_routingId} peer={sourceRid} "
+            + $"command={command} endpoint={admission.AdvertisedEndpoint} "
+            + $"lifecycle={admission.LifecycleGeneration} "
+            + $"revision={admission.DescriptorRevision}");
         if (!string.Equals(admission.MeshName, _meshName, StringComparison.Ordinal))
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"mesh_peer_admission_rejected local={_routingId} peer={sourceRid} "
+                + $"reason=mesh_mismatch expected={_meshName} actual={admission.MeshName}");
             Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
             return;
         }
@@ -5492,6 +5555,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (peer.ExpectedRid is { } expected && expected != sourceRid)
             {
                 peer.State = MeshPeerState.Error;
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"mesh_peer_admission_rejected local={_routingId} peer={sourceRid} "
+                    + $"reason=rid_mismatch expected={expected} actual={sourceRid}");
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
                 return;
             }
@@ -5511,6 +5577,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     admission))
             {
                 peer.State = MeshPeerState.Error;
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"mesh_peer_admission_rejected local={_routingId} peer={sourceRid} "
+                    + $"reason=route_mismatch expected_endpoint="
+                    + $"{(hasExpectedRoute ? expectedRoute.Endpoint : peer.Endpoint)} "
+                    + $"actual_endpoint={admission.AdvertisedEndpoint} "
+                    + $"expected_lifecycle="
+                    + $"{(hasExpectedRoute ? expectedRoute.LifecycleGeneration : 0)} "
+                    + $"actual_lifecycle={admission.LifecycleGeneration}");
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
                 return;
             }
@@ -5619,6 +5693,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                         && ReferenceEquals(indexed, peer))
                         _peersByRid.Remove(sourceRid);
                 }
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"mesh_peer_admission_rejected local={_routingId} peer={sourceRid} "
+                    + $"reason=guard decision={decision} command={command}");
                 Publish(MeshMonitorEventKind.ProtocolError, peerRid: sourceRid);
                 Publish(MeshMonitorEventKind.PeerRejected, peerRid: sourceRid);
                 return;
@@ -5652,6 +5729,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             _state = MeshNodeState.Ready;
         }
 
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"mesh_peer_admit local={_routingId} peer={sourceRid} "
+            + $"command={command} direction={peer.Direction} "
+            + $"lifecycle={peer.LifecycleGeneration} state={peer.State}");
         if (command == ServiceWireConstants.Command.Hello)
             SendAdmission(peer, ServiceWireConstants.Command.Admit);
         Publish(MeshMonitorEventKind.PeerAdmitted, peerRid: sourceRid);
@@ -6512,16 +6593,27 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (!mailbox.TryEnqueue(
                 queued,
                 MailboxMessageBudget,
-                MailboxByteBudget))
+                MailboxByteBudget,
+                this))
         {
             RecordInboundBackpressureDrop(record.Kind);
             queued.Dispose();
             Publish(MeshMonitorEventKind.Backpressured);
             return;
         }
-        Interlocked.Increment(ref _queuedMessages);
-        Interlocked.Add(ref _queuedBytes, checked((long)queued.PendingBytes));
         SignalReadyIfNeeded();
+    }
+
+    private void RecordOwnedRecordEnqueued(ulong pendingBytes)
+    {
+        Interlocked.Increment(ref _queuedMessages);
+        Interlocked.Add(ref _queuedBytes, checked((long)pendingBytes));
+    }
+
+    private void RecordOwnedRecordDequeued(ulong pendingBytes)
+    {
+        Interlocked.Decrement(ref _queuedMessages);
+        Interlocked.Add(ref _queuedBytes, -checked((long)pendingBytes));
     }
 
     private ZLinkInboundDispatchLease AdmitApplication(ulong payloadBytes)
@@ -6570,10 +6662,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         var count = 0;
         var maximumRecords = Math.Min(ReceiveBatchSize, batch.MaximumRecords);
         while (count < maximumRecords
-               && mailbox.TryDequeue(out var queued))
+               && mailbox.TryDequeue(this, out var queued))
         {
-            Interlocked.Decrement(ref _queuedMessages);
-            Interlocked.Add(ref _queuedBytes, -checked((long)queued.PendingBytes));
             batch.Add(queued.Record, queued.TakeParts());
             count++;
         }
@@ -6685,6 +6775,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             _socket.Connect(peer.Endpoint);
         }
         peer.NextAdmissionTimestamp = 0;
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"mesh_peer_connect local={_routingId} peer={peer.ExpectedRid?.ToString() ?? "<unknown>"} "
+            + $"endpoint={peer.Endpoint} intent={peer.Intent}");
         Publish(MeshMonitorEventKind.PeerConnecting, peerRid: peer.ExpectedRid ?? default);
     }
 
@@ -6717,6 +6810,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             channels,
             (byte)_objectRole,
             runtimeState);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"mesh_peer_admission_sent local={_routingId} target={peer.RoutingId} "
+            + $"command={command} endpoint={_advertisedEndpoint} "
+            + $"lifecycle={_lifecycleGeneration} revision={descriptorRevision}");
         SendControl(target, descriptor);
     }
 
@@ -6834,6 +6931,13 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void RetireDuplicatePeer(Peer peer)
     {
+        if (peer.Admitted
+            || peer.State != MeshPeerState.Configured
+            || _peersByIntent.ContainsKey(peer.Intent))
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"mesh_peer_duplicate_retire local={_routingId} peer={peer.RoutingId} "
+                + $"expected={peer.ExpectedRid?.ToString() ?? "<unknown>"} "
+                + $"endpoint={peer.Endpoint} intent={peer.Intent} state={peer.State}");
         _peersByIntent.Remove(peer.Intent);
         if (!peer.RoutingId.IsEmpty
             && _peersByRid.TryGetValue(peer.RoutingId, out var indexed)
@@ -6863,6 +6967,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void RemovePeer(Peer peer, bool disconnect)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"mesh_peer_remove local={_routingId} peer={peer.RoutingId} "
+            + $"expected={peer.ExpectedRid?.ToString() ?? "<unknown>"} "
+            + $"endpoint={peer.Endpoint} intent={peer.Intent} state={peer.State} "
+            + $"disconnect={disconnect}");
         _peersByIntent.Remove(peer.Intent);
         if (!peer.RoutingId.IsEmpty
             && _peersByRid.TryGetValue(peer.RoutingId, out var indexed)
@@ -6962,11 +7071,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             throw new ArgumentException(
                 "The observed owner node routing id is required.",
                 nameof(targetNodeRid));
-        if (objectGeneration is 0 or > long.MaxValue)
+        // Internal route fences carry the native ulong generation space. The
+        // public SpotRef/ActorRef object-generation contract is bounded by
+        // long.MaxValue, but an Entry Spot uses the MeshNode lifecycle
+        // generation and can legitimately occupy the upper half of ulong.
+        if (objectGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(objectGeneration));
-        if (authorityOwnerGeneration is 0 or > long.MaxValue)
+        if (authorityOwnerGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(authorityOwnerGeneration));
-        if (ownerLeaseGeneration is 0 or > long.MaxValue)
+        if (ownerLeaseGeneration == 0)
             throw new ArgumentOutOfRangeException(nameof(ownerLeaseGeneration));
     }
 
@@ -7079,7 +7192,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         ulong AuthorityOwnerGeneration,
         ulong OwnerLeaseGeneration);
 
-    private sealed class OwnedMailbox : IDisposable
+    private sealed class OwnedMailbox
     {
         private readonly Queue<QueuedRecord> _records = new();
         private readonly object _gate = new();
@@ -7116,7 +7229,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         internal bool TryEnqueue(
             QueuedRecord record,
             ulong messageBudget,
-            ulong byteBudget)
+            ulong byteBudget,
+            ZLinkManagedMeshNode owner)
         {
             lock (_gate)
             {
@@ -7127,6 +7241,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     return false;
                 _records.Enqueue(record);
                 _pendingBytes = checked(_pendingBytes + record.PendingBytes);
+                owner.RecordOwnedRecordEnqueued(record.PendingBytes);
                 return true;
             }
         }
@@ -7174,7 +7289,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             }
         }
 
-        internal bool TryDequeue(out QueuedRecord record)
+        internal bool TryDequeue(
+            ZLinkManagedMeshNode owner,
+            out QueuedRecord record)
         {
             lock (_gate)
             {
@@ -7185,6 +7302,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 }
                 record = _records.Dequeue();
                 _pendingBytes -= record.PendingBytes;
+                owner.RecordOwnedRecordDequeued(record.PendingBytes);
                 return true;
             }
         }
@@ -7195,12 +7313,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _claimed = false;
         }
 
-        public void Dispose()
+        public void Dispose(ZLinkManagedMeshNode owner)
         {
             lock (_gate)
             {
                 while (_records.Count != 0)
-                    _records.Dequeue().Dispose();
+                {
+                    var record = _records.Dequeue();
+                    owner.RecordOwnedRecordDequeued(record.PendingBytes);
+                    record.Dispose();
+                }
                 _pendingBytes = 0;
                 _claimed = false;
             }

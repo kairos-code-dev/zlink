@@ -268,9 +268,13 @@ internal sealed class ZLinkSessionRouteUnsealHandler(ZLinkFrameworkRuntime runti
                 message.ObjectGeneration,
                 message.TargetMeshName,
                 RoutingId.FromHex(message.TargetNodeRid)));
+        var acknowledged = runtime.UnsealCommittedSessionActorRoute(request);
+        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"route_unseal_result actor={message.ActorId} ack={acknowledged} "
+            + $"accepted_high_water={message.AcceptedHighWater} handoff={message.HandoffId}");
         return ValueTask.FromResult(
             new ZLinkSessionRouteCommitReply(
-                runtime.UnsealCommittedSessionActorRoute(request),
+                acknowledged,
                 message.AcceptedHighWater));
     }
 }
@@ -420,8 +424,10 @@ internal sealed class ZLinkRemoteActorReplyRelayHandler(ZLinkFrameworkRuntime ru
         ZLinkRouteMessageContext context,
         CancellationToken cancellationToken)
     {
-        _ = context;
         cancellationToken.ThrowIfCancellationRequested();
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"remote_actor_reply_handler actor={message.ActorId} request_id={message.RequestId} "
+            + $"source_node={context.SourceNodeRid} responder_node={message.ResponderNodeRid}");
         await runtime.DeliverRemoteActorReplyAsync(
                 message.ActorId,
                 message.RequestId,

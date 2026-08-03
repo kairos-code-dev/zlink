@@ -1,6 +1,6 @@
 # ZLink Framework .NET Samples
 
-.NET samples demonstrate the public 10.0.0 framework contract through separate
+.NET samples demonstrate the public 11.0.0 framework contract through separate
 server-role processes and executable client scenarios. Their domain flows and
 verification rules follow the
 [common sample scenarios](../../../doc/framework/common/sample/README.ko.md).

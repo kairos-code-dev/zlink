@@ -1,3 +1,5 @@
+using Zlink.Framework.Runtime.Diagnostics;
+
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
@@ -323,6 +325,10 @@ internal sealed class ZLinkAutoConnectReconciler
             await PublishLocalAsync(deadline.Token).ConfigureAwait(false);
             rows = await _peers.ListLiveMeshNodesAsync(_local.MeshName, deadline.Token)
                 .ConfigureAwait(false);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"autoconnect_snapshot local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                + $"mesh={_local.MeshName} rows={rows.Count} "
+                + $"rids={string.Join(',', rows.Select(static row => row.Rid.ToString()))}");
             if (!_runtime.GetHealthSnapshot().Healthy)
             {
                 EnterStoreFailure();
@@ -340,12 +346,16 @@ internal sealed class ZLinkAutoConnectReconciler
             // configuration failure, not a transient store outage.
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // Fail-static: keep the last desired set, compute no diff, and
             // keep already-ready connections alive. While the store is
             // unreachable the loop cannot accept expanded desired sets, so
             // no new outbound connects are started after the failure.
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"autoconnect_tick_failed local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                + $"mesh={_local.MeshName} exception={exception.GetType().Name} "
+                + $"message={exception.Message}");
             EnterStoreFailure();
             return;
         }
@@ -363,6 +373,11 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         var desired = ZLinkAutoConnectPlanner.ComputeDesired(_local, rows);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"autoconnect_desired local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+            + $"mesh={_local.MeshName} count={desired.Count} "
+            + $"targets={string.Join(',', desired.Values.Select(static target =>
+                $"{target.NodeRid}:{(target.InitiatesConnection ? "dial" : "await")}"))}");
         Volatile.Write(
             ref _discoveredPeerCount,
             ZLinkAutoConnectPlanner.CountDiscoveredPeers(_local, rows));
@@ -416,6 +431,9 @@ internal sealed class ZLinkAutoConnectReconciler
                 // A draining descriptor is not selected for new connections.
                 if (target.Draining) continue;
                 var accepted = _executor.Connect(target);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"autoconnect_add local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                    + $"target={target.NodeRid} endpoint={target.Endpoint} accepted={accepted}");
                 if (accepted)
                 {
                     _active[key] = target;
@@ -426,9 +444,15 @@ internal sealed class ZLinkAutoConnectReconciler
             if (RequiresConnectionHandover(current, target))
             {
                 // An endpoint change needs a new transport connection.
-                if (!_executor.Disconnect(current)) continue;
+                var disconnected = _executor.Disconnect(current);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"autoconnect_handover local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                    + $"old={current.NodeRid}@{current.Endpoint} new={target.NodeRid}@{target.Endpoint} "
+                    + $"disconnect={disconnected}");
+                if (!disconnected) continue;
                 _active.Remove(key);
-                if (_executor.Connect(target))
+                var connected = _executor.Connect(target);
+                if (connected)
                 {
                     _active[key] = target;
                 }
@@ -440,6 +464,10 @@ internal sealed class ZLinkAutoConnectReconciler
                 // again here races the reconnect and can leave a stale pipe beside the
                 // replacement connection, so only refresh the reconciler's metadata.
                 _active[key] = target;
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"autoconnect_refresh local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                    + $"target={target.NodeRid} endpoint={target.Endpoint} owner_changed={OwnerChanged(current, target)} "
+                    + $"draining={target.Draining}");
             }
         }
 
@@ -448,7 +476,12 @@ internal sealed class ZLinkAutoConnectReconciler
             var toRemove = _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray();
             foreach (var key in toRemove)
             {
-                if (_executor.Disconnect(_active[key]))
+                var target = _active[key];
+                var disconnected = _executor.Disconnect(target);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"autoconnect_remove local={_local.NodeRid?.ToString() ?? "<unknown>"} "
+                    + $"target={target.NodeRid} endpoint={target.Endpoint} disconnected={disconnected}");
+                if (disconnected)
                 {
                     _active.Remove(key);
                 }

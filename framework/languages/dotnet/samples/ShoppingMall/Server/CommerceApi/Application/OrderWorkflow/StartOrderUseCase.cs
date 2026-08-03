@@ -21,7 +21,9 @@ internal sealed class StartOrderUseCase(
             var existingState = await readModels.FindAsync(existing.OrderId, cancellationToken)
                                 ?? throw new InvalidOperationException(
                                     $"Started order '{existing.OrderId}' has no projection.");
-            return new StartOrderRes(existingState.OrderId, existingState.Status.ToString());
+            return new StartOrderRes(
+                existingState.OrderId,
+                OrderContractMapper.ToContract(existingState));
         }
 
         var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
@@ -33,7 +35,7 @@ internal sealed class StartOrderUseCase(
         var state = existing is null
             ? await workflows.StartAsync(command, cancellationToken)
             : await ReadOrStartAsync(mapping.OrderId, command, cancellationToken);
-        return new StartOrderRes(state.OrderId, state.Status);
+        return new StartOrderRes(state.OrderId, state);
 
         async ValueTask<OrderState> ReadOrStartAsync(
             string orderId,
@@ -98,7 +100,7 @@ internal sealed class PrepareInventoryReservedOrderUseCase(
             cancellationToken);
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
         var state = await workflows.PrepareInventoryReservedCheckpointAsync(command, cancellationToken);
-        return new StartOrderRes(state.OrderId, state.Status);
+        return new StartOrderRes(state.OrderId, state);
     }
 }
 

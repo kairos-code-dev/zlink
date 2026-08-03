@@ -118,16 +118,20 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("ApplyGameplayEventReq", topology, StringComparison.Ordinal);
         Assert.DoesNotContain("ApplyGameplayEventRes", topology, StringComparison.Ordinal);
         Assert.Contains("record GameplayMsg", messages, StringComparison.Ordinal);
-        Assert.Contains("byte[] Payload", messages, StringComparison.Ordinal);
+        Assert.Contains("JsonElement Payload", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("byte[] Payload", messages, StringComparison.Ordinal);
         Assert.Contains("long Version", messages, StringComparison.Ordinal);
         Assert.Contains("LastSourceEventId", messages, StringComparison.Ordinal);
         Assert.Contains("apiAStream.Request(new JoinSessionReq", clientScenario, StringComparison.Ordinal);
         Assert.Contains("apiAStream.Request(new KillMonsterReq", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("apiAStream.Request(new UnlockFeatureReq", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("apiAStream.Request(new CompleteMissionReq", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("apiAStream.Request(new EnterAreaReq", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("apiBStream.Request(new CollectItemReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiAStream.Send(new EnterAreaReq", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("apiBStream.Send(new CollectItemReq", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnlockFeatureReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompleteMissionReq", messages, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnlockFeatureReq", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompleteMissionReq", clientScenario, StringComparison.Ordinal);
         Assert.Contains("/self-check/owner/player-alice/close", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("SyncQuestProgressReq(\"player-alice\")", clientScenario, StringComparison.Ordinal);
         Assert.DoesNotContain("Post(\"/combat/kill\")", clientScenario, StringComparison.Ordinal);
         Assert.DoesNotContain("Post(\"/inventory/collect\")", clientScenario, StringComparison.Ordinal);
         Assert.Contains("class JoinSessionHandler", sessionHandlers, StringComparison.Ordinal);
@@ -135,10 +139,11 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("SubscribeQuestHandler", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("class KillMonsterHandler", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("class CollectItemHandler", sessionHandlers, StringComparison.Ordinal);
-        Assert.Contains("class CompleteMissionHandler", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("class EnterAreaHandler", sessionHandlers, StringComparison.Ordinal);
-        Assert.Contains("class UnlockFeatureHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("class CompleteMissionHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("class UnlockFeatureHandler", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotActorRequestHandler", sessionHandlers, StringComparison.Ordinal);
+        Assert.Contains("IZLinkEntrySpotActorSendHandler", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("ZLinkSpotActorRequestHandler(nameof(KillMonsterReq))", sessionHandlers,
             StringComparison.Ordinal);
         Assert.DoesNotContain("IZLinkSessionPacketHandler<IZLinkSessionContext, KillMonsterReq>", sessionHandlers,
@@ -217,7 +222,7 @@ public sealed partial class RegressionTests
         Assert.Contains("SendToSpot(playerId, new ClosePlayerQuestMsg())", missionProgram,
             StringComparison.Ordinal);
         Assert.DoesNotContain("spots.FindAsync", missionProgram, StringComparison.Ordinal);
-        Assert.Contains("spot.Context.CloseAsync(cancellationToken)", playerQuestSpot,
+        Assert.Contains("Context.CloseAsync(cancellationToken)", playerQuestSpot,
             StringComparison.Ordinal);
         Assert.Contains("ReadOwnerRehydrateEvidenceAsync", gameApiProgram, StringComparison.Ordinal);
         Assert.Contains("rehydrates.GetValueOrDefault(\"player-alice\") >= 2", gameApiProgram, StringComparison.Ordinal);
@@ -258,6 +263,8 @@ public sealed partial class RegressionTests
             "Store",
             "QuestContractMapper.cs"));
         Assert.Contains("static class QuestContractMapper", mapper, StringComparison.Ordinal);
-        Assert.Contains("JsonSerializer.SerializeToUtf8Bytes", mapper, StringComparison.Ordinal);
+        Assert.Contains("JsonSerializer.SerializeToElement", mapper, StringComparison.Ordinal);
+        Assert.DoesNotContain("JsonSerializer.SerializeToUtf8Bytes", mapper, StringComparison.Ordinal);
+        Assert.DoesNotContain("JsonDocument.Parse", mapper, StringComparison.Ordinal);
     }
 }

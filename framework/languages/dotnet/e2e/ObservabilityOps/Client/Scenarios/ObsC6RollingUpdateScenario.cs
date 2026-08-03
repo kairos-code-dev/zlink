@@ -1,7 +1,7 @@
 // Verifies OBS-C6 relocates a host only to the requested higher version.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
-using Zlink.Framework.Contracts.Errors;
+using Systems.Zlink.Stream.Connector.Contracts;
 
 namespace ObservabilityOps.Client.Scenarios;
 
@@ -129,14 +129,12 @@ internal static class ObsC6RollingUpdateScenario
             {
                 break;
             }
-            catch (ZLinkFrameworkException exception)
-                when (exception.Kind is
-                    ZLinkFrameworkErrorKind.Unavailable
-                    or ZLinkFrameworkErrorKind.DeadlineExceeded
-                    or ZLinkFrameworkErrorKind.ShuttingDown)
+            catch (ZlinkStreamException exception)
+                when (ScenarioContext.IsTransientTrafficFailure(exception))
             {
-                // A new request receives an explicit moving or timeout result.
-                // The same operation is not retried.
+                // The Stream connector exposes moving as a RemoteError and a
+                // request deadline as RequestTimeout. Both are terminal
+                // results for this request; the same operation is not retried.
                 terminalAttempts++;
             }
         }

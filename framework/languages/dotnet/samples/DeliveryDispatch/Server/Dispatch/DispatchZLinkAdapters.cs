@@ -49,7 +49,7 @@ internal sealed class DeliveryStatusPublisher(IZLinkRouteClient channels)
                 delivery.CustomerId,
                 status,
                 courierId,
-                DateTimeOffset.UtcNow),
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
             cancellationToken);
     }
 }

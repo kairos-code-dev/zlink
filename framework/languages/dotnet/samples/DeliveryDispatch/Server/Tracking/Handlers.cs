@@ -24,7 +24,7 @@ internal sealed class DeliveryStatusChangedHandler(
             request.CustomerId,
             request.Status,
             request.CourierId,
-            request.OccurredAt);
+            request.OccurredAtUnixMs);
         await actors.SendToActor(request.CustomerId, updated)
             .Async(cancellationToken);
         logger.LogInformation(

@@ -26,7 +26,8 @@ public sealed record OpsSettings(
 public sealed record ZoneWorldClientSettings(
     string GatewayEndpoint,
     string OpsEndpoint,
-    string Scenarios = "all");
+    string Scenarios = "all",
+    bool StreamTrace = false);
 
 public sealed record ZoneWorldConfiguration(
     ZoneWorldSettings Shared,

@@ -1,5 +1,6 @@
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Errors;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
 using ZoneWorld.Server.ZoneNode.Application.Zone;
@@ -8,14 +9,52 @@ using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Monitoring;
 
-/// <summary>
-/// Reports provider-neutral spot timer failures to Ops when they occur.
-/// </summary>
 /// <summary>Sends this node's reports to Ops over <c>zoneworld.report</c>.</summary>
 internal sealed class OpsReportAdapter(
     IZLinkRouteClient channels,
     NodeMaintenancePolicy maintenance) : IOpsReportPort
 {
+    public async ValueTask ReportSpotEventAsync(
+        string kind,
+        string detail,
+        CancellationToken cancellationToken)
+    {
+        var message = new ReportSpotEventMsg(
+            maintenance.OwnNodeId,
+            kind,
+            detail,
+            DateTimeOffset.UtcNow.ToString("O"));
+
+        // The report channel is an application-owned one-way endpoint. A node can
+        // start its timer before Ops has finished discovering that endpoint, so
+        // retry only the bounded readiness failure and keep the original timer
+        // exception visible to the caller.
+        const int maxAttempts = 50;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                await channels
+                    .SendToChannel(ZoneWorldNames.ReportChannel, message)
+                    .Async(cancellationToken);
+                return;
+            }
+            catch (ZLinkFrameworkException error)
+                when (error.Kind is ZLinkFrameworkErrorKind.NotFound
+                    or ZLinkFrameworkErrorKind.Unavailable)
+            {
+                if (attempt == maxAttempts - 1)
+                {
+                    throw;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException("Spot event report retry loop did not complete.");
+    }
+
     public async ValueTask ReportNodeStatusAsync(
         IReadOnlyList<string> zones,
         int playerCount,

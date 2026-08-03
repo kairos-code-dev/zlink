@@ -576,6 +576,7 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
         ulong expectedLifecycleGeneration);
     void RemovePeerExpectation(RoutingId peerRid, string endpoint);
     void RemovePeerConnection(ulong connectionIntentId);
+    bool RemovePeerConnectionIfNotAdmitted(ulong connectionIntentId);
     void DisconnectPeer(RoutingId peerRid, ulong lifecycleGeneration = 0);
     void AddChannel(string channelName);
     void SetChannelWeight(string channelName, uint weight);

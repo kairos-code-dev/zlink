@@ -68,7 +68,11 @@ internal static class ZLinkActorBoundSessionRelay
                 out var bindingGeneration,
                 out var sessionOwnerNodeGeneration))
             return false;
-        if (!state.TryGetBoundSession(out var current)
+        // Final relocation replay runs before the session-owner route commit.
+        // The target therefore exposes the exact committed target projection
+        // through the inbound view even though _boundSession is not promoted
+        // until the route update is acknowledged.
+        if (!state.TryGetBoundSessionForInbound(out var current)
             || !string.Equals(
                 current.BindingToken,
                 decodedBindingToken,
@@ -188,6 +192,10 @@ internal static class ZLinkActorBoundSessionRelay
         CancellationToken cancellationToken,
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? directReply = null)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_reply_begin actor={actorId} request_id={requestId} "
+            + $"flags={flags} no_bind={isNoBind} capability={(!string.IsNullOrWhiteSpace(replyCapability))} "
+            + $"source_node={sourceNodeRid} direct={directReply is not null}");
         if (isNoBind)
         {
             await ReplyNoBindAsync(
@@ -274,6 +282,11 @@ internal static class ZLinkActorBoundSessionRelay
         CancellationToken cancellationToken)
     {
         var frame = reply.ToFrame(requestHeader);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_reply_no_bind_begin actor={actorRef.ActorId} request_id={requestId} "
+            + $"source_node={sourceNodeRid} source_session={sourceSessionRid} "
+            + $"capability={(!string.IsNullOrWhiteSpace(replyCapability))} "
+            + $"direct={directReply is not null}");
         if (directReply is not null)
             await ZLinkRetryingSubmitter.Async(
                     () =>
@@ -300,6 +313,8 @@ internal static class ZLinkActorBoundSessionRelay
         }
         runtime.LogActorHandoff(
             $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"actor_reply_no_bind_done actor={actorRef.ActorId} request_id={requestId}");
     }
 
     private static async ValueTask SendFrameWithRetryAsync(

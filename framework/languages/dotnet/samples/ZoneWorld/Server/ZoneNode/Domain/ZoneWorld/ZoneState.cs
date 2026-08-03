@@ -26,10 +26,14 @@ public sealed class ZoneState(string zoneId)
     public void Enter(string playerId, int x, int y, bool isBot) =>
         _residents[playerId] = new ResidentPlayer(playerId, new PlayerPosition(x, y), isBot);
 
-    public void UpdatePosition(string playerId, int x, int y)
+    public void UpdatePosition(string playerId, int x, int y, bool isBot)
     {
         if (_residents.TryGetValue(playerId, out var resident))
-            _residents[playerId] = resident with { Position = new PlayerPosition(x, y) };
+            _residents[playerId] = resident with
+            {
+                Position = new PlayerPosition(x, y),
+                IsBot = isBot
+            };
     }
 
     public void Leave(string playerId) => _residents.Remove(playerId);

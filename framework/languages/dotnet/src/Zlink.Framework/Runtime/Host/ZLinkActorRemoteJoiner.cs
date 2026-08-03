@@ -36,6 +36,12 @@ internal sealed class ZLinkActorRemoteJoiner(
             target.DescriptorRevision,
             _ => ValueTask.FromResult<
                 (ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>(null));
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"entry_target_resolved node={target.Rid} spot={target.EntrySpotId} "
+            + $"spot_gen={snapshot.Generation} node_gen={snapshot.NodeGeneration} "
+            + $"authority_gen={snapshot.AuthorityOwnerGeneration} "
+            + $"lease_gen={snapshot.OwnerLeaseGeneration} "
+            + $"descriptor_revision={target.DescriptorRevision}");
         return SubmitRoutedJoinActorAsync(
             actor,
             actorRef,
@@ -199,6 +205,22 @@ internal sealed class ZLinkActorRemoteJoiner(
                 ZLinkRetryAdvice.RetryAfterBackoff);
         return remaining;
     }
+
+    private static bool IsAdmissionTransportRetryable(Exception exception) =>
+        exception is ZLinkFrameworkException
+        {
+            Kind: ZLinkFrameworkErrorKind.Unavailable
+        }
+        || exception is ZlinkSubmitException
+        {
+            Result: ZlinkSubmitException.ErrorCode.NotConnected
+                or ZlinkSubmitException.ErrorCode.Backpressured
+        };
+
+    private static string DescribeAdmissionTransportFailure(Exception exception) =>
+        exception is ZLinkFrameworkException frameworkError
+            ? $"{frameworkError.Kind}:{frameworkError.Message}"
+            : $"{exception.GetType().Name}:{exception.Message}";
 
     private async ValueTask<ZLinkActorJoinResult> SubmitRoutedJoinActorCoreAsync(
         IZLinkActor actor,
@@ -439,54 +461,67 @@ internal sealed class ZLinkActorRemoteJoiner(
         var admissionDeadline = absoluteDeadline;
         var admission = await ZLinkSpotHandleRequestExecution.ExecuteAsync(
                 target,
-                async snapshot =>
-                {
-                    var requestTimeout = RemainingTimeout(absoluteDeadline);
-                    var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
-                        ZLinkMessageKind.Request,
-                        snapshot.RouterChannelId,
-                        ZLinkRemoteActorJoinPackets.AdmissionPacketName,
-                        requestTimeout);
-                    var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
-                        admissionHeader,
-                        actor.Context.ActorId,
-                        actorType,
-                        handoffId,
-                        admissionDeadline,
-                         sourceSpotId,
-                         actorRef.NodeRid,
-                         request,
-                         registration.Codecs,
-                         actorRef.Generation,
-                         actorAuthorityOwnerGeneration,
-                         predictedPayloadBytes,
-                         (ulong)snapshot.Generation,
-                         snapshot.AuthorityOwnerGeneration);
-                    //  Both ends of the admission round trip are traced so a
-                    //  stall shows which side never moved.
-                    ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"admit_request_sent actor={actor.Context.ActorId} "
-                        + $"target_node={snapshot.NodeRid} spot={snapshot.SpotId}");
-                    var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                snapshot => ZLinkReconciliationRunner.RunAsync(
+                    async token =>
+                    {
+                        var requestTimeout = RemainingTimeout(absoluteDeadline);
+                        var admissionHeader = ZLinkClientCallCodec.CreateEnvelope(
+                            ZLinkMessageKind.Request,
                             snapshot.RouterChannelId,
-                            snapshot.NodeRid,
-                            snapshot.SpotId,
+                            ZLinkRemoteActorJoinPackets.AdmissionPacketName,
+                            requestTimeout);
+                        var admissionParts = ZLinkRemoteActorJoinPackets.EncodeAdmissionRequest(
+                            admissionHeader,
+                            actor.Context.ActorId,
+                            actorType,
+                            handoffId,
+                            admissionDeadline,
+                            sourceSpotId,
+                            actorRef.NodeRid,
+                            request,
+                            registration.Codecs,
+                            actorRef.Generation,
+                            actorAuthorityOwnerGeneration,
+                            predictedPayloadBytes,
                             (ulong)snapshot.Generation,
-                            snapshot.NodeGeneration,
-                            snapshot.AuthorityOwnerGeneration,
-                            snapshot.OwnerLeaseGeneration,
-                            admissionParts,
-                            requestTimeout,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    ZLinkFrameworkDebugLog.SpotDiscovery(
-                        $"admit_reply_received actor={actor.Context.ActorId}");
-                    var reply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
-                        replyParts,
-                        actor.Context.ActorId,
-                        snapshot.SpotId);
-                    return (Snapshot: snapshot, Reply: reply);
-                },
+                            snapshot.AuthorityOwnerGeneration);
+                        // Both ends of the admission round trip are traced so
+                        // a stall shows which side never moved. A retry is
+                        // safe here because route convergence rejects the
+                        // request before the target admission handler runs.
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"admit_request_sent actor={actor.Context.ActorId} "
+                            + $"target_node={snapshot.NodeRid} spot={snapshot.SpotId} "
+                            + $"spot_gen={snapshot.Generation} "
+                            + $"node_gen={snapshot.NodeGeneration} "
+                            + $"authority_gen={snapshot.AuthorityOwnerGeneration} "
+                            + $"lease_gen={snapshot.OwnerLeaseGeneration}");
+                        var replyParts = await runtime.RequestToSpotViaRouterChannelAsync(
+                                snapshot.RouterChannelId,
+                                snapshot.NodeRid,
+                                snapshot.SpotId,
+                                (ulong)snapshot.Generation,
+                                snapshot.NodeGeneration,
+                                snapshot.AuthorityOwnerGeneration,
+                                snapshot.OwnerLeaseGeneration,
+                                admissionParts,
+                                requestTimeout,
+                                token)
+                            .ConfigureAwait(false);
+                        ZLinkFrameworkDebugLog.SpotDiscovery(
+                            $"admit_reply_received actor={actor.Context.ActorId}");
+                        var reply = ZLinkRemoteActorJoinPackets.DecodeAdmissionReplyAndDispose(
+                            replyParts,
+                            actor.Context.ActorId,
+                            snapshot.SpotId);
+                        return (Snapshot: snapshot, Reply: reply);
+                    },
+                    exception => ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"admit_transport_retry actor={actor.Context.ActorId} "
+                        + $"target_node={snapshot.NodeRid} "
+                        + $"error={DescribeAdmissionTransportFailure(exception)}"),
+                    cancellationToken,
+                    static exception => !IsAdmissionTransportRetryable(exception)),
                 cancellationToken)
             .ConfigureAwait(false);
         var targetNodeRid = admission.Snapshot.NodeRid;

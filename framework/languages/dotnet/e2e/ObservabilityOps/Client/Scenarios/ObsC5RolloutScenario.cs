@@ -115,6 +115,13 @@ internal static class ObsC5RolloutScenario
         ZlinkStreamAssert.Ensure(sourceNode != blockedNode,
             "OBS-C5 placed new work on a node already marked for relocation.");
 
+        // The placement loop may have created and closed a temporary room on
+        // the observer node before it found the blocked node. Capture the
+        // public evidence baseline so that only effects introduced by the two
+        // preflight attempts are classified below.
+        var beforePreflight = (await sourceHost.Get("/evidence")
+            .Query("actorId", actorId)
+            .Async<EvidenceSnapshot>()).Body;
         var planned = (await sourceHost.Post("/relocate/direct")
             .Body(new RelocateHostReq(
                 "planned-maintenance", null, 1000))
@@ -167,20 +174,20 @@ internal static class ObsC5RolloutScenario
             "OBS-C5 handler admission did not remain on the source.");
         //  두 부작용이 한 단언에 묶여 있어 어느 쪽이 위반인지 알 수 없었다.
         var closingEntries = unchanged.Entries
+            .Skip(beforePreflight.Entries.Length)
             .Where(entry => entry.Contains("spot-closing", StringComparison.Ordinal))
             .ToArray();
-        var startedSamples = unchanged.Metrics
+        var startedBefore = beforePreflight.Metrics
             .Where(sample => sample.Name == "zlink.relocation.started")
-            .Select(sample =>
-                $"{sample.Name}{{"
-                + string.Join(",", sample.Tags.Select(tag => $"{tag.Key}={tag.Value}"))
-                + $"}}={sample.Value}")
-            .ToArray();
+            .Sum(sample => sample.Value);
+        var startedAfter = unchanged.Metrics
+            .Where(sample => sample.Name == "zlink.relocation.started")
+            .Sum(sample => sample.Value);
         ZlinkStreamAssert.Ensure(
-            closingEntries.Length == 0 && startedSamples.Length == 0,
+            closingEntries.Length == 0 && startedAfter == startedBefore,
             $"OBS-C5 preflight blocker created relocation side effects. "
             + $"closing=[{string.Join(";", closingEntries)}] "
-            + $"started=[{string.Join(";", startedSamples)}]");
+            + $"started_before={startedBefore} started_after={startedAfter}");
     }
 
 

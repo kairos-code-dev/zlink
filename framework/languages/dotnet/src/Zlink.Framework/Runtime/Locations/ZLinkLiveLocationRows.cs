@@ -68,9 +68,17 @@ internal sealed class ZLinkLiveLocationRows(ZLinkOwnerLeaseTracker leaseTracker)
                         cancellationToken)
                     .ConfigureAwait(false);
             if (!ownerLive)
+            {
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"live_row_filter rejected=owner_not_live owner={ownerOf(row)}");
                 continue;
+            }
 
-            if (acceptObserved(row)) live.Add(row);
+            if (acceptObserved(row))
+                live.Add(row);
+            else
+                Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"live_row_filter rejected=stale_observation owner={ownerOf(row)}");
         }
 
         return live;

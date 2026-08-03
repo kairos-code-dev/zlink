@@ -460,6 +460,35 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
+    public async Task Spot_Handle_Unavailable_Route_Is_Invalidated_Without_Resubmit()
+    {
+        var invalidated = false;
+        var handle = new ZLinkResolvedSpotHandle(
+            new ZLinkSpotHandleSnapshot(
+                "play",
+                RoutingId.From("node-1"),
+                "spot-unavailable",
+                1),
+            1,
+            _ => ValueTask.FromResult<
+                (ZLinkSpotHandleSnapshot Snapshot, ulong Version)?>(null),
+            () => invalidated = true);
+
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await ZLinkSpotHandleRequestExecution.ExecuteAsync<bool>(
+                handle,
+                _ => ValueTask.FromException<bool>(
+                    new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.Unavailable,
+                        "stale route",
+                        ZLinkRetryAdvice.RetryAfterBackoff)),
+                CancellationToken.None));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
+        Assert.True(invalidated);
+    }
+
+    [Fact]
     public void Spot_Handle_Registry_Uses_Global_SpotId_Across_Mesh_Labels()
     {
         const string spotId = "shared-spot";

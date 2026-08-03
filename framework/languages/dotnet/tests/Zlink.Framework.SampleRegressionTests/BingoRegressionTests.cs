@@ -191,6 +191,26 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void Bingo_Client_Contract_Uses_Optional_Auth_Fields_And_No_Unlisted_Notifies()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var contracts = File.ReadAllText(Path.Combine(sampleRoot, "Shared", "Contracts",
+            "bingo_messages.proto"));
+        var playerActor = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play",
+            "Infrastructure", "ZLink", "Actors", "PlayerActor.cs"));
+        var entrySpot = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play",
+            "Infrastructure", "ZLink", "Spots", "EntrySpot", "BingoEntrySpot.cs"));
+
+        Assert.Contains("optional string actor_id = 2", contracts, StringComparison.Ordinal);
+        Assert.Contains("optional string display_name = 3", contracts, StringComparison.Ordinal);
+        Assert.Contains("optional string reason = 4", contracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("message BingoJoinFailedNotify", contracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("message BingoActorEntrySpotNotify", contracts, StringComparison.Ordinal);
+        Assert.DoesNotContain("BingoJoinFailedNotify", playerActor, StringComparison.Ordinal);
+        Assert.DoesNotContain("BingoActorEntrySpotNotify", entrySpot, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Runner_Uses_Isolated_Docker_Redis()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");

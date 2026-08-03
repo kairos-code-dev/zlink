@@ -171,6 +171,14 @@ internal static class PlayHostFactory
                 created.Spot.SpotId,
                 created.Spot.NodeRid.ToString()));
         });
+        app.MapPost("/placement-weight", (
+            PlacementWeightReq request,
+            IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
+        {
+            runtimeOptions.Mesh(ObservabilityNames.PlayMesh).PlacementWeight =
+                request.Weight;
+            return Results.Ok(new PlacementWeightRes(request.Weight));
+        });
         app.MapPost("/rooms/{roomRid}/close", async (string roomRid, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
@@ -226,6 +234,10 @@ internal static class PlayHostFactory
             CancellationToken cancellationToken) =>
         {
             var response = await routes.RequestToSpot(request.RoomId, request)
+                // The operation is intentionally accepted before relocation
+                // seals admission. Its request deadline must cover the host
+                // relocation deadline and the HTTP endpoint waiter.
+                .Timeout(TimeSpan.FromSeconds(35))
                 .Async<PlayBoundedOperationRes>(cancellationToken);
             return Results.Ok(response);
         });

@@ -77,10 +77,20 @@ internal sealed class PlayerZoneStateDeliveryHandler(ILogger<PlayerZoneStateDeli
         CancellationToken cancellationToken)
     {
         if (actor.IsBot) return;
+        var ownView = message.Players.FirstOrDefault(player =>
+            string.Equals(player.PlayerId, actor.ActorId, StringComparison.Ordinal));
         logger.LogInformation(
-            "zone state delivery handler entered. player={PlayerId}, zone={ZoneId}",
+            "zone state delivery handler entered. player={PlayerId}, zone={ZoneId}, "
+            + "tick={Tick}, players={PlayerCount}, own_view={OwnViewPlayerId}@({OwnViewX},{OwnViewY})/"
+            + "{OwnViewZoneId}",
             actor.ActorId,
-            message.ZoneId);
+            message.ZoneId,
+            message.Tick,
+            message.Players.Count,
+            ownView?.PlayerId ?? "<missing>",
+            ownView?.X,
+            ownView?.Y,
+            ownView?.ZoneId ?? "<missing>");
         await actor.Context.BoundSession
             .Send(new ZoneStateNotify(message.ZoneId, message.Tick, message.Players))
             .Async(cancellationToken);
@@ -162,6 +172,7 @@ internal sealed class PlayerMessageFollowProbeHandler
 /// </summary>
 internal sealed class PlayerMovement(
     MoveUseCase moves,
+    IZLinkSpotClient spots,
     ILogger<PlayerMovement> logger)
 {
     public async ValueTask MoveAsync(
@@ -179,7 +190,15 @@ internal sealed class PlayerMovement(
 
             case MoveDecision.Accepted { ZoneChanged: false } stayed:
                 actor.MoveTo(stayed.To);
-                spot.UpdatePosition(actor.ActorId, stayed.To.X, stayed.To.Y);
+                await spots
+                    .SendToSpot(
+                        spot.ZoneId,
+                        new UpdatePositionMsg(
+                            actor.ActorId,
+                            stayed.To.X,
+                            stayed.To.Y,
+                            actor.IsBot))
+                    .Async(cancellationToken);
                 return;
 
             case MoveDecision.Accepted accepted:
@@ -204,7 +223,13 @@ internal sealed class PlayerMovement(
         actor.Context
             .JoinSpot(
                 to.ZoneId,
-                new EnterZoneMsg(actor.ActorId, to.X, to.Y, actor.IsBot, InitialEntry: false))
+                new EnterZoneMsg(
+                    actor.ActorId,
+                    to.X,
+                    to.Y,
+                    actor.IsBot,
+                    InitialEntry: false,
+                    FromNodeId: ZoneTopology.NodeOf(actor.ZoneId)))
             .Defer();
 
         logger.LogInformation(

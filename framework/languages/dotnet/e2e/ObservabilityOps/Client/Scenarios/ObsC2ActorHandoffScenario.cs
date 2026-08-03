@@ -17,6 +17,12 @@ internal static class ObsC2ActorHandoffScenario
         //  이 scenario의 metric 검증이 배치 운에 좌우된다. 첫 room을 play-a에
         //  고정해 source를 metric이 있는 쪽으로 못 박는다.
         var playANode = await context.PlayNodeIdAsync("play-a");
+        _ = await context.PlayNodeIdAsync("play-b");
+        // Actor creation is weighted across the mesh, while this scenario's
+        // precondition requires the initial Entry Spot to be play-a. Keep
+        // play-b eligible for the later host relocation, but exclude it only
+        // during the initial authentication.
+        await context.SetPlayPlacementWeightAsync("play-b", 0);
         var room = await context.CreateRoomOnObservedNodeAsync(
             playANode, $"room-c2-{suffix}");
         roomRid = room.RoomRid;
@@ -62,7 +68,7 @@ internal static class ObsC2ActorHandoffScenario
         ZlinkStreamAssert.Ensure(sourceNode == playANode,
             $"OBS-C2 actor did not stay on the metrics-enabled node: "
             + $"{sourceNode} != {playANode}.");
-        _ = await context.PlayNodeIdAsync("play-b");
+        await context.SetPlayPlacementWeightAsync("play-b", 100);
         var targetNode = context.OtherPlayNode(sourceNode);
         var source = context.Play(sourceNode);
         //  이동 뒤 연속성 확인에 쓸 room은 두 노드가 모두 성한 지금 target에

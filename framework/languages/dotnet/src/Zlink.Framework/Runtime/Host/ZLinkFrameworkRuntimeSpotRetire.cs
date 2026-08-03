@@ -890,9 +890,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                                         queueReservation);
                                 return pipeline.DispatchReplayAsync(
                                         batch,
-                                        () => actorState.Handoff
-                                            .AcknowledgeReplayedFrame(
-                                                frame.ArrivalIndex),
+                                        arrivalIndex => actorState.Handoff
+                                            .AcknowledgeReplayedFrame(arrivalIndex),
                                         replayAdmission,
                                         CancellationToken.None)
                                     .AsTask();
@@ -987,9 +986,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                                                 queueReservation);
                                         return pipeline.DispatchReplayAsync(
                                                 batch,
-                                                () => actorState.Handoff
-                                                    .AcknowledgeReplayedFrame(
-                                                        frame.ArrivalIndex),
+                                                arrivalIndex => actorState.Handoff
+                                                    .AcknowledgeReplayedFrame(arrivalIndex),
                                                 replayAdmission,
                                                 CancellationToken.None)
                                             .AsTask();
@@ -1049,6 +1047,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkLocationOwnerToken targetOwner,
         CancellationToken cancellationToken)
     {
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"canonical_actor_replay_completion_begin actor={actorState.ActorId} "
+            + $"accepted_sequence={job.AcceptedSequence} reply={reply is not null} "
+            + $"has_reply_route={job.CanonicalRequest is { ReplyRouteId: not 0 }}");
         ZLinkCanonicalTerminalCompletion? completion = null;
         byte[]? replyFrame = null;
         var request = job.CanonicalRequest;
@@ -1086,10 +1088,18 @@ internal sealed partial class ZLinkFrameworkRuntime
                 targetDescriptor,
                 stage.TargetNodeLifecycleGeneration,
                 targetOwner,
-                cancellationToken)
+            cancellationToken)
             .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"canonical_actor_replay_advanced actor={actorState.ActorId} "
+            + $"accepted_sequence={job.AcceptedSequence} "
+            + $"has_completion={completion is not null}");
         if (completion is not null)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"canonical_actor_reply_relay_begin actor={actorState.ActorId} "
+                + $"accepted_sequence={job.AcceptedSequence} "
+                + $"reply_route={request!.ReplyRouteId}");
             var acknowledgement = await TryRelayCanonicalReplyAsync(
                     RoutingId.FromHex(completion.SourceNodeRid),
                     await CreateCanonicalReplyRelayAsync(
@@ -1106,6 +1116,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                     [replyFrame!],
                     cancellationToken)
                 .ConfigureAwait(false);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"canonical_actor_reply_relay_result actor={actorState.ActorId} "
+                + $"accepted_sequence={job.AcceptedSequence} "
+                + $"acknowledgement={acknowledgement}");
             if (!await CompleteCanonicalReplyDeliveryAsync(
                     stage,
                     completion,
@@ -1122,6 +1136,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         actorState.Handoff.AcknowledgeCanonicalReplayThrough(
             job.AcceptedSequence);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"canonical_actor_replay_completion_end actor={actorState.ActorId} "
+            + $"accepted_sequence={job.AcceptedSequence}");
     }
 
     private async ValueTask RestoreCanonicalReplayProgressAsync(
@@ -1391,6 +1408,8 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         catch
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"canonical_reply_relay_failed operation={completion.OperationHigh:x16}{completion.OperationLow:x16}");
             return ZLinkRelocationReplyAckState.NotAcknowledged;
         }
     }

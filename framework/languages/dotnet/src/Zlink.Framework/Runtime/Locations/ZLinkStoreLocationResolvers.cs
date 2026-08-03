@@ -52,17 +52,24 @@ internal sealed class ZLinkStoreLocationResolvers :
             cancellationToken,
             storeToken => _store.ListAllMeshNodesAsync(meshName, storeToken))
             .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"autoconnect_store_snapshot mesh={meshName} raw_rows={rows.Count} "
+            + $"raw_rids={string.Join(',', rows.Select(static row => row.Rid.ToString()))}");
         _observed.ReconcileDescriptors(meshName, rows);
 
         // The shared acceptance policy rejects lagging lifecycle generation
         // and descriptor revision views.
-        return await _liveRows.FilterAsync(
+        var live = await _liveRows.FilterAsync(
                 rows,
                 static row => row.OwnerId,
                 _observed.AcceptDescriptor,
                 cancellationToken,
                 static row => row.LeaseGeneration)
             .ConfigureAwait(false);
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"autoconnect_live_snapshot mesh={meshName} live_rows={live.Count} "
+            + $"live_rids={string.Join(',', live.Select(static row => row.Rid.ToString()))}");
+        return live;
     }
 
     internal async ValueTask<ZLinkResolvedSpotLocation?> ResolveSpotRowAsync(

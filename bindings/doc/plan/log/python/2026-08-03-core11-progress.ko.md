@@ -14,13 +14,13 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 
 ## 2026-08-04 current recheck
 
-package recheck 당시 branch의 `HEAD`는 `2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f`였다. 당시
+package recheck 당시 branch의 `HEAD`는 `1d724e5b3f2abbcde7b41a6143b6f6fbb947c588`였다. 당시
 worktree를 기준으로 다시 만든 Core ledger candidate는 다음 identity를 갖는다.
 
 ```text
 candidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
-candidateManifestSha256: 25f748a3599fde92c2fe0fc5dbd54692f07014f5d359614ae495ca9da618740d
-baseRevision: 2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f
+candidateManifestSha256: 483df3ff20925fda60b3ac5a1c75e71e47c5eab871242623ee2c7fa66dd644bd
+baseRevision: 1d724e5b3f2abbcde7b41a6143b6f6fbb947c588
 aggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
 pathCount: 19
 ```
@@ -28,13 +28,13 @@ pathCount: 19
 CPython 3.9과 3.12의 fresh package output은 이 Core revision과 runtime SHA를 기록한다.
 
 ```text
-coreRevision: 2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f
+coreRevision: 1d724e5b3f2abbcde7b41a6143b6f6fbb947c588
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
-coreCandidatePackageManifestSha256: 2f6a125b798eab45f4c94ed86da436453a604934727097e3532f1ea16e117db0
-pythonSourceManifestSha256: f01d0aab32121fbb844914a7ff613be34b0ae639b6b8a53763862db8b82b19be
+coreCandidatePackageManifestSha256: 51959a43a84be11d30d98f11685bdc421562c6322b86b0e7b63596e5f4887033
+pythonSourceManifestSha256: a5e4bb6551cb601fa67fa8851f0ab501f0016320eb0890dba51bdd93fb0d3fde
 pythonSourceAggregateSha256: 399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c
-cp39WheelSha256: 011b4ca2fe99c55a973af77f4845ca77833992a4592263b63b80b0885ffdc752
-cp312WheelSha256: 4907f036d69ae84f40763e70b38632a2a81ce8fd5a921e5a1d726ba274f00bd5
+cp39WheelSha256: 09517432ed295d8634534a43f0f487fe3ee947cfd3cbe8b00c4ac2311b1e1c9f
+cp312WheelSha256: a28ab4d3e789addda5717b9f9a3117a16bf63d23aa66bc3653118e07f0c1fbf6
 ```
 
 현재 package output은 source test `64 passed`, clean consumer와 installed sample `7/7`을 두 interpreter에서

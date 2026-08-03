@@ -57,6 +57,7 @@ scripts/local-package/
   cpp/
   dotnet/
   go/
+  rust/
   java/
   node/
 ```
@@ -199,6 +200,7 @@ PowerShell에서 실행한다.
 |------|----------|--------|
 | .NET | `dotnet/build-wsl.sh`, `dotnet/build-windows.ps1` | NuGet package |
 | Go | `go/build-wsl.sh` | Go file proxy module |
+| Rust | `rust/build-wsl.sh` | Cargo crate와 candidate-bound clean consumer evidence |
 | Java/Kotlin | `java/build-wsl.sh`, `java/build-windows.ps1` | Maven repository layout |
 | Node.js | `node/build-wsl.sh`, `node/build-windows.ps1` | npm tarball |
 | C++ | `cpp/build-wsl.sh`, `cpp/build-windows.ps1` | 버전별 CMake install prefix |

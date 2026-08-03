@@ -295,6 +295,8 @@ scripts/local-package/go/build-wsl.sh \
 
 명령, 종료 코드, test 수, module zip SHA-256과 실패 원인은
 `bindings/doc/plan/log/go/` 아래 날짜별 log에 기록한다.
+11개 완료 조건의 현재 증거 대조는
+[`log/go/2026-08-04-final-requirement-audit.ko.md`](log/go/2026-08-04-final-requirement-audit.ko.md)에 기록했다.
 
 ## 8. 완료 조건
 

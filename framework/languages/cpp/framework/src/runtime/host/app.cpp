@@ -26,6 +26,7 @@
 #include "runtime/mesh/route_mesh_runtime_service.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
 #include "runtime/locations/sha256.hpp"
@@ -880,10 +881,13 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
               framework_error_kind_t::capacity_exceeded,
               std::string (operation) + " is backpressured");
         case zlink::submit_result_t::not_found:
-        case zlink::submit_result_t::not_admitted:
             return result_t<void>::failure (
               framework_error_kind_t::not_found,
               std::string (operation) + " target was not found");
+        case zlink::submit_result_t::not_admitted:
+            return result_t<void>::failure (
+              framework_error_kind_t::rejected,
+              std::string (operation) + " admission was rejected");
         case zlink::submit_result_t::not_connected:
             return result_t<void>::failure (
               framework_error_kind_t::unavailable,
@@ -895,9 +899,17 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
         case zlink::submit_result_t::invalid_argument:
         case zlink::submit_result_t::invalid_handle:
         case zlink::submit_result_t::invalid_state:
+        case zlink::submit_result_t::thread_violation:
             return result_t<void>::failure (
-              framework_error_kind_t::protocol_error,
+              framework_error_kind_t::invalid_operation,
               std::string (operation) + " rejected an invalid call");
+        case zlink::submit_result_t::not_supported:
+        case zlink::submit_result_t::out_of_memory:
+        case zlink::submit_result_t::seq_exhausted:
+        case zlink::submit_result_t::internal_error:
+            return result_t<void>::failure (
+              runtime::messaging::map_submit_result_error_kind (result),
+              std::string (operation) + " was not submitted");
         default:
             return result_t<void>::failure (
               framework_error_kind_t::internal_failure,
@@ -1943,14 +1955,19 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               const auto submitted =
                 mesh->request_to_node (target, parts.items (), operation, timeout);
               if (submitted != zlink::submit_result_t::ok) {
-                  if (submitted == zlink::submit_result_t::not_found
-                      || submitted == zlink::submit_result_t::not_admitted) {
+                  if (submitted == zlink::submit_result_t::not_found) {
                       return result_t<runtime::messaging::message_parts_t>::failure (
                         framework_error_kind_t::not_found,
                         "MeshNode request target was not found");
                   }
+                  if (submitted == zlink::submit_result_t::terminated) {
+                      return detail::boundary_failure<
+                        runtime::messaging::message_parts_t> (
+                        detail::boundary_error_t::shutdown,
+                        "MeshNode request runtime is stopped");
+                  }
                   return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::unavailable,
+                    runtime::messaging::map_submit_result_error_kind (submitted),
                     "MeshNode request was not submitted");
               }
               auto completion = mesh->wait_for_completion (operation, timeout);
@@ -1961,9 +1978,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               }
               if (completion.value ().record.terminal_result
                   != static_cast<int> (zlink::request_result_t::ok)) {
-                  return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::internal_failure,
-                    "MeshNode request returned a terminal error");
+                  return detail::result_access_t::failure<
+                    runtime::messaging::message_parts_t> (
+                    runtime::messaging::request_failure_mapper_t{}.reply_header_exception (
+                      static_cast<std::uint32_t> (
+                        completion.value ().record.terminal_result),
+                      0, "MeshNode request"));
               }
               return result_t<runtime::messaging::message_parts_t>::success (
                 runtime::messaging::message_parts_t (
@@ -1984,8 +2004,14 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   const auto submitted = mesh->request_to_channel (
                     channel_name, parts.items (), operation, timeout);
                   if (submitted != zlink::submit_result_t::ok) {
+                      if (submitted == zlink::submit_result_t::terminated) {
+                          return detail::boundary_failure<
+                            runtime::messaging::message_parts_t> (
+                            detail::boundary_error_t::shutdown,
+                            "RouteMesh channel request runtime is stopped");
+                      }
                       return result_t<runtime::messaging::message_parts_t>::failure (
-                        framework_error_kind_t::unavailable,
+                        runtime::messaging::map_submit_result_error_kind (submitted),
                         "RouteMesh channel request was not submitted");
                   }
                   auto completion = mesh->wait_for_completion (operation, timeout);
@@ -1996,9 +2022,12 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                   }
                   if (completion.value ().record.terminal_result
                       != static_cast<int> (zlink::request_result_t::ok)) {
-                      return result_t<runtime::messaging::message_parts_t>::failure (
-                        framework_error_kind_t::internal_failure,
-                        "RouteMesh channel request returned a terminal error");
+                      return detail::result_access_t::failure<
+                        runtime::messaging::message_parts_t> (
+                        runtime::messaging::request_failure_mapper_t{}.reply_header_exception (
+                          static_cast<std::uint32_t> (
+                            completion.value ().record.terminal_result),
+                          0, "RouteMesh channel request"));
                   }
                   return result_t<runtime::messaging::message_parts_t>::success (
                     runtime::messaging::message_parts_t (

@@ -913,6 +913,34 @@ internal sealed class ZLinkActorRuntimeState(
         return false;
     }
 
+    internal bool TryGetBoundSessionForInbound(
+        out ZLinkActorBoundSession session)
+    {
+        lock (_sessionGate)
+        {
+            // During relocation, the target accepts frames before the staged
+            // route is promoted to _boundSession. Use the committed target
+            // projection while retaining the source session identity fence.
+            if (_pendingSessionRoute is
+                {
+                    TargetActor: not null,
+                    TargetAuthorityOwnerGeneration: > 0
+                } pending)
+            {
+                session = CreateCommittedRelocationSession(pending);
+                return true;
+            }
+            if (_boundSession is { } current)
+            {
+                session = current;
+                return true;
+            }
+        }
+
+        session = default;
+        return false;
+    }
+
     private static ZLinkActorBoundSession CreateCommittedRelocationSession(
         ZLinkPendingActorSessionRoute pending)
     {

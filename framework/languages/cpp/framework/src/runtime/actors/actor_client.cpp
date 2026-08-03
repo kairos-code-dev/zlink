@@ -7,6 +7,7 @@
 #include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/locations/actor_authority_payload.hpp"
 
@@ -675,24 +676,14 @@ class actor_client_impl_t final : public actor_client_t
                       actor.native_ref, copied, {}, actor.authority_owner_generation);
                 }
                 if (submit != zlink::submit_result_t::ok) {
-                    if (submit == zlink::submit_result_t::backpressured) {
-                        return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::capacity_exceeded,
-                          "actor send is backpressured");
-                    }
-                    if (submit == zlink::submit_result_t::not_connected) {
-                        return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::unavailable,
-                          "actor route is not connected");
-                    }
-                    if (submit == zlink::submit_result_t::not_found
-                        || submit == zlink::submit_result_t::not_admitted) {
-                        return result_t<std::optional<zlink::message_t>>::failure (
-                          framework_error_kind_t::not_found,
-                          "actor route was not found");
+                    if (submit == zlink::submit_result_t::terminated) {
+                        return detail::boundary_failure<
+                          std::optional<zlink::message_t>> (
+                          detail::boundary_error_t::shutdown,
+                          "actor send runtime is stopped");
                     }
                     return result_t<std::optional<zlink::message_t>>::failure (
-                      framework_error_kind_t::internal_failure,
+                      runtime::messaging::map_submit_result_error_kind (submit),
                       "actor send was not accepted (result "
                         + std::to_string (static_cast<int> (submit)) + ", errno "
                         + std::to_string (errno) + ")");
@@ -704,8 +695,13 @@ class actor_client_impl_t final : public actor_client_t
               runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout, {},
                                         actor.authority_owner_generation);
             if (submit != zlink::submit_result_t::ok) {
+                if (submit == zlink::submit_result_t::terminated) {
+                    return detail::boundary_failure<std::optional<zlink::message_t>> (
+                      detail::boundary_error_t::shutdown,
+                      "actor request runtime is stopped");
+                }
                 return result_t<std::optional<zlink::message_t>>::failure (
-                  framework_error_kind_t::internal_failure,
+                  runtime::messaging::map_submit_result_error_kind (submit),
                       "actor request was not accepted");
             }
             auto reply = wait_for_actor_completion (runtime, operation_id, timeout);

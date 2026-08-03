@@ -578,6 +578,18 @@ internal sealed class ZLinkActorMessageFollower
                 flags,
                 routeContext.ReplyCapability,
                 routeContext.DeadlineUnixMs)
+            : routeContext.IsBoundSessionRoute
+                ? new ZLinkBackendActorRouteContext(
+                    routeContext.OperationId,
+                    0,
+                    messageFollowRoute.TargetNodeGeneration,
+                    messageFollowRoute.TargetAuthorityOwnerGeneration,
+                    messageFollowRoute.TargetOwnerLeaseGeneration,
+                    routeContext.ReplyRequestId != 0 ? requestId : 0,
+                    routeContext.ReplyRequestId != 0 ? flags : 0,
+                    routeContext.ReplyCapability,
+                    routeContext.DeadlineUnixMs,
+                    IsBoundSessionRoute: true)
             : routeContext.ReplyRequestId != 0
                 ? new ZLinkBackendActorRouteContext(
                     default,

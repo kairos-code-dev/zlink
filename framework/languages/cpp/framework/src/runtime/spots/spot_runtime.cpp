@@ -21,6 +21,7 @@
 #include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
@@ -81,21 +82,6 @@ void trace_actor_dispatch (std::string_view stage,
         return;
     std::cerr << "zlink actor-dispatch stage=" << stage
               << " actor=" << actor_id << '\n';
-}
-
-framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
-{
-    switch (result) {
-        case zlink::submit_result_t::not_connected:
-            return framework_error_kind_t::unavailable;
-        case zlink::submit_result_t::backpressured:
-            return framework_error_kind_t::internal_failure;
-        case zlink::submit_result_t::invalid_argument:
-        case zlink::submit_result_t::invalid_handle:
-            return framework_error_kind_t::protocol_error;
-        default:
-            return framework_error_kind_t::internal_failure;
-    }
 }
 
 bool is_blank (const std::string &value)
@@ -732,11 +718,13 @@ framework_exception_t native_request_error (zlink::request_result_t result, std:
             return framework_exception_t (framework_error_kind_t::not_found,
                                           std::move (message));
         case zlink::request_result_t::timed_out:
-        case zlink::request_result_t::not_connected:
-            // Remote SPOT peers come and go while actors migrate, so both
-            // conditions surface as the awaited-timeout boundary the caller can
-            // retry through the resolver refresh path.
             return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
+                                                    std::move (message));
+        case zlink::request_result_t::not_connected:
+            return detail::make_boundary_exception (detail::boundary_error_t::disconnected,
+                                                    std::move (message));
+        case zlink::request_result_t::terminated:
+            return detail::make_boundary_exception (detail::boundary_error_t::shutdown,
                                                     std::move (message));
         default:
             return framework_exception_t (framework_error_kind_t::internal_failure,
@@ -2959,7 +2947,7 @@ publish_call_t spot_publisher_client_t::publish_raw (std::string channel_name,
           if (submitted == zlink::submit_result_t::ok)
               return result_t<void>::success ();
           return result_t<void>::failure (
-            submit_result_error_kind (submitted),
+            runtime::messaging::map_submit_result_error_kind (submitted),
             "logical multicast could not enter the source transport queue");
       });
 }
@@ -7024,7 +7012,7 @@ std::size_t spot_node_runtime_t::drain_actor_packets (service_provider_t &servic
                           }
                           catch (const zlink::submit_error_t &error) {
                               return task_t<void> (result_t<void>::failure (
-                                submit_result_error_kind (error.result ()), error.what ()));
+                                runtime::messaging::map_submit_result_error_kind (error.result ()), error.what ()));
                           }
                           catch (const std::exception &error) {
                               return task_t<void> (result_t<void>::failure (

@@ -430,7 +430,7 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F2"* ]]; then
   require_marker_order actor-inflight-overtake- handoff_backlog backlog_enqueued
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
-  grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.*.log
+  grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-b.*.log
   grep -h -E -q 'backlog_enqueued actor=actor-inflight-req-.* request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-b.*.log
   grep -h -E -q 'request_reply_direct actor=actor-inflight-req-' "$LOG_DIR"/actor-b.*.log
 fi

@@ -1,4 +1,4 @@
-// CH-E2E-07C: Known but disconnected target은 Unavailable로 종료한다.
+// CH-E2E-07C: Known target에 연결할 수 없으면 Unavailable이다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

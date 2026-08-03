@@ -4,6 +4,7 @@
 
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
@@ -59,21 +60,6 @@ bool should_bind_actor_session_route (spot_inbound_message_t &metadata)
     const auto bind = found->second != "false";
     metadata.values.erase (found);
     return bind;
-}
-
-framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
-{
-    switch (result) {
-        case zlink::submit_result_t::not_connected:
-            return framework_error_kind_t::unavailable;
-        case zlink::submit_result_t::backpressured:
-            return framework_error_kind_t::internal_failure;
-        case zlink::submit_result_t::invalid_argument:
-        case zlink::submit_result_t::invalid_handle:
-            return framework_error_kind_t::protocol_error;
-        default:
-            return framework_error_kind_t::internal_failure;
-    }
 }
 
 } // namespace

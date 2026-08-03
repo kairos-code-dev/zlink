@@ -76,8 +76,9 @@ inline framework_error_kind_t map_user_spot_operation_failure (
         case foundation::operation_terminal_t::transport_failed:
             return framework_error_kind_t::unavailable;
         case foundation::operation_terminal_t::cancelled:
+            return framework_error_kind_t::invalid_operation;
         case foundation::operation_terminal_t::shutdown:
-            return framework_error_kind_t::rejected;
+            return framework_error_kind_t::shutting_down;
     }
     return framework_error_kind_t::internal_failure;
 }

@@ -122,8 +122,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         new ZLinkServiceM6AWireCodec();
     private final ZLinkServiceM6BWireCodec statefulWire =
         new ZLinkServiceM6BWireCodec();
-    private final ZLinkServiceLivenessRegistry liveness =
-        new ZLinkServiceLivenessRegistry();
+    private final ZLinkServiceLivenessRegistry liveness;
     private final ScheduledExecutorService deadlines =
         Executors.newSingleThreadScheduledExecutor(Thread.ofVirtual()
             .name("zlink-jvm-service-deadline-" + System.identityHashCode(this))
@@ -189,13 +188,32 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         userSpotTerminals = new ConcurrentHashMap<>();
 
     ZLinkJavaRawMeshNode(Context context, String meshName) {
-        this(context, meshName, System::currentTimeMillis);
+        this(
+            context,
+            meshName,
+            System::currentTimeMillis,
+            ZLinkServiceLivenessRegistry.DEFAULT_PROBE_INTERVAL,
+            ZLinkServiceLivenessRegistry.DEFAULT_PEER_TIMEOUT);
     }
 
     ZLinkJavaRawMeshNode(
         Context context,
         String meshName,
         LongSupplier currentTimeMillis) {
+        this(
+            context,
+            meshName,
+            currentTimeMillis,
+            ZLinkServiceLivenessRegistry.DEFAULT_PROBE_INTERVAL,
+            ZLinkServiceLivenessRegistry.DEFAULT_PEER_TIMEOUT);
+    }
+
+    ZLinkJavaRawMeshNode(
+        Context context,
+        String meshName,
+        LongSupplier currentTimeMillis,
+        Duration livenessProbeInterval,
+        Duration livenessPeerTimeout) {
         if (meshName == null || meshName.isBlank()) {
             throw new IllegalArgumentException("meshName is required");
         }
@@ -205,6 +223,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             ZLinkJavaRawMeshNode::shouldUseCompletionControl);
         this.currentTimeMillis = java.util.Objects.requireNonNull(
             currentTimeMillis, "currentTimeMillis");
+        this.liveness = new ZLinkServiceLivenessRegistry(
+            livenessProbeInterval, livenessPeerTimeout);
     }
 
     @Override

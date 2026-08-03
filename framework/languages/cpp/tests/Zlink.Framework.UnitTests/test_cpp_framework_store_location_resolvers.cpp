@@ -2419,6 +2419,14 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
       map_user_spot_operation_failure (
         operation_terminal_t::completed, {1, 106, 15},
         true));
+    EXPECT_EQ (
+      framework_error_kind_t::invalid_operation,
+      map_user_spot_operation_failure (
+        operation_terminal_t::cancelled, {}, false));
+    EXPECT_EQ (
+      framework_error_kind_t::shutting_down,
+      map_user_spot_operation_failure (
+        operation_terminal_t::shutdown, {}, false));
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,

@@ -1,4 +1,4 @@
-// CH-E2E-01: 같은 RouteMesh의 양방향 Channel request를 검증한다.
+// CH-E2E-01: 같은 RouteMesh에서 양방향 request를 보낸다 시나리오를 검증한다.
 import { assert, postJson, waitForEvidence } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

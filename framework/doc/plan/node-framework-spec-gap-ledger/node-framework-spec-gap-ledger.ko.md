@@ -513,7 +513,7 @@ Worker slot reference 수명 보정 절에 기록했다.
 | package | `npm ls` 11.1.0 clean, packaged contract 7개 통과 | native role-server artifact와 process E2E |
 | E2E inventory | common 374 / Node 207 / missing 171 / extra 4 | exact ID·alias·selector와 status를 다시 정렬 |
 | E2E process | TA-A1은 ActorRef route fence 실패, SA-E2E-14는 native artifact incomplete | owner layer 수정·fresh package·role-server evidence |
-| Config 12·14 | Config 12 targeted 16개 PASS, Config 14 `BLOCKED` | common aggregate·Config 14 role server와 process evidence |
+| Config 12·14 | Config 12 targeted 16개 PASS지만 ALL은 CH07C native segfault, Config 14 `BLOCKED` | common aggregate·native cleanup·Config 14 role server와 process evidence |
 | sample | NS-IMP-001~003 static wire 정렬, typecheck 통과 | 일곱 process, client result, server evidence, cleanup |
 
 따라서 sample 상태는 여전히 `Spec gate 대기`다. 다만 dirty working tree에서 sample source와
@@ -787,7 +787,7 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 
 ### 8.2 ND-TEST-* audit 또는 gate gap
 
-#### ND-TEST-001 — public API snapshot과 exact negative comparison 부재 (수정 전 audit)
+#### ND-TEST-001 — public API snapshot과 exact negative comparison 부재 (비-E2E 완료, 전체 E2E 후속)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md 및 07-nestjs-host.ko.md, framework/doc/framework/common/spec/00-public-contract-governance.ko.md:75-88
 - Node test/source 경로: framework/languages/node/test/contract/contract-surface.test.js:31-61 및 319-346 및 536-599, framework/languages/node/packages/*/dist/
@@ -806,7 +806,7 @@ gap은 다음 순서로 처리한다. 앞 단계가 확정되지 않으면 뒤 �
 contract surface와 Nest module suite는 121/121 통과한다. 전체 common E2E/process 결과까지 하나의
 snapshot으로 묶는 작업은 E2E 제외 조건에 따라 후속으로 남긴다.
 
-#### ND-TEST-002 — documentation-regression이 요구하는 공통 문서가 현재 tree에 없음
+#### ND-TEST-002 — documentation-regression이 요구하는 공통 문서 경로 불일치 (완료)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/spec/ 및 framework/doc/framework/common/spec/30-implementation-gap.ko.md로 해석되는 documentation regression fixture
 - Node test/CI 경로: framework/languages/node/test/contract/documentation-regression.test.js, framework/languages/node/scripts/run_node_runtime_gate.js, framework/languages/node/scripts/run_node_framework_ci_gate.js
@@ -824,7 +824,7 @@ documentation-regression fixture는 현재 Node gap ledger 경로를 읽도록 �
 따라서 이 항목의 ENOENT blocker는 해소되었다. `verify:ci` 전체는 이후 E2E scenario header gate에서
 실패하므로 CI 전체 green으로 확대 해석하지 않는다.
 
-#### ND-TEST-003 — full regression과 CI gate가 전체 계약·E2E 범위를 실행하지 않음
+#### ND-TEST-003 — full regression과 CI gate가 전체 계약·E2E 범위를 실행하지 않음 (E2E·aggregate·coverage·CI 후속)
 
 - 공통 spec 또는 E2E 문서 경로: framework/doc/framework/common/e2e/ 전체 14개 Config, framework/doc/framework/common/spec/의 Node contract
 - Node script/CI 경로: framework/languages/node/package.json:6-30, framework/languages/node/scripts/run_node_framework_ci_gate.js:4-21, framework/languages/node/scripts/run_node_runtime_gate.js:37-44, .github/workflows/framework-node.yml:7-19 및 185-192

@@ -1,6 +1,7 @@
 // Verifies ST-F6 In Flight Request Correlation And Timeout behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace SpotActorTransfer.Client.Scenarios;
@@ -26,7 +27,7 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             actorId,
             new ProbeReq("ST-F6", "correlated-reply"),
             TimeSpan.FromSeconds(5));
-        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+        await context.WaitRuntimeEvidenceAsync(context.NodeB,
             $"handoff_backlog actor={actorId} arrival=0");
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
 
@@ -54,8 +55,10 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             new ProbeReq("ST-F6", "late-reply"),
             TimeSpan.FromMilliseconds(250));
         var timeout = await requestTask;
-        ZlinkStreamAssert.Ensure(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
-            $"ST-F6 expected normal TimeoutException, got '{timeout.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(
+            !timeout.Succeeded
+            && timeout.ErrorKind == nameof(ZLinkFrameworkErrorKind.DeadlineExceeded),
+            $"ST-F6 expected DeadlineExceeded, got '{timeout.ErrorKind}'.");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 timeout transfer was rejected.");

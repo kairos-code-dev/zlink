@@ -4,6 +4,8 @@
 현재 working tree에서 각 scenario를 개별 실행한 결과와 role endpoint evidence가 확인됐다.
 이 표의 `process PASS`는 Config 12 targeted evidence이며, common 374개 exact inventory와
 Config 1-14 aggregate Framework gate의 완료를 뜻하지 않는다.
+현재 `run_e2e.sh ALL`은 CH07C에서 caller native process segfault로 중단됐으므로 aggregate PASS로
+표시하지 않는다.
 
 | ID | 상태 | 후속 조건 |
 |---|---|---|

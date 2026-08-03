@@ -3593,7 +3593,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                      && !ZLinkActorBoundSessionRelay.IsNoBindRequest(
                          replyRequestId,
                          replyFlags))
-                 || !state.TryGetBoundSession(out var session)
+                 || !state.TryGetBoundSessionForInbound(out var session)
                  || !string.Equals(
                      session.BindingToken,
                      boundSessionFence.BindingToken,

@@ -1,4 +1,4 @@
-// CH-E2E-12: Client와 Server를 함께 등록한 local target도 일반 후보로 선택한다.
+// CH-E2E-12: 같은 process의 Client와 Server도 일반 후보로 선택한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

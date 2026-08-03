@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,14 +24,16 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
 import systems.zlink.framework.channels.ZLinkPublishMessageContext;
 import systems.zlink.framework.channels.ZLinkFanoutHandler;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.channels.ZLinkRouteSendContext;
+import systems.zlink.framework.channels.ZLinkRouteMessageContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
-import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -82,6 +86,7 @@ public class SubmitAdmissionRole {
                     .setDefaultRequestTimeout(Duration.ofSeconds(1));
                 mesh.addRouteSendHandler(RouteHandler.class, Probe.class);
                 mesh.channelName(CHANNEL)
+                    .server()
                     .setWeight("target".equals(config.role()) ? 100 : 0)
                     .addSendHandler(ChannelHandler.class, Probe.class);
                 if (!config.peerEndpoint().isBlank()) {
@@ -121,7 +126,7 @@ public class SubmitAdmissionRole {
         }
 
         @Override
-        public CompletionStage<Void> handle(Probe message, ZLinkRouteSendContext context) {
+        public CompletionStage<Void> handle(Probe message, ZLinkRouteMessageContext context) {
             return state.handle("route", message);
         }
     }
@@ -147,7 +152,7 @@ public class SubmitAdmissionRole {
         }
 
         @Override
-        public CompletionStage<Void> handle(Probe message, ZLinkSendContext context) {
+        public CompletionStage<Void> handle(Probe message, ZLinkMessageContext context) {
             return state.handle("channel", message);
         }
     }
@@ -265,7 +270,9 @@ public class SubmitAdmissionRole {
             boolean ready = false;
             if (!"publisher".equals(state.config().role()) && !"subscriber".equals(state.config().role())) {
                 ready = meshRuntime.snapshot(MESH).peers().stream()
-                    .anyMatch(peer -> peer.ready() && peer.rid().toString().equals(target));
+                    .anyMatch(peer -> (peer.state() == ZLinkPeerState.READY
+                        || peer.state() == ZLinkPeerState.NOT_REQUIRED)
+                        && peer.nodeRid().toString().equals(target));
             }
             respond(exchange, ready ? 200 : 503, Boolean.toString(ready));
         }
@@ -285,7 +292,7 @@ public class SubmitAdmissionRole {
                     "status", "Submitted"));
                 respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
-                respond(exchange, 500, failure.toString());
+                respond(exchange, 500, errorKind(failure));
             }
         }
 
@@ -302,7 +309,7 @@ public class SubmitAdmissionRole {
                     "status", "Submitted"));
                 respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
-                respond(exchange, 500, failure.toString());
+                respond(exchange, 500, errorKind(failure));
             }
         }
 
@@ -319,7 +326,7 @@ public class SubmitAdmissionRole {
                     "status", "Submitted"));
                 respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
-                respond(exchange, 500, failure.toString());
+                respond(exchange, 500, errorKind(failure));
             }
         }
 
@@ -354,6 +361,17 @@ public class SubmitAdmissionRole {
             try (var output = exchange.getResponseBody()) {
                 output.write(bytes);
             }
+        }
+
+        private static String errorKind(Throwable failure) {
+            Throwable current = failure;
+            while ((current instanceof CompletionException || current instanceof ExecutionException)
+                && current.getCause() != null) {
+                current = current.getCause();
+            }
+            return current instanceof ZLinkFrameworkException frameworkError
+                ? frameworkError.kind().name()
+                : current.toString();
         }
     }
 

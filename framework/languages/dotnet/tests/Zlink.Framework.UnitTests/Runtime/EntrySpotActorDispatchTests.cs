@@ -1238,6 +1238,48 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public void ActorMessageFollower_PreservesBoundOneWayOperationAndFence()
+    {
+        var lease = new ZLinkActorMessageFollowLease(TimeProvider.System);
+        lease.Commit(TimeSpan.FromSeconds(5));
+        var route = new ZLinkActorMessageFollowRoute(
+            new ZLinkBackendActorRef(
+                RoutingId.From("old-owner"), "actor-bound-follow", 8),
+            new ZLinkBackendActorRef(
+                RoutingId.From("new-owner"), "actor-bound-follow", 8),
+            "mesh-a",
+            SourceNodeGeneration: 73,
+            TargetNodeGeneration: 83,
+            SourceAuthorityOwnerGeneration: 74,
+            TargetAuthorityOwnerGeneration: 84,
+            SourceOwnerLeaseGeneration: 75,
+            TargetOwnerLeaseGeneration: 85,
+            Lease: lease);
+        var operation = new MeshOperationId(81, 82);
+        var incoming = new ZLinkBackendActorRouteContext(
+            operation,
+            MessageFollowHopCount: 0,
+            TargetNodeGeneration: 73,
+            AuthorityOwnerGeneration: 74,
+            OwnerLeaseGeneration: 75,
+            IsBoundSessionRoute: true);
+
+        var advanced = ZLinkActorMessageFollower.AdvanceRoute(
+            route,
+            incoming,
+            requestId: 0,
+            flags: 0);
+
+        Assert.Equal(operation, advanced.OperationId);
+        Assert.True(advanced.IsBoundSessionRoute);
+        Assert.False(advanced.IsDirectRoute);
+        Assert.Equal((ulong)83, advanced.TargetNodeGeneration);
+        Assert.Equal((ulong)84, advanced.AuthorityOwnerGeneration);
+        Assert.Equal((ulong)85, advanced.OwnerLeaseGeneration);
+        Assert.Equal((ulong)0, advanced.ReplyRequestId);
+    }
+
+    [Fact]
     public void RemoteActorFrameSource_RequiresExactFence_AndNeverUsesOperationIdAsGeneration()
     {
         var sourceNode = RoutingId.From("caller-node");

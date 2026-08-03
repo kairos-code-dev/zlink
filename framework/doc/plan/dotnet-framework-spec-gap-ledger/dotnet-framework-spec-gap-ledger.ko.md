@@ -1,11 +1,12 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: 2026-08-03 07:17 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
-> 마지막 runtime gate에서는 `InboundDispatchOptionsTests` 16/16, 전체 solution test 1890/1890,
-> package contract·clean consumer gate가 통과했고 native Core는 11.1.0을 유지했다. 그 뒤 현재
-> working tree에 Config 2·4·7·8·11·12의 E2E source·selector·runner 변경이 추가되어 관련 build와
-> 좁은 regression은 통과했지만, 이 변경을 사용한 actual process E2E log는 아직 없다. reconnect
-> lifetime contract, Config 14와 공통 E2E의 process evidence, 중앙 matrix, 독립 최종 audit도 남아 있다.
+> 상태: 2026-08-03 09:28 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
+> 현재 runtime 변경은 `FullyQualifiedName~Runtime` unit `740/740`, bound-session·entry
+> targeted `136/136`, staged-route targeted `10/10`으로 통과했다. 기존 전체 solution
+> `1890/1890`, package contract·clean consumer gate와 native Core 11.1.0 evidence도 유지한다.
+> Actor transfer process는 ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6가 통과했지만 aggregate가
+> ST-B2 fixture의 낡은 source-cleanup barrier 기대에서 중단됐다. reconnect lifetime contract,
+> 남은 공통 E2E process evidence, 중앙 matrix와 독립 최종 audit도 남아 있다.
 > Phase B (common sample gap)는 Phase A 완료 gate를 통과하기 전에는 시작하지 않는다.
 >
 >
@@ -19,21 +20,23 @@
 > [`log/20260802-184053-poller-receive-progress.ko.md`](log/20260802-184053-poller-receive-progress.ko.md)에 기록한다.
 > 현재 E2E working tree와 이 문서의 새 상태 판정은
 > [`log/20260803-071702-current-progress.ko.md`](log/20260803-071702-current-progress.ko.md)에 기록한다.
+> 현재 runtime unit와 Actor transfer process 실행 결과는
+> [`log/20260803-092806-runtime-unit-and-e2e.ko.md`](log/20260803-092806-runtime-unit-and-e2e.ko.md)에 기록한다.
 >
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
 
 ## 현재 진행 snapshot (2026-08-03)
 
-마지막 green runtime·package gate와 현재 E2E 작업을 분리해 판정한다. 현재 `.NET` production
-source와 package 경로에는 추가 dirty 변경이 없으므로, 마지막 runtime gate는 해당 범위에서 유효하다.
-반면 E2E source와 runner 변경은 마지막 process 결과 뒤에 들어왔으므로 새 process log가 생기기 전에는
-완료 증거로 사용하지 않는다.
+마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. 현재 `.NET` production
+runtime source와 관련 unit test에는 dirty 변경이 있고, 이 변경은 runtime filter와 targeted unit
+test로 재검증했다. Package version/export에는 변경이 없으므로 기존 clean consumer evidence를
+유지한다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
 
 | 범위 | 현재 상태 | 다음 조건 |
 |---|---|---|
-| Runtime·contract·package | 마지막 기록 기준 UnitTests `1431/1431`, solution `1890/1890`, ContractTests `76/76`, package verifier exit 0. | reconnect lifetime contract와 target OS 실행 증거를 별도로 닫는다. |
-| E2E source·selector·runner | Config 2·4·7·8·11·12에 source 또는 selector 변경이 있고, 관련 project build와 좁은 regression이 통과했다. | feature-map 상태를 source 상태와 맞추고 actual process 결과를 수집한다. |
+| Runtime·contract·package | 현재 runtime filter `740/740`, bound-session·entry targeted `136/136`, staged-route targeted `10/10`이 통과했다. 기존 UnitTests `1431/1431`, solution `1890/1890`, ContractTests `76/76`, package verifier exit 0도 유지한다. | reconnect lifetime contract와 target OS 실행 증거를 별도로 닫는다. |
+| E2E source·selector·runner | ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6의 실제 process log가 있다. Aggregate는 ST-B2의 source-cleanup barrier fixture 기대에서 중단됐다. | ST-B2를 공통 Actor Join 계약에 맞춰 수정하고 remaining process evidence를 수집한다. |
 | Config 14 | `InstanceSpot/run_e2e.sh`는 feature-map만 확인하고 exit 2로 종료한다. role server와 client는 없다. | process fixture, role server, client와 36개 scenario evidence를 추가한다. |
 | Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | A-G6, A-G7 조건을 모두 통과하기 전에는 Phase B를 시작하지 않는다. |
 
@@ -352,6 +355,7 @@ Phase A의 과거 evidence이며, 현재 `HEAD`의 완료 증거로 다시 사�
 | 2026-08-02 `LocationMessaging:RM-A2` process E2E | `LocationMessaging PASS`, `total PASS`, exit 0, 15초 | aggregate runner로 실행했다. log는 `framework/languages/dotnet/e2e/LocationMessaging/logs/20260802-120542-77932/`에 있다. |
 | 2026-08-02 Config 12·14 aggregate guard | 두 runner 모두 exit 2 | Config 12는 `CH-E2E-03`, `CH-E2E-08`, `CH-REG-02`, `CH-REG-05`가 없고, Config 14는 process fixture·role server·client evidence가 없어 fail-closed 된다. |
 | 2026-08-03 current E2E worktree check | 변경된 E2E project build는 warning 0/error 0, 관련 sample regression은 `3/3`, `1/1`, `1/1`, 변경 runner `bash -n`은 exit 0 | Config 2·4·7·8·11·12의 source·selector·runner 진행만 확인했다. 현재 변경을 사용한 actual process E2E는 실행하지 않았으며 상세 상태는 [`current progress log`](log/20260803-071702-current-progress.ko.md)에 둔다. |
+| 2026-08-03 runtime·Actor transfer follow-up | Runtime `740/740`, bound-session·entry `136/136`, staged-route `10/10`; ST-C1/C2/C3, ST-D2, ST-F1/F2/F3/F6 process PASS. Aggregate는 ST-B2에서 중단 | Runtime implementation과 unit gate는 통과했다. ST-B2 fixture가 source cleanup을 completion barrier로 요구해 공통 spec과 충돌하며, 상세 evidence는 [`runtime unit and E2E log`](log/20260803-092806-runtime-unit-and-e2e.ko.md)에 둔다. |
 | 2026-08-02 `git diff --check` | 통과 | 현재 변경의 whitespace 오류가 없다. |
 
 최신 Phase A 실행 세부 사항은 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md)에,

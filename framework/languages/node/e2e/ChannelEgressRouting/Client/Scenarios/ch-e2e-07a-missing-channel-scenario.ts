@@ -1,4 +1,4 @@
-// CH-E2E-07A: 등록하지 않은 ChannelName은 public NotFound로 종료한다.
+// CH-E2E-07A: 등록하지 않은 ChannelName은 NotFound다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

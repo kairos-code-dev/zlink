@@ -1,4 +1,4 @@
-// CH-E2E-04B: Accepted request 완료와 drain 뒤 신규 target 제외를 검증한다.
+// CH-E2E-04B: Draining server는 신규 request에서 제외한다 시나리오를 검증한다.
 import { assert, getJson, postJson, waitFor, waitForEvidence } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

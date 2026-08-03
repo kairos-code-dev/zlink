@@ -4,7 +4,7 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 09:10 KST
+마지막 갱신일: 2026-08-03 09:25 KST
 
 이번 runtime·package·SubmitAdmission runner 재검증의 명령·exit code·실행 경로는
 [`log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md`](log/20260803-0910-java-kotlin-runtime-package-runner-progress.ko.md)에
@@ -13,6 +13,10 @@
 그 이전 source/package/API 재검증은
 [`log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md`](log/20260803-0829-java-kotlin-runtime-spec-progress.ko.md),
 이전 baseline은 [`log/20260803-0724-current-audit.ko.md`](log/20260803-0724-current-audit.ko.md)에서 확인할 수 있다.
+이번에는 closed peer의 direct send error mapping을 수정하고 fresh runtime unit과
+승인 package SubmitAdmission process를 재실행했다. 명령·exit code·evidence는
+[`log/20260803-0925-java-kotlin-runtime-submit-admission-follow-up.ko.md`](log/20260803-0925-java-kotlin-runtime-submit-admission-follow-up.ko.md)에
+기록했다.
 이번 runtime·package·workstream 변경을 담은 implementation commit은
 `d9be6bacfd3a8c5b8c179d8482ee91e6e0b5ba42`이다.
 
@@ -25,7 +29,7 @@ Kotlin의 exact interface, feature-map, runner, 현재 실패 원인은 각 항�
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
 이 문서의 Java/Kotlin 작업은 C++, .NET, Node.js 작업과 동시에 진행한다. 현재 시스템 시각
-`2026-08-03 09:10 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
+`2026-08-03 09:25 KST (+09:00)` 기준 마감은 `2026-08-03 10:00 KST (+09:00)`이다. 마감 시점에
 완료하지 못한 항목은 완료로 표시하지 않고, 현재 조건과 blocker를 기록한 뒤 다음 결정을 기다린다.
 
 이 절에서 고정하는 것은 작업 간 경계, 하위 layer bug 처리, CPU·마감·log 위치처럼 지켜야 하는
@@ -311,15 +315,15 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 
 ## 3. 현재 검증 결과
 
-이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 baseline과 09:10
-재검증을 함께 기록한다. 09:10 재검증의 상세 결과는 위 log에 있으며, 다른 workstream의
+이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 baseline과 09:25
+재검증을 함께 기록한다. 09:25 재검증의 상세 결과는 위 follow-up log에 있으며, 다른 workstream의
 변경은 되돌리거나 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |
 |---|---|---|
-| `./gradlew --no-daemon --no-parallel --max-workers=5 --rerun-tasks :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-kotlin:contractTest :zlink-stream-connector:test :zlink-http-client:test :zlink-http-client-kotlin:test` (2026-08-03 09:10) | PASS, `37 actionable tasks: 37 executed`, Java core `726 tests` | 현재 source의 runtime unit·contract regression을 실제 재실행했다. E2E role process와 common inventory는 포함하지 않는다. |
+| `./gradlew --no-daemon --no-parallel --max-workers=5 --rerun-tasks :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-kotlin:contractTest :zlink-stream-connector:test :zlink-http-client:test :zlink-http-client-kotlin:test` (2026-08-03 09:25) | PASS, `37 actionable tasks: 37 executed`, Java core `726 tests` | closed peer direct-send error mapping regression을 포함한 현재 source의 runtime unit·contract regression을 fresh 재실행했다. E2E role process와 common inventory는 포함하지 않는다. |
 | 승인 Core 11.1.0 package preflight와 SubmitAdmission `SA-REG-02,SA-REG-03` (2026-08-03 09:10) | PASS, exit `0` | Java binding `11.1.1`이 승인 Core provenance/runtime hash와 일치하고, Java/Kotlin testRuntimeClasspath가 같은 candidate jar를 resolve하는지 확인했다. |
-| SubmitAdmission process `SA-E2E-01,05,08,09,14,20` (2026-08-03 09:10) | FAIL, role compile exit `1` | `ZLinkRouteSendContext`, `ZLinkSendContext`, `setWeight`, peer snapshot accessor가 현재 public API와 달라 process evidence를 만들지 못했다. E2E/sample blocker이며 runtime unit failure가 아니다. |
+| SubmitAdmission process `SA-E2E-01,05,08,09,14,20` (2026-08-03 09:25) | PASS, exit `0` | 승인 Core 11.1.0과 Java binding 11.1.1을 고정한 실제 role process가 `Submitted`, `REQUEST_TARGET_NOT_FOUND`, `ROUTE_NOT_CONNECTED`, local·remote handler count, positive-weight channel, late delivery 0, handler-gate 순서를 확인했다. evidence는 follow-up log와 `framework/languages/java/e2e/SubmitAdmission/logs/20260803-092352-472365/evidence.jsonl`에 있다. Config 13 전체와 aggregate 완료는 아니다. |
 | `SA-REG-01` common submit contract verifier (2026-08-03 09:10) | FAIL, exit `1` | `RuntimeShutdown`과 Config 13 literal semantic/coverage fragment를 찾지 못한 contract gate다. runtime test 실패로 해석하지 않는다. |
 | Java/Kotlin API snapshot 및 packaged consumer (2026-08-03 09:10) | PASS, exit `0` | Java hash `dd5f7c3e...d6d994`, Kotlin hash `0bf535f3...b4f287`; clean package consumer가 양쪽 모두 통과했다. |
 | `:zlink-framework-core:test`, `:zlink-framework-kotlin:test`, `:zlink-framework-kotlin:contractTest`, `:zlink-stream-connector:test`, `:zlink-http-client:test`, `:zlink-http-client-kotlin:test` | PASS, 37 actionable tasks. Java core는 726 tests를 실행했다. | HWM queue-only semantics, shutdown lease cleanup, stream drop/handler-less ownership, codec, actor/runtime, Kotlin facade/cancellation과 HTTP body-read deadline의 unit/contract 범위를 확인했다. common E2E aggregate, sample, CI path는 포함하지 않는다. |
@@ -694,8 +698,9 @@ exact inventory 결과는
 
 - 상태: runtime 구현·unit·package/API snapshot 완료. exact Java interface의
   method를 Fanout builder와 channel registration에 연결했고 fake backend public-manager
-  gate와 Java·Kotlin PubSub PS-A1~A4·PS-B1~B2·PS-C1 process가 통과했다.
-  SubmitAdmission process E2E와 generated routing ID의 독립 process evidence는 아직 남아 있다.
+  gate와 Java·Kotlin PubSub PS-A1~A4·PS-B1~B2·PS-C1 process가 통과했다. 승인 package
+  SubmitAdmission SA-E2E-01·05·08·09·14·20 process도 통과했지만 generated routing ID와
+  reconnect를 독립적으로 확인하는 process evidence는 아직 남아 있다.
 - 계약 경로:
   framework/doc/framework/common/spec/server/languages/java/interfaces/configuration-host.ko.md:202-214.
 - 구현 경로:
@@ -1986,10 +1991,11 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
   `726 tests`가 PASS했다. 이 결과는 runtime unit/contract gate를 닫지만, common E2E
   documentation inventory를 포함한 full contract invocation은 아래 scenario 누락
   blocker 때문에 전체 CLEAN으로 올리지 않는다.
-- SubmitAdmission의 승인 package preflight와 `SA-REG-02`, `SA-REG-03`은 현재
-  `systems.zlink:zlink:11.1.1` candidate로 PASS했다. process selector는 role source의
-  `ZLinkRouteSendContext`, `ZLinkSendContext`, `setWeight`, peer snapshot accessor가
-  현재 public surface와 달라 compile 단계에서 중단했으므로 process evidence가 없다.
+- SubmitAdmission의 승인 package preflight와 `SA-REG-02`, `SA-REG-03`,
+  `SA-E2E-01,05,08,09,14,20`은 현재 `systems.zlink:zlink:11.1.1` candidate로
+  PASS했다. Role source를 현재 public surface에 맞추고, closed peer direct send가
+  `ROUTE_NOT_CONNECTED`로 끝나도록 raw Spot classification을 수정했다. 이는 Config
+  13의 일부 process evidence이며 전체 20개 scenario와 aggregate 완료가 아니다.
 - `SA-REG-01`은 runtime test가 아니라 공통 submit-contract verifier의 literal
   `RuntimeShutdown`과 Config 13 semantic/coverage fragment 검사에서 FAIL했다. 이를
   runtime gap 완료나 process 완료로 계산하지 않는다.

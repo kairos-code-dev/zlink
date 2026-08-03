@@ -1,4 +1,4 @@
-// CH-E2E-05: Client role이 없는 Server-only process의 outbound request를 거부한다.
+// CH-E2E-05: Client role이 없는 process는 ClientServer request를 시작하지 못한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

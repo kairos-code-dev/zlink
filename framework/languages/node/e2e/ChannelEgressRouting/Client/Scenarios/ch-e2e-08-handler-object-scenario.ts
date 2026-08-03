@@ -1,4 +1,4 @@
-// CH-E2E-08: Handler-originated public object call path를 검증한다.
+// CH-E2E-08: ClientServer handler가 Spot과 Actor를 연속 호출한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

@@ -1,4 +1,4 @@
-// CH-E2E-04C: Server process 재시작 뒤 새 lifecycle target을 선택한다.
+// CH-E2E-04C: Server 재시작 뒤 신규 request를 처리한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

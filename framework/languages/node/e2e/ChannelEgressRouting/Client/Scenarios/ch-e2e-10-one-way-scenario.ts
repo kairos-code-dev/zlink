@@ -1,4 +1,4 @@
-// CH-E2E-10: ClientServer one-way send는 reply payload 없이 handler evidence 하나를 만든다.
+// CH-E2E-10: ClientServer one-way send는 reply를 만들지 않는다 시나리오를 검증한다.
 import { assert, postJson, waitForEvidence } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

@@ -1,4 +1,4 @@
-// CH-E2E-07B: 별도 Client role이 없는 RouteMesh Server도 remote Server를 선택한다.
+// CH-E2E-07B: Local Server role만 있어도 remote member를 호출한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

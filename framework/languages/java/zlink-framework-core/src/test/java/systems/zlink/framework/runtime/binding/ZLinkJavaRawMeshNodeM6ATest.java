@@ -163,6 +163,44 @@ final class ZLinkJavaRawMeshNodeM6ATest {
     }
 
     @Test
+    void closedExpectedPeerClassifiesDirectSendAsRouteNotConnected()
+        throws Exception {
+        RoutingId localRid = RoutingId.from("jvm-closed-local");
+        RoutingId peerRid = RoutingId.from("jvm-closed-peer");
+        String localEndpoint = "inproc://jvm-closed-local-" + System.nanoTime();
+        String peerEndpoint = "inproc://jvm-closed-peer-" + System.nanoTime();
+        try (var context = Zlink.createContext();
+             var local = new ZLinkJavaRawMeshNode(
+                 context,
+                 "mesh",
+                 System::currentTimeMillis,
+                 Duration.ofMillis(10),
+                 Duration.ofMillis(50));
+             var peer = new ZLinkJavaRawMeshNode(
+                 context,
+                 "mesh",
+                 System::currentTimeMillis,
+                 Duration.ofMillis(10),
+                 Duration.ofMillis(50))) {
+            local.setRoutingId(localRid);
+            local.setBind(localEndpoint);
+            peer.setRoutingId(peerRid);
+            peer.setBind(peerEndpoint);
+            local.start();
+            peer.start();
+            local.connectPeer(peerEndpoint, peerRid);
+            awaitState(local, MeshPeerState.ADMITTED);
+
+            peer.close();
+            awaitState(local, MeshPeerState.CLOSED);
+
+            assertEquals(
+                ZLinkOneWayCalls.ROUTE_NOT_CONNECTED,
+                local.spotNode().classifyNodeSendTarget(peerRid).orElseThrow());
+        }
+    }
+
+    @Test
     void command44ReceivesCommand45ThroughInfrastructureDispatcher()
         throws Exception {
         String endpoint = "inproc://jvm-m6c-session-route-" + System.nanoTime();

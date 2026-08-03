@@ -6,6 +6,7 @@
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/messaging/submit_queue.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
@@ -204,9 +205,31 @@ int main ()
         }
 
         zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
+        using zlink::framework::framework_error_kind_t;
+        using zlink::framework::runtime::messaging::map_submit_result_error_kind;
+        if (map_submit_result_error_kind (zlink::submit_result_t::backpressured)
+                != framework_error_kind_t::capacity_exceeded
+            || map_submit_result_error_kind (zlink::submit_result_t::not_connected)
+                 != framework_error_kind_t::unavailable
+            || map_submit_result_error_kind (zlink::submit_result_t::not_found)
+                 != framework_error_kind_t::not_found
+            || map_submit_result_error_kind (zlink::submit_result_t::not_admitted)
+                 != framework_error_kind_t::rejected
+            || map_submit_result_error_kind (zlink::submit_result_t::terminated)
+                 != framework_error_kind_t::shutting_down
+            || map_submit_result_error_kind (zlink::submit_result_t::invalid_argument)
+                 != framework_error_kind_t::invalid_operation
+            || map_submit_result_error_kind (zlink::submit_result_t::invalid_state)
+                 != framework_error_kind_t::invalid_operation) {
+            return 25;
+        }
         const auto not_connected = mapper.completion_exception (
           zlink::framework::runtime::messaging::request_result_t::not_connected, "profile request");
-        if (not_connected.kind () != zlink::framework::framework_error_kind_t::unavailable) {
+        if (not_connected.kind () != zlink::framework::framework_error_kind_t::unavailable
+            || zlink::framework::detail::boundary_state (not_connected)
+                 != zlink::framework::detail::boundary_error_t::disconnected
+            || not_connected.code ()
+                 != std::make_error_code (std::errc::not_connected)) {
             return 16;
         }
         const auto not_found = mapper.completion_exception (
@@ -247,10 +270,14 @@ int main ()
         if (conflict.kind () != zlink::framework::framework_error_kind_t::capacity_exceeded
             || rejected.kind () != zlink::framework::framework_error_kind_t::rejected
             || protocol.kind () != zlink::framework::framework_error_kind_t::protocol_error
-            || invalid_argument.kind () != zlink::framework::framework_error_kind_t::internal_failure
-            || invalid_state.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || invalid_argument.kind () != zlink::framework::framework_error_kind_t::invalid_operation
+            || invalid_state.kind () != zlink::framework::framework_error_kind_t::invalid_operation
             || not_supported.kind () != zlink::framework::framework_error_kind_t::internal_failure
-            || terminated.kind () != zlink::framework::framework_error_kind_t::internal_failure
+            || terminated.kind () != zlink::framework::framework_error_kind_t::shutting_down
+            || zlink::framework::detail::boundary_state (terminated)
+                 != zlink::framework::detail::boundary_error_t::shutdown
+            || terminated.code ()
+                 != std::make_error_code (std::errc::operation_canceled)
             || internal_error.kind () != zlink::framework::framework_error_kind_t::internal_failure) {
             return 22;
         }
@@ -260,6 +287,12 @@ int main ()
           mapper.error_header_exception ("timeout", "explicit timeout", "profile request");
         const auto route_header =
           mapper.error_header_exception ("route_not_connected", "", "profile request");
+        const auto unavailable_header =
+          mapper.error_header_exception ("unavailable", "", "profile request");
+        const auto shutdown_header =
+          mapper.error_header_exception ("shutting_down", "", "profile request");
+        const auto deadline_header =
+          mapper.error_header_exception ("deadline_exceeded", "", "profile request");
         const auto not_found_header =
           mapper.error_header_exception ("request_target_not_found", "", "profile request");
         const auto unknown_header =
@@ -269,6 +302,16 @@ int main ()
         if (zlink::framework::detail::boundary_state (timeout_header) != zlink::framework::detail::boundary_error_t::timed_out
             || std::string (timeout_with_message.what ()) != "explicit timeout"
             || route_header.kind () != zlink::framework::framework_error_kind_t::unavailable
+            || zlink::framework::detail::boundary_state (route_header)
+                 != zlink::framework::detail::boundary_error_t::disconnected
+            || unavailable_header.code ()
+                 != std::make_error_code (std::errc::not_connected)
+            || zlink::framework::detail::boundary_state (shutdown_header)
+                 != zlink::framework::detail::boundary_error_t::shutdown
+            || shutdown_header.kind ()
+                 != zlink::framework::framework_error_kind_t::shutting_down
+            || zlink::framework::detail::boundary_state (deadline_header)
+                 != zlink::framework::detail::boundary_error_t::timed_out
             || not_found_header.kind ()
                  != zlink::framework::framework_error_kind_t::not_found
             || unknown_header.kind () != zlink::framework::framework_error_kind_t::internal_failure

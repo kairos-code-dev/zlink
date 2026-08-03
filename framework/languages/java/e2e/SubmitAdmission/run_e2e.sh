@@ -262,13 +262,15 @@ wait_route_ready() {
 
 wait_route_disconnected() {
   local url="$1" target_rid="$2"
-  for _ in $(seq 1 30); do
+  # RouteMesh liveness uses a 5 s probe interval and a 15 s peer deadline.
+  # Allow one complete deadline window after an abrupt process stop.
+  for _ in $(seq 1 200); do
     if ! curl --max-time 1 -fsS "$url/ready?targetRid=$target_rid" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.1
   done
-  echo "target route remained ready after target process stopped" >&2
+  echo "target route remained ready after target process stopped for 20 seconds" >&2
   return 1
 }
 
@@ -340,36 +342,36 @@ run_process_scenarios() {
 
   local target_expected=0 caller_expected=0
   if contains SA-E2E-01 "${selectors[@]}"; then
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-node?targetRid=submit-target&operationId=fast-node&sequence=1"
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-channel?operationId=fast-channel&sequence=2"
     target_expected=$((target_expected + 2))
-    echo '{"scenarioId":"SA-E2E-01","status":"PASS","publicSubmitCount":2,"terminal":"SUBMITTED"}' \
+    echo '{"scenarioId":"SA-E2E-01","status":"PASS","publicSubmitCount":2,"terminal":"Submitted"}' \
       >>"$EVIDENCE_FILE"
   fi
 
   if contains SA-E2E-08 "${selectors[@]}"; then
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-node?targetRid=submit-caller&operationId=local-direct&sequence=3"
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-node?targetRid=submit-target&operationId=remote-direct&sequence=4"
     caller_expected=$((caller_expected + 1))
     target_expected=$((target_expected + 1))
-    echo '{"scenarioId":"SA-E2E-08","status":"PASS","local":"SUBMITTED","remote":"SUBMITTED","handlerCountEach":1}' \
+    echo '{"scenarioId":"SA-E2E-08","status":"PASS","local":"Submitted","remote":"Submitted","handlerCountEach":1}' \
       >>"$EVIDENCE_FILE"
   fi
 
   if contains SA-E2E-09 "${selectors[@]}"; then
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-channel?operationId=positive-weight-channel&sequence=5"
     target_expected=$((target_expected + 1))
-    echo '{"scenarioId":"SA-E2E-09","status":"PASS","positiveWeightHandler":1,"terminal":"SUBMITTED"}' \
+    echo '{"scenarioId":"SA-E2E-09","status":"PASS","positiveWeightHandler":1,"terminal":"Submitted"}' \
       >>"$EVIDENCE_FILE"
   fi
 
   if contains SA-E2E-14 "${selectors[@]}"; then
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$publisher_url/publish?operationId=subscriber-zero&sequence=6"
     "$role_bin" \
       --role=subscriber --rid=submit-subscriber --httpPort="$subscriber_http" \
@@ -382,12 +384,12 @@ run_process_scenarios() {
     sleep 0.3
     wait_counts "$subscriber_url" 0 0
     stop_pid "$subscriber_pid"
-    echo '{"scenarioId":"SA-E2E-14","status":"PASS","subscriberProcessCountAtSubmit":0,"terminal":"SUBMITTED","lateSubscriberDeliveryCount":0}' \
+    echo '{"scenarioId":"SA-E2E-14","status":"PASS","subscriberProcessCountAtSubmit":0,"terminal":"Submitted","lateSubscriberDeliveryCount":0}' \
       >>"$EVIDENCE_FILE"
   fi
 
   if contains SA-E2E-20 "${selectors[@]}"; then
-    expect_status SUBMITTED \
+    expect_status Submitted \
       "$caller_url/send-node?targetRid=submit-target&operationId=handler-gate-remote&sequence=7"
     target_expected=$((target_expected + 1))
     wait_counts "$target_url" "$target_expected" "$((target_expected - 1))"
@@ -405,9 +407,9 @@ run_process_scenarios() {
   if contains SA-E2E-05 "${selectors[@]}"; then
     local index actual
     for index in $(seq 1 100); do
-      actual="$(curl --max-time 3 -fsS \
+      actual="$(curl --max-time 3 -sS \
         "$caller_url/send-node?targetRid=unknown-node&operationId=unknown-$index&sequence=$index")"
-      [[ "$actual" == TARGET_NOT_FOUND ]] || {
+      [[ "$actual" == REQUEST_TARGET_NOT_FOUND ]] || {
         echo "unknown target iteration=$index status=$actual" >&2
         return 1
       }
@@ -417,14 +419,14 @@ run_process_scenarios() {
     TARGET_PID=""
     wait_route_disconnected "$caller_url" submit-target
     for index in $(seq 1 100); do
-      actual="$(curl --max-time 3 -fsS \
+      actual="$(curl --max-time 3 -sS \
         "$caller_url/send-node?targetRid=submit-target&operationId=disconnected-$index&sequence=$index")"
       [[ "$actual" == ROUTE_NOT_CONNECTED ]] || {
         echo "disconnected target iteration=$index status=$actual" >&2
         return 1
       }
     done
-    echo '{"scenarioId":"SA-E2E-05","status":"PASS","unknownCount":100,"unknown":"TARGET_NOT_FOUND","disconnectedCount":100,"disconnected":"ROUTE_NOT_CONNECTED"}' \
+    echo '{"scenarioId":"SA-E2E-05","status":"PASS","unknownCount":100,"unknown":"REQUEST_TARGET_NOT_FOUND","disconnectedCount":100,"disconnected":"ROUTE_NOT_CONNECTED"}' \
       >>"$EVIDENCE_FILE"
   fi
 

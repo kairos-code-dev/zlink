@@ -21,7 +21,7 @@ internal static class StF3BoundSessionCrossMoveOrderScenario
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F3|{actorId}|joined_wait|{spotId}"]);
         await bound.Send(new HandoffPacket("ST-F3", "S1")).Async();
         await bound.Send(new HandoffPacket("ST-F3", "S2")).Async();
-        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+        await context.WaitRuntimeEvidenceAsync(context.NodeB,
             $"handoff_backlog actor={actorId} arrival=1");
         await context.ReleaseJoinedGateAsync(context.NodeB, spotId);
         // Submit at the completion boundary so the packets may hit either the

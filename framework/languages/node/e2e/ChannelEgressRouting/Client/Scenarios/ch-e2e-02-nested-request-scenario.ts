@@ -1,4 +1,4 @@
-// CH-E2E-02: Handler가 Audit RouteMesh와 Workflow ClientServer를 연속 호출한다.
+// CH-E2E-02: Handler가 다른 topology의 Channel을 호출한다 시나리오를 검증한다.
 import { assert, postJson, waitForEvidence } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

@@ -33,6 +33,7 @@ import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBud
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 
 /**
  * Framework-owned service runtime projected over the raw MeshNode transport.
@@ -170,10 +171,20 @@ final class ZLinkJavaRawSpotNode
         if (owner.isObjectClientNodeDirectTarget(targetNodeRid)) {
             return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
         }
-        if (routingId().equals(targetNodeRid)
-            || owner.peers().stream().anyMatch(
-                peer -> peer.routingId().equals(targetNodeRid))) {
+        if (routingId().equals(targetNodeRid)) {
             return Optional.empty();
+        }
+        Optional<MeshPeerState> peerState = owner.peers().stream()
+            .filter(peer -> peer.routingId().equals(targetNodeRid))
+            .map(peer -> peer.state())
+            .findFirst();
+        if (peerState.isPresent()) {
+            return switch (peerState.orElseThrow()) {
+                case ADMITTED, CONFIGURED, CONNECTING -> Optional.empty();
+                case NOT_REQUIRED -> Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
+                case CLOSED, DRAINING, ERROR ->
+                    Optional.of(ZLinkOneWayCalls.ROUTE_NOT_CONNECTED);
+            };
         }
         return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
     }

@@ -13,7 +13,7 @@ Runner는 Caller, Mesh target과 classic fanout publisher를 서로 다른 proce
 | SA-E2E-02 | 미구현 | `ReceiverGate`와 destination별 SEND_READY signal·retry observer가 필요하다. |
 | SA-E2E-03 | 미구현 | Pending capacity를 고정하는 fixture와 첫 transport attempt observer가 필요하다. |
 | SA-E2E-04 | 부분 구현 | Focused JVM runtime test는 1ns를 1ms로 올림하고 timeout 뒤 exact destination ready signal을 보내도 transport·local admission attempt가 늘지 않는지 확인한다. Process `ReceiverGate`와 family별 late delivery evidence는 남아 있다. Timeout을 늘리거나 call을 반복 submit하지 않는다. |
-| SA-E2E-05 | 부분 구현 | Typed expected-RID registry에 없는 RID를 100회 `TARGET_NOT_FOUND`로 확인한다. 같은 registry의 target process를 종료하고 public runtime snapshot에서 ready 해제를 확인한 뒤 100회 `ROUTE_NOT_CONNECTED`로 구분한다. 독립 connection gate와 native teardown observer는 없다. |
+| SA-E2E-05 | 부분 구현 | Typed expected-RID registry에 없는 RID를 100회 `REQUEST_TARGET_NOT_FOUND`로 확인한다. 같은 registry의 target process를 종료하고 public runtime snapshot에서 ready 해제를 확인한 뒤 100회 `ROUTE_NOT_CONNECTED`로 구분한다. 독립 connection gate와 native teardown observer는 없다. 승인 package process evidence는 2026-08-03 실행에서 두 결과를 각각 100회 확인했다. |
 | SA-E2E-06 | 미구현 | Drain admission barrier와 source process 종료 뒤에도 결과를 보관하는 collector가 필요하다. |
 | SA-E2E-07 | 미구현 | JVM cancellation winner와 Logical Multicast commit 전·후 barrier가 필요하다. |
 | SA-E2E-08 | 부분 구현 | Self RID는 기존 Mesh application dispatcher의 bounded local queue를 사용한다. Focused test는 queue 포화 뒤 Node destination capacity signal 한 번으로 pending call을 수락하고, timeout 뒤 signal에는 재시도하지 않음을 확인한다. Process gate에서 local·remote pending·deadline evidence를 나란히 비교하는 절차는 남아 있다. |

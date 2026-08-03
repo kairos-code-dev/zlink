@@ -1,4 +1,4 @@
-// CH-E2E-03: Instance Spot handler와 실제 timer가 ClientServer request를 기다린다.
+// CH-E2E-03: Spot callback과 timer에서 ClientServer request를 보낸다 시나리오를 검증한다.
 import { assert, postJson, waitForEvidence } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

@@ -1,4 +1,4 @@
-// CH-E2E-06: 중복 egress registration은 정상 readiness 전에 configuration error가 된다.
+// CH-E2E-06: 같은 ChannelName을 여러 송신 경로에 등록하면 시작하지 못한다 시나리오를 검증한다.
 import { assert, getJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

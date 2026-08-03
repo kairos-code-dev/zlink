@@ -1,4 +1,4 @@
-// CH-E2E-09: public status가 실제 bound endpoint를 제공하고 port 0을 노출하지 않는지 검증한다.
+// CH-E2E-09: Port 0과 advertised host로 remote connection을 만든다 시나리오를 검증한다.
 import { assert, getJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

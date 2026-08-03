@@ -797,6 +797,11 @@ public sealed class ActorHandoffTests
         Assert.Equal("binding-1", outbound.BindingToken);
         Assert.Equal((ulong)12, outbound.AuthorityOwnerGeneration);
 
+        Assert.True(state.TryGetBoundSessionForInbound(out var inbound));
+        Assert.Equal(outbound, inbound);
+        Assert.Equal((ulong)5, inbound.TargetNodeGeneration);
+        Assert.Equal((ulong)9, inbound.OwnerLeaseGeneration);
+
         state.CompleteRelocationSessionRoute("handoff-1");
         Assert.True(state.TryGetBoundSession(out var completed));
         Assert.Equal(outbound, completed);

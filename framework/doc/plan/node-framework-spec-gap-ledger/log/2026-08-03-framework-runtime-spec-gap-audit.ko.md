@@ -261,3 +261,13 @@ CH01 CH02 CH03 CH04A CH04B CH04C CH05 CH06 CH07A CH07B CH07C CH08 CH09 CH10 CH11
 CH09는 runner가 session role을 시작하지 않아 port 1 fallback URL을 조회하던 fixture 오류도 함께
 수정했다. Config 12의 16개 scenario는 현재 개별 runner에서 통과하지만, common 374개 exact inventory,
 Config 14, aggregate·coverage·CI와 전체 Framework gate의 완료 판정은 별도로 유지한다.
+
+동일 runner의 `bash run_e2e.sh ALL`도 실행했다. CH01~CH07B까지는 통과했지만 CH07C에서 caller
+native process가 `Segmentation fault (core dumped)`로 종료되어 aggregate는 실패했다. 따라서 위의
+16/16 결과는 독립 selector의 targeted evidence로만 사용하고, aggregate PASS나 native artifact
+완료로 승격하지 않는다.
+
+추가로 ChannelName의 내부 `trySend` 경로와 public 비동기 `send` 경로를 common spec §3.2와
+대조했다. `trySend`는 readiness를 기다리지 않고 현재 선택 결과만 즉시 반환하는 fast-fail 경로이며,
+공통 계약의 bounded readiness wait는 public 비동기 `send`에 적용된다. 따라서 `trySend`의
+disconnected 상태 즉시 반환은 별도 runtime gap으로 분류하지 않았다.

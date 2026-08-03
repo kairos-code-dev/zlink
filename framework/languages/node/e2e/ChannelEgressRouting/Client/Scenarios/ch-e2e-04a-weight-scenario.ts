@@ -1,4 +1,4 @@
-// CH-E2E-04A: ClientServer weight 100:300 선택 비율을 충분한 표본으로 검증한다.
+// CH-E2E-04A: ClientServer weight에 따라 target을 선택한다 시나리오를 검증한다.
 import { assert, postJson } from '../Support/scenario-support';
 import type { ClientOptions } from '../Support/client-options';
 

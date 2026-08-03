@@ -14,8 +14,8 @@ request_failure_mapper_t::completion_exception (request_result_t result,
             return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
                                           operation_name + " timed out.");
         case request_result_t::not_connected:
-            return framework_exception_t (
-              framework_error_kind_t::unavailable,
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
               operation_name + " failed because the target route is not connected.");
         case request_result_t::not_found:
             return framework_exception_t (framework_error_kind_t::not_found,
@@ -33,11 +33,16 @@ request_failure_mapper_t::completion_exception (request_result_t result,
                                           operation_name + " failed with a protocol error.");
         case request_result_t::invalid_argument:
         case request_result_t::invalid_state:
+            return framework_exception_t (framework_error_kind_t::invalid_operation,
+                                          operation_name + " is invalid in the current state.");
         case request_result_t::not_supported:
-        case request_result_t::terminated:
         case request_result_t::internal_error:
             return framework_exception_t (framework_error_kind_t::internal_failure,
                                           operation_name + " failed.");
+        case request_result_t::terminated:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::shutdown,
+              operation_name + " stopped because the runtime is shutting down.");
     }
     return framework_exception_t (framework_error_kind_t::internal_failure,
                                   operation_name + " failed.");
@@ -82,9 +87,16 @@ request_failure_mapper_t::error_header_exception (const std::string &error_code,
           error_message.empty () ? operation_name + " was rejected." : error_message);
     }
     if (error_code == "unavailable") {
-        return framework_exception_t (
-          framework_error_kind_t::unavailable,
+        return detail::make_boundary_exception (
+          detail::boundary_error_t::disconnected,
           error_message.empty () ? operation_name + " is unavailable." : error_message);
+    }
+    if (error_code == "not_connected") {
+        return detail::make_boundary_exception (
+          detail::boundary_error_t::disconnected,
+          error_message.empty ()
+            ? operation_name + " failed because the target route is not connected."
+            : error_message);
     }
     if (error_code == "capacity_exceeded") {
         return framework_exception_t (
@@ -92,13 +104,13 @@ request_failure_mapper_t::error_header_exception (const std::string &error_code,
           error_message.empty () ? operation_name + " exceeded capacity." : error_message);
     }
     if (error_code == "deadline_exceeded") {
-        return framework_exception_t (
-          framework_error_kind_t::deadline_exceeded,
+        return detail::make_boundary_exception (
+          detail::boundary_error_t::timed_out,
           error_message.empty () ? operation_name + " exceeded its deadline." : error_message);
     }
     if (error_code == "shutting_down") {
-        return framework_exception_t (
-          framework_error_kind_t::shutting_down,
+        return detail::make_boundary_exception (
+          detail::boundary_error_t::shutdown,
           error_message.empty () ? operation_name + " stopped because the runtime is shutting down."
                                  : error_message);
     }
@@ -126,11 +138,11 @@ request_failure_mapper_t::error_header_exception (const std::string &error_code,
           error_message.empty () ? operation_name + " failed." : error_message);
     }
     if (error_code == "route_not_connected") {
-        return framework_exception_t (framework_error_kind_t::unavailable,
-                                      error_message.empty ()
-                                        ? operation_name
-                                            + " failed because the target route is not connected."
-                                        : error_message);
+        return detail::make_boundary_exception (
+          detail::boundary_error_t::disconnected,
+          error_message.empty ()
+            ? operation_name + " failed because the target route is not connected."
+            : error_message);
     }
     if (error_code == "request_target_not_found") {
         return framework_exception_t (

@@ -31,6 +31,7 @@ public final class OpenConversationActorHandler
                 Messages.JoinConversationRes scheduled = actor
                 .scheduleConversationJoin(
                     opened.conversationId(),
+                    request.subject(),
                     new Messages.JoinConversationReq(
                         actor.participantId(), actor.role(), actor.displayName()));
                 return new Messages.OpenConversationRes(opened.conversationId(), scheduled.state());

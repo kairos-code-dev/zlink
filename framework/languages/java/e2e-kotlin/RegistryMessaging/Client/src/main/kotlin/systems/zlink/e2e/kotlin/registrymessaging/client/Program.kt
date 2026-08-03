@@ -28,7 +28,7 @@ fun main(args: Array<String>) {
                             HttpJson(options.backpressureConsumerUrl).use { backpressureConsumer ->
                                 val scenarios = linkedMapOf<String, () -> Unit>(
                                     "RM-A1" to { RmA1DiscoveryRequestScenario.run(providerA, providerB, discoveryConsumer) },
-                                    "RM-A2" to { RmA2ManualEndpointScenario.run(providerA) },
+                                    "RM-A2" to { RmA2ManualEndpointScenario.run(singleConsumer, providerA) },
                                     "RM-A4" to { RmA4SameRidFailoverScenario.run(options) },
                                     "RM-A6" to { RmA6MultipleChannelsScenario.run(discoveryConsumer, providerA, providerB, workflow) },
                                     "RM-B1" to { RmB1ScaleOutScenario.run(options) },

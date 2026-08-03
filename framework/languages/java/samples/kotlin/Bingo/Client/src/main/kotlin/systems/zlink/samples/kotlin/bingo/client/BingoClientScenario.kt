@@ -47,7 +47,10 @@ class BingoClientScenario {
                 .within(Duration.ofMillis(400))
                 .await()
         }
-        val client1Match = client1.request(MatchBingoReq("two-player")).awaitReply<MatchBingoRes>()
+        val client1MatchWait = client1.waitFor<MatchBingoRes>()
+            .let { wait -> async(start = CoroutineStart.UNDISPATCHED) { wait.await() } }
+        client1.send(MatchBingoReq("two-player")).await()
+        val client1Match = client1MatchWait.await().payload()
         ensure(client1Match.state.status == "WaitingForPlayers")
         ensure(client1Match.state.hostActorId == client1Auth.actorId)
         client1NoSelfJoin.await()
@@ -73,7 +76,10 @@ class BingoClientScenario {
                 .within(Duration.ofMillis(400))
                 .await()
         }
-        val client2Match = client2.request(MatchBingoReq("two-player")).awaitReply<MatchBingoRes>()
+        val client2MatchWait = client2.waitFor<MatchBingoRes>()
+            .let { wait -> async(start = CoroutineStart.UNDISPATCHED) { wait.await() } }
+        client2.send(MatchBingoReq("two-player")).await()
+        val client2Match = client2MatchWait.await().payload()
         ensure(client2Match.roomId == client1Match.roomId)
         ensure(client2Match.state.status == "Running")
 

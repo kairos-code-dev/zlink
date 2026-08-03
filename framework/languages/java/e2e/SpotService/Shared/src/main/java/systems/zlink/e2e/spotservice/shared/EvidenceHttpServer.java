@@ -16,6 +16,7 @@ import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
@@ -66,7 +67,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/topology/ready", exchange -> {
                 int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
                 long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
-                    .filter(peer -> peer.ready())
+                    .filter(peer -> peer.state() == ZLinkPeerState.READY)
                     .count();
                 write(exchange, ready >= expected ? 200 : 503, ready + "\n");
             });

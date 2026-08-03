@@ -14,17 +14,21 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 
 @RestController
 public final class ObjectClientEndpoints {
     private final ZLinkRouteClient routes;
     private final ZLinkRouteMeshRuntime runtime;
+    private final ObjectClientOptions options;
 
     public ObjectClientEndpoints(
         ZLinkRouteClient routes,
-        ZLinkRouteMeshRuntime runtime) {
+        ZLinkRouteMeshRuntime runtime,
+        ObjectClientOptions options) {
         this.routes = routes;
         this.runtime = runtime;
+        this.options = options;
     }
 
     @GetMapping("/health")
@@ -38,15 +42,19 @@ public final class ObjectClientEndpoints {
         var peers = snapshot.peers().stream()
             .map(peer -> {
                 Map<String, Object> value = new LinkedHashMap<>();
-                value.put("rid", peer.rid().toString());
-                value.put("state", peer.admissionState());
-                value.put("ready", peer.ready());
-                value.put("lastFailure", peer.lastFailure().orElse(""));
+                value.put("rid", peer.nodeRid().toString());
+                value.put("state", peer.state().name().toLowerCase(java.util.Locale.ROOT));
+                value.put("ready", peer.state() == ZLinkPeerState.READY);
+                value.put(
+                    "lastFailure",
+                    peer.unavailableReason()
+                        .map(reason -> reason.name().toLowerCase(java.util.Locale.ROOT))
+                        .orElse(""));
                 return value;
             })
             .toList();
         return Map.of(
-            "rid", snapshot.rid().toString(),
+            "rid", options.clientRid(),
             "readyPeerCount", peers.stream()
                 .filter(peer -> Boolean.TRUE.equals(peer.get("ready")))
                 .count(),

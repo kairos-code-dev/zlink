@@ -17,6 +17,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
@@ -68,6 +70,10 @@ public final class Program {
         URI channelEndpoint = URI.create(support.channelEndpoint());
         return options -> {
             options.configureLocations();
+            options.addRelocationStore(new ZLinkRedisRelocationStore(
+                new ZLinkRedisRelocationOptions()
+                    .setConnectionString(topology.location().redisEndpoint())
+                    .setKeyPrefix(topology.location().redisKeyPrefix() + "relocation:")));
             options.addHandlersFromPackageOf(Program.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)

@@ -10,6 +10,7 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 
 public final class GatewayHealthHttpServer implements SmartLifecycle {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -44,7 +45,7 @@ public final class GatewayHealthHttpServer implements SmartLifecycle {
             server.createContext("/topology/ready", exchange -> {
                 int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
                 long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
-                    .filter(peer -> peer.ready())
+                    .filter(peer -> peer.state() == ZLinkPeerState.READY)
                     .count();
                 write(exchange, ready >= expected ? 200 : 503, ready + "\n");
             });

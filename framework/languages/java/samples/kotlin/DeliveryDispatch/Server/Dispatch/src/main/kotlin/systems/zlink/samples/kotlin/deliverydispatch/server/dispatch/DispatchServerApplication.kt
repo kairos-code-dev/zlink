@@ -50,8 +50,9 @@ class DispatchServerApplication {
                 .client()
             val courierRoutes = options.addRouteMesh(SampleNames.CourierSpotMesh)
             courierRoutes
-                .listen("inproc://deliverydispatch-dispatch-courier-client")
+                .listen(SampleTopology.DispatchSpotEndpoint)
                 .setRoutingIdPrefix("delivery-dispatch")
+            courierRoutes.objects().client()
         }
 
     @Bean

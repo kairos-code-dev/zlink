@@ -38,6 +38,20 @@ public final class ProviderEndpoints {
         return java.util.Map.of("status", "ready", "rid", state.providerRid());
     }
 
+    @GetMapping("/route/status")
+    public java.util.Map<String, Object> routeStatus() {
+        var snapshot = drain.routeMeshRuntime().snapshot(Contracts.ROUTE_CHANNEL);
+        return java.util.Map.of(
+            "meshName", snapshot.meshName(),
+            "ready", snapshot.isReady(),
+            "readyPeerCount", snapshot.readyPeerCount(),
+            "peers", snapshot.peers().stream()
+                .map(peer -> java.util.Map.<String, Object>of(
+                    "nodeRid", peer.nodeRid().toString(),
+                    "state", peer.state().name().toLowerCase(java.util.Locale.ROOT)))
+                .toList());
+    }
+
     @GetMapping("/evidence")
     public List<String> evidence() {
         return state.lines();
@@ -66,11 +80,6 @@ public final class ProviderEndpoints {
     @PostMapping("/profile/request")
     public CompletionStage<Contracts.ProfileRes> profileRequest(@RequestBody Contracts.ProfileReq request) {
         return requestProfile(Contracts.API_CHANNEL, request, Duration.ofSeconds(5));
-    }
-
-    @PostMapping("/profile/manual")
-    public CompletionStage<Contracts.ProfileRes> profileManual(@RequestBody Contracts.ProfileReq request) {
-        return requestProfile("registry.messaging.api.manual", request, Duration.ofSeconds(5));
     }
 
     @PostMapping("/profile/command")

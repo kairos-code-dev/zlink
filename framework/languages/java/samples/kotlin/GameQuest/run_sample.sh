@@ -41,7 +41,11 @@ on_exit() {
     done
   fi
   cleanup
-  rm -rf "$RUN_DIR"
+  if [[ "${ZLINK_SAMPLE_KEEP_RUN_DIR:-0}" == "1" ]]; then
+    echo "runDir=$RUN_DIR"
+  else
+    rm -rf "$RUN_DIR"
+  fi
   exit "$status"
 }
 trap on_exit EXIT

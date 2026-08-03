@@ -116,6 +116,11 @@ sample.session-b-stream-endpoint=tcp://${stream_b_host}:${stream_b_port}
 sample.redis-endpoint=${BINGO_REDIS_ENDPOINT}
 sample.redis-key-prefix=${bingo_redis_key_prefix}
 sample.log-directory=${flow_log_dir}
+sample.api-node=a
+sample.play-node=a
+sample.session-node=a
+sample.matchmaking-node=matchmaking
+sample.client-node=client
 sample.${role_key}=${role_value}
 EOF
   chmod 0600 "$path"
@@ -128,14 +133,14 @@ play_a_config="${config_dir}/play-a.properties"
 play_b_config="${config_dir}/play-b.properties"
 matchmaking_config="${config_dir}/matchmaking.properties"
 client_config="${config_dir}/client.properties"
-write_config "$session_a_config" sessionNode a
-write_config "$session_b_config" sessionNode b
-write_config "$api_a_config" apiNode a
-write_config "$api_b_config" apiNode b
-write_config "$play_a_config" playNode a
-write_config "$play_b_config" playNode b
-write_config "$matchmaking_config" matchmakingNode matchmaking
-write_config "$client_config" clientNode client
+write_config "$session_a_config" session-node a
+write_config "$session_b_config" session-node b
+write_config "$api_a_config" api-node a
+write_config "$api_b_config" api-node b
+write_config "$play_a_config" play-node a
+write_config "$play_b_config" play-node b
+write_config "$matchmaking_config" matchmaking-node matchmaking
+write_config "$client_config" client-node client
 
 build_framework_jars
 gradle_run \
@@ -174,6 +179,6 @@ grep -q "bingo=completed" "${log_dir}/client.log"
 grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
 grep -Rq "message flow" "${flow_log_dir}"
 grep -Eq "zlink metric .*name=zlink\.stream\.connections\.active" "${log_dir}"/session-*.log
-grep -Eq "zlink metric .*name=zlink\.spot\.queue\.depth" "${log_dir}"/play-*.log
+grep -Eq "zlink metric .*name=zlink\.spot\.count" "${log_dir}"/play-*.log
 
 echo "bingo full client/server self-check completed"

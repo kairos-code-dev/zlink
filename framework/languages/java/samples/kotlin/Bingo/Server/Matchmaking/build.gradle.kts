@@ -22,6 +22,7 @@ dependencies {
     implementation("io.lettuce:lettuce-core:6.3.2.RELEASE")
     implementation("org.springframework.boot:spring-boot-starter:3.5.14")
     implementation(kotlin("stdlib"))
+    implementation(kotlin("reflect"))
 }
 
 kotlin { jvmToolchain(22) }

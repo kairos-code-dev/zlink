@@ -29,6 +29,7 @@ class BingoRoomSettingsInitializer {
             requiredPlayers = settings.requiredPlayers,
             maxDrawNumber = settings.maxDrawNumber,
             drawPeriodMillis = SampleTimings.DrawPeriod.toMillis(),
+            purpose = settings.purpose,
             observedRoomId = if (settings.hasObservedRoomId()) settings.observedRoomId else null,
         )
     }

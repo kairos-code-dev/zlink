@@ -46,6 +46,7 @@ class OpenConversationActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler
         val joined = actor
             .scheduleConversationJoin(
                 opened.conversationId,
+                request.subject,
                 JoinConversationReq(actor.participantId, actor.role, actor.displayName),
             )
         return OpenConversationRes(opened.conversationId, joined.state)

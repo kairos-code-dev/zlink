@@ -5,6 +5,7 @@ set +m
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+cd "$ROOT_DIR"
 
 if grep -R --include='*.java' -n '\.connectRouter(' Server; then
   echo "SupportChat must use location-store-based automatic router connections." >&2

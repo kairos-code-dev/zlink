@@ -82,6 +82,7 @@ public final class SupportUserActor implements ZLinkActor {
 
     public Messages.JoinConversationRes scheduleConversationJoin(
         String conversationId,
+        String subject,
         Messages.JoinConversationReq request) {
         if (pendingConversationId != null) {
             throw new IllegalStateException("A conversation join is already pending");
@@ -92,7 +93,7 @@ public final class SupportUserActor implements ZLinkActor {
             .defer();
         return new Messages.JoinConversationRes(true, new Messages.ConversationState(
             conversationId,
-            "",
+            subject,
             SampleNames.Statuses.WaitingForAgent,
             SampleNames.Roles.Customer.equals(request.role()) ? request.participantId() : "",
             null,

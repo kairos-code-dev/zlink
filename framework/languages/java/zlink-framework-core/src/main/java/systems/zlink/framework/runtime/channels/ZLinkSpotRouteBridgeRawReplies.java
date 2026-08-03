@@ -66,7 +66,7 @@ final class ZLinkSpotRouteBridgeRawReplies {
         }
         if (ZLinkChannelRuntime.isFrameworkErrorReply(received.parts())) {
             pending.reply().completeExceptionally(new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                ZLinkChannelRuntime.frameworkErrorReplyKind(received.parts()),
                 ZLinkChannelRuntime.frameworkErrorReplyMessage(received.parts())));
             return true;
         }

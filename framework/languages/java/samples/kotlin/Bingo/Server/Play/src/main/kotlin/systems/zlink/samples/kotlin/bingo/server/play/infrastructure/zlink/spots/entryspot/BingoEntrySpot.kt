@@ -1,16 +1,17 @@
 package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.entryspot
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.bingo.server.play.domain.bingo.BingoRoomSettings
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot
 import systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.actors.PlayerActor
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomSettingsPayload
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.EnsurePlayerActorReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsReq
@@ -19,7 +20,6 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.ObserveBingoEventsRes
 class BingoEntrySpot(
     override val context: ZLinkEntrySpotContext,
     private val spots: ZLinkSpotManager,
-    private val json: ObjectMapper,
 ) : ZLinkSuspendingEntrySpot<PlayerActor>() {
     override suspend fun onCreateActorSuspending(
         actor: PlayerActor,
@@ -52,8 +52,17 @@ class BingoEntrySpot(
             actor.actorId(),
             SampleTimings.DrawPeriod.toMillis(),
         )
-        spots.getOrCreate(observerSpotId, BingoRoomSpot::class.java.name)
-            .request(settings)
+        val settingsPayload = BingoRoomSettingsPayload(
+            mode = settings.mode,
+            roomName = settings.roomName,
+            requiredPlayers = settings.requiredPlayers,
+            maxDrawNumber = settings.maxDrawNumber,
+            purpose = settings.purpose,
+            observedRoomId = settings.observedRoomId ?: "",
+        )
+        spots.getOrCreate(observerSpotId, SampleNames.RoomSpotType)
+            .inMesh(SampleNames.Mesh)
+            .request(settingsPayload)
             .submit()
             .await()
         actor.context().joinSpot(

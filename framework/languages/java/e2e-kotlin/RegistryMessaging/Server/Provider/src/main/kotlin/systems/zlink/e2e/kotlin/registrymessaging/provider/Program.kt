@@ -72,12 +72,6 @@ class ProviderApplication {
                 channel.client()
             }
 
-            if (!options.manualClientEndpoint.isNullOrBlank()) {
-                framework.addClientServerChannel(Contracts.PROFILE_MANUAL_CHANNEL)
-                    .client()
-                    .connect(options.manualClientEndpoint)
-            }
-
             if (!options.routeEndpoint.isNullOrBlank()) {
                 val route = framework.addRouteMesh(Contracts.PROFILE_ROUTE_CHANNEL)
                     .listen(options.routeEndpoint)
@@ -85,8 +79,18 @@ class ProviderApplication {
                 route.channelName(Contracts.PROFILE_ROUTE_CHANNEL)
                     .server()
                     .addHandlerGroup(Contracts.ROUTE_HANDLER_GROUP)
-                for (peer in options.routePeers) {
-                    route.peerConnections().connect(peer)
+                route.addRouteRequestHandler(
+                    RoutePingHandler::class.java,
+                    ScenarioRoutePingReq::class.java,
+                    ScenarioRoutePingRes::class.java,
+                )
+                options.routePeers.forEachIndexed { index, peer ->
+                    val peerRid = options.routePeerRids.getOrNull(index)
+                    if (!peerRid.isNullOrBlank()) {
+                        route.peerConnections().connect(RoutingId.from(peerRid), peer)
+                    } else {
+                        route.peerConnections().connect(peer)
+                    }
                 }
             }
         }

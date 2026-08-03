@@ -18,6 +18,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -45,6 +47,8 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
     private static final String SECURITY_IDENTITY = "default";
     private static final int MAX_DESCRIPTORS_PER_CHANNEL = 1024;
     private static final int MAX_RECEIVES_PER_TICK = 64;
+    private static final Logger LOGGER =
+        Logger.getLogger(ZLinkFanoutLocationRuntime.class.getName());
 
     private final ZLinkLocationRepository store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
@@ -229,11 +233,21 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
                 reconciling = true;
                 nextReconcileNanos = now + pollingInterval.toNanos();
                 long epoch = lifecycleEpoch;
-                reconcile(epoch).whenComplete((ignored, failure) ->
-                    reconciling = false);
+                reconcile(epoch).whenComplete((ignored, failure) -> {
+                    reconciling = false;
+                    if (failure != null) {
+                        LOGGER.log(
+                            Level.WARNING,
+                            "fanout location reconcile failed",
+                            failure);
+                    }
+                });
             }
         } catch (RuntimeException failure) {
-            // The next bounded tick retries store and transport work.
+            LOGGER.log(
+                Level.WARNING,
+                "fanout location tick failed; the next bounded tick retries",
+                failure);
         }
     }
 
@@ -366,6 +380,12 @@ final class ZLinkFanoutLocationRuntime implements AutoCloseable {
         try {
             subscriber.connect(descriptor.endpoint());
         } catch (RuntimeException failure) {
+            LOGGER.log(
+                Level.WARNING,
+                "fanout subscriber connect failed for publisher "
+                    + descriptor.publisherRid().toHex()
+                    + " at " + descriptor.endpoint(),
+                failure);
             remove(connectionId, connection);
         }
     }

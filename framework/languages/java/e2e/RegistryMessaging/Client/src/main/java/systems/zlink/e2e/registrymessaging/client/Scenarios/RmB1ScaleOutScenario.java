@@ -16,7 +16,7 @@ public final class RmB1ScaleOutScenario {
             DynamicClusterLauncher.DynamicProvider providerA = cluster.startProvider("api-a", "api-a");
             DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
             try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
-                cluster.waitPeerEndpoint(requester, providerA.channelEndpoint());
+                cluster.waitPeerEndpoint(requester, providerA.routingId());
                 for (int index = 0; index < 5; index++) {
                     Contracts.ProfileRes reply =
                         ScenarioAssert.requestProfileEventually(requester, "scale-out-before-" + index);
@@ -25,7 +25,7 @@ public final class RmB1ScaleOutScenario {
                 }
 
                 DynamicClusterLauncher.DynamicProvider providerB = cluster.startProvider("api-b", "api-b");
-                cluster.waitPeerEndpoint(requester, providerB.channelEndpoint());
+                cluster.waitPeerEndpoint(requester, providerB.routingId());
                 cluster.waitPeerCount(requester, 2);
 
                 Set<String> providers = ScenarioAssert.requestUntilProvidersSeen(

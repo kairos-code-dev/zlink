@@ -79,6 +79,11 @@ final class ZLinkJavaRawSpot
     }
 
     @Override
+    public boolean closeInstanceSpot() {
+        return owner.closeInstanceSpot(spotId, lifecycleGeneration);
+    }
+
+    @Override
     public void setRoutingId(String value) {
         owner.rekeySpot(this, spotId, java.util.Objects.requireNonNull(
             value, "spotId"));
@@ -91,6 +96,8 @@ final class ZLinkJavaRawSpot
             throw new IllegalArgumentException("topic is required");
         }
         topics.add(topic);
+        owner.streamTrace("spot-subscription-bind spot=" + spotId
+            + " topic=" + topic);
     }
 
     @Override
@@ -272,12 +279,21 @@ final class ZLinkJavaRawSpot
 
     CompletionStage<Void> enqueueActor(
         List<ZLinkBackendActorReceived> messages) {
+        owner.streamTrace("mailbox actor enqueue spot=" + spotId
+            + " closed=" + closed.get()
+            + " handler=" + (dispatchHandler != null)
+            + " messages=" + messages.size());
         if (closed.get()) {
             messages.forEach(ZLinkBackendActorReceived::close);
             return CompletableFuture.failedFuture(
                 new IllegalStateException("target Spot is closed"));
         }
-        return raise(ZLinkBackendSpotDispatchEvent.ACTOR_READABLE, messages);
+        CompletionStage<Void> raised = raise(
+            ZLinkBackendSpotDispatchEvent.ACTOR_READABLE, messages);
+        raised.whenComplete((ignored, error) -> owner.streamTrace(
+            "mailbox actor dispatch-complete spot=" + spotId
+                + " error=" + (error == null ? "none" : error)));
+        return raised;
     }
 
     private CompletionStage<Void> raise(ZLinkBackendSpotDispatchEvent event) {

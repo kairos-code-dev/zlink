@@ -151,6 +151,85 @@ PY
   return 1
 }
 
+wait_location_peers() {
+  local http_endpoint="$1"
+  local mesh_name="$2"
+  local expected_count="$3"
+  local timeout_seconds="${4:-5}"
+  python3 - "$(port_of "${http_endpoint}")" "${mesh_name}" "${expected_count}" "${timeout_seconds}" <<'PY'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+port, mesh_name, expected_count, timeout_text = sys.argv[1:]
+expected_count = int(expected_count)
+deadline = time.monotonic() + float(timeout_text)
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/locations/peers",
+                timeout=1) as response:
+            last = json.load(response)
+        ready = [peer for peer in last
+                 if peer.get("meshName") == mesh_name
+                 and peer.get("role") == "ROUTER"]
+        if len(ready) >= expected_count:
+            print(f"location readiness mesh={mesh_name} readyPeers={len(ready)}")
+            raise SystemExit(0)
+    except urllib.error.HTTPError as error:
+        last = {
+            "httpStatus": error.code,
+            "body": error.read().decode("utf-8", errors="replace"),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(
+    f"timed out waiting for {mesh_name} ready peers={expected_count}; last={last!r}")
+PY
+}
+
+wait_route_peer() {
+  local http_endpoint="$1"
+  local peer_rid="$2"
+  local timeout_seconds="${3:-10}"
+  python3 - "$(port_of "${http_endpoint}")" "${peer_rid}" "${timeout_seconds}" <<'PY'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+port, peer_rid, timeout_text = sys.argv[1:]
+deadline = time.monotonic() + float(timeout_text)
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/route/status",
+                timeout=1) as response:
+            last = json.load(response)
+        ready = [peer for peer in last.get("peers", [])
+                 if peer.get("nodeRid") == peer_rid
+                 and peer.get("state") == "ready"]
+        if last.get("ready") and ready:
+            print(f"route readiness peer={peer_rid}")
+            raise SystemExit(0)
+    except urllib.error.HTTPError as error:
+        last = {
+            "httpStatus": error.code,
+            "body": error.read().decode("utf-8", errors="replace"),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(f"timed out waiting for route peer={peer_rid}; last={last!r}")
+PY
+}
+
 start_redis_container() {
   local redis_port
   if ! command -v docker >/dev/null 2>&1; then
@@ -215,7 +294,16 @@ start_provider() {
   local weight="${6:-}"
   local http_port="${7:?http port is required}"
   local binary
+  local route_peer=""
   local config_path="${config_dir}/${rid}-$(date +%s%N).properties"
+  if [[ "${rid}" == "api-a" ]]; then
+    route_peer="${ROUTE_B}"
+  elif [[ "${rid}" == "api-b" ]]; then
+    route_peer="${ROUTE_A}"
+  fi
+  if [[ "${SCENARIO}" == "RM-A1" || "${SCENARIO}" == "RM-A2" ]]; then
+    route=""
+  fi
   if [[ -n "${workflow}" && -z "${api}" && -z "${route}" ]]; then
     binary="$(workflow_bin)"
   else
@@ -227,9 +315,19 @@ start_provider() {
     echo "e2e.api-weight=${weight}"
     echo "e2e.max-message-size=2097152"
     echo "e2e.api-endpoint=${api}"
-    echo "e2e.api-manual-endpoint=${API_A}"
     echo "e2e.route-endpoint=${route}"
-    echo "e2e.route-peers=${ROUTE_B}"
+    echo "e2e.route-peers=${route:+${route_peer}}"
+    if [[ -n "${route}" ]]; then
+      if [[ "${rid}" == "api-a" ]]; then
+        echo "e2e.route-peer-rids=api-b"
+      elif [[ "${rid}" == "api-b" ]]; then
+        echo "e2e.route-peer-rids=api-a"
+      else
+        echo "e2e.route-peer-rids="
+      fi
+    else
+      echo "e2e.route-peer-rids="
+    fi
     echo "e2e.workflow-endpoint=${workflow}"
     echo "e2e.http-port=$(port_of "${http_port}")"
     echo 'server.port=${e2e.http-port}'
@@ -600,6 +698,11 @@ if is_common_scenario "${SCENARIO}"; then
         ;;
     esac
   done
+
+  if [[ "${SCENARIO}" != "RM-A1" && "${SCENARIO}" != "RM-A2" ]]; then
+    wait_route_peer "${HTTP_API_A}" api-b
+  fi
+  wait_location_peers "${HTTP_DISCOVERY_CONSUMER}" "registry.messaging.api" 2
 
   common_client_scenario="${SCENARIO}"
   if [[ "${SCENARIO}" == "all" ]]; then

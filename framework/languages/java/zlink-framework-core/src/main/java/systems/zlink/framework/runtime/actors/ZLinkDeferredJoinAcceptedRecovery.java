@@ -37,6 +37,10 @@ import systems.zlink.framework.runtime.internal.locations
  * relocation operation rather than relying on the source process callback.
  */
 final class ZLinkDeferredJoinAcceptedRecovery {
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger(ZLinkDeferredJoinAcceptedRecovery.class.getName());
     private static final int FORMAT_VERSION = 1;
     private static final int CURSOR_COMMITTED = 1;
     private static final Duration RETENTION = Duration.ofHours(24);
@@ -338,15 +342,23 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                 return mailbox.apply(
                         committed.actorId(),
                         () -> {
+                            streamTrace("callback-start actor=" + committed.actorId()
+                                + " operation=" + committed.operationId());
                             CompletionStage<Void> callback =
                                 actor.onJoinCompleted(
                                     new ZLinkActorJoinCompletion.Accepted(
                                         committed.operationId(),
                                         publicRef,
                                         reply));
-                            return callback == null
+                            CompletionStage<Void> normalized = callback == null
                                 ? CompletableFuture.completedFuture(null)
                                 : callback;
+                            normalized.whenComplete((ignored, error) ->
+                                streamTrace("callback-complete actor="
+                                    + committed.actorId()
+                                    + " operation=" + committed.operationId()
+                                    + " error=" + (error == null ? "none" : error)));
+                            return normalized;
                         })
                     .thenCompose(ignored -> authorityJournal.advance(
                         committed,
@@ -354,6 +366,12 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                         3));
             })
             .thenApply(deliveredRoot -> null);
+    }
+
+    private static void streamTrace(String message) {
+        if (STREAM_TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] deferred-join " + message);
+        }
     }
 
     CompletionStage<Void> completeSourceCleanup(

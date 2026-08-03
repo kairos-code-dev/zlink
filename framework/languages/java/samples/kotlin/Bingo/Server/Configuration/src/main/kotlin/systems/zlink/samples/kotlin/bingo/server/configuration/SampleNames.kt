@@ -10,6 +10,7 @@ object SampleNames {
     const val SessionSpotNode: String = "bingo.session.node"
     const val PlayerActorType: String = "bingo.player"
     const val RoomSpotDiscovery: String = "bingo.rooms"
+    const val RoomRewardChannel: String = "bingo.room.reward.publisher"
     const val RoomSpotType: String = "bingo.room"
     const val MatchmakerSpotType: String = "bingo.matchmaker"
     const val WinnerTopic: String = "bingo.room.reward"

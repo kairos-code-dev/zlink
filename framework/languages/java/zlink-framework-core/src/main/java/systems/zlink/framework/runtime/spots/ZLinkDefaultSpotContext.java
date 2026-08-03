@@ -274,6 +274,10 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 }
 
 final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger(DefaultSpotContext.class.getName());
     private final ZLinkSpotContextHost host;
     private final ZLinkWorkerPool workerPool;
     private final ZLinkSpotHandlerLoader handlerLoader;
@@ -543,11 +547,18 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return dispatchQueue.enqueue(
-            () -> runApplicationExecution(
+        streamTrace("dispatch-enqueue spot=" + spotId());
+        return dispatchQueue.enqueue(() -> {
+            streamTrace("dispatch-start spot=" + spotId());
+            CompletionStage<Void> stage = runApplicationExecution(
                 null,
                 sharedSpotGate(),
-                operation));
+                operation);
+            stage.whenComplete((ignored, error) -> streamTrace(
+                "dispatch-complete spot=" + spotId()
+                    + " error=" + (error == null ? "none" : error)));
+            return stage;
+        });
     }
 
     @Override
@@ -555,9 +566,23 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         String actorId,
         Supplier<CompletionStage<Void>> operation) {
         Objects.requireNonNull(actorId, "actorId");
+        streamTrace("actor-enqueue spot=" + spotId() + " actor=" + actorId
+            + " shared=" + sharedSpotGate());
         if (sharedSpotGate()) {
-            return dispatchQueue.enqueue(
-                () -> runApplicationExecution(actorId, true, operation));
+            if (dispatchQueue.isCurrent()) {
+                return runApplicationExecution(actorId, true, operation);
+            }
+            return dispatchQueue.enqueue(() -> {
+                streamTrace("actor-start spot=" + spotId()
+                    + " actor=" + actorId);
+                CompletionStage<Void> stage = runApplicationExecution(
+                    actorId, true, operation);
+                stage.whenComplete((ignored, error) -> streamTrace(
+                    "actor-complete spot=" + spotId()
+                        + " actor=" + actorId
+                        + " error=" + (error == null ? "none" : error)));
+                return stage;
+            });
         }
         return runApplicationExecution(actorId, false, operation);
     }
@@ -630,11 +655,18 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                 spotId(),
                 null,
                 sharedSpotGate(),
-                false,
+                lifecycleYieldAllowed(),
+                relocationReadyAllowed(),
                 candidate -> host.isActorMember(spotId(), candidate));
         try (var ignored = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
-            return Objects.requireNonNull(operation.get(), "operation result");
+            streamTrace("lifecycle-start spot=" + spotId());
+            CompletionStage<T> stage = Objects.requireNonNull(
+                operation.get(), "operation result");
+            stage.whenComplete((ignoredValue, error) -> streamTrace(
+                "lifecycle-complete spot=" + spotId()
+                    + " error=" + (error == null ? "none" : error)));
+            return stage;
         } catch (RuntimeException failure) {
             return java.util.concurrent.CompletableFuture.failedFuture(failure);
         }
@@ -756,6 +788,34 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             || executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE;
     }
 
+    private boolean lifecycleYieldAllowed() {
+        return lifecycleYieldAllowed(executionMode, instanceSpot);
+    }
+
+    private boolean relocationReadyAllowed() {
+        return relocationReadyAllowed(
+            executionMode,
+            relocationReadiness,
+            instanceSpot);
+    }
+
+    static boolean lifecycleYieldAllowed(
+        ZLinkUserSpotExecutionMode executionMode,
+        boolean instanceSpot) {
+        return instanceSpot
+            || executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE;
+    }
+
+    static boolean relocationReadyAllowed(
+        ZLinkUserSpotExecutionMode executionMode,
+        ZLinkSpotRelocationReadinessMode relocationReadiness,
+        boolean instanceSpot) {
+        return !instanceSpot
+            && executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE
+            && relocationReadiness
+                == ZLinkSpotRelocationReadinessMode.APPLICATION_SIGNALED;
+    }
+
     private CompletionStage<Void> runApplicationExecution(
         String actorId,
         boolean yieldAllowed,
@@ -766,11 +826,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                 actorId,
                 sharedSpotGate(),
                 yieldAllowed,
-                !instanceSpot
-                    && executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE
-                    && relocationReadiness
-                        == ZLinkSpotRelocationReadinessMode
-                            .APPLICATION_SIGNALED,
+                relocationReadyAllowed(),
                 candidate -> host.isActorMember(spotId(), candidate));
         try (var ignored = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
@@ -818,10 +874,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             .ZLinkSuspendInvocationContext.currentApplicationExecution();
         if (execution == null
             || !execution.relocationReadyAllowed()
-            || !execution.spotId().equals(spotId())
-            || systems.zlink.framework.runtime.internal.handlers
-                .ZLinkSuspendInvocationContext.currentSerialExecutionTurn()
-                == null) {
+            || !execution.spotId().equals(spotId())) {
             throw invalidRelocationReady(
                 "relocationReady().defer() is only valid in a SpotWide "
                     + "ApplicationSignaled User Spot turn");
@@ -830,10 +883,12 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             throw invalidRelocationReady(
                 "relocationReady().defer() can be called once per Spot turn");
         }
+        streamTrace("relocation-ready-deferred spot=" + spotId());
         dispatchQueue.enqueueBarrierNext(this::reachRelocationReadyBoundary);
     }
 
     private CompletionStage<Void> reachRelocationReadyBoundary() {
+        streamTrace("relocation-ready-boundary-start spot=" + spotId());
         RelocationReadyWaiter waiter;
         synchronized (relocationReadyLock) {
             waiter = relocationReadyWaiter;
@@ -843,8 +898,12 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             if (waiter != null) {
                 waiter.result.complete(Optional.empty());
             }
-            return runRelocationReadyCompletion(
+            CompletionStage<Void> continued = runRelocationReadyCompletion(
                 ZLinkSpotRelocationReadyOutcome.CONTINUED);
+            continued.whenComplete((ignored, error) -> streamTrace(
+                "relocation-ready-boundary-complete spot=" + spotId()
+                    + " error=" + (error == null ? "none" : error)));
+            return continued;
         }
         Optional<ZLinkUserSpotRelocationBarrier.Seal> claimed;
         try {
@@ -855,10 +914,21 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
             return java.util.concurrent.CompletableFuture.failedFuture(failure);
         }
         waiter.result.complete(claimed);
-        return claimed.isPresent()
+        CompletionStage<Void> completed = claimed.isPresent()
             ? java.util.concurrent.CompletableFuture.completedFuture(null)
             : runRelocationReadyCompletion(
                 ZLinkSpotRelocationReadyOutcome.CONTINUED);
+        completed.whenComplete((ignored, error) -> streamTrace(
+            "relocation-ready-boundary-complete spot=" + spotId()
+                + " claimed=" + claimed.isPresent()
+                + " error=" + (error == null ? "none" : error)));
+        return completed;
+    }
+
+    private static void streamTrace(String message) {
+        if (STREAM_TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] spot-context " + message);
+        }
     }
 
     private void pollRelocationReadyCancellation(

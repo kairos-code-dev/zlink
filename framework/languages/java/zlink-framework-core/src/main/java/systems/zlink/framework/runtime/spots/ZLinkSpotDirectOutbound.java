@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -19,8 +20,11 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdmissionKey;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 
 
 final class ZLinkSpotDirectOutbound {
@@ -200,6 +204,12 @@ final class ZLinkSpotDirectOutbound {
         Class<TReply> replyType) {
         CompletableFuture<TReply> result = new CompletableFuture<>();
         List<Message> requestParts = messages.encode(packetName, payload, contentType);
+        AtomicBoolean requestPartsClosed = new AtomicBoolean();
+        Runnable closeRequestParts = () -> {
+            if (requestPartsClosed.compareAndSet(false, true)) {
+                requestParts.forEach(Message::close);
+            }
+        };
         trace(
             ZLinkMessageFlowOutcome.SENT,
             ZLinkDispatchMessageKind.REQUEST,
@@ -208,7 +218,7 @@ final class ZLinkSpotDirectOutbound {
             targetNodeRid,
             spotId);
         try {
-            spot.requestToSpot(
+            boolean submitted = spot.requestToSpot(
                 targetNodeRid,
                 spotId,
                 spotGeneration,
@@ -223,15 +233,33 @@ final class ZLinkSpotDirectOutbound {
                     targetNodeRid,
                     spotId);
                 try {
+                    if (reply.result() != ZLinkBackendRequestResult.OK) {
+                        ZLinkFrameworkErrorKind errorKind = reply.result()
+                            == ZLinkBackendRequestResult.NOT_FOUND
+                            ? ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND
+                            : ZLinkFrameworkErrorKind.REQUEST_FAILED;
+                        result.completeExceptionally(new ZLinkFrameworkException(
+                            errorKind,
+                            "SPOT direct request failed: " + reply.result()));
+                        return;
+                    }
                     result.complete(messages.decodeReply(reply.parts(), replyType));
                 } catch (RuntimeException ex) {
                     result.completeExceptionally(ex);
+                } finally {
+                    reply.close();
+                    closeRequestParts.run();
                 }
             }, SendFlags.NONE, timeout);
+            if (!submitted) {
+                closeRequestParts.run();
+                result.completeExceptionally(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    "SPOT direct request was not admitted"));
+            }
         } catch (RuntimeException ex) {
+            closeRequestParts.run();
             result.completeExceptionally(ex);
-        } finally {
-            requestParts.forEach(Message::close);
         }
         return result.thenApplyAsync(reply -> reply, handlerExecutor);
     }

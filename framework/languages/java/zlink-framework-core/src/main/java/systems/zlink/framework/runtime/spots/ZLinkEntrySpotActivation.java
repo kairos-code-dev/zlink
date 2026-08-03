@@ -181,7 +181,9 @@ final class EntrySpotActivation
             drainUnhandledActorJoins();
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_READABLE) {
-            dispatchActorMessages(info.actorMessages());
+            return dispatchActorMessages(info.actorMessages())
+                .whenComplete((ignored, error) -> info.actorMessages().forEach(
+                    ZLinkBackendActorReceived::close));
         }
         if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_LIFECYCLE_READABLE) {
             drainActorLifecycleEvents();
@@ -371,7 +373,7 @@ final class EntrySpotActivation
     }
 
     @Override
-    void dispatchResolvedActorPacket(
+    CompletionStage<Void> dispatchResolvedActorPacket(
         ZLinkActor actor,
         ActorPacketFrames.Header packetHeader,
         ActorMessageRead read) {
@@ -381,7 +383,7 @@ final class EntrySpotActivation
             host.primaryNode().routingId(),
             spotId -> host.spotSurfaceFor(spotId) != null);
         if (!route.remoteJoinedSpot()) {
-            host.dispatchLocalActorPacket(
+            return host.dispatchLocalActorPacket(
                 context,
                 actorSpotSurface,
                 actor,
@@ -389,7 +391,6 @@ final class EntrySpotActivation
                 read.headerPart(),
                 read.bodyPart(),
                 read.fromPendingHeader());
-            return;
         }
         ZLinkBackendActorReceived headerCopy = read.fromPendingHeader()
             ? read.headerPart()
@@ -397,7 +398,7 @@ final class EntrySpotActivation
         Message payloadCopy = read.bodyPart() == null
             ? Message.from(new byte[0])
             : Message.from(read.bodyPart().message());
-        context.enqueueDispatch(() -> dispatchRemoteJoinedActorPacket(
+        return context.enqueueDispatch(() -> dispatchRemoteJoinedActorPacket(
             actor,
             route.actorRef(),
             packetHeader,
@@ -523,7 +524,7 @@ final class EntrySpotActivation
     private void completeAcceptedEntryJoin(ZLinkBackendActorJoinRequest request) {
         host.actorAdmissions().completeEntryActorJoin(
             request,
-            backendSpot.spotId(),
+            host.primaryNode().routingId(),
             actor -> context.enqueueDispatch(() ->
                 host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     entrySpot,

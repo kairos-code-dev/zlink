@@ -107,19 +107,26 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
                         throw new ZLinkConfigurationException(
                             "actor entry spot join failed: " + result.result());
                     }
-                    if (result.joinResultCode() == 0) {
-                        context.markMovedToEntrySpot(result.actor(), target);
-                    }
-                    ZLinkActorJoinOutcome decoded = ZLinkActorJoinResults.decode(
-                        services.serializer(),
-                        result.joinResultCode(),
-                        result.actor(),
-                        context.meshName(),
-                        result.replyParts());
-                    return result.joinResultCode() == 0
-                        ? services.locationRenewal().renew(context.actor(), result.targetNodeRid())
-                            .thenApply(ignored -> decoded)
-                        : CompletableFuture.completedFuture(decoded);
+                    CompletionStage<Void> route = result.joinResultCode() != 0
+                        || result.actor().equals(context.actorRef())
+                        ? CompletableFuture.completedFuture(null)
+                        : context.rebindNativeActor(result.actor(), timeout);
+                    return route.thenCompose(ignored -> {
+                        if (result.joinResultCode() == 0) {
+                            context.markMovedToEntrySpot(result.actor(), target);
+                        }
+                        ZLinkActorJoinOutcome decoded = ZLinkActorJoinResults.decode(
+                            services.serializer(),
+                            result.joinResultCode(),
+                            result.actor(),
+                            context.meshName(),
+                            result.replyParts());
+                        return result.joinResultCode() == 0
+                            ? services.locationRenewal().renew(
+                                context.actor(), result.targetNodeRid())
+                                .thenApply(ignoredRoute -> decoded)
+                            : CompletableFuture.completedFuture(decoded);
+                    });
                 })));
         } finally {
             requestPart.close();

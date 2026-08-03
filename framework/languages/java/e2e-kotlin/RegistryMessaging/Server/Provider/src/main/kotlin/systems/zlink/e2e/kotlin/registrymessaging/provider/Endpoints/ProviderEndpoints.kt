@@ -26,6 +26,7 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.ScenarioRoutePingRes
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 
 class ProviderEndpoints(
     private val options: ServerOptions,
@@ -35,6 +36,7 @@ class ProviderEndpoints(
     private val evidence = context.getBean(EvidenceStore::class.java)
     private val channels = context.getBean(ZLinkClient::class.java)
     private val routes = context.getBean(ZLinkRouteClient::class.java)
+    private val lifecycle = context.getBean(ZLinkFrameworkLifecycle::class.java)
 
     fun start(): HttpServer {
         val uri = URI.create(options.httpUrl)
@@ -42,6 +44,22 @@ class ProviderEndpoints(
         server.executor = Executors.newCachedThreadPool()
         server.createContext("/health") { exchange ->
             exchange.writeJson(mapOf("status" to "ready", "role" to "provider", "rid" to options.rid))
+        }
+        server.createContext("/route/status") { exchange ->
+            val snapshot = lifecycle.routeMeshRuntime().snapshot(Contracts.PROFILE_ROUTE_CHANNEL)
+            exchange.writeJson(
+                mapOf(
+                    "meshName" to snapshot.meshName,
+                    "ready" to snapshot.isReady,
+                    "readyPeerCount" to snapshot.readyPeerCount,
+                    "peers" to snapshot.peers.map {
+                        mapOf(
+                            "nodeRid" to it.nodeRid.toString(),
+                            "state" to it.state.name.lowercase(),
+                        )
+                    },
+                ),
+            )
         }
         server.createContext("/evidence") { exchange -> exchange.writeJson(evidence.snapshot()) }
         server.createContext("/evidence/clear") { exchange ->
@@ -60,10 +78,6 @@ class ProviderEndpoints(
         server.createContext("/profile/request") { exchange ->
             val request = exchange.readJson<ProfileReq>()
             exchange.writeJson(requestProfile(Contracts.PROFILE_CHANNEL, request, Duration.ofSeconds(5)))
-        }
-        server.createContext("/profile/manual") { exchange ->
-            val request = exchange.readJson<ProfileReq>()
-            exchange.writeJson(requestProfile(Contracts.PROFILE_MANUAL_CHANNEL, request, Duration.ofSeconds(5)))
         }
         server.createContext("/profile/command") { exchange ->
             val command = exchange.readJson<ProfileMsg>()
@@ -160,8 +174,17 @@ class ProviderEndpoints(
     private fun HttpExchange.writeJson(value: CompletionStage<*>) {
         value.whenComplete { result, error ->
             if (error == null) writeJson(result ?: mapOf<String, String>())
-            else writeJson(mapOf("error" to (unwrap(error).message ?: unwrap(error).javaClass.name)))
+            else writeError(unwrap(error))
         }
+    }
+
+    private fun HttpExchange.writeError(error: Throwable) {
+        val bytes = mapper.writeValueAsBytes(
+            mapOf("error" to (error.message ?: error.javaClass.name)),
+        )
+        responseHeaders.add("content-type", "application/json")
+        sendResponseHeaders(500, bytes.size.toLong())
+        responseBody.use { it.write(bytes) }
     }
 
     private fun unwrap(error: Throwable): Throwable =

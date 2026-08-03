@@ -194,9 +194,17 @@ class TicTacToeGame(
 
     suspend fun leaveGame(actor: PlayActor, roomId: String) {
         check(this.roomId == roomId) { "leave request room id does not match game room" }
+        if (!isTerminal(match.snapshot())) {
+            return
+        }
         actor.markForDestroyAfterRoomLeave()
         context.leaveActor(actor).await()
     }
+
+    private fun isTerminal(state: GameState): Boolean =
+        state.status == "Won" ||
+            state.status == "Draw" ||
+            state.status == "TurnTimedOut"
 
     private suspend fun publishWinMilestone(
         actor: PlayActor,

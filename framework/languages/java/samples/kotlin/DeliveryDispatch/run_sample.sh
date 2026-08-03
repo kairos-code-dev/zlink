@@ -83,9 +83,9 @@ print_logs() {
 trap cleanup EXIT
 
 reserve_ports() {
-  local base=$((20000 + ((RANDOM + $$) % 1000) * 14 % 9000))
+  local base=$((20000 + ((RANDOM + $$) % 1000) * 12 % 9000))
   local endpoints=()
-  for offset in $(seq 0 13); do
+  for offset in $(seq 0 11); do
     endpoints+=("127.0.0.1:$((base + offset))")
   done
   echo "${endpoints[*]}"
@@ -103,7 +103,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking tracking_spot customer_stream courier_stream dispatch_http dispatch_channel customer_spot customer_router courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking tracking_spot customer_stream courier_stream dispatch_http dispatch_spot dispatch_channel customer_spot customer_router courier_node1_spot courier_node2_spot courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -121,14 +121,12 @@ trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot}"):$(endpoint_port "
 customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")
 courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
 dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
+dispatchSpotEndpoint=tcp://$(endpoint_host "${dispatch_spot}"):$(endpoint_port "${dispatch_spot}")
 dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
 customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")
 customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")
 courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")
 courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")
-courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")
-courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
-courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
 courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
 redisEndpoint=${DELIVERYDISPATCH_REDIS_ENDPOINT}
 redisKeyPrefix=${deliverydispatch_redis_key_prefix}
@@ -175,7 +173,6 @@ wait_port "$(endpoint_host "${customer_router}")" "$(endpoint_port "${customer_r
 "$(app_bin Server/CourierSession CourierSession)" --config "$courier_session_config" >"${log_dir}/courier-session.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${courier_stream}")" "$(endpoint_port "${courier_stream}")"
-wait_port "$(endpoint_host "${courier_session_router}")" "$(endpoint_port "${courier_session_router}")"
 wait_port "$(endpoint_host "${courier_session_spot}")" "$(endpoint_port "${courier_session_spot}")"
 
 "$(app_bin Server/CourierSpotNode CourierSpotNode)" --config "$courier_node1_config" >"${log_dir}/courier-node1.log" 2>&1 &
@@ -184,12 +181,11 @@ pids+=("$!")
 pids+=("$!")
 wait_port "$(endpoint_host "${courier_node1_spot}")" "$(endpoint_port "${courier_node1_spot}")"
 wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier_node2_spot}")"
-wait_port "$(endpoint_host "${courier_node1_router}")" "$(endpoint_port "${courier_node1_router}")"
-wait_port "$(endpoint_host "${courier_node2_router}")" "$(endpoint_port "${courier_node2_router}")"
 
 "$(app_bin Server/Dispatch Dispatch)" --config "$dispatch_config" >"${log_dir}/dispatch.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
+wait_port "$(endpoint_host "${dispatch_spot}")" "$(endpoint_port "${dispatch_spot}")"
 
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1

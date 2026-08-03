@@ -50,11 +50,15 @@ data class BingoRoomSettings(
     val requiredPlayers: Int,
     val maxDrawNumber: Int,
     val drawPeriodMillis: Long,
+    val purpose: String,
     val observedRoomId: String?,
 ) {
-    fun observerMode(): Boolean = observedRoomId != null && observedRoomId.isNotBlank()
+    fun observerMode(): Boolean = purpose == ObserverPurpose
 
-    companion object {
+    companion object Factory {
+        const val GamePurpose: String = "Game"
+        const val ObserverPurpose: String = "Observer"
+
         fun create(
             mode: String,
             roomSeq: Int,
@@ -67,6 +71,7 @@ data class BingoRoomSettings(
                 requiredPlayers = 2,
                 maxDrawNumber = 15,
                 drawPeriodMillis = drawPeriodMillis,
+                purpose = GamePurpose,
                 observedRoomId = null,
             )
         }
@@ -79,10 +84,11 @@ data class BingoRoomSettings(
             check(observedRoomId.isNotBlank()) { "observedRoomId is required" }
             return BingoRoomSettings(
                 roomName = "Bingo Reward Observer $observerActorId",
-                mode = "observer",
+                mode = "two-player",
                 requiredPlayers = 0,
                 maxDrawNumber = 15,
                 drawPeriodMillis = drawPeriodMillis,
+                purpose = ObserverPurpose,
                 observedRoomId = observedRoomId,
             )
         }

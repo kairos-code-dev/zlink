@@ -125,11 +125,11 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshPeerConnections peerConnections();
     ZLinkMeshNodeBuilder setDefaultRequestTimeout(Duration timeout);
 
-    <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage>
+    <THandler, TMessage>
     ZLinkMeshNodeBuilder addRouteSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType);
-    <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+    <THandler, TRequest, TReply>
     ZLinkMeshNodeBuilder addRouteRequestHandler(
         Class<THandler> handlerType,
         Class<TRequest> requestType,
@@ -697,8 +697,8 @@ public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkSpotPublisherConfig configureSpotPublisher();
   public abstract systems.zlink.framework.configuration.ZLinkMeshPeerConnections peerConnections();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setDefaultRequestTimeout(java.time.Duration);
-  public abstract <THandler extends systems.zlink.framework.channels.ZLinkRouteSendHandler<TMessage>, TMessage> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteSendHandler(java.lang.Class<THandler>, java.lang.Class<TMessage>);
-  public abstract <THandler extends systems.zlink.framework.channels.ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteRequestHandler(java.lang.Class<THandler>, java.lang.Class<TRequest>, java.lang.Class<TReply>);
+  public abstract <THandler, TMessage> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteSendHandler(java.lang.Class<THandler>, java.lang.Class<TMessage>);
+  public abstract <THandler, TRequest, TReply> systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteRequestHandler(java.lang.Class<THandler>, java.lang.Class<TRequest>, java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder client();

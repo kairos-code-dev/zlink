@@ -12,21 +12,20 @@ import org.springframework.web.bind.annotation.RestController;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.e2e.registrymessaging.shared.FailureEvidence;
 import systems.zlink.framework.channels.ZLinkClient;
-import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
-import systems.zlink.framework.locations.ZLinkLocationTopologyFilter;
-import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.monitoring.ZLinkClientServerRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle;
 
 @RestController
 public final class ConsumerEndpoints {
     private final ZLinkClient client;
-    private final java.util.function.Supplier<ZLinkLocationRuntimeQuery> locationQuery;
+    private final ZLinkClientServerRuntime clientServerRuntime;
 
     public ConsumerEndpoints(
         ZLinkClient client,
         ZLinkFrameworkLifecycle lifecycle) {
         this.client = client;
-        this.locationQuery = lifecycle::monitoringLocationRuntimeQuery;
+        this.clientServerRuntime = lifecycle.clientServerRuntime();
     }
 
     @GetMapping("/health")
@@ -36,15 +35,16 @@ public final class ConsumerEndpoints {
 
     @GetMapping("/locations/peers")
     public CompletionStage<List<java.util.Map<String, Object>>> peers() {
-        return locationQuery.get().listTopology(
-                ZLinkLocationTopologyFilter.all(),
-                new ZLinkPageRequest(1_000, null))
-            .thenApply(page -> page.items().stream()
-            .map(server -> java.util.Map.<String, Object>of(
-                "meshName", server.meshName(),
+        return CompletableFuture.completedFuture(clientServerRuntime.snapshot(Contracts.API_CHANNEL))
+            .thenApply(status -> status.targets().stream()
+            .filter(target -> target.state() == ZLinkPeerState.READY)
+            .map(target -> java.util.Map.<String, Object>of(
+                "meshName", status.channelName(),
                 "role", "ROUTER",
-                "nodeRid", server.nodeRid().toString(),
-                "endpoint", server.endpoint(),
+                "nodeRid", target.nodeRid().toString(),
+                "state", target.state().name().toLowerCase(java.util.Locale.ROOT),
+                "weight", target.weight(),
+                "endpoint", "",
                 "ownerId", ""))
             .toList());
     }

@@ -260,4 +260,18 @@ final class ZLinkChannelCallRuntime {
             : List.of(packet, payload, contentTypeFrame, flow);
     }
 
+    static List<Message> copyParts(
+        Optional<String> packetName,
+        Message payload,
+        String contentType) {
+        List<Message> source = parts(packetName, payload, contentType);
+        try {
+            return ZLinkChannelRuntime.copyMessages(source);
+        } finally {
+            source.stream()
+                .filter(part -> part != payload)
+                .forEach(Message::close);
+        }
+    }
+
 }

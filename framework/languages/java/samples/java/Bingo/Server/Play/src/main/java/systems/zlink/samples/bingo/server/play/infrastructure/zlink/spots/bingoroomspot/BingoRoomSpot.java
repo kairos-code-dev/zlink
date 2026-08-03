@@ -29,6 +29,8 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     private final Map<String, PlayerActor> actors = new HashMap<>();
     private final Map<String, PlayerActor> observers = new HashMap<>();
     private final Map<String, Messages.BingoRoomJoinReq> pendingJoins = new HashMap<>();
+    private final List<Messages.BingoRewardAcquiredEvent> pendingObserverRewards =
+        new java.util.ArrayList<>();
     private BingoRoomModels.BingoRoomSettings settings =
         BingoRoomModels.BingoRoomSettings.create("two-player", 0, SampleTimings.DrawPeriod.toMillis());
     private BingoRoomGame game;
@@ -77,7 +79,17 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         if (request.getObserveOnly()) {
             pendingJoins.remove(actor.actorId());
             join(actor, request, 0, 0);
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
+            List<Messages.BingoRewardAcquiredEvent> pendingRewards =
+                List.copyOf(pendingObserverRewards);
+            pendingObserverRewards.clear();
+            if (pendingRewards.isEmpty()) {
+                return java.util.concurrent.CompletableFuture.completedFuture(null);
+            }
+            return java.util.concurrent.CompletableFuture.allOf(
+                pendingRewards.stream()
+                    .map(this::notifyObservers)
+                    .map(java.util.concurrent.CompletionStage::toCompletableFuture)
+                    .toArray(java.util.concurrent.CompletableFuture[]::new));
         }
         return context.outbound()
             .requestToChannel(SampleNames.ApiChannel, BingoMessages.getPlayerRecordReq(actor.actorId()))
@@ -207,30 +219,51 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         }
         BingoRoomGame.Change change = game.drawNext();
         publishEvents(change.events(), actors::get);
-        publishWinner(change);
-        return leaveFinishedActors(change).thenRun(() -> {
-            if (change.state().getStatus().equals("Finished")) {
-                context.relocationReady().defer();
-            }
-        });
+        return publishWinner(change)
+            .thenCompose(ignored -> leaveFinishedActors(change))
+            .thenRun(() -> {
+                if (change.state().getStatus().equals("Finished")) {
+                    context.relocationReady().defer();
+                }
+            });
     }
 
-    public void announceReward(Messages.BingoRewardAcquiredEvent event) {
+    public java.util.concurrent.CompletionStage<Void> announceReward(
+        Messages.BingoRewardAcquiredEvent event) {
         if (!settings.observerMode()
-            || observers.isEmpty()
             || !event.getRoomId().equals(settings.observedRoomId())) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
+        if (observers.isEmpty()) {
+            pendingObserverRewards.add(event);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        return notifyObservers(event)
+            .thenRun(() -> context.relocationReady().defer());
+    }
+
+    private java.util.concurrent.CompletionStage<Void> notifyObservers(
+        Messages.BingoRewardAcquiredEvent event) {
+        java.util.List<java.util.concurrent.CompletionStage<Void>> notifications =
+            new java.util.ArrayList<>();
         for (PlayerActor observer : List.copyOf(observers.values())) {
-            observer.push(BingoMessages.bingoRewardAnnouncedNotify(
-                    event.getRoomId(),
-                    event.getActorId(),
-                    event.getDrawSeq(),
-                    event.getItemId(),
-                    event.getItemName(),
-                    event.getRarity()));
+            notifications.add(observer.push(rewardNotification(event)));
         }
-        context.relocationReady().defer();
+        return java.util.concurrent.CompletableFuture.allOf(
+            notifications.stream()
+                .map(java.util.concurrent.CompletionStage::toCompletableFuture)
+                .toArray(java.util.concurrent.CompletableFuture[]::new));
+    }
+
+    private Messages.BingoRewardAnnouncedNotify rewardNotification(
+        Messages.BingoRewardAcquiredEvent event) {
+        return BingoMessages.bingoRewardAnnouncedNotify(
+            event.getRoomId(),
+            event.getActorId(),
+            event.getDrawSeq(),
+            event.getItemId(),
+            event.getItemName(),
+            event.getRarity());
     }
 
     public Messages.StopObservingBingoEventsRes stopObserving(
@@ -298,14 +331,15 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             leaves.toArray(java.util.concurrent.CompletableFuture[]::new));
     }
 
-    private void publishWinner(BingoRoomGame.Change change) {
+    private java.util.concurrent.CompletionStage<Void> publishWinner(
+        BingoRoomGame.Change change) {
         if (!change.state().getStatus().equals("Finished") || change.state().getWinnersList().isEmpty()) {
-            return;
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
         String winner = change.state().getWinnersList().getFirst();
-        context.outbound()
+        return context.outbound()
             .publish(
-                SampleNames.RoomSpotDiscovery,
+                SampleNames.RoomRewardChannel,
                 SampleNames.WinnerTopic,
                 BingoMessages.bingoRewardAcquiredEvent(
                     change.state().getRoomId(),

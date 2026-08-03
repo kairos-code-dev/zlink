@@ -111,7 +111,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
                         }
                         if (ZLinkChannelRuntime.isFrameworkErrorReply(reply)) {
                             result.completeExceptionally(new ZLinkFrameworkException(
-                                ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                                ZLinkChannelRuntime.frameworkErrorReplyKind(reply),
                                 ZLinkChannelRuntime.frameworkErrorReplyMessage(reply)));
                             return;
                         }

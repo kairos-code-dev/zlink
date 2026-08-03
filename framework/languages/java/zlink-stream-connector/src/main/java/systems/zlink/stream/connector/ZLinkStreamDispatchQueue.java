@@ -172,15 +172,17 @@ final class ZLinkStreamDispatchQueue {
 
     void clear() {
         synchronized (queue) {
-            queue.stream()
+            List<QueuedDispatch> queued = List.copyOf(queue);
+            List<Waiter> pending = List.copyOf(waiters);
+            queue.clear();
+            receivedCounts.clear();
+            waiters.clear();
+            queued.stream()
                 .map(QueuedDispatch::message)
                 .filter(java.util.Objects::nonNull)
                 .forEach(ZLinkStreamDispatchQueue::closeMessage);
-            queue.clear();
-            receivedCounts.clear();
-            waiters.forEach(waiter -> waiter.result().completeExceptionally(
+            pending.forEach(waiter -> waiter.result().completeExceptionally(
                 new IllegalStateException("stream dispatch queue was closed")));
-            waiters.clear();
         }
     }
 

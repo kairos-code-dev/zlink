@@ -377,10 +377,20 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 binding.set(boundActor);
                 boundSession.setUnbindListener(() -> removeBinding(boundActor));
                 boundActor.setUnbindListener(() -> removeBinding(boundActor));
-                boundSession.setRebindListener(boundActor::rebindNativeActor);
+                boundSession.setRebindListener(target ->
+                    recordNativeRebind(boundActor, target));
                 replaceBinding(boundActor);
                 return boundActor;
             });
+    }
+
+    void recordNativeRebind(
+        ZLinkBoundActor actor,
+        ZLinkBackendActorRef targetActor) {
+        actor.rebindNativeActor(targetActor);
+        bindingRoutes.computeIfPresent(
+            actor.actorId(),
+            (ignored, current) -> current.toNativeTarget(targetActor));
     }
 
     private void replaceBinding(ZLinkBoundActor actor) {
@@ -583,6 +593,19 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 ownerLeaseGeneration,
                 bindingGeneration,
                 update.lastAcceptedSessionSequence());
+        }
+
+        StoredBindingRoute toNativeTarget(ZLinkBackendActorRef targetActor) {
+            return new StoredBindingRoute(
+                actorId,
+                objectGeneration,
+                meshName,
+                targetActor.nodeRid(),
+                nodeGeneration,
+                authorityOwnerGeneration,
+                ownerLeaseGeneration,
+                bindingGeneration,
+                lastAcceptedSessionSequence);
         }
     }
 

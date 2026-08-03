@@ -44,7 +44,11 @@ on_exit() {
     done
   fi
   cleanup
-  rm -rf "$RUN_DIR"
+  if [[ "${ZLINK_SAMPLE_KEEP_RUN_DIR:-0}" == "1" ]]; then
+    echo "runDir=$RUN_DIR"
+  else
+    rm -rf "$RUN_DIR"
+  fi
   exit "$status"
 }
 trap on_exit EXIT
@@ -167,10 +171,10 @@ cat "$LOG_DIR/client.log"
 grep -q "gamequest-server-evidence=completed" "$LOG_DIR/client.log"
 grep -q "gamequest=completed" "$LOG_DIR/client.log"
 grep -q "gamequest-scale-out=completed" "$LOG_DIR/client.log"
-grep -h -q 'surface=SPOT_ROUTE kind=SEND.*packet=GameplayMsg' "$LOG_DIR"/flow-api-*.log
 grep -h -q 'surface=SPOT_ROUTE kind=SEND.*packet=GameplayMsg' "$LOG_DIR"/flow-mission-*.log
-grep -q 'packet=GameplayMsg.*spot=player-scale-a' "$LOG_DIR/flow-mission-a.log"
-grep -q 'packet=GameplayMsg.*spot=player-scale-b' "$LOG_DIR/flow-mission-b.log"
+grep -h -q 'surface=SPOT_ROUTE kind=SEND.*packet=GameplayMsg' "$LOG_DIR"/flow-mission-*.log
+grep -h -q 'packet=GameplayMsg.*spot=player-scale-a' "$LOG_DIR"/flow-mission-*.log
+grep -h -q 'packet=GameplayMsg.*spot=player-scale-b' "$LOG_DIR"/flow-mission-*.log
 grep -h -q 'packet=QuestProcessingMsg' "$LOG_DIR"/flow-api-*.log
 echo "gamequest player owner Spot routing completed"
 

@@ -189,12 +189,12 @@ final class RouteSpotSendCall
         if (duplicate != null) {
             return duplicate;
         }
+        ZLinkInstanceSpotCallRuntime activation = instanceSpots == null
+            ? null : instanceSpots.get();
         return SpotCallAddresses.resolve(resolver, target).handle((address, failure) -> {
             if (failure == null) {
-                return submitExisting(address);
+                return submitExistingOrActivate(address, activation);
             }
-            ZLinkInstanceSpotCallRuntime activation = instanceSpots == null
-                ? null : instanceSpots.get();
             if (!instanceIntent || activation == null) {
                 return CompletableFuture.<Void>failedFuture(
                     SpotCallAddresses.unwrap(failure));
@@ -204,8 +204,39 @@ final class RouteSpotSendCall
         }).thenCompose(java.util.function.Function.identity());
     }
 
+    private CompletionStage<Void> submitExistingOrActivate(
+        SpotTransportAddress address,
+        ZLinkInstanceSpotCallRuntime activation) {
+        return submitExisting(address).handle((ignored, failure) -> {
+            if (failure == null) {
+                return CompletableFuture.<Void>completedFuture(null);
+            }
+            RuntimeException error = SpotCallAddresses.unwrap(failure);
+            return shouldReactivate(address, error, activation)
+                .thenCompose(reactivate -> reactivate
+                    ? activation.send(
+                        target, stableType, selectedMesh, payload,
+                        packetName, contentType, metadata.values())
+                    : CompletableFuture.<Void>failedFuture(error));
+        }).thenCompose(java.util.function.Function.identity());
+    }
+
+    private CompletionStage<Boolean> shouldReactivate(
+        SpotTransportAddress address,
+        RuntimeException failure,
+        ZLinkInstanceSpotCallRuntime activation) {
+        if (!instanceIntent || activation == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (SpotCallAddresses.isStaleRoute(failure)) {
+            return CompletableFuture.completedFuture(true);
+        }
+        return activation.isStaleRoute(target, address)
+            .exceptionally(ignored -> false);
+    }
+
     private CompletionStage<Void> submitExisting(SpotTransportAddress address) {
-            List<Message> sendParts = ZLinkChannelCallRuntime.parts(
+            List<Message> sendParts = ZLinkChannelCallRuntime.copyParts(
                 packetName, payload, contentType);
             try {
                 return runtime.sendToSpot(
@@ -343,27 +374,69 @@ final class RouteSpotRequestCall
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
         systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.rejectSameSpotWait(target);
+        ZLinkInstanceSpotCallRuntime activation = instanceSpots == null
+            ? null : instanceSpots.get();
         CompletionStage<TReply> stage = SpotCallAddresses.resolve(resolver, target).handle((address, failure) -> {
             if (failure == null) {
-                return submitExisting(address, replyType);
+                return submitExistingOrActivate(address, replyType, activation);
             }
-            ZLinkInstanceSpotCallRuntime activation = instanceSpots == null
-                ? null : instanceSpots.get();
             if (!instanceIntent || activation == null) {
                 return CompletableFuture.<TReply>failedFuture(
                     SpotCallAddresses.unwrap(failure));
             }
-            return activation.request(target, stableType, selectedMesh, payload,
-                    packetName, contentType, metadata.values(), timeout)
-                .thenApply(parts -> runtime.decodeSpotReply(parts, replyType));
+            return activateRequest(activation, replyType);
         }).thenCompose(java.util.function.Function.identity());
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
+    }
+
+    private <TReply> CompletionStage<TReply> submitExistingOrActivate(
+        SpotTransportAddress address,
+        Class<TReply> replyType,
+        ZLinkInstanceSpotCallRuntime activation) {
+        return submitExisting(address, replyType).handle((reply, failure) -> {
+            if (failure == null) {
+                return CompletableFuture.completedFuture(reply);
+            }
+            RuntimeException error = SpotCallAddresses.unwrap(failure);
+            return shouldReactivate(address, error, activation)
+                .thenCompose(reactivate -> reactivate
+                    ? activateRequest(activation, replyType)
+                    : CompletableFuture.<TReply>failedFuture(error));
+        }).thenCompose(java.util.function.Function.identity());
+    }
+
+    private CompletionStage<Boolean> shouldReactivate(
+        SpotTransportAddress address,
+        RuntimeException failure,
+        ZLinkInstanceSpotCallRuntime activation) {
+        if (!instanceIntent || activation == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (SpotCallAddresses.isStaleRoute(failure)) {
+            return CompletableFuture.completedFuture(true);
+        }
+        return activation.isStaleRoute(target, address)
+            .exceptionally(ignored -> false);
+    }
+
+    private <TReply> CompletionStage<TReply> activateRequest(
+        ZLinkInstanceSpotCallRuntime activation,
+        Class<TReply> replyType) {
+        return activation.request(target, stableType, selectedMesh, payload,
+                packetName, contentType, metadata.values(), timeout)
+            .thenApply(parts -> {
+                try {
+                    return runtime.decodeSpotReply(parts, replyType);
+                } finally {
+                    parts.forEach(Message::close);
+                }
+            });
     }
 
     private <TReply> CompletionStage<TReply> submitExisting(
         SpotTransportAddress address,
         Class<TReply> replyType) {
-            List<Message> requestParts = ZLinkChannelCallRuntime.parts(
+            List<Message> requestParts = ZLinkChannelCallRuntime.copyParts(
                 packetName, payload, contentType);
             return runtime.requestToSpot(
                 address.routerChannelId(),
@@ -416,6 +489,11 @@ final class SpotCallAddresses {
             && current.getCause() != null) current = current.getCause();
         return current instanceof RuntimeException runtime
             ? runtime : new RuntimeException(current);
+    }
+
+    static boolean isStaleRoute(Throwable failure) {
+        return failure instanceof ZLinkFrameworkException error
+            && error.kind() == ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND;
     }
 
     static String requireText(String value) {

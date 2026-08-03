@@ -116,7 +116,10 @@ public class Program {
                 writeJson(exchange, json, 404, new ErrorBody("unknown owner operation"));
                 return;
             }
-            routes.sendToSpot(parts[0], new ClosePlayerQuestMsg()).submit();
+            routes.sendToSpot(parts[0], new ClosePlayerQuestMsg())
+                .submit()
+                .toCompletableFuture()
+                .join();
             writeJson(exchange, json, 202, new OwnerClosed(true));
         });
         server.start();

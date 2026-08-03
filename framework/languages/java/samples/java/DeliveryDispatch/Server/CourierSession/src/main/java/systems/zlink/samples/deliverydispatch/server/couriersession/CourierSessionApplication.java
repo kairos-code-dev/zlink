@@ -38,8 +38,9 @@ public final class CourierSessionApplication {
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .client();
             ZLinkMeshNodeBuilder node = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
-            node.listen(topology.courierSessionSpotRouterEndpoint())
+            node.listen(topology.courierSessionSpotEndpoint())
                 .setRoutingIdPrefix("delivery-session");
+            node.objects().client();
             options.addStreamNode(SampleNames.CourierStreamNode)
                 .bind(topology.courierStreamEndpoint())
                 .enableActorDispatch()

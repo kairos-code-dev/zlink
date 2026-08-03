@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,11 +58,11 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         activeRouteReceives.add(received);
     }
 
-    void dispatchResolvedActorPacket(
+    CompletionStage<Void> dispatchResolvedActorPacket(
         ZLinkActor actor,
         ActorPacketFrames.Header packetHeader,
         ActorMessageRead read) {
-        host.dispatchLocalActorPacket(
+        return host.dispatchLocalActorPacket(
             context,
             spotSurface,
             actor,
@@ -73,6 +74,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
 
     final CompletionStage<Void> dispatchActorMessages(
         List<ZLinkBackendActorReceived> actorMessages) {
+        List<CompletionStage<Void>> dispatches = new ArrayList<>();
         int index = 0;
         while (index < actorMessages.size() || pendingActorHeader != null) {
             ActorMessageRead read = host.readActorMessage(
@@ -122,9 +124,12 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             if (host.dispatchActorControlPacket(packetHeader, headerPart, actor, pendingHeader)) {
                 continue;
             }
-            dispatchResolvedActorPacket(actor, packetHeader, read);
+            dispatches.add(dispatchResolvedActorPacket(actor, packetHeader, read));
         }
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return CompletableFuture.allOf(
+            dispatches.stream()
+                .map(CompletionStage::toCompletableFuture)
+                .toArray(CompletableFuture[]::new));
     }
 
     final CompletionStage<Void> drainActorLifecycleEvents() {

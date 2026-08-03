@@ -24,32 +24,57 @@ final class ZLinkSpotRouterNodeDispatcher {
         RoutingId targetNodeRid,
         String targetSpotId,
         long targetSpotGeneration,
-        List<Message> spotParts) {
+        List<Message> spotParts,
+        Duration timeout,
+        BiConsumer<CompletableFuture<Void>, Duration> trackPendingRequest,
+        Consumer<Runnable> retrySend) {
         CompletableFuture<Void> result = new CompletableFuture<>();
-        List<Message> requestParts = ZLinkChannelRuntime.copyMessages(spotParts);
-        try {
-            boolean submitted = node.entrySpot().sendToSpot(
-                targetNodeRid,
-                targetSpotId,
-                targetSpotGeneration,
-                requestParts,
-                SendFlags.NONE);
-            ZLinkChannelRuntime.trace("spot-route node-send-submit router=" + routerChannelId
-                + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotId
-                + " submitted=" + submitted);
-            if (submitted) {
-                result.complete(null);
-            } else {
-                result.completeExceptionally(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
-                    "Spot node router '" + routerChannelId + "' is not ready for SPOT send."));
+        trackPendingRequest.accept(result, timeout);
+        List<byte[]> payloads = spotParts.stream().map(Message::toByteArray).toList();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                List<Message> attemptParts = payloads.stream()
+                    .map(Message::from)
+                    .toList();
+                try {
+                    boolean submitted = node.entrySpot().sendToSpot(
+                        targetNodeRid,
+                        targetSpotId,
+                        targetSpotGeneration,
+                        attemptParts,
+                        SendFlags.NONE);
+                    ZLinkChannelRuntime.trace("spot-route node-send-submit router=" + routerChannelId
+                        + " targetNode=" + targetNodeRid
+                        + " targetSpot=" + targetSpotId
+                        + " submitted=" + submitted);
+                    if (submitted) {
+                        result.complete(null);
+                    } else if (System.nanoTime() < deadline) {
+                        retrySend.accept(this);
+                    } else {
+                        result.completeExceptionally(new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
+                            "Spot node router '" + routerChannelId
+                                + "' was not ready before the send timeout."));
+                    }
+                } catch (RuntimeException ex) {
+                    if (ZLinkChannelRequestSubmitter.isRetriableSubmit(ex)
+                        && System.nanoTime() < deadline) {
+                        retrySend.accept(this);
+                    } else {
+                        result.completeExceptionally(ex);
+                    }
+                } finally {
+                    attemptParts.forEach(Message::close);
+                }
             }
-        } catch (RuntimeException ex) {
-            result.completeExceptionally(ex);
-        } finally {
-            requestParts.forEach(Message::close);
         }
+        new Attempt().run();
         return result;
     }
 
@@ -131,8 +156,12 @@ final class ZLinkSpotRouterNodeDispatcher {
                 + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
                 + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
             if (reply.result() != ZLinkBackendRequestResult.OK) {
+                ZLinkFrameworkErrorKind errorKind = reply.result()
+                    == ZLinkBackendRequestResult.NOT_FOUND
+                    ? ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND
+                    : ZLinkFrameworkErrorKind.REQUEST_FAILED;
                 result.completeExceptionally(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.REQUEST_FAILED,
+                    errorKind,
                     "SPOT route request failed: " + reply.result()));
                 return;
             }

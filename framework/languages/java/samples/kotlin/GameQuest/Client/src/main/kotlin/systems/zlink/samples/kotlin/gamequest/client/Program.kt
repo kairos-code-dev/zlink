@@ -126,7 +126,6 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         ensure(snapshot.unlockedFeatureIds.contains("auction"))
 
         ensure(postRaw(options.missionAHttpEndpoint, "/self-check/owner/player-alice/close"))
-        ensure(postRaw(options.missionBHttpEndpoint, "/self-check/owner/player-alice/close"))
 
         val tutorial = apiAStream.request(CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
             .awaitReply<CompleteMissionRes>()
@@ -176,7 +175,9 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
 
         apiAStream.close().await()
         val assertion = waitForServerAssertion()
-        ensure(assertion.passed)
+        check(assertion.passed) {
+            "GameQuest server assertion failed: ${assertion.evidence.filter { it.startsWith("failure:") }}"
+        }
         println(SampleNames.ServerEvidenceMarker)
     }
 

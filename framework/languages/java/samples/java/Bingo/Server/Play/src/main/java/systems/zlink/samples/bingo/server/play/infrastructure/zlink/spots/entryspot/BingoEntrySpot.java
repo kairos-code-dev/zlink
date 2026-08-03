@@ -1,13 +1,13 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot;
 
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
+import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.domain.bingo.BingoRoomModels;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingoroomspot.BingoRoomSpot;
@@ -17,15 +17,12 @@ import systems.zlink.samples.bingo.shared.contracts.Messages;
 public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
     private final ZLinkEntrySpotContext context;
     private final ZLinkSpotManager spots;
-    private final ObjectMapper json;
 
     public BingoEntrySpot(
         ZLinkEntrySpotContext context,
-        ZLinkSpotManager spots,
-        ObjectMapper json) {
+        ZLinkSpotManager spots) {
         this.context = context;
         this.spots = spots;
-        this.json = json;
     }
 
     @Override
@@ -75,8 +72,18 @@ public final class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
                 request.getRoomId(),
                 actor.actorId(),
                 SampleTimings.DrawPeriod.toMillis());
-        return spots.getOrCreate(observerSpotId, BingoRoomSpot.class.getName())
-            .request(settings)
+        Messages.BingoRoomSettingsPayload settingsPayload =
+            Messages.BingoRoomSettingsPayload.newBuilder()
+                .setRoomName(settings.roomName())
+                .setMode(settings.mode())
+                .setRequiredPlayers(settings.requiredPlayers())
+                .setMaxDrawNumber(settings.maxDrawNumber())
+                .setPurpose(settings.purpose())
+                .setObservedRoomId(settings.observedRoomId())
+                .build();
+        return spots.getOrCreate(observerSpotId, SampleNames.RoomSpotType)
+            .inMesh(SampleNames.Mesh)
+            .request(settingsPayload)
             .submit()
             .thenApply(ignored -> {
                 actor.context().joinSpot(

@@ -13,7 +13,6 @@ public final class BingoRewardAcquiredEventHandler
     public java.util.concurrent.CompletionStage<Void> handle(
         BingoRoomSpot spot,
         Messages.BingoRewardAcquiredEvent event) {
-        spot.announceReward(event);
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return spot.announceReward(event);
     }
 }

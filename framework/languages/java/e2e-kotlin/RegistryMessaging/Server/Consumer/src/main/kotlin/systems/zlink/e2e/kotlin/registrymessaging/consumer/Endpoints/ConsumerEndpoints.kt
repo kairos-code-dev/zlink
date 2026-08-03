@@ -27,9 +27,8 @@ import systems.zlink.e2e.kotlin.registrymessaging.shared.RequestFailureRes
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowReq
 import systems.zlink.e2e.kotlin.registrymessaging.shared.WorkflowRes
 import systems.zlink.framework.channels.ZLinkClient
-import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery
-import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
-import systems.zlink.framework.locations.ZLinkPageRequest
+import systems.zlink.framework.monitoring.ZLinkClientServerRuntime
+import systems.zlink.framework.monitoring.ZLinkPeerState
 import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 
 class ConsumerEndpoints(
@@ -38,7 +37,7 @@ class ConsumerEndpoints(
 ) {
     private val mapper = jacksonObjectMapper()
     private val channels = context.getBean(ZLinkClient::class.java)
-    private val locations = context.getBean(ZLinkFrameworkLifecycle::class.java)
+    private val clientServerRuntime = context.getBean(ZLinkClientServerRuntime::class.java)
 
     fun start(): HttpServer {
         val uri = URI.create(options.httpUrl)
@@ -69,15 +68,18 @@ class ConsumerEndpoints(
             exchange.writeJson(reply)
         }
         server.createContext("/locations/peers") { exchange ->
-            val peers = locations.monitoringLocationRuntimeQuery().listTopology(
-                ZLinkLocationTopologyFilter.all(),
-                ZLinkPageRequest(1_000, null),
-            ).thenApply { page -> page.items().map {
+            val peers = CompletableFuture.completedFuture(
+                clientServerRuntime.snapshot(Contracts.PROFILE_CHANNEL),
+            ).thenApply { status -> status.targets
+                .filter { it.state == ZLinkPeerState.READY }
+                .map {
                     mapOf(
-                        "meshName" to it.meshName(),
+                        "meshName" to status.channelName,
                         "role" to "ROUTER",
-                        "nodeRid" to it.nodeRid().toString(),
-                        "endpoint" to it.endpoint(),
+                        "nodeRid" to it.nodeRid.toString(),
+                        "state" to it.state.name.lowercase(),
+                        "weight" to it.weight,
+                        "endpoint" to "",
                         "ownerId" to "",
                     )
                 } }

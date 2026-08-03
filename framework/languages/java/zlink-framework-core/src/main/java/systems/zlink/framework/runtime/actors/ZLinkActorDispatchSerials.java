@@ -13,6 +13,10 @@ import java.util.function.Function;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 
 final class ZLinkActorDispatchSerials {
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger(ZLinkActorDispatchSerials.class.getName());
     private final Object runtimeScope;
     private final Function<String, Object> incarnationResolver;
     private final Map<String, ZLinkAsyncSerialQueue> queues = new HashMap<>();
@@ -90,8 +94,11 @@ final class ZLinkActorDispatchSerials {
             synchronized (this) {
                 activeActorIds.add(turn.actorId);
             }
+            streamTrace("turn-start actor=" + turn.actorId);
             return runTurn(turn.actorId, operation)
                 .whenComplete((ignored, error) -> {
+                    streamTrace("turn-complete actor=" + turn.actorId
+                        + " error=" + (error == null ? "none" : error));
                     synchronized (this) {
                         activeActorIds.remove(turn.actorId);
                     }
@@ -197,6 +204,7 @@ final class ZLinkActorDispatchSerials {
     <T> CompletionStage<T> runTurn(
         String actorId,
         Supplier<CompletionStage<T>> operation) {
+        streamTrace("run-turn-enter actor=" + actorId);
         try (systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.Scope ignored =
                  systems.zlink.framework.runtime.internal.handlers
@@ -209,13 +217,20 @@ final class ZLinkActorDispatchSerials {
                          "actor incarnation"),
                      actorId)) {
             CompletionStage<T> handler = operation.get();
+            streamTrace("run-turn-operation-return actor=" + actorId
+                + " done=" + handler.toCompletableFuture().isDone());
             CompletableFuture<T> completed = new CompletableFuture<>();
             joins.finish(handler, null).whenComplete((nothing, error) -> {
+                streamTrace("run-turn-join-finish actor=" + actorId
+                    + " error=" + (error == null ? "none" : error));
                 if (error != null) {
                     completed.completeExceptionally(error);
                     return;
                 }
                 handler.whenComplete((value, handlerError) -> {
+                    streamTrace("run-turn-handler-finish actor=" + actorId
+                        + " error=" + (handlerError == null
+                            ? "none" : handlerError));
                     if (handlerError != null) {
                         completed.completeExceptionally(handlerError);
                     } else {
@@ -226,6 +241,12 @@ final class ZLinkActorDispatchSerials {
             return completed;
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
+        }
+    }
+
+    private static void streamTrace(String message) {
+        if (STREAM_TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] actor-dispatch " + message);
         }
     }
 

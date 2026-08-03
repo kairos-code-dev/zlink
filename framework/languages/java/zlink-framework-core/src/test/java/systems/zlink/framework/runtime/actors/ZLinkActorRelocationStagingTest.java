@@ -174,6 +174,28 @@ final class ZLinkActorRelocationStagingTest {
     }
 
     @Test
+    void entrySpotMembershipDoesNotRequireDurableUserSpotAuthority() {
+        ZLinkActorRuntime runtime = runtime(new AtomicInteger());
+        ZLinkActor actor = runtime.getOrCreateLocalActor(
+                "actor-entry", ProbeActor.class)
+            .toCompletableFuture()
+            .join()
+            .orElseThrow();
+        RoutingId entryNode = RoutingId.from("entry-node");
+        ZLinkBackendActorRef actorRef = new ZLinkBackendActorRef(
+            entryNode,
+            "actor-entry",
+            3);
+
+        assertDoesNotThrow(() -> runtime.markJoinedEntrySpot(
+            actor,
+            actorRef,
+            entryNode));
+        assertEquals(entryNode, runtime.entrySpotNodeRid(actor));
+        assertTrue(actor.context().spotId().isPresent());
+    }
+
+    @Test
     void ownershipLossCleanupWaitsForActiveActorTurn() {
         AtomicInteger closes = new AtomicInteger();
         AtomicInteger destroys = new AtomicInteger();

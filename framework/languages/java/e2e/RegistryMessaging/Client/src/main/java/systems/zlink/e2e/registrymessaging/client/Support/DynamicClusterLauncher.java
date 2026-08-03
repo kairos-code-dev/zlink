@@ -55,7 +55,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             providerConfig(rid, instanceId, weight, channelEndpoint, pickEndpoint(), httpUrl),
             httpUrl);
         process.waitReady();
-        return new DynamicProvider(process, httpUrl, channelEndpoint);
+        return new DynamicProvider(process, httpUrl, channelEndpoint, rid);
     }
 
     public DynamicConsumer startConsumer(String name) {
@@ -72,8 +72,9 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     public void waitPeerEndpoint(ZLinkHttpClient consumer, String endpoint) {
         waitPeers(
             consumer,
-            peers -> java.util.Arrays.stream(peers).anyMatch(peer -> endpoint.equals(peer.get("endpoint"))),
-            "peer endpoint " + endpoint);
+            peers -> java.util.Arrays.stream(peers)
+                .anyMatch(peer -> endpoint.equals(peer.get("nodeRid"))),
+            "ready peer " + endpoint);
     }
 
     public void waitSinglePeer(ZLinkHttpClient consumer, String nodeRid, String endpoint) {
@@ -81,19 +82,18 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             consumer,
             peers -> java.util.Arrays.stream(peers)
                 .filter(peer -> nodeRid.equals(peer.get("nodeRid")))
-                .filter(peer -> endpoint.equals(peer.get("endpoint")))
                 .count() == 1
                 && java.util.Arrays.stream(peers)
                     .filter(peer -> nodeRid.equals(peer.get("nodeRid")))
                     .count() == 1,
-            "single peer " + nodeRid + " at " + endpoint);
+            "single ready peer " + nodeRid);
     }
 
     public void waitPeerEndpointAbsent(ZLinkHttpClient consumer, String endpoint) {
         waitPeers(
             consumer,
-            peers -> java.util.Arrays.stream(peers).noneMatch(peer -> endpoint.equals(peer.get("endpoint"))),
-            "peer endpoint removal " + endpoint);
+            peers -> java.util.Arrays.stream(peers).noneMatch(peer -> endpoint.equals(peer.get("nodeRid"))),
+            "ready peer removal " + endpoint);
     }
 
     public void waitPeerCount(ZLinkHttpClient consumer, int count) {
@@ -141,7 +141,6 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             e2e.provider-instance=%s
             e2e.api-weight=%s
             e2e.api-endpoint=%s
-            e2e.api-manual-endpoint=%s
             e2e.route-endpoint=%s
             e2e.route-peers=
             e2e.workflow-endpoint=
@@ -150,7 +149,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             e2e.redis-location-endpoint=%s
             e2e.location-key-prefix=%s
             e2e.log-dir=%s
-            """.formatted(rid, instanceId, weight, apiEndpoint, apiEndpoint,
+            """.formatted(rid, instanceId, weight, apiEndpoint,
                 routeEndpoint, portOf(httpUrl), options.redisLocationEndpoint(),
                 options.locationKeyPrefix(), logDir);
     }
@@ -224,7 +223,11 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         return endpoint.substring(index + 1);
     }
 
-    public record DynamicProvider(DynamicProcess process, String httpUrl, String channelEndpoint) {
+    public record DynamicProvider(
+        DynamicProcess process,
+        String httpUrl,
+        String channelEndpoint,
+        String routingId) {
     }
 
     public record DynamicConsumer(DynamicProcess process, String httpUrl) {

@@ -4,7 +4,28 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 09:57 KST
+마지막 갱신일: 2026-08-03 18:40 KST
+
+사용자가 지정한 순서에 따라 Java/Kotlin runtime gap과 unit·integration gate를 먼저
+재실행했고, 최신 framework API 변경을 포함한 12개 sample process도 모두 통과했다.
+새 실행 결과와 E2E의 부분 통과·실패·구조적 누락은
+[`log/20260803-1840-runtime-sample-e2e-follow-up.ko.md`](log/20260803-1840-runtime-sample-e2e-follow-up.ko.md)에
+분리해 기록했다. E2E 전체 완료와 CI 완료는 해당 로그의 blocker가 해소되기 전까지
+완료로 표시하지 않는다.
+
+사용자가 지정한 순서에 따른 runtime 단계 판정과 순서 밖에서 실행된 ST-A2 실패의
+message trace/file log는
+[`log/20260803-1040-runtime-stage-order.ko.md`](log/20260803-1040-runtime-stage-order.ko.md)에
+기록했다. 12개 JK-IMP 항목의 production implementation과 unit·contract regression은
+좁은 runtime 조건에서 완료로 판정하고, process evidence는 sample 이후 E2E 단계로
+분리한다.
+
+이번 runtime·PubSub·HTTP 재검증의 message trace, role stdout/stderr file log, 명령과
+exit code는
+[`log/20260803-1036-java-kotlin-runtime-pubsub-http-gates.ko.md`](log/20260803-1036-java-kotlin-runtime-pubsub-http-gates.ko.md)에
+기록했다. Java PS-B2의 topology readiness 경합과 PS-B1 slow subscriber의 잔여
+queue를 trace로 분리한 뒤 bounded wait와 scenario cleanup을 반영했고, Java·Kotlin
+PubSub focused/aggregate를 다시 실행했다.
 
 이번 actor admission runtime 수정과 Java/Kotlin unit·package·focused process 재검증의
 명령, exit code, evidence는
@@ -343,16 +364,18 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 | Java/Kotlin Framework socket receive poller regression | PASS, 최신 runtime module test 37 actionable tasks·Java integration 8·Kotlin integration 22 | `ZLinkJavaSocketReceivePoller`를 통해 `StreamSocket`, `RouterSocket`, `DealerSocket`, `SubscriberSocket`과 raw service `RouterSocket`의 receive path를 readiness 확인 뒤에 실행한다. .NET의 `ZLinkBackendSocketPoller`·`ZLinkChannelReceiveLoop`와 같은 `poller wait → capacity 확인 → DONT_WAIT recv/subscribe` 순서를 사용하며, readiness는 `POLLIN|POLLERR|POLLPRI`를 받는다. Dealer와 raw service는 request completion이 필요할 때 `POLLIN|POLLCOMPLETION`을 하나의 public poller에 등록한다. Poller registration은 Framework가 bind/connect와 socket option 설정을 끝낸 뒤 첫 readiness 호출에서 수행하고, raw mesh service는 bind 직후 명시적으로 registration한다. Framework production path에는 STREAM packet callback 등록이 없다. poller close와 blocking receive-loop 종료 순서는 관련 module/integration test에서 확인하고, socket receive와 close의 동시 실행은 binding wrapper에서 직렬화한다. |
 | fresh Java binding package와 clean consumer | PASS | 승인된 Core 11.1.0 prefix와 `core-package-20260801.json`으로 binding package `11.1.1`을 다시 만들고, isolated Gradle consumer가 public API를 compile했으며 package가 native Core 11.1.0을 포함하는지 확인했다. 최신 evidence는 `.artifacts/v11/evidence/V11-M4-BIND-JVM/java-binding-consumer-20260803-r4.json`이다. |
 | `e2e/RegistrationCodec/run_e2e.sh all`, `e2e-kotlin/RegistrationCodec/run_e2e.sh all` (2026-08-03 fresh) | PASS, Java·Kotlin 모두 RC-A1~RC-A6·RC-B1~RC-B5 | Java·Kotlin Spring role process에서 registration, DI lifecycle, filter order, JSON/Protobuf/MessagePack coexistence와 unknown codec rejection/recovery를 확인한다. Config 4 전체 및 다른 common Config의 aggregate 완료를 의미하지 않는다. |
-| `e2e/PubSub/run_e2e.sh all`, `e2e-kotlin/PubSub/run_e2e.sh all` (2026-08-03 fresh) | PARTIAL. Kotlin은 PS-A1~A4·PS-B1~B2·PS-C1 PASS. Java는 PS-A1~A4·PS-B1·PS-C1 PASS 후 PS-B2 timeout으로 FAIL | Java PS-B2는 `PublisherRestartScenario.waitPublisherRow`에서 `publisher row`가 비어 있어 timeout했다. current log는 `framework/languages/java/e2e/PubSub/logs/20260803-071829-51450`이며, Kotlin log는 `framework/languages/java/e2e-kotlin/PubSub/logs/20260803-071909-53256`이다. Java publisher restart process evidence는 미완료다. Config 3 전체와 PS-D/PS-E 전환 대상은 포함하지 않는다. |
+| Java `e2e/PubSub/run_e2e.sh PS-B2` (2026-08-03 10:25) | PASS, exit `0` | message trace와 role stdout/stderr를 확인했다. bounded topology wait 뒤 publisher restart row와 baseline/restart message sequence가 모두 확인되며 file log는 `framework/languages/java/e2e/PubSub/logs/20260803-102522-702721/`에 있다. |
+| Java `e2e/PubSub/run_e2e.sh all` 및 Kotlin `e2e-kotlin/PubSub/run_e2e.sh all` (2026-08-03 10:28~10:29) | PASS, exit `0`, 양 언어 PS-A1~A4·PS-B1~B2·PS-C1 | PS-B1 뒤 sub-1을 재시작해 독립된 PS-B2 queue를 만들었다. Java aggregate file log는 `framework/languages/java/e2e/PubSub/logs/20260803-102803-716255/`, Kotlin aggregate file log는 `framework/languages/java/e2e-kotlin/PubSub/logs/20260803-102859-720084/`이다. Config 3 전체와 PS-D/PS-E 전환 대상은 포함하지 않는다. |
 | `e2e/SpotActorTransfer/run_e2e.sh ST-A1 --start-order forward`, `e2e-kotlin/SpotActorTransfer/run_e2e.sh ST-A1 --start-order forward` (2026-08-03 fresh) | PASS, Java·Kotlin 모두 `scenario ST-A1 passed` | ST-A1 전용 placement fixture에서 role startup, public actor request, client terminal assertion과 target handler evidence를 확인했다. reverse start-order evidence는 historical이며, ST-A2 이후 전체 relocation은 별도 blocker다. |
 | `e2e/RuntimeMonitoring/run_e2e.sh MON-A2`, `MON-A4A`, `MON-A4B`, `MON-D1A`, `MON-D1B` | historical PASS | restart, crash replacement, unknown mesh, repeated recovery 경로의 이전 focused evidence다. Config 7 전체 및 현재 dirty 변경에 대한 fresh 결과는 아니다. |
 | `./scripts/verify_packaged_contract.sh java` 및 `kotlin` | PASS | Java 9개와 Kotlin 11개 declared artifact를 temporary repository에 publish하고 clean consumer를 실행했다. HTTP·Stream public type 및 Stream flow model을 compile하고, source/package public JVM surface와 checked-in API snapshot도 비교했다. Java hash는 `dd5f7c3e...d6d994`, Kotlin hash는 `0bf535f3...b4f287`이다. HTTP version은 `HttpClientVersion.VERSION`에서 읽는다. |
 | `ZLinkLocationLifecycleTest.actorJoinUpdatesDurableAuthorityWithStoreVersionCas`, CAS loser/stale generation regression 및 `ZLinkActorContextStateRelocationTest.failedMoveClearsMovingStateAndCompletesTheMoveStageExceptionally` | PASS | local actor join이 READY Actor authority row를 읽고 target Spot authority를 확인한 뒤 `StoreVersion` CAS로 Actor location/generation을 갱신하는 경로와 CAS conflict/stale generation rejection, failed move terminal state를 확인한다. restart/takeover와 process-level authority evidence는 포함하지 않는다. |
 | HWM registration/dispatch/spot/actor focused tests와 위 runtime module 전체 test | PASS | startup max-message validation, completion-send permit, channel/mesh dispatcher, Spot route/subscription/local Actor handler accounting, resource cleanup과 runtime shutdown 시 payload/completion admission close를 확인한다. `ZLinkMeshDispatchRecord`에 raw mailbox HWM lease를 연결하고 dispatcher가 같은 lease를 재사용하며, `ZLinkJavaRawMeshNode`가 budget saturation 중 application receive를 멈췄다가 record 종료 뒤 재개하는 회귀도 통과했다. queue-only HWM active handler 전환, threshold 직전 precise overshoot, shutdown lease close와 대기 중 subscription cleanup 회귀도 통과했다. role process HWM evidence는 포함하지 않는다. |
 | `HttpClientCoroutineTest.cancelling coroutine wait does not cancel submitted stage` | PASS | Kotlin coroutine 대기 취소가 이미 제출한 `CompletionStage`를 취소하지 않는 adapter 경계를 확인한다. retry, body-read deadline, client lease와 HTTP role process evidence는 포함하지 않는다. |
-| `env ZLINK_SAMPLE_FILTER=TicTacToe ./samples/run_samples.sh` | FAIL | Java client self-check는 완료했지만 `player-o destroy` server evidence timeout으로 종료했고, `set -e`로 Kotlin sample은 실행되지 않았다. |
+| `HttpClientCoroutineTest` cancellation admission/retry tests (2026-08-03 current) | PASS | 요청 admission 뒤 waiter 취소가 underlying stage·client lease를 취소하지 않는 경로와 첫 시도 실패 뒤 pending retry가 유지되는 unit regression이다. 실제 HTTP role process의 cleanup·execution-turn evidence는 별도다. |
+| 이전 실행 기록: `env ZLINK_SAMPLE_FILTER=TicTacToe ./samples/run_samples.sh` | 이전 FAIL | 당시 Java client self-check 뒤 `player-o destroy` server evidence timeout이 발생했다. 이 결과는 최신 12개 process aggregate PASS로 대체되었고, 당시 실행에서 `set -e`로 Kotlin sample이 실행되지 않은 사실만 보존한다. |
 | fake-backend public-manager gate | PASS | runner selector를 현재 test inventory에 맞췄다. 이것은 12개 sample process 결과가 아니다. |
-| `env ZLINK_SAMPLE_FILTER=TicTacToe ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` | FAIL | Kotlin client self-check는 완료했지만 `player-x destroy` server evidence timeout으로 종료했다. |
+| 이전 실행 기록: `env ZLINK_SAMPLE_FILTER=TicTacToe ZLINK_SAMPLE_LANGUAGES=kotlin ./samples/run_samples.sh` | 이전 FAIL | 당시 Kotlin client self-check 뒤 `player-x destroy` server evidence timeout이 발생했다. 이 결과는 최신 12개 process aggregate PASS로 대체되었다. |
 | `find e2e e2e-kotlin samples -type f -name '*.sh' ... bash -n` | PASS | shell syntax만 확인한다. |
 | `git diff --check` (ledger와 Java/Kotlin 변경 경로) | PASS | 이번 진행 범위의 Markdown·Java source/test에 trailing whitespace 오류가 없다. |
 | `git diff --check` (전체 working tree) | PASS | 최신 working tree의 tracked diff에서 trailing whitespace 오류가 발견되지 않았다. |
@@ -364,7 +387,12 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 exact inventory 결과는
 `framework/languages/java/zlink-framework-core/build/test-results/contractTest/TEST-systems.zlink.framework.JavaDocumentationRegressionTest.xml`에 있다. parser는 이제 두 번째 hyphen을 포함한 `IS-E2E-*` ID를 추출하며, 실패는 parser 오류가 아니라 현재 source/runner 누락을 보고한다. `CH-E2E-*` 16개와 `IS-E2E-*` 36개 suite가 없고, 나머지 누락 ID도 같은 report의 `missingIds`에 포함된다.
 
-`buildAllSamples` 또는 좁은 unit test의 성공은 common E2E·sample 전체 완료로 확대하지 않는다. Java/Kotlin Config 1–14 aggregate, 12개 sample process, dedicated CI workflow는 아직 실행·승인하지 않았다. API snapshot과 clean package consumer는 runtime gate에서 통과했으며, 현재 TicTacToe는 client self-check 뒤 role cleanup evidence에서 실패한다.
+`buildAllSamples` 또는 좁은 unit test의 성공은 common E2E·sample 전체 완료로 확대하지 않는다. 최신
+`samples/run_samples.sh`는 Java/Kotlin 12개 sample process의 client self-check와 server
+evidence를 모두 통과했지만, Java/Kotlin Config 1–14 aggregate와 dedicated CI workflow는
+아직 실행·승인하지 않았다. API snapshot과 clean package consumer는 runtime gate에서 통과했으며,
+이전 TicTacToe cleanup timeout은 최신 aggregate PASS로 대체되었다. `buildAllSamples` 독립
+gate와 environment/JVM property policy gate는 별도 미완료 조건이다.
 
 ## 4. 현재 충족 판정
 
@@ -390,9 +418,9 @@ exact inventory 결과는
 - static import scan에서 application E2E client가
   systems.zlink.framework.runtime.internal 또는 ZLinkJavaRaw를 직접 import하는
   결과는 발견되지 않았다. 이것은 role evidence와 process 실행을 증명하지 않는다.
-- fake-backend public-manager gate는 통과했지만, current Java·Kotlin TicTacToe는 client
-  self-check 뒤 `player-o`/`player-x` destroy evidence timeout으로 실패했다. 여섯
-  sample 전체의 결과로 확대하지 않는다.
+- fake-backend public-manager gate와 최신 Java·Kotlin 12개 sample process aggregate가
+  통과했다. 각 sample의 client self-check, server evidence, smoke/completion marker를
+  확인했지만, 이 결과를 Config 1–14 E2E aggregate나 CI 완료로 확대하지 않는다.
 - Java·Kotlin ST-A1 focused scenario는 current forward start-order에서 통과했다.
   RuntimeMonitoring 결과는 이전 focused evidence이며 각 Config 전체의 결과로 확대하지 않는다.
 - Java·Kotlin aggregate runner가 canonical suite directory와 executable runner를
@@ -1016,10 +1044,12 @@ exact inventory 결과는
   `:zlink-framework-core:integrationTest` 8 actionable tasks, Kotlin
   `:zlink-framework-kotlin:integrationTest` 22 actionable tasks, fresh Core 11.1.0
   prefix 기반 Java binding 전체 test와 Java/Kotlin packaged consumer가 통과했다.
-  Java PubSub PS-B2 aggregate와 단독 selector는 publisher topology row timeout으로
-  여전히 실패했고, Kotlin PubSub의 확인된 selector는 통과했다. 이 process 실패는
-  현재 Socket Poller·STREAM recv runtime 경로와 다른 PubSub restart evidence blocker로
-  분리했다. Codex follow-up review에서 Poller readiness, recv-only STREAM ingress,
+  Java·Kotlin PubSub PS-B2 단독 selector와 aggregate는 current message trace/file log
+  기준으로 통과했다. 이전 publisher topology row timeout은 liveness beacon 간격보다
+  짧은 bounded wait와 PS-B1 slow subscriber의 scenario 간 queue 잔여가 원인이었고,
+  20초 wait와 sub-1 재시작 cleanup으로 분리했다. 이 결과는 현재 Socket Poller·STREAM
+  recv runtime을 보강하는 process evidence이지만, 전체 common scenario를 대신하지는
+  않는다. Codex follow-up review에서 Poller readiness, recv-only STREAM ingress,
   HWM admission, ownership/disposal 범위의 Critical·High·Medium·Low finding은 남지 않았다.
 - 남은 조건:
   Java `ZLinkStreamNodeBuilder`의 MaxMessageSize public configuration은 source,
@@ -1037,7 +1067,7 @@ exact inventory 결과는
 - 완료 evidence: production의 native Socket receive 경로가 public Poller readiness 경계를
   사용하고, STREAM ingress가 recv-only로 동작하며, queue admission·ownership 경계와
   malformed peer isolation 회귀가 고정되었다. 이 항목의 좁은 runtime 판정은 완료했지만,
-  Java PubSub PS-B2 process evidence와 전체 API/E2E/CI gate는 별도 blocker로 남아 있다.
+  전체 common API/E2E/CI gate는 별도 blocker로 남아 있다.
 
 ## 6. JK-E2E-IMP-* Java/Kotlin E2E implementation gap
 
@@ -1373,8 +1403,8 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
 ### JK-SAMPLE-IMP-001 — aggregate sample gate의 stale fake backend selector
 
 - 상태: 부분 해결. stale selector를 현재 fake-backend public-manager test로 교체했고
-  focused gate가 통과한다. 12개 sample process와 release gate aggregate는 아직
-  완료하지 않았다.
+  focused gate와 최신 12개 sample process aggregate가 통과한다. `buildAllSamples` 독립
+  gate와 release/CI aggregate는 아직 완료하지 않았다.
 - 기준 경로: framework/doc/framework/common/sample/README.ko.md와 각 sample README의
   self-check, smoke, completion 절.
 - 구현 경로:
@@ -1404,9 +1434,9 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
 
 - 상태: 부분 해결. Java TicTacToe의 `fetch(...).toCompletableFuture().join()`을
   `submit(...).toCompletableFuture().join().body()`로 바꾼 public HTTP terminal 정렬은
-  유지한다. 그러나 2026-08-03 current Java·Kotlin focused process는 client self-check
-  뒤 role actor destroy evidence timeout으로 실패했으며, 여섯 sample의 전체 terminal
-  audit은 남아 있다.
+  유지한다. 최신 Java·Kotlin 12개 sample process aggregate에서 TicTacToe를 포함한
+  client self-check와 server evidence가 통과했지만, 여섯 sample의 전체 terminal audit과
+  독립 `buildAllSamples` gate는 남아 있다.
 - 기준 경로:
   framework/doc/framework/common/sample/tictactoe/README.ko.md,
   framework/doc/framework/common/spec/http-client/languages/java/java-http-client.ko.md,
@@ -1417,8 +1447,7 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
   framework/languages/java/validate_sample_e2e_configuration_policy.sh.
 - 확인한 동작과 기대 동작:
   Java client는 typed response를 비동기 `submit` stage로 종료하고 body를 읽는다.
-  current Java·Kotlin 실행은 client self-check까지 통과했지만 Java는 `player-o destroy`,
-  Kotlin은 `player-x destroy` server evidence를 제한 시간 안에 확인하지 못했다. 기대 동작은
+  최신 Java·Kotlin 실행은 client self-check와 server evidence까지 통과했다. 기대 동작은
   여섯 sample 양 언어 client가
   exact HTTP public call builder와 asynchronous terminal을 사용하고 timeout,
   cancellation, error body/status를 계약대로 확인하는 것이다.
@@ -1473,7 +1502,9 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
 
 ### JK-SAMPLE-IMP-004 — 여섯 sample의 process self-check와 server evidence
 
-- 상태: gap.
+- 상태: process 검증 완료. 최신 aggregate가 Java·Kotlin 각 여섯 sample의 client
+  self-check와 server evidence를 확인했다. environment/JVM property policy,
+  `buildAllSamples`, Config 1–14 E2E aggregate와 CI gate는 별도 미완료 조건이다.
 - 기준 경로:
   framework/doc/framework/common/sample/bingo/README.ko.md,
   framework/doc/framework/common/sample/deliverydispatch/README.ko.md,
@@ -1496,9 +1527,8 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
   framework/languages/java/samples/kotlin/TicTacToe/run_sample.sh,
   framework/languages/java/samples/sample-manifest.env.
 - 확인한 동작과 기대 동작:
-  fake-backend public-manager gate는 통과했다. current Java·Kotlin TicTacToe는 client
-  self-check 뒤 role cleanup evidence에서 실패했고, 나머지 10개 process와 aggregate는
-  아직 실행하지 않았다. common sample 문서는
+  fake-backend public-manager gate와 최신 Java·Kotlin 12개 process aggregate가 통과했다.
+  common sample 문서는
   client self-check, role server result, smoke output, completion evidence를 요구한다.
 - 판정 근거:
   compile/build 또는 단일 sample 성공은 12 process sample의 public contract와
@@ -1951,6 +1981,10 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 ### E2E
 
 - [x] common Config 1–14의 374 scenario ID를 inventory로 고정했다.
+- [x] Java·Kotlin PubSub의 PS-A1~A4·PS-B1~B2·PS-C1 focused/aggregate process가
+  현재 실행에서 통과했고, client terminal·role stdout/stderr·message trace file log를
+  함께 보존했다. 이는 Config 3의 확인된 subset이며 common Config 1–14 완료 표시는
+  아니다.
 - [ ] Java feature-map의 missing/extra/alias와 Kotlin feature-map의
   missing/extra/alias를 모두 해소했다.
 - [ ] Java aggregate에 Config 12와 Config 14가 포함된다.
@@ -1968,16 +2002,22 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
   diagnostic_only 항목은 all 성공으로 계산되지 않는다.
 - [ ] JK-REG-008부터 JK-REG-010이 통과한다.
 
+- [x] Java·Kotlin PubSub subset과 Kotlin RegistryMessaging RM-C2 focused process가
+  최신 runtime으로 통과했으며 client terminal, role evidence, message trace/file log를
+  보존했다. 이 focused 결과는 Config 3과 Config 1의 일부만 닫으며 full E2E aggregate를
+  대신하지 않는다.
+
 ### Sample와 CI
 
-- [ ] Java/Kotlin Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
+- [x] Java/Kotlin Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
   GameQuest가 각각 실제 process로 실행된다.
 - [ ] Java sample의 synchronous HTTP terminal drift가 없다.
 - [ ] sample/E2E application source의 environment/JVM property policy gate가
   통과한다.
-- [ ] sample별 client self-check, server evidence, smoke/completion 결과가 있다.
+- [x] sample별 client self-check, server evidence, smoke/completion 결과가 있다.
 - [x] fake backend/release gate selector가 실제 test inventory와 일치한다.
-- [ ] buildAllSamples와 samples/run_samples.sh aggregate가 통과한다.
+- [x] `samples/run_samples.sh` aggregate가 최신 Java/Kotlin 12개 process를 통과한다.
+- [ ] `buildAllSamples` 독립 gate가 통과한다.
 - [x] package mode와 clean Java/Kotlin package consumer가 통과한다.
 - [x] API snapshot artifact와 비교 명령이 존재하고 `api_snapshot_not_found`를
   empty diff로 기록하지 않는다.
@@ -2003,8 +2043,9 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 
 현재 해결하지 않은 blocker는 다음과 같다.
 
-- Java/Kotlin runtime unit 범위는 최신 실행에서 `37 actionable tasks`와 Java core
-  `726 tests`가 PASS했다. 이 결과는 runtime unit/contract gate를 닫지만, common E2E
+- Java/Kotlin runtime unit·integration 범위는 최신 실행에서 `41 actionable tasks`가
+  PASS했다. Java core의 `726 tests`, Kotlin contract/integration과 HTTP·Stream
+  regression을 포함한다. 이 결과는 runtime unit/contract gate를 닫지만, common E2E
   documentation inventory를 포함한 full contract invocation은 아래 scenario 누락
   blocker 때문에 전체 CLEAN으로 올리지 않는다.
 - SubmitAdmission의 승인 package preflight와 `SA-REG-02`, `SA-REG-03`,
@@ -2044,15 +2085,38 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 - Java/Kotlin aggregate는 canonical suite preflight를 수행하지만 Java의
   `ChannelEgressRouting`, Kotlin의 `StoreFailure`, `ChannelEgressRouting`,
   `SubmitAdmission`, `InstanceSpot` suite가 없어 `aggregate_incomplete`로 중단한다.
-  12 sample process와 Config 1–14의 실제 실행을 완료하지 않았다.
-- current Java PubSub aggregate는 PS-A1~A4, PS-B1, PS-C1 뒤 PS-B2의 publisher topology
-  row 대기에서 timeout으로 실패했다. current evidence는
-  `framework/languages/java/e2e/PubSub/logs/20260803-071829-51450`에 있다. Kotlin
-  PubSub aggregate는 PS-A1~A4, PS-B1~B2, PS-C1이 통과했다. Java 전체 process
-  evidence는 안정된 aggregate PASS로 승격하지 않는다.
-- current Java·Kotlin TicTacToe sample은 client self-check까지 진행했지만 Java의
-  `player-o`, Kotlin의 `player-x` destroy server evidence timeout으로 실패했다.
-  fake-backend gate PASS를 sample process PASS로 해석하지 않는다.
+  12 sample process는 최신 aggregate에서 완료했지만 Config 1–14의 실제 실행은
+  완료하지 않았다.
+- 최신 Java supported E2E는 RegistrationCodec과 PubSub를 통과했으나 RuntimeMonitoring에서
+  `HTTP/1.1 header parser received no bytes`로 중단했다. HTTP health readiness를 runner에
+  추가했지만 같은 오류가 재현되어 Java process E2E 완료로 승격하지 않는다.
+  근거는 `/tmp/java-e2e-supported-after-runtime-20260803.log`와
+  `framework/languages/java/e2e/RuntimeMonitoring/logs/20260803-183739-3434553/`이다.
+- 최신 Kotlin supported E2E는 RegistrationCodec과 PubSub를 통과했으나 SpotService가
+  현재 Kotlin public handler/context interface와 맞지 않는 stale source로
+  `:Server:Play:compileKotlin`에서 중단했다. 근거는
+  `/tmp/kotlin-e2e-supported-after-runtime-20260803.log`이다.
+- RegistryMessaging의 Kotlin RM-C2는 route readiness, location readiness, targeted
+  route reply와 missing RID failure를 통과했다. Java RM-C2는 한 실행에서 route readiness
+  뒤 오래된 timeout assertion을 확인해 공통 spec의 `REQUEST_TARGET_NOT_FOUND`로 고쳤지만,
+  최신 재실행은 Core `socket_poller.cpp:496 Bad address`로 provider가 종료되어 Java
+  process 완료 근거가 없다. Kotlin 근거는
+  `/tmp/kotlin-rm-c2-after-route-handler-api-20260803.log`와
+  `framework/languages/java/e2e-kotlin/RegistryMessaging/logs/20260803-182242-3359504/`,
+  Java blocker 근거는 `/tmp/java-rm-c2-final-retry-20260803.log`와
+  `framework/languages/java/e2e/RegistryMessaging/logs/20260803-182523-3374445/`이다.
+- current Java·Kotlin PubSub aggregate는 PS-A1~A4, PS-B1~B2, PS-C1이 통과했다.
+  Java focused/aggregate file log는 각각
+  `framework/languages/java/e2e/PubSub/logs/20260803-102522-702721/`와
+  `framework/languages/java/e2e/PubSub/logs/20260803-102803-716255/`, Kotlin
+  aggregate file log는 `framework/languages/java/e2e-kotlin/PubSub/logs/20260803-102859-720084/`에
+  있다. 이 결과는 Config 3의 확인된 PubSub subset을 닫지만 common Config 1–14
+  aggregate와 다른 scenario의 process evidence를 닫지 않는다.
+- 최신 `samples/run_samples.sh` aggregate는 Java·Kotlin 12개 sample process와
+  client/server self-check를 모두 통과했다. 근거는
+  `/tmp/java-kotlin-samples-aggregate-final-20260803.log`이며, 이는 sample process
+  gate를 닫지만 environment/JVM property policy와 `buildAllSamples` 및 CI workflow
+  gate를 자동으로 닫지는 않는다.
 - Java/Kotlin 전용 CI workflow와 runtime/E2E/sample aggregate의 path ownership이
   현재 명시적으로 연결되어 있지 않다.
 

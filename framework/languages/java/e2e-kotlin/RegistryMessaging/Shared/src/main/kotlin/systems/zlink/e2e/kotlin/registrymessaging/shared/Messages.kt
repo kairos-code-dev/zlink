@@ -6,7 +6,6 @@ object Contracts {
     const val CHANNEL_HANDLER_GROUP = "registry-messaging-channel-handlers"
     const val ROUTE_HANDLER_GROUP = "registry-messaging-route-handlers"
     const val PROFILE_CHANNEL = "profile"
-    const val PROFILE_MANUAL_CHANNEL = "profile.manual"
     const val PROFILE_ROUTE_CHANNEL = "profile.route"
     const val WORKFLOW_CHANNEL = "workflow"
     const val PROFILE_REQUEST_PACKET = "ProfileReq"

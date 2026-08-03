@@ -137,6 +137,19 @@ wait_port() {
   return 1
 }
 
+wait_http_health() {
+  local name="$1"
+  local endpoint="$2"
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time 1 -fsS "${endpoint}/health" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
+  done
+  echo "Timed out waiting for ${name} health at ${endpoint}" >&2
+  return 1
+}
+
 start_redis_container() {
   local redis_port
   if ! command -v docker >/dev/null 2>&1; then
@@ -277,6 +290,9 @@ wait_port service-http "${SERVICE_HTTP}"
 wait_port throwing-service-api "${THROW_API_ENDPOINT}"
 wait_port throwing-service-http "${THROW_HTTP}"
 wait_port trigger-http "${TRIGGER_HTTP}"
+wait_http_health service "${SERVICE_HTTP}"
+wait_http_health throwing-service "${THROW_HTTP}"
+wait_http_health trigger "${TRIGGER_HTTP}"
 
 "$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
   >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"

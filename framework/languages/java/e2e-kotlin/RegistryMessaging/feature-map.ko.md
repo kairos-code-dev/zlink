@@ -16,7 +16,7 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
 | RM-B2 | implemented | Redis location store 동적 cluster에서 provider B 종료 뒤 public MeshNode descriptor 제거와 survivor `api-a` routing을 검증한다. |
 | RM-B3 | 전환 필요 | provider A handler-start evidence 뒤 A를 `SIGKILL`하고, 같은 consumer에서 in-flight 결과의 유한한 public error, 자동 재전송 금지, crash 전파 구간과 descriptor 제거 뒤 생존 provider B의 신규 request 처리를 검증해야 한다. 현재 로그는 graceful 종료인 RM-B2만 증명한다. |
 | RM-C1 | implemented | request reply와 send command marker를 provider evidence에서 확인한다. |
-| RM-C2 | 차단 | 존재하는 RID의 target request는 수행하지만, 미존재 RID가 현재 공통 오류 분류 대신 timeout으로 끝난다. Java runtime이 현재 MeshNode member snapshot을 target 선택 전에 판정하도록 수정한 뒤 다시 검증해야 한다. |
+| RM-C2 | implemented | 존재하는 RID의 target request와 member snapshot에 없는 RID의 실패 terminal을 확인하며, 지정한 provider만 handler evidence를 남기는지 검증한다. |
 | RM-C3 | implemented | direct consumer role endpoint가 두 provider endpoint를 manual peer로 등록해 batch request 분산을 검증한다. |
 | RM-C4 | implemented | discovery consumer role endpoint가 timeout을 관측하고 후속 request evidence를 확인한다. |
 | RM-C5 | implemented | missing packet request/send 뒤 dispatch-error evidence와 정상 request 회복을 확인한다. |

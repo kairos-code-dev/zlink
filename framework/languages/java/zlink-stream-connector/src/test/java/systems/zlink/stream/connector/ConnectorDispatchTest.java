@@ -259,6 +259,21 @@ final class ConnectorDispatchTest {
         assertEquals(0, queue.receivedCount("Push"));
     }
 
+    @Test
+    void clearCompletesWaitersWithoutReentrantModification() {
+        ZLinkStreamDispatchQueue queue = new ZLinkStreamDispatchQueue(1);
+        CompletableFuture<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> waiter =
+            new CompletableFuture<>();
+
+        queue.awaitMessage("Push", ignored -> true, waiter);
+
+        queue.clear();
+
+        assertTrue(waiter.isCompletedExceptionally());
+        assertEquals(0, queue.size());
+        assertEquals(0, queue.receivedCount("Push"));
+    }
+
     private static ZLinkStreamMessage<ZLinkStreamEncodedPayload> message(String body) {
         return new ZLinkStreamMessage<>(
             "Push",

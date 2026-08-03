@@ -142,7 +142,7 @@ private fun startHttp(
     server.createContext("/self-check/owner/") { exchange ->
         val parts = exchange.requestURI.path.split("/")
         val playerId = parts.getOrElse(3) { "" }
-        routes.sendToSpot(playerId, ClosePlayerQuestMsg()).submit()
+        routes.sendToSpot(playerId, ClosePlayerQuestMsg()).submit().toCompletableFuture().join()
         writeJson(exchange, 202, mapOf("closed" to true, "owner" to true))
     }
     server.createContext("/self-check/events") { exchange -> writeJson(exchange, 200, store.events()) }

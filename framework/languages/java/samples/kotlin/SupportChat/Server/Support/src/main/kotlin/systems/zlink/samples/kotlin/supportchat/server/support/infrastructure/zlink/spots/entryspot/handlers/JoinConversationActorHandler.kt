@@ -34,6 +34,7 @@ class JoinConversationActorHandler : ZLinkSuspendingEntrySpotActorRequestHandler
             )
         return actor.scheduleConversationJoin(
             conversationId,
+            "",
             JoinConversationReq(
                 actor.participantId,
                 actor.role,

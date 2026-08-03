@@ -38,7 +38,7 @@ public final class CourierSpotNodeApplication {
                 .traceLogFile(topology.logDirectory() + "/flow-courier-" + node + ".log")
                 .traceLabel("courier-" + node);
             ZLinkMeshNodeBuilder spotNode = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
-            spotNode.listen(selected.routerEndpoint())
+            spotNode.listen(selected.spotEndpoint())
                 .setRoutingIdPrefix("delivery-courier");
             spotNode.objects()
                 .server()
@@ -47,7 +47,7 @@ public final class CourierSpotNodeApplication {
                     SampleNames.CourierActorType,
                     CourierActor.class,
                     CourierActorFactory.class,
-                    factory -> factory.recreateOnRelocation());
+                    factory -> factory.disableRelocation());
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)
@@ -65,11 +65,11 @@ public final class CourierSpotNodeApplication {
         return SampleLocationStore.create(topology);
     }
 
-    private record NodeOptions(String routerEndpoint) {
+    private record NodeOptions(String spotEndpoint) {
         static NodeOptions resolve(String node, SampleTopology topology) {
             return switch (node) {
-                case "node2" -> new NodeOptions(topology.courierActorNode2RouterEndpoint());
-                default -> new NodeOptions(topology.courierActorNode1RouterEndpoint());
+                case "node2" -> new NodeOptions(topology.courierActorNode2SpotEndpoint());
+                default -> new NodeOptions(topology.courierActorNode1SpotEndpoint());
             };
         }
     }

@@ -1039,6 +1039,48 @@ final class ZLinkJavaRawSpotNodeM6BTest {
     }
 
     @Test
+    void instanceAuthorityReplacementRequiresAForwardFence() {
+        RoutingId nodeRid = RoutingId.from("jvm-m6b-instance-fence-node");
+        var current = new ZLinkServiceM6BWireCodec.InstanceRouteFence(
+            nodeRid,
+            3,
+            "instance-fence-spot",
+            7,
+            "owner-a",
+            11,
+            5,
+            "41");
+        var recreated = new ZLinkServiceM6BWireCodec.InstanceRouteFence(
+            nodeRid,
+            3,
+            "instance-fence-spot",
+            8,
+            "owner-a",
+            12,
+            6,
+            "42");
+        var forged = new ZLinkServiceM6BWireCodec.InstanceRouteFence(
+            nodeRid,
+            3,
+            "instance-fence-spot",
+            7,
+            "owner-a",
+            12,
+            5,
+            "41");
+
+        assertTrue(
+            ZLinkJavaRawSpotNode.isNewerInstanceAuthorityFence(
+                recreated, current));
+        assertFalse(
+            ZLinkJavaRawSpotNode.isNewerInstanceAuthorityFence(
+                current, recreated));
+        assertFalse(
+            ZLinkJavaRawSpotNode.isNewerInstanceAuthorityFence(
+                forged, current));
+    }
+
+    @Test
     void streamBindingDispatchesThroughFrameworkActorAuthority()
         throws Exception {
         try (var context = Zlink.createContext();

@@ -1,6 +1,5 @@
 package systems.zlink.samples.gamequest.server.gameapi.spots;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
@@ -26,7 +25,6 @@ public final class QuestProcessingActorHandler
         ZLinkMessageContext context,
         Messages.QuestProcessingMsg message) {
         store.mergeProjection(message.playerId(), message.projection());
-        actor.push(message);
-        return CompletableFuture.completedFuture(null);
+        return actor.push(message);
     }
 }

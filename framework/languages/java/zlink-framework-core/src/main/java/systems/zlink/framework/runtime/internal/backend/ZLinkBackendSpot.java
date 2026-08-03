@@ -13,6 +13,11 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
         return 0L;
     }
 
+    /** Removes a binding-owned Instance Spot activation when supported. */
+    default boolean closeInstanceSpot() {
+        return false;
+    }
+
     void setRoutingId(String spotId);
 
     void setSubscription(String topic);

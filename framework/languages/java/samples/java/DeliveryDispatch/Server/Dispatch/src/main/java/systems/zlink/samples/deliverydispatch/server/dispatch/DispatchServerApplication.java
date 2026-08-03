@@ -52,8 +52,9 @@ public final class DispatchServerApplication {
                 .client();
             ZLinkMeshNodeBuilder courierRoutes = options.addRouteMesh(SampleNames.CourierSpotDiscovery);
             courierRoutes
-                .listen("inproc://deliverydispatch-dispatch-courier-client")
+                .listen(topology.dispatchSpotEndpoint())
                 .setRoutingIdPrefix("delivery-dispatch");
+            courierRoutes.objects().client();
         };
     }
 

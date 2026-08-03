@@ -32,14 +32,12 @@ data class SampleTopology(
         lateinit var CustomerStreamEndpoint: String
         lateinit var CourierStreamEndpoint: String
         lateinit var DispatchHttpEndpoint: String
+        lateinit var DispatchSpotEndpoint: String
         lateinit var DispatchChannelEndpoint: String
         lateinit var CustomerSpotEndpoint: String
         lateinit var CustomerSpotRouterEndpoint: String
         lateinit var CourierActorNode1SpotEndpoint: String
         lateinit var CourierActorNode2SpotEndpoint: String
-        lateinit var CourierActorNode1RouterEndpoint: String
-        lateinit var CourierActorNode2RouterEndpoint: String
-        lateinit var CourierSessionSpotRouterEndpoint: String
         lateinit var CourierSessionSpotEndpoint: String
         lateinit var RedisEndpoint: String
         lateinit var RedisKeyPrefix: String
@@ -61,14 +59,12 @@ data class SampleTopology(
             CustomerStreamEndpoint = value(properties, "customerStreamEndpoint", "tcp://127.0.0.1:49104")
             CourierStreamEndpoint = value(properties, "courierStreamEndpoint", "tcp://127.0.0.1:49105")
             DispatchHttpEndpoint = value(properties, "dispatchHttpEndpoint", "http://127.0.0.1:49107")
+            DispatchSpotEndpoint = value(properties, "dispatchSpotEndpoint", "tcp://127.0.0.1:49108")
             DispatchChannelEndpoint = value(properties, "dispatchChannelEndpoint", "tcp://127.0.0.1:49121")
             CustomerSpotEndpoint = value(properties, "customerSpotEndpoint", "tcp://127.0.0.1:49109")
             CustomerSpotRouterEndpoint = value(properties, "customerSpotRouterEndpoint", "tcp://127.0.0.1:49110")
             CourierActorNode1SpotEndpoint = value(properties, "courierActorNode1SpotEndpoint", "tcp://127.0.0.1:49113")
             CourierActorNode2SpotEndpoint = value(properties, "courierActorNode2SpotEndpoint", "tcp://127.0.0.1:49114")
-            CourierActorNode1RouterEndpoint = value(properties, "courierActorNode1RouterEndpoint", "tcp://127.0.0.1:49115")
-            CourierActorNode2RouterEndpoint = value(properties, "courierActorNode2RouterEndpoint", "tcp://127.0.0.1:49116")
-            CourierSessionSpotRouterEndpoint = value(properties, "courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
             CourierSessionSpotEndpoint = value(properties, "courierSessionSpotEndpoint", "tcp://127.0.0.1:49119")
             RedisEndpoint = required(properties, "redisEndpoint")
             RedisKeyPrefix = value(properties, "redisKeyPrefix", "deliverydispatch:kotlin:")

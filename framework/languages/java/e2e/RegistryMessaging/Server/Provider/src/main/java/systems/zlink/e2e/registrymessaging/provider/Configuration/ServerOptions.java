@@ -9,9 +9,9 @@ public record ServerOptions(
     String apiWeight,
     long maxMessageSize,
     String apiEndpoint,
-    String apiManualEndpoint,
     String routeEndpoint,
     String routePeers,
+    String routePeerRids,
     String workflowEndpoint,
     int httpPort,
     String redisLocationEndpoint,
@@ -25,9 +25,9 @@ public record ServerOptions(
         required(logDir, "log-dir");
         apiWeight = optional(apiWeight);
         apiEndpoint = optional(apiEndpoint);
-        apiManualEndpoint = optional(apiManualEndpoint);
         routeEndpoint = optional(routeEndpoint);
         routePeers = optional(routePeers);
+        routePeerRids = optional(routePeerRids);
         workflowEndpoint = optional(workflowEndpoint);
     }
 

@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -30,6 +31,7 @@ final class InstanceSpotRuntimeIntegrationTest {
         Zlink.version();
         EchoInstanceSpot.initializations.set(0);
         EchoInstanceSpot.sends.set(0);
+        EchoInstanceSpot.closes.set(null);
         SourceEntrySpot.reset();
         String suffix = Long.toUnsignedString(System.nanoTime(), 36);
         String sourceEndpoint = tcpEndpoint();
@@ -66,15 +68,18 @@ final class InstanceSpotRuntimeIntegrationTest {
             SourceEntrySpot.start.complete(null);
             String reply = SourceEntrySpot.reply.get();
 
-            assertEquals("echo:hello|echo:again", reply);
-            assertEquals(1, EchoInstanceSpot.initializations.get());
+            assertEquals("echo:hello|echo:again|echo:after-close", reply);
+            assertEquals(2, EchoInstanceSpot.initializations.get());
             assertEquals(1, EchoInstanceSpot.sends.get());
+            assertTrue(EchoInstanceSpot.closes.get());
         }
     }
 
     private record Request(String spotId) {}
 
     private record Warmup(String value) {}
+
+    private record CloseInstance() {}
 
     public static final class SourceEntrySpot
         implements ZLinkEntrySpot<ZLinkActor> {
@@ -104,25 +109,52 @@ final class InstanceSpotRuntimeIntegrationTest {
         @Override
         public CompletionStage<Void> onInitialize() {
             return start.thenCompose(ignored -> {
-                CompletableFuture<String> completion = context.outbound()
+                CompletionStage<Void> warmup = context.outbound()
                     .sendToSpot(request.get().spotId(), new Warmup("warmup"))
                     .instanceSpot("EchoInstance")
                     .inMesh("game")
-                    .submit()
-                    .thenCompose(sendCompleted -> context.outbound()
+                    .submit();
+                CompletionStage<String> first = warmup.thenCompose(
+                    sendCompleted -> context.outbound()
                         .requestToSpot(request.get().spotId(), "hello")
                         .instanceSpot("EchoInstance")
                         .inMesh("game")
                         .timeout(Duration.ofSeconds(5))
-                        .submit(String.class)
-                        .thenCompose(first -> context.outbound()
+                        .submit(String.class));
+                CompletionStage<String> firstAndSecond = first.thenCompose(
+                    firstValue -> {
+                        return context.outbound()
                             .requestToSpot(request.get().spotId(), "again")
                             .instanceSpot()
                             .inMesh("game")
                             .timeout(Duration.ofSeconds(5))
                             .submit(String.class)
-                            .thenApply(second -> first + "|" + second)))
-                    .toCompletableFuture();
+                            .thenApply(secondValue -> firstValue + "|"
+                                + secondValue);
+                    });
+                CompletionStage<String> beforeAfterClose =
+                    firstAndSecond.thenCompose(value -> {
+                        return context.outbound()
+                            .sendToSpot(
+                                request.get().spotId(),
+                                new CloseInstance())
+                            .instanceSpot()
+                            .inMesh("game")
+                            .submit()
+                            .thenApply(ignoredClose -> value);
+                    });
+                CompletableFuture<String> completion =
+                    beforeAfterClose.thenCompose(value ->
+                        context.outbound()
+                            .requestToSpot(
+                                request.get().spotId(),
+                                "after-close")
+                            .instanceSpot()
+                            .inMesh("game")
+                            .timeout(Duration.ofSeconds(5))
+                            .submit(String.class)
+                            .thenApply(after -> value + "|" + after))
+                        .toCompletableFuture();
                 completion.whenComplete((value, failure) -> {
                     if (failure == null) {
                         reply.complete(value);
@@ -144,6 +176,8 @@ final class InstanceSpotRuntimeIntegrationTest {
     public static final class EchoInstanceSpot implements ZLinkInstanceSpot {
         static final AtomicInteger initializations = new AtomicInteger();
         static final AtomicInteger sends = new AtomicInteger();
+        static final java.util.concurrent.atomic.AtomicReference<Boolean> closes =
+            new java.util.concurrent.atomic.AtomicReference<>();
         private final ZLinkInstanceSpotContext context;
 
         public EchoInstanceSpot(ZLinkInstanceSpotContext context) {
@@ -156,6 +190,7 @@ final class InstanceSpotRuntimeIntegrationTest {
         public void configure() {
             context.handlers().addPacket(EchoHandler.class);
             context.handlers().addPacket(EchoPacketHandler.class);
+            context.handlers().addPacket(CloseHandler.class);
         }
 
         @Override
@@ -183,6 +218,19 @@ final class InstanceSpotRuntimeIntegrationTest {
             Warmup request) {
             EchoInstanceSpot.sends.incrementAndGet();
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    public static final class CloseHandler
+        implements ZLinkSpotPacketHandler<EchoInstanceSpot, CloseInstance> {
+        @Override
+        public CompletionStage<Void> handle(
+            EchoInstanceSpot spot,
+            CloseInstance request) {
+            return spot.context().close().thenApply(closed -> {
+                EchoInstanceSpot.closes.set(closed);
+                return null;
+            });
         }
     }
 }

@@ -29,6 +29,25 @@ run_dir="$(mktemp -d)"
 log_dir="${run_dir}/logs"
 mkdir -p "${log_dir}"
 
+cleanup_sample() {
+  local status="$?"
+  trap - EXIT
+  set +e
+  cleanup
+  local cleanup_status="$?"
+  if [[ "${status}" != "0" && -n "${ZLINK_SAMPLE_FAILURE_LOG_ROOT:-}" ]]; then
+    local preserved_dir="${ZLINK_SAMPLE_FAILURE_LOG_ROOT}/tictactoe-kotlin-$(date +%Y%m%d-%H%M%S)-$$"
+    mkdir -p "${preserved_dir}"
+    cp -a "${log_dir}/." "${preserved_dir}/"
+    echo "TicTacToe Kotlin failure logs: ${preserved_dir}" >&2
+  fi
+  rm -rf "${run_dir}"
+  if [[ "${status}" != "0" ]]; then
+    exit "${status}"
+  fi
+  exit "${cleanup_status}"
+}
+
 print_logs() {
   local status="$1"
   if [[ "${status}" == "0" ]]; then
@@ -41,7 +60,7 @@ print_logs() {
   done
 }
 
-trap cleanup EXIT
+trap cleanup_sample EXIT
 
 wait_endpoint() {
   local name="$1"
@@ -193,13 +212,31 @@ pids+=("$!")
 wait_log_contains "${log_dir}/api-b.log" "Started ApiProgram"
 wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
 
+# The Play ports can accept traffic before the peer Route Mesh connection has
+# converged. Let the process topology settle before the first actor request.
+topology_settle_seconds="${ZLINK_SAMPLE_TOPOLOGY_SETTLE_SECONDS:-10}"
+sleep "${topology_settle_seconds}"
+
 "$(app_bin Client Client)" --api-url "http://127.0.0.1:${api_a_http_port}" >"${log_dir}/client.log" 2>&1
 
 grep -Eq "observer-connected endpoint=tcp://127.0.0.1:${play_b_stream_port}" "${log_dir}/client.log"
 grep -Eq "observer-subscription=verified subscribed=true" "${log_dir}/client.log"
 grep -Eq "observer-win-milestone=verified actor=player-x wins=100" "${log_dir}/client.log"
 grep -Eq "tictactoe completed" "${log_dir}/client.log"
-wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-x"
-wait_log_contains "${log_dir}/play-a.log" "tictactoe actor destroy completed actor=player-o"
+for actor_id in player-x player-o; do
+  actor_destroyed=0
+  for _ in $(seq 1 100); do
+    if grep -q "tictactoe actor destroy completed actor=${actor_id}" \
+        "${log_dir}"/play-*.log; then
+      actor_destroyed=1
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ "${actor_destroyed}" != "1" ]]; then
+    echo "Timed out waiting for ${actor_id} destroy on any Play node" >&2
+    exit 1
+  fi
+done
 grep -Rq "message flow" "${log_dir}"
 echo "PASS TicTacToe.Kotlin"

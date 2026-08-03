@@ -14,6 +14,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
 import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -48,6 +50,14 @@ class SupportApplication {
             val channelEndpoint = URI.create(support.channelEndpoint)
             options.addHandlersFromPackageOf(SupportApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
+            options.configureLocations()
+            options.addRelocationStore(
+                ZLinkRedisRelocationStore(
+                    ZLinkRedisRelocationOptions()
+                        .setConnectionString(topology.location().redisEndpoint)
+                        .setKeyPrefix(topology.location().redisKeyPrefix + "relocation:"),
+                ),
+            )
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile(SampleFlowLog.path(topology, "support"))
@@ -62,7 +72,7 @@ class SupportApplication {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .client()
             val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
-            node.listen(support.entryRouterEndpoint)
+            node.listen(support.routerEndpoint)
                 .setRoutingIdPrefix("support-owner")
             node.objects().server()
                 .addEntrySpot(SupportEntrySpot::class.java)

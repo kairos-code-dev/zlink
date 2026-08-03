@@ -16,6 +16,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -37,6 +38,10 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvi
 
 final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private static final String SECURITY_IDENTITY = "default";
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final Logger LOGGER =
+        Logger.getLogger(ZLinkClientServerLocationRuntime.class.getName());
 
     private final ZLinkLocationRepository store;
     private final Supplier<ZLinkLocationOwnerToken> owner;
@@ -99,6 +104,8 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 monitoring = backendFactory.createMonitoringAdapter(
                     adapterOptions);
             }
+            streamTrace("client-server-location start surfaces=" + surfaces.size()
+                + " owner=" + owner.get().ownerId());
             initializePublishedServers(surfaces);
         }
         return tick(surfaces).whenComplete((ignored, failure) -> {
@@ -192,6 +199,10 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 surface.meshName(), server.withDescriptor(descriptor));
             sockets.setClientServerServerDescriptor(
                 surface.meshName(), descriptor);
+            streamTrace("client-server-location publish channel="
+                + surface.meshName()
+                + " serverRid=" + descriptor.serverRid()
+                + " endpoint=" + descriptor.endpoint());
         }
     }
 
@@ -229,6 +240,10 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                         ? ZLinkLocationWriteIntent.RENEW
                         : ZLinkLocationWriteIntent.NEW_CLAIM)
                     .thenAccept(result -> {
+                        streamTrace("client-server-location publish-result channel="
+                            + channelName
+                            + " serverRid=" + publishing.serverRid()
+                            + " status=" + result.status());
                         if (result.status()
                             != ZLinkLocationWriteStatus.STORED) {
                             throw new IllegalStateException(
@@ -253,6 +268,7 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         }
         Set<String> clientChannels = clientChannels(surfaces);
         for (String channelName : clientChannels) {
+            streamTrace("client-server-location list-start channel=" + channelName);
             work.add(listAll(channelName).thenAccept(
                 descriptors -> reconcile(channelName, descriptors)));
         }
@@ -272,6 +288,9 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         return store.listClientServers(
             channelName, new ZLinkPageRequest(pageSize, cursor))
             .thenCompose(page -> {
+                streamTrace("client-server-location list-page channel="
+                    + channelName + " count=" + page.items().size()
+                    + " continuation=" + page.continuationToken());
                 result.addAll(page.items());
                 return page.continuationToken() == null
                     || page.continuationToken().isBlank()
@@ -289,6 +308,8 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
         if (!running) {
             return;
         }
+        streamTrace("client-server-location reconcile channel=" + channelName
+            + " descriptors=" + descriptors.size());
         Map<String, ZLinkClientServerServerDescriptor> desired =
             new LinkedHashMap<>();
         for (ZLinkClientServerServerDescriptor descriptor : descriptors) {
@@ -346,6 +367,10 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private void openConnection(
         String connectionId,
         ZLinkClientServerServerDescriptor descriptor) {
+        streamTrace("client-server-location connect channel="
+            + descriptor.channelName()
+            + " serverRid=" + descriptor.serverRid()
+            + " endpoint=" + descriptor.endpoint());
         ZLinkBackendDealerSocket dealer = backend.createDealerSocket(context);
         dealer.setChannelName(descriptor.channelName());
         Connection connection =
@@ -439,6 +464,9 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 synchronized (this) {
                     removeConnection(connectionId);
                 }
+                streamTrace("client-server-location admission-failed connection="
+                    + connectionId + " result=" + reply.result()
+                    + " parts=" + reply.parts().size());
                 return;
             }
             ZLinkClientServerServiceWire.Control control =
@@ -449,6 +477,8 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 synchronized (this) {
                     removeConnection(connectionId);
                 }
+                streamTrace("client-server-location admission-mismatch connection="
+                    + connectionId);
                 return;
             }
             synchronized (this) {
@@ -461,9 +491,14 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
                 connections.put(
                     connectionId, current.withExpected(expected, true));
                 if (!sockets.admitClientServerConnection(
-                        connectionId, expected, fence)) {
+                    connectionId, expected, fence)) {
+                    streamTrace("client-server-location admission-fence-rejected connection="
+                        + connectionId);
                     return;
                 }
+                streamTrace("client-server-location admission-ready channel="
+                    + expected.channelName()
+                    + " serverRid=" + expected.serverRid());
                 for (Connection other :
                     List.copyOf(connections.values())) {
                     if (!other.connectionId().equals(connectionId)
@@ -557,6 +592,12 @@ final class ZLinkClientServerLocationRuntime implements AutoCloseable {
     private static boolean isConnectionReady(String event) {
         return "CONNECTION_READY".equals(event)
             || "ConnectionReady".equals(event);
+    }
+
+    private static void streamTrace(String message) {
+        if (STREAM_TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] " + message);
+        }
     }
 
     private static boolean isConnectionTerminated(String event) {

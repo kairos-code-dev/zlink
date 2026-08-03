@@ -2,12 +2,19 @@ package systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors;
 
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
+import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
+import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
+import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
+import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class PlayerActor implements ZLinkActor {
     private final String actorId;
     private final ZLinkActorContext context;
     private String displayName;
     private String roomId = "";
+    private String pendingRoomId;
+    private final java.util.Set<ZLinkActorJoinOperationId>
+        completedJoinOperations = new java.util.HashSet<>();
     private boolean destroyAfterEntrySpotJoin;
     private boolean disconnected;
 
@@ -38,6 +45,43 @@ public final class PlayerActor implements ZLinkActor {
         this.roomId = roomId;
     }
 
+    public void trackDeferredJoin(String roomId) {
+        if (pendingRoomId != null) {
+            throw new IllegalStateException("a room join is already pending");
+        }
+        pendingRoomId = roomId;
+    }
+
+    @Override
+    public java.util.concurrent.CompletionStage<Void> onJoinCompleted(
+        ZLinkActorJoinCompletion completion) {
+        ZLinkActorJoinOperationId operationId = completion
+            instanceof ZLinkActorJoinCompletion.Accepted accepted
+                ? accepted.operationId()
+                : completion instanceof ZLinkActorJoinCompletion.Rejected rejected
+                    ? rejected.operationId()
+                    : ((ZLinkActorJoinCompletion.Failed) completion).operationId();
+        if (!completedJoinOperations.add(operationId)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+
+        String matchedRoomId = pendingRoomId;
+        pendingRoomId = null;
+        if (!(completion instanceof ZLinkActorJoinCompletion.Accepted accepted)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+
+        Messages.BingoRoomJoinRes joined = accepted.reply()
+            .decode(Messages.BingoRoomJoinRes.class);
+        if (matchedRoomId == null || matchedRoomId.isBlank()) {
+            matchedRoomId = joined.getState().getRoomId();
+        }
+        joinRoom(matchedRoomId);
+        return context.boundSession()
+            .send(BingoMessages.matchBingoRes(matchedRoomId, joined.getState()))
+            .submit();
+    }
+
     public String roomId() {
         return roomId;
     }
@@ -58,8 +102,8 @@ public final class PlayerActor implements ZLinkActor {
         disconnected = true;
     }
 
-    public void push(Object message) {
-        context.boundSession()
+    public java.util.concurrent.CompletionStage<Void> push(Object message) {
+        return context.boundSession()
             .send(message)
             .submit();
     }

@@ -31,8 +31,12 @@ public final class BingoClientScenario {
             return CompletableFuture.completedFuture(null);
         });
 
+        var client1MatchCompletion = client1.waitFor(Messages.MatchBingoRes.class)
+            .submit(Messages.MatchBingoRes.class);
+        client1.send(BingoMessages.matchBingoReq("two-player")).submit()
+            .toCompletableFuture().join();
         Messages.MatchBingoRes client1Match =
-            client1.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
+            client1MatchCompletion.toCompletableFuture().join().payload();
         ensure(client1Match.getState().getStatus().equals("WaitingForPlayers"));
         ensure(client1Match.getState().getHostActorId().equals(client1Auth.getActorId()));
 
@@ -61,8 +65,12 @@ public final class BingoClientScenario {
             return CompletableFuture.completedFuture(null);
         });
 
+        var client2MatchCompletion = client2.waitFor(Messages.MatchBingoRes.class)
+            .submit(Messages.MatchBingoRes.class);
+        client2.send(BingoMessages.matchBingoReq("two-player")).submit()
+            .toCompletableFuture().join();
         Messages.MatchBingoRes client2Match =
-            client2.request(BingoMessages.matchBingoReq("two-player")).submit(Messages.MatchBingoRes.class).toCompletableFuture().join();
+            client2MatchCompletion.toCompletableFuture().join().payload();
         ensure(client2Match.getRoomId().equals(client1Match.getRoomId()));
         ensure(client2Match.getState().getStatus().equals("Running"));
 

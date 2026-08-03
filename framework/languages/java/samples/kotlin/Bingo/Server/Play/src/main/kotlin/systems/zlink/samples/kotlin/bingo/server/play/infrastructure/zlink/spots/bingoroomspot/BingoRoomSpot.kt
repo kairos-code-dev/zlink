@@ -49,6 +49,7 @@ class BingoRoomSpot(
     private val actors = mutableMapOf<String, PlayerActor>()
     private val observers = mutableMapOf<String, PlayerActor>()
     private val pendingJoins = mutableMapOf<String, BingoRoomJoinReq>()
+    private val pendingObserverRewards = mutableListOf<BingoRewardAcquiredEvent>()
     private var settings = BingoRoomSettings.create(
         "two-player",
         0,
@@ -84,6 +85,9 @@ class BingoRoomSpot(
         if (request.observeOnly) {
             pendingJoins.remove(actor.actorId())
             join(actor, request, 0, 0)
+            val pendingRewards = pendingObserverRewards.toList()
+            pendingObserverRewards.clear()
+            pendingRewards.forEach { notifyObservers(it) }
             return
         }
         val record = context.outbound()
@@ -209,12 +213,18 @@ class BingoRoomSpot(
     }
 
     suspend fun announceReward(event: BingoRewardAcquiredEvent) {
-        if (!settings.observerMode() ||
-            observers.isEmpty() ||
-            event.roomId != settings.observedRoomId
-        ) {
+        if (!settings.observerMode() || event.roomId != settings.observedRoomId) {
             return
         }
+        if (observers.isEmpty()) {
+            pendingObserverRewards += event
+            return
+        }
+        notifyObservers(event)
+        context.relocationReady().defer()
+    }
+
+    private suspend fun notifyObservers(event: BingoRewardAcquiredEvent) {
         for (observer in observers.values.toList()) {
             observer.push(
                 BingoRewardAnnouncedNotify(
@@ -225,9 +235,8 @@ class BingoRoomSpot(
                     event.itemName,
                     event.rarity,
                 )
-            )
+            ).await()
         }
-        context.relocationReady().defer()
     }
 
     suspend fun stopObserving(
@@ -306,7 +315,7 @@ class BingoRoomSpot(
         val winner = state.winners.first()
         context.outbound()
             .publish(
-                SampleNames.RoomSpotDiscovery,
+                SampleNames.RoomRewardChannel,
                 SampleNames.WinnerTopic,
                 BingoRewardAcquiredEvent(
                     state.roomId,
@@ -318,6 +327,7 @@ class BingoRoomSpot(
                 ),
             )
             .submit()
+            .await()
     }
 
     private fun publishEvents(

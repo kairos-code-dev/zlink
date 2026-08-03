@@ -10,6 +10,8 @@ import java.lang.reflect.Modifier
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import java.util.concurrent.CompletionStage
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -17,6 +19,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import systems.zlink.httpclient.ZLinkHttpExecutionTurn
@@ -78,6 +81,60 @@ class HttpClientCoroutineTest {
         assertTrue(!submitted.isDone)
         submitted.complete("completed-after-caller-cancel")
         assertEquals("completed-after-caller-cancel", submitted.join())
+    }
+
+    @Test
+    fun `cancelling after request admission leaves the HTTP operation and client lease intact`() = runBlocking {
+        val requestStarted = CountDownLatch(1)
+        val releaseResponse = CountDownLatch(1)
+        TestServer { exchange ->
+            requestStarted.countDown()
+            assertTrue(releaseResponse.await(2, TimeUnit.SECONDS))
+            respond(exchange, 200, "{}")
+        }.use { server ->
+            zlinkHttpClient(server.baseUrl).use { client ->
+                val submitted = client.get("/slow").submitRaw().toCompletableFuture()
+                val waiter = async { submitted.awaitWithoutCancellingOperation() }
+
+                assertTrue(requestStarted.await(2, TimeUnit.SECONDS))
+                waiter.cancelAndJoin()
+
+                assertFalse(submitted.isCancelled)
+                assertFalse(submitted.isDone)
+                releaseResponse.countDown()
+                assertEquals(200, submitted.get(2, TimeUnit.SECONDS).status())
+            }
+        }
+    }
+
+    @Test
+    fun `cancelling the caller does not discard a pending retry`() = runBlocking {
+        val attempts = AtomicInteger()
+        val firstAttempt = CountDownLatch(1)
+        val secondAttempt = CountDownLatch(1)
+        TestServer { exchange ->
+            if (attempts.incrementAndGet() == 1) {
+                firstAttempt.countDown()
+                exchange.close()
+            } else {
+                secondAttempt.countDown()
+                respond(exchange, 200, "{}")
+            }
+        }.use { server ->
+            zlinkHttpClient(server.baseUrl) {
+                retry(2)
+            }.use { client ->
+                val submitted = client.get("/retry").submitRaw().toCompletableFuture()
+                val waiter = async { submitted.awaitWithoutCancellingOperation() }
+
+                assertTrue(firstAttempt.await(2, TimeUnit.SECONDS))
+                waiter.cancelAndJoin()
+
+                assertFalse(submitted.isCancelled)
+                assertTrue(secondAttempt.await(2, TimeUnit.SECONDS))
+                assertEquals(200, submitted.get(2, TimeUnit.SECONDS).status())
+            }
+        }
     }
 
     @Test

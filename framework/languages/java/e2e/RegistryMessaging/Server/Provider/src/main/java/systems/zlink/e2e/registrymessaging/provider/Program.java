@@ -80,13 +80,6 @@ public final class Program {
                 api.client();
             }
 
-            String manualEndpoint = server.apiManualEndpoint();
-            if (!manualEndpoint.isBlank()) {
-                options.addClientServerChannel("registry.messaging.api.manual")
-                    .client()
-                    .connect(manualEndpoint);
-            }
-
             String workflowEndpoint = server.workflowEndpoint();
             if (!workflowEndpoint.isBlank()) {
                 var workflow = options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL);
@@ -109,8 +102,17 @@ public final class Program {
                     RouteReqHandler.class,
                     Contracts.RouteReq.class,
                     Contracts.RouteRes.class);
-                for (String peer : server.routePeers().split(",")) {
-                    if (!peer.isBlank()) {
+                String[] peers = server.routePeers().split(",");
+                String[] peerRids = server.routePeerRids().split(",");
+                for (int index = 0; index < peers.length; index++) {
+                    String peer = peers[index].trim();
+                    if (peer.isBlank()) {
+                        continue;
+                    }
+                    if (index < peerRids.length && !peerRids[index].isBlank()) {
+                        route.peerConnections().connect(
+                            RoutingId.from(peerRids[index].trim()), peer);
+                    } else {
                         route.peerConnections().connect(peer);
                     }
                 }

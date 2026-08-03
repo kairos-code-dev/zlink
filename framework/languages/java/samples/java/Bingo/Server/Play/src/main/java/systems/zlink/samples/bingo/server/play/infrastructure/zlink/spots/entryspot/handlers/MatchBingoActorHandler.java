@@ -1,7 +1,7 @@
 package systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.handlers;
 
-import systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler;
 import systems.zlink.framework.ZLinkMessageContext;
+import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.actors.PlayerActor;
 import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.entryspot.BingoEntrySpot;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
@@ -10,13 +10,12 @@ import systems.zlink.samples.bingo.shared.contracts.BingoMessages;
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 public final class MatchBingoActorHandler
-    implements ZLinkEntrySpotActorRequestHandler<
+    implements ZLinkEntrySpotActorSendHandler<
         BingoEntrySpot,
         PlayerActor,
-        Messages.MatchBingoReq,
-        Messages.MatchBingoRes> {
+        Messages.MatchBingoReq> {
     @Override
-    public java.util.concurrent.CompletionStage<Messages.MatchBingoRes> handle(
+    public java.util.concurrent.CompletionStage<Void> handle(
         BingoEntrySpot entrySpot,
         PlayerActor actor,
         ZLinkMessageContext context,
@@ -29,7 +28,8 @@ public final class MatchBingoActorHandler
                     request.getMode()))
             .timeout(SampleTimings.RequestTimeout)
             .submit(Messages.MatchBingoApiRes.class)
-            .thenApply(matched -> {
+            .thenAccept(matched -> {
+                actor.trackDeferredJoin(matched.getRoomId());
                 actor.context().joinSpot(
                     matched.getRoomId(),
                     BingoMessages.bingoRoomJoinReq(
@@ -39,18 +39,6 @@ public final class MatchBingoActorHandler
                         false))
                     .timeout(SampleTimings.RequestTimeout)
                     .defer();
-                return BingoMessages.matchBingoRes(
-                    matched.getRoomId(),
-                    BingoMessages.bingoRoomState(
-                        matched.getRoomId(),
-                        "WaitingForPlayers",
-                        actor.actorId(),
-                        false,
-                        0,
-                        null,
-                        java.util.List.of(),
-                        java.util.List.of(),
-                        java.util.List.of()));
             });
     }
 }

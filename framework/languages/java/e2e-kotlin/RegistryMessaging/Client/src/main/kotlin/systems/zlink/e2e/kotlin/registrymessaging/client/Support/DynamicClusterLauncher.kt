@@ -45,7 +45,7 @@ class DynamicClusterLauncher private constructor(
             channelEndpoint,
         )
         process.waitReady()
-        return DynamicProvider(process, httpUrl, channelEndpoint)
+        return DynamicProvider(process, httpUrl, channelEndpoint, rid)
     }
 
     fun startConsumer(name: String): DynamicConsumer {
@@ -69,13 +69,13 @@ class DynamicClusterLauncher private constructor(
 
     fun waitPeerEndpoint(consumer: HttpJson, endpoint: String) {
         waitPeers(consumer, "peer endpoint $endpoint") { peers ->
-            peers.any { it["endpoint"] == endpoint }
+            peers.any { it["nodeRid"] == endpoint }
         }
     }
 
     fun waitPeerEndpointAbsent(consumer: HttpJson, endpoint: String) {
         waitPeers(consumer, "peer endpoint removal $endpoint") { peers ->
-            peers.none { it["endpoint"] == endpoint }
+            peers.none { it["nodeRid"] == endpoint }
         }
     }
 
@@ -131,6 +131,7 @@ data class DynamicProvider(
     val process: DynamicProcess,
     val httpUrl: String,
     val channelEndpoint: String,
+    val routingId: String,
 )
 
 data class DynamicConsumer(

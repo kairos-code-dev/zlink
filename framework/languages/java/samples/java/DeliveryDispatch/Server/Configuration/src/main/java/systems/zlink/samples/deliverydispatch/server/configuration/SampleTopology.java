@@ -10,14 +10,12 @@ public record SampleTopology(
     String customerStreamEndpoint,
     String courierStreamEndpoint,
     String dispatchHttpEndpoint,
+    String dispatchSpotEndpoint,
     String dispatchChannelEndpoint,
     String customerSpotEndpoint,
     String customerSpotRouterEndpoint,
     String courierActorNode1SpotEndpoint,
     String courierActorNode2SpotEndpoint,
-    String courierActorNode1RouterEndpoint,
-    String courierActorNode2RouterEndpoint,
-    String courierSessionSpotRouterEndpoint,
     String courierSessionSpotEndpoint,
     String redisEndpoint,
     String redisKeyPrefix,
@@ -31,14 +29,12 @@ public record SampleTopology(
         customerStreamEndpoint = value(customerStreamEndpoint, "tcp://127.0.0.1:48104");
         courierStreamEndpoint = value(courierStreamEndpoint, "tcp://127.0.0.1:48105");
         dispatchHttpEndpoint = value(dispatchHttpEndpoint, "http://127.0.0.1:48107");
+        dispatchSpotEndpoint = value(dispatchSpotEndpoint, "tcp://127.0.0.1:48108");
         dispatchChannelEndpoint = value(dispatchChannelEndpoint, "tcp://127.0.0.1:48121");
         customerSpotEndpoint = value(customerSpotEndpoint, "tcp://127.0.0.1:48109");
         customerSpotRouterEndpoint = value(customerSpotRouterEndpoint, "tcp://127.0.0.1:48110");
         courierActorNode1SpotEndpoint = value(courierActorNode1SpotEndpoint, "tcp://127.0.0.1:48113");
         courierActorNode2SpotEndpoint = value(courierActorNode2SpotEndpoint, "tcp://127.0.0.1:48114");
-        courierActorNode1RouterEndpoint = value(courierActorNode1RouterEndpoint, "tcp://127.0.0.1:48115");
-        courierActorNode2RouterEndpoint = value(courierActorNode2RouterEndpoint, "tcp://127.0.0.1:48116");
-        courierSessionSpotRouterEndpoint = value(courierSessionSpotRouterEndpoint, "tcp://127.0.0.1:48117");
         courierSessionSpotEndpoint = value(courierSessionSpotEndpoint, "tcp://127.0.0.1:48119");
         redisEndpoint = required(redisEndpoint, "redisEndpoint");
         redisKeyPrefix = value(redisKeyPrefix, "deliverydispatch:java:");

@@ -138,7 +138,7 @@ import socket
 reserved = []
 try:
     chosen = set()
-    while len(reserved) < 15:
+    while len(reserved) < 13:
         host = "127.0.0.1"
         port = random.randint(20000, 29999)
         if port in chosen:
@@ -170,7 +170,7 @@ build_framework_jars() {
   )
 }
 
-read -r tracking customer_stream courier_stream dispatch_http dispatch_channel customer_spot customer_router tracking_spot_router tracking_spot_pub courier_node1_spot courier_node2_spot courier_node1_router courier_node2_router courier_session_router courier_session_spot < <(reserve_ports)
+read -r tracking customer_stream courier_stream dispatch_http dispatch_spot dispatch_channel customer_spot customer_router tracking_spot_router tracking_spot_pub courier_node1_spot courier_node2_spot courier_session_spot < <(reserve_ports)
 
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
@@ -214,7 +214,6 @@ EOF
     courier-session)
       cat >>"$path" <<EOF
 sample.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
-sample.courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
 sample.courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
 EOF
       ;;
@@ -225,18 +224,17 @@ EOF
       if [[ "${courier_node}" == "node2" ]]; then
         cat >>"$path" <<EOF
 sample.courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")
-sample.courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
 EOF
       else
         cat >>"$path" <<EOF
 sample.courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")
-sample.courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")
 EOF
       fi
       ;;
     dispatch)
       cat >>"$path" <<EOF
 sample.dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
+sample.dispatchSpotEndpoint=tcp://$(endpoint_host "${dispatch_spot}"):$(endpoint_port "${dispatch_spot}")
 sample.dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
 EOF
       ;;
@@ -279,7 +277,6 @@ wait_port "$(endpoint_host "${customer_router}")" "$(endpoint_port "${customer_r
 "$(app_bin Server/CourierSession CourierSession)" --config "$courier_session_config" >"${log_dir}/courier-session.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${courier_stream}")" "$(endpoint_port "${courier_stream}")"
-wait_port "$(endpoint_host "${courier_session_router}")" "$(endpoint_port "${courier_session_router}")"
 wait_port "$(endpoint_host "${courier_session_spot}")" "$(endpoint_port "${courier_session_spot}")"
 
 "$(app_bin Server/CourierSpotNode CourierSpotNode)" --config "$courier_node1_config" >"${log_dir}/courier-node1.log" 2>&1 &
@@ -288,12 +285,11 @@ pids+=("$!")
 pids+=("$!")
 wait_port "$(endpoint_host "${courier_node1_spot}")" "$(endpoint_port "${courier_node1_spot}")"
 wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier_node2_spot}")"
-wait_port "$(endpoint_host "${courier_node1_router}")" "$(endpoint_port "${courier_node1_router}")"
-wait_port "$(endpoint_host "${courier_node2_router}")" "$(endpoint_port "${courier_node2_router}")"
 
 "$(app_bin Server/Dispatch Dispatch)" --config "$dispatch_config" >"${log_dir}/dispatch.log" 2>&1 &
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
+wait_port "$(endpoint_host "${dispatch_spot}")" "$(endpoint_port "${dispatch_spot}")"
 
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1

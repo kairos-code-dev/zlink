@@ -34,9 +34,10 @@ public HTTP client만 사용한다.
   구간의 target 미지정 요청이 오류나 pending 없이 끝나는지는 아직 검증하지 않는다.
 - `RM-C1`: request와 send happy path를 함께 검증한다. request와 command가 provider evidence에
   기록됐는지도 확인한다.
-- `RM-C2` (차단): 존재하는 rid의 target request는 검증한다. 미존재 rid의 기대값을
-  `REQUEST_TARGET_NOT_FOUND`로 바꾼 집중 gate는 실제 `TimeoutException`으로 실패했다. Java runtime이
-  현재 RouteMesh member snapshot을 target 선택 전에 판정하지 못하므로 runtime 수정 뒤 닫는다.
+- `RM-C2` (차단): scenario assertion은 공통 spec에 맞춰 member snapshot에 없는 rid의
+  `REQUEST_TARGET_NOT_FOUND` terminal을 기대하도록 정렬했다. 존재하는 rid의 target request와
+  지정한 provider만 처리하는 경로는 확인했지만, 최신 process 재실행이 Core
+  `socket_poller.cpp:496 Bad address`로 provider 종료되어 전체 scenario pass는 확정하지 않는다.
 - `RM-C3`: 수동 multi-endpoint client/server channel에서 두 provider가 모두 처리하는지 검증한다.
 - `RM-C4`: timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다.
 - `RM-C5`: 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. message-flow

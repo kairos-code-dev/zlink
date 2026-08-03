@@ -65,6 +65,7 @@ class SupportUserActor(
 
     fun scheduleConversationJoin(
         conversationId: String,
+        subject: String,
         request: JoinConversationReq,
     ): JoinConversationRes {
         check(pendingConversationId == null) { "A conversation join is already pending" }
@@ -76,7 +77,7 @@ class SupportUserActor(
             scheduled = true,
             state = ConversationState(
                 conversationId = conversationId,
-                subject = "",
+                subject = subject,
                 status = ConversationStatuses.WaitingForAgent,
                 customerActorId = if (request.role == SupportChatRoles.Customer) request.participantId else "",
                 agentActorId = null,

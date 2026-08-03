@@ -1420,7 +1420,10 @@ public final class ZLinkChannelRuntime
             targetNodeRid,
             targetSpotId,
             targetSpotGeneration,
-            spotParts);
+            spotParts,
+            effectiveRouteTimeout(defaultRequestTimeout(routerChannelId)),
+            callRuntime::track,
+            callRuntime::retryRouteRequest);
     }
 
     private CompletionStage<List<Message>> requestToSpotViaSpotRouterNode(

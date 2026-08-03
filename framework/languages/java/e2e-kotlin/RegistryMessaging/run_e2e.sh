@@ -96,6 +96,81 @@ wait_health() {
   return 1
 }
 
+wait_location_peers() {
+  local http_url="$1"
+  local mesh_name="$2"
+  local expected_count="$3"
+  local timeout_seconds="${4:-5}"
+  python3 - "${http_url}" "${mesh_name}" "${expected_count}" "${timeout_seconds}" <<'PY'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+url, mesh_name, expected_count, timeout_text = sys.argv[1:]
+expected_count = int(expected_count)
+deadline = time.monotonic() + float(timeout_text)
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(f"{url}/locations/peers", timeout=1) as response:
+            last = json.load(response)
+        ready = [peer for peer in last
+                 if peer.get("meshName") == mesh_name
+                 and peer.get("role") == "ROUTER"]
+        if len(ready) >= expected_count:
+            print(f"location readiness mesh={mesh_name} readyPeers={len(ready)}")
+            raise SystemExit(0)
+    except urllib.error.HTTPError as error:
+        last = {
+            "httpStatus": error.code,
+            "body": error.read().decode("utf-8", errors="replace"),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(
+    f"timed out waiting for {mesh_name} ready peers={expected_count}; last={last!r}")
+PY
+}
+
+wait_route_peer() {
+  local http_url="$1"
+  local peer_rid="$2"
+  local timeout_seconds="${3:-10}"
+  python3 - "${http_url}" "${peer_rid}" "${timeout_seconds}" <<'PY'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+url, peer_rid, timeout_text = sys.argv[1:]
+deadline = time.monotonic() + float(timeout_text)
+last = None
+while time.monotonic() < deadline:
+    try:
+        with urllib.request.urlopen(f"{url}/route/status", timeout=1) as response:
+            last = json.load(response)
+        ready = [peer for peer in last.get("peers", [])
+                 if peer.get("nodeRid") == peer_rid
+                 and peer.get("state") == "ready"]
+        if last.get("ready") and ready:
+            print(f"route readiness peer={peer_rid}")
+            raise SystemExit(0)
+    except urllib.error.HTTPError as error:
+        last = {
+            "httpStatus": error.code,
+            "body": error.read().decode("utf-8", errors="replace"),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    time.sleep(0.1)
+raise SystemExit(f"timed out waiting for route peer={peer_rid}; last={last!r}")
+PY
+}
+
 start_redis_container() {
   local redis_port
   if ! command -v docker >/dev/null 2>&1; then
@@ -166,6 +241,13 @@ gradle_run :Client:installDist :Server:Provider:installDist :Server:Consumer:ins
 start_redis_container
 
 if uses_common_roles "${SCENARIO}"; then
+  if [[ "${SCENARIO}" == "RM-A1" || "${SCENARIO}" == "RM-A2" ]]; then
+    API_A_ROUTE_ARGS=()
+    API_B_ROUTE_ARGS=()
+  else
+    API_A_ROUTE_ARGS=(--route-endpoint "${ROUTE_A}" --route-peer "${ROUTE_B}")
+    API_B_ROUTE_ARGS=(--route-endpoint "${ROUTE_B}" --route-peer "${ROUTE_A}")
+  fi
   start_server api-a "${PROVIDER_BIN}" \
     --rid api-a \
     --http-url "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" \
@@ -173,9 +255,8 @@ if uses_common_roles "${SCENARIO}"; then
     --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --channel-endpoint "${API_A}" \
     --max-message-size 2097152 \
-    --manual-client-endpoint "${API_A}" \
-    --route-endpoint "${ROUTE_A}" \
-    --route-peer "${ROUTE_B}" \
+    "${API_A_ROUTE_ARGS[@]}" \
+    --route-peer-rid api-b \
     --evidence-file "${LOG_DIR}/api-a.evidence.log" \
     --log-dir "${LOG_DIR}"
   wait_health "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" api-a
@@ -187,9 +268,8 @@ if uses_common_roles "${SCENARIO}"; then
     --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --channel-endpoint "${API_B}" \
     --max-message-size 2097152 \
-    --manual-client-endpoint "${API_B}" \
-    --route-endpoint "${ROUTE_B}" \
-    --route-peer "${ROUTE_A}" \
+    "${API_B_ROUTE_ARGS[@]}" \
+    --route-peer-rid api-a \
     --evidence-file "${LOG_DIR}/api-b.evidence.log" \
     --log-dir "${LOG_DIR}"
   wait_health "http://127.0.0.1:${PROVIDER_B_HTTP_PORT}" api-b
@@ -239,6 +319,11 @@ if uses_common_roles "${SCENARIO}"; then
     --trace-label backpressure-consumer \
     --log-dir "${LOG_DIR}"
   wait_health "http://127.0.0.1:${BACKPRESSURE_CONSUMER_HTTP_PORT}" backpressure-consumer
+
+  if [[ "${SCENARIO}" != "RM-A1" && "${SCENARIO}" != "RM-A2" ]]; then
+    wait_route_peer "http://127.0.0.1:${PROVIDER_A_HTTP_PORT}" api-b
+  fi
+  wait_location_peers "http://127.0.0.1:${DISCOVERY_CONSUMER_HTTP_PORT}" "profile" 2
 
 fi
 

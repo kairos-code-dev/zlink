@@ -31,7 +31,7 @@ public final class ScenarioCatalog {
                 http.providerA(),
                 http.providerB(),
                 http.discoveryConsumer());
-            case "RM-A2" -> RmA2ManualEndpointScenario.run(http.providerA());
+            case "RM-A2" -> RmA2ManualEndpointScenario.run(http.singleConsumer(), http.providerA());
             case "RM-A6" -> RmA6MultipleChannelsScenario.run(
                 http.discoveryConsumer(),
                 http.providerA(),
@@ -73,7 +73,7 @@ public final class ScenarioCatalog {
             http.providerA(),
             http.providerB());
         RmC5MissingPacketScenario.run(http.discoveryConsumer(), http.providerA(), http.providerB());
-        RmA2ManualEndpointScenario.run(http.providerA());
+        RmA2ManualEndpointScenario.run(http.singleConsumer(), http.providerA());
         RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);
         RmA6MultipleChannelsScenario.run(
             http.discoveryConsumer(),

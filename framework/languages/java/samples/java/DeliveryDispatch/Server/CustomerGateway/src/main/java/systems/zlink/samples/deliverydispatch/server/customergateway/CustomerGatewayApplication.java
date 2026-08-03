@@ -46,7 +46,7 @@ public final class CustomerGatewayApplication {
                     SampleNames.CustomerActorType,
                     CustomerActor.class,
                     CustomerActorFactory.class,
-                    factory -> factory.recreateOnRelocation());
+                    factory -> factory.disableRelocation());
             options.addStreamNode(SampleNames.CustomerStreamNode)
                 .bind(topology.customerStreamEndpoint())
                 .enableActorDispatch()

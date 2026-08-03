@@ -391,6 +391,12 @@ start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
 SUB1_PID="${LAST_PID}"
 run_client_mode slow-subscriber ps-b1
 
+# Do not carry the deliberately slow handler's queued work into the
+# independent publisher-restart scenario.
+stop_pid "${SUB1_PID}"
+start_subscriber sub-1 alpha "${SUB1_HTTP}"
+SUB1_PID="${LAST_PID}"
+
 stop_pid "${PUBLISHER_PID}"
 run_client_mode publisher-restarted ps-b2
 

@@ -12,7 +12,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class ServerProcessLauncher {
     private static final Duration START_TIMEOUT = Duration.ofSeconds(3);
-    private static final Duration ROUTE_SETTLE_TIMEOUT = Duration.ofSeconds(5);
+    // A discovered fanout connection becomes ready after a liveness beacon.
+    // The publisher emits beacons every five seconds and expires a publisher
+    // after fifteen seconds, so topology convergence must allow one delayed
+    // beacon interval plus Redis and process scheduling time.
+    private static final Duration ROUTE_SETTLE_TIMEOUT = Duration.ofSeconds(20);
 
     private final ClientOptions options;
     private final PubSubHttpClient http;

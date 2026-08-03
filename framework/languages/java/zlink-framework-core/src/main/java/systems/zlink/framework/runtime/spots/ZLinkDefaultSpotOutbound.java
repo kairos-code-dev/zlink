@@ -297,17 +297,18 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             if (duplicate != null) {
                 return duplicate;
             }
-            return resolve(target).handle((address, failure) -> {
+            CompletionStage<Void> stage = resolve(target).handle((address, failure) -> {
                 if (failure == null) {
-                    return sendExisting(address);
+                    return sendExistingOrActivate(address);
                 }
                 if (!instanceIntent || instanceSpots == null) {
                     return CompletableFuture.<Void>failedFuture(unwrap(failure));
                 }
                 return instanceSpots.send(
-                    target, stableType, selectedMesh, payload, packetName,
+                    target, stableType, selectedMesh, copyPayload(), packetName,
                     contentType, metadata.values());
             }).thenCompose(java.util.function.Function.identity());
+            return stage.whenComplete((ignored, failure) -> payload.close());
         }
 
         private CompletionStage<Void> sendExisting(SpotTransportAddress address) {
@@ -316,13 +317,50 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.spotId(),
                     address.spotGeneration(),
                     address.authorityOwnerGeneration());
+                systems.zlink.contracts.messaging.Message transportPayload = copyPayload();
                 ZLinkSendCall call = routeMeshEnabled
                     ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, contentType)
+                        address.spotGeneration(), transportPayload, packetName, contentType)
                     : direct.send(backendSpot, address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, contentType);
+                        address.spotGeneration(), transportPayload, packetName, contentType);
                 call = call.metadata(metadata.values());
-                return call.submit();
+                try {
+                    return call.submit();
+                } catch (RuntimeException failure) {
+                    transportPayload.close();
+                    throw failure;
+                }
+        }
+
+        private systems.zlink.contracts.messaging.Message copyPayload() {
+            return systems.zlink.contracts.messaging.Message.from(payload.toByteArray());
+        }
+
+        private CompletionStage<Void> sendExistingOrActivate(
+            SpotTransportAddress address) {
+            return sendExisting(address).handle((ignored, failure) -> {
+                if (failure == null) {
+                    return CompletableFuture.<Void>completedFuture(null);
+                }
+                RuntimeException error = unwrap(failure);
+                return shouldReactivate(address).thenCompose(reactivate -> {
+                    if (reactivate) {
+                        return instanceSpots.send(
+                            target, stableType, selectedMesh, payload, packetName,
+                            contentType, metadata.values());
+                    }
+                    return CompletableFuture.<Void>failedFuture(error);
+                });
+            }).thenCompose(java.util.function.Function.identity());
+        }
+
+        private CompletionStage<Boolean> shouldReactivate(
+            SpotTransportAddress address) {
+            if (!instanceIntent || instanceSpots == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            return instanceSpots.isStaleRoute(target, address)
+                .exceptionally(ignored -> false);
         }
     }
 
@@ -449,17 +487,57 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                 .ZLinkSuspendInvocationContext.rejectSameSpotWait(target);
             CompletionStage<TReply> stage = resolve(target).handle((address, failure) -> {
                 if (failure == null) {
-                    return requestExisting(address, replyType);
+                    return requestExistingOrActivate(address, replyType);
                 }
                 if (!instanceIntent || instanceSpots == null) {
                     return CompletableFuture.<TReply>failedFuture(unwrap(failure));
                 }
-                return instanceSpots.request(
-                        target, stableType, selectedMesh, payload, packetName,
-                        contentType, metadata.values(), timeout)
-                    .thenApply(parts -> routeMessages.decodeReply(parts, replyType));
+                return activateRequest(replyType);
             }).thenCompose(java.util.function.Function.identity());
-            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
+            return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
+                stage.whenComplete((ignored, failure) -> payload.close()));
+        }
+
+        private <TReply> CompletionStage<TReply> requestExistingOrActivate(
+            SpotTransportAddress address,
+            Class<TReply> replyType) {
+            return requestExisting(address, replyType).handle((reply, failure) -> {
+                if (failure == null) {
+                    return CompletableFuture.completedFuture(reply);
+                }
+                RuntimeException error = unwrap(failure);
+                return shouldReactivate(address, error).thenCompose(reactivate ->
+                    reactivate
+                        ? activateRequest(replyType)
+                        : CompletableFuture.<TReply>failedFuture(error));
+            }).thenCompose(java.util.function.Function.identity());
+        }
+
+        private CompletionStage<Boolean> shouldReactivate(
+            SpotTransportAddress address,
+            RuntimeException failure) {
+            if (!instanceIntent || instanceSpots == null) {
+                return CompletableFuture.completedFuture(false);
+            }
+            if (isStaleRoute(failure)) {
+                return CompletableFuture.completedFuture(true);
+            }
+            return instanceSpots.isStaleRoute(target, address)
+                .exceptionally(ignored -> false);
+        }
+
+        private <TReply> CompletionStage<TReply> activateRequest(
+            Class<TReply> replyType) {
+            return instanceSpots.request(
+                    target, stableType, selectedMesh, copyPayload(), packetName,
+                    contentType, metadata.values(), timeout)
+                .thenApply(parts -> {
+                    try {
+                        return routeMessages.decodeReply(parts, replyType);
+                    } finally {
+                        parts.forEach(systems.zlink.contracts.messaging.Message::close);
+                    }
+                });
         }
 
         private <TReply> CompletionStage<TReply> requestExisting(
@@ -470,12 +548,22 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.spotId(),
                     address.spotGeneration(),
                     address.authorityOwnerGeneration());
+                systems.zlink.contracts.messaging.Message transportPayload = copyPayload();
                 ZLinkRequestCall call = routeMeshEnabled
                     ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, contentType, timeout)
+                        address.spotGeneration(), transportPayload, packetName, contentType, timeout)
                     : direct.request(backendSpot, address.targetNodeRid(), address.spotId(),
-                        address.spotGeneration(), payload, packetName, contentType, timeout);
-                return call.metadata(metadata.values()).submit(replyType);
+                        address.spotGeneration(), transportPayload, packetName, contentType, timeout);
+                try {
+                    return call.metadata(metadata.values()).submit(replyType);
+                } catch (RuntimeException failure) {
+                    transportPayload.close();
+                    throw failure;
+                }
+        }
+
+        private systems.zlink.contracts.messaging.Message copyPayload() {
+            return systems.zlink.contracts.messaging.Message.from(payload.toByteArray());
         }
 
         @Override
@@ -498,6 +586,11 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             ? runtime : new RuntimeException(current);
     }
 
+    private static boolean isStaleRoute(Throwable failure) {
+        return failure instanceof ZLinkFrameworkException error
+            && error.kind() == ZLinkFrameworkErrorKind.SPOT_ROUTE_NOT_FOUND;
+    }
+
     private static String requireStableType(String value) {
         if (value == null || value.isBlank()
             || value.indexOf('\0') >= 0
@@ -513,4 +606,5 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             .ZLinkSuspendInvocationContext.rejectAfterRelocationReady(
                 operation);
     }
+
 }

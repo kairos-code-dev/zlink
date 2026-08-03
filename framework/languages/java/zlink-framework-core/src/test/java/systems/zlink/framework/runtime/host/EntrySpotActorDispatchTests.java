@@ -58,6 +58,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkChannelBackendAdapt
 import systems.zlink.framework.runtime.internal.backend.ZLinkMonitoringBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.internal.backend.ZLinkStreamBackendAdapter;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
@@ -128,6 +129,27 @@ final class EntrySpotActorDispatchTests {
             assertEquals("ProbeReply", frame.header().packetName());
             assertEquals(ZLinkStreamCodec.JSON, frame.header().codec());
             assertEquals("bound:actor-a", deserializeReply(frame).value());
+        }
+    }
+
+    @Test
+    void entrySpotActorDispatchKeepsInboundLeaseUntilActorTurnCompletes() throws Exception {
+        TestBackend backend = startBackend();
+        try (ZLinkFrameworkRuntime runtime = startRuntime(backend)) {
+            runtime.actorManager().create("actor-a", "probe").submit()
+                .toCompletableFuture().get(5, TimeUnit.SECONDS);
+
+            ZLinkInboundDispatchBudget budget = new ZLinkInboundDispatchBudget(0);
+            try (ZLinkInboundDispatchBudget.Lease lease = budget.track(1)) {
+                backend.entrySpot.raiseActorReadable(actorRequestParts(
+                    "actor-a", "request", "lease", 45, NO_BIND, lease));
+
+                ReplyRecord reply = awaitSingle(backend.node.noBindReplies);
+                DecodedFrame frame = decodeFrame(reply.parts().get(0));
+                assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
+                assertEquals("lease:actor-a", deserializeReply(frame).value());
+                assertEquals(0, budget.snapshot().pendingPayloadBytes());
+            }
         }
     }
 
@@ -251,6 +273,46 @@ final class EntrySpotActorDispatchTests {
                 0,
                 Message.from(SERIALIZER.serialize(new ProbeRequest(value)).bytes()),
                 false));
+    }
+
+    private static List<ZLinkBackendActorReceived> actorRequestParts(
+        String actorId,
+        String packetName,
+        String value,
+        long requestId,
+        int flags,
+        ZLinkInboundDispatchBudget.Lease bodyLease) {
+        ZLinkBackendActorRef actorRef =
+            new ZLinkBackendActorRef(RoutingId.from("entry-node"), actorId, 1);
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(1L),
+            packetName,
+            Map.of());
+        return List.of(
+            new ZLinkBackendActorReceived(
+                actorRef,
+                RoutingId.from("source-node"),
+                RoutingId.from("source-session"),
+                Optional.empty(),
+                requestId,
+                flags,
+                Message.from(ZLinkStreamHeaderCodec.encode(header)),
+                true),
+            new ZLinkBackendActorReceived(
+                actorRef,
+                RoutingId.from("source-node"),
+                RoutingId.from("source-session"),
+                Optional.empty(),
+                0,
+                0,
+                Message.from(SERIALIZER.serialize(new ProbeRequest(value)).bytes()),
+                false,
+                new byte[0],
+                null,
+                bodyLease));
     }
 
     private static ReplyRecord awaitSingle(List<ReplyRecord> replies) throws Exception {

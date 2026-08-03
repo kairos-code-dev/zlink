@@ -39,6 +39,7 @@ class SessionApplication {
                 traceLogFile(SampleFlowLog.path(topology, "session"))
                 traceLabel("session")
             }
+            options.configureLocations()
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .client()
             options.addClientServerChannel(SampleNames.SupportChannel)
@@ -46,6 +47,7 @@ class SessionApplication {
             val node = options.addRouteMesh(SampleNames.SupportSpotDiscovery)
             node.listen(session.routerEndpoint)
                 .setRoutingIdPrefix("support-session")
+            node.objects().client()
             options.addStreamNode(SampleNames.StreamNode)
                 .bind(session.streamEndpoint)
                 .enableActorDispatch()

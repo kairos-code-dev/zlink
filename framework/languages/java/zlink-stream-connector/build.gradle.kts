@@ -12,6 +12,7 @@ java {
 dependencies {
     api(zlinkLibs.zlink.bindings)
     api("com.fasterxml.jackson.core:jackson-databind:2.17.2")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2")
     api("io.netty:netty-buffer:4.1.100.Final")
     api("io.netty:netty-codec-http:4.1.100.Final")
     api("io.netty:netty-handler:4.1.100.Final")

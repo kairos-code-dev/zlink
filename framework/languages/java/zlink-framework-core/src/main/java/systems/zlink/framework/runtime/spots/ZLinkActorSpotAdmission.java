@@ -194,16 +194,18 @@ final class ZLinkActorSpotAdmission {
 
     CompletionStage<Void> completeEntryActorJoin(
         ZLinkBackendActorJoinRequest request,
-        String spotId,
+        RoutingId entryNodeRid,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
         String actorId = request.targetActor().actorId();
         ZLinkActorRuntime runtime = requireActors();
         return runtime.getOrCreateLocalActor(actorId, ZLinkActor.class)
             .thenCompose(actor -> actor
                 .map(value -> {
-                    return runtime.markJoined(
-                            value, request.targetActor(), spotId, null)
-                        .thenCompose(ignored -> joinedCallback.apply(value));
+                    // Entry Spot membership is framework infrastructure state;
+                    // it must not publish a durable user-Spot join.
+                    runtime.markJoinedEntrySpot(
+                        value, request.targetActor(), entryNodeRid);
+                    return joinedCallback.apply(value);
                 })
                 .orElseGet(() -> CompletableFuture.failedFuture(
                     new ZLinkConfigurationException(
@@ -452,13 +454,17 @@ final class ZLinkActorSpotAdmission {
                         actorRef,
                         primaryNode.routingId());
                 }
+                if (preparedFence != null) {
+                    // A joined lifecycle callback may send through the bound
+                    // session. Activate the committed transfer before calling
+                    // user code so that this outbound path does not wait on
+                    // the callback that is required to complete the transfer.
+                    primaryNode.activateActorTransfer(preparedFence.token());
+                }
                 return joinedCallback.apply(actor)
                     .thenRun(() -> runtime.traceActorTransferMarker(
                         "target_joined_callback", actor.context().actorId(), request.transferId()))
                     .thenCompose(ignored -> {
-                        if (preparedFence != null) {
-                            primaryNode.activateActorTransfer(preparedFence.token());
-                        }
                         return runtime.deliverDeferredJoinAccepted(
                             request,
                             actorRef);

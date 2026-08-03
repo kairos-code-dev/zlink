@@ -137,6 +137,10 @@ class TicTacToeClientScenario {
             ensure(hostMove1Notify.state.lastMoveActorId == options.xActorId)
             ensure(hostMove1Notify.state.lastMoveCell == 0)
 
+            // The common scenario checks that a leave request during an active
+            // game is ignored before the guest takes the next turn.
+            guestStream.send(LeaveGameReq(game.roomId)).await()
+
             val hostSawGuestMove1 = hostStream.waitFor<GameStateNotify>()
                 .where { message -> message.payload().state.lastMoveCell == 3 }
                 .let { wait -> async { wait.await() } }

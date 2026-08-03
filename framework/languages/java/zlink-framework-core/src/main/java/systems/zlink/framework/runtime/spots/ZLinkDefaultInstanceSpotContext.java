@@ -84,6 +84,24 @@ final class DefaultInstanceSpotContext
         backendSpot.close();
     }
 
+    <T> CompletionStage<T> runLifecycleExecution(
+        Supplier<CompletionStage<T>> operation) {
+        var execution = new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.ApplicationExecution(
+                spotId(),
+                null,
+                true,
+                true,
+                false,
+                ignored -> false);
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+            return host.runWithOutbound(outbound, operation);
+        } catch (RuntimeException failure) {
+            return CompletableFuture.failedFuture(failure);
+        }
+    }
+
     @Override public String meshName() { return meshName; }
     @Override public String spotId() { return backendSpot.spotId(); }
     @Override public long objectGeneration() {
@@ -126,8 +144,7 @@ final class DefaultInstanceSpotContext
 
     @Override
     public CompletionStage<Boolean> close() {
-        closeResources();
-        return CompletableFuture.completedFuture(true);
+        return host.closeInstanceSpot(spotId(), objectGeneration());
     }
 
     @Override

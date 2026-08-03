@@ -32,6 +32,13 @@ abstract class ZLinkSpotContextHost {
 
     abstract CompletionStage<Boolean> closeSpot(String spotId);
 
+    abstract CompletionStage<Boolean> closeInstanceSpot(
+        String spotId,
+        long objectGeneration);
+
+    abstract CompletionStage<Boolean> completeInstanceSpotClose(
+        ZLinkInstanceSpotActivation activation);
+
     abstract boolean isActorMember(String spotId, String actorId);
 
     abstract boolean isActorAtSpot(String actorId, String spotId);

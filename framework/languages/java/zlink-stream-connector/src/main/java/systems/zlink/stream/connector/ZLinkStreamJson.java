@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.util.Map;
 import systems.zlink.contracts.core.RoutingId;
@@ -22,6 +23,7 @@ public final class ZLinkStreamJson {
         .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true)
         .configure(MapperFeature.USE_STD_BEAN_NAMING, true)
         .findAndAddModules()
+        .addModule(new JavaTimeModule())
         .addModule(routingIdModule())
         .build();
 

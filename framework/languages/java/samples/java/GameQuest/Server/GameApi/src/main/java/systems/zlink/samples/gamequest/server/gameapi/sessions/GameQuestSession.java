@@ -51,13 +51,16 @@ public final class GameQuestSession implements ZLinkSession {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onDisconnected() {
-        if (playerId != null) {
-            if (playerActor != null) {
-                playerActor.notifyDisconnected();
+        String disconnectedPlayerId = playerId;
+        ZLinkSessionActor disconnectedActor = playerActor;
+        java.util.concurrent.CompletionStage<Void> actorDisconnected = disconnectedActor == null
+            ? java.util.concurrent.CompletableFuture.completedFuture(null)
+            : disconnectedActor.notifyDisconnected();
+        return actorDisconnected.thenRun(() -> {
+            if (disconnectedPlayerId != null) {
+                store.unbind(disconnectedPlayerId);
             }
-            store.unbind(playerId);
-        }
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        });
     }
 
     @Override
@@ -194,11 +197,10 @@ public final class GameQuestSession implements ZLinkSession {
 
     private java.util.concurrent.CompletionStage<Void> process(
         Messages.GameplayMsg event) {
-        channels.sendToSpot(event.playerId(), event)
+        return channels.sendToSpot(event.playerId(), event)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit();
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
     private CompletionStage<ActorRef> ensurePlayerActor(Messages.JoinSessionReq request) {

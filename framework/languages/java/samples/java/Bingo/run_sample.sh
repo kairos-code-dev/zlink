@@ -213,6 +213,6 @@ grep -q "stream-inbound sample=Bingo" "${log_dir}/client.log"
 grep -Eq "stream-inbound sample=Bingo .* name=.*Notify" "${log_dir}/client.log"
 grep -Rq "message flow" "${flow_log_dir}"
 grep -Eq "zlink metric .*name=zlink\.stream\.connections\.active" "${log_dir}"/session-*.log
-grep -Eq "zlink metric .*name=zlink\.spot\.queue\.depth" "${log_dir}"/play-*.log
+grep -Eq "zlink metric .*name=zlink\.spot\.count" "${log_dir}"/play-*.log
 
 echo "bingo full client/server self-check completed"

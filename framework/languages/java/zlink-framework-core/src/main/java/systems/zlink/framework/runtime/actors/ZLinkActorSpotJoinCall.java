@@ -42,6 +42,10 @@ import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpot;
 
 final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
+    private static final boolean STREAM_TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final java.util.logging.Logger LOGGER =
+        java.util.logging.Logger.getLogger(ZLinkActorSpotJoinCall.class.getName());
     private final ZLinkActorRuntime.DefaultActorContext context;
     private final String spotId;
     private final Message request;
@@ -302,14 +306,36 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
 
     private CompletionStage<Void> notifyCompletion(
         ZLinkActorJoinCompletion completion) {
+        String outcomeDetails = completion instanceof ZLinkActorJoinCompletion.Failed failed
+            ? " kind=" + failed.kind() + " retriable=" + failed.isRetriable()
+            : "";
+        streamTrace("join completion callback-start actor="
+            + context.actorRef().actorId()
+            + " outcome=" + completion.getClass().getSimpleName()
+            + outcomeDetails);
         try {
             CompletionStage<Void> stage =
                 context.actor().onJoinCompleted(completion);
-            return stage == null
+            CompletionStage<Void> normalized = stage == null
                 ? CompletableFuture.completedFuture(null)
                 : stage;
+            return normalized.whenComplete((ignored, error) ->
+                streamTrace("join completion callback-complete actor="
+                    + context.actorRef().actorId()
+                    + " outcome=" + completion.getClass().getSimpleName()
+                    + " error=" + (error == null ? "none" : error)));
         } catch (RuntimeException error) {
+            streamTrace("join completion callback-throw actor="
+                + context.actorRef().actorId()
+                + " outcome=" + completion.getClass().getSimpleName()
+                + " error=" + error);
             return CompletableFuture.failedFuture(error);
+        }
+    }
+
+    private static void streamTrace(String message) {
+        if (STREAM_TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] " + message);
         }
     }
 

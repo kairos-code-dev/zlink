@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -25,6 +26,17 @@ final class ZLinkStreamJsonTest {
             ActorRefSnapshot.class);
 
         assertEquals(expected, actual);
+    }
+
+    @Test
+    void javaTimeValuesRoundTripThroughDefaultJsonCodec() {
+        Instant expected = Instant.parse("2026-08-03T05:00:00.123456Z");
+
+        TimestampedPayload actual = ZLinkStreamJson.decode(
+            ZLinkStreamJson.encode("timestamped", new TimestampedPayload(expected)),
+            TimestampedPayload.class);
+
+        assertEquals(expected, actual.occurredAt());
     }
 
     @Test
@@ -176,6 +188,9 @@ final class ZLinkStreamJsonTest {
 
     @ZLinkStreamPacketName("custom.packet")
     private record AnnotatedPayload(String value) {
+    }
+
+    private record TimestampedPayload(Instant occurredAt) {
     }
 
     private static final class FakeConnector implements ZLinkStreamConnector {

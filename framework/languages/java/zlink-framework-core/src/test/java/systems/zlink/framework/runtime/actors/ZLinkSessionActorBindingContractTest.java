@@ -114,6 +114,26 @@ final class ZLinkSessionActorBindingContractTest {
     }
 
     @Test
+    void nativeRebindUpdatesTheStoredRouteForTheNextRelocationFence() {
+        FakeStream stream = new FakeStream();
+        ZLinkSessionActorsRuntime runtime = runtime(stream);
+        ZLinkSessionActor actor = runtime.bind(
+            new ActorRef("actor-1", 7, MESH, NODE_A))
+            .toCompletableFuture().join();
+
+        runtime.recordNativeRebind(
+            (ZLinkBoundActor) actor,
+            new ZLinkBackendActorRef(NODE_B, "actor-1", 7));
+
+        assertEquals(NODE_B, actor.ref().nodeRid());
+        runtime.applyRelocationRouteUpdate(
+            new ZLinkSessionActorsRuntime.RelocationRouteUpdate(
+                "actor-1", 7, NODE_B, NODE_A, 4, 9, 10))
+            .toCompletableFuture().join();
+        assertEquals(NODE_A, actor.ref().nodeRid());
+    }
+
+    @Test
     void physicalDisconnectUsesExactSnapshotAllSettledAndAlwaysCleansBindings() {
         FakeStream stream = new FakeStream();
         ZLinkSessionActorsRuntime runtime = runtime(stream);

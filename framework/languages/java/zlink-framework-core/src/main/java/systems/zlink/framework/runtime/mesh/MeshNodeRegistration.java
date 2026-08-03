@@ -15,8 +15,6 @@ import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.configuration.ZLinkMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshChannelClientBuilder;
@@ -401,7 +399,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     @Override
-    public <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage>
+    public <THandler, TMessage>
     ZLinkMeshNodeBuilder addRouteSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType) {
@@ -413,7 +411,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     @Override
-    public <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+    public <THandler, TRequest, TReply>
     ZLinkMeshNodeBuilder addRouteRequestHandler(
         Class<THandler> handlerType,
         Class<TRequest> requestType,

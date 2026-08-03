@@ -1,6 +1,7 @@
 module zlink.stream.connector {
     requires transitive systems.zlink;
     requires transitive com.fasterxml.jackson.databind;
+    requires com.fasterxml.jackson.datatype.jsr310;
     requires transitive io.netty.buffer;
     requires transitive io.netty.codec.http;
     requires transitive io.netty.handler;

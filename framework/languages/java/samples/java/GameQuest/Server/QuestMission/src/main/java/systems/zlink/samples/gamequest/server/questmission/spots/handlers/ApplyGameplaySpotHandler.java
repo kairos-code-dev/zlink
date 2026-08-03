@@ -1,6 +1,5 @@
 package systems.zlink.samples.gamequest.server.questmission.spots.handlers;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.spots.ZLinkSpotPacketHandler;
@@ -21,7 +20,6 @@ public final class ApplyGameplaySpotHandler
         PlayerQuestSpot spot,
         Messages.GameplayMsg request) {
         Messages.QuestProcessingMsg result = spot.apply(request);
-        actors.sendToActor(request.playerId(), result).submit();
-        return CompletableFuture.completedFuture(null);
+        return actors.sendToActor(request.playerId(), result).submit();
     }
 }

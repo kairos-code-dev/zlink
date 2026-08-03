@@ -36,7 +36,7 @@ class CourierSpotNodeApplication {
                 )
                 .traceLabel("courier-$node")
             val spotNode = options.addRouteMesh(SampleNames.CourierSpotMesh)
-            spotNode.listen(selected.routerEndpoint)
+            spotNode.listen(selected.spotEndpoint)
                 .setRoutingIdPrefix("delivery-courier")
             spotNode.objects().server()
                 .addEntrySpot(CourierEntrySpot::class.java)
@@ -44,7 +44,7 @@ class CourierSpotNodeApplication {
                     SampleNames.CourierActorType,
                     CourierActor::class.java,
                     CourierActorFactory::class.java,
-                ) { factory -> factory.recreateOnRelocation() }
+                ) { factory -> factory.disableRelocation() }
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)
@@ -68,17 +68,17 @@ class CourierSpotNodeApplication {
     }
 
     private data class NodeOptions(
-        val routerEndpoint: String,
+        val spotEndpoint: String,
     ) {
         companion object {
             fun resolve(node: String): NodeOptions =
                 if (node == "node2") {
                     NodeOptions(
-                        SampleTopology.CourierActorNode2RouterEndpoint,
+                        SampleTopology.CourierActorNode2SpotEndpoint,
                     )
                 } else {
                     NodeOptions(
-                        SampleTopology.CourierActorNode1RouterEndpoint,
+                        SampleTopology.CourierActorNode1SpotEndpoint,
                     )
                 }
         }

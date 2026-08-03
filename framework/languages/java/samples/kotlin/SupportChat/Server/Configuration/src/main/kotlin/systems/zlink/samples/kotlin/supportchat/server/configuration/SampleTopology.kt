@@ -10,10 +10,8 @@ data class SampleTopology(
     val apiChannelEndpoint: String?,
     val apiHttpEndpoint: String?,
     val supportChannelEndpoint: String?,
-    val sessionSpotEndpoint: String?,
     val sessionRouterEndpoint: String?,
-    val supportEntrySpotEndpoint: String?,
-    val supportEntrySpotRouterEndpoint: String?,
+    val supportSpotRouterEndpoint: String?,
     val streamEndpoint: String?,
 ) {
     fun location(): SampleLocation = SampleLocation(
@@ -35,8 +33,7 @@ data class SampleTopology(
 
     fun support(): SupportTopology = SupportTopology(
         channelEndpoint = required(supportChannelEndpoint, "supportChannelEndpoint"),
-        entrySpotEndpoint = required(supportEntrySpotEndpoint, "supportEntrySpotEndpoint"),
-        entryRouterEndpoint = required(supportEntrySpotRouterEndpoint, "supportEntrySpotRouterEndpoint"),
+        routerEndpoint = required(supportSpotRouterEndpoint, "supportSpotRouterEndpoint"),
     )
 
     companion object {
@@ -58,8 +55,7 @@ data class ApiTopology(val channelEndpoint: String, val httpEndpoint: String)
 
 data class SupportTopology(
     val channelEndpoint: String,
-    val entrySpotEndpoint: String,
-    val entryRouterEndpoint: String,
+    val routerEndpoint: String,
 )
 
 data class SampleSessionNode(

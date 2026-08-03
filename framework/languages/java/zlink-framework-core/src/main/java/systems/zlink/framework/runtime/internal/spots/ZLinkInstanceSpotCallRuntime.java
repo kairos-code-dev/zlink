@@ -6,9 +6,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 
 /** Internal bridge from the public fluent call to Instance Spot activation. */
 public interface ZLinkInstanceSpotCallRuntime {
+    default CompletionStage<Boolean> isStaleRoute(
+        String spotId,
+        SpotTransportAddress address) {
+        return java.util.concurrent.CompletableFuture.completedFuture(false);
+    }
+
     CompletionStage<Void> send(
         String spotId,
         String stableType,

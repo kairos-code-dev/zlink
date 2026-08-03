@@ -98,14 +98,12 @@ class PlayApplication {
             node.addRouteRequestHandler(
                 RoutePingHandler::class.java,
                 Contracts.RoutePingReq::class.java,
-                Contracts.RoutePingRes::class.java,
-                Contracts.ROUTE_PACKET
+                Contracts.RoutePingRes::class.java
             )
             node.addRouteRequestHandler(
                 EnsureActorHandler::class.java,
                 Contracts.EnsureActorReq::class.java,
-                Contracts.EnsureActorRes::class.java,
-                "EnsureActorReq"
+                Contracts.EnsureActorRes::class.java
             )
             val peerIngress = if (nodeRid == "play-a") {
                 Env.get("ZLINK_KOTLIN_E2E_INGRESS_B_ENDPOINT")

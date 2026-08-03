@@ -1,27 +1,28 @@
 package systems.zlink.samples.kotlin.bingo.server.configuration
 
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.boot.context.properties.bind.ConstructorBinding
 
 @ConfigurationProperties("sample")
-data class SampleTopology(
-    val apiAChannelEndpoint: String = "",
-    val apiBChannelEndpoint: String = "",
-    val apiAMeshEndpoint: String = "",
-    val apiBMeshEndpoint: String = "",
-    val sessionARouterEndpoint: String = "",
-    val sessionBRouterEndpoint: String = "",
-    val playASpotRouterEndpoint: String = "",
-    val playBSpotRouterEndpoint: String = "",
-    val apiMatchmakingRouterEndpoint: String = "tcp://127.0.0.1:47227",
-    val matchmakingRouterEndpoint: String = "tcp://127.0.0.1:47228",
-    val sessionAStreamEndpoint: String = "",
-    val sessionBStreamEndpoint: String = "",
-    val redisEndpoint: String = "",
-    val redisKeyPrefix: String = "bingo:kotlin:",
-    val apiNode: String = "a",
-    val playNode: String = "a",
-    val sessionNode: String = "a",
-    val logDirectory: String = "",
+data class SampleTopology @ConstructorBinding constructor(
+    val apiAChannelEndpoint: String,
+    val apiBChannelEndpoint: String,
+    val apiAMeshEndpoint: String,
+    val apiBMeshEndpoint: String,
+    val sessionARouterEndpoint: String,
+    val sessionBRouterEndpoint: String,
+    val playASpotRouterEndpoint: String,
+    val playBSpotRouterEndpoint: String,
+    val apiMatchmakingRouterEndpoint: String,
+    val matchmakingRouterEndpoint: String,
+    val sessionAStreamEndpoint: String,
+    val sessionBStreamEndpoint: String,
+    val redisEndpoint: String,
+    val redisKeyPrefix: String,
+    val apiNode: String,
+    val playNode: String,
+    val sessionNode: String,
+    val logDirectory: String,
 ) {
     init {
         listOf(

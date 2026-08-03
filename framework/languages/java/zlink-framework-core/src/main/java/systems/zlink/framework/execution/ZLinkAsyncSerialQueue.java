@@ -54,6 +54,15 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     /**
+     * Returns whether this queue currently owns the calling thread's serial turn.
+     * Internal dispatch composition uses this to avoid waiting on a turn that
+     * was enqueued behind the operation currently executing on this queue.
+     */
+    public boolean isCurrent() {
+        return CURRENT.get() == this;
+    }
+
+    /**
      * Internal lifecycle barrier that runs immediately after the active turn
      * and before previously queued application turns.
      */

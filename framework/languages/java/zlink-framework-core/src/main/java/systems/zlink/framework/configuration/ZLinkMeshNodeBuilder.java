@@ -1,8 +1,6 @@
 package systems.zlink.framework.configuration;
 
 import java.time.Duration;
-import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
-import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 
 public interface ZLinkMeshNodeBuilder {
     ZLinkMeshChannelBuilder channelName(String channelName);
@@ -41,12 +39,12 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshObjectRoleBuilder objects();
 
-    <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage>
+    <THandler, TMessage>
     ZLinkMeshNodeBuilder addRouteSendHandler(
         Class<THandler> handlerType,
         Class<TMessage> messageType);
 
-    <THandler extends ZLinkRouteRequestHandler<TRequest, TReply>, TRequest, TReply>
+    <THandler, TRequest, TReply>
     ZLinkMeshNodeBuilder addRouteRequestHandler(
         Class<THandler> handlerType,
         Class<TRequest> requestType,

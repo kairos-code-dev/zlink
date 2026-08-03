@@ -33,6 +33,7 @@ public final class JoinConversationActorHandler
         }
         Messages.JoinConversationRes scheduled = actor.scheduleConversationJoin(
             conversationId,
+            "",
             new Messages.JoinConversationReq(
                 actor.participantId(),
                 actor.role(),

@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+cd "${SCRIPT_DIR}"
 
 client_source="Client/src/main/kotlin/systems/zlink/samples/kotlin/supportchat/client/SupportChatClientScenario.kt"
 if ! rg -q 'expectNone<(TypingChangedNotify|ConversationClosedNotify)>' "${client_source}"; then
@@ -45,28 +46,14 @@ on_exit() {
 
 trap on_exit EXIT
 
-read -r -a PORTS <<<"$(zlink_sample_reserve_ports 8)"
+read -r -a PORTS <<<"$(zlink_sample_reserve_ports 6)"
 
 api_channel_endpoint="tcp://127.0.0.1:${PORTS[0]}"
 api_http_endpoint="http://127.0.0.1:${PORTS[1]}"
 support_channel_endpoint="tcp://127.0.0.1:${PORTS[2]}"
-session_spot_endpoint="tcp://127.0.0.1:${PORTS[3]}"
-session_router_endpoint="tcp://127.0.0.1:${PORTS[4]}"
-entry_spot_endpoint="tcp://127.0.0.1:${PORTS[5]}"
-entry_router_endpoint="tcp://127.0.0.1:${PORTS[6]}"
-stream_endpoint="tcp://127.0.0.1:${PORTS[7]}"
-
-endpoint_host() {
-  local endpoint="$1"
-  endpoint="${endpoint#tcp://}"
-  echo "${endpoint%:*}"
-}
-
-endpoint_port() {
-  local endpoint="$1"
-  endpoint="${endpoint#tcp://}"
-  echo "${endpoint##*:}"
-}
+session_router_endpoint="tcp://127.0.0.1:${PORTS[3]}"
+support_router_endpoint="tcp://127.0.0.1:${PORTS[4]}"
+stream_endpoint="tcp://127.0.0.1:${PORTS[5]}"
 
 wait_log() {
   local pattern="$1"
@@ -113,7 +100,6 @@ cat >"${session_config}" <<EOF
 sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
 sample.logDirectory=${SAMPLE_LOG_DIR}
-sample.sessionSpotEndpoint=${session_spot_endpoint}
 sample.sessionRouterEndpoint=${session_router_endpoint}
 sample.streamEndpoint=${stream_endpoint}
 EOF
@@ -122,8 +108,7 @@ sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
 sample.logDirectory=${SAMPLE_LOG_DIR}
 sample.supportChannelEndpoint=${support_channel_endpoint}
-sample.supportEntrySpotEndpoint=${entry_spot_endpoint}
-sample.supportEntrySpotRouterEndpoint=${entry_router_endpoint}
+sample.supportSpotRouterEndpoint=${support_router_endpoint}
 EOF
 chmod 0600 "${api_config}" "${session_config}" "${support_config}"
 
@@ -136,14 +121,12 @@ cd "${SCRIPT_DIR}"
 
 start_role support "${SCRIPT_DIR}/Server/Support/build/install/Support/bin/Support" "${support_config}"
 wait_port support-channel "${support_channel_endpoint}"
-wait_port support-entry-router "${entry_router_endpoint}"
-wait_port support-entry-pub "${entry_spot_endpoint}"
+wait_port support-router "${support_router_endpoint}"
 
 start_role api "${SCRIPT_DIR}/Server/Api/build/install/Api/bin/Api" "${api_config}"
 wait_port api-channel "${api_channel_endpoint}"
 
 start_role session "${SCRIPT_DIR}/Server/Session/build/install/Session/bin/Session" "${session_config}"
-wait_port session-spot "${session_spot_endpoint}"
 wait_port session-router "${session_router_endpoint}"
 wait_port session-stream "${stream_endpoint}"
 

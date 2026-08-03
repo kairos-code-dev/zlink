@@ -47,6 +47,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
+import systems.zlink.framework.runtime.internal.spots.ZLinkInstanceSpotCallRuntime;
 
 final class ZLinkChannelRuntimeTest {
     private static ZLinkHandlerActivator handlers() {
@@ -83,6 +84,22 @@ final class ZLinkChannelRuntimeTest {
         var route = new DefaultRouteRequestContext(
             "mesh", "ProfileRequest", sourceNodeRid, "application/json", metadata);
         assertEquals(sourceNodeRid, route.sourceNodeRid());
+    }
+
+    @Test
+    void copiedTransportPartsPreserveTheCallerPayloadForFallback() {
+        try (Message payload = Message.from("payload")) {
+            List<Message> copied = ZLinkChannelCallRuntime.copyParts(
+                Optional.of("Packet"),
+                payload,
+                ZLinkChannelContentTypeFrame.DEFAULT_CONTENT_TYPE);
+            try {
+                assertEquals("payload", payload.toUtf8String());
+                assertEquals("payload", copied.get(1).toUtf8String());
+            } finally {
+                copied.forEach(Message::close);
+            }
+        }
     }
 
     @Test
@@ -446,6 +463,29 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void spotRouterNodeSendRetriesUntilConnectedRouteIsReady() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.sendFailuresRemaining = 1;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(), handlers())) {
+            runtime.registerSpotRouterNode("play.route", backend.spotNode);
+
+            runtime.sendToSpot(
+                    "room-spot",
+                    new TestRequest("hello"))
+                .submit().toCompletableFuture().join();
+
+            assertEquals(2, backend.spotNode.entrySpot.sendAttempts);
+            assertEquals(SendFlags.NONE, backend.spotNode.entrySpot.lastSendFlags);
+            assertEquals(1L, backend.spotNode.entrySpot.lastSpotGeneration);
+        }
+    }
+
+    @Test
     void spotRouterNodeRequestFailsOnBackendRequestResultWithoutTreatingEmptyReplyAsSuccess() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
@@ -468,6 +508,61 @@ final class ZLinkChannelRuntimeTest {
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("NOT_FOUND"));
             assertEquals(1L, backend.spotNode.entrySpot.lastSpotGeneration);
+        }
+    }
+
+    @Test
+    void instanceSpotRequestReactivatesAfterStaleOwnerNotFound() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.requestResult = ZLinkBackendRequestResult.NOT_FOUND;
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(), handlers())) {
+            runtime.registerSpotRouterNode("play.route", backend.spotNode);
+            runtime.registerInstanceSpotCallRuntime(new ZLinkInstanceSpotCallRuntime() {
+                @Override
+                public java.util.concurrent.CompletionStage<Void> send(
+                    String spotId,
+                    String stableType,
+                    String meshName,
+                    Message payload,
+                    Optional<String> packetName,
+                    String contentType,
+                    Map<String, String> metadata) {
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                public java.util.concurrent.CompletionStage<List<Message>> request(
+                    String spotId,
+                    String stableType,
+                    String meshName,
+                    Message payload,
+                    Optional<String> packetName,
+                    String contentType,
+                    Map<String, String> metadata,
+                    Duration timeout) {
+                    byte[] reply = new ZLinkJsonMessageSerializer()
+                        .serialize(new TestReply("reactivated"))
+                        .bytes();
+                    return CompletableFuture.completedFuture(List.of(Message.from(reply)));
+                }
+            });
+
+            TestReply reply = runtime.requestToSpot(
+                    "room-spot",
+                    new TestRequest("hello"))
+                .instanceSpot("room")
+                .inMesh("play.route")
+                .submit(TestReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("reactivated", reply.value());
+            assertEquals(1, backend.spotNode.entrySpot.requestAttempts);
         }
     }
 
@@ -1715,6 +1810,9 @@ final class ZLinkChannelRuntimeTest {
     }
 
     private static final class FakeSpot implements ZLinkBackendSpot {
+        int sendAttempts;
+        int sendFailuresRemaining;
+        SendFlags lastSendFlags;
         int requestAttempts;
         int requestFailuresRemaining;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
@@ -1730,6 +1828,12 @@ final class ZLinkChannelRuntimeTest {
         @Override public boolean publish(String channelName, String topic, List<Message> parts, SendFlags flags) { return true; }
         @Override public boolean sendToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, SendFlags flags) {
             lastSpotGeneration = spotGeneration;
+            sendAttempts++;
+            lastSendFlags = flags;
+            if (sendFailuresRemaining > 0) {
+                sendFailuresRemaining--;
+                return false;
+            }
             return true;
         }
         @Override public boolean requestToSpot(

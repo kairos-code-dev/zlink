@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.spots;
 import java.time.Instant;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorLifecycleEvent;
@@ -19,6 +20,8 @@ import systems.zlink.framework.spots.ZLinkSpotClosingContext;
 final class ZLinkInstanceSpotActivation
     extends SpotActivationBase<DefaultInstanceSpotContext> {
     private final ZLinkInstanceSpot spot;
+    private final AtomicBoolean resourcesClosed = new AtomicBoolean();
+    private CompletionStage<Boolean> explicitClose;
 
     ZLinkInstanceSpotActivation(
         ZLinkSpotRuntime host,
@@ -81,9 +84,29 @@ final class ZLinkInstanceSpotActivation
             host.awaitClosing(context.runLifecycle(() -> spot.onClosing(
                 new ZLinkSpotClosingContext(reason, deadline))));
         } finally {
-            closeActiveRouteReceives();
-            context.closeResources();
+            closeResources();
         }
+    }
+
+    synchronized CompletionStage<Boolean> closeExplicit() {
+        if (explicitClose != null) {
+            return explicitClose;
+        }
+        explicitClose = context.runLifecycleExecution(() -> spot.onClosing(
+                new ZLinkSpotClosingContext(
+                    ZLinkSpotCloseReason.EXPLICIT_CLOSE,
+                    Instant.now())))
+            .thenCompose(ignored -> host.completeInstanceSpotClose(this));
+        return explicitClose;
+    }
+
+    void closeResources() {
+        if (!resourcesClosed.compareAndSet(false, true)) {
+            return;
+        }
+        backendSpot.closeInstanceSpot();
+        closeActiveRouteReceives();
+        context.closeResources();
     }
 
     @Override

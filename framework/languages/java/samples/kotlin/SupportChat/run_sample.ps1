@@ -114,15 +114,13 @@ function Start-Role {
 }
 
 try {
-    $ports = Reserve-Ports 8
+    $ports = Reserve-Ports 6
     $ApiChannelEndpoint = "tcp://127.0.0.1:$($ports[0])"
     $ApiHttpEndpoint = "http://127.0.0.1:$($ports[1])"
     $SupportChannelEndpoint = "tcp://127.0.0.1:$($ports[2])"
-    $SessionSpotEndpoint = "tcp://127.0.0.1:$($ports[3])"
-    $SessionRouterEndpoint = "tcp://127.0.0.1:$($ports[4])"
-    $EntrySpotEndpoint = "tcp://127.0.0.1:$($ports[5])"
-    $EntryRouterEndpoint = "tcp://127.0.0.1:$($ports[6])"
-    $StreamEndpoint = "tcp://127.0.0.1:$($ports[7])"
+    $SessionRouterEndpoint = "tcp://127.0.0.1:$($ports[3])"
+    $SupportRouterEndpoint = "tcp://127.0.0.1:$($ports[4])"
+    $StreamEndpoint = "tcp://127.0.0.1:$($ports[5])"
 
     $redis = Start-ZlinkSampleRedis "zlink-redis-kotlin-sample-supportchat"
     $RedisContainer = $redis.ContainerId
@@ -143,7 +141,6 @@ try {
         "sample.redisEndpoint=$RedisEndpoint",
         "sample.redisKeyPrefix=$RedisKeyPrefix",
         "sample.logDirectory=$SampleLogDir",
-        "sample.sessionSpotEndpoint=$SessionSpotEndpoint",
         "sample.sessionRouterEndpoint=$SessionRouterEndpoint",
         "sample.streamEndpoint=$StreamEndpoint"
     ) | Set-Content -Path $SessionConfig -Encoding UTF8
@@ -152,8 +149,7 @@ try {
         "sample.redisKeyPrefix=$RedisKeyPrefix",
         "sample.logDirectory=$SampleLogDir",
         "sample.supportChannelEndpoint=$SupportChannelEndpoint",
-        "sample.supportEntrySpotEndpoint=$EntrySpotEndpoint",
-        "sample.supportEntrySpotRouterEndpoint=$EntryRouterEndpoint"
+        "sample.supportSpotRouterEndpoint=$SupportRouterEndpoint"
     ) | Set-Content -Path $SupportConfig -Encoding UTF8
 
     & $Gradle --settings-file standalone.settings.gradle.kts --no-daemon --no-parallel --max-workers=1 `
@@ -167,14 +163,12 @@ try {
 
     Start-Role "support" (Join-Path $SampleDir "Server/Support/build/install/Support/bin/Support") $SupportConfig
     Wait-Port "support-channel" $SupportChannelEndpoint
-    Wait-Port "support-entry-router" $EntryRouterEndpoint
-    Wait-Port "support-entry-pub" $EntrySpotEndpoint
+    Wait-Port "support-router" $SupportRouterEndpoint
 
     Start-Role "api" (Join-Path $SampleDir "Server/Api/build/install/Api/bin/Api") $ApiConfig
     Wait-Port "api-channel" $ApiChannelEndpoint
 
     Start-Role "session" (Join-Path $SampleDir "Server/Session/build/install/Session/bin/Session") $SessionConfig
-    Wait-Port "session-spot" $SessionSpotEndpoint
     Wait-Port "session-router" $SessionRouterEndpoint
     Wait-Port "session-stream" $StreamEndpoint
 

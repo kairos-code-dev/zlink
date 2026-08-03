@@ -16,6 +16,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
+import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 public final class MultiNodeHttpServer implements SmartLifecycle {
@@ -64,7 +65,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
             server.createContext("/topology/ready", exchange -> {
                 int expected = Integer.parseInt(queryValue(exchange.getRequestURI(), "expected"));
                 long ready = meshRuntime.snapshot(Contracts.SPOT_MESH).peers().stream()
-                    .filter(peer -> peer.ready())
+                    .filter(peer -> peer.state() == ZLinkPeerState.READY)
                     .count();
                 if (ready < expected) {
                     writeText(exchange, 503, ready + "\n");

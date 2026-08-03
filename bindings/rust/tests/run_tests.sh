@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
 CORE_LIB_DIR="$REPO_ROOT/core/build/lib"
+RUST_RUNTIME_RESOLVER="$REPO_ROOT/scripts/local-package/rust/resolve-candidate-runtime.sh"
+RUST_PACKAGE_EVIDENCE="${ZLINK_RUST_PACKAGE_EVIDENCE:-}"
 
 cd "$PROJECT_DIR"
 
@@ -12,8 +14,34 @@ echo "=== zlink Rust binding tests ==="
 echo ""
 
 source "$HOME/.cargo/env" 2>/dev/null || true
-export LD_LIBRARY_PATH="$CORE_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [[ -n "$RUST_PACKAGE_EVIDENCE" ]]; then
+    [[ -f "$RUST_RUNTIME_RESOLVER" ]] || {
+        echo "Rust candidate runtime resolver not found: $RUST_RUNTIME_RESOLVER" >&2
+        exit 1
+    }
+    source "$RUST_RUNTIME_RESOLVER"
+    resolve_rust_package_runtime "$RUST_PACKAGE_EVIDENCE" linux-x86_64 "$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    RUST_NATIVE_DIR="$RUST_CANDIDATE_NATIVE_DIR"
+    echo "Rust candidate package evidence: $RUST_PACKAGE_EVIDENCE"
+    echo "Rust candidate manifest sha256: $RUST_CANDIDATE_MANIFEST_SHA256"
+    echo "Rust candidate aggregate sha256: $RUST_CANDIDATE_AGGREGATE_SHA256"
+else
+    RUST_NATIVE_DIR="${ZLINK_RUST_NATIVE_DIR:-$CORE_LIB_DIR}"
+fi
+RUST_RUNTIME="$RUST_NATIVE_DIR/libzlink.so"
+[[ -f "$RUST_RUNTIME" ]] || RUST_RUNTIME="$RUST_NATIVE_DIR/libzlink.so.11.1.0"
+[[ -f "$RUST_RUNTIME" ]] || {
+    echo "Rust test runtime not found: $RUST_NATIVE_DIR" >&2
+    echo "Build core/build or set ZLINK_RUST_NATIVE_DIR / ZLINK_RUST_PACKAGE_EVIDENCE." >&2
+    exit 1
+}
+RUST_RUNTIME="$(readlink -f "$RUST_RUNTIME" 2>/dev/null || printf '%s' "$RUST_RUNTIME")"
+export ZLINK_RUST_NATIVE_DIR="$RUST_NATIVE_DIR"
+export LD_LIBRARY_PATH="$RUST_NATIVE_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/zlink-rust-target/tests}"
+
+echo "Rust test runtime: $RUST_RUNTIME"
+echo "Rust test runtime sha256: $(sha256sum "$RUST_RUNTIME" | awk '{print $1}')"
 
 PASS=0
 FAIL=0

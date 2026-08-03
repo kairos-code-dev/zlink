@@ -51,7 +51,11 @@ fn direct_common_header_version_matches_package() {
         .map(str::trim)
         .find(|line| !line.is_empty())
         .unwrap_or("");
-    assert_eq!(version_patch, "3");
+    let expected_patch = env!("CARGO_PKG_VERSION")
+        .split('.')
+        .nth(2)
+        .expect("crate version must contain a patch component");
+    assert_eq!(version_patch, expected_patch);
 }
 
 #[test]

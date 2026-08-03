@@ -43,7 +43,7 @@ Core ABI의 수명 조건으로 분류했으며, 불필요한 forwarding layer�
 `ec8191ea40`(candidate-bound crate gate), `c8a9a63890`(candidate runtime resolver와 perf runner),
 `a42e39faca`(candidate runtime source test runner)다.
 
-## Candidate package
+## Candidate package checkpoint
 
 실행 명령은 다음과 같다.
 
@@ -55,9 +55,9 @@ scripts/local-package/rust/build-wsl.sh \
   --output-root /home/hep7/project/kairos/zlink/.artifacts/wsl/rust-candidate-final
 ```
 
-이 log 작성 시점에 실행한 package gate는 `a42e39faca52cd02edb9f6ed9e7079b78e819e95` source revision을
-기준으로 했다. Evidence 경로는 다음과 같다. 이후 이 log와 README를 commit하면 source revision이 바뀌므로,
-최종 gate에서는 같은 command를 다시 실행하고 새 evidence를 사용해야 한다.
+이 표는 `a42e39faca52cd02edb9f6ed9e7079b78e819e95` source revision에서 실행한 package gate checkpoint다.
+이후 log와 README를 commit하면 source revision이 바뀌므로, 최종 gate는 같은 command로 다시 실행해야 한다.
+최종 판정에서는 아래 경로의 현재 JSON이 source revision, package hash와 verification 결과의 권위 있는 입력이다.
 
 `/home/hep7/project/kairos/zlink/.artifacts/wsl/rust-candidate-final/rust-package-11.1.0.json`
 

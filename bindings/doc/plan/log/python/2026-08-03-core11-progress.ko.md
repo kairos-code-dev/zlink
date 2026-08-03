@@ -15,9 +15,9 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: `candidate-input.env`의 `CORE_REVISION` (`b2e98609925b32c254b89937a2af750335d74d7f`)
+sourceRevision: `candidate-input.env`의 `CORE_REVISION` (`966a4357a714e20a8fe73ace1b837fbbafd86feb`)
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: `463e935280b57639aee2843abe15023b67dc49f2728aa257ac0238b9c7dc6d5e`
+coreManifestSha256: `fa2c9ddc9d06b135ffc0cae7530b5b2eff927795955a73b51fd7e6339787d97d`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
@@ -51,14 +51,14 @@ the supplied candidate manifest SHA-256`로 실패했다. 따라서 현재 candi
 
 ```text
 sourceManifest: `.artifacts/wsl/bindings-candidate/python-source-manifest-11.2.0.json` 및 각 output root의 동일 manifest
-sourceManifestSha256: 154a76a3fd1014124f35f6cf82977e013a82e85ec07fce1a537f330048785351
+sourceManifestSha256: d882f7e4d4dc404a7f2164ad43333e85f42919607536d63821e8774f140344c4
 sourceAggregateSha256: 3e4f1069e425c861d70d4b257a61ad82bfe90c26a1f3cfd20e5e03376ff6915c
 candidateInput: `.artifacts/wsl/bindings-candidate/python39/python/candidate-input.env` and the corresponding
 `python312/python/candidate-input.env`
 wheel: `python39/python/wheels/zlink-11.2.0-cp39-cp39-linux_x86_64.whl` and
 `python312/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl`
-wheelSha256: cp39 `44f7ff98f3c0d3be821f9979308bf762eed25603340792bb99f6a678507f006c`, cp312
-`d60eb64c824645b3ac66bf209ef4c6869abc56ac354cadbfec150a8a37f9ff79`
+wheelSha256: cp39 `d6c47bd5d08b7e735a4ac1699c99167048ec823b5b1a3869c9c2f986de79b9c1`, cp312
+`0dc783c97aa7699af645f4bd9c47342e1a25dc8973ca36c7a0adccf3ec86f8db`
 packagedNativePayloadSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 ```
 
@@ -102,7 +102,7 @@ scripts/local-package/bindings-candidate/build-wsl.sh \
 # CPython 3.9 Docker에서도 같은 command에 --python-executable python을 지정한다.
 ```
 
-결과: candidate-input의 `CORE_REVISION=b2e98609925b32c254b89937a2af750335d74d7f` candidate를 기준으로
+결과: candidate-input의 `CORE_REVISION=966a4357a714e20a8fe73ace1b837fbbafd86feb` candidate를 기준으로
 CPython 3.9 Docker와 host CPython 3.12 모두 종료 코드 `0`. 각 source test는 `63 passed`, clean wheel
 consumer는 Pair roundtrip과 wheel payload load-map 확인을 통과했다.
 Builder는 같은 Core prefix와 source manifest를 사용해

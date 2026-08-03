@@ -9,6 +9,8 @@ CORE_VERSION="$(sed -n 's/^#define ZLINK_VERSION_MAJOR //p' "${BINDING_ROOT}/inc
 PACKAGE_VERSION="v${CORE_VERSION}"
 PLATFORMS="linux-x86_64"
 OUTPUT_ROOT="${ZLINK_LOCAL_PACKAGE_ROOT:-${REPO_ROOT}/.artifacts/wsl}/go"
+CORE_CANDIDATE_MANIFEST=""
+CORE_PACKAGE_EVIDENCE=""
 
 usage() {
   cat <<'EOF'
@@ -17,8 +19,11 @@ Usage: scripts/local-package/go/build-wsl.sh [options]
 Options:
   --package-version VERSION  Go module version, including the v prefix.
   --platforms LIST           Comma-separated native payload directories.
-                             Supported: linux-x86_64, linux-aarch64,
-                             darwin-x86_64, darwin-aarch64.
+                             Current candidate support: linux-x86_64.
+  --core-candidate-manifest FILE
+                             Approved V11-M3-CORE-VERIFY candidate manifest.
+  --core-package-evidence FILE
+                             Matching V11-M3-CORE-PKG pass evidence.
   --output-root DIR          Absolute output directory.
   -h, --help
 
@@ -31,6 +36,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --package-version) PACKAGE_VERSION="${2:-}"; shift 2 ;;
     --platforms) PLATFORMS="${2:-}"; shift 2 ;;
+    --core-candidate-manifest) CORE_CANDIDATE_MANIFEST="${2:-}"; shift 2 ;;
+    --core-package-evidence) CORE_PACKAGE_EVIDENCE="${2:-}"; shift 2 ;;
     --output-root) OUTPUT_ROOT="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -38,6 +45,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ "${OUTPUT_ROOT}" = /* ]] || { echo "--output-root must be absolute" >&2; exit 2; }
+[[ -n "${CORE_CANDIDATE_MANIFEST}" && -n "${CORE_PACKAGE_EVIDENCE}" ]] || {
+  echo "--core-candidate-manifest and --core-package-evidence are required" >&2
+  exit 2
+}
+[[ "${CORE_CANDIDATE_MANIFEST}" = /* && "${CORE_PACKAGE_EVIDENCE}" = /* ]] || {
+  echo "Core candidate and package evidence paths must be absolute" >&2
+  exit 2
+}
+CORE_CANDIDATE_MANIFEST="$(realpath -e -- "${CORE_CANDIDATE_MANIFEST}")" || {
+  echo "Core candidate manifest does not exist" >&2
+  exit 1
+}
+CORE_PACKAGE_EVIDENCE="$(realpath -e -- "${CORE_PACKAGE_EVIDENCE}")" || {
+  echo "Core package evidence does not exist" >&2
+  exit 1
+}
 [[ "${PACKAGE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
   echo "--package-version must use vMAJOR.MINOR.PATCH" >&2
   exit 2
@@ -66,13 +89,120 @@ dir_hash() {
   ) | sha256sum | awk '{print $1}'
 }
 
+CORE_PACKAGE_FIELDS="$(EXPECTED_CORE_VERSION="${CORE_VERSION}" node - "${CORE_PACKAGE_EVIDENCE}" "${CORE_CANDIDATE_MANIFEST}" <<'NODE'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const evidencePath = path.resolve(process.argv[2]);
+const candidatePath = path.resolve(process.argv[3]);
+const expectedVersion = process.env.EXPECTED_CORE_VERSION;
+
+function fail(message) {
+  throw new Error(message);
+}
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    fail(`cannot read JSON ${file}: ${error.message}`);
+  }
+}
+
+function sha256(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function requireFile(file, label) {
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) fail(`${label} is missing: ${file}`);
+}
+
+requireFile(evidencePath, 'Core package evidence');
+requireFile(candidatePath, 'Core candidate manifest');
+const evidence = readJson(evidencePath);
+const candidate = readJson(candidatePath);
+
+if (evidence.schema !== 1 || evidence.ledgerId !== 'V11-M3-CORE-PKG' || evidence.status !== 'pass') {
+  fail('Core package evidence is not a passing V11-M3-CORE-PKG record');
+}
+if (evidence.version !== expectedVersion) fail(`Core package version mismatch: ${evidence.version} != ${expectedVersion}`);
+if (candidate.schema !== 'zlink-v11-ledger-candidate-v1' || candidate.ledgerId !== 'V11-M3-CORE-VERIFY') {
+  fail('Core candidate manifest is not a V11-M3-CORE-VERIFY record');
+}
+if (sha256(candidatePath) !== evidence.candidate?.manifestSha256) fail('Candidate manifest SHA-256 does not match package evidence');
+if (candidate.aggregateSha256 !== evidence.candidate?.aggregateSha256) fail('Candidate aggregate SHA-256 does not match package evidence');
+if (evidence.approval?.ledgerId !== 'V11-R2' || evidence.approval.candidateManifestSha256 !== evidence.candidate.manifestSha256) {
+  fail('Core package approval does not identify the same candidate');
+}
+const approvalPath = path.resolve(evidence.approval.evidencePath);
+requireFile(approvalPath, 'Core review evidence');
+if (sha256(approvalPath) !== evidence.approval.evidenceSha256) fail('Core review evidence SHA-256 mismatch');
+const approval = readJson(approvalPath);
+if (approval.status !== 'passed' || approval.candidateManifestSha256 !== evidence.candidate.manifestSha256) {
+  fail('Core review evidence is not a pass for the packaged candidate');
+}
+for (const [name, value] of Object.entries(evidence.checks ?? {})) {
+  if (typeof value === 'boolean' && !value) fail(`Core package check failed: ${name}`);
+}
+for (const [name, value] of Object.entries(evidence.consumer?.checks ?? {})) {
+  if (typeof value === 'boolean' && !value) fail(`Core consumer check failed: ${name}`);
+}
+if (evidence.consumer?.status !== 'pass') fail('Core package consumer is not a pass');
+
+const prefix = path.resolve(evidence.output?.prefix ?? '');
+const provenancePath = path.resolve(evidence.output?.provenanceManifest ?? '');
+requireFile(provenancePath, 'Core provenance manifest');
+if (sha256(provenancePath) !== evidence.output.provenanceSha256) fail('Core provenance manifest SHA-256 mismatch');
+const provenance = readJson(provenancePath);
+if (provenance.candidate?.manifestSha256 !== evidence.candidate.manifestSha256 ||
+    provenance.candidate?.aggregateSha256 !== evidence.candidate.aggregateSha256) {
+  fail('Core provenance manifest identifies a different candidate');
+}
+
+const runtimePath = path.resolve(evidence.consumer?.runtime?.path ?? '');
+requireFile(runtimePath, 'Core runtime');
+const runtimeSha256 = sha256(runtimePath);
+if (runtimeSha256 !== evidence.consumer.runtime.sha256) fail('Core runtime SHA-256 mismatch');
+if (evidence.consumer.runtime.version !== expectedVersion || evidence.consumer.runtime.soname !== 'libzlink.so.11') {
+  fail('Core runtime version or SONAME mismatch');
+}
+const runtimeRelative = path.relative(prefix, runtimePath).split(path.sep).join('/');
+const provenanceRuntime = (provenance.files ?? []).find(record => record.path === runtimeRelative);
+if (!provenanceRuntime || provenanceRuntime.sha256 !== runtimeSha256) fail('Core provenance does not contain the verified runtime');
+if (!fs.existsSync(path.join(prefix, 'include', 'zlink.h'))) fail('Core package include directory is missing');
+
+process.stdout.write([
+  prefix,
+  runtimePath,
+  runtimeSha256,
+  provenancePath,
+  evidence.output.provenanceSha256,
+  evidence.candidate.manifestSha256,
+  evidence.candidate.aggregateSha256,
+  evidence.approval.evidenceSha256,
+].join('\t'));
+NODE
+)"
+IFS=$'\t' read -r CORE_PACKAGE_PREFIX CORE_RUNTIME_SOURCE CORE_RUNTIME_SHA256 CORE_PROVENANCE_PATH \
+  CORE_PROVENANCE_SHA256 CORE_CANDIDATE_MANIFEST_SHA256 CORE_CANDIDATE_AGGREGATE_SHA256 \
+  CORE_APPROVAL_EVIDENCE_SHA256 <<< "${CORE_PACKAGE_FIELDS}"
+[[ -n "${CORE_PACKAGE_PREFIX}" && -n "${CORE_RUNTIME_SOURCE}" && -n "${CORE_RUNTIME_SHA256}" ]] || {
+  echo "Core package evidence did not provide a runtime" >&2
+  exit 1
+}
+[[ "$(dir_hash "${BINDING_ROOT}/include")" == "$(dir_hash "${CORE_PACKAGE_PREFIX}/include")" ]] || {
+  echo "Go package headers do not match the approved Core package" >&2
+  exit 1
+}
+
 platform_source_dir() {
   case "$1" in
-    linux-x86_64|linux-aarch64|darwin-x86_64|darwin-aarch64)
+    linux-x86_64)
       printf '%s/native/%s\n' "${BINDING_ROOT}" "$1"
       ;;
     *)
-      echo "Unsupported Go package platform: $1" >&2
+      echo "Go package platform is not present in the supplied Core candidate: $1" >&2
       exit 2
       ;;
   esac
@@ -85,15 +215,6 @@ copy_platform_payload() {
   source_dir="$(platform_source_dir "${platform}")"
   target_dir="${STAGE_MODULE}/native/${platform}"
   mkdir -p "${target_dir}"
-  if [[ "${platform}" == darwin-* ]]; then
-    [[ -f "${source_dir}/libzlink.dylib" ]] || {
-      echo "Missing Go package runtime: ${source_dir}/libzlink.dylib" >&2
-      exit 1
-    }
-    cp -L "${source_dir}/libzlink.dylib" "${target_dir}/libzlink.dylib"
-    return
-  fi
-
   local versioned="${source_dir}/libzlink.so.${CORE_VERSION}"
   local major="${source_dir}/libzlink.so.${CORE_VERSION%%.*}"
   local linker="${source_dir}/libzlink.so"
@@ -102,10 +223,14 @@ copy_platform_payload() {
       echo "Missing Go package runtime: ${file}" >&2
       exit 1
     }
+    [[ "$(sha256sum "${file}" | awk '{print $1}')" == "${CORE_RUNTIME_SHA256}" ]] || {
+      echo "Go package runtime is not the approved Core candidate: ${file}" >&2
+      exit 1
+    }
   done
-  cp -L "${linker}" "${target_dir}/libzlink.so"
-  cp -L "${major}" "${target_dir}/libzlink.so.${CORE_VERSION%%.*}"
-  cp -L "${versioned}" "${target_dir}/libzlink.so.${CORE_VERSION}"
+  cp -L "${CORE_RUNTIME_SOURCE}" "${target_dir}/libzlink.so"
+  cp -L "${CORE_RUNTIME_SOURCE}" "${target_dir}/libzlink.so.${CORE_VERSION%%.*}"
+  cp -L "${CORE_RUNTIME_SOURCE}" "${target_dir}/libzlink.so.${CORE_VERSION}"
 }
 
 STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-package.XXXXXX")"
@@ -305,12 +430,23 @@ const manifest = {
 fs.writeFileSync(process.env.SOURCE_MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
 NODE
 SOURCE_MANIFEST_SHA256="$(sha256sum "${SOURCE_MANIFEST}" | awk '{print $1}')"
-MODULE_ZIP="${MODULE_ZIP}" MODULE_ZIP_SHA256="${ZIP_SHA256}" MODULE_PATH="${MODULE_PATH}" PACKAGE_VERSION="${PACKAGE_VERSION}" PLATFORMS="${PLATFORMS}" HEADER_SHA256="${HEADER_SHA256}" SOURCE_SHA256="${SOURCE_SHA256}" SOURCE_REVISION="${SOURCE_REVISION}" SOURCE_MANIFEST="${SOURCE_MANIFEST}" SOURCE_MANIFEST_SHA256="${SOURCE_MANIFEST_SHA256}" PACKAGE_SCRIPT="${SCRIPT_DIR}/build-wsl.sh" PACKAGE_SCRIPT_SHA256="${PACKAGE_SCRIPT_SHA256}" EVIDENCE="${EVIDENCE}" node <<'NODE'
+MODULE_ZIP="${MODULE_ZIP}" MODULE_ZIP_SHA256="${ZIP_SHA256}" MODULE_PATH="${MODULE_PATH}" PACKAGE_VERSION="${PACKAGE_VERSION}" PLATFORMS="${PLATFORMS}" HEADER_SHA256="${HEADER_SHA256}" SOURCE_SHA256="${SOURCE_SHA256}" SOURCE_REVISION="${SOURCE_REVISION}" SOURCE_MANIFEST="${SOURCE_MANIFEST}" SOURCE_MANIFEST_SHA256="${SOURCE_MANIFEST_SHA256}" PACKAGE_SCRIPT="${SCRIPT_DIR}/build-wsl.sh" PACKAGE_SCRIPT_SHA256="${PACKAGE_SCRIPT_SHA256}" EVIDENCE="${EVIDENCE}" CORE_CANDIDATE_MANIFEST="${CORE_CANDIDATE_MANIFEST}" CORE_PACKAGE_EVIDENCE="${CORE_PACKAGE_EVIDENCE}" CORE_CANDIDATE_MANIFEST_SHA256="${CORE_CANDIDATE_MANIFEST_SHA256}" CORE_CANDIDATE_AGGREGATE_SHA256="${CORE_CANDIDATE_AGGREGATE_SHA256}" CORE_APPROVAL_EVIDENCE_SHA256="${CORE_APPROVAL_EVIDENCE_SHA256}" CORE_PROVENANCE_PATH="${CORE_PROVENANCE_PATH}" CORE_PROVENANCE_SHA256="${CORE_PROVENANCE_SHA256}" CORE_RUNTIME_SOURCE="${CORE_RUNTIME_SOURCE}" CORE_RUNTIME_SHA256="${CORE_RUNTIME_SHA256}" node <<'NODE'
 const fs = require('fs');
 const record = {
   format: 1,
   module: process.env.MODULE_PATH,
   version: process.env.PACKAGE_VERSION,
+  coreCandidate: {
+    candidateManifest: process.env.CORE_CANDIDATE_MANIFEST,
+    candidateManifestSha256: process.env.CORE_CANDIDATE_MANIFEST_SHA256,
+    candidateAggregateSha256: process.env.CORE_CANDIDATE_AGGREGATE_SHA256,
+    packageEvidence: process.env.CORE_PACKAGE_EVIDENCE,
+    approvalEvidenceSha256: process.env.CORE_APPROVAL_EVIDENCE_SHA256,
+    provenanceManifest: process.env.CORE_PROVENANCE_PATH,
+    provenanceSha256: process.env.CORE_PROVENANCE_SHA256,
+    runtime: process.env.CORE_RUNTIME_SOURCE,
+    runtimeSha256: process.env.CORE_RUNTIME_SHA256,
+  },
   sourceRevision: process.env.SOURCE_REVISION,
   sourceManifest: process.env.SOURCE_MANIFEST,
   sourceManifestSha256: process.env.SOURCE_MANIFEST_SHA256,

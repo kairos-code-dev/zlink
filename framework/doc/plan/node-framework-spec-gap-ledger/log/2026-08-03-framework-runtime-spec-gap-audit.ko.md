@@ -279,7 +279,7 @@ disconnected 상태 즉시 반환은 별도 runtime gap으로 분류하지 않�
 
 사용자 지시에 따라 현재 작업 순서를 `runtime gap 구현·unit -> sample spec -> 전체 E2E`로 고정했다.
 runtime card마다 DDD state owner와 invariant, POSD red flag와 두 가지 대안은
-[`runtime POSD·DDD review`](log/2026-08-03-runtime-posd-ddd-review.ko.md)에 기록했다.
+[`runtime POSD·DDD review`](2026-08-03-runtime-posd-ddd-review.ko.md)에 기록했다.
 
 ### Runtime card 결과
 

@@ -383,9 +383,9 @@ Kotlin 코드로 바로 볼 수 있습니다.
   - [프록시](https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/)
 
 **서비스**
-- [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
-  - [SPOT](../../../../core/doc/guide/07-3-spot.ko.md)
-  - [Actor](../../../../core/doc/guide/07-4-actor.ko.md)
+- [Framework 서비스 개요](../../../../framework/doc/framework/common/guide/server/03-concepts.ko.md)
+  - [Spot](../../../../framework/doc/framework/common/guide/server/06-spot.ko.md)
+  - [Actor](../../../../framework/doc/framework/common/guide/server/07-actor-spot.ko.md)
 
 **운영**
 - [소켓 옵션](https://kairos-code-dev.github.io/zlink/guide/12-socket-options/)

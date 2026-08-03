@@ -38,9 +38,9 @@
 ### Services
 | 문서 | 설명 |
 |------|------|
-| [07-0-services.ko.md](../core/doc/guide/07-0-services.ko.md) | 서비스 계층 개요 |
-| [07-3-spot.ko.md](../core/doc/guide/07-3-spot.ko.md) | SPOT 토픽 PUB/SUB (위치투명 발행/구독) |
-| [07-4-actor.ko.md](../core/doc/guide/07-4-actor.ko.md) | Actor 모델 (위치투명 actor) |
+| [Framework 서비스 개요](../framework/doc/framework/common/guide/server/03-concepts.ko.md) | Framework 서비스와 객체 모델 개요 |
+| [Spot](../framework/doc/framework/common/guide/server/06-spot.ko.md) | Spot 생성·메시징·수명 |
+| [Actor](../framework/doc/framework/common/guide/server/07-actor-spot.ko.md) | Actor 모델과 Spot membership |
 
 ### Reference
 | 문서 | 설명 |
@@ -67,7 +67,7 @@
 | 언어 | 가이드 | 비고 |
 |------|------|------|
 | .NET | [dotnet/](../bindings/doc/guide/dotnet/index.ko.md) | LibraryImport, .NET 8+ |
-| C++ / Java / Node / Python / Go / Rust | [바인딩 가이드 목록](../bindings/doc/guide/README.ko.md) | 작성 예정 |
+| C++ / Java / Node / Python / Go / Rust | [바인딩 가이드 목록](../bindings/doc/guide/README.ko.md) | 언어별 사용법·타입 매핑 |
 
 ## 내부 구조 (internals/)
 
@@ -79,7 +79,7 @@
 | [stream-socket.ko.md](../core/doc/internals/stream-socket.ko.md) | STREAM 소켓 내부 구조, WS/WSS 최적화, 런타임 기본값 |
 | [socket-option-defaults.ko.md](../core/doc/internals/socket-option-defaults.ko.md) | 코드 기준 소켓 옵션 실효 기본값 |
 | [threading-model.ko.md](../core/doc/internals/threading-model.ko.md) | 스레딩 및 동시성 모델 |
-| [services-internals.ko.md](../core/doc/internals/services-internals.ko.md) | 서비스 계층 내부 설계 |
+| [Framework 내부 구조](../framework/doc/framework/common/internals/README.ko.md) | Framework runtime 내부 구조와 책임 경계 |
 | [design-decisions.ko.md](../core/doc/internals/design-decisions.ko.md) | 설계 결정 기록 |
 
 ## 빌드 및 개발 (building/)

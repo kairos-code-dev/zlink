@@ -714,8 +714,8 @@ Review coordinator는 각 round를 시작하기 전에 candidate commit SHA와 �
 
 각 실행에는 reviewer 이름, 실제 model ID와 version, reasoning level, candidate SHA, 검토
 prompt·rubric version과 실행 시각을 기록한다. 지정한 reviewer를 사용할 수 없으면 임의의
-model로 대체하지 않고 이 단계를 `차단`으로 둔다. 결과는
-`framework/doc/plan/log/inbound-dispatch-lane-core-review.ko.md`에 round별로 남긴다.
+model로 대체하지 않고 이 단계를 `차단`으로 둔다. 역사적 결과는
+[Core review 기록](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-core-review.ko.md)에서 확인한다. 이 기록은 현재 plan 묶음에서 제거된 legacy ledger다.
 
 #### 공통 검토 기준
 
@@ -834,8 +834,8 @@ test를 마친 뒤 version과 artifact 위치를 진행표에 기록한다.
 
 이 단계는 4단계의 bindings 변경을 Codex 5.6 High(`gpt-5.6-sol high`)가 검토한다. Claude
 Fable은 bindings review에 사용하지 않는다. Candidate commit SHA, 비교 기준, prompt·rubric
-version과 reviewer 실행 정보를 고정하고
-`framework/doc/plan/log/inbound-dispatch-lane-bindings-review.ko.md`에 기록한다.
+version과 reviewer 실행 정보를 고정한다. 역사적 결과는
+[bindings review 기록](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-bindings-review.ko.md)에서 확인한다.
 
 검토 범위는 2단계의 공통 검토 기준과 severity를 그대로 사용하되, 다음 항목을 네 binding과
 package 전체에서 확인한다.
@@ -929,7 +929,7 @@ pair reconnect, byte backpressure와 monitoring 회귀가 포함된다. `test_co
 확인했다.
 
 그 뒤 req/rep 경로에서 byte HWM이 드러낸 세 결함을 수정했다. 처리 내역과 근거는
-[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+[reqrep multipart rollback review](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
 §9에 있다.
 
 | 결함 | 근본 원인 | commit |
@@ -956,7 +956,7 @@ transport 모두에서 throughput이 높고 tail latency가 낮다. tcp는 261,0
 `status=complete`다. Memory amplification은 `core/study/hwm-bytes/` 하네스로 측정했다.
 Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 64 KiB에서 1.00이다. 측정 방법과 전체 수치는
-[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+[reqrep multipart rollback review](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
 §9.6과 §9.7에 있다.
 
 이로써 Core 1단계 완료 조건을 모두 만족한다. Clean review, perf smoke와 bindings 작업은
@@ -972,8 +972,8 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 | C-06 | Core | 내부 PAIR receive queue와 completion deque 제거 | Payload queue source 제거와 request/reply 전체 회귀 통과 | 완료 |
 | C-07 | Core | Core memory·성능·wire regression 검증 | Core 83/83, targeted 20회와 Valgrind error 0건. req/rep 결함 3건(`563e11d614`, `58aa55df8b`)과 inproc pair readiness(`0830b29317`) 수정 뒤 재통과. 같은 fixture로 측정한 count HWM 대비 여섯 transport throughput·tail latency 비교와 memory amplification 1.38(64 B)·1.00(64 KiB) 기록 | 완료 |
 | C-08 | Core | Core 정식 spec·monitoring·오류 문서 갱신 | Socket·context·polling·monitoring 정식 spec과 internals 동기화, public surface contract 통과 | 완료 |
-| CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | Candidate `d7d682bb1f`, 비교 기준 `8bc2aa6786`, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1 입력 manifest | 완료 |
-| CR-02 | Core review | Codex 5.6 High 독립 전체 review | `gpt-5.6-sol` high, [core review log](log/inbound-dispatch-lane-core-review.ko.md) round 1. `NOT CLEAN`(`Critical` 2, `High` 1, `Medium` 2) | 완료 |
+| CR-01 | Core review | Candidate SHA, 비교 기준과 공통 review 입력 고정 | Candidate `d7d682bb1f`, 비교 기준 `8bc2aa6786`, [core review 기록](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-core-review.ko.md) round 1 입력 manifest | 완료 |
+| CR-02 | Core review | Codex 5.6 High 독립 전체 review | `gpt-5.6-sol` high, [core review 기록](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-core-review.ko.md) round 1. `NOT CLEAN`(`Critical` 2, `High` 1, `Medium` 2) | 완료 |
 | CR-03 | Core review | 사용자 정책 변경 전 Claude Fable 독립 전체 review | Round 1~4 report와 finding을 core review log에 기록 | 완료 |
 | CR-04 | Core review | Finding 통합, severity와 대안 검토 | Round 1~4 finding과 disposition 기록 | 완료 |
 | CR-05 | Core review | `Medium` 이상 finding 수정과 회귀 검증 | Round 6의 `High` 4건·`Medium` 3건과 `Low` 1건을 모두 반영. Core non-serial 20/20, serial 63/63 통과 | 완료 |
@@ -987,7 +987,7 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 | B-03 | Bindings | Node.js binding과 package 갱신 | HWM contract 2/2, raw 31/31, npm clean consumer 통과. `zlink-systems-zlink-11.0.0.tgz` | 완료 |
 | B-04 | Bindings | C++ binding과 package 갱신 | Contract 10/10과 isolated CMake consumer 통과. `install/zlink-cpp/11.0.0` | 완료 |
 | B-05 | Bindings | 네 binding의 타입·단위·monitoring parity 확인 | 64-bit byte HWM·monitor ABI v2 parity와 package version 11.0.0 확인 | 완료 |
-| BR-01 | Bindings review | Candidate SHA, 비교 기준과 review 입력 고정 | Candidate `9f08fdefec`, base `6985cf1a61`, [review log](log/inbound-dispatch-lane-bindings-review.ko.md) | 완료 |
+| BR-01 | Bindings review | Candidate SHA, 비교 기준과 review 입력 고정 | Candidate `9f08fdefec`, base `6985cf1a61`, [bindings review 기록](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-bindings-review.ko.md) | 완료 |
 | BR-02 | Bindings review | Codex 5.6 High 전체 review | `gpt-5.6-sol` high, `NOT CLEAN`(`Medium` 2, `Low` 1) | 완료 |
 | BR-03 | Bindings review | `Medium` 이상 finding 수정과 회귀 검증 | Fix candidate `37f4f394b1`, finding 3건 모두 반영. C++ 10/10, Node 2/2·31/31 | 완료 |
 | BR-04 | Bindings review | 변경 candidate의 검증 | 사용자 지시에 따라 추가 review 없이 Round 1 finding 반영 candidate의 contract test로 종료 | 완료 |
@@ -1021,7 +1021,7 @@ Accounted byte 기준으로 64 B payload에서 1.38, 1 KiB에서 1.04,
 C-07 증거는 `d7d682bb1f`다. Byte HWM이 여섯 transport 모두에서 count HWM보다 빠르고 tail
 latency가 낮으며, memory amplification은 accounted byte 기준 64 B에서 1.38, 64 KiB에서 1.00이다.
 측정 방법·수치·결함별 근거는
-[reqrep multipart rollback review](log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
+[reqrep multipart rollback review](https://github.com/kairos-code-dev/zlink/blob/3291e338f4f700484780560cd81345a647ef0948/framework/doc/plan/log/inbound-dispatch-lane-reqrep-multipart-rollback-review.ko.md)
 §9에 있다.
 
 **끝난 것.** 이 문서에서 승인한 C-01~BP-03을 모두 마쳤다. Core candidate는 `6985cf1a61`,

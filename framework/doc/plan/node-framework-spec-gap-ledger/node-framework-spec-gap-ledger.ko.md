@@ -1456,7 +1456,7 @@ Domain/Application/Infrastructure 책임과 의존 방향은 유지한다.
 - 계약 근거: [Node sample README](../../../../framework/languages/node/samples/README.ko.md),
   [공통 sample runner 정책](../../framework/common/sample/README.ko.md),
   [Bingo 완료 기준](../../framework/common/sample/bingo/README.ko.md#11-완료-기준),
-  [TicTacToe runner](../../framework/common/sample/tictactoe/README.ko.md#10-runner와-smoke-실행)
+  [TicTacToe runner](../../framework/common/sample/tictactoe/README.ko.md#10-smoke-실행)
 - 현재 source: [Node package.json](../../../../framework/languages/node/package.json):57,
   [Node sample README](../../../../framework/languages/node/samples/README.ko.md):3,
   [run_samples.sh](../../../../framework/languages/node/samples/run_samples.sh),
@@ -1476,7 +1476,7 @@ Shell과 PowerShell 통합 runner는 일곱 sample을 포함하고, Bingo client
 **초기 판정: `test gap`. 현재 bounded 실행은 50/51이며 process evidence는 미충족이다.**
 
 - 분류: 공통 sample wire와 flow를 Node 구현에 대응시키는 contract regression 및 process evidence gap이다.
-- 계약 근거: [Sample 작성 guide §8](../../../../doc/principal/documentation/sample-writing-guide.ko.md#8-spec-기능-대조와-최종-review),
+- 계약 근거: [Sample 작성 guide §8](../../../../doc/principal/documentation/sample-writing-guide.ko.md#8-작성-후-contract-review),
   [공통 sample 완료 정책](../../framework/common/sample/README.ko.md)
 - 현재 source: [Node sample contract tests](../../../../framework/languages/node/test/contract/),
   [2026-08-02 audit log](log/2026-08-02-sample-gap-audit-baseline.ko.md)

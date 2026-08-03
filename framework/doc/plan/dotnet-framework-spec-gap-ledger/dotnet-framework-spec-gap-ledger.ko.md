@@ -903,7 +903,7 @@ descriptor 부재만으로 닫지 않고, admission이 끝나지 않은 intent�
 
 [Transport liveness §5](../../framework/common/spec/29-transport-liveness.ko.md#5-ready와-장애-판정)는
 connection의 ready 상태와 descriptor·owner lease를 분리하고, [§7](../../framework/common/spec/29-transport-liveness.ko.md#7-location-store와-host-종료)은
-이미 수락한 처리에 필요한 connection을 즉시 끊지 않도록 한다. [§9](../../framework/common/spec/29-transport-liveness.ko.md#9-구현과-contract-test-검증-요구)은
+이미 수락한 처리에 필요한 connection을 즉시 끊지 않도록 한다. [§9](../../framework/common/spec/29-transport-liveness.ko.md#9-구현-및-contract-test-검증-요구)은
 peer 실패를 다른 connection이나 host 전체 오류로 확대하지 않는지 검증하도록 한다.
 
 `IMeshNode.RemovePeerConnectionIfNotAdmitted(...)`는 peer state 확인과 intent 제거를 한

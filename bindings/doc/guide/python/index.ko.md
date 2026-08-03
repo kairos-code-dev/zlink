@@ -198,7 +198,7 @@ python run_samples.py   # 전체 실행
   — [PAIR](https://kairos-code-dev.github.io/zlink/guide/03-1-pair/) · [PUB/SUB](https://kairos-code-dev.github.io/zlink/guide/03-2-pubsub/) · [DEALER](https://kairos-code-dev.github.io/zlink/guide/03-3-dealer/) · [ROUTER](https://kairos-code-dev.github.io/zlink/guide/03-4-router/) · [STREAM](https://kairos-code-dev.github.io/zlink/guide/03-5-stream/) · [프록시](https://kairos-code-dev.github.io/zlink/guide/03-6-proxy/)
 
 **서비스**
-- [서비스 개요](../../../../core/doc/guide/07-0-services.ko.md)
+- [Framework 서비스 개요](../../../../framework/doc/framework/common/guide/server/03-concepts.ko.md)
 
 **운영**
 - [소켓 옵션](https://kairos-code-dev.github.io/zlink/guide/12-socket-options/)

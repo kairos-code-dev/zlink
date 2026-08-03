@@ -51,8 +51,7 @@ internal context, link to the internals document instead.
 ### Services
 | Document | Description |
 |----------|-------------|
-| [07-0-services.md](../core/doc/guide/07-0-services.md) | Service layer overview |
-| [07-3-spot.md](../core/doc/guide/07-3-spot.md) | SPOT (location-transparent messaging: topic pub/sub + routed direct delivery) |
+| [Framework service overview](../framework/doc/framework/common/guide/server/03-concepts.ko.md) | Framework service and object model overview |
 
 ### Reference
 | Document | Description |
@@ -92,7 +91,7 @@ language-specific rules.
 | [stream-socket.md](../core/doc/internals/stream-socket.en.md) | STREAM socket internals, WS/WSS optimization, runtime defaults |
 | [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.en.md) | Effective socket option defaults from code |
 | [threading-model.md](../core/doc/internals/threading-model.en.md) | Threading and concurrency model |
-| [services-internals.md](../core/doc/internals/services-internals.md) | Service layer internal design (overview) |
+| [Framework internals](../framework/doc/framework/common/internals/README.ko.md) | Framework runtime structure and ownership boundaries |
 | [design-decisions.md](../core/doc/internals/design-decisions.en.md) | Design decision records |
 
 ## Build and Development (building/)

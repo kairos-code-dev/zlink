@@ -20,6 +20,11 @@ Darwin payload는 현재 Core 11 runtime으로 검증되지 않았다. Root의 `
 통과했다. Service API, Spot, Actor와 MeshNode projection은 제거했다. 따라서 현재 판정은 **PARTIAL / NOT
 CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 
+사용자의 명시 요청에 따라 구현자 자체 검토와 승인을 다시 수행했으며, 결과는
+[`log/go/2026-08-04-self-review-approval.ko.md`](log/go/2026-08-04-self-review-approval.ko.md)에 기록했다.
+이 승인은 Go source, POSD·DDD refactoring, Linux x86_64 package와 clean consumer 범위에만 적용하며,
+독립 review로 가장하지 않는다.
+
 - Go package는 현재 Core candidate의 `V11-M3-CORE-PKG` pass evidence와 연결되지만, V11-R2 review가
   `independent: false`이므로 독립 review gate는 닫히지 않았다.
 - Linux arm64와 macOS payload의 Core 11 runtime 및 native consumer가 검증되지 않았다.
@@ -173,7 +178,7 @@ Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공�
 Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` 경로는 해당 helper를 호출하지 않는다.
 이 경계는 `6d698c7e68`에서 고정했고, `427fbce0f5c` source로 생성한 fresh6 extracted package smoke에서 다시 확인했다.
 
-### GO-07 — 구현 후 POSD·DDD 리팩터링과 Codex review — PARTIAL / NOT CLEAN
+### GO-07 — 구현 후 POSD·DDD 리팩터링과 Codex review — PASS (self-review scope)
 
 현재까지 다음 설계 결정을 적용했다.
 
@@ -204,10 +209,11 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 같은 candidate를 요구하는 platform gate를 기록 |
 | Submit draft boundary | `7f27ed6bc5` | Go·Rust submit 반환 초안을 구현 전 문서로 branch에 고정하고 public signature는 바꾸지 않음 |
 
-그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
-`independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,
-`performance-cost`, `dead-code`, `test/evidence` finding이 기록된 fresh manifest review와 `CLEAN` 판정이
-남아 있다.
+사용자의 명시 요청에 따라 위 범위를 구현자 자체 검토로 다시 읽고 승인했다. 재검증 결과는
+[`log/go/2026-08-04-self-review-approval.ko.md`](log/go/2026-08-04-self-review-approval.ko.md)에 있다.
+다만 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence는 없다. V11-R2 Core review도
+`independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. 따라서 자체 검토 범위는 승인했지만,
+독립 `CLEAN` review를 요구하는 최종 완료 gate는 별도로 열려 있다.
 
 이번 자체 검토의 위험 신호, 대안 비교, 변경 경계와 source gate 결과는
 [`log/go/2026-08-04-posd-ddd-self-review.ko.md`](log/go/2026-08-04-posd-ddd-self-review.ko.md)에 기록했다.

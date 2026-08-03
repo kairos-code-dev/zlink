@@ -6,6 +6,7 @@ import {
   type ZLinkExecutionBarrierClaim,
   ZLinkSpotSerialTurn
 } from '../execution';
+import type { SpotId } from '../../contracts';
 
 export class ZLinkSpotSerialExecutor {
   private tail: Promise<unknown> = Promise.resolve();
@@ -14,7 +15,10 @@ export class ZLinkSpotSerialExecutor {
   private executionBarrier: ZLinkExecutionBarrier | undefined;
   activeTurnId = 0;
 
-  constructor(private readonly yieldAllowed = true) {}
+  constructor(
+    private readonly yieldAllowed = true,
+    readonly sourceSpotId?: SpotId
+  ) {}
 
   get isExecuting(): boolean {
     return this.depth > 0;

@@ -36,6 +36,7 @@ import {
   IoWorkerBatchRes,
   CpuWorkerAwaitMsg,
   SelfCycleMsg,
+  SelfSendMsg,
   ProbeReq
 } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
@@ -90,8 +91,9 @@ class AwaitSession implements ZLinkSession {
       for (const actor of reply.actors) {
         await this.context.actors.bindOrGet({
           actorId: actor.actorId,
+          meshName: AutomaticTurnDispatchNames.spotChannel,
           nodeRid: actor.nodeRid,
-          generation: BigInt(actor.generation)
+          objectGeneration: BigInt(actor.generation)
         }, signal);
       }
       this.context.client.reply(reply).submit();
@@ -204,6 +206,11 @@ class AwaitSession implements ZLinkSession {
 
     if (dispatch.packetName === 'SelfCycleMsg') {
       await this.relayToSpot(dispatch, decodePacket(payload, SelfCycleMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'SelfSendMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, SelfSendMsg), signal);
       return;
     }
 
@@ -323,7 +330,7 @@ class AwaitSession implements ZLinkSession {
     await this.ensurePlaySpot(request.spotId, signal);
     const spot = await this.requireSpotHandle(request.spotId, signal);
     await this.outbound
-      .requestToSpot(spot, Object.assign(new AwaitReq(), {
+      .requestToSpot(spot.spotId, Object.assign(new AwaitReq(), {
         requestId: request.requestId,
         delayMs: request.delayMs,
         correlationId: 'shutdown'
@@ -345,7 +352,7 @@ class AwaitSession implements ZLinkSession {
     await this.ensurePlaySpot(request.spotId, signal);
     const spot = await this.requireSpotHandle(request.spotId, signal);
     await this.outbound
-      .sendToSpot(spot, Object.assign(new ProbeMsg(), {
+      .sendToSpot(spot.spotId, Object.assign(new ProbeMsg(), {
         requestId: request.requestId,
         marker: 'shutdown-recovery-probe'
       }))
@@ -406,7 +413,7 @@ class AwaitSession implements ZLinkSession {
   private async relayToSpot(
     dispatch: ZLinkSessionDispatchContext,
     request: HoldMsg | AwaitMsg | WorkerAwaitMsg | AwaitTimeoutMsg | AwaitCancelMsg | ProbeMsg
-      | CounterResetMsg | CounterAwaitMsg | HttpAwaitMsg | CpuWorkerAwaitMsg | SelfCycleMsg
+      | CounterResetMsg | CounterAwaitMsg | HttpAwaitMsg | CpuWorkerAwaitMsg | SelfCycleMsg | SelfSendMsg
       | TimerStartMsg | TimerStopMsg | RemoteSpotAwaitMsg,
     signal?: AbortSignal
   ): Promise<void> {
@@ -416,7 +423,7 @@ class AwaitSession implements ZLinkSession {
     }
     const spot = await this.requireSpotHandle(spotId, signal);
     await this.outbound
-      .sendToSpot(spot, request)
+      .sendToSpot(spot.spotId, request)
       .submit();
     this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=sent`);
   }
@@ -432,7 +439,7 @@ class AwaitSession implements ZLinkSession {
     }
     const spot = await this.requireSpotHandle(spotId, signal);
     const reply = await this.outbound
-      .requestToSpot(spot, request)
+      .requestToSpot(spot.spotId, request)
       .timeout(5000)
       .submit<TReply>(signal);
     this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=replied`);
@@ -454,7 +461,7 @@ class AwaitSession implements ZLinkSession {
     }
     const spot = await this.requireSpotHandle(spotId, signal);
     await this.outbound
-      .requestToSpot(spot, request)
+      .requestToSpot(spot.spotId, request)
       .timeout(5000)
       .submit(signal);
     this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotId}|packet=${dispatch.packetName}|status=replied`);

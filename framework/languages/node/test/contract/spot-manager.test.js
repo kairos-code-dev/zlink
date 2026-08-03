@@ -2074,6 +2074,172 @@ test('spot manager rejects one-phase native remote join without materializing a 
   nativeJoinMessage.close();
 });
 
+test('Mesh actor return to Entry Spot completes after the lifecycle callback', async () => {
+  const entryNodeRid = zlink.RoutingId.from('entry-node');
+  const actor = { actorId: 'player-1' };
+  const replies = [];
+  const events = [];
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    entryNodeRidProvider: () => entryNodeRid,
+    actorResolver(actorId) {
+      return actorId === actor.actorId ? actor : undefined;
+    },
+    async dispatchEntryActorJoin(meshName, joinedActor) {
+      events.push('lifecycle');
+      events.push([meshName, joinedActor]);
+    }
+  });
+
+  await manager.dispatchMeshActorJoin('test.mesh', {
+    spotId: entryNodeRid,
+    actor: null
+  }, {
+    kind: framework.ReceiveKind.SpotControl,
+    kindData: {
+      kind: 'actorControl',
+      currentActor: {
+        nodeRid: entryNodeRid,
+        actorId: actor.actorId,
+        generation: 1n
+      },
+      currentMembershipEpoch: 2n
+    },
+    parts: [],
+    replyActorJoin(code) {
+      events.push('reply');
+      replies.push(code);
+      return zlink.SubmitResult.Ok;
+    }
+  });
+
+  assert.deepEqual(replies, [0]);
+  assert.deepEqual(events, ['lifecycle', ['test.mesh', actor], 'reply']);
+});
+
+test('Mesh actor return to Entry Spot resolves a moving actor through the lifecycle resolver', async () => {
+  const entryNodeRid = zlink.RoutingId.from('entry-node');
+  const actor = { actorId: 'player-1' };
+  const replies = [];
+  const events = [];
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    entryNodeRidProvider: () => entryNodeRid,
+    actorResolver: () => undefined,
+    actorLifecycleResolver(actorId) {
+      return actorId === actor.actorId ? actor : undefined;
+    },
+    async dispatchEntryActorJoin(meshName, joinedActor) {
+      events.push([meshName, joinedActor]);
+    }
+  });
+
+  await manager.dispatchMeshActorJoin('test.mesh', {
+    spotId: entryNodeRid,
+    actor: null
+  }, {
+    kind: framework.ReceiveKind.SpotControl,
+    kindData: {
+      kind: 'actorControl',
+      currentActor: {
+        nodeRid: entryNodeRid,
+        actorId: actor.actorId,
+        generation: 1n
+      },
+      currentMembershipEpoch: 3n
+    },
+    parts: [],
+    replyActorJoin(code) {
+      replies.push(code);
+      return zlink.SubmitResult.Ok;
+    }
+  });
+
+  assert.deepEqual(replies, [0]);
+  assert.deepEqual(events, [['test.mesh', actor]]);
+});
+
+test('formal remote Actor transfer to Entry Spot materializes state before commit', async () => {
+  const entryNodeRid = zlink.RoutingId.from('entry-node');
+  const actor = { actorId: 'player-1', context: { actorId: 'player-1' } };
+  const replies = [];
+  const events = [];
+  const detached = [];
+  const transferMessage = zlink.Message.from(JSON.stringify({
+    packetName: '__zlink.actor.join_spot.request',
+    actorType: 'PlayerActor',
+    actorEntryNodeRid: String(entryNodeRid),
+    transferId: 'formal-entry-transfer',
+    transferState: Buffer.from('player-state').toString('base64'),
+    request: Buffer.from('join-entry').toString('base64'),
+    handoffBacklog: []
+  }));
+  let materialized = false;
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    entryNodeRidProvider: () => entryNodeRid,
+    actorTransferRuntime: {
+      async materializeRoutedActor(actorId, actorType, _adapterKey, transferState) {
+        assert.equal(actorId, actor.actorId);
+        assert.equal(actorType, 'PlayerActor');
+        assert.equal(transferState.getString('utf8'), 'player-state');
+        materialized = true;
+        return { actor, actorRef: { actorId, nodeRid: entryNodeRid, generation: 2n } };
+      },
+      rememberRoutedActorTransferTarget() {},
+      async rollbackRoutedActor() {}
+    },
+    detachedTaskRunner: {
+      runDetached(_name, callback) {
+        detached.push(callback);
+      }
+    },
+    async dispatchEntryActorJoin(meshName, joinedActor, backlog) {
+      events.push([meshName, joinedActor, backlog]);
+    }
+  });
+
+  try {
+    await manager.dispatchMeshActorJoin('test.mesh', {
+      spotId: entryNodeRid,
+      actor: null
+    }, {
+      kind: framework.ReceiveKind.SpotControl,
+      kindData: {
+        kind: 'actorControl',
+        currentActor: {
+          nodeRid: zlink.RoutingId.from('source-node'),
+          actorId: actor.actorId,
+          generation: 1n
+        },
+        currentMembershipEpoch: 4n
+      },
+      parts: [transferMessage],
+      replyActorJoin(code) {
+        replies.push(code);
+        return zlink.SubmitResult.Ok;
+      }
+    });
+
+    assert.equal(materialized, true);
+    assert.deepEqual(replies, [0]);
+    assert.equal(detached.length, 1);
+    assert.deepEqual(events, []);
+    assert.equal(
+      manager.completeFormalSourceLeaveTerminal(
+        actor.actorId,
+        'formal-entry-transfer',
+        true
+      ),
+      true
+    );
+    await detached[0]();
+    assert.deepEqual(events, [['test.mesh', actor, []]]);
+  } finally {
+    transferMessage.close();
+  }
+});
+
 test('spot outbound requestToChannel completion runs on the spot serial executor', async () => {
   const events = [];
   class StageSpot {}

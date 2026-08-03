@@ -6,14 +6,21 @@ const framework = require('../../packages/framework/dist/internal');
 const {
   ZLinkRuntimeRouteTransport
 } = require('../../packages/framework/dist/runtime/channels/channel-transports');
+const {
+  ZLinkFrameworkInternalErrorKind,
+  internalFrameworkErrorKind
+} = require('../../packages/framework/dist/runtime/framework-errors-internal');
+const {
+  ServiceStaleGenerationError
+} = require('../../packages/framework/dist/runtime/foundation/service-stateful-registry');
 
-function capturingTransport(capture) {
+function capturingTransport(capture, submissionError = new Error('captured')) {
   const node = {
     entrySpot() {
       return {
         requestToSpot(_nodeRid, _spotId, _generation, _parts, options) {
           capture(options);
-          throw new Error('captured');
+          throw submissionError;
         }
       };
     }
@@ -76,4 +83,38 @@ test('direct Spot submission requires an authority fence only for authority-back
     ownerLeaseGeneration: 17n,
     storeVersion: 'store-19'
   });
+});
+
+test('raw stale authority submission becomes a retryable Spot generation error', async () => {
+  const transport = capturingTransport(
+    () => {},
+    new ServiceStaleGenerationError('spot', 'room-1')
+  );
+  const request = zlink.Message.from(Buffer.from(JSON.stringify({ packetName: 'Packet' })));
+  try {
+    await assert.rejects(
+      transport.requestRawToSpot({
+        routerChannelId: 'mesh',
+        targetNodeRid: 'node-b',
+        spotId: 'room-1',
+        spotKind: framework.ZLinkSpotKind.User,
+        targetSpotGeneration: 7n,
+        targetNodeGeneration: 11n,
+        authorityOwnerGeneration: 13n,
+        targetOwnerId: 'owner-b',
+        ownerLeaseGeneration: 17n,
+        authorityStoreVersion: 'store-19'
+      }, request, {}),
+      (error) => {
+        assert.equal(
+          internalFrameworkErrorKind(error),
+          ZLinkFrameworkInternalErrorKind.SpotGenerationStale
+        );
+        assert.match(error.message, /stale Spot authority fence/);
+        return true;
+      }
+    );
+  } finally {
+    request.close();
+  }
 });

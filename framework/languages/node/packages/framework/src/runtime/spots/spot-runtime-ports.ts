@@ -117,6 +117,10 @@ export interface ZLinkSpotActorTransferRuntime {
     signal?: AbortSignal
   ): Promise<ZLinkRemoteActorJoinActor>;
   materializeRoutedActor: ZLinkRoutedActorTransferProvider;
+  rememberRoutedActorTransferTarget(
+    actorId: string,
+    target: ZLinkRemoteBoundSessionTarget | undefined
+  ): void;
   prepareRecoveryRoutedActor(
     actorId: string,
     actorType: string,

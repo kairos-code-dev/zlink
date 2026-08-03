@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ZLinkPacket, ZLinkTimerOverrunPolicy, type ZLinkHandlerContext, type ZLinkSpotPacketHandler, type ZLinkSpotTimerHandler, type ZLinkTimerTick } from '@zlink-systems/framework';
+import { ZLinkPacket, ZLinkTimerOverrunPolicy, type ZLinkMessageContext, type ZLinkSpotPacketHandler, type ZLinkSpotTimerHandler, type ZLinkTimerTick } from '@zlink-systems/framework';
 import { DelayReq, type DelayRes, type TimerStartMsg, type TimerStopMsg } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
@@ -11,7 +11,7 @@ import { AwaitTimerState } from '../Spots/await-timer-state';
 export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, TimerStartMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: TimerStartMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: TimerStartMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const state = new AwaitTimerState(request.requestId, request.timerName, request.mode, request.delayMs);
     if (!spot.tryAddTimerState(state)) {
@@ -38,7 +38,7 @@ export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<AwaitPro
 @Injectable()
 @ZLinkPacket('TimerStopMsg')
 export class TimerStopCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, TimerStopMsg> {
-  async handle(spot: AwaitProbeSpot, request: TimerStopMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: TimerStopMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     spot.stopScenarioTimers(request.requestId);
   }

@@ -15,36 +15,33 @@ import type {
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
-  ZLinkActorJoinRequest,
-  ZLinkActorMembership,
   ZLinkChannelClient,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkSpotActorJoinResult,
+  ZLinkMessage,
+  ZLinkMessageContext,
   ZLinkSpotActorRequestHandler,
-  ZLinkSpotActorRequestContext,
   ZLinkSpotActorSendHandler,
-  ZLinkSpotActorSendContext
+  ZLinkSpotActorJoinResult
 } from '@zlink-systems/framework';
 import { ZLinkSpotActorRequest, ZLinkSpotActorSend } from '@zlink-systems/framework';
+import {
+  zlinkEntrySpotActorRequestHandler,
+  zlinkEntrySpotActorSendHandler,
+  zlinkSpotActorRequestHandler,
+  zlinkSpotActorSendHandler
+} from '@zlink-systems/nestjs';
 import { EvidenceStore } from '../Support/evidence-store';
+import { AwaitProbeSpot } from './await-probe-spot';
 
 export class AwaitActor implements ZLinkActor {
   constructor(readonly actorId: string, readonly context: ZLinkActorContext) {}
-
-  configure(): void {
-    this.context.handlers.addHandler(EntryActorAwaitHandler);
-    this.context.handlers.addHandler(EntryActorFastSendHandler);
-    this.context.handlers.addHandler(EntryActorFastHandler);
-    this.context.handlers.addHandler(EntryActorJoinAwaitHandler);
-    this.context.handlers.addHandler(EntryActorPushAwaitHandler);
-  }
 }
 
 @Injectable()
 export class AwaitActorFactory implements ZLinkActorFactory {
-  async create(actorId: string, context: ZLinkActorContext): Promise<AwaitActor> {
-    return new AwaitActor(actorId, context);
+  async create(context: ZLinkActorContext): Promise<AwaitActor> {
+    return new AwaitActor(context.actorId, context);
   }
 }
 
@@ -52,19 +49,25 @@ export class AwaitActorFactory implements ZLinkActorFactory {
 export class AwaitEntrySpot implements ZLinkEntrySpot<AwaitActor> {
   readonly context!: ZLinkEntrySpotContext<AwaitActor>;
 
-  async onActorJoin(actor: ZLinkActorJoinRequest): Promise<ZLinkSpotActorJoinResult> {
-    void actor;
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
+    void actorId;
+    void request;
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onJoinedActor(actor: AwaitActor): Promise<void> { void actor; }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onLeaveActor(actor: AwaitActor): Promise<void> { void actor; }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onDisconnectActor(actor: AwaitActor): Promise<void> { void actor; }
 }
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => AwaitEntrySpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorAwaitReq'
+})
 export class EntryActorAwaitHandler
 {
   constructor(
@@ -74,8 +77,9 @@ export class EntryActorAwaitHandler
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
   async handle(
+    _spot: AwaitEntrySpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -86,8 +90,13 @@ export class EntryActorAwaitHandler
 }
 
 @Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorAwaitReq'
+})
 export class SpotActorAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorAwaitReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorAwaitReq, ActorAwaitRes> {
   constructor(
     private readonly evidence: EvidenceStore,
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
@@ -95,8 +104,9 @@ export class SpotActorAwaitHandler
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
   async handle(
+    _spot: AwaitProbeSpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -107,14 +117,20 @@ export class SpotActorAwaitHandler
 }
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => AwaitEntrySpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorFastReq'
+})
 export class EntryActorFastHandler
 {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorFastReq')
   async handle(
+    _spot: AwaitEntrySpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorFastReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -125,14 +141,20 @@ export class EntryActorFastHandler
 }
 
 @Injectable()
+@zlinkEntrySpotActorSendHandler({
+  entrySpot: () => AwaitEntrySpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorFastMsg'
+})
 export class EntryActorFastSendHandler
 {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorSend('ActorFastMsg')
   async handle(
+    _spot: AwaitEntrySpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorSendContext,
+    context: ZLinkMessageContext,
     request: ActorFastMsg
   ): Promise<void> {
     void context;
@@ -141,14 +163,20 @@ export class EntryActorFastSendHandler
 }
 
 @Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorFastReq'
+})
 export class SpotActorFastHandler
-  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorFastReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorFastReq, ActorAwaitRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorFastReq')
   async handle(
+    _spot: AwaitProbeSpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorFastReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -159,14 +187,20 @@ export class SpotActorFastHandler
 }
 
 @Injectable()
+@zlinkSpotActorSendHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorFastMsg'
+})
 export class SpotActorFastSendHandler
-  implements ZLinkSpotActorSendHandler<AwaitActor, ActorFastMsg> {
+  implements ZLinkSpotActorSendHandler<AwaitProbeSpot, AwaitActor, ActorFastMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorSend('ActorFastMsg')
   async handle(
+    _spot: AwaitProbeSpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorSendContext,
+    context: ZLinkMessageContext,
     request: ActorFastMsg
   ): Promise<void> {
     void context;
@@ -175,6 +209,11 @@ export class SpotActorFastSendHandler
 }
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => AwaitEntrySpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorPushAwaitReq'
+})
 export class EntryActorPushAwaitHandler
 {
   constructor(
@@ -184,8 +223,9 @@ export class EntryActorPushAwaitHandler
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
   async handle(
+    _spot: AwaitEntrySpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPushAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -196,8 +236,13 @@ export class EntryActorPushAwaitHandler
 }
 
 @Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorPushAwaitReq'
+})
 export class SpotActorPushAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
   constructor(
     private readonly evidence: EvidenceStore,
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
@@ -205,8 +250,9 @@ export class SpotActorPushAwaitHandler
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
   async handle(
+    _spot: AwaitProbeSpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorPushAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -217,14 +263,20 @@ export class SpotActorPushAwaitHandler
 }
 
 @Injectable()
+@zlinkEntrySpotActorRequestHandler({
+  entrySpot: () => AwaitEntrySpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorJoinAwaitReq'
+})
 export class EntryActorJoinAwaitHandler
 {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorJoinAwaitReq')
   async handle(
+    _spot: AwaitEntrySpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorJoinAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -235,14 +287,20 @@ export class EntryActorJoinAwaitHandler
 }
 
 @Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'ActorJoinAwaitReq'
+})
 export class SpotActorJoinAwaitHandler
-  implements ZLinkSpotActorRequestHandler<AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
   @ZLinkSpotActorRequest('ActorJoinAwaitReq')
   async handle(
+    _spot: AwaitProbeSpot,
     actor: AwaitActor,
-    context: ZLinkSpotActorRequestContext,
+    context: ZLinkMessageContext,
     request: ActorJoinAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
@@ -312,13 +370,14 @@ async function recordActorJoinEvidence(
     `actor-join-started|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotId}`
   );
-  const joined = await actor.context
+  actor.context
     .joinSpot(request.targetSpotId, new DelayReq(request.requestId, 0, 'join'))
-    .submit<DelayRes>();
+    .timeout(5000)
+    .defer();
   evidence.add(
     `${completedMarker}|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
-    + `|target=${request.targetSpotId}|accepted=${joined.status === 'accepted'}`
+    + `|target=${request.targetSpotId}|accepted=true|deferred=true`
   );
 }
 

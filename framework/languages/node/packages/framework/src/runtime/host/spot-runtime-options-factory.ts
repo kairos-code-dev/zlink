@@ -108,6 +108,13 @@ export class ZLinkSpotRuntimeOptionsFactory {
           requestTerminal
         );
       },
+      dispatchEntryActorJoin: async (meshName, actor, handoffBacklog) => {
+        const runtime = this.options.spotNodeRuntime();
+        if (runtime === undefined) {
+          throw new ZLinkConfigurationException('Entry Spot actor join requires the MeshNode runtime.');
+        }
+        await runtime.dispatchEntryActorJoin(meshName, actor, handoffBacklog);
+      },
       channelClient: new DefaultZLinkChannelClient(this.options.registration, this.options.channelTransport),
       fanoutClient: new DefaultZLinkFanoutClient(this.options.registration, this.options.channelTransport),
       spotPublisherClient: new DefaultZLinkSpotPublisherClient(
@@ -129,6 +136,10 @@ export class ZLinkSpotRuntimeOptionsFactory {
       locationLifecycle: this.options.locationLifecycle(),
       releaseInstanceAuthority: (meshName, spotId) =>
         this.options.releaseInstanceAuthority(meshName, String(spotId)),
+      instanceSpotApplicationTargetProvider: (meshName, spotId) =>
+        this.options.spotNodeRuntime()
+          ?.meshNode(meshName)
+          ?.instanceSpotApplicationTarget?.(String(spotId)),
       createNativeSpot: (meshName, spotId, authority) => {
         const node = this.options.spotNodeRuntime()?.meshNode(meshName);
         if (node === undefined) {

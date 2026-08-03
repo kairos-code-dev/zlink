@@ -115,7 +115,12 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
-  readonly leaveActor: (spotId: RoutingId, actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
+  readonly leaveActor: (
+    spotId: RoutingId,
+    actor: ZLinkActor,
+    signal?: AbortSignal,
+    meshName?: string
+  ) => Promise<void>;
   readonly closeSpot: (
     meshName: string,
     spotId: RoutingId,
@@ -167,7 +172,7 @@ export class ZLinkSpotActivationLifecycle {
     authorityOwnerGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActivation> {
-    const serial = new ZLinkSpotSerialExecutor(true);
+    const serial = new ZLinkSpotSerialExecutor(true, spotId);
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
     applySpotHandlerRegistrations(
@@ -236,7 +241,7 @@ export class ZLinkSpotActivationLifecycle {
           },
           ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
           leaveActor: (actor, contextSignal) =>
-            this.options.leaveActor(spotId, actor, contextSignal)
+            this.options.leaveActor(spotId, actor, contextSignal, meshName)
         })
       : createInstanceSpotContext({
           ...common,
@@ -307,7 +312,7 @@ export class ZLinkSpotActivationLifecycle {
     objectGeneration: bigint,
     signal?: AbortSignal
   ): Promise<ZLinkSpotActivation> {
-    const serial = new ZLinkSpotSerialExecutor(true);
+    const serial = new ZLinkSpotSerialExecutor(true, spotId);
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
     const handlers = new DefaultZLinkSpotHandlerRegistry(actorHandlers);
     const instanceHandlers = new DefaultZLinkInstanceSpotHandlerRegistry(handlers);
@@ -445,7 +450,8 @@ export class ZLinkSpotActivationLifecycle {
     const executionMode = this.options.userSpotExecutionMode?.(meshName, spotType)
       ?? ZLinkUserSpotExecutionMode.SpotWide;
     const serial = new ZLinkSpotSerialExecutor(
-      executionMode === ZLinkUserSpotExecutionMode.SpotWide
+      executionMode === ZLinkUserSpotExecutionMode.SpotWide,
+      spotId
     );
     const timerSerials = new Map<string, ZLinkSpotSerialExecutor>();
     const actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
@@ -547,7 +553,8 @@ export class ZLinkSpotActivationLifecycle {
         return activation.relocationReadyCall();
       },
       ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
-      leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
+      leaveActor: (actor, contextSignal) =>
+        this.options.leaveActor(spotId, actor, contextSignal, meshName),
       close: async (contextSignal) => {
         // Native callbacks can cross a promise boundary that does not retain
         // the serial turn context. Queue the close before calling the manager
@@ -662,7 +669,8 @@ export class ZLinkSpotActivationLifecycle {
         return activation.relocationReadyCall();
       },
       ensureOperationAllowed: () => activation?.ensureContextOperationAllowed(),
-      leaveActor: (actor, contextSignal) => this.options.leaveActor(spotId, actor, contextSignal),
+      leaveActor: (actor, contextSignal) =>
+        this.options.leaveActor(spotId, actor, contextSignal, meshName),
       close: (contextSignal) => this.options.closeSpot(meshName, spotId, contextSignal)
     });
     spot = await createFreshProviderInstance(spotType, this.options.providerResolver, context);

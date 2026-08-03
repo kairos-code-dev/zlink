@@ -123,6 +123,7 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
   private async findOrEnsureActor(courierId: string): Promise<ActorRef> {
     const result = await this.actorManager
       .getOrCreate(courierId, SampleNames.courierActorType)
+      .inMesh(SampleNames.courierMeshName)
       .request(ensureCourierActor(courierId))
       .timeout(SampleTimings.requestTimeout)
       .submit();

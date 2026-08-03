@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ZLinkPacket,
-  type ZLinkHandlerContext,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  type ZLinkMessageContext,
   type ZLinkSpotManager,
   type ZLinkSpotPacketHandler,
   type ZLinkSpotRequestHandler
@@ -21,7 +23,8 @@ import type {
   HttpAwaitMsg,
   IoWorkerBatchReq,
   IoWorkerBatchRes,
-  SelfCycleMsg
+  SelfCycleMsg,
+  SelfSendMsg
 } from '../../../Shared/messages';
 import { ProbeReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
@@ -32,7 +35,7 @@ import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 export class CounterResetHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, CounterResetMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: CounterResetMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: CounterResetMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     spot.resetCounter();
     this.evidence.add(`counter-reset|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`);
@@ -44,7 +47,7 @@ export class CounterResetHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
 export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, CounterAwaitMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: CounterAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: CounterAwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const observed = spot.readCounter();
     this.evidence.add(
@@ -71,7 +74,7 @@ export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
 @Injectable()
 @ZLinkPacket('CounterReadReq')
 export class CounterReadHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, CounterReadReq, CounterReadRes> {
-  async handle(spot: AwaitProbeSpot, request: CounterReadReq, context: ZLinkHandlerContext): Promise<CounterReadRes> {
+  async handle(spot: AwaitProbeSpot, request: CounterReadReq, context: ZLinkMessageContext): Promise<CounterReadRes> {
     void context;
     return { requestId: request.requestId, value: spot.readCounter() };
   }
@@ -85,7 +88,7 @@ export class HttpAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(spot: AwaitProbeSpot, request: HttpAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: HttpAwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(
       `http-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
@@ -124,7 +127,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
   async handle(
     spot: AwaitProbeSpot,
     request: IoWorkerBatchReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<IoWorkerBatchRes> {
     void context;
     const calls = Array.from({ length: request.count }, (_unused, index) => {
@@ -165,7 +168,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
 export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, CpuWorkerAwaitMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: CpuWorkerAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: CpuWorkerAwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(
       `cpu-worker-${request.terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
@@ -198,23 +201,55 @@ export class SelfCycleHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, 
     private readonly evidence: EvidenceStore
   ) {}
 
-  async handle(spot: AwaitProbeSpot, request: SelfCycleMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: SelfCycleMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const self = await this.spotHandles.find(String(spot.context.spotId));
     if (self === undefined) throw new Error(`Self SpotHandle was not resolved for '${spot.context.spotId}'.`);
     try {
-      await spot.context.outbound
-        .requestToSpot(self, Object.assign(new ProbeReq(), { requestId: request.requestId, marker: 'cycle' }))
-        .timeout(request.timeoutMs)
-        .submit();
+      const call = spot.context.outbound
+        .requestToSpot(self.spotId, Object.assign(new ProbeReq(), { requestId: request.requestId, marker: 'cycle' }))
+        .timeout(request.timeoutMs);
+      if (request.terminator === 'yield') {
+        await call.yield();
+      } else {
+        await call.submit();
+      }
       this.evidence.add(`self-cycle-unexpected-completed|request=${request.requestId}`);
     } catch (error) {
+      if (error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.InvalidOperation) {
+        this.evidence.add(
+          `self-cycle-rejected|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
+          + `|request=${request.requestId}|terminator=${request.terminator ?? 'async'}`
+        );
+        return;
+      }
       const name = error instanceof Error ? error.name : 'Error';
       this.evidence.add(
         `self-cycle-timed-out|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${request.requestId}|error=${name}`
       );
     }
+  }
+}
+
+@Injectable()
+@ZLinkPacket('SelfSendMsg')
+export class SelfSendHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, SelfSendMsg> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: SelfSendMsg, context: ZLinkMessageContext): Promise<void> {
+    void context;
+    this.evidence.add(
+      `self-send-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
+    );
+    await spot.context.outbound.sendToSpot(spot.context.spotId, Object.assign(new ProbeReq(), {
+      requestId: request.requestId,
+      marker: request.marker
+    })).submit();
+    this.evidence.add(
+      `self-send-completed|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
+    );
   }
 }
 

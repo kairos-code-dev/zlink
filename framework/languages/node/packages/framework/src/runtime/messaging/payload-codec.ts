@@ -72,6 +72,13 @@ function decodeFrameworkPayload<T>(
 
   const serializer = selectDefaultSerializer(registry);
   if (serializer !== undefined) {
+    // A selective extension is also the only available decoder for an
+    // inbound non-JSON stream frame. JSON remains the wire fallback when the
+    // same registry is used for framework-owned messages that were encoded
+    // without a matching application type.
+    if (isJsonPayload(message) && isSelectableSerializer(serializer)) {
+      return JSON.parse(message.getString('utf8')) as T;
+    }
     return serializer.deserialize(
       ZLinkEncodedPayload.from(message.data()),
       (type ?? Object) as Type<T>
@@ -106,6 +113,17 @@ export function wrapFrameworkPayloadMessage(
 export function selectDefaultSerializer(
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessageSerializer | undefined {
+  const serializers = serializerMapOf(registry);
+  if (serializers?.size === 1) {
+    const only = serializers.values().next().value as ZLinkSelectableMessageSerializer | undefined;
+    // Decode has no object value with which to run canSerialize. A single
+    // selective extension is therefore the only possible decoder for its
+    // non-JSON stream payloads; encode-side selection still uses the actual
+    // payload and falls back to JSON when the extension does not match.
+    if (only?.canSerialize !== undefined) {
+      return only;
+    }
+  }
   return selectSerializer(undefined, registry);
 }
 
@@ -130,7 +148,11 @@ export function selectSerializer(
     );
   }
   if (serializers.size === 1) {
-    return serializers.values().next().value;
+    const only = selectable[0];
+    // A selective extension must not become the process-wide default for
+    // framework-owned payloads that it explicitly does not accept. JSON is
+    // the typed payload fallback when no extension matches.
+    return only.canSerialize === undefined || only.canSerialize(value) ? only : undefined;
   }
   if (selectable.every((serializer) => serializer.canSerialize !== undefined)) {
     return undefined;
@@ -142,6 +164,19 @@ export function selectSerializer(
 
 interface ZLinkSelectableMessageSerializer extends ZLinkMessageSerializer {
   canSerialize?(value: unknown): boolean;
+}
+
+function isSelectableSerializer(serializer: ZLinkMessageSerializer): serializer is ZLinkSelectableMessageSerializer & { canSerialize: (value: unknown) => boolean } {
+  return typeof (serializer as ZLinkSelectableMessageSerializer).canSerialize === 'function';
+}
+
+function isJsonPayload(message: Message): boolean {
+  try {
+    JSON.parse(message.getString('utf8'));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function serializerMapOf(

@@ -1624,6 +1624,40 @@ test('stream session runtime replies to dispatch errors without session onError 
   });
 });
 
+test('stream session runtime encodes Framework error kinds as string error codes', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = createStreamRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch() {
+          throw new framework.ZLinkFrameworkException(
+            framework.ZLinkFrameworkErrorKind.NotFound,
+            'spot route is not ready'
+          );
+        }
+      };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-framework-error', fakeHeader({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    requestSeq: 8n,
+    name: 'Probe'
+  }), fakeMessage('p'));
+  await waitForReceive(socket);
+  await runtime.dispose();
+
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
+    code: 'NotFound',
+    message: 'spot route is not ready'
+  });
+});
+
 test('stream session runtime keeps request streams open after route disconnect error replies', async () => {
   const socket = new FakeStreamSocket();
   const runtime = createStreamRuntime({

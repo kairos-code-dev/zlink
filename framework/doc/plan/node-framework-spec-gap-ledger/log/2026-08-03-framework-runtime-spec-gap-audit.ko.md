@@ -8,10 +8,11 @@ feature-map의 `implemented` 표시는 현재 process evidence로 재사용하�
 
 초기 production declaration·runtime·package의 비-E2E 비교에서는 새 public contract mismatch가 없었지만,
 completion 전이와 runtime weight validation을 실제 production call path까지 다시 대조하면서
-`ND-IMP-005`와 `ND-IMP-006`을 추가로 확인했다. 두 항목은 owner layer 수정과 unit regression까지
-완료했다. `ND-IMP-001`~`006`의 process·native artifact evidence와 Framework spec gate의 전체 판정은
-아직 `NOT CLEAN`이다. `ND-IMP-007`·`008`은 targeted process까지 닫혔지만 common aggregate gate를
-대체하지 않는다.
+`ND-IMP-005`와 `ND-IMP-006`을 추가로 확인했다. 후속 재현에서는 same-gate awaited request,
+STREAM error code, User Spot Ready route cache lifecycle도 runtime gap으로 확인해 `ND-IMP-009`~`011`로
+수정했다. `ND-IMP-001`~`011`의 runtime/unit 조건은 current candidate에서 확인했지만 process·native
+artifact evidence와 Framework spec gate의 전체 판정은 아직 `NOT CLEAN`이다. targeted process PASS는
+common aggregate gate를 대체하지 않는다.
 
 현재 열려 있는 Framework runtime·spec gap은 다음과 같다.
 
@@ -23,7 +24,10 @@ completion 전이와 runtime weight validation을 실제 production call path까
 | `ND-IMP-004` | package graph·clean consumer 충족 | current native artifact를 포함한 role server와 SubmitAdmission process 실행 |
 | `ND-IMP-005` | 비-E2E runtime·unit 수정 완료 | terminal/recovery completion의 StoreVersion route replacement process evidence |
 | `ND-IMP-006` | 비-E2E runtime·unit 수정 완료 | remote weight publication과 selector process evidence |
-| `ND-E2E-IMP-001` | 미충족 | common 374개 exact ID와 Node exact 223개 scenario file의 coverage 불일치 해소; common coverage는 219개 |
+| `ND-IMP-009` | 같은 Spot awaited request를 transport 제출 전에 거부하고 self-send FIFO를 보존; unit·TD-D6 process 충족 | 전체 common E2E inventory와 aggregate |
+| `ND-IMP-010` | STREAM Framework error kind를 public string `code`로 인코딩; stream session unit 충족 | cross-process client-visible stream error evidence |
+| `ND-IMP-011` | User Spot Ready route fence를 commit 뒤 기억하고 authority delete 뒤 제거; M6C·TD-D6 충족 | restart/recovery와 Config 13·14 process |
+| `ND-E2E-IMP-001` | 미충족 | common 374개 exact ID와 Node exact 224개 scenario file의 coverage 불일치 해소; common coverage는 220개 |
 | `ND-E2E-IMP-002` | 미충족 | Config 1-14 aggregate가 child 상태·client result·role-server evidence를 해석하도록 수정 |
 | `ND-E2E-IMP-003` | 미충족 | 모든 selector와 feature-map 상태를 current common ID에 다시 대응하고 partial/source-only를 PASS에서 제외 |
 | `ND-E2E-IMP-004` | 정적 scan 충족, process 후속 | client가 role-server public endpoint만 사용하고 양쪽 evidence를 같은 실행에서 생성하는지 확인 |
@@ -34,8 +38,9 @@ completion 전이와 runtime weight validation을 실제 production call path까
 
 - `ND-TEST-001`: checked-in public snapshot과 exact member comparison이 38/38로 통과했다.
 - `ND-TEST-002`: current ledger path 기준 documentation regression이 17/17로 통과했다.
-- `ND-REG-001`~`004`, `ND-REG-009`~`010`: contract, error, unknown content type, package graph,
-  StoreVersion route replacement와 weight validation의 비-E2E 회귀가 통과했다.
+- `ND-REG-001`~`004`, `ND-REG-009`~`014`: contract, error, unknown content type, package graph,
+  StoreVersion route replacement, weight validation, execution claim, STREAM error와 Ready route cache의
+  비-E2E 회귀가 통과했다.
 - `ND-IMP-007`: 등록되지 않은 ClientServer channel의 request가 public `NotFound`로 매핑되는
   production runtime과 CH05 process가 통과했다.
 - `ND-IMP-008`: 알려진 ClientServer target의 transport가 끊겨도 descriptor를 `NotConnected`로
@@ -67,7 +72,7 @@ working tree manifest가 다시 바뀐다.
 | `backend-public-api-only.test.js` | 6/6, exit 0 | Framework·binding public boundary와 E2E client 정적 import boundary 통과 |
 | `npm ls @zlink-systems/zlink --all` | exit 0 | 전체 workspace가 11.1.0으로 clean resolve |
 | `verify_packaged_contract.sh` | exit 0 | `NODE_PACKAGED_CONTRACT_PASS packages=7 browser=esm server=commonjs` |
-| `e2e-scenario-header-gate.test.js` | exit 1 | common 374, Node exact 223, common coverage 219, missing 155; source-only extra 4 |
+| `e2e-scenario-header-gate.test.js` | exit 1 | common 374, Node exact 224, common coverage 220, missing 154; source-only extra 4 |
 | `TA-A1` | exit 1 | native session bind의 ActorRef route fence 불일치 |
 | `SA-E2E-14` | exit 2 | candidate native artifact incomplete |
 | `CH-E2E-01`~`CH-E2E-12` | targeted process PASS | Config 12의 16개 selector를 개별 실행했고 role endpoint/evidence를 확인 |
@@ -80,14 +85,14 @@ working tree manifest가 다시 바뀐다.
 
 ## Common ID 전체 대조
 
-현재 Node Client scenario file가 제공하는 exact ID는 223개다. 이 중 219개가 common E2E 문서의
+현재 Node Client scenario file가 제공하는 exact ID는 224개다. 이 중 220개가 common E2E 문서의
 374개 ID와 일치하고 4개는 Node source에만 존재한다. 비교 결과는 다음과 같다.
 
 ```text
 common IDs:             374
-Node exact IDs:         223
-common coverage:        219
-missing common IDs:     155
+Node exact IDs:         224
+common coverage:        220
+missing common IDs:     154
 extra:          MON-A4, MON-D1, SM-D16, SM-Q9
 ```
 
@@ -108,7 +113,7 @@ Config 6  (18): SF-B3, SF-C3, SF-C4, SF-C5, SF-F1, SF-F2, SF-F3, SF-F4,
                 SF-F5, SF-F6, SF-F7, SF-F8, SF-F9, SF-F10, SF-F11, SF-G1,
                 SF-G2, SF-G3
 Config 7  (5):  MON-A4A, MON-A4B, MON-A6, MON-D1A, MON-D1B
-Config 8  (5):  TD-D4, TD-D5, TD-D6, TD-E2A, TD-F5A
+Config 8  (4):  TD-D4, TD-D5, TD-E2A, TD-F5A
 Config 10 (12): ST-E1A, ST-E1B, ST-E1C, ST-F3A, ST-G1, ST-G2, ST-G3,
                 ST-G4, ST-G5, ST-G6, ST-H4A, ST-H4B
 Config 11 (9):  OBS-A5, OBS-C6, OBS-C7, OBS-C8, OBS-C9A, OBS-C9B, OBS-C10,
@@ -183,7 +188,7 @@ DDD 경계는 `ChannelEgress` fixture(역할과 packet 계약), role host(Framew
 
 ## 다음 조치
 
-1. `ND-E2E-IMP-001`을 기준으로 155개 누락 ID, 4개 extra와 feature-map alias를 정리한다.
+1. `ND-E2E-IMP-001`을 기준으로 154개 누락 ID, 4개 extra와 feature-map alias를 정리한다.
 2. Config 12·14는 공통 contract가 요구하는 role server를 구현하거나 `contract 선행`으로 분리하고,
    aggregate가 `BLOCKED`·partial·source-only를 PASS로 계산하지 않도록 한다.
 3. `ND-E2E-IMP-005`의 TA-A1 route fence와 SA native artifact를 owner layer에서 수정한 뒤 fresh
@@ -269,3 +274,53 @@ native process가 `Segmentation fault (core dumped)`로 종료되어 aggregate�
 대조했다. `trySend`는 readiness를 기다리지 않고 현재 선택 결과만 즉시 반환하는 fast-fail 경로이며,
 공통 계약의 bounded readiness wait는 public 비동기 `send`에 적용된다. 따라서 `trySend`의
 disconnected 상태 즉시 반환은 별도 runtime gap으로 분류하지 않았다.
+
+## 2026-08-03 순서 재정렬 후 live runtime/unit 결과
+
+사용자 지시에 따라 현재 작업 순서를 `runtime gap 구현·unit -> sample spec -> 전체 E2E`로 고정했다.
+runtime card마다 DDD state owner와 invariant, POSD red flag와 두 가지 대안은
+[`runtime POSD·DDD review`](log/2026-08-03-runtime-posd-ddd-review.ko.md)에 기록했다.
+
+### Runtime card 결과
+
+| card | 결과 | 직접 evidence |
+|---|---|---|
+| `ND-IMP-009` | runtime·unit·TD-D6 process PASS | entry serial dispatch 25/25; `InvalidOperation` pre-submit과 self-send FIFO assertion |
+| `ND-IMP-010` | runtime·unit PASS | stream session runtime 51/51; Framework kind를 `NotFound` string code로 인코딩 |
+| `ND-IMP-011` | runtime·unit·TD-D6 process PASS | M6C 79/79; Ready route `remember -> publish`, close `delete -> forget` assertion |
+
+### Runtime gate의 경계 보정
+
+전체 `npm test`는 browser와 contract를 포함한 뒤 `e2e-scenario-header-gate.test.js`에서 다음 exact
+inventory를 보고 exit 1로 종료했다. 이는 production runtime regression 실패가 아니라 다음 sample/E2E
+단계의 미완료 조건이다.
+
+```text
+common IDs:        374
+Node exact IDs:    224
+common coverage:   220
+missing:           154
+extra:             MON-A4, MON-D1, SM-D16, SM-Q9
+```
+
+그 전에 runtime gate가 발견한 정적 boundary 문제도 owner 경계에서 정리했다. Config 12 Client의
+local `fetch` wrapper를 제거하고 공통 `e2e/http-client.ts`의 public `@zlink-systems/http-client`
+경로를 사용하도록 바꿨으며, ChannelEgress runner의 local readiness/settle budget을 공통 policy로
+맞췄다. `e2e-http-client-adoption.test.js` 1/1과 `e2e-local-wait-policy-gate.test.js` 3/3이 통과했다.
+
+### Message trace와 file log evidence
+
+TD-D6 process는 `e2e/AutomaticTurnDispatch/run_e2e.sh TD-D6`로 실행했고 다음 directory에 결과를
+남겼다.
+
+`framework/languages/node/e2e/AutomaticTurnDispatch/log/20260803-102712-710905/`
+
+- `session-a-flow.log`: EnsureSpot와 ProbeReq가 `received -> dispatched`로 처리되고, self-cycle
+  request가 error 없이 transport에 제출되지 않으며, self-send가 FIFO로 이어지는 message trace
+- `play-a-flow.log`: EnsureSpot와 evidence polling의 `received -> replied` trace
+- `play-a.evidence.log`, `session-a.evidence.log`: `self-cycle-rejected`, `self-send-started`,
+  `self-send-completed`, `probe-completed`의 client-visible/server evidence
+
+따라서 runtime/unit phase의 current 판정은 `ND-IMP-001`~`011` 구현·focused regression PASS다.
+sample spec 정렬과 154개 exact E2E 누락, Config 13·14 native/role runner, aggregate·coverage·CI는
+다음 단계로 남겨 두며 완료표시하지 않는다.

@@ -15,7 +15,7 @@ import { CourierEntrySpot } from './courier-entry-spot';
   packetName: PacketNames.offerDelivery
 })
 class CourierActorOfferHandler {
-  async handle(actor: CourierActor, _context: ZLinkMessageContext, request: OfferDeliveryMsg): Promise<void> {
+  async handle(_spot: CourierEntrySpot, actor: CourierActor, _context: ZLinkMessageContext, request: OfferDeliveryMsg): Promise<void> {
     await actor.offer(request);
   }
 }
@@ -27,6 +27,7 @@ class CourierActorOfferHandler {
 })
 class CourierActorSessionBindHandler {
   handle(
+    _spot: CourierEntrySpot,
     actor: CourierActor,
     _context: ZLinkMessageContext,
     request: BindCourierSessionReq
@@ -41,7 +42,7 @@ class CourierActorSessionBindHandler {
   packetName: PacketNames.courierDecision
 })
 class CourierActorDecisionHandler {
-  async handle(actor: CourierActor, _context: ZLinkMessageContext, decision: CourierDecisionMsg): Promise<void> {
+  async handle(_spot: CourierEntrySpot, actor: CourierActor, _context: ZLinkMessageContext, decision: CourierDecisionMsg): Promise<void> {
     await actor.decide(decision);
   }
 }

@@ -117,6 +117,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
             || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotGenerationStale
             || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.SpotMoving
             || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+            || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RouteNotConnected
           )
         ) {
           this.options.resolver()?.invalidate?.(spotId);

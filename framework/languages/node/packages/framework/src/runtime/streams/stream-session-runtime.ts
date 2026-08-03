@@ -7,6 +7,7 @@ import type {
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
 import {
+  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
 import { ZLinkSocketNativeEventType } from '../diagnostics/internal-event-contracts';
@@ -574,7 +575,7 @@ export class ZLinkStreamSessionRuntime {
       false,
       {
         code: error instanceof ZLinkFrameworkException
-          ? error.kind
+          ? ZLinkFrameworkErrorKind[error.kind]
           : error instanceof Error
             ? error.constructor.name
             : 'RemoteError',

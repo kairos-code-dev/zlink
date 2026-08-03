@@ -108,7 +108,7 @@ interface ZLinkEntrySpotActivationOptions {
 }
 
 export class ZLinkEntrySpotActivation {
-  private readonly serial = new ZLinkSpotSerialExecutor(false);
+  private readonly serial: ZLinkSpotSerialExecutor;
   private readonly actorPacketMailboxes: ZLinkActorDispatchMailboxSet;
   private readonly timers: ZLinkSpotTimerRegistry;
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
@@ -125,6 +125,7 @@ export class ZLinkEntrySpotActivation {
   readonly context: ZLinkEntrySpotContext;
 
   constructor(private readonly options: ZLinkEntrySpotActivationOptions) {
+    this.serial = new ZLinkSpotSerialExecutor(false, options.nativeSpot.routingId);
     this.actorPacketMailboxes = new ZLinkActorDispatchMailboxSet();
     // Entry Spot lifecycle, timers and detached continuations use this serial
     // executor. Actor packets use the target actor mailbox.
@@ -305,6 +306,28 @@ export class ZLinkEntrySpotActivation {
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     return this.serial.execute(() => notifyEntryActorJoined(this.entrySpot, actor));
+  }
+
+  /**
+   * Completes the stateful MeshNode return-to-Entry-Spot path after Core has
+   * accepted the membership reply. The native receive path performs the same
+   * actor-manager transaction in its admission callback.
+   */
+  async commitServiceActorJoin(
+    actor: ZLinkActor,
+    handoffBacklog: readonly ZLinkActorHandoffPacket[] = [],
+    signal?: AbortSignal
+  ): Promise<void> {
+    throwIfAborted(signal);
+    const notifyJoined = () => this.notifyJoinActor(actor, signal);
+    if (this.options.entryActorRuntime === undefined) {
+      await notifyJoined();
+    } else {
+      await this.options.entryActorRuntime.commitActorTransaction(actor, notifyJoined);
+    }
+    if (handoffBacklog.length > 0) {
+      await this.replayActorBacklog(actor, handoffBacklog);
+    }
   }
 
   /**

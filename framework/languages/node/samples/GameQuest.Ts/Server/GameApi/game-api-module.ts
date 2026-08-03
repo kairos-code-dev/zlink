@@ -2,6 +2,7 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
+import { createGameQuestRelocationStore } from '../Configuration/relocation-store';
 import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
 import { GameplayActionService } from './Application/gameplay-action-service';
@@ -51,6 +52,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
             .traceLogFile(`${config.logDir}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
           builder.addLocationStore(createGameQuestLocationStore(config));
+          builder.addRelocationStore(createGameQuestRelocationStore(config));
           gameQuestLocationOptions(builder.configureLocations());
           builder.addStreamNode(SampleNames.playerStreamNode)
             .enableActorDispatch()

@@ -40,27 +40,18 @@ export async function runSample(ctx) {
   const replacement = await verifyPlaySlotHandoff(
     ctx,
     redisKeyPrefix,
-    playA.sample.playSpotEndpoint,
-    playB.sample.playSpotEndpoint
+    playA.sample.playSpotEndpoint
   );
   await ctx.start('session-b', 'dist/Server/Session/main.js', ['--config', sessionB.path]);
   await ctx.waitTcp(sessionB.sample.sessionEndpoint);
   await ctx.start('session-a', 'dist/Server/Session/main.js', ['--config', sessionA.path]);
   await ctx.waitTcp(sessionA.sample.sessionEndpoint);
-  await ctx.waitLog(
-    'play-replacement',
-    `bingo-room-peer ConnectionReady remote=${sessionB.sample.sessionSpotEndpoint}`
-  );
-  await ctx.waitLog(
-    'play-b',
-    `bingo-room-peer ConnectionReady remote=${sessionA.sample.sessionSpotEndpoint}`
-  );
-  await ctx.waitLog('session-b', `bingo-room-peer ConnectionReady remote=${apiA}`);
-  await ctx.waitLog('session-a', `bingo-room-peer ConnectionReady remote=${apiA}`);
-  await ctx.waitLog('api-b', `bingo-room-peer ConnectionReady remote=${playB.sample.playSpotEndpoint}`);
-  await ctx.waitLog('api-a', `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`);
-  await ctx.waitLog('play-b', `bingo-room-peer ConnectionReady remote=${apiA}`);
-  await ctx.waitLog('play-replacement', `bingo-room-peer ConnectionReady remote=${apiA}`);
+  await waitForRouteReadiness(ctx, 'play-replacement', true);
+  await waitForRouteReadiness(ctx, 'play-b', true);
+  await waitForRouteReadiness(ctx, 'session-b');
+  await waitForRouteReadiness(ctx, 'session-a');
+  await waitForRouteReadiness(ctx, 'api-b');
+  await waitForRouteReadiness(ctx, 'api-a');
   ctx.runBrowser({
     timeoutMs: 90_000,
     config: {
@@ -69,24 +60,31 @@ export async function runSample(ctx) {
     },
     proxies: []
   });
-  await ctx.waitLog('play-b', 'bingo-record fetched actor=player-1 wins=0 losses=0');
-  await ctx.waitLog('play-b', 'bingo-record fetched actor=player-2 wins=0 losses=0');
-  await ctx.waitLog('play-b', 'bingo-record reported actor=player-1 wins=1 losses=0');
-  await ctx.waitLog('play-b', 'bingo-record reported actor=player-2 wins=0 losses=1');
-  await ctx.waitLog('play-b', 'bingo-lifecycle room-leave actor=player-1');
-  await ctx.waitLog('play-b', 'bingo-lifecycle room-leave actor=player-2');
-  await ctx.waitLog('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-1');
-  await ctx.waitLog('play-replacement', 'bingo-lifecycle entry-destroy-complete actor=player-2');
+  // Object placement is intentionally dynamic. A replacement node may be
+  // ready without owning the room, so lifecycle evidence must be accepted
+  // from the current play owner rather than a process name.
+  await waitPlayLog(ctx, 'bingo-record fetched actor=player-1 wins=0 losses=0');
+  await waitPlayLog(ctx, 'bingo-record fetched actor=player-2 wins=0 losses=0');
+  await waitPlayLog(ctx, 'bingo-record reported actor=player-1 wins=1 losses=0');
+  await waitPlayLog(ctx, 'bingo-record reported actor=player-2 wins=0 losses=1');
+  await waitPlayLog(ctx, 'bingo-lifecycle room-leave actor=player-1');
+  await waitPlayLog(ctx, 'bingo-lifecycle room-leave actor=player-2');
+  await waitPlayLog(ctx, 'bingo-lifecycle entry-destroy-complete actor=player-1');
+  await waitPlayLog(ctx, 'bingo-lifecycle entry-destroy-complete actor=player-2');
+  await waitPlayLog(ctx, 'bingo-lifecycle entry-leave actor=player-1');
+  await waitPlayLog(ctx, 'bingo-lifecycle entry-leave actor=player-2');
+  await waitPlayLog(ctx, 'bingo-lifecycle entry-leave actor=observer');
   await ctx.waitLog('session-b', 'bingo-lifecycle session-disconnect actor=player-1 destroy=false');
   await ctx.waitLog('session-a', 'bingo-lifecycle session-disconnect actor=player-2 destroy=false');
-  ctx.assertLogCount('play-b', 'bingo-lifecycle room-leave actor=player-1', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle room-leave actor=player-2', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-1', 1);
-  ctx.assertLogCount('play-replacement', 'bingo-lifecycle entry-destroy-complete actor=player-2', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-leave actor=player-1', 1);
-  ctx.assertLogCount('play-replacement', 'bingo-lifecycle entry-leave actor=player-2', 1);
-  ctx.assertLogCount('play-replacement', 'bingo-lifecycle entry-leave actor=observer', 1);
-  ctx.assertLogCount('play-replacement', 'bingo-record reported actor=observer', 0);
+  assertPlayLogCount(ctx, 'bingo-lifecycle room-leave actor=observer', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle room-leave actor=player-1', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle room-leave actor=player-2', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle entry-destroy-complete actor=player-1', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle entry-destroy-complete actor=player-2', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle entry-leave actor=player-1', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle entry-leave actor=player-2', 1);
+  assertPlayLogCount(ctx, 'bingo-lifecycle entry-leave actor=observer', 1);
+  assertPlayLogCount(ctx, 'bingo-record reported actor=observer', 0);
 
 }
 
@@ -114,23 +112,37 @@ async function bingoSessionConfig(ctx, suffix, redisKeyPrefix) {
   return { sample, path: ctx.writeConfig(`session-${suffix}`, sample) };
 }
 
-async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint, survivingRoomEndpoint) {
+async function verifyPlaySlotHandoff(ctx, redisKeyPrefix, oldRoomEndpoint) {
   const replacement = await bingoPlayConfig(ctx, 'replacement', redisKeyPrefix);
   await ctx.start('play-replacement', 'dist/Server/Play/main.js', ['--config', replacement.path]);
   await ctx.waitTcp(replacement.sample.playSpotEndpoint);
+  await waitForRouteReadiness(ctx, 'play-replacement', true);
   ctx.signal('play-a', 'SIGUSR2');
   await ctx.waitLog('play-a', 'bingo-drain result=drained');
   await ctx.stop('play-a', 'SIGTERM');
-  await ctx.waitAnyLog([
-    {
-      name: 'play-replacement',
-      marker: `bingo-room-peer ConnectionReady remote=${survivingRoomEndpoint}`
-    },
-    {
-      name: 'play-b',
-      marker: `bingo-room-peer ConnectionReady remote=${replacement.sample.playSpotEndpoint}`
-    }
-  ]);
   console.log(`BINGO-ROLLING replacement=play-replacement retired=${oldRoomEndpoint}`);
   return replacement;
+}
+
+async function waitForRouteReadiness(ctx, role, requiresPlacement = false) {
+  await ctx.waitLog(role, 'bingo-room-status state=1 readyPeers=');
+  if (requiresPlacement) await ctx.waitLog(role, 'placement=true');
+}
+
+async function waitPlayLog(ctx, marker) {
+  await ctx.waitAnyLog([
+    { name: 'play-b', marker },
+    { name: 'play-replacement', marker }
+  ]);
+}
+
+function assertPlayLogCount(ctx, marker, expected) {
+  const actual = ['play-b', 'play-replacement'].reduce((count, role) => {
+    const file = path.join(ctx.logDir, `${role}.log`);
+    if (!fs.existsSync(file)) return count;
+    return count + fs.readFileSync(file, 'utf8').split(marker).length - 1;
+  }, 0);
+  if (actual !== expected) {
+    throw new Error(`play logs marker '${marker}' count was ${actual}; expected ${expected}.`);
+  }
 }

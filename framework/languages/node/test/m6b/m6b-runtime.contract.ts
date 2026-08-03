@@ -116,7 +116,8 @@ import type {
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageMetadataEmpty
+  ZLinkMessageMetadataEmpty,
+  ZLinkSpotKind
 } from '../../packages/framework/src/contracts';
 import {
   createInternalFrameworkException,
@@ -932,6 +933,14 @@ test('outbound stateful routes use resolved authority generations and never obje
   if (firstSpotHeader.kind === 'spotSend') {
     assert.deepEqual(firstSpotHeader.target, firstRoute);
   }
+  const advancedRoute = { ...firstRoute, storeVersion: 'store-v2' };
+  runtime.rememberSpotRoute(advancedRoute);
+  assert.equal(runtime.sendToSpot('source', advancedRoute, payload), SubmitResult.Ok);
+  const advancedSpotHeader = decodeStatefulHeader(sent.at(-1)!.parts[0]!);
+  assert.equal(advancedSpotHeader.kind, 'spotSend');
+  if (advancedSpotHeader.kind === 'spotSend') {
+    assert.equal(advancedSpotHeader.target.storeVersion, 'store-v2');
+  }
   const successorRoute = {
     spot,
     targetNodeRid: 'node-c',
@@ -953,6 +962,57 @@ test('outbound stateful routes use resolved authority generations and never obje
   if (successorHeader.kind === 'spotSend') {
     assert.equal(successorHeader.target.targetNodeRid, 'node-c');
     assert.deepEqual(successorHeader.target, successorRoute);
+  }
+  runtime.close();
+});
+
+test('remote Entry Spot actor join derives the well-known node route fence', async () => {
+  const requests: Array<{ readonly target: string; readonly header: ReturnType<typeof decodeStatefulHeader> }> = [];
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'entry-node'
+        ? { descriptor: { lifecycleGeneration: 7n } }
+        : undefined
+    },
+    mailbox: {
+      tryEnqueue: () => true
+    },
+    setServiceIngress: () => {},
+    async requestService(target: string, parts: readonly Buffer[]) {
+      const header = decodeStatefulHeader(parts[0]!);
+      requests.push({ target, header });
+      assert.equal(header.kind, 'actorJoin');
+      if (header.kind !== 'actorJoin') throw new Error('expected actor join header');
+      return [encodeStatefulReply(header.correlation, RequestResult.Ok, 0, {
+        kind: 'actorJoin',
+        joinResult: 0,
+        spot: { spotId: 'entry-node', generation: 7n },
+        membershipEpoch: 2n
+      })];
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'actor-node', 3n);
+  const actor = runtime.createActor('remote-entry-actor').ref;
+
+  const result = await runtime.joinActorEntrySpot(
+    actor,
+    'entry-node',
+    undefined,
+    1_000
+  ).promise;
+
+  assert.equal(result.terminalResult, RequestResult.Ok);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]!.target, 'entry-node');
+  assert.equal(requests[0]!.header.kind, 'actorJoin');
+  if (requests[0]!.header.kind === 'actorJoin') {
+    assert.equal(requests[0]!.header.entry, true);
+    assert.deepEqual(requests[0]!.header.target, {
+      spot: { spotId: 'entry-node', generation: 7n },
+      targetNodeRid: 'entry-node',
+      targetNodeGeneration: 7n,
+      authorityOwnerGeneration: 7n
+    });
   }
   runtime.close();
 });
@@ -1280,6 +1340,88 @@ test('target-owned Instance activation reserves before factory, commits before o
   assert.equal(ingress(record), 'application');
   assert.deepEqual(events, ['read', 'reserve', 'commit', 'read']);
   assert.equal(queued.length, 1);
+  runtime.close();
+});
+
+test('Ready Instance route rematerializes a missing application activation before admission', async () => {
+  let ingress!: (record: {
+    readonly command: number;
+    readonly flags: number;
+    readonly sourceRoutingId: string;
+    readonly parts: readonly Buffer[];
+  }) => string | undefined;
+  const queued: unknown[] = [];
+  const events: string[] = [];
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'source'
+        ? { descriptor: { lifecycleGeneration: 7n } }
+        : undefined
+    },
+    mailbox: {
+      tryEnqueue: (record: unknown) => {
+        queued.push(record);
+        return true;
+      }
+    },
+    setServiceIngress: (handler: typeof ingress) => {
+      ingress = handler;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'target', 3n);
+  const route: ServiceInstanceRouteFence = {
+    targetNodeRid: 'target',
+    targetNodeGeneration: 3n,
+    targetSpotId: 'tenant-rematerialize',
+    objectGeneration: 4n,
+    ownerId: 'target',
+    authorityOwnerGeneration: 12n,
+    leaseGeneration: 2n,
+    storeVersion: 'route-4'
+  };
+  runtime.registerInstanceIntent('TenantWorker', route);
+  runtime.registerInstanceApplicationLifecycle({
+    isMaterialized: target => {
+      events.push(`check:${target.targetSpotId}`);
+      return false;
+    },
+    materialize: (target, generation) => {
+      events.push(`materialize:${target.stableType}:${String(generation)}`);
+      return Promise.resolve();
+    },
+    discard: async () => undefined,
+    beginTerminal: () => undefined,
+    completeTerminal: async () => false
+  });
+
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.instanceSpot,
+    flags: 0,
+    sourceRoutingId: 'source',
+    parts: [
+      encodeInstanceSpotHeader(
+        route,
+        7n,
+        'source',
+        undefined,
+        'send',
+        { high: 0n, low: 0n }
+      ),
+      encodeApplicationPayload({
+        packetName: 'FirstMessage',
+        contentType: 'application/octet-stream',
+        payload: Buffer.from('first')
+      })
+    ]
+  }), 'infrastructure');
+  await new Promise<void>(resolve => setImmediate(resolve));
+
+  assert.deepEqual(events, [
+    'check:tenant-rematerialize',
+    'materialize:TenantWorker:4'
+  ]);
+  assert.equal(queued.length, 1);
+  assert.equal(runtime.registry.spot('tenant-rematerialize')?.stableType, 'TenantWorker');
   runtime.close();
 });
 
@@ -1677,6 +1819,146 @@ test('Instance application factory initializes before the first recovered handle
     for (const part of parts) part.close();
   }
   assert.deepEqual(events, ['configure', 'initialize', 'handle:7']);
+});
+
+test('direct Spot route rematerializes an Instance Spot before dispatch', async () => {
+  const events: string[] = [];
+  class FirstMessageHandler implements ZLinkSpotPacketHandler<ZLinkInstanceSpot, { value: number }> {
+    async handle(_spot: ZLinkInstanceSpot, message: { value: number }): Promise<void> {
+      events.push(`handle:${message.value}`);
+    }
+  }
+  class TenantInstance implements ZLinkInstanceSpot {
+    declare readonly context: ZLinkInstanceSpotContext;
+
+    configure(): void {
+      events.push('configure');
+      this.context.handlers.addPacket(FirstMessageHandler);
+    }
+
+    async onInitialize(): Promise<void> {
+      events.push('initialize');
+    }
+  }
+  const manager = new DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([
+      ['mesh-a', new Map([['TenantWorker', TenantInstance]])]
+    ]),
+    instanceSpotApplicationTargetProvider: () => ({
+      stableType: 'TenantWorker',
+      objectGeneration: 2n
+    })
+  });
+  const parts = encodeChannelEnvelopeParts(
+    ZLinkChannelMessageKind.Command,
+    'instance',
+    FirstMessageHandler.name,
+    { value: 8 }
+  ).map(part => Message.from(part));
+  try {
+    await manager.dispatchMeshSpot(
+      'mesh-a',
+      {
+        ownerKind: 2,
+        domain: ReadyDomain.Application,
+        spotId: 'tenant:direct-route',
+        actor: null
+      },
+      {
+        kind: ReceiveKind.SpotSend,
+        domain: ReadyDomain.Application,
+        sourceNodeRid: null,
+        sourceSpotId: null,
+        sourceBindingGeneration: 0n,
+        sourceActor: null,
+        operationId: { high: 1n, low: 2n },
+        operationKind: 0,
+        channelName: null,
+        topic: null,
+        applicationMetadata: null,
+        kindData: null,
+        terminalResult: 0,
+        failureErrno: 0,
+        parts,
+        reply: () => SubmitResult.InvalidState,
+        replyActorJoin: () => SubmitResult.NotSupported
+      }
+    );
+  } finally {
+    for (const part of parts) part.close();
+  }
+  assert.deepEqual(events, ['configure', 'initialize', 'handle:8']);
+});
+
+test('Instance Spot activation dispatch rematerializes a missing application before the handler turn', async () => {
+  const events: string[] = [];
+  class FirstMessageHandler implements ZLinkSpotPacketHandler<ZLinkInstanceSpot, { value: number }> {
+    async handle(_spot: ZLinkInstanceSpot, message: { value: number }): Promise<void> {
+      events.push(`handle:${message.value}`);
+    }
+  }
+  class TenantInstance implements ZLinkInstanceSpot {
+    declare readonly context: ZLinkInstanceSpotContext;
+
+    configure(): void {
+      events.push('configure');
+      this.context.handlers.addPacket(FirstMessageHandler);
+    }
+
+    async onInitialize(): Promise<void> {
+      events.push('initialize');
+    }
+  }
+  const manager = new DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([
+      ['mesh-a', new Map([['TenantWorker', TenantInstance]])]
+    ]),
+    instanceSpotApplicationTargetProvider: () => ({
+      stableType: 'TenantWorker',
+      objectGeneration: 3n
+    })
+  });
+  const parts = encodeChannelEnvelopeParts(
+    ZLinkChannelMessageKind.Command,
+    'instance',
+    FirstMessageHandler.name,
+    { value: 9 }
+  ).map(part => Message.from(part));
+  try {
+    await manager.dispatchMeshInstance(
+      'mesh-a',
+      {
+        ownerKind: 2,
+        domain: ReadyDomain.Application,
+        spotId: 'tenant:stateful-route',
+        actor: null
+      },
+      {
+        kind: ReceiveKind.InstanceSpotActivation,
+        domain: ReadyDomain.Application,
+        sourceNodeRid: null,
+        sourceSpotId: null,
+        sourceBindingGeneration: 0n,
+        sourceActor: null,
+        operationId: { high: 1n, low: 3n },
+        operationKind: 0,
+        channelName: null,
+        topic: null,
+        applicationMetadata: null,
+        kindData: null,
+        terminalResult: 0,
+        failureErrno: 0,
+        parts,
+        reply: () => SubmitResult.InvalidState,
+        replyActorJoin: () => SubmitResult.NotSupported
+      }
+    );
+  } finally {
+    for (const part of parts) part.close();
+  }
+  assert.deepEqual(events, ['configure', 'initialize', 'handle:9']);
 });
 
 test('membership and session binding generations advance and remain scoped to their session owner', () => {
@@ -2774,6 +3056,65 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
         && error.kind === ZLinkFrameworkErrorKind.NotFound
     );
   }
+});
+
+test('Ready Instance request retries once after a disconnected stale route', async () => {
+  let invalidations = 0;
+  let attempts = 0;
+  const target = (nodeRid: string) => ({
+    routerChannelId: 'mesh',
+    targetNodeRid: nodeRid,
+    spotId: 'instance-42',
+    spotKind: ZLinkSpotKind.Instance,
+    stableType: 'chat-room',
+    targetNodeGeneration: 7n,
+    targetSpotGeneration: 3n,
+    authorityOwnerGeneration: 4n,
+    targetOwnerId: 'owner-b',
+    ownerLeaseGeneration: 5n,
+    authorityStoreVersion: nodeRid === 'node-a' ? 'old' : 'new'
+  });
+  const address = new ZLinkHostSpotAddressTransport({
+    resolver: () => ({
+      async resolve() {
+        return target(invalidations === 0 ? 'node-a' : 'node-b');
+      },
+      invalidate() {
+        invalidations += 1;
+      }
+    }),
+    routed: {
+      async sendToSpot() {
+        throw new Error('send is not used by this test.');
+      },
+      async requestToSpot<TReply>(route: unknown): Promise<TReply> {
+        attempts += 1;
+        if (attempts === 1) {
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.RouteNotConnected,
+            `stale route ${String((route as { targetNodeRid: string }).targetNodeRid)}`
+          );
+        }
+        return 'recovered' as TReply;
+      }
+    },
+    meshNames: () => ['mesh'],
+    meshNode: () => undefined,
+    completions: () => undefined,
+    defaultRequestTimeoutMs: 100
+  });
+  const reply = await address.requestToSpotAddress(
+    'instance-42',
+    { hello: true },
+    {
+      instanceSpot: true,
+      instanceSpotType: 'chat-room',
+      initialMeshName: 'mesh'
+    }
+  );
+  assert.equal(reply, 'recovered');
+  assert.equal(attempts, 2);
+  assert.equal(invalidations, 1);
 });
 
 test('Object Server role includes Object Client calling capability', () => {

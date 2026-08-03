@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLinkMessage } from '@zlink-systems/framework';
-import type { ZLinkActorManager, ZLinkHandlerContext, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
+import type { ZLinkActorManager, ZLinkMessageContext, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import type {
   BindAwaitActorsRes,
@@ -24,16 +24,17 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
     @Inject(YIELD_PLAY_NODE_RID) private readonly nodeRid: string
   ) {}
 
-  async handle(request: EnsureSpotReq, context: ZLinkHandlerContext): Promise<EnsureSpotRes> {
+  async handle(request: EnsureSpotReq, context: ZLinkMessageContext): Promise<EnsureSpotRes> {
     void context;
     const created = await this.spots.getOrCreate(
-      AutomaticTurnDispatchNames.spotChannel,
-      AwaitProbeSpot,
-      request.spotId
-    );
+      request.spotId,
+      AwaitProbeSpot.name
+    )
+      .inMesh(AutomaticTurnDispatchNames.spotChannel)
+      .submit();
     return {
-      spotId: String(created.spotId),
-      nodeRid: this.nodeRid
+      spotId: String(created.spot.spotId),
+      nodeRid: String(created.spot.nodeRid ?? this.nodeRid)
     };
   }
 }
@@ -42,19 +43,24 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
 export class BindAwaitActorsControlHandler implements ZLinkRequestHandler<BindAwaitActorsReq, BindAwaitActorsRes> {
   constructor(@Inject(ZLINK_ACTOR_MANAGER) private readonly actors: ZLinkActorManager) {}
 
-  async handle(request: BindAwaitActorsReq, context: ZLinkHandlerContext): Promise<BindAwaitActorsRes> {
+  async handle(request: BindAwaitActorsReq, context: ZLinkMessageContext): Promise<BindAwaitActorsRes> {
     void context;
     const actors = await Promise.all(request.actorIds.map(async (actorId) => {
-      const actor = await this.actors.getOrCreate(
-        AutomaticTurnDispatchNames.spotChannel,
+      const created = await this.actors.getOrCreate(
         actorId,
-        AutomaticTurnDispatchNames.actorType,
-        ZLinkMessage.from({ spotId: request.spotId })
-      );
+        AutomaticTurnDispatchNames.actorType
+      )
+        .inMesh(AutomaticTurnDispatchNames.spotChannel)
+        .request(ZLinkMessage.from({ spotId: request.spotId }))
+        .submit();
+      if (created.status === 'rejected') {
+        throw new Error(`Actor '${actorId}' creation was rejected.`);
+      }
+      const actor = created.actor;
       return {
         actorId: actor.actorId,
         nodeRid: String(actor.nodeRid),
-        generation: actor.generation.toString()
+        generation: actor.objectGeneration.toString()
       };
     }));
     return {
@@ -68,7 +74,7 @@ export class BindAwaitActorsControlHandler implements ZLinkRequestHandler<BindAw
 export class AwaitEvidenceControlHandler implements ZLinkRequestHandler<AwaitEvidenceReq, AwaitEvidenceRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: AwaitEvidenceReq, context: ZLinkHandlerContext): Promise<AwaitEvidenceRes> {
+  async handle(request: AwaitEvidenceReq, context: ZLinkMessageContext): Promise<AwaitEvidenceRes> {
     void context;
     return {
       requestId: request.requestId,
@@ -81,7 +87,7 @@ export class AwaitEvidenceControlHandler implements ZLinkRequestHandler<AwaitEvi
 export class AwaitEvidenceWaitControlHandler implements ZLinkRequestHandler<AwaitEvidenceWaitReq, AwaitEvidenceRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(request: AwaitEvidenceWaitReq, context: ZLinkHandlerContext): Promise<AwaitEvidenceRes> {
+  async handle(request: AwaitEvidenceWaitReq, context: ZLinkMessageContext): Promise<AwaitEvidenceRes> {
     void context;
     const timeoutMs = Math.max(1, Math.min(request.timeoutMilliseconds ?? 20000, 30000));
     const snapshot = await this.evidence.waitUntil((entries) =>

@@ -136,7 +136,14 @@ export class ZLinkStoreLocationResolvers implements
     spotId: SpotId,
     meshNames: readonly string[],
     signal?: AbortSignal
-  ): Promise<{ readonly meshName: string; readonly nodeRid: RoutingId; readonly spotId: SpotId } | undefined> {
+  ): Promise<{
+    readonly meshName: string;
+    readonly nodeRid: RoutingId;
+    readonly spotId: SpotId;
+    readonly targetNodeGeneration: bigint;
+    readonly targetOwnerId: string;
+    readonly ownerLeaseGeneration: bigint;
+  } | undefined> {
     for (const meshName of meshNames) {
       const descriptors = await this.liveRows.filter(
         (await this.options.stores.locationStore.listMeshNodes(meshName, undefined, signal)).items,
@@ -146,10 +153,20 @@ export class ZLinkStoreLocationResolvers implements
       const descriptor = descriptors.find((candidate) =>
         candidate.entrySpotId === spotId
         && candidate.objectRole === ZLinkObjectRole.Server
-        && candidate.state !== ZLinkFrameworkRuntimeState.Stopped
+        // An Entry Spot accepts new joins only while its owning node is Serving.
+        // Preparing/retiring/error rows may still be visible during replacement,
+        // but routing them would turn a valid transfer into NotConnected.
+        && candidate.state === ZLinkFrameworkRuntimeState.Serving
       );
       if (descriptor !== undefined) {
-        return { meshName, nodeRid: descriptor.rid, spotId };
+        return {
+          meshName,
+          nodeRid: descriptor.rid,
+          spotId,
+          targetNodeGeneration: descriptor.lifecycleGeneration,
+          targetOwnerId: descriptor.ownerId,
+          ownerLeaseGeneration: descriptor.leaseGeneration
+        };
       }
     }
     return undefined;
@@ -622,7 +639,10 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         routerChannelId: this.routerChannelIdForMesh(entrySpot.meshName),
         targetNodeRid: entrySpot.nodeRid,
         spotId: entrySpot.spotId,
-        spotKind: ZLinkSpotKind.Entry
+        spotKind: ZLinkSpotKind.Entry,
+        targetNodeGeneration: entrySpot.targetNodeGeneration,
+        targetOwnerId: entrySpot.targetOwnerId,
+        ownerLeaseGeneration: entrySpot.ownerLeaseGeneration
       };
     }
     throw createInternalFrameworkException(
@@ -652,7 +672,9 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
     const key = String(spotId);
     const cached = this.cache.get(key);
     if (cached !== undefined) {
-      if (this.monotonicNowMs() < cached.expiresAtMs) return cached.row;
+      if (this.monotonicNowMs() < cached.expiresAtMs) {
+        return cached.row;
+      }
       this.cache.delete(key);
     }
     const current = await this.store.readAuthority(
@@ -726,6 +748,6 @@ async function resolveEntrySpotPeerInMeshes(
   spotId: SpotId,
   meshNames: readonly string[],
   signal?: AbortSignal
-): Promise<{ readonly meshName: string; readonly nodeRid: RoutingId; readonly spotId: SpotId } | undefined> {
+): Promise<Awaited<ReturnType<ZLinkStoreLocationResolvers['resolveEntrySpotNode']>>> {
   return await rows.resolveEntrySpotNode(spotId, meshNames, signal);
 }

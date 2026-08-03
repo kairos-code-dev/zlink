@@ -124,7 +124,7 @@ test('deferred Actor Join barrier keeps the next Actor mailbox turn behind compl
   ]);
 });
 
-test('Core-routed Actor request submits its reply exactly once before deferred Join completion', async () => {
+test('Core-routed Actor request submits its reply exactly once after deferred Join completion', async () => {
   const events = [];
   class PlayerActor {
     constructor() {
@@ -187,8 +187,8 @@ test('Core-routed Actor request submits its reply exactly once before deferred J
   assert.equal(replies, 1);
   assert.deepEqual(events, [
     'handler',
-    'reply:true',
-    'completion:0123456789abcdef:fedcba9876543210'
+    'completion:0123456789abcdef:fedcba9876543210',
+    'reply:true'
   ]);
 });
 

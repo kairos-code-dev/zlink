@@ -28,6 +28,7 @@ import type {
 import type {
   ServiceUserSpotOperationResult
 } from '../foundation/service-stateful-runtime';
+import type { ZLinkAuthoritySnapshot } from '../../contracts/Locations';
 
 export interface ZLinkPublicSpotManagerOptions {
   readonly local: DefaultZLinkSpotManager;
@@ -41,6 +42,7 @@ export interface ZLinkPublicSpotManagerOptions {
   readonly defaultTimeoutMs: number;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly ridFactory?: () => SpotId;
+  readonly forgetReadyRoute?: (spot: SpotRef, snapshot: ZLinkAuthoritySnapshot) => void;
   readonly remoteClose?: (
     meshName: string,
     targetNodeRid: string,
@@ -150,7 +152,10 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
           || kind === ZLinkFrameworkInternalErrorKind.DeadlineExceeded
       );
     }
-    if (result.tail.closed) this.options.resolver()?.invalidate?.(spot.spotId);
+    if (result.tail.closed) {
+      this.options.forgetReadyRoute?.(current, snapshot);
+      this.options.resolver()?.invalidate?.(spot.spotId);
+    }
     return result.tail.closed;
   }
 

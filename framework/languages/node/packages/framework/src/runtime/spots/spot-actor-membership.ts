@@ -26,6 +26,7 @@ import {
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkSpotActivation } from './spot-activation-state';
 import type { ZLinkSpotActorTransferRuntime } from './spot-runtime-ports';
+import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 
 export interface ZLinkSpotActorMembershipOptions {
   readonly resolveActivation: (
@@ -39,8 +40,11 @@ export interface ZLinkSpotActorMembershipOptions {
     onLeaveActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void>;
   };
   readonly nodeRid?: RoutingId;
+  readonly nodeRidProvider?: (meshName: string) => RoutingId | undefined;
   readonly entryNodeRid?: RoutingId;
   readonly entryNodeRidProvider?: () => RoutingId | undefined;
+  readonly entrySpotIdProvider?: (meshName: string) => string | undefined;
+  readonly spotRouteResolver?: ZLinkSpotRouteResolver;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
 }
 
@@ -105,10 +109,18 @@ export class ZLinkSpotActorMembership {
     throwIfAborted(signal);
     const activation = this.requireActivation(spotId, meshName);
     const localEntryNodeRid =
+      (meshName === undefined ? undefined : this.options.nodeRidProvider?.(meshName)) ??
       this.options.entryNodeRidProvider?.() ??
       this.options.entryNodeRid ??
       this.options.nodeRid;
-    const entryNodeRid = this.options.actorTransferRuntime?.actorEntryNodeRid(actor) ??
+    const entrySpotId = meshName === undefined
+      ? undefined
+      : this.options.entrySpotIdProvider?.(meshName);
+    const resolvedEntry = entrySpotId === undefined
+      ? undefined
+      : await this.options.spotRouteResolver?.resolve(entrySpotId, signal);
+    const entryNodeRid = resolvedEntry?.targetNodeRid ??
+      this.options.actorTransferRuntime?.actorEntryNodeRid(actor) ??
       localEntryNodeRid;
     if (entryNodeRid === undefined) {
       throw new ZLinkConfigurationException('Spot actor leave requires an Entry Spot node routing id.');
@@ -130,7 +142,7 @@ export class ZLinkSpotActorMembership {
           request: unknown,
           signal?: AbortSignal
         ): Promise<boolean>;
-      };
+    };
       await context[ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME](
         entryNodeRid,
         ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data())),

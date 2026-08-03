@@ -987,6 +987,34 @@ test('location resolvers resolve Entry Spots from live MeshNode descriptors', as
   await runtime.stop();
 });
 
+test('Entry Spot route resolution excludes non-serving nodes during replacement', async () => {
+  const store = new internal.ZLinkInMemoryLocationStore();
+  const entrySpotId = 'play-entry-00000000-0000-4000-8000-000000000002';
+
+  const draining = {
+    ...placementDescriptor('node-draining', 'Player', 100, 0, 0),
+    entrySpotId,
+    state: framework.ZLinkFrameworkRuntimeState.Draining
+  };
+  const serving = {
+    ...placementDescriptor('node-serving', 'Player', 100, 0, 0),
+    entrySpotId
+  };
+  const resolvers = resolversFor(store);
+  // Keep the two visible descriptors in the same order as a replacement scan.
+  // The resolver must apply the Serving-state fence before selecting a target.
+  resolvers.liveRows.filter = async rows => rows;
+  resolvers.options.stores.locationStore = {
+    async listMeshNodes() {
+      return { items: [draining, serving] };
+    }
+  };
+
+  const route = await resolvers.resolveEntrySpotNode(entrySpotId, ['play']);
+  assert.equal(String(route.nodeRid), 'node-serving');
+  assert.equal(route.targetOwnerId, 'node-serving');
+});
+
 test('production repository persists owner lease and MeshNode records through only opaque Store primitives', async () => {
   let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
   const provider = new internal.ZLinkInMemoryProviderLocationStore(() => new Date(nowMs));

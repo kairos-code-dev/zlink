@@ -7,6 +7,7 @@ import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
+import { createBingoRelocationStore } from '../Configuration/relocation-store';
 import { bingoMeterProvider } from '../runtime-support';
 import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 function createBingoSessionModule() {
@@ -36,6 +37,7 @@ function createBingoSessionModule() {
             .traceLogFile(`${endpoints.logDir}/flow-session.log`)
             .traceLabel('session');
           builder.addLocationStore(createBingoLocationStore(endpoints));
+          builder.addRelocationStore(createBingoRelocationStore(endpoints));
           bingoLocationOptions(builder.configureLocations());
           builder.codecs().use(bingoFrameworkProtobuf);
           const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)

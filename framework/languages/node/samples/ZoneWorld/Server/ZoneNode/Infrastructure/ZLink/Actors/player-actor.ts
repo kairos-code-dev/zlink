@@ -1,6 +1,6 @@
 import { zlinkSpotActorSendHandler } from '@zlink-systems/nestjs';
 import { ZoneSpot } from '../Spots/zone-spot';
-import type { ZLinkActor, ZLinkActorContext } from '@zlink-systems/framework';
+import type { ZLinkActor, ZLinkActorContext, ZLinkMessageContext } from '@zlink-systems/framework';
 import { ZoneIds } from '../../../../../Shared/spec';
 import {
   WorldAnnounceNotify,
@@ -44,7 +44,7 @@ class DeliverZoneNotification {
   packetName: 'DeliverZoneNotification'
 })
 class DeliverZoneNotificationHandler {
-  async handle(actor: PlayerActor, _context: unknown, message: DeliverZoneNotification): Promise<void> {
+  async handle(_spot: ZoneSpot, actor: PlayerActor, _context: ZLinkMessageContext, message: DeliverZoneNotification): Promise<void> {
     const value = message.payload as Record<string, unknown>;
     switch (message.packetName) {
       case 'ZoneStateNotify':

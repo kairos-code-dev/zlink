@@ -1730,6 +1730,47 @@ test('command 44 exact fences reject stale bindings and make an exact retry idem
   assert.deepEqual(restartedTargetRetry, first);
 });
 
+test('command 44 uses the binding registry high-water when the ActorRef has no diagnostic copy', async () => {
+  const host = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration()
+  });
+  const context = host.streamBindingRuntime.createSessionContext(recordingStream('session-fence-copy', 'session-a'));
+  await context.actors.bind({
+    nodeRid: 'actor-source', actorId: 'actor-fence-copy', generation: 7n,
+    ownershipGeneration: 10n, ownerLeaseGeneration: 20n,
+    bindingGeneration: 17n
+  });
+  const payload = {
+    actorId: 'actor-fence-copy',
+    actorNodeRid: 'actor-target',
+    actorGeneration: '7',
+    previousActorOwnershipGeneration: '10',
+    actorOwnershipGeneration: '11',
+    bindingGeneration: '17',
+    previousOwnerLeaseGeneration: '20',
+    targetOwnerLeaseGeneration: '21',
+    acceptedHighWater: '0',
+    sealId: 'seal-fence-copy',
+    acceptedJournalReference: 'journal-fence-copy',
+    acceptedJournalChecksumCrc32c: 1
+  };
+
+  await sealSessionRoute(
+    host,
+    payload.actorId,
+    7n,
+    10n,
+    17n,
+    20n,
+    payload.sealId
+  );
+  const first = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership(payload);
+  const retry = await host.boundSessionRelay.boundSessions.receiveRemoteBoundSessionOwnership(payload);
+
+  assert.deepEqual(retry, first);
+  assert.equal(String(host.streamBindingRuntime.find(payload.actorId).ref.nodeRid), 'actor-target');
+});
+
 test('command 44 ownership handler writes command 45 ACK only after route replacement', async () => {
   let releaseReplacement;
   const replacementBlocked = new Promise((resolve) => { releaseReplacement = resolve; });
@@ -2054,6 +2095,59 @@ test('actor state keeps opaque session binding coordinates across packet target 
   assert.equal(state.remoteBoundSessionTarget.sessionRid.toHex(), '00000001');
 });
 
+test('Session binding refresh preserves the staged relocation fence for the same route', () => {
+  const target = {
+    routerChannelId: 'room.route',
+    targetNodeRid: zlink.RoutingId.from('session-node'),
+    spotId: zlink.RoutingId.from('session-entry'),
+    sessionNodeRid: zlink.RoutingId.from('session-node'),
+    sessionRid: zlink.RoutingId.fromHex('00000001'),
+    bindingGeneration: 7n,
+    previousAuthorityOwnerGeneration: 11n,
+    previousOwnerLeaseGeneration: 13n,
+    acceptedHighWater: 17n,
+    relocationSealId: 'seal-17',
+    acceptedJournalReference: 'journal-17',
+    acceptedJournalChecksumCrc32c: 19
+  };
+  const refreshed = framework.mergeRemoteBoundSessionTarget({
+    routerChannelId: 'room.route',
+    targetNodeRid: zlink.RoutingId.from('session-node'),
+    spotId: zlink.RoutingId.from('session-entry'),
+    sessionNodeRid: zlink.RoutingId.from('session-node'),
+    sessionRid: zlink.RoutingId.fromHex('00000001')
+  }, target);
+
+  assert.equal(refreshed.relocationSealId, 'seal-17');
+  assert.equal(refreshed.acceptedHighWater, 17n);
+  assert.equal(refreshed.acceptedJournalReference, 'journal-17');
+  assert.equal(refreshed.acceptedJournalChecksumCrc32c, 19);
+  assert.equal(refreshed.bindingGeneration, 7n);
+});
+
+test('formal transfer route remains preferred over a lightweight remote bind refresh', () => {
+  const transfer = {
+    routerChannelId: 'room.route',
+    targetNodeRid: zlink.RoutingId.from('session-node'),
+    spotId: zlink.RoutingId.from('session-entry'),
+    relocationSealId: 'seal-18',
+    acceptedHighWater: 18n,
+    acceptedJournalReference: 'journal-18'
+  };
+  const remote = {
+    routerChannelId: 'room.route',
+    targetNodeRid: zlink.RoutingId.from('session-node'),
+    spotId: zlink.RoutingId.from('session-entry'),
+    sessionNodeRid: zlink.RoutingId.from('session-node'),
+    sessionRid: zlink.RoutingId.fromHex('00000002')
+  };
+
+  assert.equal(
+    framework.preferredRemoteBoundSessionTarget(remote, transfer),
+    transfer
+  );
+});
+
 test('actor state applies a later native binding generation to the transfer target', () => {
   const state = new framework.ZLinkActorRuntimeState('actor-session-generation');
   state.setBoundSessionTransferTarget({
@@ -2066,6 +2160,22 @@ test('actor state applies a later native binding generation to the transfer targ
 
   assert.equal(state.boundSessionBindingGeneration, 17n);
   assert.equal(state.boundSessionTransferTarget.bindingGeneration, 17n);
+});
+
+test('actor state does not regress a bound-session generation from a stale Core refresh', () => {
+  const state = new framework.ZLinkActorRuntimeState('actor-session-generation-monotonic');
+  state.setRemoteBoundSessionTarget({
+    routerChannelId: 'room.route',
+    targetNodeRid: 'session-node',
+    spotId: 'session-entry',
+    bindingGeneration: 4n
+  });
+  state.setBoundSessionBindingGeneration(4n);
+
+  state.setBoundSessionBindingGeneration(1n);
+
+  assert.equal(state.boundSessionBindingGeneration, 4n);
+  assert.equal(state.remoteBoundSessionTarget.bindingGeneration, 4n);
 });
 
 test('runtime host actor packet target lets local joined actors use native gateway', () => {

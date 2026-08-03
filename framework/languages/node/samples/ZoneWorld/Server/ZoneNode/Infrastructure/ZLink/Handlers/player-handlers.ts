@@ -36,6 +36,7 @@ import { UpdateZonePositionMsg } from './zone-runtime-handlers';
 })
 class EntryEnterWorldHandler {
   async handle(
+    _spot: ZoneEntrySpot,
     actor: PlayerActor,
     _context: ZLinkMessageContext,
     request: EnterWorldReq
@@ -69,6 +70,7 @@ class EntryEnterWorldHandler {
 })
 class EntryJoinWorldHandler {
   async handle(
+    _spot: ZoneEntrySpot,
     actor: PlayerActor,
     _context: ZLinkMessageContext,
     request: JoinWorldReq
@@ -143,6 +145,7 @@ class PlayerMoveHandler {
   constructor(private readonly movement: PlayerMovement) {}
 
   async handle(
+    _spot: ZoneSpot,
     actor: PlayerActor,
     _context: ZLinkMessageContext,
     message: MoveMsg
@@ -161,6 +164,7 @@ class PlayerBotTickHandler {
   constructor(private readonly movement: PlayerMovement) {}
 
   async handle(
+    _spot: ZoneSpot,
     actor: PlayerActor,
     _context: ZLinkMessageContext,
     _message: BotTickReq

@@ -28,6 +28,7 @@ import type {
   ProbeReq,
   RemoteSpotAwaitReq,
   SelfCycleMsg,
+  SelfSendMsg,
   TimerStartMsg,
   TimerStopMsg
 } from '../../Shared/messages';
@@ -170,6 +171,32 @@ export class ExecutionTurnScenarioSuite {
     await this.sendSpot(spot, { requestId } satisfies TimerStopMsg, 'TimerStopMsg');
   }
 
+  async tdD6(): Promise<void> {
+    const spot = await this.spot();
+    for (const terminator of ['async', 'yield'] as const) {
+      const requestId = newId(`TD-D6-${terminator}`);
+      await this.sendSpot(spot, {
+        requestId,
+        timeoutMs: 1000,
+        terminator
+      } satisfies SelfCycleMsg, 'SelfCycleMsg');
+      const evidence = await this.evidence(requestId, 'self-cycle-rejected');
+      ensure(!evidence.some((line) => line.includes(`request=${requestId}`)
+        && line.includes('self-cycle-unexpected-completed')),
+      `TD-D6 ${terminator} self-request completed unexpectedly.`);
+    }
+
+    const sendRequestId = newId('TD-D6-send');
+    await this.sendSpot(spot, {
+      requestId: sendRequestId,
+      marker: 'self-send'
+    } satisfies SelfSendMsg, 'SelfSendMsg');
+    const sendEvidence = await this.evidence(sendRequestId, 'probe-completed');
+    containsRequestMarkersInOrder(sendEvidence, sendRequestId, [
+      'self-send-started', 'self-send-completed', 'probe-completed'
+    ], 'TD-D6 self-send FIFO order mismatch.');
+  }
+
   async tdE1(): Promise<void> {
     const actors = await this.createActorContext(await this.spot());
     const reply = await this.actorRequest<ActorAwaitRes>(actors.actorA, {
@@ -242,7 +269,7 @@ export class ExecutionTurnScenarioSuite {
     const spot = await this.spot();
     const requestId = newId('TD-F6');
     await this.sendSpot(spot, { requestId, timeoutMs: 150 } satisfies SelfCycleMsg, 'SelfCycleMsg');
-    await this.evidence(requestId, 'self-cycle-timed-out');
+    await this.evidence(requestId, 'self-cycle-rejected');
     const reply = await this.spotRequest<AutomaticTurnDispatchRes>(spot, {
       requestId,
       marker: 'post-cycle'

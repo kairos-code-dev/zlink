@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getJson, postJson } from './http-client';
+import { getJson, postJson } from '../../../http-client';
 import type { ClientOptions } from './client-options';
 
 export { assert };

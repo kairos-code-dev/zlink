@@ -3,6 +3,10 @@ import type { RoutingId, ZLinkRouteMessageContext } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef } from '../backend';
 import type { DefaultZLinkActorManager } from '../actors';
+import {
+  mergeRemoteBoundSessionTarget,
+  preferredRemoteBoundSessionTarget
+} from '../actors/actor-runtime-state';
 import { decodeRemoteActorJoinPayload } from '../actors/actor-remote-wire';
 import type { DefaultZLinkSpotManager } from '../spots';
 import { normalizeRoutingId, routingIdWireHex } from '../routing-id';
@@ -39,11 +43,15 @@ export class ZLinkRemoteActorJoinReceiver {
       generation: BigInt(join.actorGeneration)
     };
     state.setNativeActorRef(actorRef as unknown as ZLinkBackendActorRef);
-    state.setRemoteBoundSessionTarget({
+    const refreshedTarget = mergeRemoteBoundSessionTarget({
       routerChannelId: join.boundSessionRouterChannelId ?? join.routerChannelId ?? routeContext.channelName ?? '',
       targetNodeRid: join.boundSessionTargetNodeRid ?? normalizeRoutingId(routeContext.sourceNodeRid),
       spotId: join.boundSessionSpotId ?? join.sourceSpotId ?? normalizeRoutingId(routeContext.sourceNodeRid)
-    });
+    }, preferredRemoteBoundSessionTarget(
+      state.remoteBoundSessionTarget,
+      state.boundSessionTransferTarget
+    ));
+    state.setRemoteBoundSessionTarget(refreshedTarget);
     const request = BindingMessage.from(Buffer.from(join.request, 'base64'));
     try {
       const response = await this.requireSpotManager().admitActorJoin(

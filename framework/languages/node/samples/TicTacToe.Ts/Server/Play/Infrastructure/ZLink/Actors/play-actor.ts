@@ -81,7 +81,7 @@ class PlayActor implements ZLinkActor, TicTacToeActor {
   packetName: 'DeliverPlayNotification'
 })
 class DeliverPlayNotificationHandler {
-  async handle(actor: PlayActor, _context: unknown, message: DeliverPlayNotification): Promise<void> {
+  async handle(_spot: TicTacToeGameSpot, actor: PlayActor, _context: ZLinkMessageContext, message: DeliverPlayNotification): Promise<void> {
     await deliverPlayNotification(actor, message);
   }
 }

@@ -255,12 +255,20 @@ export class ZLinkRemoteBoundSessionRelay {
     };
     const currentOwnershipGeneration = this.actorOwnershipGenerations.get(value.actorId)
       ?? currentFence.ownershipGeneration;
+    // acceptedHighWater is owned by the binding registry. Older ActorRef
+    // instances do not carry the optional diagnostic copy, so an absent
+    // field must not invalidate a seal that was already verified above.
+    const currentAcceptedHighWater = currentFence.acceptedHighWater;
+    const rememberedHighWaterMatches = rememberedSeal?.sealId === value.sealId
+      && rememberedSeal.acceptedHighWater === acceptedHighWater;
     const targetAlreadyPublished =
       routingIdsEqual(current.nodeRid, actorRef.nodeRid) &&
       currentOwnershipGeneration === ownershipGeneration &&
       currentFence.bindingGeneration === bindingGeneration &&
       currentFence.ownerLeaseGeneration === targetOwnerLeaseGeneration &&
-      currentFence.acceptedHighWater === acceptedHighWater;
+      (currentAcceptedHighWater === undefined
+        ? rememberedHighWaterMatches
+        : currentAcceptedHighWater === acceptedHighWater);
     if (targetAlreadyPublished) {
       this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
       return encodeRemoteBoundSessionOwnershipAck(value);
@@ -272,7 +280,7 @@ export class ZLinkRemoteBoundSessionRelay {
       currentOwnershipGeneration !== previousOwnershipGeneration ||
       currentFence.bindingGeneration !== bindingGeneration ||
       currentFence.ownerLeaseGeneration !== previousOwnerLeaseGeneration ||
-      currentFence.acceptedHighWater !== acceptedHighWater
+      (currentAcceptedHighWater !== undefined && currentAcceptedHighWater !== acceptedHighWater)
     ) {
       throw new Error(`Actor '${value.actorId}' bound-session ownership update was fenced by its binding identity.`);
     }

@@ -358,6 +358,49 @@ test('request submit keeps the entry turn until its reply completes', async () =
   assert.deepEqual(events, ['handler:start', 'request:ping', 'handler:reply:ping', 'next']);
 });
 
+test('same-Spot awaited requests fail before transport while self-send remains FIFO-admitted', async () => {
+  const submissions = [];
+  const addressTransport = {
+    async sendToSpotAddress(spotId, message) {
+      submissions.push({ kind: 'send', spotId, message });
+      return { status: 'submitted' };
+    },
+    async requestToSpotAddress(spotId, request) {
+      submissions.push({ kind: 'request', spotId, request });
+      return { marker: 'unexpected-reply' };
+    }
+  };
+  const serial = new framework.ZLinkSpotSerialExecutor(true, 'same-spot');
+  const outbound = new framework.DefaultZLinkSpotOutbound(
+    serial,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    'test-mesh',
+    undefined,
+    addressTransport
+  );
+  const isInvalidOperation = (error) => error instanceof framework.ZLinkFrameworkException
+    && error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation;
+
+  assert.throws(
+    () => outbound.requestToSpot('same-spot', { requestId: 'async' }).submit(),
+    isInvalidOperation
+  );
+  await serial.execute(async () => {
+    assert.throws(
+      () => outbound.requestToSpot('same-spot', { requestId: 'yield' }).yield(),
+      isInvalidOperation
+    );
+  });
+
+  await outbound.sendToSpot('same-spot', { requestId: 'send', marker: 'self-send' }).submit();
+  assert.deepEqual(submissions.map(({ kind }) => kind), ['send']);
+});
+
 test('yield request from an entry turn is rejected because Entry forbids Yield', async () => {
   // 04-async-execution-policy.ko.md SS1.1: "PerActor와 Entry에서 Yield가
   // 금지되는 기존 규칙도 바뀌지 않는다." spot-entry-activation.ts

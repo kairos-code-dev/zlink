@@ -1,4 +1,7 @@
-import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
 import { ZLinkSpotKind } from '../../contracts';
 import type {
   RoutingId,
@@ -277,6 +280,7 @@ function createAddressedSpotRequestCall(
   const options = newAddressCallOptions();
   const begin = <TReply>(signal?: AbortSignal) => {
     markSubmitted(options);
+    rejectSameSpotRequest(serial, spotId);
     return startRequestOnSerial<TReply>(serial, () => ({
       pending: transport.requestToSpotAddress<TReply>(
         spotId,
@@ -527,15 +531,21 @@ function wrapRoutedSpotRequestCall(
 ): ZLinkRequestCall & Pick<ZLinkChannelRequestCall, 'yield'> {
   let selectedTimeoutMs: number | undefined;
   const metadata = new Map<string, string>();
-  const begin = <TReply>(signal?: AbortSignal) => startRequestOnSerial<TReply>(serial, () => ({
-    pending: requestToSpotHandle<TReply>(transport, spot, request, {
-      timeoutMs: selectedTimeoutMs,
-      signal,
-      metadata,
-      spotRouterChannelIdForMesh,
-      sourceSpot: sourceSpotProvider?.()
-    })
-  }));
+  const begin = <TReply>(signal?: AbortSignal) => {
+    // A request to the current Spot would wait behind the handler that owns
+    // the same Spot claim. Reject it before resolving a route or submitting
+    // transport work; one-way self-send remains a valid FIFO admission.
+    rejectSameSpotRequest(serial, spot.spotId);
+    return startRequestOnSerial<TReply>(serial, () => ({
+      pending: requestToSpotHandle<TReply>(transport, spot, request, {
+        timeoutMs: selectedTimeoutMs,
+        signal,
+        metadata,
+        spotRouterChannelIdForMesh,
+        sourceSpot: sourceSpotProvider?.()
+      })
+    }));
+  };
   return {
     metadata(key: string | ZLinkMessageMetadata, value?: string) {
       if (typeof key === 'string') {
@@ -561,6 +571,15 @@ function wrapRoutedSpotRequestCall(
       return turn.yieldPromise(pending);
     }
   };
+}
+
+function rejectSameSpotRequest(serial: ZLinkSpotSerialExecutor, targetSpotId: RoutingId): void {
+  const sourceSpotId = serial.sourceSpotId;
+  if (sourceSpotId === undefined || String(sourceSpotId) !== String(targetSpotId)) return;
+  throw createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.InvalidOperation,
+    `A Spot request cannot await the current Spot '${String(sourceSpotId)}' while holding its execution claim.`
+  );
 }
 
 export interface ZLinkSpotHandleCallOptions {

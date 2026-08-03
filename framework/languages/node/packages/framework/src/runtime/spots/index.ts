@@ -175,6 +175,15 @@ export interface ZLinkSpotManagerOptions {
     fallbackActorRef?: ActorRef,
     requestTerminal?: (response: unknown) => Promise<void> | void
   ) => Promise<unknown>;
+  /**
+   * Commits a stateful MeshNode Actor return to the Entry Spot after the
+   * stateful reply has committed Core membership.
+   */
+  readonly dispatchEntryActorJoin?: (
+    meshName: string,
+    actor: ZLinkActor,
+    handoffBacklog?: readonly ZLinkActorHandoffPacket[]
+  ) => Promise<void>;
   readonly actorCountProvider?: (spotId: RoutingId) => number;
   readonly userSpotExecutionMode?: (
     meshName: string,
@@ -207,6 +216,10 @@ export interface ZLinkSpotManagerOptions {
     meshName: string,
     spotId: RoutingId
   ) => Promise<void>;
+  readonly instanceSpotApplicationTargetProvider?: (
+    meshName: string,
+    spotId: RoutingId
+  ) => { readonly stableType: string; readonly objectGeneration: bigint } | undefined;
   // Backs each user Spot with a core-native Spot object (registered for join
   // routing by rid) so actor-join admission uses the same recv/reply round-trip
   // as the Entry Spot and .NET, for local and remote callers alike.
@@ -274,8 +287,11 @@ export class DefaultZLinkSpotManager {
       dispatchErrors: options.dispatchErrors,
       entrySpotCallbacks: options.entrySpotCallbacks,
       nodeRid: options.nodeRid,
+      nodeRidProvider: options.nodeRidProvider,
       entryNodeRid: options.entryNodeRid,
       entryNodeRidProvider: options.entryNodeRidProvider,
+      entrySpotIdProvider: options.entrySpotIdProvider,
+      spotRouteResolver: options.spotRouteResolver,
       actorTransferRuntime: options.actorTransferRuntime
     });
     this.activationLifecycle = new ZLinkSpotActivationLifecycle({
@@ -308,7 +324,8 @@ export class DefaultZLinkSpotManager {
       actorTransferRuntime: options.actorTransferRuntime,
       boundSessionRuntime: options.boundSessionRuntime,
       actorHandoffRuntime: options.actorHandoffRuntime,
-      leaveActor: (spotId, actor, signal) => this.actorMembership.leaveActor(spotId, actor, signal),
+      leaveActor: (spotId, actor, signal, meshName) =>
+        this.actorMembership.leaveActor(spotId, actor, signal, meshName),
       closeSpot: (meshName, spotId, signal, reason) =>
         this.closeWithReason(meshName, spotId, signal, reason),
       registerActivation: (activation) => this.activations.register(activation),
@@ -436,6 +453,16 @@ export class DefaultZLinkSpotManager {
       }).catch(() => undefined);
     }
     return pending.then(() => undefined);
+  }
+
+  isInstanceMaterialized(
+    meshName: string,
+    instanceType: string,
+    spotId: RoutingId
+  ): boolean {
+    const activation = this.activations.resolve(meshName, spotId);
+    return activation !== undefined
+      && activation.spotType === this.requireInstanceFactory(meshName, instanceType);
   }
 
   async discardInstance(meshName: string, spotId: RoutingId): Promise<void> {
@@ -749,7 +776,8 @@ export class DefaultZLinkSpotManager {
     actor: ZLinkActor,
     signal?: AbortSignal
   ): Promise<void> {
-    await this.actorMembership.leaveActor(spotId, actor, signal);
+    const meshName = this.activations.resolveUnique(spotId)?.meshName;
+    await this.actorMembership.leaveActor(spotId, actor, signal, meshName);
   }
 
   async leaveActorInMesh(
@@ -881,6 +909,7 @@ export class DefaultZLinkSpotManager {
       contentType: envelope.header.contentType
     };
     if (record.kind === ReceiveKind.SpotSend) {
+      await this.ensureInstanceApplicationActivation(meshName, spotId);
       await this.routedSpotPackets.send(spotId, packetName, payload, context);
       return;
     }
@@ -888,6 +917,7 @@ export class DefaultZLinkSpotManager {
       throw new ZLinkConfigurationException(`Unsupported MeshNode Spot record kind '${record.kind}'.`);
     }
     try {
+      await this.ensureInstanceApplicationActivation(meshName, spotId);
       const response = await this.routedSpotPackets.request(spotId, packetName, payload, context);
       requireMeshSpotReply(record.reply(encodeChannelReplyParts(envelope.header, response)));
     } catch (error) {
@@ -896,6 +926,21 @@ export class DefaultZLinkSpotManager {
         error instanceof Error ? error.message : String(error)
       )));
     }
+  }
+
+  private async ensureInstanceApplicationActivation(
+    meshName: string,
+    spotId: RoutingId
+  ): Promise<void> {
+    if (this.activations.resolve(meshName, spotId) !== undefined) return;
+    const target = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
+    if (target === undefined) return;
+    await this.materializeInstance(
+      meshName,
+      target.stableType,
+      spotId,
+      target.objectGeneration
+    );
   }
 
   async dispatchMeshInstance(
@@ -909,6 +954,7 @@ export class DefaultZLinkSpotManager {
         'MeshNode Instance Spot record is missing the owner Spot RID.'
       );
     }
+    await this.ensureInstanceApplicationActivation(meshName, spotId);
     const activation = this.activations.resolve(meshName, spotId);
     if (activation === undefined || !this.isInstanceFactory(meshName, activation.spotType)) {
       throw new ZLinkConfigurationException(
@@ -1048,6 +1094,9 @@ export class DefaultZLinkSpotManager {
     if (spotId === null || actorId === undefined) {
       throw new ZLinkConfigurationException('MeshNode Actor join record is missing its Spot or Actor owner.');
     }
+    const entrySpotId = this.options.entryNodeRidProvider?.() ?? this.options.entryNodeRid;
+    const targetsEntrySpot = entrySpotId !== undefined
+      && String(spotId) === String(entrySpotId);
     const activation = this.activations.resolve(meshName, spotId);
     const transferRequest = record.parts.length === 0
       ? undefined
@@ -1055,7 +1104,18 @@ export class DefaultZLinkSpotManager {
     const applicationClaim = transferRequest === undefined
       ? this.options.admission?.claim(meshName, 'Actor join dispatch')
       : undefined;
-    let actor = this.options.actorResolver?.(actorId);
+    const resolvedActor = this.options.actorResolver?.(actorId);
+    const lifecycleActor = targetsEntrySpot
+      ? this.options.actorLifecycleResolver?.(actorId)
+      : undefined;
+    let actor = resolvedActor;
+    if (actor === undefined && targetsEntrySpot) {
+      // An actor returning from a User Spot can still be marked as moving
+      // while the source-side relocation fence is being completed. Entry Spot
+      // admission must resolve that lifecycle object so the accepted Core
+      // reply can commit the return transaction.
+      actor = lifecycleActor;
+    }
     let callbackRequest: BindingMessage | undefined = record.parts.length === 0
       ? undefined
       : record.parts[0]!;
@@ -1071,7 +1131,14 @@ export class DefaultZLinkSpotManager {
         callbackRequest = ownedCallbackRequest;
       }
       let accepted = false;
-      if (
+      if (targetsEntrySpot) {
+        // Entry Spot return joins have no application admission callback. The
+        // actor-manager transaction is committed after the Core reply below.
+        // A formal transfer payload materializes the existing actor state at
+        // the Entry owner before that transaction is committed.
+        accepted = actor !== undefined
+          || (transferRequest !== undefined && this.options.actorTransferRuntime !== undefined);
+      } else if (
         activation !== undefined
         && callbackRequest !== undefined
         && (actor !== undefined || transferRequest !== undefined)
@@ -1142,19 +1209,33 @@ export class DefaultZLinkSpotManager {
               )
             );
         try {
-          const result = await this.options.actorTransferRuntime.materializeRoutedActor(
+        const result = await this.options.actorTransferRuntime.materializeRoutedActor(
             actorId,
             transferRequest.actorType,
             transferRequest.transferAdapterKey,
             transferState,
             transferRequest.actorEntryNodeRid,
-            transferRequest.remoteBoundSessionTarget
-          );
-          actor = result.actor;
+          transferRequest.remoteBoundSessionTarget
+        );
+        actor = result.actor;
           materialized = true;
         } finally {
           transferState.close();
         }
+      }
+      if (
+        accepted
+        && transferRequest !== undefined
+        && this.options.actorTransferRuntime !== undefined
+      ) {
+        // A lightweight Core actor-join notification can create the Actor
+        // before the formal transfer request reaches this branch. Preserve
+        // the full relocation fence in that race so a later Session bind
+        // refresh cannot erase the seal or accepted journal.
+        this.options.actorTransferRuntime.rememberRoutedActorTransferTarget(
+          actorId,
+          transferRequest.remoteBoundSessionTarget
+        );
       }
       if (accepted && actor !== undefined && transferRequest !== undefined) {
         const sourceLeave = sourceLeaveTerminal();
@@ -1168,10 +1249,55 @@ export class DefaultZLinkSpotManager {
           resolveSourceLeaveTerminal: sourceLeave.resolve
         });
       }
-      requireMeshSpotReply(record.replyActorJoin(
-        accepted ? 0 : 1,
-        reply === undefined ? [] : [reply.data()]
-      ));
+      const replyActorJoin = (): void => {
+        const joinReplyResult = record.replyActorJoin(
+          accepted ? 0 : 1,
+          reply === undefined ? [] : [reply.data()]
+        );
+        requireMeshSpotReply(joinReplyResult);
+      };
+      if (accepted && targetsEntrySpot && actor !== undefined) {
+        const entryActor = actor;
+        const pendingTransfer = transferRequest === undefined
+          ? undefined
+          : this.formalRemoteTransfers.get(actorId);
+        if (pendingTransfer === undefined) {
+          await this.options.dispatchEntryActorJoin?.(meshName, entryActor);
+          // The Entry path performs its lifecycle commit directly because it
+          // must wait for OnJoinedActor before the native join completion is
+          // released. Do not leave a second Entry Joined control behind the
+          // same mailbox turn.
+          replyActorJoin();
+        } else {
+          // A formal transfer must acknowledge the target admission before
+          // waiting for the source terminal; that terminal is what permits
+          // the detached target commit below to proceed.
+          replyActorJoin();
+          const commitEntryTransfer = async (): Promise<void> => {
+            const sourceLeaveSucceeded = await pendingTransfer.sourceLeaveTerminal;
+            if (!sourceLeaveSucceeded) {
+              throw new Error(
+                `Actor '${entryActor.context.actorId}' source leave callback failed before Entry Spot commit.`
+              );
+            }
+            await this.options.dispatchEntryActorJoin?.(
+              meshName,
+              entryActor,
+              pendingTransfer.handoffBacklog
+            );
+            this.formalRemoteTransfers.delete(entryActor.context.actorId);
+          };
+          this.options.detachedTaskRunner?.runDetached(
+            `actor Entry Spot transfer ${entryActor.context.actorId}`,
+            commitEntryTransfer
+          );
+          if (this.options.detachedTaskRunner === undefined) {
+            void commitEntryTransfer().catch(() => undefined);
+          }
+        }
+      } else {
+        replyActorJoin();
+      }
     } catch (error) {
       if (deferredJoinRoot !== undefined) {
         await this.options.actorTransferRuntime?.discardDeferredJoinAccepted(
@@ -1202,10 +1328,16 @@ export class DefaultZLinkSpotManager {
     const pendingTransfer = actorId === undefined
       ? undefined
       : this.formalRemoteTransfers.get(actorId);
+    const sourceActivation = actorId === undefined || spotId === null
+      ? undefined
+      : this.activations.resolve(meshName, spotId);
+    const sourceJoinedActor = actorId === undefined
+      ? undefined
+      : sourceActivation?.resolveJoinedActor(actorId);
     const actor = actorId === undefined
       ? undefined
       : pendingTransfer?.actor
-        ?? (spotId === null ? undefined : this.activations.resolve(meshName, spotId)?.resolveJoinedActor(actorId))
+        ?? sourceJoinedActor
         ?? this.options.actorLifecycleResolver?.(actorId)
         ?? this.options.actorResolver?.(actorId);
     const entrySpotId = this.options.entryNodeRidProvider?.() ?? this.options.entryNodeRid;
@@ -1245,7 +1377,6 @@ export class DefaultZLinkSpotManager {
           );
         }
         this.options.actorTransferRuntime?.commitRoutedActor(actor, spotId, activation.spot);
-        await activation.spot.onJoinedActor(actor);
         const completeTargetCommit = async (sourceLeaveSucceeded: boolean): Promise<void> => {
           if (sourceLeaveSucceeded && pendingTransfer !== undefined) {
             await replayActorHandoffBacklog(
@@ -1277,12 +1408,25 @@ export class DefaultZLinkSpotManager {
               membershipEpoch: control.currentMembershipEpoch
             }
           );
-          await this.options.actorTransferRuntime?.publishRoutedActorOwnership(actor);
           if (!sourceLeaveSucceeded) {
             throw new Error(`Actor '${actor.context.actorId}' source leave callback failed after target commit.`);
           }
           activation.commitActorJoin(actor);
-          await this.options.actorTransferRuntime?.openRoutedActorSession(actor);
+          const updateBoundSessionRoute = async (): Promise<void> => {
+            await this.options.actorTransferRuntime?.publishRoutedActorOwnership(actor);
+            await this.options.actorTransferRuntime?.openRoutedActorSession(actor);
+          };
+          // Session route publication is post-commit work. The public Join
+          // completion and lifecycle callback must not wait for a Session
+          // owner ACK; the route update retries in its detached runtime task.
+          if (pendingTransfer !== undefined && this.options.detachedTaskRunner !== undefined) {
+            this.options.detachedTaskRunner.runDetached(
+              `actor transfer Session route ${actor.context.actorId}`,
+              updateBoundSessionRoute
+            );
+          } else {
+            await updateBoundSessionRoute();
+          }
           const deferredJoinRoot = pendingTransfer?.deferredJoinRoot
             ?? await this.options.actorTransferRuntime?.recoverDeferredJoinAccepted(actor.context.actorId);
           if (deferredJoinRoot !== undefined) {
@@ -1303,13 +1447,22 @@ export class DefaultZLinkSpotManager {
             );
           }
           this.formalRemoteTransfers.delete(actor.context.actorId);
+          // A transferred actor must receive its first lifecycle callback only
+          // after ownership and the bound-session route are publishable. The
+          // callback may send to the actor; invoking it before this point
+          // races the formal transfer reconciliation guard.
+          await activation.spot.onJoinedActor(actor);
         };
         if (pendingTransfer !== undefined) {
           const resume = async (): Promise<void> => {
             const sourceLeaveSucceeded = await pendingTransfer.sourceLeaveTerminal;
-            await activation.serial.execute(() =>
-              completeTargetCommit(sourceLeaveSucceeded)
-            );
+            try {
+              await activation.serial.execute(() =>
+                completeTargetCommit(sourceLeaveSucceeded)
+              );
+            } catch (error) {
+              throw error;
+            }
           };
           this.options.detachedTaskRunner?.runDetached(
             `actor transfer target commit ${actor.context.actorId}`,
@@ -1327,6 +1480,13 @@ export class DefaultZLinkSpotManager {
         if (this.options.actorTransferRuntime === undefined) {
           await activation.spot.onLeaveActor(actor);
         } else {
+          // Spot.Context.leaveActor can run the source callback before the
+          // native Entry join is submitted. In that path the membership is
+          // already committed away, so a later Core LEFT control must not
+          // execute the same callback twice.
+          if (sourceJoinedActor === undefined && pendingTransfer === undefined) {
+            return;
+          }
           await this.options.actorTransferRuntime.notifyCoreSourceLeave(
             actor,
             () => activation.spot.onLeaveActor(actor)

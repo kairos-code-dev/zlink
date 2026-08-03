@@ -1,6 +1,4 @@
-import { Inject } from '@nestjs/common';
 import {
-  ZLINK_SPOT_OUTBOUND,
   zlinkSpotActorRequestHandler,
   zlinkSpotActorSendHandler
 } from '@zlink-systems/nestjs';
@@ -9,12 +7,6 @@ import { AgentAvailabilityDirectory } from '../../../../../Application/Conversat
 import { PacketNames } from '../../../../../../../Shared/Contracts/messages';
 import { SupportUserActor } from '../../../Actors/support-user-actor';
 import { ConversationSpot } from '../conversation-spot';
-import {
-  CloseConversationAtSpotReq,
-  JoinConversationAtSpotReq,
-  SendChatMessageAtSpotReq,
-  SetTypingAtSpotMsg
-} from './conversation-operation-handlers';
 import type {
   CloseConversationReq,
   CloseConversationRes,
@@ -27,19 +19,15 @@ import type {
 import type {
   ZLinkMessageContext,
   ZLinkSpotActorRequestHandler,
-  ZLinkSpotActorSendHandler,
-  ZLinkSpotOutbound
+  ZLinkSpotActorSendHandler
 } from '@zlink-systems/framework';
 
 abstract class ConversationActorRoute {
-  constructor(protected readonly spotOutbound: ZLinkSpotOutbound) {}
-
-  protected resolve(actor: SupportUserActor, context: ZLinkMessageContext): string {
+  protected assertMembership(actor: SupportUserActor, context: ZLinkMessageContext): void {
     const conversationId = context.metadata.find(SampleNames.conversationIdMetadataKey);
     if (conversationId === undefined || String(actor.context.spotId) !== conversationId) {
       throw new Error('Conversation metadata does not match the actor membership.');
     }
-    return conversationId;
   }
 }
 
@@ -50,18 +38,13 @@ abstract class ConversationActorRoute {
 })
 class JoinConversationHandler extends ConversationActorRoute
   implements ZLinkSpotActorRequestHandler<ConversationSpot, SupportUserActor, JoinConversationReq, JoinConversationRes> {
-  constructor(@Inject(ZLINK_SPOT_OUTBOUND) outbound: ZLinkSpotOutbound) {
-    super(outbound);
-  }
-
   async handle(
-    _spot: ConversationSpot,
+    spot: ConversationSpot,
     actor: SupportUserActor,
     context: ZLinkMessageContext
   ): Promise<JoinConversationRes> {
-    return this.spotOutbound
-      .requestToSpot(this.resolve(actor, context), new JoinConversationAtSpotReq(actor.actorId))
-      .submit<JoinConversationRes>();
+    this.assertMembership(actor, context);
+    return { scheduled: false, state: spot.join(actor.actorId) };
   }
 }
 
@@ -72,22 +55,14 @@ class JoinConversationHandler extends ConversationActorRoute
 })
 class SendChatMessageHandler extends ConversationActorRoute
   implements ZLinkSpotActorRequestHandler<ConversationSpot, SupportUserActor, SendChatMessageReq, SendChatMessageRes> {
-  constructor(@Inject(ZLINK_SPOT_OUTBOUND) outbound: ZLinkSpotOutbound) {
-    super(outbound);
-  }
-
   async handle(
-    _spot: ConversationSpot,
+    spot: ConversationSpot,
     actor: SupportUserActor,
     context: ZLinkMessageContext,
     request: SendChatMessageReq
   ): Promise<SendChatMessageRes> {
-    return this.spotOutbound
-      .requestToSpot(
-        this.resolve(actor, context),
-        new SendChatMessageAtSpotReq(actor.actorId, request.text)
-      )
-      .submit<SendChatMessageRes>();
+    this.assertMembership(actor, context);
+    return await spot.sendChat(actor.actorId, request.text);
   }
 }
 
@@ -98,22 +73,14 @@ class SendChatMessageHandler extends ConversationActorRoute
 })
 class SetTypingHandler extends ConversationActorRoute
   implements ZLinkSpotActorSendHandler<ConversationSpot, SupportUserActor, SetTypingMsg> {
-  constructor(@Inject(ZLINK_SPOT_OUTBOUND) outbound: ZLinkSpotOutbound) {
-    super(outbound);
-  }
-
   async handle(
-    _spot: ConversationSpot,
+    spot: ConversationSpot,
     actor: SupportUserActor,
     context: ZLinkMessageContext,
     request: SetTypingMsg
   ): Promise<void> {
-    await this.spotOutbound
-      .sendToSpot(
-        this.resolve(actor, context),
-        new SetTypingAtSpotMsg(actor.actorId, request.isTyping)
-      )
-      .submit();
+    this.assertMembership(actor, context);
+    await spot.setTyping(actor.actorId, request.isTyping);
   }
 }
 
@@ -124,24 +91,17 @@ class SetTypingHandler extends ConversationActorRoute
 })
 class CloseConversationHandler extends ConversationActorRoute
   implements ZLinkSpotActorRequestHandler<ConversationSpot, SupportUserActor, CloseConversationReq, CloseConversationRes> {
-  constructor(
-    @Inject(ZLINK_SPOT_OUTBOUND) outbound: ZLinkSpotOutbound,
-    private readonly availability: AgentAvailabilityDirectory
-  ) {
-    super(outbound);
+  constructor(private readonly availability: AgentAvailabilityDirectory) {
+    super();
   }
 
   async handle(
-    _spot: ConversationSpot,
+    spot: ConversationSpot,
     actor: SupportUserActor,
     context: ZLinkMessageContext
   ): Promise<CloseConversationRes> {
-    const response = await this.spotOutbound
-      .requestToSpot(
-        this.resolve(actor, context),
-        new CloseConversationAtSpotReq(actor.actorId)
-      )
-      .submit<CloseConversationRes>();
+    this.assertMembership(actor, context);
+    const response = { state: await spot.close(actor.actorId) };
     if (response.state.agentActorId !== undefined) {
       this.availability.released(response.state.agentActorId);
     }

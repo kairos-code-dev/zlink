@@ -19,7 +19,8 @@ import type { SupportRole } from '../../../../../Shared/Contracts/messages';
 import type {
   ZLinkActor,
   ZLinkActorContext,
-  ZLinkActorJoinCompletion
+  ZLinkActorJoinCompletion,
+  ZLinkMessageContext
 } from '@zlink-systems/framework';
 import {
   JoinConversationFailedNotify
@@ -129,7 +130,7 @@ class SupportUserActor implements ZLinkActor {
   packetName: 'DeliverSupportNotification'
 })
 class DeliverSupportNotificationHandler {
-  async handle(actor: SupportUserActor, _context: unknown, message: DeliverSupportNotification): Promise<void> {
+  async handle(_spot: unknown, actor: SupportUserActor, _context: ZLinkMessageContext, message: DeliverSupportNotification): Promise<void> {
     await actor.push(
       rehydrateSupportNotification(message.packetName, message.message),
       message.conversationId
@@ -178,8 +179,9 @@ function rehydrateSupportNotification(packetName: string, payload: unknown): unk
 })
 class JoinSupportConversationHandler {
   async handle(
+    _spot: SupportEntrySpot,
     actor: SupportUserActor,
-    _context: unknown,
+    _context: ZLinkMessageContext,
     message: JoinSupportConversation
   ): Promise<{ readonly scheduled: true; readonly state: ConversationState }> {
     return actor.scheduleConversationJoin(message);

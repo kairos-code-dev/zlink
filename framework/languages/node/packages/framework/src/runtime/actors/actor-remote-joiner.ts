@@ -125,21 +125,36 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined,
-    _completionOperationId?: import('../../contracts').ZLinkActorJoinOperationId
+    completionOperationId?: import('../../contracts').ZLinkActorJoinOperationId
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     throwIfAborted(signal);
     const node = this.node();
     const actorRef = state.nativeActorRef ?? lookupNativeActorRef(node, actor.context.actorId) ?? node.createActor(actor.context.actorId);
     state.setNativeActorRef(actorRef as never);
-    const selectedNodeRid = nodeRid ?? state.entryNodeRid ?? toFrameworkRoutingId(node.status().routingId);
+    const meshName = state.meshName ?? actor.context.meshName;
+    const entrySpotId = this.options.entrySpotIdProvider?.(meshName);
+    const resolvedTarget = entrySpotId === undefined
+      ? undefined
+      : await this.options.spotRouteResolver?.resolve(entrySpotId, signal);
+    // The caller may carry the Entry node from the previous membership.
+    // Entry placement can change while the Actor is in a User Spot, so the
+    // current authority route is the source of truth whenever it is available.
+    const selectedNodeRid = resolvedTarget?.targetNodeRid
+      ?? nodeRid
+      ?? state.entryNodeRid
+      ?? toFrameworkRoutingId(node.status().routingId);
+    const target = resolvedTarget;
     return await this.localJoin.joinEntrySpot(
       node,
       actor,
       state,
       actorRef,
       selectedNodeRid,
+      target,
       request,
-      timeoutMs ?? this.options.actorTransferTimeoutMs
+      timeoutMs ?? this.options.actorTransferTimeoutMs,
+      signal,
+      completionOperationId
     );
   }
 

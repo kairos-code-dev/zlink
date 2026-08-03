@@ -223,8 +223,23 @@ test('Actor rejection removes Creating authority and does not leak its reply to 
 
 test('public User Spot coordinator hides Pending, runs one factory, then publishes Ready generation', async () => {
   const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
+  const publicationOrder: string[] = [];
+  let publishedMesh: string | undefined;
+  let publishedRoute: unknown;
+  let forgottenMesh: string | undefined;
+  let forgottenRoute: unknown;
   const coordinator = new ZLinkUserSpotCreationCoordinator({
     store,
+    publishReadyRoute: (meshName, route) => {
+      publicationOrder.push('route');
+      publishedMesh = meshName;
+      publishedRoute = route;
+    },
+    forgetReadyRoute: (meshName, route) => {
+      publicationOrder.push('forget');
+      forgottenMesh = meshName;
+      forgottenRoute = route;
+    },
     target: async () => ({
       meshName: 'mesh',
       nodeRid: 'node-a',
@@ -251,7 +266,11 @@ test('public User Spot coordinator hides Pending, runs one factory, then publish
     await initialize;
     return {
       spotId: request.spotId,
-      state: ZLinkSpotCreateState.Created
+      state: ZLinkSpotCreateState.Created,
+      publication: {
+        publish: () => publicationOrder.push('publish'),
+        abort: () => publicationOrder.push('abort')
+      }
     };
   });
   await new Promise(resolve => setImmediate(resolve));
@@ -277,7 +296,21 @@ test('public User Spot coordinator hides Pending, runs one factory, then publish
   if (ready.kind === 'snapshot') {
     assert.equal(ready.allocation.state, 'active');
     assert.equal(ready.objectGeneration, created.spot.objectGeneration);
+    assert.equal(publishedMesh, 'mesh');
+    assert.deepEqual(publishedRoute, {
+      spot: { spotId: 'room-42', generation: created.spot.objectGeneration },
+      targetNodeRid: 'node-a',
+      targetNodeGeneration: 1n,
+      authorityOwnerGeneration: ready.authorityOwnerGeneration,
+      ownerLeaseGeneration: ready.ownerLeaseGeneration,
+      storeVersion: ready.storeVersion.value
+    });
   }
+  assert.deepEqual(publicationOrder, ['route', 'publish']);
+  assert.equal(await coordinator.close(created.spot, async () => true), true);
+  assert.equal(forgottenMesh, 'mesh');
+  assert.deepEqual(forgottenRoute, publishedRoute);
+  assert.deepEqual(publicationOrder, ['route', 'publish', 'forget']);
 });
 
 test('User Spot rejection is terminal and aborts the Location reservation without Relocation Store', async () => {
@@ -997,6 +1030,8 @@ test('User Spot manager close sends the exact authority fence to the remote owne
   } as const;
   let localCloseCalled = false;
   let remoteCloseCalled = false;
+  let forgottenSpot: unknown;
+  let forgottenSnapshot: unknown;
   const snapshot = {
     allocation: { descriptorLifecycleGeneration: 2n },
     authorityOwnerGeneration: 3n,
@@ -1018,6 +1053,10 @@ test('User Spot manager close sends the exact authority fence to the remote owne
     resolver: () => undefined,
     isLocalNode: () => false,
     defaultTimeoutMs: 1_000,
+    forgetReadyRoute: (spot, routeSnapshot) => {
+      forgottenSpot = spot;
+      forgottenSnapshot = routeSnapshot;
+    },
     remoteClose: async (_meshName, targetNodeRid, request) => {
       remoteCloseCalled = true;
       assert.equal(targetNodeRid, 'node-b');
@@ -1039,6 +1078,8 @@ test('User Spot manager close sends the exact authority fence to the remote owne
   assert.equal(await manager.close(current), true);
   assert.equal(localCloseCalled, false);
   assert.equal(remoteCloseCalled, true);
+  assert.deepEqual(forgottenSpot, current);
+  assert.deepEqual(forgottenSnapshot, snapshot);
 });
 
 test('remote User Spot close remains deleted when the terminal reply is lost', async () => {

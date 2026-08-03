@@ -300,7 +300,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const missing = [];
   const violations = [];
   for (const [name, content, text] of [
-    ['Bingo module', files.bingoModule, '.addSpotFactory(\n            BingoRoomSpot.name,\n            BingoRoomSpot,'],
+    ['Bingo module', files.bingoModule, '.addSpotFactory(\n            SampleNames.roomSpotType,\n            BingoRoomSpot,'],
     ['Bingo API match', files.bingoApiMatch, 'ZLINK_SPOT_OUTBOUND'],
     ['Bingo API match', files.bingoApiMatch, '.instanceSpot(SampleNames.matchmakerSpotType)'],
     ['Bingo allocate', files.bingoAllocate, 'ReserveBingoRoomHandler'],
@@ -1048,10 +1048,14 @@ test('Bingo TypeScript sample uses channel peers and location store registration
     [apiModule, '.addRouteMesh(SampleNames.matchmakingMeshName'],
     [apiModule, '.listen(config.apiEndpoint)'],
     [playModule, '.addLocationStore(createBingoLocationStore(config))'],
+    [playModule, "createBingoRelocationStore(config)"],
+    [playModule, '.addRelocationStore(createBingoRelocationStore(config))'],
     [playModule, 'bingoLocationOptions(builder.configureLocations())'],
     [playModule, '.addRouteMesh(SampleNames.roomSpotNode'],
     [playModule, '.listen(config.playSpotEndpoint)'],
     [sessionModule, '.addLocationStore(createBingoLocationStore(endpoints))'],
+    [sessionModule, 'createBingoRelocationStore(endpoints)'],
+    [sessionModule, '.addRelocationStore(createBingoRelocationStore(endpoints))'],
     [sessionModule, 'bingoLocationOptions(builder.configureLocations())']
   ];
   const missing = required
@@ -1878,7 +1882,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [playModule, '.addActorFactory(\n            SampleNames.playerActorType,\n            PlayerActorFactory,'],
     [playModule, '.addRouteMesh(SampleNames.roomSpotNode'],
     [playModule, '.addEntrySpot(BingoEntrySpot)'],
-    [playModule, '.addSpotFactory(\n            BingoRoomSpot.name,\n            BingoRoomSpot,'],
+    [playModule, '.addSpotFactory(\n            SampleNames.roomSpotType,\n            BingoRoomSpot,'],
     [roomSpot, 'implements ZLinkSpot<PlayerActor>'],
     // node spec `04-spots.ko.md:65` declares onActorJoin(actorId: string, request).
     [roomSpot, 'onActorJoin(actorId: string'],
@@ -1894,6 +1898,7 @@ test('Bingo TypeScript sample exposes spot actor contracts explicitly', () => {
     [matchHandler, 'actor: () => PlayerActor'],
     [matchHandler, 'packetName: PacketNames.matchBingoReq'],
     [matchHandler, 'implements ZLinkEntrySpotActorRequestHandler<BingoEntrySpot, PlayerActorType, MatchBingoReq, MatchBingoRes>'],
+    [matchHandler, 'hostActorId: actor.actorId'],
     [submitHandler, 'zlinkSpotActorRequestHandler'],
     [submitHandler, 'spot: () => BingoRoomSpot'],
     [submitHandler, 'actor: () => PlayerActor'],

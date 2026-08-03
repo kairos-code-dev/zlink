@@ -165,6 +165,10 @@ export interface ZLinkBackendMeshNode {
   createSpot(): ServiceSpot;
   entrySpot(): ServiceSpot;
   getOrCreateSpot(routingId: unknown): { readonly spot: ServiceSpot; readonly created: boolean };
+  instanceSpotApplicationTarget?(spotId: string): {
+    readonly stableType: string;
+    readonly objectGeneration: bigint;
+  } | undefined;
   restoreUserSpotAuthority?(
     spotId: string,
     stableType: string,
@@ -208,6 +212,11 @@ export interface ZLinkBackendMeshNode {
   destroyActor(actor: ZLinkBackendActorRef, timeoutMs?: number): MeshOperationId;
   rememberSpotRoute?(
     route: ServiceDirectSpotRouteFence
+  ): void;
+  forgetSpotRoute?(
+    spot: ServiceDirectSpotRouteFence['spot'],
+    authorityOwnerGeneration: bigint,
+    storeVersion?: string
   ): void;
   sealSpotMessageFollowIngress?(
     source: ServiceDirectSpotRouteFence

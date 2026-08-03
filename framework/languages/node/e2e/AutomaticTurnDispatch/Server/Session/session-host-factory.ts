@@ -3,8 +3,6 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
-  type ZLinkActorJoinRequest,
-  type ZLinkActorMembership,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
   type ZLinkMessage,
@@ -23,17 +21,17 @@ import { AwaitSessionFactory } from './Handlers/await-session';
 class AwaitSessionEntrySpot implements ZLinkEntrySpot {
   readonly context!: ZLinkEntrySpotContext;
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
-    void actor;
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
+    void actorId;
     void request;
     return { accepted: true };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onJoinedActor(actor: import('@zlink-systems/framework').ZLinkActor): Promise<void> { void actor; }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onLeaveActor(actor: import('@zlink-systems/framework').ZLinkActor): Promise<void> { void actor; }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onDisconnectActor(actor: import('@zlink-systems/framework').ZLinkActor): Promise<void> { void actor; }
 }
 
 export async function startSessionHost(): Promise<void> {

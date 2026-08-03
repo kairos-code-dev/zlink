@@ -107,6 +107,46 @@ test('RouteMesh runtime weight changes reject invalid values as configuration er
   assert.deepEqual(calls, []);
 });
 
+test('MeshNode descriptors keep an explicit Spot stable type instead of adding a class-name alias', async () => {
+  class ConfiguredRoomSpot {}
+  const registration = framework.createFrameworkRegistrationWithBuilder((builder) => {
+    builder.addRouteMesh('game')
+      .objects().server()
+      .addSpotFactory('game.room', ConfiguredRoomSpot, (factory) => factory.disableRelocation());
+  });
+  const manager = new framework.ZLinkSpotNodeRuntimeManager({ registration });
+  manager.meshNodes.set('game', {
+    status: () => ({
+      routingId: 'game-node',
+      lifecycleGeneration: 1n,
+      localEndpoint: 'tcp://127.0.0.1:9400'
+    })
+  });
+  let published;
+  manager.locationAutoConnect = {
+    runtime: {
+      currentOwnerToken: { ownerId: 'owner-a', leaseGeneration: 1n },
+      writeMeshNode: async (descriptor) => {
+        published = descriptor;
+        return {
+          status: framework.ZLinkLocationWriteStatus.Stored,
+          updatedAt: new Date()
+        };
+      }
+    }
+  };
+
+  await manager.publishMeshNodeState(framework.ZLinkFrameworkRuntimeState.Serving);
+
+  assert.deepEqual(
+    published.objectCapabilities
+      .filter((capability) => capability.objectKind === 'user_spot')
+      .map((capability) => capability.stableType),
+    ['game.room']
+  );
+  assert.deepEqual(published.spotTypes, ['game.room']);
+});
+
 test('backend raw STREAM does not expose the removed bindings Session Actor service API', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const channel = factory.createChannelAdapter();

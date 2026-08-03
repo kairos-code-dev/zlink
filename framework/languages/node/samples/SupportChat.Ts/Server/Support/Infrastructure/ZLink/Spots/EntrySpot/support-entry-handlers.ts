@@ -20,6 +20,8 @@ import type {
   OpenConversationApiRes,
   OpenConversationReq,
   OpenConversationRes,
+  JoinConversationReq,
+  JoinConversationRes,
   SetAgentAvailableReq,
   SetAgentAvailableRes
 } from '../../../../../../Shared/Contracts/messages';
@@ -46,6 +48,34 @@ class SetAgentAvailableHandler implements ZLinkEntrySpotActorRequestHandler<Supp
       throw new Error('Customer actor must not set agent availability.');
     }
     return { isAvailable: this.availability.setAvailable(actor.actorId, request.isAvailable) };
+  }
+}
+
+@zlinkEntrySpotActorRequestHandler({
+  actor: () => SupportUserActor,
+  entrySpot: () => SupportEntrySpot,
+  packetName: PacketNames.joinConversationReq
+})
+class JoinConversationAtEntryHandler implements ZLinkEntrySpotActorRequestHandler<SupportEntrySpot, SupportUserActor, JoinConversationReq, JoinConversationRes> {
+  constructor(private readonly directory: SupportActorDirectory) {}
+
+  async handle(
+    _spot: SupportEntrySpot,
+    actor: SupportUserActor,
+    context: ZLinkMessageContext,
+    _request: JoinConversationReq
+  ): Promise<JoinConversationRes> {
+    const conversationId = context.metadata.find(SampleNames.conversationIdMetadataKey);
+    if (conversationId === undefined || conversationId.length === 0) {
+      throw new Error('Conversation metadata is required for JoinConversationReq.');
+    }
+    const identity = requireIdentity(this.directory, actor.actorId);
+    return actor.scheduleConversationJoin(new JoinSupportConversation(
+      conversationId,
+      identity.participantId,
+      identity.role,
+      identity.displayName
+    ));
   }
 }
 
@@ -97,4 +127,8 @@ function requireIdentity(directory: SupportActorDirectory, actorId: string) {
   return identity;
 }
 
-export { SetAgentAvailableHandler, OpenConversationActorHandler };
+export {
+  JoinConversationAtEntryHandler,
+  SetAgentAvailableHandler,
+  OpenConversationActorHandler
+};

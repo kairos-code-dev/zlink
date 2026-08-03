@@ -11,7 +11,7 @@ import type { ZLinkMessageContext } from '@zlink-systems/framework';
   packetName: PacketNames.deliveryStatusUpdated
 })
 class CustomerStatusHandler {
-  async handle(actor: CustomerActor, _context: ZLinkMessageContext, message: DeliveryStatusUpdatedMsg): Promise<void> {
+  async handle(_spot: CustomerEntrySpot, actor: CustomerActor, _context: ZLinkMessageContext, message: DeliveryStatusUpdatedMsg): Promise<void> {
     if (!actor.accepts(message.deliveryId)) return;
     actor.context.boundSession.send(new DeliveryStatusNotify(
       message.deliveryId,

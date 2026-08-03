@@ -32,6 +32,63 @@ export interface ZLinkRemoteBoundSessionTarget {
   readonly acceptedJournalChecksumCrc32c?: number;
 }
 
+/**
+ * Applies a lightweight Session binding refresh without discarding the
+ * relocation fence that was staged for the same route. Core emits the bind
+ * refresh with routing coordinates only; the relocation owner retains the
+ * seal and accepted-journal fields until command 46 releases them.
+ */
+export function mergeRemoteBoundSessionTarget(
+  target: ZLinkRemoteBoundSessionTarget,
+  fallback: ZLinkRemoteBoundSessionTarget | undefined
+): ZLinkRemoteBoundSessionTarget {
+  if (
+    fallback === undefined
+    || fallback.routerChannelId !== target.routerChannelId
+    || !routingIdsEqual(fallback.targetNodeRid, target.targetNodeRid)
+    || !routingIdsEqual(fallback.spotId, target.spotId)
+  ) {
+    return target;
+  }
+  const merged = {
+    ...fallback,
+    ...target,
+    sessionNodeRid: target.sessionNodeRid ?? fallback.sessionNodeRid,
+    sessionRid: target.sessionRid ?? fallback.sessionRid,
+    bindingGeneration: target.bindingGeneration ?? fallback.bindingGeneration,
+    previousAuthorityOwnerGeneration:
+      target.previousAuthorityOwnerGeneration ?? fallback.previousAuthorityOwnerGeneration,
+    previousOwnerLeaseGeneration:
+      target.previousOwnerLeaseGeneration ?? fallback.previousOwnerLeaseGeneration,
+    acceptedHighWater: target.acceptedHighWater ?? fallback.acceptedHighWater,
+    relocationSealId: target.relocationSealId ?? fallback.relocationSealId,
+    acceptedJournalReference: target.acceptedJournalReference ?? fallback.acceptedJournalReference,
+    acceptedJournalChecksumCrc32c:
+      target.acceptedJournalChecksumCrc32c ?? fallback.acceptedJournalChecksumCrc32c
+  };
+  return merged;
+}
+
+/**
+ * Selects the route that still carries the relocation fence when a Core
+ * binding refresh and a formal transfer target temporarily coexist.
+ */
+export function preferredRemoteBoundSessionTarget(
+  remote: ZLinkRemoteBoundSessionTarget | undefined,
+  transfer: ZLinkRemoteBoundSessionTarget | undefined
+): ZLinkRemoteBoundSessionTarget | undefined {
+  if (remote === undefined) return transfer;
+  if (hasRelocationFence(remote) || transfer === undefined) return remote;
+  return transfer;
+}
+
+function hasRelocationFence(target: ZLinkRemoteBoundSessionTarget): boolean {
+  return target.acceptedHighWater !== undefined
+    || target.relocationSealId !== undefined
+    || target.acceptedJournalReference !== undefined
+    || target.acceptedJournalChecksumCrc32c !== undefined;
+}
+
 export interface ZLinkRemoteActorPacketTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: RoutingId;
@@ -354,7 +411,7 @@ export class ZLinkActorRuntimeState {
   }
 
   setBoundSessionBindingGeneration(generation: bigint): void {
-    if (generation > 0n) {
+    if (generation > this.boundSessionBindingGenerationValue) {
       this.boundSessionBindingGenerationValue = generation;
       if (this.remoteBoundSessionTargetValue !== undefined) {
         this.remoteBoundSessionTargetValue = {
@@ -376,26 +433,18 @@ export class ZLinkActorRuntimeState {
   }
 
   setRemoteBoundSessionTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
-    const current = this.remoteBoundSessionTargetValue;
-    const merged = target === undefined ||
-      target.sessionNodeRid !== undefined ||
-      current?.sessionNodeRid === undefined ||
-      current.routerChannelId !== target.routerChannelId ||
-      !routingIdsEqual(current.targetNodeRid, target.targetNodeRid) ||
-      current.spotId !== target.spotId
-      ? target
-      : {
-          ...target,
-          sessionNodeRid: current.sessionNodeRid,
-          sessionRid: current.sessionRid
-        };
-    const bindingGeneration = merged?.bindingGeneration
-      ?? current?.bindingGeneration
-      ?? (
-        this.boundSessionBindingGenerationValue > 0n
-          ? this.boundSessionBindingGenerationValue
-          : undefined
-      );
+    const current = preferredRemoteBoundSessionTarget(
+      this.remoteBoundSessionTargetValue,
+      this.boundSessionTransferTargetValue
+    );
+    const merged = target === undefined
+      ? undefined
+      : mergeRemoteBoundSessionTarget(target, current);
+    const bindingGeneration = maxBindingGeneration(
+      merged?.bindingGeneration,
+      this.remoteBoundSessionTargetValue?.bindingGeneration,
+      this.boundSessionBindingGenerationValue
+    );
     this.remoteBoundSessionTargetValue = merged === undefined
       ? undefined
       : bindingGeneration === undefined
@@ -404,12 +453,11 @@ export class ZLinkActorRuntimeState {
   }
 
   setBoundSessionTransferTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
-    const bindingGeneration = target?.bindingGeneration
-      ?? (
-        this.boundSessionBindingGenerationValue > 0n
-          ? this.boundSessionBindingGenerationValue
-          : undefined
-      );
+    const bindingGeneration = maxBindingGeneration(
+      target?.bindingGeneration,
+      this.boundSessionTransferTargetValue?.bindingGeneration,
+      this.boundSessionBindingGenerationValue
+    );
     this.boundSessionTransferTargetValue = target === undefined
       ? undefined
       : bindingGeneration === undefined
@@ -493,6 +541,15 @@ export class ZLinkActorRuntimeState {
     this.deferredJoinPendingValue = false;
     this.destroyTask = undefined;
   }
+}
+
+function maxBindingGeneration(...values: (bigint | undefined)[]): bigint | undefined {
+  let maximum: bigint | undefined;
+  for (const value of values) {
+    if (value === undefined || value <= 0n) continue;
+    if (maximum === undefined || value > maximum) maximum = value;
+  }
+  return maximum;
 }
 
 export function toFrameworkRoutingId(routingId: unknown): RoutingId {

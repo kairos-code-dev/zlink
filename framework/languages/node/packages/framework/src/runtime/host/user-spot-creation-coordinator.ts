@@ -26,7 +26,8 @@ import type {
 } from '../foundation/service-stateful-runtime';
 import type {
   ServiceUserSpotCloseRecord,
-  ServiceUserSpotCreateRecord
+  ServiceUserSpotCreateRecord,
+  ServiceDirectSpotRouteFence
 } from '../foundation/service-stateful-wire-codec';
 
 export interface ZLinkUserSpotCreationCoordinatorOptions {
@@ -50,6 +51,10 @@ export interface ZLinkUserSpotCreationCoordinatorOptions {
     timeoutMs: number
   ) => Promise<ServiceUserSpotOperationResult>;
   readonly decodeRemoteReply?: (payload: Uint8Array) => unknown;
+  /** Records the committed Ready fence on the owning MeshNode before publication. */
+  readonly publishReadyRoute?: (meshName: string, route: ServiceDirectSpotRouteFence) => void;
+  /** Removes the committed Ready fence after the authority is deleted. */
+  readonly forgetReadyRoute?: (meshName: string, route: ServiceDirectSpotRouteFence) => void;
 }
 
 export interface ZLinkUserSpotCreationRequest {
@@ -360,7 +365,10 @@ export class ZLinkUserSpotCreationCoordinator {
       { kind: 'delete' },
       signal
     );
-    if (deleted.kind === 'deleted') return true;
+    if (deleted.kind === 'deleted') {
+      this.forgetReadyRoute(currentRef.spotId, current);
+      return true;
+    }
     if (deleted.kind === 'conflict') {
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.SpotMoving,
@@ -616,6 +624,10 @@ export class ZLinkUserSpotCreationCoordinator {
         ...spot,
         objectGeneration: committed.ready.objectGeneration
       };
+      this.options.publishReadyRoute?.(
+        committed.ready.allocation.descriptor.meshName,
+        readySpotRoute(record.spotId, committed.ready)
+      );
       local.publication?.publish();
       return {
         result: { spot: readySpot, state: local.state, reply: local.reply },
@@ -711,11 +723,21 @@ export class ZLinkUserSpotCreationCoordinator {
       { kind: 'delete' },
       signal
     );
-    if (deleted.kind === 'deleted') return true;
+    if (deleted.kind === 'deleted') {
+      this.forgetReadyRoute(record.target.spotId as RoutingId, current);
+      return true;
+    }
     throw createInternalFrameworkException(
       ZLinkFrameworkInternalErrorKind.SpotMoving,
       `User Spot '${record.target.spotId}' authority changed while closing.`,
       true
+    );
+  }
+
+  forgetReadyRoute(spotId: RoutingId, snapshot: ZLinkAuthoritySnapshot): void {
+    this.options.forgetReadyRoute?.(
+      snapshot.allocation.descriptor.meshName,
+      readySpotRoute(spotId, snapshot)
     );
   }
 
@@ -887,6 +909,23 @@ function spotIdConflict(spotId: RoutingId): ZLinkFrameworkException {
     ZLinkFrameworkInternalErrorKind.SpotIdConflict,
     `Generated User Spot ID '${String(spotId)}' is already active.`
   );
+}
+
+function readySpotRoute(
+  spotId: RoutingId,
+  snapshot: ZLinkAuthoritySnapshot
+): ServiceDirectSpotRouteFence {
+  return {
+    spot: {
+      spotId: String(spotId),
+      generation: snapshot.objectGeneration
+    },
+    targetNodeRid: String(snapshot.allocation.descriptor.rid),
+    targetNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration,
+    authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+    ownerLeaseGeneration: snapshot.ownerLeaseGeneration,
+    storeVersion: snapshot.storeVersion.value
+  };
 }
 
 function spotRef(

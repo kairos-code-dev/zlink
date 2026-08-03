@@ -1238,6 +1238,12 @@ export class ZLinkFrameworkRuntimeHost implements
           const spotManager = this.spotManager;
           if (spotManager !== undefined) {
             activationNode.registerInstanceApplicationLifecycle?.({
+              isMaterialized: (target) =>
+                spotManager.isInstanceMaterialized(
+                  meshName,
+                  target.stableType,
+                  target.targetSpotId as never
+                ),
               materialize: (target, objectGeneration) =>
                 spotManager.materializeInstance(
                   meshName,
@@ -1689,6 +1695,12 @@ export class ZLinkFrameworkRuntimeHost implements
         ) => void;
       };
       activationNode.registerInstanceApplicationLifecycle?.({
+        isMaterialized: (target) =>
+          spotManager.isInstanceMaterialized(
+            meshName,
+            target.stableType,
+            target.targetSpotId as never
+          ),
         materialize: (target, objectGeneration) =>
           spotManager.materializeInstance(
             meshName,
@@ -1883,6 +1895,16 @@ export class ZLinkFrameworkRuntimeHost implements
     });
     const coordinator = new ZLinkUserSpotCreationCoordinator({
       store: locationStore,
+      publishReadyRoute: (meshName, route) => {
+        this.spotNodeRuntime?.meshNode(meshName)?.rememberSpotRoute?.(route);
+      },
+      forgetReadyRoute: (meshName, route) => {
+        this.spotNodeRuntime?.meshNode(meshName)?.forgetSpotRoute?.(
+          route.spot,
+          route.authorityOwnerGeneration,
+          route.storeVersion
+        );
+      },
       remoteCreate: (meshName, targetNodeRid, request, timeoutMs) => {
         const node = this.spotNodeRuntime?.meshNode(meshName);
         if (node === undefined) {
@@ -2199,6 +2221,9 @@ export class ZLinkFrameworkRuntimeHost implements
       coordinator,
       factories,
       resolver: () => this.createLocationSpotRouteResolver(),
+      forgetReadyRoute: (spot, snapshot) => {
+        coordinator.forgetReadyRoute(spot.spotId, snapshot);
+      },
       isLocalNode: (meshName, nodeRid) => {
         const status = this.spotNodeRuntime?.meshNode(meshName)?.status();
         return status !== undefined && String(status.routingId) === String(nodeRid);

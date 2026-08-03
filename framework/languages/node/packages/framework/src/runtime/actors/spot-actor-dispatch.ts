@@ -157,18 +157,15 @@ export class ZLinkSpotActorDispatcher {
         ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>,
         TResult
       >(actor, descriptor, (handler) =>
-        runActorHandlerWithDeferredJoins(async () => {
-          const reply = await handler.handle(
+        runActorHandlerWithDeferredJoins(() => handler.handle(
             this.options.spot,
             actor,
             this.createContext(packetName, context),
             request
-          );
-          return await afterReply(reply, {
+          )).then((reply) => afterReply(reply, {
             metadata: new Map<string, string>(),
             compressPayload: false
-          });
-        }));
+          })));
     });
   }
 

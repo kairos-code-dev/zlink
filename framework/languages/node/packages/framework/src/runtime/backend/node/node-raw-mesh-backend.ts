@@ -643,6 +643,12 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return { spot: new RawServiceSpot(this, state), created: existing === undefined };
   }
 
+  instanceSpotApplicationTarget(
+    spotId: string
+  ): { readonly stableType: string; readonly objectGeneration: bigint } | undefined {
+    return this.requireStateful().instanceSpotApplicationTarget(spotId);
+  }
+
   restoreUserSpotAuthority(
     spotId: string,
     stableType: string,
@@ -929,11 +935,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const target = String(targetNodeRid);
     return this.observeStateful(
       OperationKind.ActorJoin,
-      this.requireStateful().joinActor(
+      this.requireStateful().joinActorEntrySpot(
         actor,
         target,
-        { spotId: target, generation: 1n },
-        1n,
         parts === undefined ? undefined : encodeMultipart(parts),
         timeoutMs
       )
@@ -1887,7 +1891,7 @@ function decodeStatefulRecord(
         return SubmitResult.InvalidState;
       }
       const replyParts = Array.isArray(parts) ? parts : [parts];
-      return stateful.reply(
+      const accepted = stateful.reply(
         RequestResult.Ok,
         0,
         replyParts.length === 0 ? undefined : encodeMultipart(replyParts),
@@ -1897,7 +1901,8 @@ function decodeStatefulRecord(
           spot: stateful.targetSpot,
           ...(membershipEpoch === undefined ? {} : { membershipEpoch })
         }
-      ) ? SubmitResult.Ok : SubmitResult.InvalidState;
+      );
+      return accepted ? SubmitResult.Ok : SubmitResult.InvalidState;
     }
   };
 }

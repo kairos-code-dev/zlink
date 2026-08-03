@@ -48,6 +48,10 @@ export class ZLinkBoundActorRelaySender {
     payload: ZLinkMessage,
     signal?: AbortSignal
   ): Promise<ZLinkSubmitResult> {
+    // A relocation seal can hold this request until the target route is
+    // published. Wait before entering the actor lifecycle lane: route
+    // publication uses the same lane and must be able to release the seal.
+    await this.routes.acceptWhenReady(actor.actorId, actor.bindingToken, signal);
     return await this.lifecycle.run(actor.actorId, () => this.relayInsideLifecycle(actor, payload, signal));
   }
 
@@ -62,7 +66,6 @@ export class ZLinkBoundActorRelaySender {
       throw new Error('Session actor relay requires an active stream dispatch.');
     }
     throwIfAborted(signal);
-    this.routes.accept(actor.actorId, actor.bindingToken);
     const payloadMessage = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
     try {
       if (this.options.relay !== undefined) {

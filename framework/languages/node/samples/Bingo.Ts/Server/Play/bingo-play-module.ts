@@ -10,6 +10,7 @@ import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
+import { createBingoRelocationStore } from '../Configuration/relocation-store';
 import { bingoMeterProvider } from '../runtime-support';
 import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 function createBingoPlayModule() {
@@ -39,6 +40,7 @@ function createBingoPlayModule() {
             .traceLogFile(`${config.logDir}/flow-play.log`)
             .traceLabel('play');
           builder.addLocationStore(createBingoLocationStore(config));
+          builder.addRelocationStore(createBingoRelocationStore(config));
           bingoLocationOptions(builder.configureLocations());
           builder.codecs().use(bingoFrameworkProtobuf);
           const mesh = builder.addRouteMesh(SampleNames.roomSpotNode)
@@ -47,7 +49,7 @@ function createBingoPlayModule() {
           const objectServer = mesh.objects().server();
           objectServer.addEntrySpot(BingoEntrySpot);
           objectServer.addSpotFactory(
-            BingoRoomSpot.name,
+            SampleNames.roomSpotType,
             BingoRoomSpot,
             (factory) => factory.disableRelocation()
           );

@@ -196,7 +196,13 @@ export class ZLinkLocalNativeActorJoin {
         actorMeshName
       );
       try {
-        await prepared?.sourceLeaveCompletion;
+        // The Core leave callback is a late lifecycle notification. Waiting
+        // for it before changing Actor authority deadlocks the remote Join:
+        // the target waits for this source terminal before publishing its
+        // ownership, while Core emits the source leave after the source
+        // authority commit. The source handoff remains held by the transfer
+        // coordinator; only the authority transition moves ahead of the
+        // callback. Source shell cleanup is deferred until that callback.
         await prepared?.commitAuthority(target, nativeTargetActorRef, signal);
       } catch (error) {
         await this.publishSourceLeaveTerminal(
@@ -278,42 +284,118 @@ export class ZLinkLocalNativeActorJoin {
     state: ZLinkActorRuntimeState,
     actorRef: ZLinkBackendActorRef,
     nodeRid: RoutingId,
+    spotRouteTarget: ZLinkSpotRouteTarget | undefined,
     request: Message,
-    timeoutMs: number | undefined
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    completionOperationId?: ZLinkActorJoinOperationId
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
+    if (signal?.aborted === true) throw createAbortError();
     const completions = this.requireCompletions();
     const actorMeshName = runtimeActorMeshName(actor, state, '');
-    if (state.spotId !== undefined) {
-      const leaveOperationId = node.leaveActor(
-        actorRef,
-        state.spotMembershipEpoch,
-        timeoutMs
-      );
-      const leaveCompletion = await completions.wait(leaveOperationId);
-      if (leaveCompletion.terminalResult !== 0 || leaveCompletion.failureErrno !== 0) {
-        closeMeshCompletion(leaveCompletion);
+    const targetNodeRid = spotRouteTarget?.targetNodeRid ?? nodeRid;
+    const remote = spotRouteTarget !== undefined && (
+      !routingIdsEqual(
+        toFrameworkRoutingId(node.status().routingId),
+        spotRouteTarget.targetNodeRid
+      ) || !routingIdsEqual(
+        toFrameworkRoutingId(actorRef.nodeRid),
+        spotRouteTarget.targetNodeRid
+      )
+    );
+    let prepared: ZLinkPreparedActorSource | undefined;
+    let transferId: string | undefined;
+    let requestPayload = Buffer.from(request.data());
+    if (remote) {
+      const actorType = state.actorType;
+      if (actorType === undefined || this.options.sourceTransfer === undefined) {
         throw createInternalFrameworkException(
           ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
-          `Actor SPOT leave failed for '${actor.context.actorId}' with result '${leaveCompletion.terminalResult}' and errno '${leaveCompletion.failureErrno}'.`
+          `Actor '${actor.context.actorId}' remote Entry Spot transfer state is not configured.`
         );
       }
-      closeMeshCompletion(leaveCompletion);
+      prepared = await this.options.sourceTransfer.prepareSource(actor, state, signal, 'core');
+      await prepared.reserveTarget(spotRouteTarget, signal);
+      transferId = randomUUID();
+      requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+        actorId: actor.context.actorId,
+        actorType,
+        actorRef,
+        expectedMembershipEpoch: state.spotMembershipEpoch,
+        actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+        actorCreateRequest: state.createRequestPayload,
+        request,
+        targetSpotId: spotRouteTarget.spotId,
+        routerChannelId: spotRouteTarget.routerChannelId,
+        sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
+        boundSessionTarget: enrichBoundSessionTransferTarget(state),
+        phase: REMOTE_ACTOR_JOIN_COMMIT,
+        transferId,
+        transferAdapterKey: prepared.adapterKey,
+        transferState: prepared.stateReference === undefined
+          ? Buffer.from(prepared.state.toEncodedPayload().data())
+          : undefined,
+        transferStateReference: prepared.stateReference,
+        transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
+        handoffBacklog: prepared.handoffBacklog,
+        completionOperationId
+      })));
     }
-    const operationId = node.joinActorEntrySpot(
-      actorRef,
-      toBindingRoutingId(nodeRid),
-      Buffer.from(request.data()),
-      timeoutMs
-    );
-    const completion = await completions.wait(operationId);
+
+    let completion: ZLinkMeshCompletion;
+    try {
+      const connectDeadline = Date.now() + Math.min(timeoutMs ?? 5_000, 5_000);
+      for (;;) {
+        const operationId = await submitJoinWhenConnected(
+          () => node.joinActorEntrySpot(
+            actorRef,
+            toBindingRoutingId(targetNodeRid),
+            requestPayload,
+            timeoutMs
+          ),
+          timeoutMs,
+          signal
+        );
+        completion = await completions.wait(operationId, signal);
+        if (
+          completion.terminalResult !== RequestResult.NotConnected
+          || Date.now() >= connectDeadline
+        ) {
+          break;
+        }
+        closeMeshCompletion(completion);
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+    } catch (error) {
+      await prepared?.rollback();
+      throw error;
+    }
     const control = completion.kindData;
     if (
-      completion.terminalResult !== 0 ||
-      completion.failureErrno !== 0 ||
       control?.kind !== 'actorJoinCompletion' ||
-      control.joinResult !== 0 ||
       control.actor === null
     ) {
+      await prepared?.rollback();
+      closeMeshCompletion(completion);
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+        `Actor entry SPOT join failed for '${actor.context.actorId}' with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
+      );
+    }
+    if (control.joinResult !== 0) {
+      try {
+        await prepared?.rollback();
+        return {
+          accepted: false,
+          actor: toFrameworkActorRef(control.actor as never, actorMeshName),
+          reply: completion.parts[0]
+        };
+      } finally {
+        disposeParts(completion.parts.slice(1));
+      }
+    }
+    if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
+      await prepared?.rollback();
       closeMeshCompletion(completion);
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
@@ -323,16 +405,62 @@ export class ZLinkLocalNativeActorJoin {
 
     state.setNativeActorRef(control.actor as never);
     state.clearJoinedSpot();
-    if (state.actorType !== undefined) {
+    state.setRemoteActorPacketTarget(undefined);
+    if (remote) {
+      const nativeTargetActorRef = toFrameworkActorRef(
+        control.actor as never,
+        actorMeshName
+      );
+      try {
+        await prepared?.commitAuthority(spotRouteTarget!, nativeTargetActorRef, signal);
+      } catch (error) {
+        await this.publishSourceLeaveTerminal(
+          node,
+          completions,
+          spotRouteTarget!.targetNodeRid,
+          actor.context.actorId,
+          requireTransferId(transferId),
+          false,
+          timeoutMs,
+          signal
+        );
+        prepared?.commit(spotRouteTarget!, nativeTargetActorRef, []);
+        throw error;
+      }
+      await this.publishSourceLeaveTerminal(
+        node,
+        completions,
+        spotRouteTarget!.targetNodeRid,
+        actor.context.actorId,
+        requireTransferId(transferId),
+        true,
+        timeoutMs,
+        signal
+      );
+      prepared?.commit(spotRouteTarget!, nativeTargetActorRef, []);
+      try {
+        await this.options.remoteActivationWaiter?.(
+          actor.context.actorId,
+          spotRouteTarget!.targetNodeRid,
+          timeoutMs,
+          signal
+        );
+      } catch (error) {
+        this.options.postCommitErrorReporter?.(error);
+      }
+    } else if (state.actorType !== undefined) {
       this.options.postCommitLocation?.leftEventually(
         state.actorType,
         actor.context.actorId,
-        toFrameworkRoutingId(control.location.spotId ?? nodeRid),
+        toFrameworkRoutingId(control.location.spotId ?? spotRouteTarget?.spotId ?? nodeRid),
         control.location.spotGeneration,
         control.location.membershipEpoch,
         node.status().lifecycleGeneration
       );
     }
+    await this.options.postCommitBinder?.bind(
+      toFrameworkActorRef(control.actor as never, actorMeshName)
+    );
     try {
       return {
         accepted: true,

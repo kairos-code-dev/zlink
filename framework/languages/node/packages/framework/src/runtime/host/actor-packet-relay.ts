@@ -19,6 +19,10 @@ import {
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
+import {
+  mergeRemoteBoundSessionTarget,
+  preferredRemoteBoundSessionTarget
+} from '../actors/actor-runtime-state';
 import type { DefaultZLinkActorManager } from '../actors';
 import {
   decodeRemoteActorSessionBinding,
@@ -263,12 +267,16 @@ export class ZLinkActorPacketRelay {
         const bindingGeneration = (fallbackActorRef as (ActorRef & {
           readonly bindingGeneration?: bigint;
         }) | undefined)?.bindingGeneration;
-        state.setRemoteBoundSessionTarget({
+        const refreshedTarget = mergeRemoteBoundSessionTarget({
           ...target,
           sessionNodeRid,
           sessionRid,
           ...(bindingGeneration === undefined ? {} : { bindingGeneration })
-        });
+        }, preferredRemoteBoundSessionTarget(
+          state.remoteBoundSessionTarget,
+          state.boundSessionTransferTarget
+        ));
+        state.setRemoteBoundSessionTarget(refreshedTarget);
         return { ok: true, response: { acknowledged: true } };
       }
       if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {

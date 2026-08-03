@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { ZLinkPacket, type ZLinkMessageContext, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import { DelayReq } from '../../../Shared/messages';
 import type {
   DelayRes,
@@ -20,7 +20,7 @@ import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 export class HoldCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, HoldMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: HoldMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: HoldMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(`hold-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}|handler=spot`);
     await spot.context.outbound
@@ -38,7 +38,7 @@ export class HoldCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot
 export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: AwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: AwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const terminator = request.terminator ?? 'async';
     this.evidence.add(
@@ -78,7 +78,7 @@ export class AwaitRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSp
   async handle(
     spot: AwaitProbeSpot,
     request: AwaitReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<AutomaticTurnDispatchRes> {
     await new AwaitCommandHandler(this.evidence).handle(spot, request, context);
     return {
@@ -96,7 +96,7 @@ export class AwaitRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSp
 export class WorkerAwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, WorkerAwaitMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: WorkerAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: WorkerAwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(`worker-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}|handler=spot`);
     const call = spot.context.runIoWorker(async (signal) => {
@@ -115,7 +115,7 @@ export class WorkerAwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitPr
 export class ProbeCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, ProbeMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: ProbeMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: ProbeMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(
       `probe-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
@@ -133,7 +133,7 @@ export class ProbeCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
 export class ProbeRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, ProbeReq, AutomaticTurnDispatchRes> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: ProbeReq, context: ZLinkHandlerContext): Promise<AutomaticTurnDispatchRes> {
+  async handle(spot: AwaitProbeSpot, request: ProbeReq, context: ZLinkMessageContext): Promise<AutomaticTurnDispatchRes> {
     await new ProbeCommandHandler(this.evidence).handle(spot, request, context);
     return {
       scenarioId: request.requestId.split('-', 1)[0] ?? 'TD',

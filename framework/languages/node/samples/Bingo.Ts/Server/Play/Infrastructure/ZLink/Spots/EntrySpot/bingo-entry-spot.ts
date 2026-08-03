@@ -79,6 +79,7 @@ class DestroyBingoActorHandler {
   constructor(private readonly entrySpot: BingoEntrySpot) {}
 
   async handle(
+    _spot: BingoEntrySpot,
     actor: PlayerActor,
     _context: ZLinkMessageContext,
     _message: DestroyBingoActor

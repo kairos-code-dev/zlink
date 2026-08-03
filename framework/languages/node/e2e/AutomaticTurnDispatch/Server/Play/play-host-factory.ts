@@ -18,7 +18,8 @@ import {
   CpuWorkerAwaitHandler,
   HttpAwaitHandler,
   IoWorkerBatchHandler,
-  SelfCycleHandler
+  SelfCycleHandler,
+  SelfSendHandler
 } from './Handlers/execution-turn-handlers';
 import {
   BindAwaitActorsControlHandler,
@@ -142,6 +143,7 @@ export async function startPlayHost(): Promise<void> {
       IoWorkerBatchHandler,
       CpuWorkerAwaitHandler,
       SelfCycleHandler,
+      SelfSendHandler,
       WorkerAwaitCommandHandler,
       AwaitTimeoutCommandHandler,
       AwaitCancelCommandHandler,

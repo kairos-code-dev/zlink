@@ -31,6 +31,8 @@ import type { ZLinkBackendActorRef, ZLinkBackendMeshNode } from '../backend';
 import {
   ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET,
   toFrameworkActorRef,
+  mergeRemoteBoundSessionTarget,
+  preferredRemoteBoundSessionTarget,
   type ZLinkActorHandoffCoordinator,
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
@@ -732,11 +734,21 @@ export class ZLinkActorTransferRuntime {
             // source rollback that can no longer undo the target.
             this.options.reportPostCommitError?.(error);
           } finally {
-            this.scheduleSourceDeparture(
-              actor,
-              sourceSpotId,
-              lifecycleAuthority === 'core' && releaseLocation
-            );
+            const releaseSourceLocation = lifecycleAuthority === 'core' && releaseLocation;
+            if (releaseSourceLocation && sourceLeaveCompletion !== undefined) {
+              // Core sends the source leave control after the authority
+              // transition. Keep the source shell available for that
+              // callback, then release the old location and registry entry.
+              void sourceLeaveCompletion.then(
+                () => this.scheduleSourceDeparture(actor, sourceSpotId, true),
+                error => {
+                  this.options.reportPostCommitError?.(error);
+                  this.scheduleSourceDeparture(actor, sourceSpotId, true);
+                }
+              );
+            } else {
+              this.scheduleSourceDeparture(actor, sourceSpotId, releaseSourceLocation);
+            }
           }
         },
         rollback: async () => {
@@ -1006,7 +1018,10 @@ export class ZLinkActorTransferRuntime {
     state: ZLinkActorRuntimeState,
     sealId: string
   ): Promise<void> {
-    const target = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+    const target = preferredRemoteBoundSessionTarget(
+      state.remoteBoundSessionTarget,
+      state.boundSessionTransferTarget
+    );
     const actorRef = state.nativeActorRef;
     if (target === undefined || actorRef === undefined || target.bindingGeneration === undefined ||
       target.previousAuthorityOwnerGeneration === undefined || target.previousOwnerLeaseGeneration === undefined) {
@@ -1042,7 +1057,10 @@ export class ZLinkActorTransferRuntime {
     signal?: AbortSignal
   ): Promise<ZLinkBoundSessionAcceptedJournalRoot> {
     const actorRef = state.nativeActorRef;
-    const highWater = state.remoteBoundSessionTarget?.acceptedHighWater;
+    const highWater = preferredRemoteBoundSessionTarget(
+      state.remoteBoundSessionTarget,
+      state.boundSessionTransferTarget
+    )?.acceptedHighWater;
     const journal = this.boundSessionAcceptedJournal();
     if (actorRef === undefined || highWater === undefined || journal === undefined) {
       throw new Error(`Actor '${actor.context.actorId}' accepted Session journal cannot be prepared.`);
@@ -1175,6 +1193,14 @@ export class ZLinkActorTransferRuntime {
     }
     if (actorEntryNodeRid !== undefined) state.setEntryNodeRid(actorEntryNodeRid);
     state.setBoundSessionTransferTarget(remoteBoundSessionTarget);
+    if (remoteBoundSessionTarget !== undefined) {
+      state.setRemoteBoundSessionTarget(
+        mergeRemoteBoundSessionTarget(
+          remoteBoundSessionTarget,
+          state.remoteBoundSessionTarget
+        )
+      );
+    }
     if (remoteBoundSessionTarget?.bindingGeneration !== undefined) {
       state.setBoundSessionBindingGeneration(remoteBoundSessionTarget.bindingGeneration);
     }
@@ -1182,6 +1208,24 @@ export class ZLinkActorTransferRuntime {
       actor: materialized.actor,
       actorRef: materialized.actorRef as unknown as ZLinkBackendActorRef
     };
+  }
+
+  rememberRoutedActorTransferTarget(
+    actorId: string,
+    target: ZLinkRemoteBoundSessionTarget | undefined
+  ): void {
+    if (target === undefined) return;
+    const state = this.options.actorManager()?.getState(actorId);
+    if (state === undefined) {
+      return;
+    }
+    state.setBoundSessionTransferTarget(target);
+    state.setRemoteBoundSessionTarget(
+      mergeRemoteBoundSessionTarget(target, state.remoteBoundSessionTarget)
+    );
+    if (target.bindingGeneration !== undefined) {
+      state.setBoundSessionBindingGeneration(target.bindingGeneration);
+    }
   }
 
   async prepareRecoveryRoutedActor(
@@ -1226,6 +1270,14 @@ export class ZLinkActorTransferRuntime {
     }
     if (actorEntryNodeRid !== undefined) state.setEntryNodeRid(actorEntryNodeRid);
     state.setBoundSessionTransferTarget(remoteBoundSessionTarget);
+    if (remoteBoundSessionTarget !== undefined) {
+      state.setRemoteBoundSessionTarget(
+        mergeRemoteBoundSessionTarget(
+          remoteBoundSessionTarget,
+          state.remoteBoundSessionTarget
+        )
+      );
+    }
     if (remoteBoundSessionTarget?.bindingGeneration !== undefined) {
       state.setBoundSessionBindingGeneration(remoteBoundSessionTarget.bindingGeneration);
     }
@@ -1412,7 +1464,18 @@ export class ZLinkActorTransferRuntime {
     const actorRef = state?.nativeActorRef;
     const generation = state?.locationGeneration;
     if (state === undefined || actorRef === undefined || generation === undefined) return;
-    const boundSessionTarget = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+    const boundSessionTarget = preferredRemoteBoundSessionTarget(
+      state.remoteBoundSessionTarget,
+      state.boundSessionTransferTarget
+    );
+    // A regular actor created with a remote Session has a routing target, but
+    // it has not entered an actor relocation. Command 44 is a relocation
+    // ownership update and requires the accepted-journal fence created by the
+    // relocation protocol. Core already owns the initial binding, so there is
+    // no ownership update to publish for this ordinary join.
+    if (boundSessionTarget !== undefined && !hasAcceptedJournalFence(boundSessionTarget)) {
+      return;
+    }
     await this.verifyBoundSessionAcceptedJournal(actor, state);
     await this.publishBoundSessionOwnership(
       actor.context.actorId,
@@ -1431,9 +1494,14 @@ export class ZLinkActorTransferRuntime {
 
   async openRoutedActorSession(actor: ZLinkActor): Promise<void> {
     const state = this.options.actorManager()?.getState(actor.context.actorId);
-    const sealId = (state?.remoteBoundSessionTarget ?? state?.boundSessionTransferTarget)
-      ?.relocationSealId;
-    if (state === undefined || sealId === undefined) return;
+    const target = state === undefined
+      ? undefined
+      : preferredRemoteBoundSessionTarget(
+          state.remoteBoundSessionTarget,
+          state.boundSessionTransferTarget
+        );
+    const sealId = target?.relocationSealId;
+    if (state === undefined || target === undefined || sealId === undefined) return;
     const retry = new ZLinkActorRetryDelay();
     let lastError: unknown;
     let immediateRetry = true;
@@ -1666,7 +1734,10 @@ export class ZLinkActorTransferRuntime {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState
   ): Promise<void> {
-    const target = state.remoteBoundSessionTarget ?? state.boundSessionTransferTarget;
+    const target = preferredRemoteBoundSessionTarget(
+      state.remoteBoundSessionTarget,
+      state.boundSessionTransferTarget
+    );
     if (target === undefined) return;
     const actorRef = state.nativeActorRef;
     const journal = this.boundSessionAcceptedJournal();
@@ -1688,4 +1759,13 @@ export class ZLinkActorTransferRuntime {
       checksumCrc32c: target.acceptedJournalChecksumCrc32c
     });
   }
+}
+
+function hasAcceptedJournalFence(
+  target: import('../actors/actor-runtime-state').ZLinkRemoteBoundSessionTarget
+): boolean {
+  return target.acceptedHighWater !== undefined
+    || target.relocationSealId !== undefined
+    || target.acceptedJournalReference !== undefined
+    || target.acceptedJournalChecksumCrc32c !== undefined;
 }

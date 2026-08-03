@@ -73,6 +73,7 @@ import {
   type ZLinkLocationRuntimeStores
 } from '../locations';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
+import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkEntrySpotActivation } from './spot-entry-activation';
 import {
@@ -939,6 +940,21 @@ export class ZLinkSpotNodeRuntimeManager {
     );
   }
 
+  async dispatchEntryActorJoin(
+    meshName: string,
+    actor: ZLinkActor,
+    handoffBacklog: readonly ZLinkActorHandoffPacket[] = []
+  ): Promise<void> {
+    await this.ensureEntryActivation(meshName);
+    const activation = this.entryActivations.get(meshName);
+    if (activation === undefined) {
+      throw new ZLinkConfigurationException(
+        `Entry Spot actor join requires an Entry Spot for MeshNode '${meshName}'.`
+      );
+    }
+    await activation.commitServiceActorJoin(actor, handoffBacklog);
+  }
+
   publish(
     meshName: string,
     channelName: string,
@@ -1331,8 +1347,17 @@ function effectiveUserSpotRegistrations(
   const registrations = new Map<string, DescriptorFactoryRegistration>(
     Object.entries(registration.spotFactoryRegistrations ?? {})
   );
+  const explicitImplementations = new Set(
+    Object.values(registration.spotFactoryRegistrations ?? {})
+      .map(({ implementation }) => implementation)
+  );
   for (const implementation of registration.spotFactories ?? []) {
-    if (!registrations.has(implementation.name)) {
+    // `spotFactories` is also retained as the runtime implementation set.
+    // When the caller supplied an explicit stable type, the implementation
+    // must not be projected a second time under its JavaScript class name.
+    // That legacy alias advertises a different public placement type and can
+    // make location routing disagree with the configured factory.
+    if (!explicitImplementations.has(implementation) && !registrations.has(implementation.name)) {
       registrations.set(implementation.name, {});
     }
   }

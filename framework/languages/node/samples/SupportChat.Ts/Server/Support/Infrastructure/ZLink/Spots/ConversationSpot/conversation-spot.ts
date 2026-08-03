@@ -93,7 +93,10 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
         participant.displayName
       );
       const customer = this.findParticipant(joined.state.customerActorId);
-      await this.notifications.publish(joined.event, customer === undefined ? [] : [customer.actorId]);
+      await this.notifications.publish(
+        joined.event,
+        customer === undefined ? [actor.actorId] : [customer.actorId, actor.actorId]
+      );
       return;
     }
     const agentActorId = this.assignments.assignNextAgent();

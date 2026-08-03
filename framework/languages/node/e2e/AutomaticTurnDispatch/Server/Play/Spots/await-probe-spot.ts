@@ -1,7 +1,5 @@
 import { Injectable, Scope } from '@nestjs/common';
 import type {
-  ZLinkActorJoinRequest,
-  ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
   ZLinkSpotActorJoinResult,
@@ -17,7 +15,8 @@ import {
   CpuWorkerAwaitHandler,
   HttpAwaitHandler,
   IoWorkerBatchHandler,
-  SelfCycleHandler
+  SelfCycleHandler,
+  SelfSendHandler
 } from '../Handlers/execution-turn-handlers';
 import { AwaitCancelCommandHandler, AwaitTimeoutCommandHandler } from '../Handlers/failure-spot-handlers';
 import { RemoteSpotAwaitCommandHandler, RemoteSpotAwaitHandler } from '../Handlers/remote-spot-handlers';
@@ -27,7 +26,7 @@ import { AwaitTimerState } from './await-timer-state';
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
-  readonly context!: ZLinkSpotContext<AwaitActor>;
+  readonly context!: ZLinkSpotContext<AwaitActor, AwaitProbeSpot>;
   private readonly timers = new Map<string, AwaitTimerState>();
   private counter = 0;
 
@@ -49,13 +48,14 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     this.context.handlers.addPacket(IoWorkerBatchHandler);
     this.context.handlers.addPacket(CpuWorkerAwaitHandler);
     this.context.handlers.addPacket(SelfCycleHandler);
+    this.context.handlers.addPacket(SelfSendHandler);
     this.context.handlers.addPacket(RemoteSpotAwaitHandler);
     this.context.handlers.addPacket(RemoteSpotAwaitCommandHandler);
     this.context.handlers.addPacket(TimerStartCommandHandler);
     this.context.handlers.addPacket(TimerStopCommandHandler);
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResult> {
     const delay = request.decode<DelayReq>(Object as never);
     if (delay.delayMs > 0) {
       await new Promise<void>((resolve, reject) => {
@@ -63,19 +63,19 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
         void reject;
       });
     }
-    this.evidence.add(`actor-admitted|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
+    this.evidence.add(`actor-admitted|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actorId}`);
     return { accepted: true, reply: delay };
   }
 
-  async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
+  async onJoinedActor(actor: AwaitActor): Promise<void> {
+    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actorId}`);
   }
 
-  async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
-    this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actor.actorId}`);
+  async onLeaveActor(actor: AwaitActor): Promise<void> {
+    this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actorId}`);
   }
 
-  async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> { void actor; }
+  async onDisconnectActor(actor: AwaitActor): Promise<void> { void actor; }
 
   readCounter(): number { return this.counter; }
 

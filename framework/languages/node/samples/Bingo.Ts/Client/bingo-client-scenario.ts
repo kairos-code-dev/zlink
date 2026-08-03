@@ -104,7 +104,13 @@ class BingoClientScenario {
     zlinkStreamAssert.ensure(client2MatchRes.roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(client2MatchRes.roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(stateOf(client2MatchRes).roomId === client1MatchRes.roomId, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(stateOf(client2MatchRes).status === BingoRoomStatus.Running, 'Sample scenario assertion failed.');
+    // Node's exact Actor contract registers this join with defer(), so the
+    // immediate MatchBingoRes is a pre-join projection. The authoritative
+    // Running state is checked on both start notifications below.
+    zlinkStreamAssert.ensure(
+      stateOf(client2MatchRes).status === BingoRoomStatus.WaitingForPlayers,
+      'Sample scenario assertion failed.'
+    );
 
     const [client1Joined, client1Started, client2Started] = await Promise.all([
       client1SawClient2Join,

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
-import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotManager, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
+import { ZLinkPacket, type ZLinkMessageContext, type ZLinkSpotManager, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import type {
   RemoteSpotAwaitMsg,
   RemoteSpotAwaitReq,
@@ -22,7 +22,7 @@ export class RemoteSpotAwaitHandler implements ZLinkSpotRequestHandler<AwaitProb
   async handle(
     spot: AwaitProbeSpot,
     request: RemoteSpotAwaitReq,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<AutomaticTurnDispatchRes> {
     void context;
     await runRemoteSpotAwait(this.evidence, this.spotHandles, spot, request);
@@ -41,7 +41,7 @@ export class RemoteSpotAwaitCommandHandler implements ZLinkSpotPacketHandler<Awa
   async handle(
     spot: AwaitProbeSpot,
     request: RemoteSpotAwaitMsg,
-    context: ZLinkHandlerContext
+    context: ZLinkMessageContext
   ): Promise<void> {
     void context;
     await runRemoteSpotAwait(this.evidence, this.spotHandles, spot, request);
@@ -59,12 +59,12 @@ async function runRemoteSpotAwait(
     `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotId}`
     + `|request=${request.requestId}|target=${request.targetSpotId}|handler=spot`
   );
-  const targetSpot = request.targetSpot ?? await spotHandles.find(request.targetSpotId);
+  const targetSpot = await spotHandles.find(request.targetSpotId);
   if (targetSpot === undefined) {
     throw new Error(`Remote spot target ref is required for '${request.targetSpotId}'.`);
   }
   const call = spot.context.outbound
-    .requestToSpot(targetSpot, Object.assign(new AwaitReq(), {
+    .requestToSpot(targetSpot.spotId, Object.assign(new AwaitReq(), {
       requestId: request.requestId,
       delayMs: request.delayMs,
       correlationId: 'remote-spot',

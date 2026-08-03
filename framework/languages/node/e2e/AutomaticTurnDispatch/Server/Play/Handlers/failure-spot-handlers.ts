@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ZLinkPacket, type ZLinkHandlerContext, type ZLinkSpotPacketHandler } from '@zlink-systems/framework';
+import { ZLinkPacket, type ZLinkMessageContext, type ZLinkSpotPacketHandler } from '@zlink-systems/framework';
 import { DelayReq, type DelayRes, type AwaitCancelMsg, type AwaitTimeoutMsg } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
@@ -10,7 +10,7 @@ import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitTimeoutMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: AwaitTimeoutMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: AwaitTimeoutMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const terminator = request.terminator ?? 'async';
     this.evidence.add(
@@ -48,7 +48,7 @@ export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitP
 export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitCancelMsg> {
   constructor(private readonly evidence: EvidenceStore) {}
 
-  async handle(spot: AwaitProbeSpot, request: AwaitCancelMsg, context: ZLinkHandlerContext): Promise<void> {
+  async handle(spot: AwaitProbeSpot, request: AwaitCancelMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     const terminator = request.terminator ?? 'async';
     this.evidence.add(

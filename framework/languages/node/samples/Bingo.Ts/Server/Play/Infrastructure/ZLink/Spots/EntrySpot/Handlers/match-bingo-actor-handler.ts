@@ -67,7 +67,7 @@ class MatchBingoActorHandler
       state: new BingoRoomState({
         roomId: matched.roomId,
         status: BingoRoomStatus.WaitingForPlayers,
-        hostActorId: '',
+        hostActorId: actor.actorId,
         canStart: false,
         drawSeq: 0,
         lastDrawnNumber: null,

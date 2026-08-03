@@ -39,6 +39,7 @@ import {
 } from './channel-envelope';
 import type { ZLinkMeshSubmitterRegistry } from '../messaging';
 import type { ServiceDirectSpotRouteFence } from '../foundation/service-stateful-wire-codec';
+import { ServiceStaleGenerationError } from '../foundation/service-stateful-registry';
 
 export interface ZLinkChannelClientTransport {
   trySend?(
@@ -718,7 +719,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     }
     throwIfAborted(options.signal);
     const operation = `MeshNode '${spotRouteTarget.routerChannelId}' send to Spot '${spotRouteTarget.spotId}'`;
-    return await this.requireMeshSubmitters().submit(spotRouteTarget.routerChannelId, () => {
+    const result = await this.requireMeshSubmitters().submit(spotRouteTarget.routerChannelId, () => {
       try {
         return mapMeshSubmitResult(node.entrySpot().sendToSpot(
           toBindingRoutingId(spotRouteTarget.targetNodeRid),
@@ -742,6 +743,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
         throw mapMeshSubmissionError(error, operation);
       }
     }, options.signal);
+    return result;
   }
 
   async sendFromSpotToSpot(
@@ -1073,6 +1075,19 @@ function mapMeshSubmitResult(result: number): ZLinkSubmitResult {
 function mapMeshSubmissionError(error: unknown, operation: string): Error {
   if (error instanceof ZLinkFrameworkException) {
     return error;
+  }
+  // A remote authority route can advance its durable StoreVersion while the
+  // object generation remains unchanged. The stateful runtime reports that
+  // exact-fence mismatch as a raw ServiceStaleGenerationError before native
+  // submission. Preserve the retryable route meaning so the address
+  // transport can invalidate the Location Store cache and resolve again.
+  if (error instanceof ServiceStaleGenerationError) {
+    return createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
+      `${operation} received a stale Spot authority fence: ${error.message}`,
+      true,
+      error
+    );
   }
   if (error instanceof SubmitError || error instanceof RequestError) {
     const notFound = error.result === SubmitResult.NotFound || error.result === 102;

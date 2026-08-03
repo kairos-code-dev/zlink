@@ -1,6 +1,7 @@
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
 import { createGameQuestLocationStore, gameQuestLocationOptions } from '../Configuration/location-store';
+import { createGameQuestRelocationStore } from '../Configuration/relocation-store';
 import { GAMEQUEST_INSTANCE_ID, GAMEQUEST_LOCATION_STORE } from '../Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG, createGameQuestConfigurationModule } from '../Configuration/sample-config';
 import {
@@ -42,6 +43,7 @@ function createQuestMissionModule(instanceId: 'mission-a' | 'mission-b') {
             .traceLogFile(`${config.logDir}/flow-${instanceId}.log`)
             .traceLabel(instanceId);
           builder.addLocationStore(createGameQuestLocationStore(config));
+          builder.addRelocationStore(createGameQuestRelocationStore(config));
           gameQuestLocationOptions(builder.configureLocations());
           const spotMesh = builder.addRouteMesh(SampleNames.playerQuestSpotMesh)
             .listen(config[spotRouterEndpointKey])

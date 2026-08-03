@@ -58,10 +58,9 @@ class ActorJoinRegistrationScope {
     if (this.intents.length === 0) {
       return;
     }
-    // The handler reply is already terminal, so a deferred callback failure
-    // cannot replace that reply with a second request outcome. The work still
-    // runs before the next queued turn, which is what the C++ serial queue does
-    // with its deferred-after-active list.
+    // A deferred callback failure cannot replace the handler result with a
+    // second request outcome. The dispatcher releases that result only after
+    // this terminal work, while the next queued turn remains behind it.
     await this.execute().catch(() => undefined);
   }
 

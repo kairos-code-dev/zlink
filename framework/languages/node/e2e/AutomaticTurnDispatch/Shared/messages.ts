@@ -46,8 +46,6 @@ export interface AwaitScenarioRes {
   readonly evidence: readonly string[];
 }
 
-import type { SpotHandle } from '@zlink-systems/framework';
-
 export interface HoldMsg {
   readonly requestId: string;
   readonly delayMs: number;
@@ -113,12 +111,17 @@ export interface CpuWorkerAwaitMsg {
 export interface SelfCycleMsg {
   readonly requestId: string;
   readonly timeoutMs: number;
+  readonly terminator?: 'async' | 'yield';
+}
+
+export interface SelfSendMsg {
+  readonly requestId: string;
+  readonly marker: string;
 }
 
 export interface RemoteSpotAwaitReq {
   readonly requestId: string;
   readonly targetSpotId: string;
-  readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
   readonly terminator?: 'async' | 'yield';
 }
@@ -126,7 +129,6 @@ export interface RemoteSpotAwaitReq {
 export interface RemoteSpotAwaitMsg {
   readonly requestId: string;
   readonly targetSpotId: string;
-  readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
   readonly terminator?: 'async' | 'yield';
 }
@@ -276,6 +278,7 @@ export class HttpAwaitMsg {}
 export class IoWorkerBatchReq {}
 export class CpuWorkerAwaitMsg {}
 export class SelfCycleMsg {}
+export class SelfSendMsg {}
 export class RemoteSpotAwaitReq {}
 export class RemoteSpotAwaitMsg {}
 export class WorkerAwaitMsg {}

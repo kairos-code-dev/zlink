@@ -5,12 +5,67 @@ const test = require('node:test');
 
 const framework = require('../../packages/framework/dist/internal');
 const envelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
+const payloadCodec = require('../../packages/framework/dist/runtime/messaging/payload-codec');
+const { Message } = require('@zlink-systems/zlink');
 
 function readable(parts) {
   return parts.map((part) => typeof part.data === 'function'
     ? part
     : { data: () => Buffer.from(part) });
 }
+
+test('selective application serializer leaves framework payload encoding on JSON', () => {
+  const serializer = {
+    canSerialize(value) {
+      return value?.kind === 'application';
+    },
+    serialize() {
+      throw new Error('serializer must not encode framework-owned payloads');
+    },
+    deserialize() {
+      return { decoded: true };
+    }
+  };
+  const registry = new Map([['application/x-test', serializer]]);
+
+  assert.equal(payloadCodec.selectSerializer({ kind: 'framework' }, registry), undefined);
+  assert.equal(payloadCodec.selectSerializer({ kind: 'application' }, registry), serializer);
+  assert.equal(payloadCodec.selectDefaultSerializer(registry), serializer);
+});
+
+test('selective application serializer decodes its wire payload and JSON fallback separately', () => {
+  let deserializeCalls = 0;
+  const serializer = {
+    canSerialize(value) {
+      return value?.kind === 'application';
+    },
+    serialize(value) {
+      return framework.ZLinkEncodedPayload.from(Buffer.from(`wire:${value.kind}`));
+    },
+    deserialize(payload) {
+      deserializeCalls += 1;
+      assert.equal(payload.getString('utf8'), 'wire:application');
+      return { kind: 'application', decoded: true };
+    }
+  };
+  const registry = new Map([['application/x-test', serializer]]);
+  const jsonMessage = Message.from(Buffer.from('{"kind":"framework"}'));
+  const applicationMessage = Message.from(Buffer.from('wire:application'));
+  try {
+    assert.deepEqual(
+      payloadCodec.decodeFrameworkPayloadMessage(jsonMessage, registry),
+      { kind: 'framework' }
+    );
+    assert.deepEqual(
+      payloadCodec.decodeFrameworkPayloadMessage(applicationMessage, registry),
+      { kind: 'application', decoded: true }
+    );
+    assert.equal(deserializeCalls, 1);
+  } finally {
+    jsonMessage.close();
+    applicationMessage.close();
+  }
+});
 
 test('channel correlation follows the request versus one-way contract', () => {
   const sendParts = envelope.encodeChannelEnvelopeParts(3, 'api', 'Notice', { value: 'one-way' });

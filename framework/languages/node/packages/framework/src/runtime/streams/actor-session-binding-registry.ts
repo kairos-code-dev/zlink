@@ -1,4 +1,5 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
+import { createAbortError, throwIfAborted } from '../abort';
 export interface ZLinkActorSessionBindingActor {
   readonly actorId: string;
 }
@@ -30,6 +31,11 @@ export class ZLinkActorSessionBindingRegistry<
   TActor extends ZLinkActorSessionBindingActor
 > {
   private readonly routes = new Map<string, ZLinkActorSessionRoute<TContext, TActor>>();
+  private readonly sealWaiters = new Map<string, Set<{
+    readonly bindingToken: string;
+    readonly resolve: () => void;
+    readonly reject: (error: unknown) => void;
+  }>>();
 
   bind(
     context: TContext,
@@ -100,6 +106,10 @@ export class ZLinkActorSessionBindingRegistry<
     }
     this.routes.delete(actorId);
     context.unbindLocal(actorId, bindingToken);
+    this.rejectSealWaiters(
+      actorId,
+      new Error(`Actor '${actorId}' session binding was removed while ingress was held.`)
+    );
   }
 
   unbindActor(actorId: string): void {
@@ -162,6 +172,34 @@ export class ZLinkActorSessionBindingRegistry<
     return route.acceptedHighWater;
   }
 
+  /**
+   * Holds Session ingress accepted after a relocation seal until the target
+   * route is published and the seal is released. The caller keeps the
+   * request payload and reply context open while this wait is in progress.
+   */
+  async acceptWhenReady(
+    actorId: string,
+    bindingToken: string,
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    for (;;) {
+      throwIfAborted(signal);
+      const route = this.requireRoute(actorId);
+      this.requireCurrentToken(actorId, bindingToken);
+      if (route.sealId === undefined) {
+        try {
+          const acceptedHighWater = this.accept(actorId, bindingToken);
+          return acceptedHighWater;
+        } catch (error) {
+          // A new seal can race the check above. Re-enter the wait only for
+          // that relocation fence; unrelated binding failures stay visible.
+          if (this.routes.get(actorId)?.sealId === undefined) throw error;
+        }
+      }
+      await this.waitForSealRelease(actorId, bindingToken, signal);
+    }
+  }
+
   seal(actorId: string, sealId: string, expected: ZLinkActorSessionRouteFence): bigint {
     const route = this.requireRoute(actorId);
     if (route.sealId !== undefined) {
@@ -189,6 +227,7 @@ export class ZLinkActorSessionBindingRegistry<
     const route = this.routes.get(actorId);
     if (route === undefined || route.sealId !== sealId) return false;
     route.sealId = undefined;
+    this.resolveSealWaiters(actorId, sealId);
     return true;
   }
 
@@ -202,6 +241,47 @@ export class ZLinkActorSessionBindingRegistry<
     return route !== undefined
       && route.sealId === sealId
       && route.acceptedHighWater === acceptedHighWater;
+  }
+
+  private async waitForSealRelease(
+    actorId: string,
+    bindingToken: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const route = this.requireRoute(actorId);
+    this.requireCurrentToken(actorId, bindingToken);
+    if (route.sealId === undefined) return;
+    await new Promise<void>((resolve, reject) => {
+      const waiters = this.sealWaiters.get(actorId) ?? new Set();
+      const waiter = { bindingToken, resolve, reject };
+      waiters.add(waiter);
+      this.sealWaiters.set(actorId, waiters);
+      const onAbort = () => {
+        waiters.delete(waiter);
+        if (waiters.size === 0) this.sealWaiters.delete(actorId);
+        reject(createAbortError());
+      };
+      if (signal === undefined) return;
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  private resolveSealWaiters(actorId: string, _sealId: string): void {
+    const waiters = this.sealWaiters.get(actorId);
+    if (waiters === undefined) return;
+    this.sealWaiters.delete(actorId);
+    for (const waiter of waiters) waiter.resolve();
+  }
+
+  private rejectSealWaiters(actorId: string, error: unknown): void {
+    const waiters = this.sealWaiters.get(actorId);
+    if (waiters === undefined) return;
+    this.sealWaiters.delete(actorId);
+    for (const waiter of waiters) waiter.reject(error);
   }
 }
 

@@ -38,7 +38,9 @@ function createDispatchCenterModule() {
           const mesh = builder.addRouteMesh(SampleNames.courierMeshName)
             .listen(config.dispatchSpotEndpoint).setRoutingIdPrefix('delivery-dispatch');
           mesh.objects().client();
-          builder.addClientServerChannel(SampleNames.dispatchChannel)
+          const dispatchChannel = builder.addClientServerChannel(SampleNames.dispatchChannel);
+          dispatchChannel.client();
+          dispatchChannel
             .server()
             .listen()
             .addHandlerGroup('dispatch');

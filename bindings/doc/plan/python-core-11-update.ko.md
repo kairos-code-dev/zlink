@@ -108,11 +108,11 @@ repository `src`를 import하지 않는다. Single·multi perf runner는 `ZLINK_
 ### PY-06 — Package와 clean consumer — PASS (Linux x86_64)
 
 `setup.py`는 `ZLINK_CORE_PREFIX`를 요구하고 repository `core/build`를 implicit build input으로 사용하지
-않는다. Candidate package script는 다음을 모두 확인한다.
+않는다. Candidate package script는 manifest에서 만든 candidate prefix로 다음을 모두 확인한다.
 
 1. Core manifest의 revision, version, header/spec/source hash, runtime hash, SONAME, symbol inventory,
    layout과 freshness를 다시 확인한다.
-2. 승인 prefix로 extension과 wheel을 build한다.
+2. candidate prefix로 extension과 wheel을 build한다.
 3. wheel에 `py.typed`와 현재 Linux x86_64 runtime 하나만 있는지 확인하고, 이전 SONAME·`libzlink_c`·다른
    platform payload·source path가 있으면 실패한다.
 4. 새 virtual environment에 `--no-deps`로 설치하고 repository 밖 cwd에서 `PYTHONPATH`, `LD_LIBRARY_PATH`,

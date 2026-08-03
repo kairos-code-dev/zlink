@@ -15,9 +15,9 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: e5a63cbb6491b8a3f2c923e17efa5985134fb2ec
+sourceRevision: `candidate-input.env`의 `CORE_REVISION`
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: 6032c861b2a42df56d9c9d830aba3bdd1a5b8aba6a7a7ecd5fdb82483e49567c
+coreManifestSha256: `candidate-input.env`의 `CANDIDATE_MANIFEST_SHA256`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
@@ -32,14 +32,13 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 
 ```text
 sourceManifest: `.artifacts/wsl/bindings-candidate/python39/python-source-manifest-11.2.0.json`
-sourceManifestSha256: 8195b52fb3b2f66af20ababf3c052d9f09966bb265d536ef131893db2ad942ff
+sourceManifestSha256: 각 `candidate-input.env`의 `PYTHON_SOURCE_MANIFEST_SHA256`
 sourceAggregateSha256: d6ed6c3c48a7ed1e5b50deeccad1560948646f354222c878b680801119d92bc1
 candidateInput: `.artifacts/wsl/bindings-candidate/python39/python/candidate-input.env` and the corresponding
 `python312/python/candidate-input.env`
 wheel: `python39/python/wheels/zlink-11.2.0-cp39-cp39-linux_x86_64.whl` and
 `python312/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl`
-wheelSha256: `19306465e53543820228dde78df3483ac251bc5570cd2e0fc415440cb2e65171` (CPython 3.9),
-`c6f19d9005917c25221135253bf8f4b7b718471cf9d1a7e9aebdebf4bbe99838` (CPython 3.12)
+wheelSha256: 각 output root의 `python/SHA256SUMS` wheel entry
 packagedNativePayloadSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 ```
 

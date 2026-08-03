@@ -11,13 +11,21 @@ import "C"
 
 import "unsafe"
 
+func reusableTopicBuffer(buffer []byte) []byte {
+	if cap(buffer) < recvTopicBufferCap {
+		return make([]byte, recvTopicBufferCap)
+	}
+	return buffer[:recvTopicBufferCap]
+}
+
 func recvTopicMessageInto(
 	out *TopicMessage,
 	call func(**C.zlink_routing_id_t, *C.char, *C.size_t, *C.zlink_msg_t, *C.zlink_part_flag_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
 ) error {
 	var sourceRID *C.zlink_routing_id_t
-	var topicBuf [recvTopicBufferCap]byte
+	topicBuf := reusableTopicBuffer(out.topicBuf)
+	out.topicBuf = topicBuf
 	topicLen := C.size_t(len(topicBuf))
 	reuse := out.parts
 	_ = out.Close()
@@ -33,20 +41,24 @@ func recvTopicMessageInto(
 	return nil
 }
 
-func recvSubscriptionEvent(
+func recvSubscriptionEventInto(
+	out *SubscriptionEvent,
 	call func(*C.zlink_routing_id_t, *C.int, *C.char, *C.size_t, C.zlink_recv_flags_t) error,
 	flags RecvFlags,
-) (*SubscriptionEvent, error) {
+) error {
+	if out == nil {
+		return &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
+	}
 	var rid C.zlink_routing_id_t
 	var subscribed C.int
-	var topicBuf [recvTopicBufferCap]byte
+	topicBuf := reusableTopicBuffer(out.topicBuf)
+	out.topicBuf = topicBuf
 	topicLen := C.size_t(len(topicBuf))
 	if err := call(&rid, &subscribed, (*C.char)(unsafe.Pointer(&topicBuf[0])), &topicLen, C.zlink_recv_flags_t(flags)); err != nil {
-		return nil, err
+		return err
 	}
-	return &SubscriptionEvent{
-		routingID:  routingIDFromC(rid),
-		subscribed: subscribed != 0,
-		topic:      string(topicBuf[:int(topicLen)]),
-	}, nil
+	out.routingID = routingIDFromC(rid)
+	out.subscribed = subscribed != 0
+	out.topic = string(topicBuf[:int(topicLen)])
+	return nil
 }

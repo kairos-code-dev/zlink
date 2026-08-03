@@ -49,7 +49,7 @@ func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(out *SubscriptionEvent, f
 	if out == nil {
 		return false, &RecvError{Result: RecvInvalidHandle, nativeErrno: int(C.EINVAL)}
 	}
-	fresh, err := recvSubscriptionEvent(func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
+	err := recvSubscriptionEventInto(out, func(rid *C.zlink_routing_id_t, subscribed *C.int, topic *C.char, topicLen *C.size_t, recvFlags C.zlink_recv_flags_t) error {
 		var sourceRID *C.zlink_routing_id_t
 		if err := recvErrorFromResult(C.zlink_xpub_recv_part(s.raw(), &sourceRID, subscribed, topic, recvTopicBufferCap, topicLen, recvFlags)); err != nil {
 			return err
@@ -67,6 +67,5 @@ func (s *xpubSubscribeSocket) ReceiveSubscriptionEvent(out *SubscriptionEvent, f
 		}
 		return false, err
 	}
-	out.adoptFrom(fresh)
 	return true, nil
 }

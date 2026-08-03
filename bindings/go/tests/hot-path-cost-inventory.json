@@ -33,6 +33,13 @@
       "guardTest": "TestRecvOwnershipCanBeExplicitlyReleased"
     },
     {
+      "id": "topic-buffer-reuse",
+      "classification": "required",
+      "sources": ["internal/native/socket_receive.go:14-18"],
+      "reason": "Core writes topic metadata into caller-provided storage; the result objects retain one reusable buffer instead of allocating 64 KiB on every receive.",
+      "guardTest": "TestTopicOutputStorageReusesBuffer"
+    },
+    {
       "id": "bytes-builder-native-copy",
       "classification": "required",
       "sources": ["internal/native/socket_multipart_request.go:53-95"],
@@ -58,10 +65,17 @@
       "guardTest": "TestReceiveCallbackPanicDoesNotCloseSocketOrStopFutureCallbacks"
     },
     {
+      "id": "request-completion-dispatcher",
+      "classification": "required",
+      "sources": ["internal/native/request_reply_helpers.go:41-59"],
+      "reason": "One dispatcher worker per socket delivers request callbacks and replaces one blocking waiter goroutine per request while preserving payload cleanup on callback panic.",
+      "guardTest": "TestRequestCallbackDeliveryUsesSocketDispatcher"
+    },
+    {
       "id": "request-progress-handle-pump",
       "classification": "required",
       "sources": ["internal/native/request_progress.go:38-117"],
-      "reason": "A single bounded poller worker is shared by requests on one native handle; the per-request waiter only releases the handle activity count.",
+      "reason": "A single bounded poller worker is shared by requests on one native handle; completion detaches the request directly without a per-request waiter.",
       "guardTest": "TestRequestContextDeadlineUsesStandardErrors"
     },
     {

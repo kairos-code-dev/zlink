@@ -6,15 +6,7 @@ type SubscriptionEvent struct {
 	routingID  RoutingID
 	subscribed bool
 	topic      string
-}
-
-func (s *SubscriptionEvent) adoptFrom(source *SubscriptionEvent) {
-	if s == nil || source == nil {
-		return
-	}
-	s.routingID = source.routingID
-	s.subscribed = source.subscribed
-	s.topic = source.topic
+	topicBuf   []byte
 }
 
 func (s SubscriptionEvent) RoutingID() RoutingID {

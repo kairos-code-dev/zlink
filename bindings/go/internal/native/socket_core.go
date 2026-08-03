@@ -31,6 +31,7 @@ type socketCore struct {
 	streamPacketHandle      cgo.Handle
 	requestProgressMu       sync.Mutex
 	requestProgress         *progressPump
+	requestDispatcher       *callbackDispatcher
 }
 
 func newSocketCore(ctx *Context, socketType C.zlink_socket_type_t) (*socketCore, error) {
@@ -129,7 +130,12 @@ func (s *socketCore) Close() error {
 		s.requestProgress = nil
 	}
 	s.requestProgressMu.Unlock()
+	requestDispatcher := s.requestDispatcher
+	s.requestDispatcher = nil
 	s.callbackMu.Unlock()
+	if requestDispatcher != nil {
+		requestDispatcher.close()
+	}
 	s.releaseCallbacks()
 	return nil
 }
@@ -182,6 +188,21 @@ func (s *socketCore) resumeInternalRequestProgress() {
 
 func (s *socketCore) hasReceiveHandler() bool {
 	return s.recvActive.Load() != 0
+}
+
+func (s *socketCore) requestCallbackDispatcher() *callbackDispatcher {
+	if s == nil {
+		return nil
+	}
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	if s.closed || s.handle == nil {
+		return nil
+	}
+	if s.requestDispatcher == nil {
+		s.requestDispatcher = newCallbackDispatcher()
+	}
+	return s.requestDispatcher
 }
 
 func (s *socketCore) replaceCallback(handle cgo.Handle, slot *cgo.Handle, active *atomic.Uintptr, register func() error) error {

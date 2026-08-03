@@ -3,6 +3,7 @@ package zlink_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -49,6 +50,86 @@ func TestRequestContextDeadlineUsesStandardErrors(t *testing.T) {
 	defer cancel()
 	if _, err := socket.Request().Bytes([]byte("context-deadline")).SubmitAsync(deadline); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Request().SubmitAsync(expired) error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestRequestCallbackDeliveryUsesSocketDispatcher(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer router.Close()
+	dealer, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer dealer.Close()
+
+	endpoint := inprocEndpoint("request-callback-dispatcher")
+	if err := router.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := dealer.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := router.SetReceiveTimeout(5 * time.Second); err != nil {
+		t.Fatalf("SetReceiveTimeout() error = %v", err)
+	}
+
+	serverDone := make(chan error, 1)
+	go func() {
+		var request zlink.Received
+		if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil {
+			serverDone <- err
+			return
+		}
+		defer request.Close()
+		reply, err := zlink.NewMessageString("callback-reply")
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer reply.Close()
+		serverDone <- request.Reply().Message(reply).Submit(nil)
+	}()
+
+	callbackDone := make(chan error, 1)
+	ok, err := dealer.Request().Bytes([]byte("callback-request")).Timeout(2*time.Second).Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+		defer zlink.MultipartClose(parts)
+		if result != zlink.RequestOK {
+			callbackDone <- fmt.Errorf("request result = %v, want RequestOK", result)
+			return
+		}
+		if len(parts) != 1 || string(parts[0].Data()) != "callback-reply" {
+			callbackDone <- fmt.Errorf("request callback parts = %d, want callback-reply", len(parts))
+			return
+		}
+		callbackDone <- nil
+	})
+	if err != nil {
+		t.Fatalf("Request().Submit(callback) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("Request().Submit(callback) returned ok=false")
+	}
+	select {
+	case err := <-callbackDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request callback was not delivered")
+	}
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatalf("request server error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request server did not finish")
 	}
 }
 
@@ -186,7 +267,12 @@ func TestPollerCompletionOwnsAndReleasesRequestProgress(t *testing.T) {
 				return
 			}
 			defer reply.Close()
-			result <- request.Reply().Message(reply).Submit(nil)
+			submitErr := request.Reply().Message(reply).Submit(nil)
+			if submitErr == nil && reply.Data() != nil {
+				result <- fmt.Errorf("successful reply did not consume message")
+				return
+			}
+			result <- submitErr
 		}()
 		return result
 	}

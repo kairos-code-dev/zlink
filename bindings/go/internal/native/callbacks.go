@@ -379,6 +379,7 @@ func goZlinkStreamPacketTrampoline(_ unsafe.Pointer, sourceRID *C.zlink_routing_
 	}
 	headerParts, err := takeParts(header, 1)
 	if err != nil {
+		discardParts(body, 1)
 		return
 	}
 	bodyParts, err := takeParts(body, 1)

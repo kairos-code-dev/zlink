@@ -8,14 +8,6 @@ package native
 */
 import "C"
 
-func requestBuilderPartsFromMessages(parts []*Message) []requestBuilderPart {
-	result := make([]requestBuilderPart, len(parts))
-	for i, part := range parts {
-		result[i] = requestBuilderPart{message: part}
-	}
-	return result
-}
-
 func prepareRequestMultipart(parts []requestBuilderPart) (*preparedMultipart, error) {
 	if len(parts) == 0 {
 		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}

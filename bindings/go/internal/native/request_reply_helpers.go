@@ -38,11 +38,24 @@ func submitBackpressureResult(err error) (bool, error) {
 	return false, err
 }
 
-func dispatchRequestCallback(state *replyCallbackState, callback RequestReplyCallback) {
-	go func() {
-		result := state.wait()
-		callback(result.result, result.parts)
-	}()
+func dispatchRequestCallback(state *replyCallbackState, dispatcher *callbackDispatcher, callback RequestReplyCallback) {
+	if state == nil || callback == nil {
+		return
+	}
+	state.setCompletionDispatch(func(result requestResult) {
+		task := &callbackTask{
+			label: "request-completion",
+			invoke: func() {
+				callback(result.result, result.parts)
+			},
+			cleanup: func() {
+				MultipartClose(result.parts)
+			},
+		}
+		if dispatcher == nil || !dispatcher.enqueue(task) {
+			task.cleanup()
+		}
+	})
 }
 
 func cloneParts(parts []*Message) ([]*Message, error) {

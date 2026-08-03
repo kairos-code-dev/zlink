@@ -12,6 +12,7 @@ type TopicMessage struct {
 	routingID RoutingID
 	topic     string
 	parts     []*Message
+	topicBuf  []byte
 }
 
 func (t *TopicMessage) RoutingID() RoutingID {
@@ -37,19 +38,6 @@ func (t *TopicMessage) Parts() []*Message {
 		return nil
 	}
 	return t.parts
-}
-
-func (t *TopicMessage) adoptFrom(source *TopicMessage) {
-	if t == nil || source == nil {
-		return
-	}
-	_ = t.Close()
-	t.routingID = source.routingID
-	t.topic = source.topic
-	t.parts = source.parts
-	source.routingID = RoutingID{}
-	source.topic = ""
-	source.parts = nil
 }
 
 func (t *TopicMessage) IsSinglePart() bool {

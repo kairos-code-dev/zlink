@@ -199,11 +199,10 @@ func (s *DealerSocket) Request() RequestOp {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
-		resultCh, err := startDealerRequest(s, flags, timeout, parts)
+		_, err := startDealerRequest(s, flags, timeout, parts, callback)
 		if err != nil {
 			return err
 		}
-		dispatchRequestCallback(resultCh, callback)
 		return nil
 	})
 }

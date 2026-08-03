@@ -311,18 +311,6 @@ func submitErrorFromResult[T resultCodeValue](result T) error {
 	return &SubmitError{Result: resultCode, nativeErrno: errno}
 }
 
-func requestErrorFromResult[T resultCodeValue](result T) error {
-	resultCode := RequestResult(resultCodeInt(result))
-	if resultCode == RequestOK {
-		return nil
-	}
-	errno := currentErrno()
-	if errno == 0 {
-		errno = fallbackRequestErrno(resultCode)
-	}
-	return &RequestError{Result: resultCode, nativeErrno: errno}
-}
-
 // requestCompletionError maps a terminal callback result without consulting
 // thread-local errno. A callback carries a result code, not the errno from the
 // native thread that produced it, so completion errors must use the stable

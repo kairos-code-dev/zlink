@@ -39,15 +39,17 @@ func TestHotPathCostInventoryIsClassified(t *testing.T) {
 	}
 
 	wantIDs := map[string]struct{}{
-		"message-native-allocation":    {},
-		"message-snapshot-copy":        {},
-		"submit-copy-for-preservation": {},
-		"received-adopt-wrapper":       {},
-		"bytes-builder-native-copy":    {},
-		"option-scratch-buffer":        {},
-		"callback-dispatcher-worker":   {},
-		"request-progress-handle-pump": {},
-		"cgo-package-runtime-rpath":    {},
+		"message-native-allocation":     {},
+		"message-snapshot-copy":         {},
+		"submit-copy-for-preservation":  {},
+		"received-adopt-wrapper":        {},
+		"topic-buffer-reuse":            {},
+		"bytes-builder-native-copy":     {},
+		"option-scratch-buffer":         {},
+		"callback-dispatcher-worker":    {},
+		"request-completion-dispatcher": {},
+		"request-progress-handle-pump":  {},
+		"cgo-package-runtime-rpath":     {},
 	}
 	gotIDs := make(map[string]struct{}, len(inventory.Entries))
 	for _, entry := range inventory.Entries {

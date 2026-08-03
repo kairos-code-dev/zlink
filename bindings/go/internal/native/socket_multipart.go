@@ -97,10 +97,10 @@ func (p *preparedMultipart) restore() error {
 	return nil
 }
 
-func markPartsMoved(parts []*Message) {
+func closeConsumedParts(parts []*Message) {
 	for _, part := range parts {
 		if part != nil {
-			part.moved()
+			_ = part.Close()
 		}
 	}
 }
@@ -156,7 +156,7 @@ func submitMultipartFromClones(parts []*Message, consumeOriginal bool, submit mu
 		return err
 	}
 	if consumeOriginal {
-		markPartsMoved(parts)
+		closeConsumedParts(parts)
 	}
 	return nil
 }
@@ -314,7 +314,7 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 		}
 	}
 
-	prepared := &preparedMultipart{native: native, parts: builderMessages(parts)}
+	prepared := &preparedMultipart{native: native}
 	err := submitPreparedMultipart(prepared, submit)
 	for _, part := range parts {
 		// Bytes parts are represented only by the temporary native message. The

@@ -28,5 +28,6 @@ func goZlinkReplyTrampoline(result C.zlink_request_result_t, parts *C.zlink_msg_
 		state.complete(requestResult{result: RequestOK, parts: clonedParts})
 		return
 	}
+	discardParts(parts, partCount)
 	state.complete(requestResult{result: RequestResult(result), parts: nil})
 }

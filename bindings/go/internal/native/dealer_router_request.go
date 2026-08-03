@@ -23,12 +23,13 @@ import (
 	"time"
 )
 
-func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts []requestBuilderPart) (*replyCallbackState, error) {
+func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Duration, parts []requestBuilderPart, callback RequestReplyCallback) (*replyCallbackState, error) {
 	prepared, err := prepareRequestMultipart(parts)
 	if err != nil {
 		return nil, err
 	}
 	state := newReplyCallbackState()
+	dispatchRequestCallback(state, socket.socketCore.requestCallbackDispatcher(), callback)
 	handle := cgo.NewHandle(state)
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_dealer_request_part_go_local(
@@ -48,12 +49,13 @@ func startDealerRequest(socket *DealerSocket, flags SendFlags, timeout time.Dura
 	return state, nil
 }
 
-func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts []requestBuilderPart) (*replyCallbackState, error) {
+func startRouterRequest(socket *RouterSocket, routingID RoutingID, flags SendFlags, timeout time.Duration, parts []requestBuilderPart, callback RequestReplyCallback) (*replyCallbackState, error) {
 	prepared, err := prepareRequestMultipart(parts)
 	if err != nil {
 		return nil, err
 	}
 	state := newReplyCallbackState()
+	dispatchRequestCallback(state, socket.socketCore.requestCallbackDispatcher(), callback)
 	handle := cgo.NewHandle(state)
 	rid := routingID.toC()
 	if err := submitPreparedMultipart(prepared, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {

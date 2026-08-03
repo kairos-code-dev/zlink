@@ -42,7 +42,7 @@ func (s *routedSocket) reply(rid RoutingID, requestSeq uint64, flags SendFlags, 
 		return err
 	}
 	target := rid.toC()
-	return submitMultipartFromClones(parts, false, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
+	return submitMultipartFromClones(parts, true, func(part *C.zlink_msg_t, partFlag C.zlink_part_flag_t) error {
 		return submitErrorFromResult(C.zlink_router_reply_part(s.raw(), &target, C.uint64_t(requestSeq), part, partFlag))
 	})
 }
@@ -124,11 +124,10 @@ func (s *RouterSocket) Request(peerRID RoutingID) RequestOp {
 		if callback == nil {
 			return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 		}
-		resultCh, err := startRouterRequest(s, peerRID, flags, timeout, parts)
+		_, err := startRouterRequest(s, peerRID, flags, timeout, parts, callback)
 		if err != nil {
 			return err
 		}
-		dispatchRequestCallback(resultCh, callback)
 		return nil
 	})
 }

@@ -179,6 +179,8 @@ Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공�
 | Raw contract boundary | `afd96c43aa` | Core 11 raw projection, service surface 제거, `/v11`, HWM contract |
 | Error/lifecycle/perf boundary | `eab6cf9411` | Error surface, context test, bounded progress pump, sample/perf smoke |
 | Gate boundary | `f1210adaffc` | Raw allowlist, hot-path inventory, package builder와 clean-consumer gate |
+| Candidate provenance boundary | `40dcadb2ef0` | 승인 Core candidate와 package evidence를 검증하는 Go package builder |
+| Perf runtime boundary | `c6b37ac0ee` | Root `VERSION` 대신 Go package header에서 native SONAME version을 해석 |
 
 그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
 `independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,
@@ -237,14 +239,14 @@ scripts/local-package/go/build-wsl.sh \
 
 | 항목 | 값 |
 |------|-----|
-| Source revision | `f83290b28cb63afdc88e06110fb4c50a8d8b7053` |
-| Source manifest SHA-256 | `d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004` |
+| Source revision | `c6b37ac0ee2278305bbcb848a17bfc1034af86d3` |
+| Source manifest SHA-256 | `cce6140e65c2853814816888e6f1edaae00a52a36edd41b1d6b988b9402bd75b` |
 | Package script SHA-256 | `9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee` |
-| Module zip SHA-256 | `12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef` |
+| Module zip SHA-256 | `9be68867732ddea0fc3a2c44cd32bb0d7785b8d2df7f02fb3beaa7ad458fb264` |
 | Header aggregate SHA-256 | `159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d` |
-| Source aggregate SHA-256 | `8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7` |
-| Package evidence | `.artifacts/wsl/go-candidate-final/go-package-v11.1.0.json` |
-| Package evidence SHA-256 | `7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d` |
+| Source aggregate SHA-256 | `b7bc9db75879874b3bc128d69192e70eb5c04922c1ec47c047108299f2edd002` |
+| Package evidence | `.artifacts/wsl/go-candidate-final2/go-package-v11.1.0.json` |
+| Package evidence SHA-256 | `6c6c46ecaa24e6c3c4ce622310ff030fb0db5996090872b1d75d7d0505e15724` |
 | Core candidate manifest | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json` |
 | Core package evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
 | Core provenance SHA-256 | `46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d23b6d2d6b53f693` |
@@ -259,7 +261,7 @@ scripts/local-package/go/build-wsl.sh \
 | Gate | 상태 | Evidence |
 |------|------|----------|
 | 공통 candidate 입력 확인 | `PASS` (독립 review 제외) | Candidate verify와 matching V11-M3-CORE-PKG pass evidence가 같은 manifest `d318...`/aggregate `327...`을 사용하며 runtime provenance 검증 통과 |
-| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
+| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final2/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
 | `/v11` module path와 version | `PASS` | `bindings/go/go.mod`, package evidence `v11.1.0` |
 | Raw cgo·header·symbol allowlist | `PASS` | `bindings/go/tests/raw-core11-allowlist.json`, `TestRawCore11Allowlist` |
 | Public API snapshot과 service 부재 | `PASS` | root/contracts projection, raw surface test, package zip forbidden-entry 검사 |

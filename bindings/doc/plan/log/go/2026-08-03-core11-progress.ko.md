@@ -51,6 +51,7 @@ status: pass
 | `eab6cf9411` | `ZlinkError`/`InternalErrno`, context cancellation test, bounded handle progress pump, raw sample/perf runner |
 | `f1210adaffc` | raw header/symbol allowlist, hot-path cost inventory, Go file-proxy package와 clean-consumer gate |
 | `40dcadb2ef0` | 승인 Core candidate manifest/package evidence를 검증하는 package builder와 candidate-bound Linux payload |
+| `c6b37ac0ee` | perf runner가 root `VERSION` 대신 Go package header에서 native SONAME version을 해석 |
 
 POSD와 DDD 판단은 다음 책임 경계를 기준으로 적용했다.
 
@@ -64,6 +65,9 @@ POSD와 DDD 판단은 다음 책임 경계를 기준으로 적용했다.
 - Package builder가 candidate manifest, Core package evidence, installed provenance와 runtime/header hash를
   한 경계에서 검증하게 해 호출자가 여러 hash를 수동으로 조합하지 않도록 했다. 이 검증은 package 입력의
   provenance 책임을 builder에 둔 POSD 정보 은닉과 DDD의 Core package 경계를 반영한다.
+- Perf runner는 다른 workstream의 root `VERSION`을 읽지 않고 Go package header에서 SONAME version을 읽는다.
+  따라서 package runtime 선택이 binding package 경계 안에 머물고, unrelated root version drift가 실행 결과를
+  바꾸지 않는다.
 
 ## 검증 명령과 결과
 
@@ -89,9 +93,10 @@ perf/run_benchmarks.sh --smoke --pattern PAIR --duration 1 --msg-sizes 64 --tran
 perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 --msg-sizes 64 --transports tcp --runs 1 --clients 1
 ```
 
-결과: 두 명령 모두 종료 코드 `0`. Single runner는 `PAIR` inproc, multi runner는 TCP
-`MULTI_DEALER_ROUTER`에서 READY/active와 필수 `RESULT` metric을 출력했다. Smoke 실행은 공식 report를 만들지
-않았다.
+결과: 두 명령 모두 종료 코드 `0`. 두 runner는 `libzlink.so.11.1.0`과 runtime SHA-256
+`b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4`를 출력했다. Single runner는 `PAIR`
+inproc, multi runner는 TCP `MULTI_DEALER_ROUTER`에서 READY/active와 필수 `RESULT` metric을 출력했다.
+Smoke 실행은 공식 report를 만들지 않았다.
 
 ```bash
 scripts/local-package/go/build-wsl.sh \
@@ -100,7 +105,7 @@ scripts/local-package/go/build-wsl.sh \
     /home/hep7/project/kairos/zlink/.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-reply-match-completion-hwm-20260801.json \
   --core-package-evidence \
     /home/hep7/project/kairos/zlink/.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json \
-  --output-root /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final
+  --output-root /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final2
 ```
 
 결과: module `zlink.systems/zlink/v11`, version `v11.1.0`, candidate-bound clean consumer `pass`.
@@ -110,14 +115,14 @@ roundtrip을 실행했다. `ldd`는 module cache의 `native/linux-x86_64/libzlin
 현재 package evidence:
 
 ```text
-evidence: .artifacts/wsl/go-candidate-final/go-package-v11.1.0.json
-evidence sha256: 7badf3d397c56139c74410173d391b0d1368ab28a6dd9949487bac6aa48b883d
-sourceRevision: f83290b28cb63afdc88e06110fb4c50a8d8b7053
-sourceManifestSha256: d6bd4bebf649f74dcc9d966d438f1e35da5435cc546140755c75cd135b1a5004
+evidence: .artifacts/wsl/go-candidate-final2/go-package-v11.1.0.json
+evidence sha256: 6c6c46ecaa24e6c3c4ce622310ff030fb0db5996090872b1d75d7d0505e15724
+sourceRevision: c6b37ac0ee2278305bbcb848a17bfc1034af86d3
+sourceManifestSha256: cce6140e65c2853814816888e6f1edaae00a52a36edd41b1d6b988b9402bd75b
 packageScriptSha256: 9404def1079805c0cf200244f670deaae55daba17031095594aa099dc09b3fee
-moduleZipSha256: 12898bb155df9eb5c29dda9b1e5d872df465f4ea2d770468e3d86e04e3fbc1ef
+moduleZipSha256: 9be68867732ddea0fc3a2c44cd32bb0d7785b8d2df7f02fb3beaa7ad458fb264
 headerSha256: 159c8024f8ed090e0c3acfe51e665339d3a43e93b37dc9e21490b703df717f1d
-sourceSha256: 8ca3316878060954edae601ea70351464a192df06d718de0d10988679eadcad7
+sourceSha256: b7bc9db75879874b3bc128d69192e70eb5c04922c1ec47c047108299f2edd002
 runtimeSha256: b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4
 coreCandidateManifestSha256: d318525a4cf8496b6bef5d900c9a88330ea6d7e10ed4120ac0fd9f19d23f6765
 coreCandidateAggregateSha256: 327587596195a162374498b630f51a043977dd392eb556061af615bf05186703
@@ -126,7 +131,7 @@ coreProvenanceManifestSha256: 46f7bd17c0be3987fed14ca3cb594139e3edb778d3996248d2
 ```
 
 ```bash
-unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final/proxy/zlink.systems/zlink/v11/@v/v11.1.0.zip \
+unzip -Z1 /home/hep7/project/kairos/zlink/.artifacts/wsl/go-candidate-final2/proxy/zlink.systems/zlink/v11/@v/v11.1.0.zip \
   | rg 'service|spot|actor|/build/|/results/'
 ```
 

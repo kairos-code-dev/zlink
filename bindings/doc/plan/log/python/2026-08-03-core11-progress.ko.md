@@ -214,7 +214,8 @@ Linux aarch64, macOS와 Windows는 현재 release target이 아니므로 별도 
 
 ## 2026-08-04 Codex self-review refresh
 
-현재 checkout의 HEAD는 `de948ac89ec753cfda5b1b1f9869c78336f647da`이며, Core 11.2.0 runtime SHA는
+package candidate snapshot의 HEAD는 `de948ac89ec753cfda5b1b1f9869c78336f647da`이며, 이후 checkout에는
+이 progress log를 기록한 문서 commit만 추가됐다. Core 11.2.0 runtime SHA는
 `ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138`이다. Core 변경 19개를
 정식 spec·계획 문서와 대조하고 `lb_t`의 smooth weighted round-robin, routing ID tie-break, candidate
 변경, write failure recovery와 `0..10000` validation을 확인했다. 현재 `test_router_multiple_dealers`는

@@ -362,3 +362,31 @@ clean wheel consumer와 installed sample은 각각 `7/7`을 통과했다. Pyrigh
 V11-R2 evidence가 v7의 Core manifest identity를 승인했다는 뜻은 아니다. 별도 reviewer가 같은
 candidate identity를 승인하고 V11-M3-CORE-PKG와 frontier `CLEAN` 판정을 생성하기 전까지 formal
 independent gate는 `PARTIAL`로 유지한다.
+
+## 2026-08-04 Codex self-review package refresh (v8)
+
+계획서의 contract test 수와 poller lifecycle 수정 내용을 package direct input에 반영하기 위해 v8을
+다시 생성했다. Python 구현과 Core runtime은 v7과 같고, source manifest는 갱신된 계획서 hash를
+포함한다.
+
+```text
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v8.env
+coreManifestSha256: b8096355c6a2a38b5a7042df014f4b1dde1367cce9a0aee85db9b8dc2a722ee9
+coreRevision: b17fc65f2e98d76604fed3bb508f74634ea7e48f
+coreRuntimeSha256: ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138
+cp312CandidateInputSha256: 15e0ca0d240bfc9f6d077f077cb4475d8581edadcdb6e04c88cbb05acea18e88
+cp39CandidateInputSha256: d779a8260f19b908adf837bfb3f736a0ecf1090e8024e070f8fccdd846286033
+pythonSourceManifestSha256: 229d0e3f801cc70ed4318d0581e7444a7e498f5e16e26bf321257377cd472e67
+pythonSourceAggregateSha256: 95ea5b19d4df7227ed1ddedfd47f5004379e152f8be24e1b99beb0d82a662154
+cp312WheelSha256: d056521fea1466af14070961cf0b5b7f6f25209045ce5a5ee638e09815e62616
+cp39WheelSha256: bf71e0231034d9861c6076af32bf5ad77b290503414fabb0ae96dcb1faf977e6
+```
+
+CPython 3.12.3과 Ubuntu 24.04 + deadsnakes CPython 3.9.25에서 각각 source test는 `66 passed`,
+clean wheel consumer와 installed sample은 각각 `7/7`을 통과했다. v8 perf smoke도 single
+`status=complete`, `actual_result_lines=5`, multi `status=complete`, `success=1`, `fail=0`,
+`actual_result_lines=5`로 확인했다. Pyright 결과는 `0 errors, 0 warnings, 0 informations`다.
+
+v8도 local package와 Codex self-review 증거이며 formal independent approval이 아니다. 별도 reviewer가
+동일 candidate identity를 승인하고 V11-M3-CORE-PKG와 frontier `CLEAN` 판정을 생성하기 전까지
+공통 ledger 상태는 `PARTIAL`로 유지한다.

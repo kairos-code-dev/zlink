@@ -15,9 +15,9 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: `candidate-input.env`의 `CORE_REVISION` = `2c68dd77bff8e3a54ad6bd179a15fd8dd2d7f8dc`
+sourceRevision: `candidate-input.env`의 `CORE_REVISION`
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: `candidate-input.env`의 `CANDIDATE_MANIFEST_SHA256` = `90631ca505737d3c378466abd7bac639fb351ab162da93d57088837791407244`
+coreManifestSha256: `candidate-input.env`의 `CANDIDATE_MANIFEST_SHA256`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
@@ -33,10 +33,10 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 
 ```text
 coreLedgerCandidate: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-current-20260803.json
-coreLedgerCandidateBaseRevision: 2c68dd77bff8e3a54ad6bd179a15fd8dd2d7f8dc
-coreLedgerCandidateManifestSha256: cfc27644f7c76d16ce6a0a46de1286279766c8829adb14e6b9f2b8562cca3544
-coreLedgerCandidateAggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
-coreLedgerCandidatePathCount: 19
+coreLedgerCandidateBaseRevision: candidate JSON의 `baseRevision`
+coreLedgerCandidateManifestSha256: candidate JSON 파일의 SHA-256
+coreLedgerCandidateAggregateSha256: candidate JSON의 `aggregateSha256`
+coreLedgerCandidatePathCount: candidate JSON의 `pathCount`
 ```
 
 기존 `V11-R2` review evidence
@@ -51,14 +51,13 @@ the supplied candidate manifest SHA-256`로 실패했다. 따라서 현재 candi
 
 ```text
 sourceManifest: `.artifacts/wsl/bindings-candidate/python39/python-source-manifest-11.2.0.json`
-sourceManifestSha256: `18ab0e639ec05b7f28c1e0e3520b3220fecc43bee927b42569024f3af220907d`
+sourceManifestSha256: 각 `candidate-input.env`의 `PYTHON_SOURCE_MANIFEST_SHA256`
 sourceAggregateSha256: d6ed6c3c48a7ed1e5b50deeccad1560948646f354222c878b680801119d92bc1
 candidateInput: `.artifacts/wsl/bindings-candidate/python39/python/candidate-input.env` and the corresponding
 `python312/python/candidate-input.env`
 wheel: `python39/python/wheels/zlink-11.2.0-cp39-cp39-linux_x86_64.whl` and
 `python312/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl`
-wheelSha256: CPython 3.9 = `07d03c10940ddd6034c548e604e5ae20563b5078b1d6ce6020ea4b63625e809b`,
-CPython 3.12 = `ee51c6900cec4c799b5520d54a8a5b4b1d224b218d13ce7187b20217f287a840`
+wheelSha256: 각 output root의 `python/SHA256SUMS` wheel entry
 packagedNativePayloadSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
 ```
 
@@ -102,8 +101,8 @@ scripts/local-package/bindings-candidate/build-wsl.sh \
 # CPython 3.9 Docker에서도 같은 command에 --python-executable python을 지정한다.
 ```
 
-결과: 현재 `CORE_REVISION=2c68dd77bff8e3a54ad6bd179a15fd8dd2d7f8dc` candidate를 기준으로 CPython 3.9와
-3.12 모두 종료 코드 `0`. Builder는 같은 Core prefix와 source manifest를 사용해
+결과: candidate-input의 `CORE_REVISION` candidate를 기준으로 CPython 3.9와 3.12 모두 종료 코드 `0`.
+Builder는 같은 Core prefix와 source manifest를 사용해
 각 interpreter용 wheel을 만들고, 새 venv에서 source checkout과 `core/build` fallback 없이
 `zlink.version()`과 Pair message roundtrip을 실행했다. `/proc/self/maps`는 각 venv의 wheel payload를
 가리켰다. 같은 venv에서 `run_samples.py --installed`를 실행한 결과도 각각 `7/7`이다.

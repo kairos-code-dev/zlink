@@ -52,6 +52,83 @@ func TestRequestContextDeadlineUsesStandardErrors(t *testing.T) {
 	}
 }
 
+func TestPollerModifyCompletionDoesNotDisableRequestProgress(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	router, err := ctx.RouterSocket()
+	if err != nil {
+		t.Fatalf("RouterSocket() error = %v", err)
+	}
+	defer router.Close()
+	dealer, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer dealer.Close()
+
+	endpoint := inprocEndpoint("poller-modify-completion")
+	if err := router.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := dealer.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	poller, err := zlink.NewPoller()
+	if err != nil {
+		t.Fatalf("NewPoller() error = %v", err)
+	}
+	defer poller.Close()
+	if err := poller.AddSocket(dealer, zlink.PollIn, 81); err != nil {
+		t.Fatalf("AddSocket() error = %v", err)
+	}
+	if err := poller.ModifySocket(dealer, zlink.PollCompletion); err == nil {
+		t.Fatalf("ModifySocket(PollCompletion) should be rejected")
+	}
+	reply, err := zlink.NewMessage([]byte("pong"))
+	if err != nil {
+		t.Fatalf("NewMessage() error = %v", err)
+	}
+	defer reply.Close()
+
+	serverDone := make(chan error, 1)
+	go func() {
+		var request zlink.Received
+		if _, err := router.Recv(&request, zlink.RecvFlagsNone); err != nil {
+			serverDone <- err
+			return
+		}
+		defer request.Close()
+		serverDone <- request.Reply().Message(reply).Submit(nil)
+	}()
+
+	completion, err := dealer.Request().Bytes([]byte("ping")).Timeout(time.Second).SubmitAsync(nil)
+	if err != nil {
+		t.Fatalf("SubmitAsync() error = %v", err)
+	}
+	select {
+	case result, ok := <-completion:
+		if !ok {
+			t.Fatalf("completion channel closed without result")
+		}
+		if result.Err != nil {
+			t.Fatalf("request completion error = %v", result.Err)
+		}
+		zlink.MultipartClose(result.Parts)
+	case <-time.After(3 * time.Second):
+		t.Fatalf("request completion did not arrive after rejected poller modify")
+	}
+	select {
+	case err := <-serverDone:
+		if err != nil {
+			t.Fatalf("server request handling error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("server request handler did not finish")
+	}
+}
+
 func TestSendDontWaitDoesNotTreatTemporaryBackpressureAsError(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

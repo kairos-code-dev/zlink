@@ -84,6 +84,50 @@ func TestPairSendBytesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPairMultipartBytesRoundTrip(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	endpoint := inprocEndpoint("pair-multipart-bytes")
+	server, _ := ctx.PairSocket()
+	client, _ := ctx.PairSocket()
+	defer server.Close()
+	defer client.Close()
+
+	if err := server.Bind(endpoint); err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := client.Connect(endpoint); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	message := newMessage(t, "message-part")
+	defer message.Close()
+	if _, err := client.Send().
+		Bytes([]byte("first-bytes")).
+		Message(message).
+		Bytes([]byte("last-bytes")).
+		Submit(nil); err != nil {
+		t.Fatalf("multipart Send() error = %v", err)
+	}
+
+	var received zlink.Received
+	if _, err := server.Recv(&received, zlink.RecvFlagsNone); err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	defer received.Close()
+	parts := received.Parts()
+	if len(parts) != 3 {
+		t.Fatalf("multipart parts = %d, want 3", len(parts))
+	}
+	want := []string{"first-bytes", "message-part", "last-bytes"}
+	for i, part := range parts {
+		if got := string(part.Data()); got != want[i] {
+			t.Fatalf("part[%d] = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
 func TestPollerWaitWritesCallerOwnedEvents(t *testing.T) {
 	ctx := newContext(t)
 	defer ctx.Close()

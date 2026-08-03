@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -100,6 +101,32 @@ func TestReceivedAndTopicConvenienceHelpersUseRecvError(t *testing.T) {
 		if !errors.As(err, &recvErr) {
 			t.Fatalf("TopicMessage.SinglePartOrError() error type = %T, want *RecvError", err)
 		}
+	}
+}
+
+func TestRequestCompletionErrorUsesStableErrno(t *testing.T) {
+	cases := []struct {
+		name   string
+		result RequestResult
+		errno  syscall.Errno
+	}{
+		{name: "timeout", result: RequestTimedOut, errno: syscall.ETIMEDOUT},
+		{name: "not-connected", result: RequestNotConnected, errno: syscall.ENOTCONN},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := requestCompletionError(tc.result)
+			var requestErr *RequestError
+			if !errors.As(err, &requestErr) {
+				t.Fatalf("error type = %T, want *RequestError", err)
+			}
+			if got := requestErr.InternalErrno(); got != int(tc.errno) {
+				t.Fatalf("InternalErrno() = %d, want %d", got, tc.errno)
+			}
+			if !errors.Is(err, tc.errno) {
+				t.Fatalf("errors.Is(%v) = false", tc.errno)
+			}
+		})
 	}
 }
 

@@ -11,7 +11,6 @@ import "C"
 import (
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 )
 
@@ -29,46 +28,54 @@ type progressPump struct {
 	mu          sync.Mutex
 	activeCount int
 	workerOn    bool
+	stopping    bool
+	stopped     *sync.Cond
 }
 
 var (
-	externalProgressRefs sync.Map // unsafe.Pointer -> *int64
+	externalProgressMu   sync.Mutex
+	externalProgressRefs = make(map[unsafe.Pointer]int)
 )
 
 func newProgressPump(handle unsafe.Pointer) *progressPump {
-	return &progressPump{handle: handle}
+	pump := &progressPump{handle: handle}
+	pump.stopped = sync.NewCond(&pump.mu)
+	return pump
 }
 
 func acquireExternalRequestProgress(handle unsafe.Pointer) {
 	if handle == nil {
 		return
 	}
-	counter, _ := externalProgressRefs.LoadOrStore(handle, new(int64))
-	atomic.AddInt64(counter.(*int64), 1)
+	externalProgressMu.Lock()
+	externalProgressRefs[handle]++
+	externalProgressMu.Unlock()
 }
 
 func releaseExternalRequestProgress(handle unsafe.Pointer) {
 	if handle == nil {
 		return
 	}
-	counter, ok := externalProgressRefs.Load(handle)
-	if !ok {
-		return
+	externalProgressMu.Lock()
+	if count := externalProgressRefs[handle]; count <= 1 {
+		delete(externalProgressRefs, handle)
+	} else {
+		externalProgressRefs[handle] = count - 1
 	}
-	if atomic.AddInt64(counter.(*int64), -1) <= 0 {
-		externalProgressRefs.Delete(handle)
-	}
+	externalProgressMu.Unlock()
 }
 
 func externalRequestProgressActive(handle unsafe.Pointer) bool {
-	counter, ok := externalProgressRefs.Load(handle)
-	return ok && atomic.LoadInt64(counter.(*int64)) > 0
+	externalProgressMu.Lock()
+	active := externalProgressRefs[handle] > 0
+	externalProgressMu.Unlock()
+	return active
 }
 
 func (p *progressPump) attachDone(done <-chan struct{}) {
 	p.mu.Lock()
 	p.activeCount++
-	startWorker := !p.workerOn
+	startWorker := !p.workerOn && !p.stopping
 	if startWorker {
 		p.workerOn = true
 	}
@@ -94,12 +101,12 @@ func (p *progressPump) detach() {
 func (p *progressPump) active() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.activeCount > 0
+	return p.activeCount > 0 && !p.stopping
 }
 
 func (p *progressPump) workerStopped() {
 	p.mu.Lock()
-	if p.activeCount > 0 {
+	if p.activeCount > 0 && !p.stopping {
 		// A request arrived while the worker was leaving. Keep ownership of
 		// the worker slot and restart it after the native poller is released.
 		p.mu.Unlock()
@@ -107,7 +114,30 @@ func (p *progressPump) workerStopped() {
 		return
 	}
 	p.workerOn = false
+	p.stopped.Broadcast()
 	p.mu.Unlock()
+}
+
+func (p *progressPump) stopAndWait() {
+	p.mu.Lock()
+	p.stopping = true
+	for p.workerOn {
+		p.stopped.Wait()
+	}
+	p.mu.Unlock()
+}
+
+func (p *progressPump) resume() {
+	p.mu.Lock()
+	p.stopping = false
+	startWorker := p.activeCount > 0 && !p.workerOn
+	if startWorker {
+		p.workerOn = true
+	}
+	p.mu.Unlock()
+	if startWorker {
+		go p.run()
+	}
 }
 
 func (p *progressPump) run() {

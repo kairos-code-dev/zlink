@@ -265,29 +265,46 @@ func (p *Poller) AddSocket(socket SocketTarget, events PollEventFlag, slot uintp
 }
 
 func (p *Poller) ModifySocket(socket SocketTarget, events PollEventFlag) error {
-	if p == nil || p.closed || p.handle == nil {
+	if p == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.handle == nil {
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	// Completion ownership is acquired at registration time and released at
+	// removal time. Core rejects adding the flag through modify, so reject it
+	// before touching the Go registry as well.
+	if events&PollCompletion != 0 {
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	raw, err := socketHandle(socket)
 	if err != nil {
 		return err
 	}
-	p.mu.Lock()
 	entry := p.sockets[uintptr(raw)]
+	if entry != nil && entry.events&PollCompletion != 0 {
+		// A completion registration owns native completion processing until the
+		// registration is removed. Change that mode with remove + add.
+		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
+	}
+	if err := configErrorFromResult(C.zlink_poller_modify(p.handle, raw, C.short(events))); err != nil {
+		return err
+	}
 	if entry != nil {
-		if entry.events&PollCompletion == 0 && events&PollCompletion != 0 {
-			acquireExternalRequestProgress(raw)
-		} else if entry.events&PollCompletion != 0 && events&PollCompletion == 0 {
-			releaseExternalRequestProgress(raw)
-		}
 		entry.events = events
 	}
-	p.mu.Unlock()
-	return configErrorFromResult(C.zlink_poller_modify(p.handle, raw, C.short(events)))
+	return nil
 }
 
 func (p *Poller) RemoveSocket(socket SocketTarget) error {
-	if p == nil || p.closed || p.handle == nil {
+	if p == nil {
+		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.handle == nil {
 		return &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.EFAULT)}
 	}
 	raw, err := socketHandle(socket)
@@ -297,9 +314,8 @@ func (p *Poller) RemoveSocket(socket SocketTarget) error {
 	if err := configErrorFromResult(C.zlink_poller_remove(p.handle, raw)); err != nil {
 		return err
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if entry := p.sockets[uintptr(raw)]; entry != nil && entry.events&PollCompletion != 0 {
+	entry := p.sockets[uintptr(raw)]
+	if entry != nil && entry.events&PollCompletion != 0 {
 		releaseExternalRequestProgress(raw)
 	}
 	delete(p.sockets, uintptr(raw))
@@ -413,10 +429,14 @@ func (p *Poller) Wait(events []PollEvent, timeout time.Duration) (int, error) {
 }
 
 func (p *Poller) Close() error {
-	if p == nil || p.closed || p.handle == nil {
+	if p == nil {
 		return nil
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.handle == nil {
+		return nil
+	}
 	for k, entry := range p.sockets {
 		if entry != nil && entry.events&PollCompletion != 0 {
 			releaseExternalRequestProgress(entry.raw)
@@ -429,7 +449,6 @@ func (p *Poller) Close() error {
 	for k := range p.timers {
 		delete(p.timers, k)
 	}
-	p.mu.Unlock()
 	handle := p.handle
 	if err := closeErrorFromResult(C.zlink_poller_destroy(&handle)); err != nil {
 		return err

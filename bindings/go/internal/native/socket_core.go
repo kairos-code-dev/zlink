@@ -48,16 +48,22 @@ func (s *socketCore) raw() unsafe.Pointer {
 }
 
 func (s *socketCore) startRequestProgress(state *replyCallbackState) {
-	if s == nil || state == nil || s.handle == nil || externalRequestProgressActive(s.handle) {
+	if s == nil || state == nil {
 		return
 	}
+	s.callbackMu.Lock()
+	defer s.callbackMu.Unlock()
+	if s.closed || s.handle == nil || externalRequestProgressActive(s.handle) {
+		return
+	}
+	handle := s.handle
 	s.requestProgressMu.Lock()
 	if s.requestProgress == nil {
-		s.requestProgress = newProgressPump(s.handle)
+		s.requestProgress = newProgressPump(handle)
 	}
 	pump := s.requestProgress
-	s.requestProgressMu.Unlock()
 	pump.attachDone(state.done)
+	s.requestProgressMu.Unlock()
 }
 
 func (s *socketCore) Bind(endpoint string) error {
@@ -102,16 +108,27 @@ func (s *socketCore) Close() error {
 		s.callbackMu.Unlock()
 		return nil
 	}
+	s.requestProgressMu.Lock()
+	pump := s.requestProgress
+	s.requestProgressMu.Unlock()
+	if pump != nil {
+		pump.stopAndWait()
+	}
 	if err := closeErrorFromResult(C.zlink_close(s.handle)); err != nil {
+		if pump != nil {
+			pump.resume()
+		}
 		s.callbackMu.Unlock()
 		return err
 	}
 	s.closed = true
 	s.handle = nil
-	s.callbackMu.Unlock()
 	s.requestProgressMu.Lock()
-	s.requestProgress = nil
+	if s.requestProgress == pump {
+		s.requestProgress = nil
+	}
 	s.requestProgressMu.Unlock()
+	s.callbackMu.Unlock()
 	s.releaseCallbacks()
 	return nil
 }

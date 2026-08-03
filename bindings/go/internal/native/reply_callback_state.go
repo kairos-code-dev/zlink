@@ -11,10 +11,9 @@ import (
 // callback boundary. The result is stored once and completion is broadcast by
 // closing done, which also wakes the per-handle progress pump.
 type replyCallbackState struct {
-	result   atomic.Pointer[requestResult]
-	done     chan struct{}
-	once     sync.Once
-	metadata any
+	result atomic.Pointer[requestResult]
+	done   chan struct{}
+	once   sync.Once
 }
 
 func (s *replyCallbackState) complete(result requestResult) {

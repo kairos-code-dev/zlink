@@ -317,6 +317,11 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 	prepared := &preparedMultipart{native: native, parts: builderMessages(parts)}
 	err := submitPreparedMultipart(prepared, submit)
 	for _, part := range parts {
+		// Bytes parts are represented only by the temporary native message. The
+		// caller-owned Message cleanup below applies only to message-backed parts.
+		if part.message == nil {
+			continue
+		}
 		if part.move {
 			part.message.moved()
 			continue
@@ -327,17 +332,4 @@ func submitMultipartFromBuilderParts(parts []sendBuilderPart, submit multipartSu
 		}
 	}
 	return err
-}
-
-func submitSingleFromBuilderParts(parts []sendBuilderPart, submit multipartSubmitFunc) error {
-	if len(parts) != 1 {
-		return &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
-	}
-	if parts[0].bytes {
-		return submitSinglePartFromBytes(parts[0].data, submit)
-	}
-	if parts[0].move {
-		return submitSinglePartMoved(parts[0].message, submit)
-	}
-	return submitSinglePartFromCopy(parts[0].message, submit)
 }

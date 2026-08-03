@@ -198,9 +198,7 @@ func (s *requestBuilderState) doSubmitAsync() (<-chan RequestReplyCompletion, er
 	result := make(chan RequestReplyCompletion, 1)
 	ok, err := s.doSubmitCallback(func(r RequestResult, parts []*Message) {
 		completion := RequestReplyCompletion{Result: r, Parts: parts}
-		if r != RequestOK {
-			completion.Err = &RequestError{Result: r}
-		}
+		completion.Err = requestCompletionError(r)
 		result <- completion
 		close(result)
 	})

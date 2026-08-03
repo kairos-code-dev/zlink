@@ -10,7 +10,6 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"syscall"
 )
 
@@ -295,7 +294,12 @@ func fallbackRecvErrno(result RecvResult) int {
 	}
 }
 
-func submitErrorFromResult(result any) error {
+type resultCodeValue interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
+
+func submitErrorFromResult[T resultCodeValue](result T) error {
 	resultCode := SubmitResult(resultCodeInt(result))
 	if resultCode == SubmitOK {
 		return nil
@@ -307,7 +311,7 @@ func submitErrorFromResult(result any) error {
 	return &SubmitError{Result: resultCode, nativeErrno: errno}
 }
 
-func requestErrorFromResult(result any) error {
+func requestErrorFromResult[T resultCodeValue](result T) error {
 	resultCode := RequestResult(resultCodeInt(result))
 	if resultCode == RequestOK {
 		return nil
@@ -319,7 +323,18 @@ func requestErrorFromResult(result any) error {
 	return &RequestError{Result: resultCode, nativeErrno: errno}
 }
 
-func recvErrorFromResult(result any) error {
+// requestCompletionError maps a terminal callback result without consulting
+// thread-local errno. A callback carries a result code, not the errno from the
+// native thread that produced it, so completion errors must use the stable
+// result-to-errno policy.
+func requestCompletionError(result RequestResult) error {
+	if result == RequestOK {
+		return nil
+	}
+	return &RequestError{Result: result, nativeErrno: fallbackRequestErrno(result)}
+}
+
+func recvErrorFromResult[T resultCodeValue](result T) error {
 	resultCode := RecvResult(resultCodeInt(result))
 	if resultCode == RecvOK {
 		return nil
@@ -331,7 +346,7 @@ func recvErrorFromResult(result any) error {
 	return &RecvError{Result: resultCode, nativeErrno: errno}
 }
 
-func handlerErrorFromResult(result any) error {
+func handlerErrorFromResult[T resultCodeValue](result T) error {
 	if resultCodeInt(result) == int(HandlerOK) {
 		return nil
 	}
@@ -339,7 +354,7 @@ func handlerErrorFromResult(result any) error {
 	return &HandlerError{Result: HandlerResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
-func closeErrorFromResult(result any) error {
+func closeErrorFromResult[T resultCodeValue](result T) error {
 	if resultCodeInt(result) == int(CloseOK) {
 		return nil
 	}
@@ -347,7 +362,7 @@ func closeErrorFromResult(result any) error {
 	return &CloseError{Result: CloseResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
-func bindErrorFromResult(result any) error {
+func bindErrorFromResult[T resultCodeValue](result T) error {
 	if resultCodeInt(result) == int(BindOK) {
 		return nil
 	}
@@ -355,7 +370,7 @@ func bindErrorFromResult(result any) error {
 	return &BindError{Result: BindResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
-func connectErrorFromResult(result any) error {
+func connectErrorFromResult[T resultCodeValue](result T) error {
 	if resultCodeInt(result) == int(ConnectOK) {
 		return nil
 	}
@@ -363,7 +378,7 @@ func connectErrorFromResult(result any) error {
 	return &ConnectError{Result: ConnectResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
-func configErrorFromResult(result any) error {
+func configErrorFromResult[T resultCodeValue](result T) error {
 	if resultCodeInt(result) == int(ConfigOK) {
 		return nil
 	}
@@ -458,17 +473,6 @@ func recvErrorFromErrno(errno int) error {
 	}
 }
 
-func resultCodeInt(value any) int {
-	if value == nil {
-		return 0
-	}
-	v := reflect.ValueOf(value)
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return int(v.Int())
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return int(v.Uint())
-	default:
-		return 0
-	}
+func resultCodeInt[T resultCodeValue](value T) int {
+	return int(value)
 }

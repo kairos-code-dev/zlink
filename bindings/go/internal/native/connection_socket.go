@@ -140,7 +140,7 @@ func (s *connectionSocket) getPubBytesOption(option C.zlink_pub_option_t, capHin
 	if err := configErrorFromResult(C.zlink_get_pub_option(s.raw(), option, unsafe.Pointer(&buf[0]), &size)); err != nil {
 		return nil, err
 	}
-	return append([]byte(nil), buf[:int(size)]...), nil
+	return buf[:int(size)], nil
 }
 
 func (s *connectionSocket) getSubIntOption(option C.zlink_sub_option_t) (int, error) {

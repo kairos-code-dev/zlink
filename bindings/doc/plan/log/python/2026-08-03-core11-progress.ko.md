@@ -14,13 +14,13 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 
 ## 2026-08-04 current recheck
 
-package recheck 당시 branch의 `HEAD`는 `427fbce0f5c0a3b6000506380b3d40521ed86413`이었다. 당시
+package recheck 당시 branch의 `HEAD`는 `2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f`였다. 당시
 worktree를 기준으로 다시 만든 Core ledger candidate는 다음 identity를 갖는다.
 
 ```text
 candidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
-candidateManifestSha256: 6e1db3d352141e1ea966f74170c4c1d16980e6edd60ffb1964c4161e58dabb81
-baseRevision: 427fbce0f5c0a3b6000506380b3d40521ed86413
+candidateManifestSha256: 25f748a3599fde92c2fe0fc5dbd54692f07014f5d359614ae495ca9da618740d
+baseRevision: 2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f
 aggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
 pathCount: 19
 ```
@@ -28,12 +28,13 @@ pathCount: 19
 CPython 3.9과 3.12의 fresh package output은 이 Core revision과 runtime SHA를 기록한다.
 
 ```text
-coreRevision: 427fbce0f5c0a3b6000506380b3d40521ed86413
+coreRevision: 2f73e243f9d0da3aec0b5bd226ad9bb6c90e2a3f
 coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
-pythonSourceManifestSha256: 07f040475e0e40a34cf3a9100ea8bf413c411ba03be3a47f9d72188149a42c02
+coreCandidatePackageManifestSha256: 2f6a125b798eab45f4c94ed86da436453a604934727097e3532f1ea16e117db0
+pythonSourceManifestSha256: f01d0aab32121fbb844914a7ff613be34b0ae639b6b8a53763862db8b82b19be
 pythonSourceAggregateSha256: 399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c
-cp39WheelSha256: 74cc3933566c0458a9e49b58c1fa27065f6bbb59b787c3b36099f9bc5b478a56
-cp312WheelSha256: b892099d58a8586a64c2dffa44602c6fcb5c0dd774b3646f264a1c45afb3f863
+cp39WheelSha256: 011b4ca2fe99c55a973af77f4845ca77833992a4592263b63b80b0885ffdc752
+cp312WheelSha256: 4907f036d69ae84f40763e70b38632a2a81ce8fd5a921e5a1d726ba274f00bd5
 ```
 
 현재 package output은 source test `64 passed`, clean consumer와 installed sample `7/7`을 두 interpreter에서

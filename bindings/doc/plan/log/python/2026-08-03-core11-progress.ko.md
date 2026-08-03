@@ -331,3 +331,34 @@ aggregate를 통과한 뒤 review approval 단계에서만 중단됐다. 현재 
 로 기록한 새로운 표준 V11-R2 passed evidence이며, 그 뒤에야 동일 SHA를 사용하는
 V11-M3-CORE-PKG 결과와 frontier reviewer의 최종 `CLEAN` 판정을 생성할 수 있다. 이 evidence를
 구현자가 임의로 생성하면 independent gate의 의미가 사라지므로 자체 검토 결과로 대체하지 않는다.
+
+## 2026-08-04 Codex self-review package refresh (v7)
+
+직접 검토에서 `NativePoller.close()`가 native destroy 결과를 확인하기 전에 `_handle`을 `None`으로
+바꾸는 lifecycle 오류를 확인했다. destroy가 실패하면 호출자는 같은 native owner를 다시 close할 수
+없었다. 다른 native owner와 같은 성공 후 상태 전환으로 수정하고, 실패 뒤 재시도하는 회귀 테스트를
+추가했다. 수정 commit은 `092f1c71cf7`이며, 이 commit 뒤 현재 checkout에서 package를 다시 만들었다.
+
+```text
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v7.env
+coreManifestSha256: 91bada5c3da2259e1473e82bd04800a3bec94f92e81b689b8149fcf12a3b3d5d
+coreRevision: 6c7fbf9c84e98591124b73f5c2c907710524f870
+coreRuntimeSha256: ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138
+cp312CandidateInputSha256: e4aeeb116ea28d012d647027a7ee1644dd799c0bb215b1bfba70a81b20adb923
+cp39CandidateInputSha256: 1d9170a17900796f74527f3557a1305b31d73cfe5a71df0450283b50cb4725dc
+pythonSourceManifestSha256: 7702652eedfa16291f0cf3fb1b4dddd0944f81e009407de60e3e749a1e45fa5e
+pythonSourceAggregateSha256: 95ea5b19d4df7227ed1ddedfd47f5004379e152f8be24e1b99beb0d82a662154
+cp312WheelSha256: 8ff24d48137b8cd1fe3c5b5932c12c1d3951f8e208b85249ee837bdcaca5bb37
+cp39WheelSha256: 40050adb43cb0620a9effc0288dd92fdfc4f77b3b77b84138712a5fa92a35264
+```
+
+CPython 3.12.3과 Ubuntu 24.04 + deadsnakes CPython 3.9.25에서 각각 source test는 `66 passed`,
+clean wheel consumer와 installed sample은 각각 `7/7`을 통과했다. Pyright도 `0 errors, 0 warnings,
+0 informations`를 반환했다. 동일한 Core runtime으로 실행한 v7 perf smoke는 single이
+`status=complete`, `actual_result_lines=5`, multi가 `status=complete`, `success=1`, `fail=0`,
+`actual_result_lines=5`를 반환했다.
+
+이 결과는 수정된 Python binding에 대한 Codex self-review PASS와 local package evidence다. 현재
+V11-R2 evidence가 v7의 Core manifest identity를 승인했다는 뜻은 아니다. 별도 reviewer가 같은
+candidate identity를 승인하고 V11-M3-CORE-PKG와 frontier `CLEAN` 판정을 생성하기 전까지 formal
+independent gate는 `PARTIAL`로 유지한다.

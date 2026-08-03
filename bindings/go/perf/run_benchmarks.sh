@@ -10,8 +10,9 @@ export GOCACHE="${GOCACHE:-/tmp/zlink-go-cache}"
 export GOTMPDIR="${GOTMPDIR:-/tmp/zlink-go-tmp}"
 mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
-VERSION_FILE="${REPO_DIR}/VERSION"
-CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
+# Resolve the SONAME from the binding package header so another workstream's
+# root VERSION cannot redirect this runner to a different native payload.
+CORE_VERSION="$(sed -n 's/^#define ZLINK_VERSION_MAJOR //p' "${ROOT_DIR}/include/zlink.h" | head -n1).$(sed -n 's/^#define ZLINK_VERSION_MINOR //p' "${ROOT_DIR}/include/zlink.h" | head -n1).$(sed -n 's/^#define ZLINK_VERSION_PATCH //p' "${ROOT_DIR}/include/zlink.h" | head -n1)"
 PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 TOTAL_TIME_ENABLED=0
 

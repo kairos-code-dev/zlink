@@ -4,7 +4,7 @@
 기록하고, common contract와 실제 process evidence가 없는 항목은 완료로 표시하지
 않는다.
 
-마지막 갱신일: 2026-08-03 18:40 KST
+마지막 갱신일: 2026-08-03 20:26 KST
 
 사용자가 지정한 순서에 따라 Java/Kotlin runtime gap과 unit·integration gate를 먼저
 재실행했고, 최신 framework API 변경을 포함한 12개 sample process도 모두 통과했다.
@@ -12,6 +12,14 @@
 [`log/20260803-1840-runtime-sample-e2e-follow-up.ko.md`](log/20260803-1840-runtime-sample-e2e-follow-up.ko.md)에
 분리해 기록했다. E2E 전체 완료와 CI 완료는 해당 로그의 blocker가 해소되기 전까지
 완료로 표시하지 않는다.
+
+2026-08-03 20:19~20:25 KST에 현재 revision의 Java/Kotlin runtime
+unit·integration, API snapshot과 packaged clean consumer를 다시 실행했다. Java
+snapshot은 2,852 lines, Kotlin snapshot은 3,360 lines이며 두 언어의 checked-in
+hash 비교와 clean consumer가 통과했다. 상세 명령·exit code·hash는
+[`log/20260803-2026-java-kotlin-runtime-package-gate.ko.md`](log/20260803-2026-java-kotlin-runtime-package-gate.ko.md)에
+기록했다. 이 결과는 package/API gate를 갱신하지만 process E2E와 common aggregate의
+미완료 조건을 완료로 올리지 않는다.
 
 사용자가 지정한 순서에 따른 runtime 단계 판정과 순서 밖에서 실행된 ST-A2 실패의
 message trace/file log는
@@ -344,12 +352,16 @@ source/test는 조사 대상 경로이며, 정식 source owner inventory에 등�
 
 ## 3. 현재 검증 결과
 
-이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 baseline과 09:25
-재검증을 함께 기록한다. 09:25 재검증의 상세 결과는 위 follow-up log에 있으며, 다른 workstream의
+이 절은 `cwd=framework/languages/java`에서 2026-08-03 08:50 baseline, 09:25
+재검증과 20:19~20:25 current gate를 함께 기록한다. current gate의 상세 결과는 위
+follow-up log에 있으며, 다른 workstream의
 변경은 되돌리거나 정리하지 않았다.
 
 | 검증 | 결과 | 현재 의미 |
 |---|---|---|
+| Java/Kotlin runtime unit·integration (2026-08-03 20:19) | PASS, exit `0`, `41 actionable tasks` | 현재 source의 stream HWM·handler-less queue·codec·actor admission·application HWM·Kotlin coroutine/HTTP와 Java/Kotlin integration을 fresh 재실행했다. common E2E aggregate, sample process, CI path와 role evidence는 포함하지 않는다. |
+| Java/Kotlin API snapshot (2026-08-03 20:20~20:21) | PASS, exit `0` | Java `2,852 lines`, hash `441c2b8a...f314b7`; Kotlin `3,360 lines`, hash `44c08eb1...03ca3`. source public surface, published package surface와 checked-in snapshot이 일치한다. |
+| Java/Kotlin packaged clean consumer (2026-08-03 20:22~20:25) | PASS, exit `0` | 두 언어가 temporary repository의 declared artifact를 resolve하고 clean consumer compile·실행을 통과했다. process E2E와 common Config 1–14 aggregate는 포함하지 않는다. |
 | `./gradlew --no-daemon --no-parallel --max-workers=5 --rerun-tasks :zlink-framework-core:test :zlink-framework-kotlin:test :zlink-framework-kotlin:contractTest :zlink-stream-connector:test :zlink-http-client:test :zlink-http-client-kotlin:test` (2026-08-03 09:25) | PASS, `37 actionable tasks: 37 executed`, Java core `726 tests` | closed peer direct-send error mapping regression을 포함한 현재 source의 runtime unit·contract regression을 fresh 재실행했다. E2E role process와 common inventory는 포함하지 않는다. |
 | 승인 Core 11.1.0 package preflight와 SubmitAdmission `SA-REG-02,SA-REG-03` (2026-08-03 09:10) | PASS, exit `0` | Java binding `11.1.1`이 승인 Core provenance/runtime hash와 일치하고, Java/Kotlin testRuntimeClasspath가 같은 candidate jar를 resolve하는지 확인했다. |
 | SubmitAdmission process `SA-E2E-01,05,08,09,14,20` (2026-08-03 09:25) | PASS, exit `0` | 승인 Core 11.1.0과 Java binding 11.1.1을 고정한 실제 role process가 `Submitted`, `REQUEST_TARGET_NOT_FOUND`, `ROUTE_NOT_CONNECTED`, local·remote handler count, positive-weight channel, late delivery 0, handler-gate 순서를 확인했다. evidence는 follow-up log와 `framework/languages/java/e2e/SubmitAdmission/logs/20260803-092352-472365/evidence.jsonl`에 있다. Config 13 전체와 aggregate 완료는 아니다. |
@@ -571,8 +583,8 @@ gate와 environment/JVM property policy gate는 별도 미완료 조건이다.
   propagation을 포함해 통과했고, focused Java stream test와
   `KotlinConnectorWrapperTest`가 option copy와 wrapper surface를 확인한다.
   `verify_packaged_contract.sh java|kotlin`은 clean consumer를 실행하고 source jar와
-  published package jar의 public JVM surface를 비교한다. Java snapshot은 2,851 lines,
-  Kotlin snapshot은 3,359 lines이며 checked-in hash와 일치한다. exact interface와
+  published package jar의 public JVM surface를 비교한다. Java snapshot은 2,852 lines,
+  Kotlin snapshot은 3,360 lines이며 checked-in hash와 일치한다. exact interface와
   독립 process E2E는 여전히 별도 gate다.
 - 수정 목록:
   현재 source와 exact docs의 결정을 유지한다. API snapshot owner와 생성·비교 명령은
@@ -1634,7 +1646,7 @@ Java/Kotlin sample은 common sample 문서의 public API 예제이다. E2E나 sa
   Kotlin 선택 artifact를 publish한다. Java consumer는 framework·actor·spot·session,
   Stream factory/options/connector와 HTTP client를 import하고, Kotlin consumer는
   Kotlin framework·Stream factory·HTTP coroutine DSL을 compile한다. 두 consumer가
-  통과하고 Java 2,851-line, Kotlin 3,359-line checked-in snapshot과 source/package
+  통과하고 Java 2,852-line, Kotlin 3,360-line checked-in snapshot과 source/package
   public surface 비교도 통과한다. snapshot 부재를 empty diff로 해석하지 않는다.
 - 판정 근거:
   `package_dependency_publication`, `clean_consumer`, `api_snapshot_presence`와
@@ -2059,7 +2071,7 @@ common E2E inventory에 맞지 않는 assertion은 아래 변경 ID로 재검토
 - Java/Kotlin ST-A1 focused E2E는 통과했지만 ST-A2 이후 transfer, Config 10 전체,
   Config 14 process fixture는 아직 없다.
 - Java/Kotlin packaged consumer는 provider, HTTP, Stream artifact를 resolve하고 public
-  type을 compile했으며, Java 2,851-line과 Kotlin 3,359-line API snapshot 및
+  type을 compile했으며, Java 2,852-line과 Kotlin 3,360-line API snapshot 및
   source/package public surface 비교가 통과했다. process-level transitive behavior는
   별도 gate다.
 - Kotlin HTTP exact spec과 common language interface, production source는 `yield<T>()`와

@@ -282,12 +282,12 @@ scripts/local-package/go/build-wsl.sh \
 | Gate | 상태 | Evidence |
 |------|------|----------|
 | 공통 candidate 입력 확인 | `PASS` (독립 review 제외) | Candidate verify와 matching V11-M3-CORE-PKG pass evidence가 같은 manifest `d318...`/aggregate `327...`을 사용하며 runtime provenance 검증 통과 |
-| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final5/go-source-manifest-v11.1.0.json`, manifest SHA-256 기록 |
+| Go binding source manifest | `PASS` | `.artifacts/wsl/go-candidate-final6/go-source-manifest-v11.1.0.json`, SHA-256 `3240b10c68ad6dfb1ebe08a8ec27a6ea526a3b02ff48f59ed5c20b0573a59cff` |
 | `/v11` module path와 version | `PASS` | `bindings/go/go.mod`, package evidence `v11.1.0` |
 | Raw cgo·header·symbol allowlist | `PASS` | `bindings/go/tests/raw-core11-allowlist.json`, `TestRawCore11Allowlist` |
 | Public API snapshot과 service 부재 | `PASS` | root/contracts projection, raw surface test, package zip forbidden-entry 검사 |
-| `go test ./...` | `PASS` | fresh5 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
-| `go vet ./...` | `PASS` | fresh5 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
+| `go test ./...` | `PASS` | fresh6 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
+| `go vet ./...` | `PASS` | fresh6 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
 | `go test -race ./...` | `PASS` | callback handle lifecycle와 request progress owner 변경 후 Linux x86_64에서 통과 |
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
 | Perf runner smoke | `PASS` | `427fbce0f5c` source의 fresh6 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |

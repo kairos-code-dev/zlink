@@ -119,3 +119,21 @@ Python review에서 확인된 finding과 현재 owning-layer 조치는 다음과
 환경에서 `python3 -m pytest -q bindings/python/tests`는 `63 passed`를 반환했다. 이는 source regression
 증거이며, 최종 판단에는 새 source manifest, CPython 3.9/3.12 package·clean consumer·sample·perf와
 candidate-bound independent re-review가 계속 필요하다.
+
+## 독립 최종 재검토에서 추가된 공통 spec finding
+
+2026-08-03에 `Euclid`가 Python source와 공통 spec을 다시 읽었다. Python runtime, public surface,
+ownership, error propagation과 obsolete sample에 대한 앞선 High·Medium finding은 모두 수정된 것으로
+확인되었다. 그러나 공통 `bindings/doc/spec/README.ko.md`와 `README.en.md`의 SPOT C 선언부와 binding
+rule에 Core 11에 없는 raw socket channel metadata API가 남아 있어 전체 판정은 `NOT CLEAN`이었다.
+
+이 finding은 호출부 workaround가 아니라 공통 계약의 owning document를 바로잡아 해결했다.
+
+- Core 11에 없는 raw socket channel metadata C 선언을 두 공통 spec에서 삭제했다.
+- channel name이 `SpotRouteBridge` typed operation의 논리적 routing 값이라는 내용만 남겼다.
+- `test_common_spec_does_not_reintroduce_removed_raw_channel_name_api`를 추가해 두 공통 spec에 제거된
+  raw socket API 이름이 다시 들어오지 않도록 고정했다.
+- bridge가 실제로 받는 `channel_name` 길이 검증 규칙은 SPOT bridge 계약이므로 유지했다.
+
+이 수정은 공통 spec과 Python contract test의 source input을 바꾸므로, 이후 새 source manifest와
+CPython 3.9/3.12 package evidence를 다시 만들고 같은 candidate identity로 재검토해야 한다.

@@ -17,7 +17,9 @@ Linux x86_64에서 source test, clean wheel consumer, raw sample process와 perf
   다시 생성해야 한다.
 - release 지원 target은 Linux x86_64로 한정했고, 다른 target은 setup·loader에서 fail-fast하도록 정리했다.
 - 독립 frontier reviewer는 초기 candidate를 `NOT CLEAN`으로 판정했다. Python source의 High·Medium
-  finding은 수정했지만, 최종 source manifest와 fresh package evidence를 다시 읽은 `CLEAN` 판정은 아직 없다.
+  finding은 수정했다. 최종 재검토에서 공통 spec에 Core 11에 없는 raw socket channel metadata 선언과
+  binding rule이 남은 사실이 추가로 확인되어 두 공통 spec과 contract guard를 수정했다. 이 수정 뒤 최종
+  source manifest와 fresh package evidence를 다시 읽은 `CLEAN` 판정은 아직 없다.
 
 이 조건들은 source test나 local package 결과를 실패로 바꾸는 것이 아니라, 완료 gate와 local implementation
 evidence를 구분하기 위한 것이다.

@@ -8,6 +8,7 @@ import zlink
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "zlink"
+COMMON_SPEC = ROOT.parent / "doc" / "spec"
 
 
 def _runtime_source_files():
@@ -72,3 +73,10 @@ def test_obsolete_service_examples_are_not_distributed():
     for path in examples.glob("*.py"):
         text = path.read_text(encoding="utf-8")
         assert "create_spot_node" not in text, path
+
+
+def test_common_spec_does_not_reintroduce_removed_raw_channel_name_api():
+    for path in (COMMON_SPEC / "README.ko.md", COMMON_SPEC / "README.en.md"):
+        text = path.read_text(encoding="utf-8")
+        assert "zlink_socket_set_channel_name" not in text, path
+        assert "zlink_socket_get_channel_name" not in text, path

@@ -3102,13 +3102,6 @@ int zlink_spot_node_publisher_publish(
     size_t part_count,
     zlink_send_flags_t flags);
 int zlink_spot_node_publisher_close(void *publisher);
-
-zlink_config_result_t zlink_socket_set_channel_name(void *socket,
-    const char *channel_name);
-zlink_config_result_t zlink_socket_get_channel_name(void *socket,
-    char *channel_name_buf,
-    size_t channel_name_capacity,
-    size_t *channel_name_len_out);
 ```
 
 `options == NULL` 또는 `options->mode == 0`은 모든 SPOT 기능을 켠다. 바인딩은
@@ -3140,9 +3133,9 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 - Spot에서 다른 channel로 보내거나 `ROUTER` channel에서 Spot relay packet을 받을 때는
   `SpotRouteBridge`를 사용한다. bridge에 등록되는 `ROUTER` socket은 caller 또는
   channel runtime이 계속 소유한다.
-- `zlink_socket_set_channel_name()` / `zlink_socket_get_channel_name()` 은
-  channel socket의 logical channel metadata를 다루는 typed API다.
-  바인딩은 이를 socket의 명시적 property/method로 노출한다.
+- raw Core socket에는 logical channel metadata를 설정하거나 조회하는 API가
+  없다. channel name은 `SpotRouteBridge`의 typed operation이 받는 논리적
+  routing 값으로만 사용한다.
 - bridge의 `handle_router_received()`는 channel runtime의 receive loop에서 호출한다.
   `handled == true`이면 payload 소유권은 bridge가 가져가며, caller는 같은 received
   object를 다시 처리하지 않는다.

@@ -9,7 +9,6 @@ use crate::native_errors::{check_config_rc, check_handler_rc, check_recv_rc, las
 use crate::poller_contracts::{
     POLLCOMPLETION, PollEvent, PollItem, PollSourceKind, Pollable, Poller, Timer,
 };
-use crate::request_progress::{acquire_external_progress, release_external_progress};
 
 pub(crate) fn poller_new() -> Result<Poller, ConfigError> {
     let handle = unsafe { ffi::zlink_poller_new() };
@@ -36,17 +35,8 @@ impl PollerStorage {
         slot: usize,
     ) -> Result<(), ConfigError> {
         let handle = pollable_handle(socket)?;
-        let completion_owned = events & POLLCOMPLETION != 0;
-        if completion_owned {
-            acquire_external_progress(handle);
-        }
         check_config_rc(unsafe {
             ffi::zlink_poller_add(self.handle, handle, slot as *mut c_void, events)
-        })
-        .inspect_err(|_| {
-            if completion_owned {
-                release_external_progress(handle);
-            }
         })?;
         self.sockets
             .lock()
@@ -55,7 +45,7 @@ impl PollerStorage {
         Ok(())
     }
 
-    /// Modify the event mask for a previously added socket.
+    /// Modify a regular readiness mask without changing completion ownership.
     pub(crate) fn modify_socket(
         &self,
         socket: &dyn Pollable,
@@ -69,27 +59,17 @@ impl PollerStorage {
             .get(&(handle as usize))
             .copied()
             .unwrap_or(0);
-        let completion_owned = previous & POLLCOMPLETION != 0;
-        let completion_requested = events & POLLCOMPLETION != 0;
-        if !completion_owned && completion_requested {
-            acquire_external_progress(handle);
+        if previous & POLLCOMPLETION != 0 || events & POLLCOMPLETION != 0 {
+            return Err(ConfigError::new(
+                crate::error::ConfigResult::InvalidArgument,
+                libc::EINVAL,
+            ));
         }
-        if let Err(error) =
-            check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, handle, events) })
-        {
-            if !completion_owned && completion_requested {
-                release_external_progress(handle);
-            }
-            return Err(error);
-        }
+        check_config_rc(unsafe { ffi::zlink_poller_modify(self.handle, handle, events) })?;
         self.sockets
             .lock()
             .expect("poller sockets")
             .insert(handle as usize, events);
-
-        if completion_owned && !completion_requested {
-            release_external_progress(handle);
-        }
         Ok(())
     }
 
@@ -97,15 +77,10 @@ impl PollerStorage {
     pub(crate) fn remove_socket(&self, socket: &dyn Pollable) -> Result<(), ConfigError> {
         let handle = pollable_handle(socket)?;
         check_config_rc(unsafe { ffi::zlink_poller_remove(self.handle, handle) })?;
-        let events = self
-            .sockets
+        self.sockets
             .lock()
             .expect("poller sockets")
             .remove(&(handle as usize));
-        if events.is_some_and(|events| events & POLLCOMPLETION != 0) {
-            // The map guard is dropped before entering the global registry.
-            release_external_progress(handle);
-        }
         Ok(())
     }
 
@@ -224,27 +199,9 @@ impl PollerStorage {
 
 impl Drop for PollerStorage {
     fn drop(&mut self) {
-        let completion_handles = self
-            .sockets
-            .lock()
-            .map(|mut sockets| {
-                sockets
-                    .drain()
-                    .filter_map(|(handle, events)| {
-                        (events & POLLCOMPLETION != 0).then_some(handle as *mut c_void)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        // Keep the external ownership claim until Core has removed the native
-        // registration.  This prevents an internal completion worker from
-        // starting in the small destroy window.
         unsafe {
             let mut h = self.handle;
             ffi::zlink_poller_destroy(&mut h);
-        }
-        for handle in completion_handles {
-            release_external_progress(handle);
         }
     }
 }

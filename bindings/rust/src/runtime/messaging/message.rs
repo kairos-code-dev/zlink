@@ -7,18 +7,16 @@ use crate::message::Message;
 use crate::native_errors::check_config_rc;
 
 fn raw_ref(message: &Message) -> &ffi::zlink_msg_t {
-    debug_assert!(!message.inner.is_null());
-    unsafe { &*(message.inner as *const ffi::zlink_msg_t) }
+    &message.inner.raw
 }
 
 fn raw_mut(message: &mut Message) -> &mut ffi::zlink_msg_t {
-    debug_assert!(!message.inner.is_null());
-    unsafe { &mut *(message.inner as *mut ffi::zlink_msg_t) }
+    &mut message.inner.raw
 }
 
-fn allocate(raw: ffi::zlink_msg_t) -> Message {
+fn from_raw_storage(raw: ffi::zlink_msg_t) -> Message {
     Message {
-        inner: Box::into_raw(Box::new(raw)).cast(),
+        inner: crate::internal::MessageStorage::new(raw),
     }
 }
 
@@ -26,7 +24,7 @@ pub(crate) fn message_new() -> Result<Message, ConfigError> {
     unsafe {
         let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
         check_config_rc(ffi::zlink_msg_init(msg.as_mut_ptr()))?;
-        Ok(allocate(msg.assume_init()))
+        Ok(from_raw_storage(msg.assume_init()))
     }
 }
 
@@ -34,7 +32,7 @@ pub(crate) fn message_with_size(size: usize) -> Result<Message, ConfigError> {
     unsafe {
         let mut msg = MaybeUninit::<ffi::zlink_msg_t>::uninit();
         check_config_rc(ffi::zlink_msg_init_size(msg.as_mut_ptr(), size))?;
-        Ok(allocate(msg.assume_init()))
+        Ok(from_raw_storage(msg.assume_init()))
     }
 }
 
@@ -92,7 +90,7 @@ pub(crate) fn message_try_clone(message: &Message) -> Result<Message, ConfigErro
             &mut inner,
             raw_ref(message) as *const ffi::zlink_msg_t as *mut ffi::zlink_msg_t,
         )) {
-            Ok(()) => Ok(allocate(inner)),
+            Ok(()) => Ok(from_raw_storage(inner)),
             Err(error) => {
                 let _ = ffi::zlink_msg_close(&mut inner);
                 Err(error)
@@ -102,14 +100,9 @@ pub(crate) fn message_try_clone(message: &Message) -> Result<Message, ConfigErro
 }
 
 pub(crate) fn message_drop(message: &mut Message) {
-    if message.inner.is_null() {
-        return;
-    }
     unsafe {
-        let mut raw = Box::from_raw(message.inner as *mut ffi::zlink_msg_t);
-        let _ = ffi::zlink_msg_close(&mut *raw);
+        let _ = ffi::zlink_msg_close(raw_mut(message));
     }
-    message.inner = std::ptr::null_mut();
 }
 
 impl Message {
@@ -120,7 +113,7 @@ impl Message {
     /// Construct from a raw `zlink_msg_t` whose ownership is being transferred
     /// to Rust. The caller must not close the original.
     pub(crate) unsafe fn from_raw(raw: ffi::zlink_msg_t) -> Self {
-        allocate(raw)
+        from_raw_storage(raw)
     }
 
     pub(crate) fn close_now(&mut self) {

@@ -1,5 +1,8 @@
 use std::fs;
+use std::mem::size_of;
 use std::path::{Path, PathBuf};
+
+use zlink::Message;
 
 const AGGREGATE_SYMBOLS: &[&str] = &[
     "zlink_send",
@@ -93,6 +96,43 @@ fn binding_runtime_does_not_hide_sleep_or_join_in_hot_paths() {
             path.display()
         );
     }
+}
+
+#[test]
+fn message_owns_the_native_record_inline() {
+    assert_eq!(size_of::<Message>(), 64);
+
+    let body = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/runtime/messaging/message.rs"),
+    )
+    .unwrap();
+    assert!(!body.contains("Box::new(raw)"));
+    assert!(!body.contains("Box::from_raw(message.inner"));
+}
+
+#[test]
+fn binding_does_not_duplicate_core_completion_progress() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let all = source_files(&root)
+        .iter()
+        .map(|path| fs::read_to_string(path).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(!all.contains("RequestProgressGuard"));
+    assert!(!all.contains("ProgressWorker"));
+    assert!(!all.contains("zlink-rust-progress"));
+}
+
+#[test]
+fn deferred_cleanup_uses_fair_queue_order() {
+    let body = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/internal/deferred_cleanup.rs"),
+    )
+    .unwrap();
+    assert!(body.contains("VecDeque<DeferredCleanup>"));
+    assert!(body.contains("pop_front()"));
+    assert!(body.contains("push_back(cleanup)"));
 }
 
 #[test]

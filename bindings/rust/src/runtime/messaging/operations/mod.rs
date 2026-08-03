@@ -11,7 +11,6 @@ use std::ffi::c_void;
 use crate::error::{RequestError, RequestResult};
 use crate::ffi;
 use crate::message::Message;
-use crate::request_progress::RequestProgressGuard;
 
 mod reply_ops;
 mod request_ops;
@@ -31,7 +30,6 @@ pub(crate) fn fixed_topic_or_panic(value: &str, label: &str) -> smol_str::SmolSt
 
 pub(crate) struct ReplyCallbackState {
     pub(crate) callback: Option<Box<RequestCallback>>,
-    pub(crate) progress: Option<RequestProgressGuard>,
 }
 
 fn request_result_from_native(result: ffi::zlink_request_result_t) -> RequestResult {
@@ -75,8 +73,7 @@ pub(crate) unsafe extern "C" fn reply_callback(
     }
 
     // The native callback owns the state pointer after submit succeeds. Taking
-    // it exactly once makes the callback terminal and releases the progress
-    // worker after the user callback returns.
+    // it exactly once makes the callback terminal.
     let mut state = unsafe { Box::from_raw(userdata as *mut ReplyCallbackState) };
     let received = crate::socket::take_parts(parts, part_count);
     let outcome = if matches!(result, ffi::zlink_request_result_t::ZLINK_REQUEST_RESULT_OK) {
@@ -90,5 +87,4 @@ pub(crate) unsafe extern "C" fn reply_callback(
     if let Some(callback) = state.callback.take() {
         callback(outcome);
     }
-    drop(state.progress.take());
 }

@@ -108,7 +108,11 @@ impl Poller {
         self.inner.add_socket(socket, events, slot)
     }
 
-    /// Modify the event mask for a previously added socket.
+    /// Modifies the event mask for a previously added socket.
+    ///
+    /// A registration that adds or removes [`POLLCOMPLETION`] must instead be
+    /// removed and added again because completion processing has separate
+    /// ownership in Core.
     pub fn modify_socket(&self, socket: &dyn Pollable, events: i16) -> Result<(), ConfigError> {
         self.inner.modify_socket(socket, events)
     }

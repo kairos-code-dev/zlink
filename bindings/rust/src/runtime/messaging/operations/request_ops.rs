@@ -12,7 +12,6 @@ use crate::messaging_operations::{
     Empty, MessageParts, RequestOp, RequestOpKind, RequestOpStorage,
 };
 use crate::native_errors::{check_submit_rc, submit_validation_error};
-use crate::request_progress::RequestProgressGuard;
 use crate::socket::submit_part_sequence;
 
 pub(crate) fn dealer_request_op(handle: *mut c_void) -> RequestOp<Empty> {
@@ -66,10 +65,8 @@ where
         return Err(submit_validation_error());
     }
 
-    let progress = Some(RequestProgressGuard::attach_socket(op.handle));
     let state_ptr = Box::into_raw(Box::new(crate::operations::ReplyCallbackState {
         callback: Some(Box::new(callback)),
-        progress,
     }));
     let timeout_ms = timeout_to_timeout_ms(op.timeout);
     let rc = match &op.kind {

@@ -19,8 +19,6 @@
 #[path = "runtime/native/ffi.rs"]
 mod ffi;
 mod internal;
-#[path = "runtime/messaging/request_progress.rs"]
-mod request_progress;
 
 #[path = "contracts/core/context.rs"]
 mod core_context;

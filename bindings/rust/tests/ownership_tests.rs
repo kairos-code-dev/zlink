@@ -183,6 +183,46 @@ fn callback_receives_owned_parts() {
 }
 
 #[test]
+fn request_callback_preserves_more_than_1024_reply_parts() {
+    const PART_COUNT: usize = 1025;
+
+    let ctx = Context::new().unwrap();
+    let router = ctx.router_socket().unwrap();
+    let dealer = ctx.dealer_socket().unwrap();
+    router.bind("inproc://own-request-many-parts").unwrap();
+    dealer.connect("inproc://own-request-many-parts").unwrap();
+    thread::sleep(Duration::from_millis(50));
+
+    let server = thread::spawn(move || {
+        let mut request = Received::empty();
+        router.recv(&mut request, RecvFlags::NONE).unwrap();
+        let mut reply = request
+            .reply()
+            .message(Message::try_from(0_u32.to_le_bytes().as_slice()).unwrap());
+        for index in 1..PART_COUNT as u32 {
+            reply = reply.message(Message::try_from(index.to_le_bytes().as_slice()).unwrap());
+        }
+        reply.submit().unwrap();
+    });
+
+    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+    dealer
+        .request()
+        .message(Message::try_from(b"many-parts").unwrap())
+        .timeout(Duration::from_secs(5))
+        .submit(move |result| reply_tx.send(result).unwrap())
+        .unwrap();
+
+    let parts = reply_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("request callback timed out")
+        .expect("request failed");
+    assert_eq!(parts.len(), PART_COUNT);
+    assert_eq!(parts[1024].as_bytes(), 1024_u32.to_le_bytes());
+    server.join().unwrap();
+}
+
+#[test]
 fn dropping_registered_timer_defers_native_destroy() {
     // Core rejects timer destruction while a poller registration remains. The
     // binding must retain the native handle and retry destruction after the

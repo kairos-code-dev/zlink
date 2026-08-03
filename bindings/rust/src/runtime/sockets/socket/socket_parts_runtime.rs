@@ -1,7 +1,5 @@
 use super::*;
 
-pub(crate) const MAX_NATIVE_PARTS: usize = 1024;
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -45,7 +43,7 @@ pub(crate) fn close_unreceived_part(part: &mut MaybeUninit<ffi::zlink_msg_t>) {
 
 /// Take ownership of `part_count` messages from a native-owned array.
 pub(crate) fn take_parts(parts_ptr: *mut ffi::zlink_msg_t, part_count: usize) -> Vec<Message> {
-    let mut out = Vec::with_capacity(part_count.min(MAX_NATIVE_PARTS));
+    let mut out = Vec::with_capacity(part_count);
     take_parts_into(parts_ptr, part_count, &mut out);
     out
 }
@@ -60,11 +58,10 @@ pub(crate) fn take_parts_into(
     if parts_ptr.is_null() || part_count == 0 {
         return;
     }
-    let count = part_count.min(MAX_NATIVE_PARTS);
-    if out.capacity() < count {
-        out.reserve(count - out.capacity());
+    if out.capacity() < part_count {
+        out.reserve(part_count - out.capacity());
     }
-    for i in 0..count {
+    for i in 0..part_count {
         unsafe {
             // Move content from the library-owned array into our own zlink_msg_t.
             // ptr::read would create a bitwise copy sharing the same internal

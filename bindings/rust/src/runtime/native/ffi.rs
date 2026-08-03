@@ -34,9 +34,6 @@ impl zlink_routing_id_t {
     }
 }
 
-pub const ZLINK_MSG_METADATA_KEY_USER_MIN: u16 = 0x0100;
-pub const ZLINK_MSG_METADATA_VALUE_MAX: usize = 65535;
-
 // ---------------------------------------------------------------------------
 // Enums and flags
 // ---------------------------------------------------------------------------
@@ -237,7 +234,6 @@ pub type zlink_socket_monitor_event_mask_t = u32;
 pub type zlink_monitor_state_mask_t = u32;
 pub type zlink_monitor_status_detail_mask_t = u32;
 pub const ZLINK_MONITOR_STATE_READY: u32 = 1 << 0;
-pub const ZLINK_MONITOR_STATE_BOUND_READY: u32 = 1 << 1;
 pub const ZLINK_MONITOR_STATE_CLOSED: u32 = 1 << 3;
 
 #[repr(C)]
@@ -337,11 +333,6 @@ pub struct zlink_poller_event_t {
     pub user_data: *mut c_void,
     pub events: i16,
 }
-
-pub const ZLINK_POLLIN: i16 = 1;
-pub const ZLINK_POLLOUT: i16 = 2;
-pub const ZLINK_POLLERR: i16 = 4;
-pub const ZLINK_POLLCOMPLETION: i16 = 32;
 
 // ---------------------------------------------------------------------------
 // Callback types

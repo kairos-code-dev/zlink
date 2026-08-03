@@ -5,8 +5,8 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use zlink::{
-    Context, DealerSocket, Message, Received, RecvFlags, RouterSocket, RoutingId, SendFlags,
-    SubmitResult, has, version,
+    ConfigResult, Context, DealerSocket, Message, POLLCOMPLETION, POLLIN, Poller, Received,
+    RecvFlags, RouterSocket, RoutingId, SendFlags, SubmitResult, has, version,
 };
 
 // ---------------------------------------------------------------------------
@@ -234,6 +234,24 @@ fn request_reply_surface_exists() {
     let _router_reply = |socket: &RouterSocket, rid: &RoutingId, seq: u64, msg: Message| {
         socket.reply(rid, seq).message(msg).submit()
     };
+}
+
+#[test]
+fn poller_modify_rejects_completion_ownership_changes() {
+    let ctx = Context::new().unwrap();
+    let dealer = ctx.dealer_socket().unwrap();
+    let poller = Poller::new().unwrap();
+
+    poller.add_socket(&dealer, POLLCOMPLETION, 1).unwrap();
+    let remove_completion = poller.modify_socket(&dealer, POLLIN).unwrap_err();
+    assert_eq!(remove_completion.code(), ConfigResult::InvalidArgument);
+    poller.remove_socket(&dealer).unwrap();
+
+    poller.add_socket(&dealer, POLLIN, 2).unwrap();
+    let add_completion = poller
+        .modify_socket(&dealer, POLLIN | POLLCOMPLETION)
+        .unwrap_err();
+    assert_eq!(add_completion.code(), ConfigResult::InvalidArgument);
 }
 
 #[test]

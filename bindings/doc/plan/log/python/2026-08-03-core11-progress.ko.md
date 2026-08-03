@@ -252,3 +252,31 @@ installed sample은 각각 `7/7`이다. 현재 runtime으로 다시 실행한 si
 candidate만 승인하므로 현재 candidate에 입력하면 `review evidence does not approve the supplied
 candidate manifest SHA-256`로 실패한다. 따라서 독립 V11-R2·V11-M3-CORE-PKG evidence와 frontier reviewer의
 최종 `CLEAN` 판정은 여전히 남아 있다.
+
+## 2026-08-04 Codex self-review package refresh (v5)
+
+이전 v4 manifest를 만든 직후 별도 성능 작업의 문서 commit이 추가되어 CPython 3.9 build가
+`Core revision drift`로 중단됐다. 이 오류는 manifest가 가리키는 checkout과 실제 build checkout이
+다를 때 package 생성을 막는 provenance 검사 결과다. 현재 package snapshot은 그 문서 commit까지
+포함한 `0e2b9a8f82dd5e365a52a7381189d1b48b3b2ccd`로 다시 고정했다. 이후에는 이 progress log만
+기록하는 commit을 추가하며 package snapshot과 섞지 않는다.
+
+```text
+coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0-python-self-20260804-v5.env
+coreManifestSha256: 287967f72798bd18764baaa9b525905b8264a3372e4cccdcb8d4e07ff5b3e240
+coreRevision: 0e2b9a8f82dd5e365a52a7381189d1b48b3b2ccd
+coreRuntimeSha256: ce28d7908bf62a1b39b481aad2a76c6e76955e3a93ea73e1cbdaa913c4883138
+cp312CandidateInputSha256: 41d863ebe74a81c34c9aec1ab415acfa1e08bec8aff65d25b80b7b576fbe248f
+cp39CandidateInputSha256: d7c8f24b92d626b1308320066ce07b7d4054f3d1320de1ffade1f57b588b40c1
+pythonSourceManifestSha256: 42b0f105dfb9ca94be0678758a7028f014826148d18d2b1cde4fcdc8edca71d1
+pythonSourceAggregateSha256: 4d1e014e03e56d85e732fa165aaab6e4823a79721cd72c4bd26f78f87eb54cfa
+cp312WheelSha256: 339488cd49f96cbea1a9bf4f8750a663337be2b9eaa9b0fb569a1075d5a039c0
+cp39WheelSha256: 8f176ab2ee93c9cccddb5319487cdf6402fab8e3e54954a904a2e93d8ac61354
+```
+
+v5 package는 CPython 3.12.3과 Ubuntu 24.04 + deadsnakes CPython 3.9.25에서 각각 source test
+`65 passed`, clean consumer, installed sample `7/7`을 통과했다. 같은 runtime으로 실행한 perf smoke도
+single은 `status=complete`, `actual_result_lines=5`, multi는 `status=complete`, `success=1`,
+`fail=0`, `actual_result_lines=5`를 반환했다. Candidate JSON은 현재 Core owned path와 aggregate를
+검증했지만, 기존 V11-R2 evidence는 이 candidate manifest를 승인하지 않아 독립 review와 최종
+`CLEAN` 판정이 필요한 상태다.

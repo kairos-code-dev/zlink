@@ -119,7 +119,7 @@ observer는 provider class로 등록한다 — 함수가 아니라 `ZLinkMessage
 > **Node runtime이 실제로 내는 계기는 계약의 일부다.** 계약은 47개를 정의하는데
 > `runtime-metrics.ts`가 선언하는 이름은 44개이고 그중 실제로 기록되는 것은 더 적다.
 > 방출 지점이 여러 파일에 흩어져 있어 정확한 수는 확정하지 않았다. **대시보드를 만들기
-> 전에 필요한 계기가 실제로 나오는지 확인한다.** 현재 구현과 재확인 범위는 [Node.js Framework spec와 sample gap ledger](../../../../plan/node-framework-spec-gap-ledger/node-framework-spec-gap-ledger.ko.md)가 소유한다.
+> 전에 필요한 계기가 실제로 나오는지 확인한다.**
 
 계기 이름 · 종류 · 단위 · label의 계약은
 [Runtime metric과 집계 규칙](../../../common/spec/25-runtime-metrics.ko.md)이 소유한다.

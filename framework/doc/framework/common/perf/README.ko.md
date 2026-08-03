@@ -1325,7 +1325,7 @@ runner를 다른 host 또는 여러 host에 분산한다.
 
 이 절은 host 전체에서 수신 후 handler가 완료되지 않은 application payload의 HWM을 production
 workload로 결정하는 공통 측정 규격이다. HWM의 설정 mode와 Auto 계산 계약은
-[`inbound-dispatch-lane-design.ko.md`](../../../plan/inbound-dispatch-lane-design.ko.md#46-application은-어떤-기준으로-값을-선택하는가)를
+[Framework API 「2.1 수신 payload가 memory를 계속 늘리지 않게 한다」](../spec/06-framework-api.ko.md)를
 기준으로 한다. 이 절은 application별 양수 HWM을 선택하고 Auto HWM profile을 검증하는 실행
 방법만 정한다.
 

@@ -95,8 +95,7 @@ ZLinkModule.forRootFactory({
 | `receiveTimeoutMs` · `sendTimeoutMs` | 지정하면 그 방향의 대기 상한 |
 
 > **spec에 있고 구현에 없는 값이 둘 있다.** 공개 계약은 `mailboxMessageBudget` ·
-> `mailboxByteBudget`을 이 config에 두지만 현재 builder 표면에는 없다. 저장소의
-> [Node.js Framework spec와 sample gap ledger](../../../../plan/node-framework-spec-gap-ledger/node-framework-spec-gap-ledger.ko.md)가 기록한다.
+> `mailboxByteBudget`을 이 config에 두지만 현재 builder 표면에는 없다.
 
 동작 원리와 값을 고르는 기준은
 [4. Backpressure](04-backpressure.ko.md)가 다룬다.

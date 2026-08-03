@@ -49,12 +49,6 @@ spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 | 대상 선택 절차와 tiebreak | [Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md) |
 | 관찰자 합치기와 유실 | [Runtime 상태와 운영 진단](../spec/24-runtime-monitoring.ko.md) |
 
-## 이 문서들이 만드는 작업
-
-각 문서의 결정을 네 언어 구현과 대조한 결과와 언어별 수정 목록은
-[구현 갭 목록](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md)에 있다.
-아직 정해지지 않아 구현을 시작할 수 없는 선행 과제도 그쪽에 모아 두었다.
-
 Wire protocol 문서는 `framework/runtime/protocol/service-wire-v1.schema.json`과 짝이며,
 schema가 정한 field 관계와 검증 순서를 설명한다. 성격이 달라 아래 구분을 적용하지 않는다.
 

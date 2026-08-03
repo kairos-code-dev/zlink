@@ -138,7 +138,6 @@ ZLinkMetricsCustomizer zlinkMetrics(PlaySettings settings) {
 > **현재 Java runtime이 방출하는 계기는 계약의 일부뿐이다.** 계약이 정의한 47개 중
 > 14개만 나오고, request 관련 셋은 계약 이름(`zlink.mesh_node.request.*`)이 아니라
 > `zlink.channel.request.*`로 나온다. 대시보드를 만들기 전에 실제 방출 이름을 확인한다.
-> 현재 구현과 남은 process·CI 조건은 [Java/Kotlin Framework spec gap ledger](../../../../plan/java-kotlin-framework-spec-gap-ledger/java-kotlin-framework-spec-gap-ledger.ko.md)가 소유한다.
 
 ## 5. readiness와 liveness
 

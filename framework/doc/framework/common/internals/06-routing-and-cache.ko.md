@@ -69,11 +69,12 @@ flowchart LR
 우회는 **캐시가 갱신될 때까지의 과도기를 메우는 장치**이지 정상 경로가 아니다. 알림이
 없으면 캐시 수명이 끝날 때까지 우회가 계속된다.
 
-**통지 record를 어떻게 줄일지는 아직 결정이 아니다.** 정식 spec은 통지가 캐시를 무효화
-한다는 것까지만 정했고, **wire command 자체가 아직 없다**
-([service wire protocol](service-wire-protocol.ko.md)의 command 표는 닫힌 집합이며 이
-통지가 없다). command ID·body·방향·인증·fence가 정해지기 전에 중복 억제 방식을
-internals가 확정하면 네 언어가 서로 다른 wire를 만들게 된다.
+**통지 record의 공통 wire는 schema에 고정되었다.** `service-wire-v1.schema.json`의 command
+50 `messageFollow`가 source·target route fence, hop count, relay 시점의 queue 회계와
+원래 operation/reply route를 정의한다. flags와 application payload는 허용하지 않는다.
+다만 schema가 있다는 사실만으로 각 언어의 relay·수신·cache 무효화가 완료되는 것은 아니다.
+각 runtime은 source route의 object·authority generation과 target node를 확인하고, 더 새로운
+cache 항목을 지우지 않는 조건까지 구현해야 한다.
 
 **설계 후보 — 판정 전이며 구현을 구속하지 않는다.**
 
@@ -84,9 +85,6 @@ internals가 확정하면 네 언어가 서로 다른 wire를 만들게 된다.
 - 통지는 유실되어도 캐시 수명이 끝나면 만료되므로 재전송을 보장하지 않는다.
 - 중복 억제 표식은 별도 집합이 아니라 기존 캐시 항목에 넣고, 캐시 항목이 사라질 때 함께
   없앤다. 별도 집합을 두면 이동한 객체 수만큼 상태가 계속 늘어난다.
-
-이 후보들은 [구현 갭 목록 A2·D5](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md)에
-선행 과제와 함께 정리되어 있다.
 
 이것이 spec이 캐시 수명을 Message Follow 기간으로 묶어 둔 이유다 — 알림이 유실되어도
 그 기간이 지나면 캐시가 자연히 만료된다.
@@ -169,9 +167,8 @@ framework가 고른 RID로 대상을 지정하는 송신 경로 중 하나가 �
 ### 확인할 것
 
 Core가 고르는 경로에서 framework가 계약을 만족시키려면 **Core가 그 순서를 내야 한다.**
-framework 안에서는 닫을 수 없다. Core 쪽 결함과 수정 계획은
-[Core DEALER 가중 선택 순서 수정](https://github.com/kairos-code-dev/zlink/blob/main/framework/doc/plan/for-interals/dealer-weighted-selection-order.ko.md)에
-있다.
+framework 안에서는 닫을 수 없다. Core의 load balancer가 §5의 절차를 내지 않는 동안,
+이 경로의 선택 순서는 계약을 만족하지 않는다.
 
 ## 5. 선택 알고리즘을 지정한다
 

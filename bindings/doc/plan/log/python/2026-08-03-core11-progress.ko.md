@@ -15,9 +15,9 @@ interpreter와 Linux x86_64 이외의 platform consumer는 실행하지 않았�
 ## Candidate identity
 
 ```text
-sourceRevision: cb5c4ffb0e41cfaf8601f744c3fdcd3f53833e98
+sourceRevision: candidate-input.env의 CORE_REVISION
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: a4672da3ba54c70d6da42caa6671227d474d58351ddb354dd5c241f1d7aa421b
+coreManifestSha256: candidate-input.env의 CANDIDATE_MANIFEST_SHA256
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: 1c34ae4e2e631e7e04cdf50c1ce6c231d10c501a0fe41007d0eec8530bda24d8
@@ -32,11 +32,11 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 
 ```text
 sourceManifest: .artifacts/wsl/bindings-candidate/python-source-manifest-11.2.0.json
-sourceManifestSha256: 65d1f726180914e588c03810b9ea291d25e7244851050a530ac6212db47bf008
+sourceManifestSha256: candidate-input.env의 PYTHON_SOURCE_MANIFEST_SHA256
 sourceAggregateSha256: eefb3752e00405a2bc2b296547a1a746e8e1fe002a9a3ae39db2e30787af300c
 candidateInput: .artifacts/wsl/bindings-candidate/python/candidate-input.env
 wheel: .artifacts/wsl/bindings-candidate/python/wheels/zlink-11.2.0-cp312-cp312-linux_x86_64.whl
-wheelSha256: d246f7222ef001943ff844cc9f1fb8342157e7abc945f7e069a3191185b81204
+wheelSha256: `python/SHA256SUMS`의 wheel entry
 packagedNativePayloadSha256: 1c34ae4e2e631e7e04cdf50c1ce6c231d10c501a0fe41007d0eec8530bda24d8
 ```
 

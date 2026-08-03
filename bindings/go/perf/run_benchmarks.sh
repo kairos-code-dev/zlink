@@ -513,6 +513,9 @@ progress_case_row() {
   local pattern="$1"
   local size="$2"
   local case_log="$3"
+  if [[ "${SMOKE}" -eq 1 ]]; then
+    return
+  fi
   if grep -Eq '^UNSUPPORTED,' "${case_log}"; then
     python3 "${PERF_REPORT_PY}" status-row --suite single --size "$size" --status unsupported
     return

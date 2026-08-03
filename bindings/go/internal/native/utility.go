@@ -3,12 +3,13 @@
 package native
 
 /*
+#include <stdint.h>
 #include <stdlib.h>
 #include "zlink.h"
 
 extern void zlinkGoThreadInvoke(void *);
-static inline void *zlink_thread_start_go(void *arg) {
-    return zlink_thread_start(zlinkGoThreadInvoke, arg);
+static inline void *zlink_thread_start_go(uintptr_t arg) {
+    return zlink_thread_start(zlinkGoThreadInvoke, (void *)arg);
 }
 */
 import "C"
@@ -201,7 +202,7 @@ func NewThread(target func()) (*Thread, error) {
 		return nil, &ConfigError{Result: ConfigInvalidArgument, nativeErrno: int(C.EINVAL)}
 	}
 	state := cgo.NewHandle(&threadState{target: target})
-	handle := C.zlink_thread_start_go(unsafe.Pointer(state))
+	handle := C.zlink_thread_start_go(C.uintptr_t(state))
 	if handle == nil {
 		state.Delete()
 		return nil, &ConfigError{Result: ConfigInvalidHandle, nativeErrno: int(C.zlink_errno())}

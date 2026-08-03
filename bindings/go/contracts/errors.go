@@ -5,7 +5,8 @@ package contracts
 import impl "zlink.systems/zlink/v11/internal/native"
 
 type (
-	// ZlinkError is the base error type for the zlink bindings, carrying a result code and native errno.
+	// ZlinkError is the base error type for the zlink bindings. It exposes the
+	// binding result code and supports errors.Is through its internal errno.
 	ZlinkError = impl.ZlinkError
 	// SubmitError is returned when submitting a send or publish fails.
 	SubmitError = impl.SubmitError

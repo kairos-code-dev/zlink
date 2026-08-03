@@ -186,8 +186,6 @@ func autoHWMRoleName(role uint32) string {
 		return "fanout"
 	case 4:
 		return "recv_ingress"
-	case 5:
-		return "spot_data"
 	case 6:
 		return "peer_queue"
 	case 7:
@@ -418,7 +416,7 @@ func FinalizeResult(pattern string, msgSize int, result Result) Result {
 
 func isEchoPattern(pattern string) bool {
 	switch pattern {
-	case "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM", "MULTI_SPOT_REQREP", "MULTI_SPOT_SENDSEND":
+	case "MULTI_DEALER_ROUTER", "MULTI_ROUTER_ROUTER", "MULTI_STREAM":
 		return true
 	default:
 		return false
@@ -581,7 +579,7 @@ func IsTransient(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	switch zerr.NativeErrno() {
+	switch zerr.InternalErrno() {
 	// EWOULDBLOCK == EAGAIN on Linux; listing EAGAIN covers both.
 	case int(syscall.EAGAIN), int(syscall.EINTR):
 		return true
@@ -590,8 +588,8 @@ func IsTransient(err error) bool {
 	}
 }
 
-// IsReadyProbeTransient is the SPOT ready-probe-only transient set:
-// perf_spot.cpp publish_metric_payload retry_ready_probe allows
+// IsReadyProbeTransient is the ready-probe-only transient set:
+// the ready-probe path allows
 // ENOTCONN/EHOSTUNREACH/ENETUNREACH on the DONTWAIT ready-probe path
 // (in addition to the data-path transients) while the peer is still
 // connecting. It must NOT be used on the data path.
@@ -603,7 +601,7 @@ func IsReadyProbeTransient(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	switch zerr.NativeErrno() {
+	switch zerr.InternalErrno() {
 	case int(syscall.ENOTCONN), int(syscall.EHOSTUNREACH), int(syscall.ENETUNREACH):
 		return true
 	default:

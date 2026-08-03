@@ -84,8 +84,6 @@ func readySettleDuration(pattern string) time.Duration {
 	switch pattern {
 	case "PUBSUB":
 		return durationFromEnv("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", time.Second)
-	case "SPOT":
-		return durationFromEnv("PERF_SINGLE_SPOT_READY_SETTLE_MS", time.Second)
 	default:
 		return 0
 	}
@@ -105,14 +103,6 @@ func SingleReadyTimeout() time.Duration {
 
 func MultiReadyTimeout() time.Duration {
 	return durationFromEnv("PERF_MULTI_CONNECT_READY_TIMEOUT_MS", durationFromEnv("PERF_CONNECT_READY_TIMEOUT_MS", time.Second))
-}
-
-func MultiSpotReadySettleDuration() time.Duration {
-	return durationFromEnv("PERF_MULTI_SPOT_READY_SETTLE_MS", time.Second)
-}
-
-func MultiSpotControlSettleDuration() time.Duration {
-	return durationFromEnv("PERF_MULTI_SPOT_CONTROL_SETTLE_MS", 25*time.Millisecond)
 }
 
 func NewSocketPoller(socket zlink.SocketTarget, events zlink.PollEventFlag) *zlink.Poller {

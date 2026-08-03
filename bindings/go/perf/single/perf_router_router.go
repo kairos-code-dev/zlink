@@ -81,7 +81,7 @@ func isRouterRouterSendTransient(err error) bool {
 	if !errors.As(err, &zerr) {
 		return false
 	}
-	switch zerr.NativeErrno() {
+	switch zerr.InternalErrno() {
 	case int(syscall.EHOSTUNREACH), int(syscall.ENOTCONN):
 		return true
 	default:

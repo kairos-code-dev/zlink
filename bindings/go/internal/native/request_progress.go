@@ -16,11 +16,12 @@ import (
 )
 
 // Per-handle progress pump: a single goroutine drives request progress for
-// all in-flight requests on the same native handle, using spin-then-exponential
-// backoff (matches doc/spec/bindings/go/README.md §Performance Policy: do not
+// all in-flight requests on the same native handle, using a bounded poll
+// interval (matches README.godoc.md: do not
 // start one polling thread per request when progress can be shared per handle).
 const (
-	pollCompletionEvent = C.short(32)
+	pollCompletionEvent   = C.short(32)
+	progressPollTimeoutMs = C.long(50)
 )
 
 type progressPump struct {
@@ -99,8 +100,11 @@ func (p *progressPump) run() {
 	}
 	defer C.zlink_poller_remove(poller, p.handle)
 	var event C.zlink_poller_event_t
+	var pollError C.zlink_config_result_t
 	for atomic.LoadInt64(&p.activeCount) > 0 {
-		C.zlink_poller_wait(poller, &event, 1, -1, nil)
+		if C.zlink_poller_wait(poller, &event, 1, progressPollTimeoutMs, &pollError) < 0 {
+			break
+		}
 		runtime.Gosched()
 	}
 }

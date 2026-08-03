@@ -6,14 +6,6 @@ func monitorHasRoutingID(routingID RoutingID) bool {
 	return routingID.Size() > 0
 }
 
-func serviceEntryHasRoutingID(routingID RoutingID) bool {
-	return routingID.Size() > 0
-}
-
-func spotNodeHasRoutingID(routingID RoutingID) bool {
-	return routingID.Size() > 0
-}
-
 func emptyRoutingID() RoutingID {
 	return RoutingID{}
 }

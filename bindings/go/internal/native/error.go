@@ -17,28 +17,21 @@ import (
 type ZlinkError interface {
 	error
 	Code() int
-	NativeErrno() int
-}
-
-type errorDetails struct {
-	NativeErrno int
+	InternalErrno() int
 }
 
 type SubmitError struct {
-	Result SubmitResult
-	errorDetails
+	Result      SubmitResult
 	nativeErrno int
 }
 
 type RequestError struct {
-	Result RequestResult
-	errorDetails
+	Result      RequestResult
 	nativeErrno int
 }
 
 type RecvError struct {
-	Result RecvResult
-	errorDetails
+	Result      RecvResult
 	nativeErrno int
 }
 
@@ -50,193 +43,164 @@ func isNoData(err error) bool {
 }
 
 type HandlerError struct {
-	Result HandlerResult
-	errorDetails
+	Result      HandlerResult
 	nativeErrno int
 }
 
 type CloseError struct {
-	Result CloseResult
-	errorDetails
+	Result      CloseResult
 	nativeErrno int
 }
 
 type BindError struct {
-	Result BindResult
-	errorDetails
+	Result      BindResult
 	nativeErrno int
 }
 
 type ConnectError struct {
-	Result ConnectResult
-	errorDetails
+	Result      ConnectResult
 	nativeErrno int
 }
 
 type ConfigError struct {
-	Result ConfigResult
-	errorDetails
+	Result      ConfigResult
 	nativeErrno int
 }
 
 func (e *SubmitError) Error() string {
-	return formatError("submit", int(e.Result), e.ensureNativeErrno())
+	return formatError("submit", int(e.Result), e.internalErrno())
 }
 
 func (e *SubmitError) Code() int { return int(e.Result) }
 
-func (e *SubmitError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *SubmitError) InternalErrno() int { return e.internalErrno() }
 
-func (e *SubmitError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *SubmitError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *RequestError) Error() string {
-	return formatError("request", int(e.Result), e.ensureNativeErrno())
+	return formatError("request", int(e.Result), e.internalErrno())
 }
 
 func (e *RequestError) Code() int { return int(e.Result) }
 
-func (e *RequestError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *RequestError) InternalErrno() int { return e.internalErrno() }
 
-func (e *RequestError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *RequestError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *RecvError) Error() string {
-	return formatError("recv", int(e.Result), e.ensureNativeErrno())
+	return formatError("recv", int(e.Result), e.internalErrno())
 }
 
 func (e *RecvError) Code() int { return int(e.Result) }
 
-func (e *RecvError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *RecvError) InternalErrno() int { return e.internalErrno() }
 
-func (e *RecvError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *RecvError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *HandlerError) Error() string {
-	return formatError("handler", int(e.Result), e.ensureNativeErrno())
+	return formatError("handler", int(e.Result), e.internalErrno())
 }
 
 func (e *HandlerError) Code() int { return int(e.Result) }
 
-func (e *HandlerError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *HandlerError) InternalErrno() int { return e.internalErrno() }
 
-func (e *HandlerError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *HandlerError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *CloseError) Error() string {
-	return formatError("close", int(e.Result), e.ensureNativeErrno())
+	return formatError("close", int(e.Result), e.internalErrno())
 }
 
 func (e *CloseError) Code() int { return int(e.Result) }
 
-func (e *CloseError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *CloseError) InternalErrno() int { return e.internalErrno() }
 
-func (e *CloseError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *CloseError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *BindError) Error() string {
-	return formatError("bind", int(e.Result), e.ensureNativeErrno())
+	return formatError("bind", int(e.Result), e.internalErrno())
 }
 
 func (e *BindError) Code() int { return int(e.Result) }
 
-func (e *BindError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *BindError) InternalErrno() int { return e.internalErrno() }
 
-func (e *BindError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *BindError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *ConnectError) Error() string {
-	return formatError("connect", int(e.Result), e.ensureNativeErrno())
+	return formatError("connect", int(e.Result), e.internalErrno())
 }
 
 func (e *ConnectError) Code() int { return int(e.Result) }
 
-func (e *ConnectError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *ConnectError) InternalErrno() int { return e.internalErrno() }
 
-func (e *ConnectError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *ConnectError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
 func (e *ConfigError) Error() string {
-	return formatError("config", int(e.Result), e.ensureNativeErrno())
+	return formatError("config", int(e.Result), e.internalErrno())
 }
 
 func (e *ConfigError) Code() int { return int(e.Result) }
 
-func (e *ConfigError) NativeErrno() int { return e.ensureNativeErrno() }
+func (e *ConfigError) InternalErrno() int { return e.internalErrno() }
 
-func (e *ConfigError) Unwrap() error { return errnoToError(e.ensureNativeErrno()) }
+func (e *ConfigError) Unwrap() error { return errnoToError(e.internalErrno()) }
 
-func (e *SubmitError) ensureNativeErrno() int {
+func (e *SubmitError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *RequestError) ensureNativeErrno() int {
+func (e *RequestError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *RecvError) ensureNativeErrno() int {
+func (e *RecvError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *HandlerError) ensureNativeErrno() int {
+func (e *HandlerError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *CloseError) ensureNativeErrno() int {
+func (e *CloseError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *BindError) ensureNativeErrno() int {
+func (e *BindError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *ConnectError) ensureNativeErrno() int {
+func (e *ConnectError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
-func (e *ConfigError) ensureNativeErrno() int {
+func (e *ConfigError) internalErrno() int {
 	if e == nil {
 		return 0
 	}
-	if e.errorDetails.NativeErrno == 0 && e.nativeErrno != 0 {
-		e.errorDetails.NativeErrno = e.nativeErrno
-	}
-	return e.errorDetails.NativeErrno
+	return e.nativeErrno
 }
 
 func formatError(kind string, code int, nativeErrno int) string {
@@ -340,7 +304,7 @@ func submitErrorFromResult(result any) error {
 	if errno == 0 {
 		errno = fallbackSubmitErrno(resultCode)
 	}
-	return &SubmitError{Result: resultCode, errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &SubmitError{Result: resultCode, nativeErrno: errno}
 }
 
 func requestErrorFromResult(result any) error {
@@ -352,7 +316,7 @@ func requestErrorFromResult(result any) error {
 	if errno == 0 {
 		errno = fallbackRequestErrno(resultCode)
 	}
-	return &RequestError{Result: resultCode, errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &RequestError{Result: resultCode, nativeErrno: errno}
 }
 
 func recvErrorFromResult(result any) error {
@@ -364,7 +328,7 @@ func recvErrorFromResult(result any) error {
 	if errno == 0 {
 		errno = fallbackRecvErrno(resultCode)
 	}
-	return &RecvError{Result: resultCode, errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &RecvError{Result: resultCode, nativeErrno: errno}
 }
 
 func handlerErrorFromResult(result any) error {
@@ -372,7 +336,7 @@ func handlerErrorFromResult(result any) error {
 		return nil
 	}
 	errno := errnoOrIO()
-	return &HandlerError{Result: HandlerResult(resultCodeInt(result)), errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &HandlerError{Result: HandlerResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
 func closeErrorFromResult(result any) error {
@@ -380,7 +344,7 @@ func closeErrorFromResult(result any) error {
 		return nil
 	}
 	errno := errnoOrIO()
-	return &CloseError{Result: CloseResult(resultCodeInt(result)), errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &CloseError{Result: CloseResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
 func bindErrorFromResult(result any) error {
@@ -388,7 +352,7 @@ func bindErrorFromResult(result any) error {
 		return nil
 	}
 	errno := errnoOrIO()
-	return &BindError{Result: BindResult(resultCodeInt(result)), errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &BindError{Result: BindResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
 func connectErrorFromResult(result any) error {
@@ -396,7 +360,7 @@ func connectErrorFromResult(result any) error {
 		return nil
 	}
 	errno := errnoOrIO()
-	return &ConnectError{Result: ConnectResult(resultCodeInt(result)), errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &ConnectError{Result: ConnectResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
 func configErrorFromResult(result any) error {
@@ -404,7 +368,7 @@ func configErrorFromResult(result any) error {
 		return nil
 	}
 	errno := errnoOrIO()
-	return &ConfigError{Result: ConfigResult(resultCodeInt(result)), errorDetails: errorDetails{NativeErrno: errno}, nativeErrno: errno}
+	return &ConfigError{Result: ConfigResult(resultCodeInt(result)), nativeErrno: errno}
 }
 
 func validationError(format string, args ...any) error {

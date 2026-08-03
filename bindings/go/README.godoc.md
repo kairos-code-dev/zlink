@@ -1,6 +1,6 @@
 # zlink Go Binding API Reference
 
-The Go binding is implemented in the `zlink.systems/zlink` module under
+The Go binding is implemented in the `zlink.systems/zlink/v11` module under
 `bindings/go`.
 Documentation is generated directly from source comments and exported symbols.
 
@@ -24,8 +24,7 @@ pkgsite -http=:6060
 
 ## Public Surface Summary
 
-The exported Go package reflects the shared bindings policy in
-`bindings/README.md`.
+The exported Go package reflects the Core 11 raw-socket contract.
 
 - multipart-only public send/receive APIs
 - blocking methods use direct names such as `Send`, `Recv`, `Publish`,
@@ -33,13 +32,12 @@ The exported Go package reflects the shared bindings policy in
 - non-blocking methods use `Try*`
 - non-blocking submit returns `(false, nil)` only for temporary backpressure
 - non-blocking receive returns `(value, ok, error)`
-- message diagnostics expose `GetProperty` and `RefCount`
+- message diagnostics expose only the properties provided by the Core 11 raw API
 - context options are exposed via `Context.Options()` and `ContextOptions`
 - typed domain objects are used for `Message`, `RoutingID`, `Received`,
   `TopicMessage`, `SubscriptionEvent`, and `MonitorEvent`
 - raw option bags and raw flags are not exposed publicly
 - socket-specific capabilities are exposed only on concrete socket types
-- service-layer observability uses snapshot/query APIs
 - monitor open APIs take typed masks and default to `ALL` when omitted
 - callback delivery hops off native callback threads onto Go-managed
   dispatcher goroutines before user handlers run

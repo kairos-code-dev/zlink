@@ -178,7 +178,7 @@ func topicMatches(buffer []byte, topicLen int, expected string) bool {
 
 // sendPubSubStopToken pushes the wire-level stop token on the bench
 // topic. Bounded attempts through transient backpressure mirror the
-// pattern used in single one-way / spot. The token is published on the
+// pattern used in single one-way. The token is published on the
 // same `bench` topic so it is delivered to subscribers that
 // matched the active stream.
 func sendPubSubStopToken(publisher *zlink.PubSocket) bool {

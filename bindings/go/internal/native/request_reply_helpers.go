@@ -53,7 +53,7 @@ func cloneParts(parts []*Message) ([]*Message, error) {
 	// Pre-size the result and assign by index. The previous append-based
 	// loop incurred bounds-check + len-increment work on every iteration;
 	// since we know n up front, neither is needed. Hot path for request,
-	// send-to-spot, and routed reply.
+	// send-to-peer, and routed reply.
 	cloned := make([]*Message, n)
 	for i := 0; i < n; i++ {
 		part := parts[i]

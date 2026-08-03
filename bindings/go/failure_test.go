@@ -1,6 +1,8 @@
 package zlink_test
 
 import (
+	"context"
+	"errors"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -9,6 +11,46 @@ import (
 
 	zlink "zlink.systems/zlink/v11"
 )
+
+func TestSubmitContextCancellationUsesStandardErrors(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, err := ctx.PairSocket()
+	if err != nil {
+		t.Fatalf("PairSocket() error = %v", err)
+	}
+	defer socket.Close()
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	message := newMessage(t, "context-canceled")
+	defer message.Close()
+
+	if _, err := socket.Send().Message(message).Submit(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Send().Submit(canceled) error = %v, want context.Canceled", err)
+	}
+	if got := string(message.Data()); got != "context-canceled" {
+		t.Fatalf("canceled send consumed message payload = %q", got)
+	}
+}
+
+func TestRequestContextDeadlineUsesStandardErrors(t *testing.T) {
+	ctx := newContext(t)
+	defer ctx.Close()
+
+	socket, err := ctx.DealerSocket()
+	if err != nil {
+		t.Fatalf("DealerSocket() error = %v", err)
+	}
+	defer socket.Close()
+
+	deadline, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	if _, err := socket.Request().Bytes([]byte("context-deadline")).SubmitAsync(deadline); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Request().SubmitAsync(expired) error = %v, want context.DeadlineExceeded", err)
+	}
+}
 
 func TestSendDontWaitDoesNotTreatTemporaryBackpressureAsError(t *testing.T) {
 	ctx := newContext(t)

@@ -11,9 +11,7 @@ export GOTMPDIR="${GOTMPDIR:-/tmp/zlink-go-tmp}"
 mkdir -p "${GOCACHE}" "${GOTMPDIR}"
 
 VERSION_FILE="${REPO_DIR}/VERSION"
-CORE_LIB_DIR="${REPO_DIR}/core/build/lib"
 CORE_VERSION="$(awk -F= '/^LIBZLINK_VERSION=/{print $2}' "${VERSION_FILE}")"
-CORE_LIB="${CORE_LIB_DIR}/libzlink.so.${CORE_VERSION}"
 PERF_REPORT_PY="${REPO_DIR}/bindings/python/perf/perf_report.py"
 # MULTI_STREAM uses the shared C reference client binary (the measured
 # surface is the Go STREAM server); the Go binding has no STREAM client.
@@ -81,6 +79,7 @@ DURATION="5"
 MSG_SIZES=""
 TRANSPORTS="${PERF_TRANSPORTS:-}"
 RUNS="1"
+SMOKE=0
 CLIENTS=""
 RESULTS_DIR="${SCRIPT_DIR}/results/multi/report"
 RESULTS_TAG=""
@@ -276,6 +275,7 @@ Options:
   --msg-sizes LIST
   --transports LIST
   --runs N
+  --smoke
   --clients N
   --results-dir PATH
   --results-tag NAME
@@ -311,7 +311,7 @@ Options:
 Notes:
   - Supported multi patterns:
     MULTI_DEALER_DEALER,MULTI_DEALER_ROUTER,MULTI_ROUTER_ROUTER,MULTI_PUBSUB,
-    MULTI_SPOT,MULTI_SPOT_REQREP,MULTI_SPOT_SENDSEND,MULTI_STREAM
+    MULTI_STREAM
   - If GOMAXPROCS is unset, PERF_GO_GOMAXPROCS is an explicit positive-integer override.
     Otherwise --io-threads/PERF_IO_THREADS derives Go scheduler parallelism
     with a minimum of 4.
@@ -326,6 +326,7 @@ while [[ $# -gt 0 ]]; do
     --msg-sizes) MSG_SIZES="$2"; shift 2 ;;
     --transports) TRANSPORTS="$2"; shift 2 ;;
     --runs) RUNS="$2"; shift 2 ;;
+    --smoke) SMOKE=1; shift ;;
     --clients) CLIENTS="$2"; shift 2 ;;
     --results-dir) RESULTS_DIR="$2"; shift 2 ;;
     --results-tag) RESULTS_TAG="$2"; shift 2 ;;
@@ -411,6 +412,10 @@ done
 
 if [[ "${REUSE_BUILD}" -eq 1 && "${CLEAN_BUILD}" -eq 1 ]]; then
   echo "Error: --reuse-build and --clean-build are mutually exclusive." >&2
+  exit 1
+fi
+if [[ "${SMOKE}" -eq 1 && -n "${OUTPUT_FILE}" ]]; then
+  echo "Error: --smoke cannot be combined with --output." >&2
   exit 1
 fi
 
@@ -542,26 +547,32 @@ run_go_perf() {
 }
 
 prepare_core_runtime() {
-  if [[ ! -f "${CORE_LIB}" ]]; then
-    echo "core runtime not found: ${CORE_LIB}" >&2
-    echo "Build core/build before running Go perf." >&2
+  local native_dir="${ZLINK_GO_NATIVE_DIR:-${ROOT_DIR}/native}"
+  case "${PLATFORM}:$(uname -m)" in
+    linux:x86_64|linux:amd64) native_dir="${native_dir}/linux-x86_64" ;;
+    linux:aarch64|linux:arm64) native_dir="${native_dir}/linux-aarch64" ;;
+    macos:x86_64|macos:amd64) native_dir="${native_dir}/darwin-x86_64" ;;
+    macos:arm64|macos:aarch64) native_dir="${native_dir}/darwin-aarch64" ;;
+    *) echo "unsupported Go package platform: ${PLATFORM}:$(uname -m)" >&2; exit 1 ;;
+  esac
+  local runtime="${native_dir}/libzlink.dylib"
+  if [[ "${PLATFORM}" == "linux" ]]; then
+    runtime="${native_dir}/libzlink.so.${CORE_VERSION}"
+  fi
+  if [[ ! -f "${runtime}" ]]; then
+    echo "Go package runtime not found: ${runtime}" >&2
+    echo "Set ZLINK_GO_NATIVE_DIR to an extracted package runtime directory." >&2
     exit 1
   fi
-  local newer_source
-  newer_source="$(
-    find "${REPO_DIR}/core/src" "${REPO_DIR}/core/include" \
-      -type f -newer "${CORE_LIB}" -print -quit 2>/dev/null || true
-  )"
-  if [[ -n "${newer_source}" ]]; then
-    echo "Error: stale core runtime detected for bindings/go/perf." >&2
-    echo "  runtime: ${CORE_LIB}" >&2
-    echo "  newer source: ${newer_source}" >&2
-    echo "Rebuild core/build before running run_benchmarks_multi.sh." >&2
-    exit 1
+  local runtime_sha
+  if command -v sha256sum >/dev/null 2>&1; then
+    runtime_sha="$(sha256sum "${runtime}" | awk '{print $1}')"
+  else
+    runtime_sha="$(shasum -a 256 "${runtime}" | awk '{print $1}')"
   fi
-  echo "Perf core build dir: ${REPO_DIR}/core/build"
-  echo "Perf runtime libzlink: ${CORE_LIB}"
-  export LD_LIBRARY_PATH="${CORE_LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+  echo "Go package runtime: ${runtime}"
+  echo "Go package runtime sha256: ${runtime_sha}"
+  export LD_LIBRARY_PATH="${native_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 }
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -570,15 +581,20 @@ if [[ -n "${RESULTS_TAG}" ]]; then
   TAG_SUFFIX="_${RESULTS_TAG}"
 fi
 RESULTS_DIR="$(resolve_results_dir "${RESULTS_DIR}")"
-RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
-mkdir -p "${RESULTS_DIR}"
-cleanup_report_dir "${RESULTS_DIR}"
+if [[ "${SMOKE}" -eq 0 ]]; then
+  RESULTS_FILE="${RESULTS_DIR}/perf_go_multi_${PLATFORM}_${TIMESTAMP}${TAG_SUFFIX}.txt"
+  mkdir -p "${RESULTS_DIR}"
+  cleanup_report_dir "${RESULTS_DIR}"
+fi
 prepare_core_runtime
 build_go_perf_binary
 START_SECONDS="$(date +%s)"
 TOTAL_TIME_ENABLED=1
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-go-multi.XXXXXX")"
 RAW_RESULTS_FILE="${TMP_DIR}/result_data.log"
+if [[ "${SMOKE}" -eq 1 ]]; then
+  RESULTS_FILE="${TMP_DIR}/smoke-report.txt"
+fi
 cleanup() {
   local status=$?
   rm -rf "${TMP_DIR}"
@@ -628,7 +644,7 @@ pattern_msg_sizes() {
 }
 
 if [[ "${PATTERN}" == "ALL" ]]; then
-  PATTERNS=("MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_PUBSUB" "MULTI_SPOT" "MULTI_SPOT_REQREP" "MULTI_SPOT_SENDSEND" "MULTI_STREAM")
+	PATTERNS=("MULTI_DEALER_DEALER" "MULTI_DEALER_ROUTER" "MULTI_ROUTER_ROUTER" "MULTI_PUBSUB" "MULTI_STREAM")
 else
   IFS=',' read -r -a RAW_PATTERNS <<< "${PATTERN}"
   PATTERNS=()
@@ -645,7 +661,7 @@ fi
 
 pattern_transports() {
   case "$1" in
-    MULTI_STREAM|MULTI_SPOT|MULTI_SPOT_REQREP|MULTI_SPOT_SENDSEND|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
+	MULTI_STREAM|MULTI_PUBSUB|MULTI_DEALER_DEALER|MULTI_DEALER_ROUTER|MULTI_ROUTER_ROUTER)
       echo "tcp tls ws wss"
       ;;
     *)
@@ -810,7 +826,6 @@ emit_effective_options_multi() {
   echo "- clients: ${CLIENTS_DISPLAY}"
   echo "- default_clients: ${PERF_MULTI_DEFAULT_CLIENTS:-${PERF_DEFAULT_CLIENTS:-100}}"
   echo "- default_stream_clients: ${PERF_MULTI_DEFAULT_STREAM_CLIENTS:-${PERF_STREAM_DEFAULT_CLIENTS:-10000}}"
-  echo "- service_clients: auto"
   echo "- server_io_threads: $(effective_multi_server_io_threads)"
   echo "- client_io_threads: $(effective_multi_client_io_threads)"
   echo "- go_gomaxprocs: ${GOMAXPROCS:-unset}"
@@ -1012,12 +1027,11 @@ resolve_client_timeout_seconds() {
     echo "${stream_timeout}"
     return
   fi
-  if [[ "${pattern}" == MULTI_SPOT* ]] \
-    || { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 262144 )); } \
+  if { [[ "${pattern}" == "MULTI_PUBSUB" ]] && (( size >= 262144 )); } \
     || { [[ "${transport}" == "tls" || "${transport}" == "wss" ]] && (( size >= 131072 )); }; then
-    local spot_timeout=$((duration * 6 + 30))
-    (( spot_timeout < 90 )) && spot_timeout=90
-    echo "${spot_timeout}"
+	local large_case_timeout=$((duration * 6 + 30))
+	(( large_case_timeout < 90 )) && large_case_timeout=90
+	echo "${large_case_timeout}"
     return
   fi
   local timeout=$((duration * 3 + 20))
@@ -1076,7 +1090,7 @@ run_multi_process_case() {
   local clients="$5"
   local case_log="$6"
 
-  local srv_out client_out client_err server_fifo ready_line endpoint control_line control_endpoint
+  local srv_out client_out client_err server_fifo ready_line endpoint
   local server_pid server_control_fd client_pid client_control_fd client_fifo client_ready_line
   local client_timeout case_status case_gomaxprocs
   case_gomaxprocs="$(resolve_case_gomaxprocs "${pattern}" "${transport}" "${size}")"
@@ -1114,19 +1128,6 @@ run_multi_process_case() {
   fi
   endpoint="${ready_line#READY,}"
   endpoint="${endpoint//0.0.0.0/127.0.0.1}"
-  control_endpoint=""
-  if [[ "${pattern}" == MULTI_SPOT* ]]; then
-    control_line="$(wait_for_file_prefix "${srv_out}" "CONTROL_READY," "${SERVER_READY_TIMEOUT_SECONDS}" || true)"
-    if [[ "${control_line}" != CONTROL_READY,* ]]; then
-      shutdown_server "${server_pid}" "${server_control_fd}"
-      cat "${srv_out}" > "${case_log}"
-      printf 'FAIL,current,%s,%s,%s,control_ready_timeout\n' "${pattern}" "${transport}" "${size}" >> "${case_log}"
-      rm -f "${srv_out}" "${client_out}" "${client_err}"
-      return 1
-    fi
-    control_endpoint="${control_line#CONTROL_READY,}"
-    control_endpoint="${control_endpoint//0.0.0.0/127.0.0.1}"
-  fi
   client_timeout="$(resolve_client_timeout_seconds "${pattern}" "${transport}" "${size}" "${duration}")"
   case_status=0
 
@@ -1160,56 +1161,6 @@ run_multi_process_case() {
         wait "${client_pid}" 2>/dev/null || true
       elif ! wait "${client_pid}"; then
         case_status=1
-      fi
-    fi
-    exec {client_control_fd}>&- || true
-  elif [[ "${pattern}" == MULTI_SPOT* ]]; then
-    client_fifo="$(mktemp -u "${TMP_DIR}/client_fifo.XXXXXX")"
-    mkfifo "${client_fifo}"
-    GOMAXPROCS="${case_gomaxprocs}" run_go_perf ./perf/multi \
-      --role client \
-      --pattern "${pattern}" \
-      --transport "${transport}" \
-      --msg-size "${size}" \
-      --duration "${duration}" \
-      --clients "${clients}" \
-      --endpoint "${endpoint},${control_endpoint}" \
-      < "${client_fifo}" > "${client_out}" 2> "${client_err}" &
-    client_pid=$!
-    exec {client_control_fd}> "${client_fifo}"
-    rm -f "${client_fifo}"
-
-    client_control_line="$(wait_for_file_prefix "${client_out}" "CLIENT_CONTROL_ENDPOINT," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-    if [[ "${client_control_line}" != CLIENT_CONTROL_ENDPOINT,* ]]; then
-      case_status=1
-      kill_process_tree "${client_pid}"
-      wait "${client_pid}" 2>/dev/null || true
-    else
-      client_control_endpoint="${client_control_line#CLIENT_CONTROL_ENDPOINT,}"
-      printf 'CONNECT_CONTROL,%s\n' "${client_control_endpoint}" >&"${server_control_fd}" || true
-      control_connected="$(wait_for_file_prefix "${srv_out}" "CONTROL_CONNECTED," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-      if [[ "${control_connected}" != "CONTROL_CONNECTED,${client_control_endpoint}" ]]; then
-        case_status=1
-        kill_process_tree "${client_pid}"
-        wait "${client_pid}" 2>/dev/null || true
-      else
-        printf '%s\n' "${control_connected}" >&"${client_control_fd}" || true
-        client_ready_line="$(wait_for_file_prefix "${client_out}" "CLIENT_READY," "${ONE_WAY_CLIENT_READY_TIMEOUT}" || true)"
-        if [[ "${client_ready_line}" != "CLIENT_READY,${size}" ]]; then
-          case_status=1
-          kill_process_tree "${client_pid}"
-          wait "${client_pid}" 2>/dev/null || true
-        else
-          printf 'START,%s\n' "${size}" >&"${server_control_fd}" || true
-          printf 'START,%s\n' "${size}" >&"${client_control_fd}" || true
-          if ! wait_for_pid "${client_pid}" "${client_timeout}"; then
-            case_status=1
-            kill_process_tree "${client_pid}"
-            wait "${client_pid}" 2>/dev/null || true
-          elif ! wait "${client_pid}"; then
-            case_status=1
-          fi
-        fi
       fi
     fi
     exec {client_control_fd}>&- || true
@@ -1478,6 +1429,18 @@ for pattern_index in "${!PATTERNS[@]}"; do
     sleep_millis "${PATTERN_TRANSITION_MS}"
   fi
 done
+
+if [[ "${SMOKE}" -eq 1 ]]; then
+  expected_result_lines=$((expected_cases * 5))
+  if [[ "${#FAILURES[@]}" -gt 0 || "${result_lines}" -ne "${expected_result_lines}" ]]; then
+    exec >&3
+    grep -E '^(READY,|ACTIVE,|RESULT,|FAIL,)' "${RAW_RESULTS_FILE}" || true
+    exit 1
+  fi
+  exec >&3
+  grep -E '^(READY,|ACTIVE,|RESULT,)' "${RAW_RESULTS_FILE}" || true
+  exit 0
+fi
 
 table_output="$(render_tables)"
 if [[ -n "${table_output}" ]]; then

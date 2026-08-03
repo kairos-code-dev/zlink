@@ -26,6 +26,9 @@ CLEAN**이다. 전체 완료를 막는 조건은 다음과 같다.
 - 현재 `scripts/local-package/go/build-wsl.sh`도 `linux-x86_64`만 candidate payload source로 허용한다. `linux-aarch64`,
   `darwin-x86_64`, `darwin-aarch64` 요청은 모두 exit 2로 거부되므로 non-x86_64 gate에는 target payload와
   builder 확장, native consumer 실행 환경이 함께 필요하다.
+- 현재 Core worktree의 11.2.0 candidate는 기존 Go V11-R2 review가 승인하지 않으며, 기존 승인 candidate는
+  현재 `core/CMakeLists.txt` drift 때문에 worktree에 재사용할 수 없다. 두 검증 결과는
+  [`log/go/2026-08-04-current-candidate-recheck.ko.md`](log/go/2026-08-04-current-candidate-recheck.ko.md)에 기록했다.
 - Go–Rust parity inventory의 대응 행은 채워졌지만 공통 submit 반환 초안과 parity 판정은 아직 승인 전이다. 현재
   Go send/request terminal method는 `(bool, error)`를 유지하므로 “성공 값 없는 submit은 `error`만 반환한다”는
   목표를 완료로 표시하지 않는다.
@@ -45,6 +48,9 @@ Candidate verify 입력은 다음과 같다.
 | V11-M3-CORE-PKG evidence | `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/core-package-20260801.json` |
 | V11-M3-CORE-PKG evidence SHA-256 | `3a912391c6a7d441e22e606c3407e626ee9d05883142cc541b331498f39722df` |
 | Approved runtime SHA-256 | `b6fadc481c649b50637a9c0eb01d15a016e6ba4cd5bab967bdb6da4497a3c0c4` |
+
+현재 Core worktree와 기존 승인 candidate의 재사용 검증은
+[`log/go/2026-08-04-current-candidate-recheck.ko.md`](log/go/2026-08-04-current-candidate-recheck.ko.md)에 기록했다.
 
 ## 2. Module path와 version 결정
 

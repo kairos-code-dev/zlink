@@ -48,6 +48,13 @@
 runtime을 해당 target의 package에 넣을 builder 입력과 native consumer 실행 환경이 모두 필요하다. 기존
 major 9 payload나 다른 workstream의 11.2.0 artifact를 이 candidate의 증거로 대체하지 않는다.
 
+현재 Core worktree의 11.2.0 candidate와 기존 Go 승인 candidate를 비교한 결과도 별도 log에 기록했다.
+기존 V11-R2 review는 새 candidate SHA `483df3ff20925fda60b3ac5a1c75e71e47c5eab871242623ee2c7fa66dd644bd`를
+거부했고, 기존 candidate를 현재 worktree에 검증하면 `core/CMakeLists.txt` content drift로 종료 코드 `1`이다.
+이 결과는 Go 11.1.0 package evidence를 유지해야 하는 근거이며, 새 Core candidate의 승인으로 해석하지 않는다.
+자세한 명령과 출력은
+[`log/go/2026-08-04-current-candidate-recheck.ko.md`](2026-08-04-current-candidate-recheck.ko.md)에 기록했다.
+
 ## 최종 상태
 
 Go plan의 문서·source·Linux x86_64 package 범위는 `427fbce0f5c` source의 fresh6 evidence로 재현 가능하다. 이후

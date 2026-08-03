@@ -62,8 +62,13 @@ can finish in-flight replies after the active window. Override the default
 Normal smoke path:
 
 ```bash
-./perf/multi/run_benchmarks.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --duration 0.2
+ZLINK_LIBRARY_PATH=/absolute/path/to/libzlink.so \
+  ./perf/multi/run_benchmarks.sh --smoke --pattern DEALER_ROUTER \
+  --msg-sizes 64 --transports tcp --clients 1 --duration 1 --runs 1
 ```
+
+The runtime path is mandatory. The runner prints its SHA-256 and smoke mode
+does not write an official report.
 
 Output must contain `RESULT,current,...` lines for the selected pattern.
 Saved reports must use `results/multi/report/perf_<lang>_<suite>_<platform>_...txt`.

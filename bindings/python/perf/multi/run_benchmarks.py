@@ -24,12 +24,11 @@ from perf_multi_common import (
     throughput_unit,
 )
 from perf_report import multi_auto_hwm_lines, sort_result_data_lines
+from perf_runtime import configure_runtime
 
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent.parent.parent.parent
-CORE_BUILD_DIR = REPO_ROOT / "core" / "build"
-RUNNER_LIB = CORE_BUILD_DIR / "lib" / "libzlink.so"
 DEFAULT_PYTHONPATH = ROOT.parent.parent / "src"
 # MULTI_STREAM client must be the shared C perf_stream_client binary so the
 # measured surface stays the Python STREAM server (see PERF_MULTI_TEST_POLICY).
@@ -193,42 +192,8 @@ def _parse_transports(value):
     return transports
 
 
-def _ensure_core_runtime():
-    if not RUNNER_LIB.exists():
-        raise SystemExit(
-            f"core runtime not found: {RUNNER_LIB}\n"
-            "Build core/build before running Python perf."
-        )
-    runtime_mtime = RUNNER_LIB.stat().st_mtime
-    for source_root in (REPO_ROOT / "core" / "src", REPO_ROOT / "core" / "include"):
-        if not source_root.exists():
-            continue
-        for source in source_root.rglob("*"):
-            if source.is_file() and source.stat().st_mtime > runtime_mtime:
-                raise SystemExit(
-                    "Error: stale core runtime detected for bindings/python/perf.\n"
-                    f"  runtime: {RUNNER_LIB}\n"
-                    f"  newer source: {source}\n"
-                    "Rebuild core/build before running run_benchmarks_multi.sh."
-                )
-    print(f"Perf core build dir: {CORE_BUILD_DIR}", flush=True)
-    print(f"Perf runtime libzlink: {RUNNER_LIB}", flush=True)
-
-
-def _runtime_libzlink():
-    try:
-        return str(RUNNER_LIB.resolve(strict=True))
-    except OSError:
-        return str(RUNNER_LIB)
-
-
 def _configure_core_runtime(env):
-    _ensure_core_runtime()
-    env["ZLINK_LIBRARY_PATH"] = str(RUNNER_LIB)
-    lib_dir = str(RUNNER_LIB.parent)
-    env["LD_LIBRARY_PATH"] = (
-        f"{lib_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else lib_dir
-    )
+    return configure_runtime(env, REPO_ROOT)
 
 
 def _transports_for_pattern(pattern, transports):
@@ -1017,7 +982,7 @@ def _build_options(args, patterns, transports, requested_msg_sizes, clients, env
     }
 
 
-def _meta_lines(args, clients):
+def _meta_lines(args, clients, runtime_info):
     def git_commit():
         try:
             return subprocess.check_output(
@@ -1047,7 +1012,8 @@ def _meta_lines(args, clients):
         f"META,load_avg,{load_avg}",
         f"META,runs,{args.runs}",
         f"META,clients,{clients}",
-        f"META,runtime_libzlink,{_runtime_libzlink()}",
+        f"META,runtime_libzlink,{runtime_info.path}",
+        f"META,runtime_libzlink_sha256,{runtime_info.sha256}",
     ]
 
 
@@ -1112,7 +1078,7 @@ def main(argv=None):
     if args.server_bind_port:
         env["PERF_MULTI_SERVER_BIND_PORT"] = args.server_bind_port
     _apply_dealer_dealer_shutdown_timeout_default(args, env, configs)
-    _configure_core_runtime(env)
+    runtime_info = _configure_core_runtime(env)
 
     run_cooldown_ms = _env_int("PERF_MULTI_RUN_COOLDOWN_MS", _env_int("PERF_RUN_COOLDOWN_MS", 3000))
     transport_transition_ms = _env_int(
@@ -1132,7 +1098,7 @@ def main(argv=None):
     fail_count = 0
     stop_early = False
     case_ordinal = 1
-    for line in _meta_lines(args, clients):
+    for line in _meta_lines(args, clients, runtime_info):
         _append_line(sections, line)
     _append_line(sections)
     _append_line(sections, render_effective_options(options))

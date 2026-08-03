@@ -9,7 +9,7 @@ from pathlib import Path
 from setuptools import Extension, setup
 
 
-ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_ROOT = Path(__file__).resolve().parent
 
 
 def _core_prefix() -> Path:
@@ -73,7 +73,34 @@ def _native_extension(name: str, source: str) -> Extension:
     )
 
 
+def _native_package_data() -> dict[str, list[str]]:
+    machine = platform.machine().lower()
+    if sys.platform == "win32":
+        platform_dir = (
+            "windows-x86_64"
+            if "64" in os.environ.get("PROCESSOR_ARCHITECTURE", "")
+            else "windows-x86"
+        )
+    elif sys.platform == "darwin":
+        platform_dir = (
+            "darwin-aarch64" if machine in {"arm64", "aarch64"} else "darwin-x86_64"
+        )
+    elif sys.platform.startswith("linux"):
+        platform_dir = (
+            "linux-aarch64" if machine in {"arm64", "aarch64"} else "linux-x86_64"
+        )
+        payload_dir = PACKAGE_ROOT / "src" / "zlink" / "native" / platform_dir
+        if not (payload_dir / "libzlink.so").exists():
+            raise RuntimeError(f"Core runtime payload is missing from {payload_dir}")
+        if any(payload_dir.glob("libzlink_c*")):
+            raise RuntimeError(f"Obsolete libzlink_c payload remains in {payload_dir}")
+    else:
+        raise RuntimeError(f"Unsupported platform: {sys.platform}")
+    return {"zlink": ["py.typed", f"native/{platform_dir}/*"]}
+
+
 setup(
+    package_data=_native_package_data(),
     ext_modules=[
         _native_extension(
             "zlink._native._zlink_native",

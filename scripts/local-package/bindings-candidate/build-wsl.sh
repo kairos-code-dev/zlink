@@ -178,8 +178,9 @@ if [[ "$LANGUAGE" == "python" ]]; then
   mkdir -p "$core_prefix/include" "$core_prefix/lib"
   cp -a "$REPO_DIR/core/include/." "$core_prefix/include/"
   cp "$runtime" "$core_prefix/lib/libzlink.so.$core_version"
-  ln -s "libzlink.so.$core_version" "$core_prefix/lib/libzlink.so.11"
-  ln -s "libzlink.so.11" "$core_prefix/lib/libzlink.so"
+  soname_name="${soname##*/}"
+  ln -s "libzlink.so.$core_version" "$core_prefix/lib/$soname_name"
+  ln -s "$soname_name" "$core_prefix/lib/libzlink.so"
   [[ "$(sha256sum "$core_prefix/lib/libzlink.so.$core_version" | awk '{print $1}')" == "$runtime_sha" ]] || {
     echo "Python Core build prefix does not match candidate" >&2
     exit 1
@@ -217,7 +218,8 @@ case "$LANGUAGE" in
     package_version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$REPO_DIR/bindings/python/pyproject.toml" | head -n1)"
     [[ "$package_version" == "$PACKAGE_VERSION" ]] || { echo "Python package version mismatch: $package_version != $PACKAGE_VERSION" >&2; exit 1; }
     (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" ./tests/run_tests.sh)
-    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m build --outdir "$OUTPUT_ROOT/python")
+    rm -rf "$OUTPUT_ROOT/python"
+    (cd "$REPO_DIR/bindings/python" && ZLINK_CORE_PREFIX="$core_prefix" ZLINK_LIBRARY_PATH="$payload" python3 -m pip wheel --no-deps --no-build-isolation --wheel-dir "$OUTPUT_ROOT/python" .)
     wheel=("$OUTPUT_ROOT"/python/*.whl)
     [[ ${#wheel[@]} -eq 1 && -f "${wheel[0]}" ]] || { echo "Expected exactly one Python wheel" >&2; exit 1; }
     mkdir -p "$consumer/wheel"
@@ -229,11 +231,69 @@ import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     wheel.extractall(pathlib.Path(sys.argv[2]))
 PY
-    verify_packaged_payload "$consumer/wheel/zlink/native/linux-$native_arch/libzlink.so.$core_version"
+    python3 - "${wheel[0]}" "$core_version" "$native_arch" "$soname" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+wheel_path = pathlib.Path(sys.argv[1])
+core_version = sys.argv[2]
+native_arch = sys.argv[3]
+soname = sys.argv[4]
+expected_prefix = f"zlink/native/linux-{native_arch}/"
+with zipfile.ZipFile(wheel_path) as archive:
+    names = set(archive.namelist())
+    if "zlink/py.typed" not in names:
+        raise SystemExit("Wheel is missing zlink/py.typed")
+    native_names = {name for name in names if name.startswith("zlink/native/")}
+    if not native_names or any(not name.startswith(expected_prefix) for name in native_names):
+        raise SystemExit("Wheel contains an unexpected platform payload")
+    forbidden = ("libzlink_c", ".so.10", ".so.9", ".dylib", ".dll", "core/build")
+    if any(token in name for name in native_names for token in forbidden):
+        raise SystemExit("Wheel contains an obsolete or cross-platform native payload")
+    expected_runtime = f"{expected_prefix}libzlink.so.{core_version}"
+    if expected_runtime not in names:
+        raise SystemExit(f"Wheel is missing {expected_runtime}")
+    metadata = [name for name in names if name.endswith(".dist-info/METADATA")]
+    if len(metadata) != 1:
+        raise SystemExit("Wheel metadata is missing or ambiguous")
+PY
+    packaged_payload="$consumer/wheel/zlink/native/linux-$native_arch/libzlink.so.$core_version"
+    verify_packaged_payload "$packaged_payload"
+    [[ "$(nm -D --defined-only "$packaged_payload" | awk '{print $3}' | sed -n '/^zlink_/p' | sort -u | sha256sum | awk '{print $1}')" == "$symbol_sha" ]] || {
+      echo "Packaged Python payload symbol inventory does not match candidate" >&2
+      exit 1
+    }
+    [[ "$(readelf -d "$packaged_payload" | sed -n 's/.*Library soname: \[\(.*\)\].*/\1/p')" == "$soname" ]] || {
+      echo "Packaged Python payload SONAME does not match candidate" >&2
+      exit 1
+    }
     printf 'PACKAGED_HEADER_SHA256=not_applicable\n' >>"$OUTPUT_ROOT/$LANGUAGE/candidate-input.env"
     python3 -m venv "$consumer/venv"
     "$consumer/venv/bin/pip" install --no-deps "${wheel[0]}"
-    (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" -c 'import pathlib, zlink; zlink.version(); maps=pathlib.Path("/proc/self/maps").read_text(); assert "/venv/" in maps and "libzlink" in maps')
+    (cd "$consumer" && env -u LD_LIBRARY_PATH -u ZLINK_LIBRARY_PATH PYTHONPATH= "$consumer/venv/bin/python" - "$core_version" "$native_arch" <<'PY'
+import pathlib
+import sys
+
+import zlink
+
+expected_version = tuple(int(part) for part in sys.argv[1].split("."))
+assert zlink.version() == expected_version
+with zlink.create_context() as context:
+    with zlink.create_pair_socket(context) as sender:
+        with zlink.create_pair_socket(context) as receiver:
+            endpoint = "inproc://python-candidate-clean-consumer"
+            sender.bind(endpoint)
+            receiver.connect(endpoint)
+            assert sender.send().message(b"clean-consumer").submit()
+            received = zlink.create_received()
+            assert receiver.recv_into(received)
+            with received:
+                assert received.to_bytes_list() == [b"clean-consumer"]
+maps = pathlib.Path("/proc/self/maps").read_text()
+assert "/venv/" in maps and f"linux-{sys.argv[2]}" in maps and "libzlink" in maps
+PY
+    )
     ;;
   go)
     archive="$OUTPUT_ROOT/go/zlink-go-$PACKAGE_VERSION.tar.gz"

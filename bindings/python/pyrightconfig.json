@@ -1,8 +1,10 @@
 {
     "include": [
-        "src",
-        "tests"
+        "src/zlink/contracts"
     ],
+    "pythonVersion": "3.9",
+    "typeCheckingMode": "basic",
+    "reportUnsupportedDunderAll": "none",
     "extraPaths": [
         "src"
     ],

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-from typing import Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -16,7 +16,7 @@ class Timer(Protocol):
         """Stop the timer; it can be restarted with :meth:`start`."""
         ...
 
-    def recv(self) -> int | None:
+    def recv(self) -> Optional[int]:
         """Receive the next expiration as the cumulative fire count, or ``None``
         when none is pending."""
         ...

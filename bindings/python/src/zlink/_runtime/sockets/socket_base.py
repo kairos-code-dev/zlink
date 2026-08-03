@@ -3,6 +3,7 @@
 import ctypes
 import errno as _errno
 import threading
+from typing import Optional
 
 from ..eventing.dispatcher import CallbackDispatcher
 from ...contracts.errors.codes import (
@@ -582,7 +583,7 @@ class _Socket(_BaseSocket):
             _raise_result_error(ConfigError, ConfigResult, rc, lib().zlink_errno())
 
     def set_tls_client(
-        self, ca_cert: str | None, hostname: str | None, trust_system: bool = False
+        self, ca_cert: Optional[str], hostname: Optional[str], trust_system: bool = False
     ):
         ca_value = (
             None

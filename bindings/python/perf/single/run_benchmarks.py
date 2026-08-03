@@ -17,12 +17,11 @@ from perf_common import (
     throughput_unit,
 )
 from perf_report import SINGLE_TABLE_HEADER_LINES, single_auto_hwm_detail_lines
+from perf_runtime import configure_runtime
 
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent.parent.parent.parent
-CORE_BUILD_DIR = REPO_ROOT / "core" / "build"
-CORE_LIB = CORE_BUILD_DIR / "lib" / "libzlink.so"
 DEFAULT_PYTHONPATH = ROOT.parent.parent / "src"
 DEFAULT_PATTERNS = (
     "PAIR",
@@ -128,42 +127,8 @@ def _parse_transports(value):
     return transports
 
 
-def _ensure_core_runtime():
-    if not CORE_LIB.exists():
-        raise SystemExit(
-            f"core runtime not found: {CORE_LIB}\n"
-            "Build core/build before running Python perf."
-        )
-    runtime_mtime = CORE_LIB.stat().st_mtime
-    for source_root in (REPO_ROOT / "core" / "src", REPO_ROOT / "core" / "include"):
-        if not source_root.exists():
-            continue
-        for source in source_root.rglob("*"):
-            if source.is_file() and source.stat().st_mtime > runtime_mtime:
-                raise SystemExit(
-                    "Error: stale core runtime detected for bindings/python/perf.\n"
-                    f"  runtime: {CORE_LIB}\n"
-                    f"  newer source: {source}\n"
-                    "Rebuild core/build before running run_benchmarks.sh."
-                )
-    print(f"Perf core build dir: {CORE_BUILD_DIR}", flush=True)
-    print(f"Perf runtime libzlink: {CORE_LIB}", flush=True)
-
-
-def _runtime_libzlink():
-    try:
-        return str(CORE_LIB.resolve(strict=True))
-    except OSError:
-        return str(CORE_LIB)
-
-
 def _configure_core_runtime(env):
-    _ensure_core_runtime()
-    env["ZLINK_LIBRARY_PATH"] = str(CORE_LIB)
-    lib_dir = str(CORE_LIB.parent)
-    env["LD_LIBRARY_PATH"] = (
-        f"{lib_dir}:{env['LD_LIBRARY_PATH']}" if env.get("LD_LIBRARY_PATH") else lib_dir
-    )
+    return configure_runtime(env, REPO_ROOT)
 
 
 def _transports_for_pattern(pattern, transports):
@@ -360,7 +325,7 @@ def main(argv=None):
 
     env = dict(os.environ)
     env["PYTHONPATH"] = str(DEFAULT_PYTHONPATH.resolve())
-    _configure_core_runtime(env)
+    runtime_info = _configure_core_runtime(env)
     if args.io_threads:
         env["PERF_IO_THREADS"] = args.io_threads
     if args.hwm:
@@ -394,7 +359,8 @@ def main(argv=None):
     stop_early = False
     case_ordinal = 1
 
-    _append_line(sections, f"META,runtime_libzlink,{_runtime_libzlink()}")
+    _append_line(sections, f"META,runtime_libzlink,{runtime_info.path}")
+    _append_line(sections, f"META,runtime_libzlink_sha256,{runtime_info.sha256}")
     _append_line(sections)
     _append_line(sections, render_effective_options(options))
 

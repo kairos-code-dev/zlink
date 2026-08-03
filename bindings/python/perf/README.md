@@ -130,7 +130,19 @@ Runner output and saved reports include:
 
 ## Smoke
 
+Perf requires the approved Core or wheel runtime to be supplied explicitly.
+The runner prints its resolved path and SHA-256 and does not fall back to the
+repository build directory.
+
 ```bash
-./perf/run_benchmarks.sh --pattern PAIR --msg-sizes 64 --duration 0.2
-./perf/run_benchmarks_multi.sh --pattern PUBSUB --msg-sizes 64 --clients 2 --duration 0.2
+ZLINK_LIBRARY_PATH=/absolute/path/to/libzlink.so \
+  ./perf/run_benchmarks.sh --smoke --pattern PAIR --msg-sizes 64 \
+  --transports inproc --duration 1 --runs 1
+
+ZLINK_LIBRARY_PATH=/absolute/path/to/libzlink.so \
+  ./perf/run_benchmarks_multi.sh --smoke --pattern DEALER_ROUTER \
+  --msg-sizes 64 --transports tcp --clients 1 --duration 1 --runs 1
 ```
+
+Smoke mode checks lifecycle, required `RESULT` rows and exit status. It does
+not write an official report.

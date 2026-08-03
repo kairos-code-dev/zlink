@@ -165,7 +165,7 @@ perf/run_benchmarks_multi.sh --smoke --pattern MULTI_DEALER_ROUTER --duration 1 
 
 Smoke는 ready, active, 필수 `RESULT` metric과 exit code만 확인하며 공식 성능 report를 만들지 않는다.
 Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` 경로는 해당 helper를 호출하지 않는다.
-이 경계는 `6d698c7e68`에서 고정했고, current-HEAD fresh6 extracted package smoke에서 다시 확인했다.
+이 경계는 `6d698c7e68`에서 고정했고, `427fbce0f5c` source로 생성한 fresh6 extracted package smoke에서 다시 확인했다.
 
 ### GO-07 — 구현 후 POSD·DDD 리팩터링과 Codex review — PARTIAL / NOT CLEAN
 
@@ -290,7 +290,7 @@ scripts/local-package/go/build-wsl.sh \
 | `go vet ./...` | `PASS` | fresh5 extracted package와 `bindings/go/tests/run_tests.sh`에서 통과 |
 | `go test -race ./...` | `PASS` | callback handle lifecycle와 request progress owner 변경 후 Linux x86_64에서 통과 |
 | Hot path cost inventory와 optimization guard | `PASS` | `hot-path-cost-inventory.json`, `TestHotPathCostInventory`, `TestOptimizationGuard` |
-| Perf runner smoke | `PASS` | current-HEAD fresh6 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
+| Perf runner smoke | `PASS` | `427fbce0f5c` source의 fresh6 extracted package에서 single PAIR inproc와 multi DEALER/ROUTER TCP smoke, exit 0 |
 | 구현 후 POSD·DDD·성능 비용·dead code Codex review | `NOT CLEAN` | 현재 독립 frontier review와 fresh finding report 없음 |
 | Go·Rust parity inventory | `PARTIAL` | 대응 surface·error·ownership 행은 기록했지만 submit 승인, contract test와 parity `CLEAN` 판정이 남음 |
 | Submit·`context.Context` draft 승인과 contract | `PARTIAL` | cancellation/error tests 통과; submit 반환 draft 승인과 error-only signature는 미완료 |

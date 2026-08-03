@@ -25,7 +25,7 @@
 | 2 | Raw cgo·public API가 Core 11 allowlist에 맞고 service API가 없음 | `PASS` | raw allowlist, public surface test와 package forbidden-entry 검사가 통과했다 |
 | 3 | Error·no-data·ownership이 Go–Rust parity 열과 일치함 | `PARTIAL` | 현재 Go evidence는 있으나 submit 반환과 callback completion 의미의 공통 승인이 없다 |
 | 4 | Submit·Context 규칙이 승인 draft와 contract test에 일치함 | `PARTIAL` | Context cancellation/deadline test는 통과했지만 submit draft 승인과 error-only 결정이 없다 |
-| 5 | Source test, vet, hot-path guard, perf smoke와 raw sample이 통과함 | `PASS` | current-HEAD fresh6 package에서 `go test`, race, `go vet`, guard, single·multi smoke와 samples `7/7`을 통과했다 |
+| 5 | Source test, vet, hot-path guard, perf smoke와 raw sample이 통과함 | `PASS` | `427fbce0f5c` source로 생성한 fresh6 package에서 `go test`, race, `go vet`, guard, single·multi smoke와 samples `7/7`을 통과했다 |
 | 6 | POSD·DDD·비용·dead code 검토와 독립 `CLEAN` review가 끝남 | `PARTIAL` | 자체 review와 `go test -race`는 통과했지만 현재 candidate의 독립 frontier review가 없다 |
 | 7 | replace 없는 clean consumer가 package runtime으로 message 송수신함 | `PASS` | fresh6 builder의 `cleanConsumer: pass`와 module-cache ldd/roundtrip 증거가 있다 |
 | 8 | 지원 Linux·macOS platform의 동일 candidate runtime load가 검증됨 | `PARTIAL` | Linux x86_64만 통과했다. Linux arm64는 `libzlink.so.9`, macOS 두 target은 native consumer 미검증이며 현재 Go package builder도 `linux-x86_64` 외 target을 거부한다 |
@@ -50,7 +50,8 @@ major 9 payload나 다른 workstream의 11.2.0 artifact를 이 candidate의 증�
 
 ## 최종 상태
 
-Go plan의 문서·source·Linux x86_64 package 범위는 current-HEAD fresh6 evidence로 재현 가능하다. 그러나 조건 3, 4, 6, 8,
+Go plan의 문서·source·Linux x86_64 package 범위는 `427fbce0f5c` source의 fresh6 evidence로 재현 가능하다. 이후
+변경은 `bindings/go`에 없음을 확인했다. 그러나 조건 3, 4, 6, 8,
 9, 11이 남아 있으므로 최종 상태는 `PARTIAL / NOT CLEAN`이다.
 
 다음 closure에는 우회 구현이 아니라 아래 외부 입력이 필요하다.

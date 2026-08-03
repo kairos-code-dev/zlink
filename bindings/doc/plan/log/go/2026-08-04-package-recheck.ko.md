@@ -1,6 +1,6 @@
 # Go binding Core 11 package 재검증 기록
 
-이 기록은 2026-08-04에 현재 HEAD 기준으로 확인한 Go binding의 candidate-bound fresh6 package evidence를 정리한다. Linux
+이 기록은 2026-08-04에 `427fbce0f5c` 시점의 Go binding source로 생성한 candidate-bound fresh6 package evidence를 정리한다. Linux
 x86_64 package·clean consumer·sample·perf smoke 범위는 통과했지만, Go 작업 전체는 공통 submit 계약 승인,
 독립 frontier review와 다른 platform native consumer가 남아 `PARTIAL / NOT CLEAN`이다.
 
@@ -23,14 +23,15 @@ x86_64 package·clean consumer·sample·perf smoke 범위는 통과했지만, Go
 Package evidence는 `zlink.systems/zlink/v11@v11.1.0` module, package-local Core 11 header와 candidate runtime을
 사용한다. `cleanConsumer`는 `replace` 없이 실제 message roundtrip과 module-cache runtime load를 통과했다.
 Package에는 service·Spot·Actor·build·results forbidden entry가 없다.
-Source manifest는 현재 HEAD를 기록하며, 이전 package를 만든 `6d698c7e68` 이후 `bindings/go`에는 변경이 없다.
+Source manifest는 package 생성 시점의 HEAD `427fbce0f5c`를 기록하며, 이후 계획 문서 commit에서도 `bindings/go`에는
+변경이 없다.
 
 ```bash
 git diff --name-status 6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d..427fbce0f5c0a3b6000506380b3d40521ed86413 -- bindings/go
 ```
 
-위 명령은 출력을 만들지 않았다. 따라서 fresh6은 binding source가 바뀌지 않은 상태에서 source provenance만
-현재 HEAD로 다시 고정한 package evidence다.
+위 명령은 출력을 만들지 않았다. 따라서 fresh6은 binding source가 바뀌지 않은 상태에서 source provenance를
+`427fbce0f5c`에 고정한 package evidence다.
 
 ## 실행 결과
 

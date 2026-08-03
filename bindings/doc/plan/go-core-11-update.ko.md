@@ -202,6 +202,7 @@ Package zip에는 Python report helper가 포함되지 않으므로 `--smoke` �
 | Package smoke boundary | `6d698c7e68` | Go package perf `--smoke`가 package 외부 Python report helper 없이 동작하도록 고정 |
 | Package source boundary | `427fbce0f5c` | 이 source revision으로 candidate identity를 연결한 package와 clean consumer, race·sample·perf smoke를 재검증 |
 | Platform builder boundary | `3740c59ad9` | non-x86_64 package builder 거부 결과와 같은 candidate를 요구하는 platform gate를 기록 |
+| Submit draft boundary | `7f27ed6bc5` | Go·Rust submit 반환 초안을 구현 전 문서로 branch에 고정하고 public signature는 바꾸지 않음 |
 
 그러나 구현자가 아닌 frontier reviewer의 read-only 전체 diff review evidence가 없다. V11-R2 Core review도
 `independent: false`이므로 이 결과를 Go 독립 review로 대체하지 않는다. `contract`, `POSD`, `DDD`,
@@ -217,8 +218,9 @@ Go 정식 spec의 한국어·영문 문서는 `/v11` module, Core 11 raw public 
 surface와 package boundary에 맞춰 갱신했다. `bindings/go/README.godoc.md`, `tests/run_tests.sh`와 sample
 entrypoint도 현재 구현과 맞는다.
 
-공통 bindings spec의 submit 반환 초안 승인, 채워진 Go–Rust parity inventory의 최종 판정과 공통 문구 통합은
-아직 남아 있다. 따라서 언어별 Go spec 갱신만으로 전체 public contract parity 완료를 주장하지 않는다.
+공통 bindings spec의 submit 반환 초안 파일은 구현 전 문서로 branch에 고정했지만, 초안 승인, 채워진 Go–Rust parity
+inventory의 최종 판정과 공통 문구 통합은 아직 남아 있다. 따라서 언어별 Go spec 갱신만으로 전체 public contract
+parity 완료를 주장하지 않는다.
 
 ## 5. Platform 검증
 

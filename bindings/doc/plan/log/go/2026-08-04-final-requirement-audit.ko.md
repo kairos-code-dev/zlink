@@ -29,7 +29,7 @@
 | 6 | POSD·DDD·비용·dead code 검토와 독립 `CLEAN` review가 끝남 | `PARTIAL` | 자체 review와 `go test -race`는 통과했지만 현재 candidate의 독립 frontier review가 없다 |
 | 7 | replace 없는 clean consumer가 package runtime으로 message 송수신함 | `PASS` | fresh6 builder의 `cleanConsumer: pass`와 module-cache ldd/roundtrip 증거가 있다 |
 | 8 | 지원 Linux·macOS platform의 동일 candidate runtime load가 검증됨 | `PARTIAL` | Linux x86_64만 통과했다. Linux arm64는 `libzlink.so.9`, macOS 두 target은 native consumer 미검증이며 현재 Go package builder도 `linux-x86_64` 외 target을 거부한다 |
-| 9 | Go spec, GoDoc와 guide가 구현·공통 contract와 일치함 | `PARTIAL` | Go 문서는 현재 구현과 맞지만 공통 submit draft와 parity 반영이 승인 전이다 |
+| 9 | Go spec, GoDoc와 guide가 구현·공통 contract와 일치함 | `PARTIAL` | Go 문서는 현재 구현과 맞고 submit draft도 branch에 있지만, 초안 승인과 parity 반영은 아직 전이다 |
 | 10 | 성능 수치 개선을 완료 근거로 사용하지 않음 | `PASS` | smoke는 실행 의미만 확인하고 공식 성능 개선 판정은 하지 않았다 |
 | 11 | 미해결 Critical/High/Medium finding과 미실행 필수 gate가 없음 | `PARTIAL` | 독립 review, submit approval과 non-x86_64 consumer gate가 남아 있다 |
 

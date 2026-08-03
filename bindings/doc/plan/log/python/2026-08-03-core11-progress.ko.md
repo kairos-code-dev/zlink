@@ -12,6 +12,41 @@ Linux x86_64 local implementation gate는 통과했다. CPython 3.9 Docker와 ho
 candidate 절차를 각각 통과했다. 전체 상태는 `PARTIAL / NOT CLEAN`이며, 현재 Core candidate와 공통
 V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `CLEAN` 판정이 남아 있다.
 
+## 2026-08-04 current recheck
+
+현재 branch의 `HEAD`는 `427fbce0f5c0a3b6000506380b3d40521ed86413`이다. 현재 worktree를 기준으로
+다시 만든 Core ledger candidate는 다음 identity를 갖는다.
+
+```text
+candidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
+candidateManifestSha256: 6e1db3d352141e1ea966f74170c4c1d16980e6edd60ffb1964c4161e58dabb81
+baseRevision: 427fbce0f5c0a3b6000506380b3d40521ed86413
+aggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
+pathCount: 19
+```
+
+CPython 3.9과 3.12의 fresh package output은 이 Core revision과 runtime SHA를 기록한다.
+
+```text
+coreRevision: 427fbce0f5c0a3b6000506380b3d40521ed86413
+coreRuntimeSha256: aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e
+pythonSourceManifestSha256: 07f040475e0e40a34cf3a9100ea8bf413c411ba03be3a47f9d72188149a42c02
+pythonSourceAggregateSha256: 399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c
+cp39WheelSha256: 74cc3933566c0458a9e49b58c1fa27065f6bbb59b787c3b36099f9bc5b478a56
+cp312WheelSha256: b892099d58a8586a64c2dffa44602c6fcb5c0dd774b3646f264a1c45afb3f863
+```
+
+현재 package output은 source test `64 passed`, clean consumer와 installed sample `7/7`을 두 interpreter에서
+통과했다. Single·multi perf smoke도 각각 `status=complete`와 `success=1, fail=0`을 반환했다.
+
+기존 `.artifacts/v11/evidence/V11-R2/core-candidate-reply-match-completion-hwm-review-20260801.json`은
+`d318525a4cf8496b6bef5d900c9a88330ea6d7e10ed4120ac0fd9f19d23f6765`만 승인한다. 현재 candidate에 이
+evidence를 입력한 `scripts/local-package/core/verify-candidate.mjs` 결과는
+`review evidence does not approve the supplied candidate manifest SHA-256`로 종료 코드 `1`이다.
+따라서 fresh local package evidence는 확보했지만, 현재 candidate를 승인하는 독립 `V11-R2` evidence와
+그 evidence를 참조하는 공통 `V11-M3-CORE-PKG` 결과는 아직 없다. 이 조건이 충족되기 전에는 전체 상태를
+`CLEAN` 또는 완료로 올리지 않는다.
+
 ## Candidate identity
 
 ```text

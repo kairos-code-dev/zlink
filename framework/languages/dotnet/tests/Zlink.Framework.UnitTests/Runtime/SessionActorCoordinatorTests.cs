@@ -711,7 +711,7 @@ public sealed class SessionActorCoordinatorTests
                 payload,
                 static (_, _, _) => ValueTask.CompletedTask,
                 CancellationToken.None));
-        Assert.Equal(ZLinkFrameworkErrorKind.InvalidOperation, staleRelay.Kind);
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, staleRelay.Kind);
 
         await stale.NotifyDisconnectedAsync();
 
@@ -1378,6 +1378,58 @@ public sealed class SessionActorCoordinatorTests
             identity.BindingToken,
             out var postSealHighWater));
         Assert.Equal(acceptedHighWater, postSealHighWater);
+    }
+
+    [Fact]
+    public async Task Sealed_Route_Reports_Unavailable_Before_Frame_Admission()
+    {
+        var runtime = CreateRuntime();
+        var context = CreateSessionContext(runtime, "session-seal-unavailable");
+        var actor = new ActorRef(
+            "actor-seal-unavailable",
+            7,
+            "actors",
+            RoutingId.From("actor-node-a"));
+        var bound = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var identity));
+        Assert.True((await runtime.SealSessionActorRouteAsync(
+                new ZLinkSessionRouteSeal(
+                    actor.ActorId,
+                    identity.BindingToken,
+                    identity.BindingGeneration,
+                    actor.ObjectGeneration,
+                    identity.AuthorityOwnerGeneration,
+                    identity.MeshName,
+                    identity.TargetNodeGeneration,
+                    identity.OwnerLeaseGeneration,
+                    identity.SessionOwnerNodeGeneration,
+                    "handoff-seal-unavailable"),
+            CancellationToken.None)).Acknowledged);
+
+        using var payload = Message.From(new byte[] { 1, 2, 3 });
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(1),
+            "ActorPingReq",
+            ZlinkStreamMetadata.Empty);
+
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await context.ActorCoordinator.RelayToActorAsync(
+                bound,
+                header,
+                payload,
+                static (_, _, _) => ValueTask.CompletedTask,
+                CancellationToken.None));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
+        Assert.Contains("before frame admission", error.Message, StringComparison.Ordinal);
+        Assert.True(runtime.TryGetSessionActorBinding(actor.ActorId, out var current));
+        Assert.Equal(identity.AcceptedHighWater, current.AcceptedHighWater);
     }
 
     [Fact]

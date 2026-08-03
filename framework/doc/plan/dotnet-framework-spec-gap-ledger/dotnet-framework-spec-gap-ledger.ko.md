@@ -1,6 +1,6 @@
 # .NET Framework spec gap audit와 수정 ledger
 
-> 상태: 2026-08-03 17:27 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
+> 상태: 2026-08-03 20:23 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
 > 최신 `FullyQualifiedName~Runtime` unit filter는 `747/747`로 exit `0`을 반환했다. 실행 중
 > negative startup 검증이 `ZlinkBindException`, `errno 93` stack trace를 남겼지만 testhost는
 > 중단되지 않았다. 새 handoff state 재사용 회귀를 포함한 영향 묶음은 `249/249`로 통과했다.
@@ -20,7 +20,9 @@
 >
 > 작업 시작 기준: `9efee01aa39ace3db8e0f50c46ba9c12864f2cc2`와 2026-08-02 working tree.
 > 현재 branch `HEAD`와 `origin/agent/framework-contract-runtime-update`는
-> `e619ac5bc05`에서 일치한다. 기준점과 working-tree manifest는
+> `b3905af9c5e`에서 일치한다. 이 checkpoint 시작 시점에 `.NET` source와 이 ledger의
+> 이전 변경은 해당 commit에 반영되어 있었고, 다른 workstream의 dirty source는 그대로 보존한다.
+> 기준점과 working-tree manifest는
 > [`log/20260802-092859-ledger-review.ko.md`](log/20260802-092859-ledger-review.ko.md)에 기록하고, 기존
 > Phase A 실행 결과는 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md),
 > 최신 poller/HWM 수정과 Codex 검증 결과는
@@ -42,6 +44,11 @@
 > [`log/20260803-1727-zoneworld-process-progress.ko.md`](log/20260803-1727-zoneworld-process-progress.ko.md)에
 > 기록한다. 전체 실행은 `ZW-C2` 뒤 `zone-node-2`의 remote actor creation에서 실패했고,
 > 단독 `ZW-C3`는 통과했으므로 sample 전체 완료로 표시하지 않는다.
+> 최신 ObservabilityOps `OBS-C6` 실행은 relocation trace에서 `room`·`instance` aggregate
+> `committed=2`와 target completion gate를 확인했지만, client의 Instance Spot target evidence
+> assertion에서 실패했다. 이 결과와 다음 검증 조건은
+> [`log/20260803-2023-observability-c6-checkpoint.ko.md`](log/20260803-2023-observability-c6-checkpoint.ko.md)에
+> 기록한다.
 > Sample source 계약 수정, regression `141/141`과 POSD·DDD 점검 결과는
 > [`log/20260803-1106-sample-contract-posd-ddd.ko.md`](log/20260803-1106-sample-contract-posd-ddd.ko.md)에 기록한다.
 >
@@ -50,17 +57,17 @@
 
 ## 현재 진행 snapshot (2026-08-03)
 
-마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. 현재 `.NET` production
-runtime source와 관련 unit test에는 dirty 변경이 있고, 이 변경은 runtime filter와 targeted unit
-test로 재검증했다. Package version/export에는 변경이 없지만, 이전 public XML documentation 변경으로
-생긴 package snapshot hash drift를 현재 source hash로 갱신하고 verifier와 clean consumer를 다시
-통과시켰다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
+마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. 현재 branch의 `.NET`
+production runtime source와 관련 unit test 변경은 HEAD에 반영되어 있고, runtime filter와 targeted
+unit test로 재검증했다. Package version/export에는 변경이 없지만, 이전 public XML documentation
+변경으로 생긴 package snapshot hash drift를 현재 source hash로 갱신하고 verifier와 clean consumer를
+다시 통과시켰다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
 
 | 범위 | 현재 상태 | 다음 조건 |
 |---|---|---|
-| Runtime·contract·package | 최신 전체 Runtime filter `747/747`, 핵심 runtime regression subset `541/541`, configuration·fanout·endpoint subset `54/54`와 ContractTests `76/76`이 통과했다. 새 handoff 재사용·push trace를 포함한 영향 묶음은 `249/249`다. 실행 중 negative startup 검증의 `errno 93` log는 별도 evidence로 남겼다. | 새 source를 반영한 package verifier·clean consumer를 갱신한다. |
-| E2E source·selector·runner | 기존 ST process evidence와 최신 ZoneWorld 전체 실행의 `ZW-B4`, `ZW-C2` 및 client batch 일부가 있다. 전체 실행은 C2 뒤 새 `zone-node-2`의 `bot-ne-y` remote actor creation에서 exit `1`로 실패했다. 단독 `ZW-C3`는 exit `0`이지만 전체 process gate를 대체하지 않는다. | C3 lifecycle-order dependency를 Framework runtime에서 재현·수정하고, ZoneWorld 전체 runner를 다시 통과시킨 뒤 7종 aggregate process evidence를 수집한다. |
-| Phase B sample source conformance | 공통 7종의 source 계약 수정과 regression `141/141`이 통과했다. GameQuest payload/action, ShoppingMall response, Delivery timestamp, Bingo optional/public 범위, ZoneWorld `UpdatePositionMsg`, TicTacToe·SupportChat one-way와 shell·PowerShell inventory가 포함된다. | 실제 process self-check·server evidence·cleanup, raw wire capture, package-only process와 독립 review를 실행한다. ZoneWorld는 전체 runner가 C3 lifecycle gap에서 아직 실패했다. |
+| Runtime·contract·package | 최신 전체 Runtime filter `747/747`, 핵심 runtime regression subset `541/541`, configuration·fanout·endpoint subset `54/54`와 ContractTests `76/76`이 통과했다. 새 handoff 재사용·push trace를 포함한 영향 묶음은 `249/249`다. 실행 중 negative startup 검증의 `errno 93` log는 별도 evidence로 남겼다. 관련 stale binding·session error wire focused regression은 최신 checkpoint에서 `5/5`다. | source/unit 결과와 process 결과를 계속 분리하고, C6 evidence 경계를 확인한 뒤 package·clean consumer와 독립 audit gate를 갱신한다. |
+| E2E source·selector·runner | 기존 ST process evidence와 최신 ZoneWorld 전체 실행의 `ZW-B4`, `ZW-C2` 및 client batch 일부가 있다. 전체 실행은 C2 뒤 새 `zone-node-2`의 `bot-ne-y` remote actor creation에서 exit `1`로 실패했다. 단독 `ZW-C3`는 exit `0`이지만 전체 process gate를 대체하지 않는다. 최신 `OBS-C6`는 runtime trace상 두 aggregate가 commit되었지만 Instance Spot evidence assertion에서 실패했다. | ZoneWorld C3 lifecycle 조건과 C6 Instance Spot evidence 조건을 각각 재현·확인한 뒤, 7종 aggregate process evidence를 수집한다. |
+| Phase B sample source conformance | 공통 7종의 source 계약 수정과 regression `141/141`이 통과했다. GameQuest payload/action, ShoppingMall response, Delivery timestamp, Bingo optional/public 범위, ZoneWorld `UpdatePositionMsg`, TicTacToe·SupportChat one-way와 shell·PowerShell inventory가 포함된다. | 실제 process self-check·server evidence·cleanup, raw wire capture, package-only process와 독립 review를 실행한다. ZoneWorld 전체 runner와 ObservabilityOps C6가 아직 process gate를 닫지 못했다. |
 | Config 14 | `InstanceSpot/run_e2e.sh`는 feature-map만 확인하고 exit 2로 종료한다. role server와 client는 없다. | process fixture, role server, client와 36개 scenario evidence를 추가한다. |
 | Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | runtime source/unit gate는 통과했으므로 사용자 지정 순서에 따라 sample source conformance를 진행할 수 있다. Phase A process/audit와 Phase B process 완료 판정은 뒤에서 함께 닫는다. |
 
@@ -384,6 +391,8 @@ Phase A의 과거 evidence이며, 현재 `HEAD`의 완료 증거로 다시 사�
 | 2026-08-03 10:32 runtime auto-connect cleanup follow-up | Runtime `744/744`, cleanup targeted `3/3`; `ST-B2` standalone process PASS, message trace와 file log 확인, package verifier·clean consumer·standalone HTTP consumer PASS, `git diff --check` PASS | Owner lease 만료 뒤 non-initiating side의 admission-pending peer intent를 정리하고 admitted transport는 보존했다. 상세 evidence는 [`runtime auto-connect cleanup log`](log/20260803-101951-runtime-autoconnect-cleanup.ko.md)에 있다. |
 | 2026-08-03 10:49 runtime unit gate decomposition | Runtime `744/744`, focused runtime architecture/regression `541/541`, configuration·fanout·endpoint `54/54` | DN-IMP-001~018의 source/unit gate가 통과했다. 541은 744와 일부 중복되며, process E2E·package-only process·독립 audit은 아직 남아 있다. POSD·DDD 대안과 책임 경계는 [`runtime unit POSD·DDD log`](log/20260803-1049-runtime-unit-posd-ddd.ko.md)에 기록했다. |
 | 2026-08-03 current source ContractTests | `76/76` 통과 | Package snapshot 갱신과 runtime 내부 cleanup 변경 뒤 public exact-interface, source/package export와 contract test를 다시 확인했다. |
+| 2026-08-03 20:23 `ObservabilityOps:OBS-C6` process 재실행 | runtime relocation trace는 `room`·`instance` aggregate `committed=2`와 target completion gate를 기록했지만 client assertion 실패 | `framework/languages/dotnet/e2e/ObservabilityOps/logs/20260803-202343-3856873/`의 role file log와 message trace를 보존했다. Instance Spot target evidence가 relocation 완료 직후 확인되지 않아 `OBS-C6`와 전체 process gate는 미완료다. 상세 결과는 [`OBS-C6 checkpoint`](log/20260803-2023-observability-c6-checkpoint.ko.md)에 둔다. |
+| 2026-08-03 `OBS-C6` 영향 runtime focused regression | `5/5`, exit `0` | stale session binding·route seal 전 frame admission의 public `Unavailable` mapping과 session error wire kind 보존을 확인했다. 이는 unit evidence이며 C6 process assertion 통과를 의미하지 않는다. |
 | 2026-08-02 `git diff --check` | 통과 | 현재 변경의 whitespace 오류가 없다. |
 
 최신 Phase A 실행 세부 사항은 [`log/20260802-120542-phase-a-verification.ko.md`](log/20260802-120542-phase-a-verification.ko.md)에,
@@ -2123,7 +2132,9 @@ NuGet artifact는 package verification evidence를 각각 기준으로 사용한
 #### B-G6 — 회귀 test와 실제 process evidence — pending
 
 B-G2에서 정식 문서로부터 읽은 inventory를 regression으로 고정했고, sample별 source build와 source
-regression은 통과했다. 최신 runtime source/unit과 ZoneWorld `ZW-B1` process도 통과했다. 다음으로
+regression은 통과했다. 최신 runtime source/unit과 ZoneWorld `ZW-B1` process도 통과했다. 최신
+ObservabilityOps `OBS-C6`는 relocation aggregate commit까지 진행되었지만 client의 Instance Spot
+target evidence assertion에서 실패했으므로 process 통과로 기록하지 않는다. 다음으로
 sample별 runner를 실제로 실행한다. 각 실행은 build → dedicated
 Redis/resource → server start → readiness → client self-check → message trace/file log와 server
 evidence 수집 → cleanup 순서를 지켜야 한다. 한 sample의 로그가 남아 있다는 사실만으로 다른 sample의

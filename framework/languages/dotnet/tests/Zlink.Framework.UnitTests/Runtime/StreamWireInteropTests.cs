@@ -11,6 +11,18 @@ namespace Zlink.Framework.UnitTests;
 public sealed class StreamWireInteropTests
 {
     [Fact]
+    public void Framework_error_wire_code_preserves_the_public_error_kind()
+    {
+        var error = ZLinkStreamWireError.FromException(
+            new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Unavailable,
+                "session binding is changing."));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable.ToString(), error.Code);
+        Assert.Equal("session binding is changing.", error.Message);
+    }
+
+    [Fact]
     public void Reply_header_echoes_request_correlation_and_root_flow()
     {
         var request = new ZlinkStreamHeader(

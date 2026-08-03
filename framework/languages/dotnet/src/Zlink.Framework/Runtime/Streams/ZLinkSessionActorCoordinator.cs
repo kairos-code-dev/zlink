@@ -395,7 +395,7 @@ internal sealed class ZLinkSessionActorCoordinator(
             + $"route_node_gen={relayRoute.TargetNodeGeneration}");
         if (!contextLive)
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidOperation,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorRef.ActorId}' session binding is stale.",
                 ZLinkRetryAdvice.RetryAfterBackoff);
         var isBindingControlFrame = string.Equals(
@@ -410,7 +410,7 @@ internal sealed class ZLinkSessionActorCoordinator(
                 actorRef.BindingToken,
                 out acceptedHighWater))
             throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.InvalidOperation,
+                ZLinkFrameworkErrorKind.Unavailable,
                 $"Actor '{actorRef.ActorId}' session binding changed before frame admission.",
                 ZLinkRetryAdvice.RetryAfterBackoff);
         if (!isBindingControlFrame)

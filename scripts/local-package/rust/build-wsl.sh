@@ -461,8 +461,34 @@ CONSUMER_TARGET="${CONSUMER_ROOT}/target"
     cargo fetch --locked
   env -u LD_LIBRARY_PATH -u CARGO_NET_OFFLINE CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
     CARGO_TARGET_DIR="${CONSUMER_TARGET}" \
-    cargo build --locked --release
+    cargo metadata --locked --no-deps --format-version 1 >/dev/null
 ) >"${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" 2>&1 || {
+  tail -n 220 "${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" >&2
+  exit 1
+}
+
+mapfile -t CONSUMER_PACKAGE_ROOTS < <(
+  find "${CONSUMER_ROOT}/cargo-home/registry/src" -type f \
+    -path "*/zlink-${PACKAGE_VERSION}/Cargo.toml" -printf '%h\n' | sort -u
+)
+[[ "${#CONSUMER_PACKAGE_ROOTS[@]}" -eq 1 ]] || {
+  echo "Cargo did not materialize exactly one candidate zlink source" >&2
+  printf '%s\n' "${CONSUMER_PACKAGE_ROOTS[@]}" >&2
+  exit 1
+}
+CONSUMER_PACKAGE_ROOT="${CONSUMER_PACKAGE_ROOTS[0]}"
+CONSUMER_RPATH="${CONSUMER_PACKAGE_ROOT}/native/linux-x86_64"
+[[ -f "${CONSUMER_RPATH}/libzlink.so.11" ]] || {
+  echo "Candidate Cargo source has no native/linux-x86_64/libzlink.so.11" >&2
+  exit 1
+}
+(
+  cd "${CONSUMER_ROOT}"
+  env -u LD_LIBRARY_PATH -u CARGO_NET_OFFLINE CARGO_HOME="${CONSUMER_ROOT}/cargo-home" \
+    CARGO_TARGET_DIR="${CONSUMER_TARGET}" \
+    RUSTFLAGS="-C link-arg=-Wl,-rpath,${CONSUMER_RPATH}" \
+    cargo build --locked --release
+) >>"${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" 2>&1 || {
   tail -n 220 "${OUTPUT_ROOT}/rust-clean-consumer-${PACKAGE_VERSION}.log" >&2
   exit 1
 }
@@ -476,7 +502,7 @@ if [[ "$(uname -s)" == Linux* ]]; then
   CONSUMER_LDD="$(ldd "${CONSUMER_BINARY}")"
   printf '%s\n' "${CONSUMER_LDD}" | tee "${OUTPUT_ROOT}/rust-clean-consumer-ldd-${PACKAGE_VERSION}.txt"
   RESOLVED_RUNTIME="$(printf '%s\n' "${CONSUMER_LDD}" | sed -n 's/^[[:space:]]*libzlink\.so\.11 => \([^[:space:]]*\).*/\1/p')"
-  [[ -n "${RESOLVED_RUNTIME}" ]] || {
+  [[ -n "${RESOLVED_RUNTIME}" && "${RESOLVED_RUNTIME}" != "not" && -f "${RESOLVED_RUNTIME}" ]] || {
     echo "Rust clean consumer did not resolve libzlink.so.11" >&2
     exit 1
   }
@@ -578,7 +604,13 @@ const record = {
     cargoTest: {status: 'pass', log: process.env.TEST_LOG, sha256: process.env.TEST_SHA256},
     cargoClippy: {status: 'pass', log: process.env.CLIPPY_LOG, sha256: process.env.CLIPPY_SHA256},
     samples: {status: 'pass', log: process.env.SAMPLE_LOG, sha256: process.env.SAMPLE_SHA256},
-    cleanConsumer: {status: 'pass', log: process.env.CONSUMER_LOG, sha256: process.env.CONSUMER_LOG_SHA256},
+  cleanConsumer: {
+    status: 'pass',
+    log: process.env.CONSUMER_LOG,
+    sha256: process.env.CONSUMER_LOG_SHA256,
+    runtimeEnv: 'LD_LIBRARY_PATH=unset',
+    linkerRpath: 'package-derived-rustflags',
+  },
   },
 };
 fs.writeFileSync(process.env.EVIDENCE, JSON.stringify(record, null, 2) + '\n');

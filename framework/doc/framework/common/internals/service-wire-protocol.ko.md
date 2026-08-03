@@ -63,7 +63,7 @@ raw frame 조합, codec table 또는 maintenance field를 노출하지 않는다
 
 ## 3. Command space
 
-Wire v1은 다음 39개 command를 사용한다. `7..15`와 `49..255`는 reserved이며 다른 의미로 재사용하지 않는다.
+Wire v1은 다음 41개 command를 사용한다. `7..15`와 `51..255`는 reserved이며 다른 의미로 재사용하지 않는다.
 
 | ID | Command | 역할 |
 |---:|---|---|
@@ -106,9 +106,28 @@ Wire v1은 다음 39개 command를 사용한다. `7..15`와 `49..255`는 reserve
 | 46 | `replyRelayAck` | relayed terminal result ACK |
 | 47 | `userSpotCreate` | provider reservation에 고정한 remote User Spot create |
 | 48 | `userSpotClose` | exact generation에 고정한 remote User Spot close |
+| 49 | `actorCreate` | provider reservation에 고정한 remote Actor create |
+| 50 | `messageFollow` | relay 성공 뒤 source runtime에 보내는 위치 cache 무효화 통지 |
 
 Command별 body, metadata·payload 허용 여부와 direction은 schema의 closed definition을 따른다. 알 수 없는 command,
 반대 direction의 infrastructure command와 topology에서 허용하지 않은 command는 application queue에 넣지 않는다.
+
+### 3.1 Message Follow notification
+
+`messageFollow`는 응답을 기다리지 않는 infrastructure record다. flags와 application payload를 허용하지 않으며,
+service record 하나에 version `1`과 길이로 닫힌 body를 담는다. body에는 source route, target route, hop count,
+relay 시점의 queue count·byte, 원래 operation ID와 원래 reply route ID가 들어간다.
+
+source와 target route는 같은 object kind와 object identity를 가져야 한다. 각 route에는 object generation, target
+node RID와 generation, authority owner generation, owner lease generation이 들어가며, 수신자는 source route의
+target node가 현재 admitted peer인지 먼저 확인한다. hop count는 1..8, queue count는 1,024 이하, queue byte는
+16 MiB 이하만 허용한다. 다른 object를 가리키거나 route fence가 맞지 않는 record는 application dispatch 전에
+protocol error로 끝낸다.
+
+통지 중복 억제의 구체적인 수명은 아직 정하지 않았다. 현재 공통 후보는 같은 source·object·owner 세대에 대해
+처음 한 번만 통지하고, 전송 중인 같은 통지를 합치는 방식이다. 통지를 받은 source runtime은 현재 cache 항목이
+source route의 object·authority generation과 target node를 가리킬 때만 그 항목을 무효화한다. 이미 더 새로운
+route가 cache에 있으면 지우지 않는다. 이 조건은 command body와 함께 언어별 runtime이 공통으로 검증해야 한다.
 
 ## 4. Admission과 connection fence
 

@@ -553,6 +553,22 @@ Common ID별 누락 목록과 fresh command 결과는
 [`2026-08-03 framework runtime-spec gap audit`](log/2026-08-03-framework-runtime-spec-gap-audit.ko.md)에
 모두 기록했다.
 
+### 4.5 2026-08-03 작업 정리 checkpoint
+
+현재 Node runtime gap 후보는 `6b39bdc6363` commit으로 정리했고,
+`agent/framework-contract-runtime-update` branch와 `origin`에 push했다. commit에는 Node
+framework source·test·E2E·sample 변경과 이 ledger 및 POSD·DDD review log만 포함했다. Core,
+bindings, C++, .NET, Java/Kotlin과 공통 문서의 기존 변경은 staging에서 제외하고 보존했다.
+
+commit 직전 임시 `ZLINK_TRACE_*`와 sample 전용 trace를 제거했다. 정리 후 `npm run build`와
+`npm run verify:m6b-runtime` 48/48을 다시 확인했다. M6C 79/79와 standalone GameQuest PASS
+결과도 같은 candidate의 runtime evidence로 기록되어 있다.
+
+`npm run verify:samples` 전체 PASS와 일곱 sample process smoke는 아직 완료하지 않았다. GameQuest
+aggregate의 마지막 `SyncQuestProgressReq`에서 `105/17` terminal completion race가 남아 있어
+`ND-IMP-012`와 11.10 전체 완료 항목은 미완료로 유지한다. 이 checkpoint 이후 구현과 추가 검증은
+사용자 지시가 있을 때까지 중단하고 대기한다.
+
 ## 5. ND-IMP-* production implementation gap
 
 ### ND-IMP-001 — Nest exact builder의 inbound dispatch 계약과 public member 불일치 (runtime 완료)

@@ -306,3 +306,28 @@ single·multi perf smoke도 같은 runtime에서 완료됐다. 기존 V11-R2 evi
 승인하므로 현재 candidate에 입력하면 `review evidence does not approve the supplied candidate
 manifest SHA-256`로 실패한다. 따라서 독립 V11-R2·V11-M3-CORE-PKG evidence와 frontier reviewer의
 최종 `CLEAN` 판정은 이 자체 검토 범위 밖의 남은 gate다.
+
+## 2026-08-04 CLEAN gate pursuit audit
+
+현재 Python 작업이 요청할 수 있는 Core candidate는 다음 identity로 현재 파일과 다시 대조했다.
+
+```text
+candidate: .artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json
+candidateManifestSha256: 483df3ff20925fda60b3ac5a1c75e71e47c5eab871242623ee2c7fa66dd644bd
+baseRevision: 1d724e5b3f2abbcde7b41a6143b6f6fbb947c588
+aggregateSha256: 7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d
+pathCount: 19
+```
+
+`verify-candidate.mjs`는 이 후보의 current content, base hash, direct input, Core changed-path coverage와
+aggregate를 통과한 뒤 review approval 단계에서만 중단됐다. 현재 저장소의 표준
+`.artifacts/v11/evidence/V11-R2/result.json`은 다른 후보 SHA `06d72dab...`를 기록하고, Python 작업에
+사용했던 `core-candidate-reply-match-completion-hwm-review-20260801.json`은
+`d318525a...`만 승인한다. 둘 다 현재 후보의 승인으로 사용할 수 없다.
+
+기존 independent `CLEAN` reviewer evidence가 승인한 `f4897bb...` 후보도 read-only로 확인했다. 해당
+후보를 현재 checkout에 입력하면 `candidate content drift: VERSION`으로 실패하므로 현재 Python 후보에
+승격하지 않았다. 따라서 남은 입력은 현재 후보 SHA `483df3ff...`를 `details.approvedCandidateManifestSha256`
+로 기록한 새로운 표준 V11-R2 passed evidence이며, 그 뒤에야 동일 SHA를 사용하는
+V11-M3-CORE-PKG 결과와 frontier reviewer의 최종 `CLEAN` 판정을 생성할 수 있다. 이 evidence를
+구현자가 임의로 생성하면 independent gate의 의미가 사라지므로 자체 검토 결과로 대체하지 않는다.

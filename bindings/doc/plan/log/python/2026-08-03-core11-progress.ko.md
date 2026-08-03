@@ -15,9 +15,9 @@ V11 승인 evidence의 identity 확인 및 독립 frontier reviewer의 최종 `C
 ## Candidate identity
 
 ```text
-sourceRevision: `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d`
+sourceRevision: `d70424c5670b8ab85285afb0659bd2867f75a4c6`
 coreManifest: .artifacts/wsl/bindings-candidate/core-11.2.0.env
-coreManifestSha256: `5bc62a9f90cf86bc9cacca33cbd61bf16d5bca3efc76041a7d8790ce4a4e63b6`
+coreManifestSha256: `3d410f75650aff0785068ec1760ada75aa68481ff6a3426b3c37a06e5e66a8f3`
 coreVersion: 11.2.0
 coreRuntime: core/build/lib/libzlink.so.11.2.0
 coreRuntimeSha256: `aff90818cc40df2ebeeb375489e147f7e23791bda28b0dac85bdc9462f59236e`
@@ -33,8 +33,8 @@ coreSpecSha256: f89f006c105048acaf5bdfcb2ce252995bc72ded9b0a8e7354813a150dfc43b1
 
 ```text
 coreLedgerCandidate: `.artifacts/v11/evidence/V11-M3-CORE-VERIFY/candidate-python-final-20260804.json`
-coreLedgerCandidateBaseRevision: `6d698c7e68e0c263ee48dd3948e7b8cc6e865c7d`
-coreLedgerCandidateManifestSha256: `7f56c4df9490286bade0d53e2b38cd13549cfce8d0437fb6287aa3c72f841a28`
+coreLedgerCandidateBaseRevision: `d70424c5670b8ab85285afb0659bd2867f75a4c6`
+coreLedgerCandidateManifestSha256: `f12c1fdc579d35908fe8f8534af811300299651ef3c630f022f6fa7d0ed9c8bc`
 coreLedgerCandidateAggregateSha256: `7f32732d7831728b62b9f3a1bb1d420b6f7c9f65952348e1eb4e76c7c27a855d`
 coreLedgerCandidatePathCount: `19`
 ```
@@ -62,10 +62,10 @@ packagedNativePayloadSha256: 각 `candidate-input.env`의 `PACKAGED_NATIVE_PAYLO
 ```
 
 `candidate-input.env`의 Core manifest SHA, runtime SHA, source manifest SHA와 aggregate SHA는 위 값과
-일치한다. Source manifest SHA는 `d5a1fd7af7ef13ceda55785180c820ec31760877d76f23bca4d3bdd74680148b`,
+일치한다. Source manifest SHA는 `7d1ccfdf11a5a296c31a724929f237c0f24a4db2c4fac32ce91e87a46d498e12`,
 source aggregate SHA는 `399db451234ec87804f659e9535c211e59c97b18606a3c028c21bb96f7fa5c8c`다. CPython 3.9
-wheel SHA는 `647a8d4d94eecdbc62b1f7e0c397fa61fc946954a3420e413c55aa75c620f321`, CPython 3.12 wheel SHA는
-`ef4c9e1a53184f6f19d26c722b5abb42542499f8aa5942eecd244458a3291aa6`다. Wheel에는 `py.typed`와
+wheel SHA는 `ede1ac1fe00626fe1c30561cfaa9ae6ab4649c169945c296a8076f5c8827cadf`, CPython 3.12 wheel SHA는
+`728ea3b298b29fe417aae869fd155622ae5a1a585e9e795c951c9c098d1321a4`다. Wheel에는 `py.typed`와
 `linux-x86_64/libzlink.so.11.2.0`만 포함되며 `libzlink_c`, 이전 SONAME, cross-platform payload와 source
 path는 포함되지 않는다.
 

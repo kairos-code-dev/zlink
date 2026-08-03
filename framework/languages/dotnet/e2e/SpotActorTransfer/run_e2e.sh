@@ -369,6 +369,7 @@ elif [[ "$SCENARIO" == "all" ]]; then
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
+  wait_mesh_ready "$NODE_A_URL" actor-a "actor-b,actor-c,actor-d,session-a,session-b"
   run_client "ST-C2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
@@ -376,6 +377,7 @@ elif [[ "$SCENARIO" == "all" ]]; then
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
+  wait_mesh_ready "$NODE_A_URL" actor-a "actor-b,actor-c,actor-d,session-a,session-b"
   run_client "ST-C1"
 else
   run_client "$SCENARIO"

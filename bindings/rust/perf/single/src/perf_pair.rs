@@ -69,11 +69,9 @@ fn main() {
             },
         );
         common::send_stop_token(|msg| {
-            sender
-                .send()
-                .message(msg)
-                .flags(zlink::SendFlags::DONT_WAIT)
-                .submit()
+            // Match C perf: the phase terminator must be queued after every
+            // accepted payload even when the data path has reached its HWM.
+            sender.send().message(msg).submit()
         });
     });
 

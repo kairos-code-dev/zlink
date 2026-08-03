@@ -477,8 +477,9 @@ pub fn handle_recv(
 /// Send the stop token once via the supplied closure with bounded attempts to
 /// ride through transient backpressure / not-connected races.
 ///
-/// The closure performs a nonblocking send and returns `Ok(false)` for
-/// transient backpressure.
+/// The caller selects blocking or nonblocking submission for its socket
+/// pattern. A nonblocking closure returns `Ok(false)` for transient
+/// backpressure.
 /// PERF_SINGLE_TEST_POLICY § 1.4 mandates this wire-level shutdown signal in
 /// lieu of `AtomicBool sender_done` + short polling.
 pub fn send_stop_token<F>(mut send_fn: F)

@@ -136,7 +136,7 @@ profile은 `COMPACT` · `LOW_LATENCY` · `BALANCED` · `THROUGHPUT` 넷이다.
 `setProcessMemoryLimitBytes`는 양수만 받는다. 둘 다 `ZLinkConfigurationException`이다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework-runtime-적용-범위)을 본다.
 
 ## 4. 진단
 
@@ -241,4 +241,4 @@ profile은 `COMPACT` · `LOW_LATENCY` · `BALANCED` · `THROUGHPUT` 넷이다.
 - 정식 계약: [Java configuration과 host 공개 계약](../../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 - 상한이 무엇을 바꾸는지: [4. Backpressure](04-backpressure.ko.md)
 - 가중치로 트래픽을 빼는 절차: [12. 운영](12-operations.ko.md)
-- 알려진 갭: 저장소 `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md`
+- 알려진 갭: [Java/Kotlin Framework spec gap ledger](../../../../plan/java-kotlin-framework-spec-gap-ledger/java-kotlin-framework-spec-gap-ledger.ko.md)

@@ -40,7 +40,7 @@ DEALER의 가중 선택이 **연속 구간(burst) 방식**이고, 결정적 tieb
 |---|---|
 | 공개 core 기능이다 | `ZLINK_DEALER_OPT_WEIGHT`는 framework와 무관하게 binding 사용자에게 노출된다. "비율만 반영"이라는 계약은 burst와 비결정성을 그대로 허용한다 |
 | fallback 경로가 남아 있다 | ClientServer 등록 없이 수동 endpoint만 붙인 채널은 이 경로를 탄다 |
-| 계층 경계를 바로잡는다 | framework 쪽 `connections_from_next()`가 connect 순서로 Core 선택을 유도하려는 **죽은 코드**를 갖고 있다. 이건 Core 수정과 무관하게 삭제 대상이다 |
+| 계층 경계를 바로잡는다 | framework 쪽 `connections_from_next()`가 connect 순서로 Core 선택을 유도하려는 **죽은 코드**를 갖고 있었다. Core 수정과 무관하게 먼저 삭제했다(§3.4) |
 
 **framework 계약(`08-channel-messaging` 「선택 순서」)과 같은 절차를 Core에도 적용할지는
 별도 판단이다.** 상위 계층이 정한 것을 하위 계층이 따라야 할 이유는 없다 — Core는 더 많은
@@ -161,23 +161,24 @@ wire 범위, `lb_t`, monitoring event를 **한 계약으로** 바꾼다.
 
 ### 3.4 Framework 쪽 정리 (함께 진행)
 
-`framework/languages/cpp/framework/src/runtime/channels/channel_runtime_bundle.cpp:134-178`의
-`connections_from_next()`는 누적값 SWRR로 winner를 계산한 뒤 endpoint 목록을 winner가 맨
-앞에 오도록 회전시켜 반환한다. connect 순서로 core의 선택을 유도하려는 것이다.
+**완료.** `connections_from_next()`가 누적값 SWRR로 winner를 계산한 뒤 endpoint 목록을
+회전시켜 반환하고 있었는데, 받는 쪽이 `std::set`에 넣어 순서를 지우므로 **효과가 없는
+코드**였다. Core가 connect 순서를 약속하지 않기 때문이다.
 
-**이 코드는 지금도 효과가 없다.** 받는 쪽
-`framework/languages/cpp/framework/src/runtime/channels/channel_outbound_exchange.cpp:579-608`
-`sync_connections()`가 목록을 `std::set<std::string>`에 넣어 순서를 없앤 뒤 연결하고,
-제출도 대상 지정 없이 한다(`:354-364`). core는 connect 순서에 대해 아무것도 약속하지 않는다.
+조사 결과 `_auto_connections`는 **죽은 경로**였다 — 쓰기가 테스트에만 있고 나머지 API는
+호출처가 0이었다. Production bundle은 `channel_bundle_factory.cpp:49-55`가 manual만
+채운다. 따라서 가중 선택은 모든 후보가 같은 weight(`100` 고정)인 상태에서만 돌아온 셈이다.
 
-core 수정과 함께 **선택·회전 로직을 삭제한다.** 효과가 없는 데다 core의 역할을 중복한다.
+삭제한 것은 다음이다.
 
-> **삭제 범위를 확인할 것.** `channel_runtime_bundle_t::try_add_auto_connection`은
-> `channel_runtime_bundle.cpp` 밖에서 호출되지 않는다. 즉 ClientServer client bundle은
-> 실제로 **수동 connect만** 채워지고(`app.cpp:2349`), 수동 연결은 weight가 `100` 고정이다
-> (`channel_runtime_bundle.cpp:137`). 그렇다면 `connections_from_next()`의 가중 선택은
-> **모든 후보가 같은 weight인 상태에서만 동작**해 온 셈이다. `_auto_connections` 자체가
-> 죽은 경로인지 아직 배선되지 않은 것인지 확인한 뒤 삭제 범위를 정한다.
+| 대상 | 내용 |
+|---|---|
+| `connections_from_next()` · `manual_connections_from_next()` | 선택·회전 로직. `_auto_connections`가 사라지자 전자는 `list_manual_connections()`와 동등해져 호출처 두 곳을 그쪽으로 돌렸다 |
+| `_auto_connections` · `_selection_current` | 관련 API 4개와 함께 |
+| 관련 테스트 53줄 | 삭제된 동작만 검증하던 것 |
+
+`_connection_version`과 `list_manual_connections()`는 남겼다 — 호출처가 쓰고 있다.
+빌드와 `test_cpp_framework_channel_messaging` 통과를 확인했다.
 
 ## 4. Spec 변경 계획
 
@@ -229,7 +230,30 @@ Spec이 정본이므로 **구현보다 먼저 개정한다.** 순서는 spec →
 릴리스에 넣을지, 기존 순서에 의존하던 사용자가 있는지 확인한 뒤 릴리스 노트에 순서 변경을
 명시한다.
 
-## 5. 구현 순서
+## 5. 진행 상태
+
+**§2·§3·§4는 완료됐다.** 확인한 결과는 다음과 같다.
+
+| 항목 | 상태 |
+|---|---|
+| 선택 절차 교체 (연속 슬롯 → 누적값) | ✔ `core/src/runtime/sockets/internal/lb.cpp`. 동일 weight 분기 제거로 한 경로 통합 |
+| Tiebreak 키 | ✔ routing ID → endpoint → 로컬 attach 순번 3단계 |
+| Weight 범위 `0..10000` | ✔ 공용 상수 `zlink::max_peer_weight`(`core/src/runtime/core/options.hpp:35`)로 4개 검증 지점 통일. 범위 밖은 거부 유지 |
+| Spec 개정 | ✔ `06-dealer`·`07-router`·`07-monitoring`·`03-3-dealer` 가이드, ko/en 동기 |
+| Framework fallback 정리 | ✔ §3.4 참조 |
+| 테스트 | ✔ `test_router_multiple_dealers` 17/17(신규 6), `unittest_typed_option` 2/2. 전체 84개 중 83 통과 — 실패 1건은 이 변경과 무관한 기존 실패(`test_zmp_request_reply`, weight·lb 참조 0건) |
+
+### 남은 것
+
+| 항목 | 내용 |
+|---|---|
+| **버전·배포** | `core/CMakeLists.txt`가 아직 `11.1.0`. §6의 배포 절차가 남아 있다. **framework 작업 전에 끝내야 한다** |
+| EMSGSIZE 경로 test | 크기 초과 message를 다른 후보로 재시도하지 않는 동작에 다중 pipe test가 없다. 기존 round-robin 경로와 같은 동작이라 회귀는 아니다 |
+| wire 종단 test | 설정 → encode → decode → `apply_peer_weight` → `lb_t::set_weight`를 `100` 초과 값으로 관통하는 test가 없다. 네 지점이 공용 상수를 쓰므로 위험은 낮다 |
+| perf 측정 | `lb_t::sendpipe` 변경에 대한 처리량 측정을 하지 않았다. `_active == 1` 빠른 경로는 그대로이고 다중 pipe 경로는 미리 정렬한 vector를 순회한다 |
+| bindings 문서 | `bindings/doc/spec/README.{ko,en}.md`가 아직 `0..100`이다. **bindings는 별도 작업이므로 그쪽에 전달해야 한다** |
+
+## 6. 구현 순서 (기록)
 
 **이 작업을 framework보다 먼저 진행한다.** 다만 §1에서 정정했듯 **framework 갭을 닫기
 때문이 아니다.** 이유는 다음이다.
@@ -254,8 +278,7 @@ Spec이 정본이므로 **구현보다 먼저 개정한다.** 순서는 spec →
    │
 5. 성능 확인               호출마다 O(N) 순회가 문제가 되면 주기 미리 계산 도입
    │
-6. framework 정리          C++ connections_from_next() 선택·회전 삭제 (§3.4)
-                           ※ 삭제 범위는 _auto_connections 확인 후
+6. framework 정리          ✔ 완료 — §3.4 참조
 ```
 
 **2번은 승인이 선행이다.** 결함 3에서 정정했듯 이것은 버그 수정이 아니라 API 확장이다.
@@ -267,7 +290,7 @@ Spec이 정본이므로 **구현보다 먼저 개정한다.** 순서는 spec →
 **6번은 framework 쪽이지만 이 작업의 일부로 함께 넣는다.** Core가 고쳐지면 framework의
 회전 로직은 효과가 없을 뿐 아니라 오해를 부른다.
 
-## 6. Bindings 배포
+## 7. Bindings 배포
 
 Core 동작이 바뀌므로 **bindings를 다시 배포해야 framework가 그 변경을 볼 수 있다.**
 언어별 framework 작업은 이 배포 뒤에 시작한다.
@@ -345,7 +368,7 @@ cpp는 ODR 혼합을 피해야 한다. 로컬 패키지가 아니라 기존 설�
   레벨 test**로 확인한다. Core 단위 test만으로는 배포가 반영됐는지 알 수 없다.
 - framework 4언어 빌드가 새 패키지로 통과한다.
 
-## 7. 검증
+## 8. 검증
 
 - weight `100 / 300`인 두 peer에 네 번 연속 제출하면 `B, A, B, B` 순서로 도착한다
   (식별자는 A가 앞선다고 가정).
@@ -358,16 +381,16 @@ cpp는 ODR 혼합을 피해야 한다. 로컬 패키지가 아니라 기존 설�
 - 쓰기 실패로 pipe가 비활성화됐다가 복구되면 그 pipe가 다시 후보에 들어온다.
 - 주기를 미리 계산하는 최적화를 넣는 경우, 절차를 매번 수행한 결과와 순서가 완전히 같다.
 
-## 8. 영향 범위
+## 9. 영향 범위
 
 | 영역 | 영향 |
 |---|---|
 | Core | `lb_t`, DEALER option 검증, spec 2개 문서 |
 | Bindings | 없음. C API 시그니처는 그대로다. weight 범위를 확대하면 상한만 바뀐다 |
-| Framework 4언어 | C++만 영향을 받는다 — ClientServer 채널 선택이 계약을 만족하게 되고 `connections_from_next()`를 삭제한다. .NET·Java·Node는 두 채널 종류 모두 framework에서 고르므로 영향이 없고, 각자의 선택 절차 결함은 별도로 고쳐야 한다 |
+| Framework 4언어 | C++의 `connections_from_next()` 삭제는 **완료**(§3.4). Core 선택 순서가 바뀌면 fallback 경로의 분산이 달라진다. .NET·Java·Node는 두 채널 종류 모두 framework에서 고르므로 영향이 없고, 각자의 선택 절차 결함은 별도로 고쳐야 한다 |
 | 기존 application | 선택 **순서**가 바뀐다. 장기 비율은 유지된다. 순서에 의존하던 코드가 있으면 영향을 받지만, 기존 순서는 계약이 아니었다 |
 
-## 9. 관련 문서
+## 10. 관련 문서
 
 - [Framework 구현 갭 목록 A1](framework-internals-implementation-gaps.ko.md) —
   이 수정이 닫는 갭

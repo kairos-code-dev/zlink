@@ -190,6 +190,7 @@ export interface ZLinkMeshNodeBuilder {
     setActorLimit(limit: number): this;
     setSpotLimit(limit: number): this;
     setActivationConcurrency(limit: number): this;
+    setInstanceSpotIdleTimeout(timeoutMs: number): this;
     objects(): ZLinkMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
@@ -367,10 +368,23 @@ relocation ID, operation ID, exact request-source fence(owner ID, lease generati
 status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
 accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
 
-`mailboxMessageBudget`와 `mailboxByteBudget`은 owner별 application mailbox의 메시지 수와 payload byte 수
-상한이며 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile의 유한 기본값을 선택한다.
+`mailboxMessageBudget`와 `mailboxByteBudget`은 owner별 application mailbox의 메시지 수와 byte 합계
+상한이며 startup 전에만 설정한다. Byte 회계는 payload 크기만 세지 않는다 —
+`payload 크기 + metadata 크기 + 작업당 고정 비용`을 더한다. Payload가 비어 있어도 작업 하나는 `0` byte가
+아니며, 큰 payload에서도 고정 비용은 그대로 더한다. 합이 `Number.MAX_SAFE_INTEGER`를 넘으면 그 값으로
+고정하고 그 제출을 거절한다. 회계 규칙은
+[Framework API §8.2](../../../../06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)가 소유한다.
+`0`은 unlimited가 아니라 Framework profile의 유한 기본값을 선택한다.
 음수, 정수가 아닌 값과 안전 정수 범위를 벗어난 값은 startup 설정 오류다. Logical Multicast의 local target도
 이 용량 제한으로 admission을 판단한다.
+
+`setInstanceSpotIdleTimeout(timeoutMs)`은 유휴 Instance Spot 정리 기준 시간을 millisecond로 설정한다.
+기본값은 `0`이고 `0`은 정리하지 않음을 뜻한다. 허용 범위는 `0`과 양수이며 음수, 정수가 아닌 값과 안전
+정수 범위를 벗어난 값은 startup 설정 오류다. 값은 MeshNode lifecycle 시작 전에 고정하고 runtime setter를
+제공하지 않는다. STREAM worker의 `idleTimeoutMs`와는 별개의 설정이며 서로 값을 상속하지 않는다. 정리
+대상은 Instance Spot뿐이고 Entry Spot과 User Spot은 이 설정의 영향을 받지 않는다. 유휴 판정 조건,
+`ZLinkSpotCloseReason.IdleEvicted` 전달과 정리 뒤 cold activation 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개다. Runtime은 완성된 descriptor를 socket

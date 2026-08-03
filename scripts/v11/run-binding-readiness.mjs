@@ -186,7 +186,7 @@ function validatePackageIsolation() {
     if (token.test(buildText)) findings.push(`legacy-language-in-core11-package-selector:${language}`);
   }
   const ledgerText = fs.readFileSync(
-    absolute('framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md'),
+    absolute('scripts/local-package/README.ko.md'),
     'utf8',
   );
   if (!ledgerText.includes('scripts/local-package/native/sync-local-core-libs.sh cpp dotnet java node')) {

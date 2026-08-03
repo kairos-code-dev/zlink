@@ -21,8 +21,9 @@ class MeshWatcher(private val meshRuntime: ZLinkRouteMeshRuntime) {
 
     suspend fun watch() {
         // capacity를 넘기면 느린 수집자는 중간 값을 건너뛴다 — Java와 같다.
-        meshRuntime.observe("game.room", 64).asFlow().collect { snapshot ->
-            record(snapshot)
+        meshRuntime.observe("game.room", 64).asFlow().collect { observed ->
+            record(observed.status())
+            // observed.loss()가 이 구독이 놓친 개수다.
         }
     }
 }
@@ -34,7 +35,8 @@ class MeshWatcher(private val meshRuntime: ZLinkRouteMeshRuntime) {
 호스트 상태도 같은 방식이다.
 
 ```kotlin
-runtime.observe().asFlow().collect { status ->
+runtime.observe().asFlow().collect { observed ->
+    val status = observed.status()
     logger.info("host lifecycle: {} {}", status.state(), status.relocationResult())
 }
 ```

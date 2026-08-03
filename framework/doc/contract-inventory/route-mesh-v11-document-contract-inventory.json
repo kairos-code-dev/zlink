@@ -373,48 +373,63 @@
       "directory": "framework/doc/framework/common/internals",
       "required_documents": [
         "README.ko.md",
-        "service-runtime-architecture.ko.md",
-        "service-wire-protocol.ko.md",
-        "mailbox-dispatch-runtime.ko.md",
-        "stateful-maintenance-runtime.ko.md",
-        "stream-session-runtime.ko.md",
-        "transport-liveness-runtime.ko.md",
-        "service-monitoring-runtime.ko.md",
-        "concurrency-resource-runtime.ko.md",
-        "routing-identity-runtime.ko.md"
+        "01-layering.ko.md",
+        "02-serialization.ko.md",
+        "03-progress-isolation.ko.md",
+        "04-completion.ko.md",
+        "05-relocation-continuity.ko.md",
+        "06-routing-and-cache.ko.md",
+        "07-dispatch-loop.ko.md",
+        "08-object-lifecycle.ko.md",
+        "09-session-binding.ko.md",
+        "10-liveness-and-state.ko.md",
+        "11-message-ownership.ko.md",
+        "service-wire-protocol.ko.md"
       ],
       "readme_required_fragments": [
         "Framework 공통 내부 구조",
-        "application public API가 아니다",
-        "Service runtime architecture",
-        "Mailbox and dispatch",
-        "Stateful maintenance",
-        "STREAM session",
-        "Concurrency and resources",
-        "Core raw runtime boundary"
+        "Application이 호출하는 API의 이름과 signature",
+        "공개 동작의 의미와 완료 조건",
+        "Core가 제공하는 raw socket·transport 내부",
+        "구현 갭 목록"
       ],
       "required_file_fragments": {
-        "transport-liveness-runtime.ko.md": [
-          "RouteMesh와 ClientServer",
-          "fanout",
-          "전용 SUB socket",
-          "one-way",
-          "beacon",
-          "ACK를 보내지 않",
-          "publisher만 not-ready"
+        "01-layering.ko.md": [
+          "binding type 이름은 adapter 층에만 나타난다",
+          "STREAM"
         ],
-        "stateful-maintenance-runtime.ko.md": [
-          "global ActorId",
-          "global SpotId",
-          "aggregate",
-          "reservation"
+        "03-progress-isolation.ko.md": [
+          "infrastructure 작업은",
+          "처리 대기 byte"
+        ],
+        "06-routing-and-cache.ko.md": [
+          "Location Store",
+          "Positive route cache"
+        ],
+        "08-object-lifecycle.ko.md": [
+          "process 단위 byte 회계",
+          "Spot 단위 byte 회계"
+        ],
+        "10-liveness-and-state.ko.md": [
+          "확인 주기 **5초**",
+          "peer 판정 기한 **15초**",
+          "STREAM session"
+        ],
+        "11-message-ownership.ko.md": [
+          "framework가 추가로 만드는 복사는 0",
+          "raw byte"
+        ],
+        "service-wire-protocol.ko.md": [
+          "schema가 command ID",
+          "`livenessProbe`"
         ]
       },
       "aggregate_required_fragments": [
-        "protocol schema",
         "mailbox",
         "Location Store",
-        "livenessProbe"
+        "livenessProbe",
+        "schema가 command ID",
+        "application handler"
       ],
       "forbidden_code_patterns": [
         "\\bzlink_(?:mesh_node|mesh_spot|mesh_actor|mesh_stream_session|instance_spot|spot)_[a-z0-9_]+\\s*\\("
@@ -422,54 +437,18 @@
     }
   ],
   "plan_consolidation": {
-    "directory": "framework/doc/plan/v11.0",
+    "directory": "framework/doc/plan/for-interals",
     "allowed_documents": [
       "README.ko.md",
-      "blocked-issue-log.md",
-      "route-mesh-11.0.0-contract-amendment-impact.json",
-      "route-mesh-11.0.0-execution-ledger.ko.md"
+      "cpp-implementation-plan.ko.md",
+      "dealer-weighted-selection-order.ko.md",
+      "dotnet-implementation-plan.ko.md",
+      "framework-internals-implementation-gaps.ko.md",
+      "framework-spec-extension-proposals.ko.md",
+      "java-implementation-plan.ko.md",
+      "node-implementation-plan.ko.md"
     ],
-    "temporary_review_documents": [
-      "framework-public-contract-source-layout-audit.ko.md"
-    ],
-    "ledger_required_fragments": [
-      "진행 문서는 이 ledger 하나만 유지한다",
-      "public declaration owner를 member 단위 trace에 연결한다",
-      "verified-baseline",
-      "v11-first-implementation",
-      "intentional-removal",
-      "contract test, 공통 E2E scenario와 package·clean-consumer owner",
-      "### 3.4 ID별 execution card catalog",
-      "DIFF-OWNED",
-      "DIFF-SNAPSHOT",
-      "route-mesh-v11-public-contract-trace.json"
-    ],
-    "allowed_profiles": [
-      "P-DEEP",
-      "P-HIGH",
-      "P-DELIVERY",
-      "P-SCAN"
-    ],
-    "completed_parallel_review_rows": [
-      "V11-R1",
-      "V11-R2",
-      "V11-R3",
-      "V11-R4",
-      "V11-R4A",
-      "V11-R4B"
-    ],
-    "required_codex_only_review_rows": [
-      "V11-R5A",
-      "V11-R5B",
-      "V11-R5C",
-      "V11-R5D",
-      "V11-R6",
-      "V11-R7"
-    ],
-    "required_high_review_rows": [
-      "V11-R4A",
-      "V11-R4B"
-    ],
+    "temporary_review_documents": [],
     "forbidden_fragments": [
       "gpt-5.6 ultra",
       "P-ULTRA",
@@ -478,237 +457,73 @@
     ],
     "required_semantic_owners": [
       {
-        "id": "performance-smoke-only",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "plan-index-is-owner-aware",
+        "path": "README.ko.md",
         "required_fragments": [
-          "## 15. Performance smoke-only 판정",
-          "11.0에서는 성능 수치를 판정하거나 개선하지 않는다.",
-          "개선은 11.0 완료 조건이 아니다."
+          "모든 판정의 정본",
+          "POSD"
         ]
       },
       {
-        "id": "local-internal-package",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "common-gap-ledger",
+        "path": "framework-internals-implementation-gaps.ko.md",
         "required_fragments": [
-          "Package gate는 local/internal package 생성",
-          "package는 local/internal 위치에만 생성한다."
+          "# Framework 구현 갭 목록",
+          "## 요약",
+          "## A부. 새 spec 조항이 만든 갭"
         ]
       },
       {
-        "id": "no-external-publish",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "cpp-plan",
+        "path": "cpp-implementation-plan.ko.md",
         "required_fragments": [
-          "외부 registry에는 배포하지 않는다."
+          "# C++ framework 구현 계획",
+          "## W1 — scheduler"
         ]
       },
       {
-        "id": "model-lanes",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "dotnet-plan",
+        "path": "dotnet-implementation-plan.ko.md",
         "required_fragments": [
-          "## 3. Codex profile과 병렬 lane",
-          "| `P-DEEP` | `gpt-5.6 high` |",
-          "| `P-HIGH` | `gpt-5.6-sol high` |",
-          "| `P-DELIVERY` | `gpt-5.6 medium` |",
-          "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
-          "이후 모든 독립 review는 `P-HIGH`의 Codex `gpt-5.6-sol high` 단독 reviewer로 진행하며 Claude 병렬",
-          "reviewer를 두지 않는다.",
-          "당시 실제 실행 이력이므로 변경하지 않는다.",
-          "별도 상향",
-          "사유와 검토 범위를 해당 행의 증거 칸에 기록한다.",
-          "실제 사용한 model,",
-          "Java와 Kotlin은 Java binding과 JVM service runtime 하나를 공유한다."
+          "# .NET framework 구현 계획",
+          "## W1 — scheduler"
         ]
       },
       {
-        "id": "autonomous-blocked-issue",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "jvm-plan",
+        "path": "java-implementation-plan.ko.md",
         "required_fragments": [
-          "### 2.2 자율 실행과 blocked issue 처리",
-          "작업자는 담당 row의 실행 정보만으로 자율적으로 진행하며 별도 승인을 기다리지 않는다.",
-          "만나면 작업을 중단하지 않고 스스로 원인을 판정해 해결한 뒤 같은 row를 계속 진행한다.",
-          "자율 해결은 이 문서의 금지 규칙을 무효화하지 않는다.",
-          "다음 두 경우에만 진행을 멈추고 담당 row를 `차단`으로 남긴다.",
-          "모든 blocked issue는 발견 즉시 [blocked issue log](blocked-issue-log.md)에 `BLK-<번호>` 항목으로 기록하고,"
+          "# Java framework 구현 계획",
+          "## W1 — scheduler"
         ]
       },
       {
-        "id": "dotnet-reference-review-and-convergence",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "node-plan",
+        "path": "node-implementation-plan.ko.md",
         "required_fragments": [
-          "### 2.3 구현 순서와 동형 수렴",
-          "기본 순서는 .NET 우선이다.",
-          "1. **기준 구현.**",
-          "2. **중간 refactoring checkpoint.**",
-          "3. **.NET 전체 회귀.**",
-          "4. **.NET 정식 POSD·DDD review.**",
-          "5. **Review refactoring과 재회귀.**",
-          "6. **.NET reference 고정.**",
-          "7. **미러링.**",
-          "8. **교차 review와 동형 수렴.**",
-          "실행 모델에 민감한 새 메커니즘은 예외다.",
-          "언어 고유 idiom은 억지로 통일하지 않는다.",
-          "| `I4` |"
+          "# Node framework 구현 계획",
+          "## W1 — scheduler"
         ]
       },
       {
-        "id": "blocked-issue-log",
-        "path": "blocked-issue-log.md",
+        "id": "proposal-review-boundary",
+        "path": "framework-spec-extension-proposals.ko.md",
         "required_fragments": [
-          "# RouteMesh 11.0.0 blocked issue log",
-          "상태는 `조치 중`, `해결`, `차단`만 사용한다.",
-          "| 항목 | 담당 ID·lane | 기준 revision | 증상과 실행 command | 근본 원인 | 수정 내용과 변경 path | 재검증 command와 결과 | 상태 |"
+          "# Framework spec 확장 제안",
+          "## 1. 대상 선택 순서를 보장할 것인가"
         ]
       },
       {
-        "id": "four-round-review-convergence",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
+        "id": "core-selection-proposal",
+        "path": "dealer-weighted-selection-order.ko.md",
         "required_fragments": [
-          "1~4회차에는 `Critical`, `High`, `Medium`, `Low`의 모든 유효 finding을 반영한다.",
-          "5회차부터 `Critical`, `High` 또는 `Medium` finding이 하나라도 있으면 gate를 통과하지 못한다.",
-          "이후 모든 독립 review는 Codex `gpt-5.6-sol high`(`P-HIGH`) 단독 reviewer가 수행하며 Claude 병렬"
-        ]
-      },
-      {
-        "id": "candidate-rollback",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "## 17. Candidate 실패와 되돌림",
-          "M3 candidate 전체를",
-          "review 이전 상태로 되돌린 뒤 제거 범위나 raw 보존 코드를 수정한다."
-        ]
-      },
-      {
-        "id": "posd-ddd-cleanup",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "POSD·DDD·제거 범위 독립 review",
-          "Cleanup은 문자열 검색만으로 완료하지 않는다.",
-          "빈 wrapper, forwarding helper와 deprecated alias",
-          "Core와 bindings 제거를 이 단계로 미루지 않는다.",
-          "pass-through adapter"
-        ]
-      },
-      {
-        "id": "removal-first-order",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "removal-first 순서로 진행한다.",
-          "M3 Core removal/review/package",
-          "M4 bindings removal/review/package",
-          "M5 private binding port/foundation/review"
-        ]
-      },
-      {
-        "id": "oracle-process-isolation",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "별도 Core 10 process의 normalized trace와 대조한다.",
-          "candidate는 oracle artifact를 compile,",
-          "link 또는 load하지 않는다.",
-          "별도 process protocol"
-        ]
-      },
-      {
-        "id": "runtime-first-foundation",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "binding-facing port를 먼저 구현한다.",
-          "production scaffold를 만드는 작업이 아니다.",
-          "sample·E2E는 source·registration을 보존한 채 `pending`으로 유지한다.",
-          "topology→stateful→maintenance→full matrix→sample 순서로 활성화한다"
-        ]
-      },
-      {
-        "id": "heartbeat-removal-and-service-liveness",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "### 5.5 ZMP heartbeat 제거와 service liveness 규칙",
-          "`ZLINK_OPT_HEARTBEAT_TIMEOUT`, ZMP `HEARTBEAT`·`HEARTBEAT_ACK` frame",
-          "`livenessProbe=5`·`livenessAck=6`",
-          "`PGM_HEARTBEAT_SPM`은 ZMP socket heartbeat와 다른 protocol 설정",
-          "Manual·automatic classic fanout은 raw PUB/SUB 단방향이므로 ACK를 보내지 않는다.",
-          "publisher descriptor 또는 manual publisher endpoint별로 전용 SUB socket",
-          "fanout liveness beacon",
-          "`topicFrameBytes=01 5A 4C 46 31`",
-          "`malformedReservedTopic=protocol-error-immediate-not-ready`",
-          "valid application frame 또는 valid beacon을 수신한 뒤에만",
-          "exact reserved topic만 호출 인자 오류로 거부",
-          "같은 prefix 뒤에 byte가 하나 이상",
-          "Config 3 `PS-F1~F5`와 Config 5",
-          "`RL-E1~E5`",
-          "Core ZMP heartbeat 유지 / Core heartbeat 제거와 Framework topology별 liveness",
-          "Shared SUB와 publisher identity 공개 / publisher별 dedicated SUB",
-          "application public option으로 노출하지 않는다."
-        ]
-      },
-      {
-        "id": "explicit-core-service-document-review",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "Core guide·internals·spec의 service 의미",
-          "파일별 `Remove`·`Rewrite`·`Retain`",
-          "exact path 75개",
-          "Allowlist에서 기존 ZMP guide를 제거하는 변이",
-          "`V11-M3-CORE-CLEAN`, `V11-M9-DOCS`"
-        ]
-      },
-      {
-        "id": "standalone-id-execution-cards",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "### 3.1 Ledger 경로와 ID만 사용하는 작업 지시",
-          "### 3.4 ID별 execution card catalog",
-          "Authoritative input",
-          "Owned source·test·package path와 산출물"
-        ]
-      },
-      {
-        "id": "owned-diff-and-inventory-coordination",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "`DIFF-OWNED`를 뜻한다.",
-          "개별 language lane은 shared migration inventory를",
-          "`INV`는 inventory owner, join, review와",
-          "`DIFF-SNAPSHOT`으로 검사한다."
-        ]
-      },
-      {
-        "id": "review-before-package-tooling",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "review한 source·tooling revision을 수정하지 않고",
-          "package metadata·consumer tooling self-test",
-          "persistent Framework package runner self-test"
-        ]
-      },
-      {
-        "id": "public-contract-member-trace",
-        "path": "route-mesh-11.0.0-execution-ledger.ko.md",
-        "required_fragments": [
-          "route-mesh-v11-public-contract-trace.json",
-          "ctor·overload·generic·callback·enum·extension·export 누락 0",
-          "member·owner·disposition·implementation ID 미분류 0"
+          "# Core DEALER 가중 선택 순서 수정",
+          "계약을 넓히자는 제안"
         ]
       }
     ],
     "forbidden_legacy_documents": [
-      "route-mesh-11.0.0-integrated-plan.ko.md",
-      "core-service-contract-migration-inventory.ko.md",
-      "core-socket-heartbeat-removal-plan.ko.md",
-      "service-performance-suite-migration-plan.ko.md",
-      "stateful-rolling-maintenance-draft.ko.md",
-      "public-contract/README.ko.md",
-      "public-contract/cpp-public-interface.ko.md",
-      "public-contract/dotnet-public-interface.ko.md",
-      "public-contract/java-public-interface.ko.md",
-      "public-contract/kotlin-public-interface.ko.md",
-      "public-contract/node-public-interface.ko.md",
-      "stateful-maintenance-public-contract/README.ko.md",
-      "stateful-maintenance-public-contract/cpp-public-interface.ko.md",
-      "stateful-maintenance-public-contract/dotnet-public-interface.ko.md",
-      "stateful-maintenance-public-contract/java-public-interface.ko.md",
-      "stateful-maintenance-public-contract/kotlin-public-interface.ko.md",
-      "stateful-maintenance-public-contract/node-public-interface.ko.md"
+      "framework/doc/plan/v11.0"
     ]
   },
   "formal_documents": [

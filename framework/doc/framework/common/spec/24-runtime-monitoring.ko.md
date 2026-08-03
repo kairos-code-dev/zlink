@@ -69,9 +69,9 @@ public interface IZLinkRouteMeshRuntime
 {
     ZLinkRouteMeshStatus GetStatus(string meshName); // 등록한 RouteMesh의 현재 상태를 읽는다.
 
-    IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> ObserveAsync(
         string meshName,
-        CancellationToken cancellationToken = default); // 이후의 완전한 상태를 순서대로 받는다.
+        CancellationToken cancellationToken = default); // 이후의 완전한 상태와 유실 누계를 순서대로 받는다.
 }
 ```
 
@@ -195,9 +195,10 @@ interface가 정한다.
 var current = routeMeshRuntime.GetStatus("game-mesh");
 // Readiness와 target 상태가 같은 시점에 만들어진 한 값에 들어 있다.
 
-await foreach (var status in routeMeshRuntime.ObserveAsync("game-mesh", cancellationToken))
+await foreach (var observed in routeMeshRuntime.ObserveAsync("game-mesh", cancellationToken))
 {
-    await RecordStatusAsync(status, cancellationToken);
+    await RecordStatusAsync(observed.Status, cancellationToken);
+    // observed.Loss가 이 관찰자가 지금까지 놓친 개수다.
     // 관찰 코드는 routing이나 lifecycle 결정을 변경하지 않는다.
 }
 ```

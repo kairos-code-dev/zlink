@@ -108,17 +108,14 @@ W1에서 만든 batch 구조를 재사용한다.
 |---|---|---|
 | RouteMesh 채널 | cursor를 weight 합으로 나눈 연속 구간 (`runtime/mesh/service_topology_registry.cpp:422-465`) | 누적값 3단계로 교체. 후보 map key가 NodeRid라 tiebreak는 이미 맞다 |
 | ClientServer | 누적값은 맞지만 tiebreak 키가 **연결 map key** (`runtime/client_server/weighted_selector.hpp:24-60`, 후보 구성 `runtime/client_server/client_server_location_runtime.cpp:1316-1327`) | 후보에 Server RID를 별도 field로 실어 보내고 tiebreak가 그 값만 비교하게 한다 |
-| **fallback** DEALER fan | winner를 계산해 목록을 회전시키지만 받는 쪽이 집합에 넣어 순서를 지운다 (`runtime/channels/channel_runtime_bundle.cpp:134-178`, `runtime/channels/channel_outbound_exchange.cpp:579-608`) | **선택·회전 상태만 삭제.** endpoint 목록·version 기능은 남긴다. 이 경로의 선택은 Core가 한다 |
+| **fallback** DEALER fan | ~~winner를 계산해 목록을 회전시키지만 받는 쪽이 집합에 넣어 순서를 지운다~~ | **✔ 완료** — 선택·회전과 죽은 `_auto_connections`를 삭제하고 호출처를 `list_manual_connections()`로 돌렸다 |
 
-**삭제 범위 확인.** `channel_runtime_bundle_t::try_add_auto_connection`이 자기 파일 밖에서
-호출되지 않는다. ClientServer client bundle은 수동 connect만 채워지고 수동 연결은 weight가
-`100` 고정(`runtime/channels/channel_runtime_bundle.cpp:137`)이므로, 가중 선택이 실제로는
-동일 weight 상태에서만 돌아온 셈이다. `_auto_connections`가 죽은 경로인지 미배선인지
-확인한 뒤 삭제 범위를 정한다.
+**삭제 완료.** `_auto_connections`는 죽은 경로로 확인됐다 — 쓰기가 테스트에만 있고 나머지
+API는 호출처가 0이었다. Production bundle은 `runtime/channels/channel_bundle_factory.cpp:49-55`가
+manual만 채운다.
 
 **D1 — 선택 비용.** 호출마다 후보 map을 새로 만들고 전체 credit을
-갱신하는 비용(`runtime/client_server/weighted_selector.hpp:29`,
-`runtime/channels/channel_runtime_bundle.cpp:134`)을 후보 변경 시점으로 옮긴다. 주기를 미리
+갱신하는 비용(`runtime/client_server/weighted_selector.hpp:29`)을 후보 변경 시점으로 옮긴다. 주기를 미리
 계산할 때 **시작 상태 복귀를 조건으로 삼으면 안 된다** — 도입부를 지나면 시작 상태는 다시
 나오지 않는다. 같은 상태가 다시 나타나는 지점을 찾는다.
 

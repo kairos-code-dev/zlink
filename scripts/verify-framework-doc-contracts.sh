@@ -771,7 +771,7 @@ const javaCommonNormalized = javaCommonCode.replace(/\s+/gu, ' ');
 for (const fragment of [
   'implements AutoCloseable, ZLinkMessageFlowControl',
   'public ZLinkFrameworkRuntimeStatus status();',
-  'public Flow.Publisher<ZLinkFrameworkRuntimeStatus> observe();',
+  'public Flow.Publisher<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> observe();',
   'public CompletionStage<ZLinkFrameworkRelocationResult> relocate(',
   'public CompletionStage<ZLinkFrameworkTerminationResult> shutdown();',
 ]) {
@@ -1080,362 +1080,115 @@ for (const set of inventory.consolidated_internal_document_sets || []) {
   for (const message of relativeMarkdownLinkFailures(root, documents)) fail(`${set.name} link: ${message}`);
 }
 
-const consolidation = inventory.plan_consolidation || {};
 let forbiddenLegacyPlanCount = 0;
 let planDocumentCount = 0;
 let consolidatedSemanticCount = 0;
-let ledgerRowCount = 0;
-let ledgerEdgeCount = 0;
-let ledgerProfileCount = 0;
-let ledgerProfileRowCount = 0;
-let parallelReviewRowCount = 0;
-let codexOnlyReviewRowCount = 0;
-let ledgerExecutionCardCount = 0;
-let ledgerFinalUnreachableCount = 0;
+
+const consolidation = inventory.plan_consolidation || {};
 if (typeof consolidation.directory !== 'string'
     || !Array.isArray(consolidation.allowed_documents)
     || !Array.isArray(consolidation.temporary_review_documents)
-    || !Array.isArray(consolidation.ledger_required_fragments)
-    || !Array.isArray(consolidation.allowed_profiles)
-    || !Array.isArray(consolidation.completed_parallel_review_rows)
-    || !Array.isArray(consolidation.required_codex_only_review_rows)
-    || !Array.isArray(consolidation.required_high_review_rows)
     || !Array.isArray(consolidation.forbidden_fragments)
     || !Array.isArray(consolidation.required_semantic_owners)
     || !Array.isArray(consolidation.forbidden_legacy_documents)) {
-  fail('v11 plan_consolidation has an invalid schema');
+  fail('v11 plan_consolidation has an invalid current-plan schema');
 } else {
+  const safeRelativePath = relative => typeof relative === 'string'
+    && relative.length > 0
+    && !path.posix.isAbsolute(relative)
+    && !relative.split('/').includes('..');
   const allowedDocuments = consolidation.allowed_documents;
-  const stableSet = new Set(allowedDocuments);
   const temporaryDocuments = consolidation.temporary_review_documents;
+  const stableSet = new Set(allowedDocuments);
   const temporarySet = new Set(temporaryDocuments);
   const allowedSet = new Set([...allowedDocuments, ...temporaryDocuments]);
-  if (allowedDocuments.length !== 4 || stableSet.size !== allowedDocuments.length
-      || allowedDocuments.some(relative => typeof relative !== 'string'
-        || relative.length === 0 || path.posix.isAbsolute(relative)
-        || relative.split('/').includes('..'))) {
-    fail('v11 consolidated plan must declare 4 unique safe relative document paths');
+  if (allowedDocuments.length === 0
+      || stableSet.size !== allowedDocuments.length
+      || allowedDocuments.some(relative => !safeRelativePath(relative))) {
+    fail('v11 current plan must declare unique safe relative document paths');
   }
   if (temporarySet.size !== temporaryDocuments.length
-      || temporaryDocuments.some(relative => typeof relative !== 'string'
-        || relative.length === 0 || path.posix.isAbsolute(relative)
-        || relative.split('/').includes('..') || stableSet.has(relative))) {
-    fail('v11 temporary review documents must be unique safe paths outside the stable set');
+      || temporaryDocuments.some(relative => !safeRelativePath(relative)
+        || stableSet.has(relative))) {
+    fail('v11 current plan temporary documents must be unique safe paths outside the stable set');
   }
+
   const actualDocuments = filesUnder(consolidation.directory)
     .map(relative => path.posix.relative(consolidation.directory, relative));
   planDocumentCount = actualDocuments.length;
   const actualSet = new Set(actualDocuments);
   for (const relativeName of allowedSet) {
     if (!actualSet.has(relativeName)) {
-      fail(`v11 consolidated plan document is missing: ${relativeName}`);
+      fail(`v11 current plan document is missing: ${relativeName}`);
     }
   }
   for (const relativeName of actualDocuments) {
     if (!allowedSet.has(relativeName)) {
-      fail(`v11 consolidated plan contains an unowned document: ${relativeName}`);
+      fail(`v11 current plan contains an unowned document: ${relativeName}`);
     }
-  }
-  const allowedProfiles = new Set(consolidation.allowed_profiles);
-  if (consolidation.allowed_profiles.length !== 4
-      || allowedProfiles.size !== consolidation.allowed_profiles.length
-      || consolidation.allowed_profiles.some(profile => !/^P-[A-Z]+$/u.test(profile))) {
-    fail('v11 consolidation must declare 4 unique central profile IDs');
-  }
-  const parallelReviewRows = new Set(consolidation.completed_parallel_review_rows);
-  if (consolidation.completed_parallel_review_rows.length !== 6
-      || parallelReviewRows.size !== consolidation.completed_parallel_review_rows.length
-      || consolidation.completed_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
-    fail('v11 consolidation must declare 6 unique completed parallel review row IDs');
-  }
-  const codexOnlyReviewRows = new Set(consolidation.required_codex_only_review_rows);
-  if (consolidation.required_codex_only_review_rows.length !== 6
-      || codexOnlyReviewRows.size !== consolidation.required_codex_only_review_rows.length
-      || consolidation.required_codex_only_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id)
-        || parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare 6 unique Codex-only review row IDs');
-  }
-  const highReviewRows = new Set(consolidation.required_high_review_rows);
-  if (consolidation.required_high_review_rows.length !== 2
-      || highReviewRows.size !== consolidation.required_high_review_rows.length
-      || consolidation.required_high_review_rows.some(id => !parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare 2 unique high completed parallel review row IDs');
-  }
-  if (consolidation.forbidden_fragments.length === 0
-      || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
-        || fragment.length === 0)) {
-    fail('v11 consolidation forbidden_fragments must contain non-empty strings');
   }
 
   const semanticIds = new Set();
   if (consolidation.required_semantic_owners.length === 0) {
-    fail('v11 consolidation must declare semantic owners');
+    fail('v11 current plan must declare semantic owners');
   }
   for (const owner of consolidation.required_semantic_owners) {
-    if (!owner || typeof owner.id !== 'string' || semanticIds.has(owner.id)
+    if (!owner || typeof owner.id !== 'string' || owner.id.length === 0
+        || semanticIds.has(owner.id)
         || typeof owner.path !== 'string' || !allowedSet.has(owner.path)
         || !Array.isArray(owner.required_fragments)
         || owner.required_fragments.length === 0
         || owner.required_fragments.some(fragment => typeof fragment !== 'string'
           || fragment.length === 0)) {
-      fail('v11 consolidation semantic owner has an invalid schema');
+      fail('v11 current plan semantic owner has an invalid schema');
       continue;
     }
     semanticIds.add(owner.id);
-    const absolute = path.join(root, consolidation.directory, owner.path);
+    const relative = path.posix.join(consolidation.directory, owner.path);
+    const absolute = path.join(root, relative);
     if (!fs.existsSync(absolute)) {
-      fail(`v11 consolidation semantic owner is missing: ${owner.id}: ${owner.path}`);
+      fail(`v11 current plan semantic owner is missing: ${owner.id}: ${owner.path}`);
       continue;
     }
     consolidatedSemanticCount += 1;
     const source = fs.readFileSync(absolute, 'utf8');
     for (const fragment of owner.required_fragments) {
       if (!source.includes(fragment)) {
-        fail(`v11 consolidation semantic is missing: ${owner.id}: ${fragment}`);
+        fail(`v11 current plan semantic is missing: ${owner.id}: ${fragment}`);
       }
     }
   }
 
-  const ledgerRelative = path.posix.join(
-    consolidation.directory,
-    'route-mesh-11.0.0-execution-ledger.ko.md');
-  const ledgerAbsolute = path.join(root, ledgerRelative);
-  if (fs.existsSync(ledgerAbsolute)) {
-    const ledger = fs.readFileSync(ledgerAbsolute, 'utf8');
-    for (const fragment of consolidation.ledger_required_fragments) {
-      if (!ledger.includes(fragment)) fail(`v11 execution ledger is missing consolidation semantic: ${fragment}`);
+  const planSources = actualDocuments.map(relative =>
+    fs.readFileSync(path.join(root, consolidation.directory, relative), 'utf8'));
+  for (const fragment of consolidation.forbidden_fragments) {
+    if (typeof fragment !== 'string' || fragment.length === 0) {
+      fail('v11 current plan forbidden_fragments must contain non-empty strings');
+      continue;
     }
-    for (const fragment of consolidation.forbidden_fragments) {
-      if (ledger.includes(fragment)) {
-        fail(`v11 execution ledger contains a forbidden model policy fragment: ${fragment}`);
-      }
-    }
-
-    const ledgerLines = ledger.split('\n');
-    const executionCards = new Map();
-    let inExecutionCardCatalog = false;
-    for (const [index, line] of ledgerLines.entries()) {
-      if (line === '### 3.4 ID별 execution card catalog') {
-        inExecutionCardCatalog = true;
-        continue;
-      }
-      if (inExecutionCardCatalog && /^##\s+/u.test(line)) {
-        inExecutionCardCatalog = false;
-      }
-      if (!inExecutionCardCatalog || !line.startsWith('|')) continue;
-      const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
-      if (cells.length !== 5) continue;
-      const tokens = [...cells[0].matchAll(/`([^`]+)`/gu)].map(match => match[1]);
-      if (tokens.length === 0) continue;
-      const remainder = cells[0]
-        .replace(/`[^`]+`/gu, '')
-        .replace(/[\s,]/gu, '');
-      if (remainder.length !== 0) {
-        fail(`v11 execution card must contain exact IDs only: line ${index + 1}: ${cells[0]}`);
-      }
-      for (const id of tokens) {
-        if (!/^(?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+)$/u.test(id)) {
-          fail(`v11 execution card ID is not exact: line ${index + 1}: ${id}`);
-          continue;
-        }
-        if (executionCards.has(id)) {
-          fail(`v11 execution ledger contains duplicate execution card ID: ${id}`);
-          continue;
-        }
-        executionCards.set(id, index + 1);
-      }
-    }
-    ledgerExecutionCardCount = executionCards.size;
-
-    const rows = new Map();
-    for (const [index, line] of ledgerLines.entries()) {
-      if (!line.startsWith('|')) continue;
-      const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
-      if (cells.length !== 7) continue;
-      const match = cells[0].match(/^`((?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+))`$/u);
-      if (!match) continue;
-      const id = match[1];
-      if (rows.has(id)) {
-        fail(`v11 execution ledger contains duplicate row ID: ${id}`);
-        continue;
-      }
-      rows.set(id, {
-        id,
-        line: index + 1,
-        taskCell: cells[1],
-        assignmentCell: cells[2],
-        predecessorCell: cells[3],
-        status: cells[4],
-        predecessors: [],
-      });
-    }
-    ledgerRowCount = rows.size;
-    if (ledgerRowCount === 0) fail('v11 execution ledger contains no executable rows');
-    for (const row of rows.values()) {
-      if (!executionCards.has(row.id)) {
-        fail(`v11 execution ledger row has no execution card: ${row.id}`);
-      }
-    }
-    for (const [id, line] of executionCards) {
-      if (!rows.has(id)) {
-        fail(`v11 execution card points to an undefined row: ${id}: line ${line}`);
-      }
-    }
-
-    const usedProfiles = new Set();
-    for (const row of rows.values()) {
-      const profiles = [...row.assignmentCell.matchAll(/`(P-[A-Z]+)`/gu)]
-        .map(match => match[1]);
-      if (profiles.length !== 1 || !allowedProfiles.has(profiles[0])) {
-        fail(`v11 execution ledger row must select one central profile: ${row.id}: ${row.assignmentCell}`);
-        continue;
-      }
-      if (/gpt-/u.test(row.assignmentCell)) {
-        fail(`v11 execution ledger row repeats a raw Codex model name: ${row.id}`);
-      }
-      usedProfiles.add(profiles[0]);
-      ledgerProfileRowCount += 1;
-    }
-    ledgerProfileCount = usedProfiles.size;
-    for (const profile of allowedProfiles) {
-      if (!usedProfiles.has(profile)) fail(`v11 execution ledger central profile is unused: ${profile}`);
-    }
-    for (const id of parallelReviewRows) {
-      const row = rows.get(id);
-      if (!row) {
-        fail(`v11 execution ledger completed parallel review row is missing: ${id}`);
-        continue;
-      }
-      const expectedProfile = highReviewRows.has(id) ? '`P-HIGH`' : '`P-DEEP`';
-      if (!row.assignmentCell.includes(expectedProfile)
-          || !row.taskCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')
-          || row.status !== '완료') {
-        fail(`v11 execution ledger completed parallel review assignment differs: ${id}`);
-        continue;
-      }
-      parallelReviewRowCount += 1;
-    }
-    for (const id of codexOnlyReviewRows) {
-      const row = rows.get(id);
-      if (!row) {
-        fail(`v11 execution ledger Codex-only review row is missing: ${id}`);
-        continue;
-      }
-      if (!row.assignmentCell.includes('`P-HIGH`')
-          || !row.taskCell.includes('Codex 단독 reviewer')
-          || /Claude|claude-/u.test(row.taskCell)) {
-        fail(`v11 execution ledger Codex-only review assignment differs: ${id}`);
-        continue;
-      }
-      codexOnlyReviewRowCount += 1;
-    }
-    const actualReviewRows = new Set(
-      [...rows.keys()].filter(id => /^V11-R[0-9]/u.test(id)));
-    for (const id of actualReviewRows) {
-      if (!parallelReviewRows.has(id) && !codexOnlyReviewRows.has(id)) {
-        fail(`v11 execution ledger review row is not declared for independent review: ${id}`);
-      }
-    }
-    for (const id of [...parallelReviewRows, ...codexOnlyReviewRows]) {
-      if (!actualReviewRows.has(id)) {
-        fail(`v11 independent review declaration does not identify a review row: ${id}`);
-      }
-    }
-    for (const row of rows.values()) {
-      if (!parallelReviewRows.has(row.id)
-          && !/-REVIEW$/u.test(row.id)
-          && row.taskCell.includes('claude-sonnet-5')) {
-        fail(`v11 execution ledger assigns the parallel reviewer outside a completed review row: ${row.id}`);
-      }
-    }
-
-    for (const row of rows.values()) {
-      if (row.predecessorCell === '없음') continue;
-      const tokens = [...row.predecessorCell.matchAll(/`([^`]+)`/gu)]
-        .map(match => match[1]);
-      const remainder = row.predecessorCell
-        .replace(/`[^`]+`/gu, '')
-        .replace(/[\s,]/gu, '');
-      if (tokens.length === 0 || remainder.length !== 0) {
-        fail(`v11 execution ledger predecessor must contain exact IDs only: ${row.id}: ${row.predecessorCell}`);
-      }
-      const unique = new Set();
-      for (const predecessor of tokens) {
-        if (!/^(?:SPEC-[0-9]{2}|V11-[A-Z0-9-]+)$/u.test(predecessor)) {
-          fail(`v11 execution ledger predecessor is not an exact ID: ${row.id}: ${predecessor}`);
-          continue;
-        }
-        if (unique.has(predecessor)) {
-          fail(`v11 execution ledger repeats a predecessor: ${row.id}: ${predecessor}`);
-          continue;
-        }
-        unique.add(predecessor);
-        row.predecessors.push(predecessor);
-        ledgerEdgeCount += 1;
-        if (predecessor === row.id) {
-          fail(`v11 execution ledger row depends on itself: ${row.id}`);
-        } else if (!rows.has(predecessor)) {
-          fail(`v11 execution ledger predecessor is undefined: ${row.id}: ${predecessor}`);
-        }
-      }
-    }
-
-    const colors = new Map();
-    const stack = [];
-    const visit = id => {
-      const color = colors.get(id) || 0;
-      if (color === 2) return;
-      if (color === 1) {
-        const start = stack.indexOf(id);
-        const cycle = [...stack.slice(start), id];
-        fail(`v11 execution ledger dependency cycle: ${cycle.join(' -> ')}`);
-        return;
-      }
-      colors.set(id, 1);
-      stack.push(id);
-      for (const predecessor of rows.get(id)?.predecessors || []) {
-        if (rows.has(predecessor)) visit(predecessor);
-      }
-      stack.pop();
-      colors.set(id, 2);
-    };
-    for (const id of rows.keys()) visit(id);
-
-    const finalReviewId = 'V11-R7';
-    if (!rows.has(finalReviewId)) {
-      fail(`v11 execution ledger final review row is missing: ${finalReviewId}`);
-    } else {
-      const reachesFinal = new Set();
-      const collectPredecessors = id => {
-        if (reachesFinal.has(id)) return;
-        reachesFinal.add(id);
-        for (const predecessor of rows.get(id)?.predecessors || []) {
-          if (rows.has(predecessor)) collectPredecessors(predecessor);
-        }
-      };
-      collectPredecessors(finalReviewId);
-      const unreachable = [...rows.keys()].filter(id => !reachesFinal.has(id));
-      ledgerFinalUnreachableCount = unreachable.length;
-      for (const id of unreachable) {
-        fail(`v11 execution ledger row does not reach ${finalReviewId}: ${id}`);
-      }
-    }
-
-    const gatedStatuses = new Set(['검토 준비 완료', '리뷰 중', '완료']);
-    for (const row of rows.values()) {
-      if (!gatedStatuses.has(row.status)) continue;
-      for (const predecessor of row.predecessors) {
-        const predecessorRow = rows.get(predecessor);
-        if (predecessorRow && predecessorRow.status !== '완료') {
-          fail(`v11 execution ledger advances before predecessor completion: ${row.id}: ${predecessor}`);
-        }
-      }
+    if (planSources.some(source => source.includes(fragment))) {
+      fail(`v11 current plan contains a forbidden policy fragment: ${fragment}`);
     }
   }
+  const planPaths = actualDocuments.map(relative =>
+    path.posix.join(consolidation.directory, relative));
+  for (const message of codeFenceFailures(root, planPaths)) {
+    fail(`v11 current plan code fence: ${message}`);
+  }
+  for (const message of relativeMarkdownLinkFailures(root, planPaths)) {
+    fail(`v11 current plan link: ${message}`);
+  }
+
   for (const relativeName of consolidation.forbidden_legacy_documents) {
+    if (typeof relativeName !== 'string' || relativeName.length === 0) {
+      fail('v11 forbidden legacy document paths must be non-empty strings');
+      continue;
+    }
     forbiddenLegacyPlanCount += 1;
-    const absolute = path.join(root, consolidation.directory, relativeName);
-    if (fs.existsSync(absolute)) fail(`legacy v11 plan document must not return: ${relativeName}`);
+    const absolute = path.join(root, relativeName);
+    if (fs.existsSync(absolute)) {
+      fail(`legacy v11 plan document must not return: ${relativeName}`);
+    }
   }
 }
 
@@ -2388,12 +2141,6 @@ process.stdout.write(
   + ` formal_documents=${allFormalPaths.length}`
   + ` semantic_owners=${formalPaths.length} target_documents=${targetDocumentCount}`
   + ` plan_documents=${planDocumentCount} consolidated_semantics=${consolidatedSemanticCount}`
-  + ` ledger_rows=${ledgerRowCount} ledger_edges=${ledgerEdgeCount}`
-  + ` ledger_profiles=${ledgerProfileCount} ledger_profile_rows=${ledgerProfileRowCount}`
-  + ` parallel_review_rows=${parallelReviewRowCount}`
-  + ` codex_only_review_rows=${codexOnlyReviewRowCount}`
-  + ` ledger_execution_cards=${ledgerExecutionCardCount}`
-  + ` ledger_final_unreachable=${ledgerFinalUnreachableCount}`
   + ` java_kotlin_negative_mutations=${javaKotlinSemanticNegativeTestCount}`
   + ` host_lifecycle_negative_mutations=${hostLifecycleContractNegativeTestCount}`
   + ` redis_fixtures=${redisFixtureCount} legacy_plan_absent=${forbiddenLegacyPlanCount}\n`);

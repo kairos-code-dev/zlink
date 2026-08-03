@@ -84,7 +84,8 @@ enum class spot_kind_t {
 enum class spot_close_reason_t {
     explicit_close = 0,
     host_shutdown = 1,
-    relocation_out = 2
+    relocation_out = 2,
+    idle_evicted = 3
 };
 
 struct spot_closing_context_t final {
@@ -430,7 +431,11 @@ Spot Actor Join / Relocation 관련 interface도 이 문서에 기록된 정식 
 이 시그니처와 다르면 계약 불일치로 처리한다.
 `join_entry_spot(...)`은 target node RID를 받지 않으며 Framework가 현재 eligible Entry Spot을 선택한다.
 
-`spot_close_reason_t`의 값은 `explicit_close=0`, `host_shutdown=1`, `relocation_out=2`다. Context의
+`spot_close_reason_t`의 값은 `explicit_close=0`, `host_shutdown=1`, `relocation_out=2`,
+`idle_evicted=3`다. `idle_evicted`는 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) 전용 이유이며 Entry Spot과 User Spot에는 전달하지
+않는다. 유휴 판정 조건과 정리 뒤 재활성화 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
+Context의
 `deadline`은 closing operation의 absolute UTC time이다. Framework는 callback invocation 전에는
 `cleanup_cancellation`에 stop을 요청하지 않고 deadline이 끝날 때 요청한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)만
 callback을 받고 Actor별 closing callback은 제공하지 않는다. Host Shutdown은 Actor membership과 local instance가

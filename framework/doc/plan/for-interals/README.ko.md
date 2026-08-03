@@ -45,13 +45,15 @@ execution ledger가 소유한다"고 적혀 있었다. 구현이 아니라 목�
 
 | 순서 | 대상 | 문서 | 가장 무거운 것 |
 |---|---|---|---|
-| **0** | **Core** | [dealer 가중 선택 순서](dealer-weighted-selection-order.ko.md) | tiebreak 키 확보 + 선택 절차 교체 |
+| **0** | **Core** | [dealer 가중 선택 순서](dealer-weighted-selection-order.ko.md) | 구현·spec **완료**. **버전 상향과 로컬 패키지 배포가 남았다** |
 | 1 | C++ | [cpp](cpp-implementation-plan.ko.md) | scheduler 재설계 + Core 위임 경로 정리 |
 | 1 | .NET | [dotnet](dotnet-implementation-plan.ko.md) | scheduler 두 축 회계 + 관찰자 stream 재작성 |
 | 1 | Java | [java](java-implementation-plan.ko.md) | **public error ABI 교체** + queue 한도 도입 |
 | 1 | Node | [node](node-implementation-plan.ko.md) | queue 한도가 아예 없음 — 실행 구조 도입 |
 
-네 언어는 서로 독립적이라 동시에 진행할 수 있다. Core 배포(§6)가 끝난 뒤 시작한다.
+네 언어는 서로 독립적이라 동시에 진행할 수 있다. **Core 배포(§7)가 끝난 뒤 시작한다** —
+구현은 끝났지만 `core/CMakeLists.txt`가 아직 `11.1.0`이고 로컬 패키지가 배포되지 않아,
+지금 framework 작업을 시작하면 옛 core를 참조하게 된다.
 
 **W2-RM은 어느 언어에서도 선행 과제가 없다.** 다른 묶음을 기다리는 동안 먼저 진행할 수 있다.
 

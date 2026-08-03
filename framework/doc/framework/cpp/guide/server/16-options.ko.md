@@ -110,7 +110,7 @@ return app.run (argc, argv);
 뜻하려면 값을 지정하지 않는다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework-runtime-적용-범위)을 본다.
 
 ## 4. 진단
 

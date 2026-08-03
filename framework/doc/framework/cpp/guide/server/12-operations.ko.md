@@ -310,7 +310,11 @@ const bool ready = mesh_runtime.is_ready ("game.room");
 
 // state/peer 전이가 순서대로 온다. capacity를 넘기면 느린 관찰자는 건너뛴다.
 auto observation = mesh_runtime.observe (
-  "game.room", 64, [] (const mesh_node_snapshot_t &next) { record (next); });
+  "game.room", 64,
+  [] (const observed_status_t<mesh_node_snapshot_t> &observed) {
+      record (observed.status);
+      //  observed.loss가 이 관찰자가 놓친 개수다.
+  });
 ```
 
 ## 6. Host lifecycle
@@ -349,8 +353,9 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 ```cpp
 // Host 전체 state, effective intent와 terminal outcome을 순서대로 기록한다.
 auto observation = runtime.observe (
-  64, [&] (const framework_runtime_status_t &status) {
+  64, [&] (const observed_status_t<framework_runtime_status_t> &observed) {
       _logger.info ("host lifecycle state changed");
+      //  observed.status가 상태, observed.loss가 놓친 개수다.
   });
 ```
 

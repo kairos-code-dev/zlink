@@ -309,7 +309,8 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
 ZLinkMeshNodeSnapshot snapshot = meshRuntime.snapshot("game.room");
 boolean ready = meshRuntime.isReady("game.room");
 
-// state/peer 전이가 순서대로 온다 — 상태 표면의 공통 규칙은 [11. Monitoring](11-monitoring.ko.md) §2를 참고한다.
+// subscriber는 ZLinkObservedStatus<ZLinkMeshNodeSnapshot>을 받는다.
+// status()에 전이가, loss()에 놓친 개수가 담긴다 — 공통 규칙은 [11. Monitoring](11-monitoring.ko.md) §2.
 meshRuntime.observe("game.room", 64).subscribe(subscriber);
 ```
 
@@ -348,9 +349,10 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 
 ```java
 // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
-runtime.observe().subscribe(new Flow.Subscriber<ZLinkFrameworkRuntimeStatus>() {
+runtime.observe().subscribe(new Flow.Subscriber<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>() {
     @Override
-    public void onNext(ZLinkFrameworkRuntimeStatus status) {
+    public void onNext(ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus> observed) {
+        ZLinkFrameworkRuntimeStatus status = observed.status();
         logger.info("host lifecycle: {} {} {}",
             status.state(), status.relocationResult(), status.terminationResult());
     }

@@ -96,7 +96,7 @@ public final class ZLinkFrameworkRuntime
     public ZLinkSessionActorsRuntime sessionActors(String streamNodeName, RoutingId sessionRid);
 
     public ZLinkFrameworkRuntimeStatus status();
-    public Flow.Publisher<ZLinkFrameworkRuntimeStatus> observe();
+    public Flow.Publisher<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> observe();
     public CompletionStage<ZLinkFrameworkRelocationResult> relocate(
         ZLinkFrameworkRelocationOptions options);
     public CompletionStage<ZLinkFrameworkTerminationResult> shutdown();
@@ -104,6 +104,10 @@ public final class ZLinkFrameworkRuntime
     public void close();
 }
 ```
+
+`observe()`가 전달하는 `ZLinkObservedStatus<T>`와 `ZLinkObservationLoss`의 canonical declaration은
+[Monitoring 공개 인터페이스](monitoring.ko.md)가 소유한다. 이 문서는 host status stream이 같은 envelope를
+사용한다는 사실만 고정한다.
 
 `relocate(options)`는 신규 application admission과 placement를 닫고 현재 object를 compatible target으로
 이전한다. 성공하면 `RELOCATED` 상태가 되며 host process와 infrastructure connection은 유지한다. User Spot은 [Spot](../../../../01-glossary.ko.md#spot)과 current

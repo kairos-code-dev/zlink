@@ -16,7 +16,7 @@
     "framework/doc/framework/common/spec",
     "framework/doc/framework/common/e2e",
     "framework/doc/framework/common/internals",
-    "framework/doc/plan/v11.0",
+    "framework/doc/plan/for-interals",
     "framework/doc/contract-inventory",
     "framework/runtime/protocol",
     "scripts/generate-v11-core-service-migration-inventory.mjs",

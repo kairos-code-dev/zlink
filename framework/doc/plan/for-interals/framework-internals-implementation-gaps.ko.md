@@ -37,8 +37,8 @@ runtime이 무엇을 고쳐야 하는지 정리한 목록이다. 배경과 판�
 | 무엇 | 막고 있는 항목 |
 |---|---|
 | relay 통지 wire command(ID·body·인증·fence) | W3 전체 |
-| `IdleEvicted` enum 수치와 timeout 설정을 네 exact interface에 | W4 |
-| 관찰자 전달 envelope(status + 유실 누계)를 네 exact interface에 | W5 |
+| ~~`IdleEvicted` enum 수치와 timeout 설정을 네 exact interface에~~ | **해소** — `IdleEvicted=3`, `InstanceSpotIdleTimeout` 네 언어 반영 |
+| ~~관찰자 전달 envelope(status + 유실 누계)를 네 exact interface에~~ | **해소** — `ZLinkObservedStatus<T>` + 두 누계 네 언어 반영 |
 | 실행 대기열 기본 한도·작업당 고정 비용, exact interface의 "payload byte" 표현 교체 | W1 |
 | 상한 값 6종(D6) — 측정 후 판정 | W1 · W6 |
 
@@ -103,10 +103,10 @@ topology마다 다르다 — RouteMesh는 NodeRid, ClientServer는 Server RID다
 > 선택된 owner의 DEALER에는 endpoint가 하나뿐이다(`raw_client_server_owner.cpp:668`).
 > **따라서 C++도 다른 세 언어와 같고, Core 수정으로 닫히는 framework 갭은 없다.**
 >
-> **fallback 경로에는 죽은 코드가 있다.** `cpp/runtime/channels/channel_runtime_bundle.cpp:134-178`이
-> winner를 계산해 목록을 회전시키지만 `channel_outbound_exchange.cpp:579-608`이 집합에
-> 넣어 순서를 지운다. Core는 연결 순서를 약속하지 않는다. 선택·회전 상태만 삭제하고
-> endpoint 목록·version 기능은 남긴다.
+> **fallback 경로의 죽은 코드는 삭제했다.** `connections_from_next()`가 winner를 계산해
+> 목록을 회전시켰지만 받는 쪽이 집합에 넣어 순서를 지우고 있었다. 조사 결과
+> `_auto_connections`도 죽은 경로여서 함께 지웠고, 호출처는 `list_manual_connections()`로
+> 돌렸다. `_connection_version`은 남겼다.
 >
 > Core 쪽 계약 확장은
 > [dealer 가중 선택 순서](dealer-weighted-selection-order.ko.md)가 소유하며,
@@ -171,12 +171,11 @@ C++은 이 정보를 admission record로 받은 뒤에야 ready를 확정한다
 그 전에는 per-server 연결과 framework 선택기를 삭제하지 않는다. **A1의 ClientServer 선택
 절차 결함은 그대로 유효하며, 각 언어에서 고친다.**
 
-#### 연결 순서로 Core의 선택을 유도한다 — C++
+#### ~~연결 순서로 Core의 선택을 유도한다 — C++~~ (해소)
 
-`cpp/runtime/channels/channel_runtime_bundle.cpp:134-178`이 winner를 계산해 endpoint 목록을
-회전시키지만, `cpp/runtime/channels/channel_outbound_exchange.cpp:579-608`이 집합에 넣어
-순서를 지운다. Core는 연결 순서를 약속하지 않는다. **지금도 효과가 없는 코드**다.
-A1의 blocker 항목과 같은 자리이며 삭제 대상이다.
+`connections_from_next()`가 winner를 계산해 endpoint 목록을 회전시켰지만 받는 쪽이 집합에
+넣어 순서를 지웠다. Core는 연결 순서를 약속하지 않으므로 **효과가 없는 코드**였다.
+선택·회전과 죽은 `_auto_connections`를 함께 삭제했다.
 
 #### 위반이 아닌 자리 (참고)
 
@@ -223,18 +222,24 @@ type token이나 안정적인 message contract ID가 필요하다. "선언 type"
 #### 관찰자 전달 envelope를 정했는데 Java 계약이 status만 반환한다
 
 `24-runtime-monitoring.ko.md:244-265`가 전달 단위를 `{status, 유실 누계}` 쌍으로 정했다.
-그런데 Java exact interface는 여전히 `Flow.Publisher<ZLinkMeshNodeSnapshot>`을 반환한다
-(`spec/server/languages/java/interfaces/monitoring.ko.md:114-117`). **envelope를 실을 자리가
-없다.**
+**해소되었다.** 네 언어 exact interface에 전달 envelope와 두 누계를 반영했다.
 
-같은 문서가 바로 다음 문단에서 폐기 수를 관찰자에게 알린다고 적어(`:123-127`) 자기모순이다.
+| 언어 | envelope | 유실 누계 타입 |
+|---|---|---|
+| C++ | `observed_status_t<TStatus>` (`spec/server/languages/cpp/interfaces/08-monitoring.ko.md:28`) | `std::uint64_t` × 2 |
+| .NET | `ZLinkObservedStatus<TStatus>` (`.../dotnet/interfaces/10-topology-monitoring.ko.md:97`) | `ulong` × 2 |
+| Java | `Flow.Publisher<ZLinkObservedStatus<T>>` (`.../java/interfaces/monitoring.ko.md:123`) | `long` × 2 |
+| Node | `ZLinkObservedStatus<TStatus>` (`.../node/interfaces/03-location-observability.ko.md:210-211`) | `bigint` × 2 |
 
-**먼저 정할 것.** 네 exact interface에 공통 전달 envelope와 두 누계(합치기 유실·terminal
-폐기)를 고정하고, Java `observe()`의 generic을 envelope로 바꾼다. 그 뒤에 W5 구현을
-시작한다.
+누계는 **둘로 나뉜다** — `coalescedCount`(합치기로 사라진 수)와
+`discardedTerminalCount`(terminal 보관 상한 초과로 버린 수). 관찰자가 "따라잡기로 건너뛴
+것"과 "영영 못 보는 것"을 구분할 수 있어야 하기 때문이다. 구독마다 0에서 시작하고 표현
+범위를 넘으면 최댓값으로 고정한다.
 
 > 이 문서 A11의 "status field 또는 별도 loss status" 대안 서술은 폐기한다. 공통 spec은
 > 관찰자별 값을 status에 넣지 말라고 명시한다.
+
+**W5 구현을 시작할 수 있다.**
 
 #### idle eviction의 경쟁 조건이 정의되지 않았다
 
@@ -292,10 +297,20 @@ Instance Spot이 유휴 기준을 넘겨 local instance를 내릴 때 호출하�
 - 정리 뒤 Instance intent call은 새 `ObjectGeneration`으로 cold activation, 일반
   message는 `NotFound`
 
-**선행 과제 — 언어별 exact interface에 반영해야 한다.** 네 언어의 exact interface 문서
-어디에도 enum 값과 timeout 설정 API가 없다
-(`spec/server/languages/{cpp/04-spots,dotnet/05-spots,java/spots,node/04-spots}.ko.md`).
-enum 수치를 먼저 고정하지 않으면 언어마다 다른 표면이 나온다.
+**exact interface 반영은 끝났다.** `IdleEvicted`를 네 언어 모두 **`3`**으로 고정했다 —
+기존 세 값이 `0·1·2`로 이미 계약 수치라 3만이 비파괴적이다.
+
+| 언어 | enum | timeout 설정 |
+|---|---|---|
+| C++ | `idle_evicted = 3` (`.../cpp/interfaces/04-spots.ko.md:88`) | `set_instance_spot_idle_timeout(std::chrono::milliseconds)` |
+| .NET | `IdleEvicted = 3` (`.../dotnet/interfaces/05-spots.ko.md:35`) | `SetInstanceSpotIdleTimeout(TimeSpan)` |
+| Java | `IDLE_EVICTED(3)` (`.../java/interfaces/spots.ko.md:33`) | `setInstanceSpotIdleTimeout(Duration)` |
+| Node | `IdleEvicted = 3` (`.../node/interfaces/04-spots.ko.md:40`) | `setInstanceSpotIdleTimeout(timeoutMs: number)` |
+
+기본값 `0`(= 정리 안 함), 음수는 시작 시 설정 오류, MeshNode 시작 전 고정, 실행 중 setter
+없음까지 네 언어에 동일하게 적었다. Kotlin은 Java 계약을 그대로 쓰므로 별도 반영이 없다.
+
+**남은 것은 아래 경쟁 조건 정의다.** 그것이 정해져야 구현을 시작할 수 있다.
 
 **정의가 더 필요한 자리.** 다음은 조항이 아직 답하지 않으며 구현 전에 정해야 한다.
 
@@ -686,7 +701,7 @@ application이 알아챌 수 없으므로 spec 위반은 아니다. 우선순위
 | 위치 | 문제 |
 |---|---|
 | `cpp/runtime/client_server/weighted_selector.hpp:29` | 호출마다 후보 `std::map`을 새로 만들고 전체 credit을 갱신 |
-| `cpp/runtime/channels/channel_runtime_bundle.cpp:134` | mutex 안에서 후보 vector를 만들고 전체 순회 |
+
 | `node/runtime/foundation/service-discovery-registry.ts:80` | 호출마다 filter·sort·`Set` 생성 후 전체 누적값 갱신 |
 
 **수정 방향.** 절차가 결정적이므로 **같은 누적값 상태가 다시 나타나는 지점**까지가 한

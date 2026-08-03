@@ -49,15 +49,21 @@ public class MeshWatcher {
         return meshRuntime.isReady("game.room");
     }
 
-    public void watch(Flow.Subscriber<ZLinkMeshNodeSnapshot> subscriber) {
+    public void watch(Flow.Subscriber<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>> subscriber) {
         // capacity를 넘기면 느린 구독자는 중간 값을 건너뛴다.
+        // 건너뛴 개수는 각 항목의 loss()에 담겨 온다.
         meshRuntime.observe("game.room", 64).subscribe(subscriber);
     }
 }
 ```
 
-**`observe(...)`는 변경 뒤의 완전한 snapshot을 준다.** 바뀐 field만 담은 event가 아니라
-매번 전체 record다. 이전 값과 비교할 일이 있으면 구독하는 쪽에서 보관한다.
+**`observe(...)`는 `ZLinkObservedStatus<T>`를 준다.** `status()`가 변경 뒤의 완전한
+snapshot이고 — 바뀐 field만 담은 event가 아니라 매번 전체 record다 — `loss()`가 이 구독이
+지금까지 놓친 개수다. 이전 값과 비교할 일이 있으면 구독하는 쪽에서 보관한다.
+
+`loss()`는 둘로 나뉜다. `coalescedCount()`는 합치기로 건너뛴 중간 상태 수이고,
+`discardedTerminalCount()`는 보관 상한을 넘겨 영영 못 보게 된 terminal 상태 수다. 앞의
+것은 최신 값을 받았다는 뜻이지만 뒤의 것은 그렇지 않다.
 
 | | `snapshot(...)` | `observe(...)` |
 | --- | --- | --- |
@@ -132,8 +138,7 @@ ZLinkMetricsCustomizer zlinkMetrics(PlaySettings settings) {
 > **현재 Java runtime이 방출하는 계기는 계약의 일부뿐이다.** 계약이 정의한 47개 중
 > 14개만 나오고, request 관련 셋은 계약 이름(`zlink.mesh_node.request.*`)이 아니라
 > `zlink.channel.request.*`로 나온다. 대시보드를 만들기 전에 실제 방출 이름을 확인한다.
-> 저장소의 `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G7이
-> 현황을 정리한다.
+> 현재 구현과 남은 process·CI 조건은 [Java/Kotlin Framework spec gap ledger](../../../../plan/java-kotlin-framework-spec-gap-ledger/java-kotlin-framework-spec-gap-ledger.ko.md)가 소유한다.
 
 ## 5. readiness와 liveness
 

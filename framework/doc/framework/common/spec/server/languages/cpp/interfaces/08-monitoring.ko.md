@@ -19,6 +19,17 @@ weight `0`을 포함한 Channel Server membership이 있으면 연결 부재는 
 수에서 제외하지만 `not_required`는 liveness·health failure 집계에 포함하지 않는다.
 
 ```cpp
+struct observation_loss_t {
+    std::uint64_t coalesced_count = 0;
+    std::uint64_t discarded_terminal_count = 0;
+};
+
+template <typename TStatus>
+struct observed_status_t final {
+    TStatus status;
+    observation_loss_t loss;
+};
+
 struct inbound_dispatch_status_t {
     std::uint64_t application_hwm_bytes;
     std::uint64_t pending_payload_bytes;
@@ -47,7 +58,8 @@ public:
     virtual framework_runtime_status_t status() const = 0;
     virtual std::unique_ptr<runtime_observation_t> observe(
       std::size_t capacity,
-      std::function<void(const framework_runtime_status_t &)> observer) = 0;
+      std::function<void(
+        const observed_status_t<framework_runtime_status_t> &)> observer) = 0;
 };
 ```
 
@@ -123,10 +135,23 @@ public:
     virtual std::unique_ptr<mesh_runtime_observation_t> observe(
       std::string mesh_name,
       std::size_t capacity,
-      std::function<void(const mesh_node_snapshot_t &)> observer) = 0;
+      std::function<void(
+        const observed_status_t<mesh_node_snapshot_t> &)> observer) = 0;
     virtual bool is_ready(std::string mesh_name) const = 0;
 };
 ```
+
+`observe(...)`가 전달하는 단위는 `observed_status_t<TStatus>`다. `status`는 관찰자
+사이에 공유하는 완전한 status·snapshot이고, `loss`는 이 observation 하나에만 해당하는
+유실 누계다. 누계를 status에 넣지 않는 이유와 두 counter의 의미는
+[Runtime monitoring §3](../../../../24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)이 소유한다.
+
+`observation_loss_t::coalesced_count`는 source별 최신 slot 합치기로 이 observer가 보지
+못한 중간 status 수이고, `discarded_terminal_count`는 보관 상한 초과로 폐기한 terminal
+status 수다. 둘을 하나로 합치지 않는다. 두 counter는 `observe(...)` 호출마다 `0`에서
+시작하고 같은 observation 안에서는 단조 증가하며, `9223372036854775807`(`2^63 - 1`)을 넘으면
+그 값으로 고정한다. 이 상한은 네 언어가 같다 — Java `long`이 표현할 수 있는 최댓값에 맞췄다. Framework는 observer queue가 가득 찼다는 이유로 observation을
+끝내지 않는다.
 
 `observe(...)`는 nullable field를 조합한 범용 event가 아니라 변경 뒤의 완전한
 snapshot을 전달한다. Peer 상태는 Node RID, 현재 상태와 사용할 수 없는 이유만

@@ -69,6 +69,7 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder SetActorLimit(int limit);
     IZLinkMeshNodeBuilder SetSpotLimit(int limit);
     IZLinkMeshNodeBuilder SetActivationConcurrency(int limit);
+    IZLinkMeshNodeBuilder SetInstanceSpotIdleTimeout(TimeSpan timeout);
     IZLinkMeshObjectRoleBuilder Objects();
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
@@ -396,6 +397,14 @@ pending activation concurrency 기본값은 128이다.
 Type별 limit은 `null`이면 node limit을 공유하고 값이 있으면 1..`int.MaxValue`이며 node limit보다 작은 값을
 적용한다. Capacity를 weight보다 먼저 적용하고 eligible node가 없으면 `CapacityExceeded`다.
 
+`SetInstanceSpotIdleTimeout(...)`은 유휴 Instance Spot 정리 기준 시간이다. 기본값은 `TimeSpan.Zero`이고
+`TimeSpan.Zero`는 정리하지 않음을 뜻한다. 허용 범위는 `TimeSpan.Zero`와 양수이며 음수는 startup 전에
+`ZLinkConfigurationException`이다. 값은 MeshNode lifecycle
+시작 전에 고정하고 실행 중 setter를 제공하지 않는다. `ZLinkWorkerOptions.IdleTimeout`과는 별개의 설정이며
+서로 값을 상속하지 않는다. 정리 대상은 Instance Spot뿐이고 Entry Spot과 User Spot은 이 설정의 영향을
+받지 않는다. 유휴 판정 조건, `ZLinkSpotCloseReason.IdleEvicted` 전달과 정리 뒤 cold activation 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
+
 ## 3. Manual peer
 
 ```csharp
@@ -600,7 +609,12 @@ source-local 실행 용량을 send timeout 안에 확보하면 시작하고 결�
 
 `IZLinkRouteMeshRuntimeOptions`는 public DI singleton이다. 등록되지 않은 membership을 조회하면
 `ZLinkConfigurationException`이다. `MailboxMessageBudget`와 `MailboxByteBudget`은 [owner](../../../../01-glossary.ko.md#owner)별 application
-mailbox의 메시지 수와 byte 수 상한이다. 0은 Framework profile의 유한 기본값을 사용한다. 두 값은
+mailbox의 메시지 수와 byte 합계 상한이다. Byte 회계는 payload 크기만 세지 않는다 —
+`payload 크기 + metadata 크기 + 작업당 고정 비용`을 더한다. Payload가 비어 있어도 작업 하나는 0 byte가
+아니며, 큰 payload에서도 고정 비용은 그대로 더한다. 합이 `ulong` 표현 범위를 넘으면 `ulong.MaxValue`로
+고정하고 그 제출을 거절한다. 회계 규칙은
+[Framework API §8.2](../../../../06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)가 소유한다.
+0은 Framework profile의 유한 기본값을 사용한다. 두 값은
 `ConfigureRouterSocket()`에서 startup 전에 설정하며, Logical Multicast의 local target drop도 이 공개
 용량 설정을 따른다.
 

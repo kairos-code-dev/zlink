@@ -206,6 +206,16 @@ export interface ZLinkFrameworkRuntimeStatus {
   readonly observedAt: Date;
 }
 
+export interface ZLinkObservationLoss {
+  readonly coalescedCount: bigint;
+  readonly discardedTerminalCount: bigint;
+}
+
+export interface ZLinkObservedStatus<TStatus> {
+  readonly status: TStatus;
+  readonly loss: ZLinkObservationLoss;
+}
+
 export interface ZLinkInboundDispatchStatus {
   readonly applicationHwmBytes: bigint;
   readonly pendingPayloadBytes: bigint;
@@ -218,7 +228,7 @@ export interface ZLinkInboundDispatchStatus {
 
 export interface ZLinkFrameworkRuntime {
   readonly status: ZLinkFrameworkRuntimeStatus;
-  observe(signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeStatus>;
+  observe(signal?: AbortSignal): AsyncIterable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>;
   relocate(options: ZLinkFrameworkRelocationOptions): Promise<ZLinkFrameworkRelocationResult>;
   shutdown(options?: ZLinkFrameworkLifecycleOptions): Promise<ZLinkFrameworkTerminationResult>;
 }
@@ -330,7 +340,7 @@ export interface ZLinkRouteMeshRuntime {
     meshName: string,
     capacity?: number,
     signal?: AbortSignal
-  ): AsyncIterable<ZLinkRouteMeshStatus>;
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkRouteMeshStatus>>;
   isReady(meshName: string): boolean;
 }
 ```
@@ -376,7 +386,7 @@ export interface ZLinkClientServerRuntime {
     channelName: string,
     capacity?: number,
     signal?: AbortSignal
-  ): AsyncIterable<ZLinkClientServerStatus>;
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkClientServerStatus>>;
   isReady(channelName: string): boolean;
 }
 
@@ -396,13 +406,25 @@ export interface ZLinkFanoutRuntime {
     channelName: string,
     capacity?: number,
     signal?: AbortSignal
-  ): AsyncIterable<ZLinkFanoutStatus>;
+  ): AsyncIterable<ZLinkObservedStatus<ZLinkFanoutStatus>>;
 }
 ```
 
 Peer status는 `nodeRid`, `state`, `unavailableReason`만 제공한다. Lifecycle generation,
 descriptor source, connection intent, admission·claim·drain 내부 상태와 pending request 수는
 Framework가 연결과 ownership을 판정하는 데만 사용한다. Application은 이 값을 받지 않는다.
+
+네 `observe(...)`가 전달하는 단위는 모두 `ZLinkObservedStatus<TStatus>`다. `status`는 변경 뒤의 완전한
+status이며 관찰자 사이에 공유한다. `loss`는 이 async iteration 하나에만 해당하는 유실 누계이므로
+status 안에 넣지 않는다. `coalescedCount`는 source별 최신 slot 합치기로 이 관찰자가 보지 못한 중간
+status 수이고, `discardedTerminalCount`는 보관 상한 초과로 폐기한 terminal status 수다. 둘을 하나로
+합치지 않는다 — 관찰자가 "따라잡기로 건너뛴 것"과 "영영 못 보는 것"을 구분해야 하기 때문이다. 두 값은
+`sequence`와 같은 누적 값이므로 `bigint`이며 `observe(...)` 호출마다 `0n`에서 시작하고 같은 iteration
+안에서 단조 증가한다. `9223372036854775807n`(`2^63 - 1`)을 넘으면 그 값으로 고정한다. Java `long`이 표현할 수 있는
+최댓값이며, 네 언어가 같은 상한을 쓰도록 여기에 맞췄다.
+Framework는 관찰자 queue가 가득 찼다는 이유로 iteration을 끝내지 않으며,
+`signal` abort만 해당 iteration을 종료한다. 전달 단위의 정의는
+[Runtime monitoring §3](../../../../24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)이 소유한다.
 
 ## 7. Message wrapper
 

@@ -46,9 +46,10 @@ export class MeshWatcher {
 
   async watch(signal: AbortSignal): Promise<void> {
     // capacity를 넘기면 느린 소비자는 중간 값을 건너뛴다.
-    for await (const next of this.meshRuntime.observe('game.room', 64, signal)) {
-      // 변경 뒤의 완전한 status가 온다. 바뀐 field만 오는 event가 아니다.
-      this.record(next);
+    for await (const observed of this.meshRuntime.observe('game.room', 64, signal)) {
+      // observed.status는 변경 뒤의 완전한 status다. 바뀐 field만 오는 event가 아니다.
+      // observed.loss는 이 구독이 놓친 개수다.
+      this.record(observed.status);
     }
   }
 }
@@ -66,8 +67,14 @@ export class MeshWatcher {
 Host 상태도 같은 모양이다.
 
 ```typescript
-for await (const status of runtime.observe(signal)) {
+for await (const observed of runtime.observe(signal)) {
+  const status = observed.status;
   logger.log(`host lifecycle: ${status.state} ${status.relocationResult}`);
+
+  // 이 구독이 놓친 개수. 합치기로 건너뛴 것과 영영 못 보는 것이 나뉘어 있다.
+  if (observed.loss.discardedTerminalCount > 0n) {
+    logger.warn(`lost terminal statuses: ${observed.loss.discardedTerminalCount}`);
+  }
 }
 ```
 
@@ -112,9 +119,7 @@ observer는 provider class로 등록한다 — 함수가 아니라 `ZLinkMessage
 > **Node runtime이 실제로 내는 계기는 계약의 일부다.** 계약은 47개를 정의하는데
 > `runtime-metrics.ts`가 선언하는 이름은 44개이고 그중 실제로 기록되는 것은 더 적다.
 > 방출 지점이 여러 파일에 흩어져 있어 정확한 수는 확정하지 않았다. **대시보드를 만들기
-> 전에 필요한 계기가 실제로 나오는지 확인한다.** 저장소의
-> `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G7이 언어별
-> 현황과 재확인 범위를 정리한다.
+> 전에 필요한 계기가 실제로 나오는지 확인한다.** 현재 구현과 재확인 범위는 [Node.js Framework spec와 sample gap ledger](../../../../plan/node-framework-spec-gap-ledger/node-framework-spec-gap-ledger.ko.md)가 소유한다.
 
 계기 이름 · 종류 · 단위 · label의 계약은
 [Runtime metric과 집계 규칙](../../../common/spec/25-runtime-metrics.ko.md)이 소유한다.

@@ -401,7 +401,7 @@ target에 복원해야 한다.
 - 절차: Object를 target node로 Relocate하고 public request로 state checksum·length를 조회한다. 별도
   oversize fixture는 maximum을 넘긴다.
 - 검증: 정상 state는 target에서 checksum·length가 같고 request를 처리한다. Oversize operation은 source를
-  유지한 채 `StateIncompatible`로 끝난다.
+  유지한 채 `Blocked/StateIncompatible`로 끝난다.
 - 세부 동작: [Relocation Store §4](../spec/23-relocation-store-redis.ko.md)를 검증한다.
 
 #### SF-F8 Target owner lease가 만료되면 source를 유지한다

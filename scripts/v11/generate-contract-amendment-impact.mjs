@@ -23,7 +23,7 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDirectory, '../..');
 const manifestPath = path.join(
   root,
-  'framework/doc/plan/v11.0/route-mesh-11.0.0-contract-amendment-impact.json',
+  'framework/doc/contract-inventory/route-mesh-v11-contract-amendment-impact.json',
 );
 const traceRelativePath =
   'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json';
@@ -398,7 +398,7 @@ for (const rawRoot of rawRegressionRoots) {
     approvedHash: null,
     acceptanceIntent: '현재 tracked Core 또는 binding의 전체 raw regression source와 registration을 보존하고 Framework runtime 구현 중 계속 실행한다.',
     replacementCoverage: [],
-    specOwner: 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md',
+    specOwner: 'framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md',
     runtimeOwner: rawRoot.runtimeOwner,
     activationStage: 'V11-M6-SCAFFOLD-ZERO',
     quarantineStatus: 'active-regression',
@@ -415,7 +415,7 @@ for (const rawRoot of rawRegressionRoots) {
       approvedHash: null,
       acceptanceIntent: '현재 tracked raw regression file과 registration을 개별 항목으로 보존한다.',
       replacementCoverage: [],
-      specOwner: 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md',
+      specOwner: 'framework/doc/plan/for-interals/framework-internals-implementation-gaps.ko.md',
       runtimeOwner: rawRoot.runtimeOwner,
       activationStage: 'V11-M6-SCAFFOLD-ZERO',
       quarantineStatus: 'active-regression',

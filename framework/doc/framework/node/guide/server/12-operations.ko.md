@@ -309,9 +309,9 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
 const snapshot = meshRuntime.snapshot('game.room');
 const ready = meshRuntime.isReady('game.room');
 
-for await (const next of meshRuntime.observe('game.room', 64, signal)) {
-  // state/peer 전이가 sequence 순서로 온다 — 상태 표면의 공통 규칙은
-  // [11. Monitoring](11-monitoring.ko.md) §2를 참고한다.
+for await (const observed of meshRuntime.observe('game.room', 64, signal)) {
+  // observed.status에 전이가, observed.loss에 놓친 개수가 담긴다 —
+  // 공통 규칙은 [11. Monitoring](11-monitoring.ko.md) §2를 참고한다.
 }
 ```
 
@@ -349,8 +349,9 @@ Host `relocate`·`shutdown` 상태 전이는 framework runtime의 bounded status
 runtime은 component snapshot을 제공하지만 별도 termination authority나 partial drain operation을 만들지 않는다.
 
 ```typescript
-for await (const status of runtime.observe(signal)) {
+for await (const observed of runtime.observe(signal)) {
   // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+  const status = observed.status;
   logger.log(
     `host lifecycle: ${status.state} ${status.relocationResult} ${status.terminationResult}`
   );

@@ -9,10 +9,15 @@ spec에 근거가 없는데 application이 관찰할 수 있는 동작**을 12�
 
 | 항목 | 남은 것 |
 |---|---|
-| 3 `IdleEvicted` | 네 언어 exact interface에 enum 값·timeout 설정 없음. admission seal, owner record CAS, callback 실패 처리 미정 |
-| 4 두 축 한도 | 기본값·허용 범위·작업당 고정 비용 미정. exact interface는 아직 "payload byte"라고 적혀 있다 |
+| 3 `IdleEvicted` | admission seal, owner record CAS, callback 실패 처리 미정 |
+| 4 두 축 한도 | 기본값·허용 범위·작업당 고정 비용의 값 미정 |
 | 6·8 상한들 | 값·단위·기본값 미정(측정 후 판정) |
-| 11·12 관찰자 | 전달 envelope(status + 유실 누계)가 exact interface에 없음 |
+
+**언어별 exact interface 반영은 끝났다.** `IdleEvicted=3`과
+`InstanceSpotIdleTimeout`(기본값 `0` = 정리 안 함), 관찰자 전달 envelope
+(`ZLinkObservedStatus<T>` / `observed_status_t<TStatus>` + 합치기·terminal 폐기 두 누계),
+실행 대기열 byte 회계(`payload + metadata + 작업당 고정 비용`)를 cpp·dotnet·java·node
+exact interface에 같은 값으로 적었다. 남은 것은 위 표의 동작·수치 결정뿐이다.
 
 남은 것은 [구현 갭 목록](framework-internals-implementation-gaps.ko.md)이 추적한다.
 각 항목의 원래 근거와 대안 검토는 그대로 남겨 둔다.

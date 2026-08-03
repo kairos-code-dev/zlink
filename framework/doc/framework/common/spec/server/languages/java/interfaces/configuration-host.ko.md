@@ -119,6 +119,7 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder setActorCapacity(int maxActors);
     ZLinkMeshNodeBuilder setSpotCapacity(int maxSpots);
     ZLinkMeshNodeBuilder setActivationConcurrency(int maxConcurrentActivations);
+    ZLinkMeshNodeBuilder setInstanceSpotIdleTimeout(Duration timeout);
     ZLinkMeshObjectRoleBuilder objects();
     ZLinkMeshNodeSocketConfig configureRouterSocket();
     ZLinkSpotPublisherConfig configureSpotPublisher();
@@ -335,10 +336,22 @@ transport liveness를 대신하지 않는다.
 effective bound를 complete message allocation 전에 적용한다. 이 negotiation을 위한 public option은 제공하지
 않는다.
 
-`mailboxMessageBudget`와 `mailboxByteBudget`은 owner별 application mailbox의 메시지 수와 payload byte 수
-상한이다. 두 값은 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile의 유한 기본값을
+`mailboxMessageBudget`와 `mailboxByteBudget`은 owner별 application mailbox의 메시지 수와 byte 합계
+상한이다. Byte 회계는 payload 크기만 세지 않는다 — `payload 크기 + metadata 크기 + 작업당 고정 비용`을
+더한다. Payload가 비어 있어도 작업 하나는 `0` byte가 아니며, 큰 payload에서도 고정 비용은 그대로
+더한다. 합이 `long` 표현 범위를 넘으면 `Long.MAX_VALUE`로 고정하고 그 제출을 거절한다. 회계 규칙은
+[Framework API §8.2](../../../../06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)가 소유한다.
+두 값은 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile의 유한 기본값을
 선택한다. 음수는 startup 설정 오류다. Logical Multicast의 local target도 이 용량 제한으로 admission을
 판단한다.
+
+`setInstanceSpotIdleTimeout(...)`은 유휴 Instance Spot 정리 기준 시간이다. 기본값은 `Duration.ZERO`이고
+`Duration.ZERO`는 정리하지 않음을 뜻한다. 허용 범위는 `Duration.ZERO`와 양수이며 `null`과 음수는
+startup 설정 오류다. 값은 MeshNode lifecycle 시작 전에 고정하고 runtime setter를 제공하지 않는다.
+`ZLinkWorkerOptions.idleTimeout(...)`과는 별개의 설정이며 서로 값을 상속하지 않는다. 정리 대상은
+Instance Spot뿐이고 Entry Spot과 User Spot은 이 설정의 영향을 받지 않는다. 유휴 판정 조건,
+`ZLinkSpotCloseReason.IDLE_EVICTED` 전달과 정리 뒤 cold activation 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
 
 Automatic RID는 `prefix-<lowercase-canonical-uuid-v4>` 형식이다. UUID v4는 `8-4-4-4-12` 자리의
 lowercase canonical 문자열로 표현한다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이며 active
@@ -692,6 +705,7 @@ public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActorCapacity(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setSpotCapacity(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActivationConcurrency(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setInstanceSpotIdleTimeout(java.time.Duration);
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig configureRouterSocket();
   public abstract systems.zlink.framework.configuration.ZLinkSpotPublisherConfig configureSpotPublisher();

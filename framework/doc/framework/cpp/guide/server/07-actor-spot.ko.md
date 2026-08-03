@@ -307,10 +307,10 @@ task_t<void> on_join_completed (const actor_join_completion_t &completion) overr
         clear_pending_join ();
         co_return;
     }
-    // 오류로 끝났다. is_retriable이면 같은 join을 다시 예약해도 된다.
+    // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
     if (const auto *failed = std::get_if<actor_join_failed_t> (&completion);
-        failed != nullptr && failed->is_retriable) {
-        schedule_application_retry ();
+        failed != nullptr) {
+        handle_join_failure (failed->error_kind);
     }
     co_return;
 }

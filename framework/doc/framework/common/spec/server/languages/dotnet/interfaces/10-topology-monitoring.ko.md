@@ -90,6 +90,14 @@ public readonly record struct ZLinkFrameworkTerminationResult(
     ZLinkFrameworkTerminationOutcome Outcome,
     ZLinkFrameworkTerminationReason Reason);
 
+public readonly record struct ZLinkObservationLoss(
+    ulong CoalescedCount,
+    ulong DiscardedTerminalCount);
+
+public readonly record struct ZLinkObservedStatus<TStatus>(
+    TStatus Status,
+    ZLinkObservationLoss Loss);
+
 public readonly record struct ZLinkInboundDispatchStatus(
     ulong ApplicationHwmBytes,
     ulong PendingPayloadBytes,
@@ -114,7 +122,7 @@ public interface IZLinkFrameworkRuntime
 {
     ZLinkFrameworkRuntimeStatus Status { get; }
 
-    IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkFrameworkRelocationResult> RelocateAsync(
@@ -251,7 +259,7 @@ public interface IZLinkRouteMeshRuntime
 {
     ZLinkRouteMeshStatus GetStatus(string meshName);
 
-    IAsyncEnumerable<ZLinkRouteMeshStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkRouteMeshStatus>> ObserveAsync(
         string meshName,
         CancellationToken cancellationToken = default);
 }
@@ -308,7 +316,7 @@ public interface IZLinkClientServerRuntime
 {
     ZLinkClientServerStatus GetStatus(string channelName);
 
-    IAsyncEnumerable<ZLinkClientServerStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkClientServerStatus>> ObserveAsync(
         string channelName,
         CancellationToken cancellationToken = default);
 }
@@ -337,7 +345,7 @@ public interface IZLinkFanoutRuntime
 {
     ZLinkFanoutStatus GetStatus(string channelName);
 
-    IAsyncEnumerable<ZLinkFanoutStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkFanoutStatus>> ObserveAsync(
         string channelName,
         CancellationToken cancellationToken = default);
 }
@@ -348,9 +356,18 @@ Manual subscriber의 연결 목록은 manual connection API가 소유한다. Man
 
 ## 7. 관찰 stream
 
-각 `ObserveAsync(...)`는 상태가 의미 있게 바뀌었을 때 완성된 immutable status를 전달한다. 소비자가
-변경 속도를 따라가지 못하면 중간 status를 합치고 최신 status를 전달한다. Status stream은 모든 전이를
-감사하는 event log가 아니다.
+각 `ObserveAsync(...)`가 전달하는 단위는 `ZLinkObservedStatus<TStatus>`다. `Status`는 상태가 의미 있게
+바뀌었을 때의 완성된 immutable status이며 관찰자 사이에 공유한다. `Loss`는 이 enumeration 하나에만
+해당하는 유실 누계이므로 status 안에 넣지 않는다. 소비자가 변경 속도를 따라가지 못하면 중간 status를
+합치고 최신 status를 전달한다. Status stream은 모든 전이를 감사하는 event log가 아니다.
+
+`ZLinkObservationLoss.CoalescedCount`는 source별 최신 slot 합치기로 이 소비자가 보지 못한 중간 status
+수이고, `DiscardedTerminalCount`는 보관 상한 초과로 폐기한 terminal status 수다. 둘을 하나로 합치지
+않는다 — 소비자가 "따라잡기로 건너뛴 것"과 "영영 못 보는 것"을 구분해야 하기 때문이다. 두 값은
+`ObserveAsync(...)` 호출마다 0에서 시작하고 같은 enumeration 안에서 단조 증가하며, `ulong` 표현 범위를
+`9223372036854775807`(`2^63 - 1`)을 넘으면 그 값으로 고정한다. 이 상한은 네 언어가 같다. Framework는 소비자 queue가 가득 찼다는 이유로 enumeration을
+종료하지 않는다. 전달 단위의 정의는
+[Runtime monitoring §3](../../../../24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)이 소유한다.
 
 Identifier에
 따라 nullable field의 의미가 달라지는 범용 event DTO는 사용하지 않는다. 소비자는 event 종류별 field

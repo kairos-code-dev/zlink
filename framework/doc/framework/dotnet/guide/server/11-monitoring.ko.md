@@ -49,11 +49,16 @@ var status = fanout.GetStatus("user.events");   // 지금 값 한 장
 if (!status.IsReady)
     logger.LogWarning("fanout not ready: {Channel} {State}", status.ChannelName, status.State);
 
-await foreach (var update in fanout.ObserveAsync("user.events", cancellationToken: ct))
+await foreach (var observed in fanout.ObserveAsync("user.events", cancellationToken: ct))
 {
     // publisher가 붙고 빠질 때마다 Sequence 순서로 도착한다.
+    var update = observed.Status;
     logger.LogInformation("publishers={Count} state={State} seq={Seq}",
         update.ReadyPublisherCount, update.State, update.Sequence);
+
+    // 이 구독이 놓친 개수. 합치기로 건너뛴 것과 영영 못 보는 것이 나뉘어 있다.
+    if (observed.Loss.DiscardedTerminalCount > 0)
+        logger.LogWarning("lost terminal statuses: {Count}", observed.Loss.DiscardedTerminalCount);
 }
 ```
 

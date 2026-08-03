@@ -96,7 +96,7 @@ ZLinkModule.forRootFactory({
 
 > **spec에 있고 구현에 없는 값이 둘 있다.** 공개 계약은 `mailboxMessageBudget` ·
 > `mailboxByteBudget`을 이 config에 두지만 현재 builder 표면에는 없다. 저장소의
-> `framework/doc/plan/v11.0/guide-authoring-implementation-gaps.ko.md` G9가 기록한다.
+> [Node.js Framework spec와 sample gap ledger](../../../../plan/node-framework-spec-gap-ledger/node-framework-spec-gap-ledger.ko.md)가 기록한다.
 
 동작 원리와 값을 고르는 기준은
 [4. Backpressure](04-backpressure.ko.md)가 다룬다.
@@ -121,7 +121,7 @@ ZLinkModule.forRootFactory({
 아직 handler 실행을 시작하지 못한 message의 **payload 합계**에 적용한다.
 
 > 이 단위와 상한은 계약으로 확정되었을 뿐 **아직 runtime이 사용하지 않는다.**
-> [4. Backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)을 본다.
+> [4. Backpressure §6](04-backpressure.ko.md#6-framework-runtime-적용-범위)을 본다.
 
 ## 4. 진단
 

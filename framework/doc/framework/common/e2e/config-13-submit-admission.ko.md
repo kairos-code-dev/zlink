@@ -6,8 +6,8 @@
 # Config 13 — One-way submit admission
 
 One-way send와 publish는 payload를 반환하지 않는다. 정상 완료는 해당 operation family의 source admission이
-message를 수락했다는 뜻이며 remote handler나 subscriber가 실행을 끝냈다는 뜻은 아니다. Queue가 바로
-수락하지 못하면 public send deadline 안에서 capacity를 기다리고, timeout·cancellation·Shutdown 중 먼저
+message를 수락했다는 뜻이며 원격 handler 실행 완료를 뜻하지 않는다. Queue가 바로
+수락하지 못하면 public send deadline 안에서 capacity를 기다리고, timeout 예외·cancellation·Shutdown 중 먼저
 확정된 결과 하나로 끝난다.
 
 이 config는 실제 process 사이에서 public one-way API의 완료와 실패를 검증한다. Client는 역할 server의
@@ -276,7 +276,9 @@ Logical Multicast는 current matching targets에 one-way로 전달하며 target�
   status를 확인한다.
 - 절차: Source가 고유 marker를 한 번 publish한다.
 - 검증: Public terminal은 target별 결과 payload 없이 정식 의미로 완료한다. A는 marker를 한 번 처리하고
-  B는 처리하지 않는다. E2E는 private snapshot과 attempt count를 읽지 않는다.
+  B는 처리하지 않는다. Target이 0개인 variant도 정상 완료한다. 일부 target만 처리되는 partial 전달의
+  target별 결과는 public result나 publish 전용 monitoring으로 반환·집계하지 않는다. E2E는 private snapshot과
+  attempt count를 읽지 않는다.
 - 세부 동작: [Spot messaging §4](../spec/12-spot-messaging.ko.md)를
   검증한다.
 

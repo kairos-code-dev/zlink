@@ -20,6 +20,14 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationResult;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkTerminationResult;
 
+public record ZLinkObservationLoss(
+    long coalescedCount,
+    long discardedTerminalCount) {}
+
+public record ZLinkObservedStatus<T>(
+    T status,
+    ZLinkObservationLoss loss) {}
+
 public record ZLinkInboundDispatchStatus(
     long applicationHwmBytes,
     long pendingPayloadBytes,
@@ -112,7 +120,7 @@ public record ZLinkMeshNodeSnapshot(
 public interface ZLinkRouteMeshRuntime {
     ZLinkMeshNodeSnapshot snapshot(String meshName);
 
-    Flow.Publisher<ZLinkMeshNodeSnapshot> observe(
+    Flow.Publisher<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>> observe(
         String meshName,
         int capacity);
 
@@ -120,11 +128,19 @@ public interface ZLinkRouteMeshRuntime {
 }
 ```
 
-`observe(...)`는 일부 field만 담은 event가 아니라 변경 뒤의 완전한 snapshot을 전달한다. 느린
+`observe(...)`가 전달하는 단위는 `ZLinkObservedStatus<T>`다. `status`는 일부 field만 담은 event가 아니라 변경 뒤의 완전한 snapshot을 전달한다. subscriber 사이에 공유한다. `loss`는 이 subscription 하나에만 해당하는
+유실 누계이므로 status 안에 넣지 않는다. 느린
 subscriber 때문에 중간 상태를 합칠 수 있으며, 이때 보관 중인 source의 최신 상태는 생략하지
 않는다. Terminal 상태는 중간 상태로 덮어쓰지 않지만, 보관 상한을 넘기면 오래된 terminal부터
 버리고 그 수를 관찰자에게 알린다
 ([Runtime 상태와 운영 진단](../../../../24-runtime-monitoring.ko.md)).
+
+`ZLinkObservationLoss.coalescedCount`는 source별 최신 slot 합치기로 이 subscriber가 보지 못한 중간 상태
+수이고, `discardedTerminalCount`는 보관 상한 초과로 폐기한 terminal 상태 수다. 둘을 하나로 합치지
+않는다 — subscriber가 "따라잡기로 건너뛴 것"과 "영영 못 보는 것"을 구분해야 하기 때문이다. 두 값은
+`observe(...)` 구독마다 `0`에서 시작하고 같은 구독 안에서 단조 증가하며, `Long.MAX_VALUE`(`2^63 - 1`)를 넘으면 그 값으로 고정한다. 이 상한은 네 언어가 같다. Framework는 subscriber queue가 가득 찼다는 이유로 `Flow.Publisher`를
+완료하거나 오류로 끝내지 않는다. 전달 단위의 정의는
+[Runtime monitoring §3](../../../../24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)이 소유한다.
 
 Placement의 `isAvailable`은 host가 `SERVING`이고 Object Server이며, node-wide placement
 weight가 양수이고, Actor 또는 Spot capacity와 activation concurrency에 모두 여유가 있을 때만
@@ -170,7 +186,7 @@ public record ZLinkClientServerStatus(
 public interface ZLinkClientServerRuntime {
     ZLinkClientServerStatus snapshot(String channelName);
 
-    Flow.Publisher<ZLinkClientServerStatus> observe(
+    Flow.Publisher<ZLinkObservedStatus<ZLinkClientServerStatus>> observe(
         String channelName,
         int capacity);
 
@@ -202,7 +218,7 @@ public record ZLinkFanoutStatus(
 public interface ZLinkFanoutRuntime {
     ZLinkFanoutStatus snapshot(String channelName);
 
-    Flow.Publisher<ZLinkFanoutStatus> observe(
+    Flow.Publisher<ZLinkObservedStatus<ZLinkFanoutStatus>> observe(
         String channelName,
         int capacity);
 }

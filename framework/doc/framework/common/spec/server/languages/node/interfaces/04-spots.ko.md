@@ -36,7 +36,8 @@ export declare enum ZLinkSpotKind {
 export declare enum ZLinkSpotCloseReason {
     ExplicitClose = 0,
     HostShutdown = 1,
-    RelocationOut = 2
+    RelocationOut = 2,
+    IdleEvicted = 3
 }
 
 export interface ZLinkSpotClosingContext {
@@ -138,7 +139,10 @@ export interface ZLinkInstanceSpotContext
 [기초 타입과 구성](01-foundation-configuration.ko.md)이 소유한다. 이 문서는 해당 타입을 다시 선언하지 않고
 Spot lifecycle에서 사용하는 위치만 고정한다.
 
-`ZLinkSpotCloseReason`의 numeric 값은 `ExplicitClose=0`, `HostShutdown=1`, `RelocationOut=2`다.
+`ZLinkSpotCloseReason`의 numeric 값은 `ExplicitClose=0`, `HostShutdown=1`, `RelocationOut=2`,
+`IdleEvicted=3`이다. `IdleEvicted`는 Instance Spot 전용 이유이며 Entry Spot과 User Spot에는 전달하지
+않는다. 유휴 판정 조건과 정리 뒤 재활성화 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
 `deadline`은 closing operation의 absolute UTC instant다. Framework는 callback invocation 전에는
 `cleanupSignal`을 abort하지 않고 deadline이 끝날 때 abort한다. Entry·User·[Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot)만 callback을 받고
 Actor별 closing callback은 제공하지 않는다. Host Shutdown은 Actor membership과 local instance가 유효한

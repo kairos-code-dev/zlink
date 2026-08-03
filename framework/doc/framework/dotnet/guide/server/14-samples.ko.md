@@ -322,7 +322,7 @@ ShoppingMall과 나란히 놓으면 선택 기준이 드러난다. 게임 진행
 
 ## 8. ZoneWorld — zone 분할 MMORPG와 운영 관제 구축
 
-> 앞의 여섯 공통 샘플과 달리 ZoneWorld는 `.NET`과 Node.js에만 있다. 나머지 여섯은 다섯 언어
+> 앞의 일곱 샘플과 달리 ZoneWorld는 `.NET`과 Node.js에만 있다. 나머지 여섯은 다섯 언어
 > 공통이다. 다른 언어에서 같은 주제를 보려면 이 장의 설명과 공통 시나리오 문서를 읽고
 > 코드는 두 언어 중 하나를 참고한다.
 
@@ -388,8 +388,8 @@ framework/languages/dotnet/samples/Bingo/run_sample.sh
 framework/languages/dotnet/samples/run_samples.sh TicTacToe Bingo
 ```
 
-`run_samples.sh`는 `.NET` sample 7종을 다룬다. ZoneWorld는 integrated runner에도 포함되며,
-브라우저 self-check가 필요한 경우 `ZoneWorld/run_sample.sh`로 따로 실행할 수 있다.
+`run_samples.sh`는 서버 샘플 6개를 다룬다. 브라우저 UI가 필요한 ZoneWorld는
+`ZoneWorld/run_sample.sh`로 따로 실행한다.
 
 ## 10. 관련 문서
 

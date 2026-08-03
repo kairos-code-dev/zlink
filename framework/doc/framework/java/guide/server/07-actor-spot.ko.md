@@ -316,10 +316,9 @@ public CompletionStage<Void> onJoinCompleted(ZLinkActorJoinCompletion completion
     // target의 admission callback이 join을 거절했다. 위치는 그대로다.
     } else if (completion instanceof ZLinkActorJoinCompletion.Rejected) {
         clearPendingJoin();
-    // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
-    } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed
-        && failed.isRetriable()) {
-        scheduleApplicationRetry();
+    // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
+    } else if (completion instanceof ZLinkActorJoinCompletion.Failed failed) {
+        handleJoinFailure(failed.kind());
     }
     return CompletableFuture.completedFuture(null);
 }

@@ -152,6 +152,7 @@ ALLOWED_NON_FRAMEWORK = {
     "hasSeat": "예제 Spot(GameRoom)의 도메인 메서드",
     "rememberCurrentLocation": "예제 Actor가 정의해 쓰는 도우미",
     "clearPendingJoin": "예제 Actor가 정의해 쓰는 도우미",
+    "handleJoinFailure": "예제 Actor가 정의해 쓰는 도우미",
     "scheduleApplicationRetry": "예제 Actor가 정의해 쓰는 도우미",
     "export_state": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",
     "import_state": "예제 Actor의 도메인 메서드 — relocation adapter가 부른다",

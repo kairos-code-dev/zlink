@@ -315,10 +315,10 @@ var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
 var status = meshRuntime.GetStatus("game.room"); // 노드·peer·channel의 immutable 현재 상태
 var ready = status.IsReady;
 
-await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
+await foreach (var observed in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
 {
-    // state/peer 전이가 Sequence 순서로 온다 — 상태 표면의 공통 규칙은
-    // 11-monitoring §2를 참고한다.
+    // observed.Status에 state/peer 전이가 Sequence 순서로 온다.
+    // observed.Loss는 이 관찰자가 놓친 개수다 — 공통 규칙은 11-monitoring §2를 참고한다.
 }
 ```
 
@@ -358,9 +358,10 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 ```csharp
 var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
 
-await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
+await foreach (var observed in runtime.ObserveAsync(cancellationToken: ct))
 {
     // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+    var hostEvent = observed.Status;
     logger.LogInformation(
         "host lifecycle: {State} {Relocation} {Termination}",
         hostEvent.State,

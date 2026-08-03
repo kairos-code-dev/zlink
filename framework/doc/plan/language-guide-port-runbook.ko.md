@@ -513,7 +513,7 @@ kotlin은 Java 런타임을 공유하므로 **다른 지점만 쓰고 나머지�
 같은 내용을 두 벌로 두면 한쪽이 반드시 낡는다.
 
 쓰면서 확인한 spec↔구현 차이는
-[가이드 집필 중 발견한 구현·샘플 갭](v11.0/guide-authoring-implementation-gaps.ko.md)에
+[가이드 집필 중 발견한 구현·샘플 갭](for-interals/framework-internals-implementation-gaps.ko.md)에
 쌓았다. 문서를 고치는 대신 계약을 기준으로 적고 갭으로 남기는 방식이다.
 
 **스니펫 전환도 완료했다.** 다섯 언어 샘플 전부에 같은 호출이 있는 자리 9곳을 골라

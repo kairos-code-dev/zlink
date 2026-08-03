@@ -168,7 +168,7 @@ profile에서 연결이 64개 이하면 방향마다·상대마다 `1,048,576 by
 두 한도는 방향만 다를 뿐 성격이 같다. 각각 **자기 node가 들고 있을 byte**를 정하고,
 그 한도가 상대 쪽 흐름으로 이어진다. 실행 단위별 상한을 host 전체 byte 예산 하나로
 대체하는 설계가 확정되어 있으며, 적용 상태는
-[04-backpressure §6](04-backpressure.ko.md#6-framework에-아직-적용되지-않은-부분)이 밝힌다.
+[04-backpressure §6](04-backpressure.ko.md#6-framework-runtime-적용-범위)이 밝힌다.
 
 **high-water mark를 올리는 것이 기본 대응은 아니다.** 상한을 키우면 혼잡이 메모리로
 흡수되어 `DeadlineExceeded`가 늦게 나타나고, 그만큼 원인을 늦게 알게 된다. 폭주가

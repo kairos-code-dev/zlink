@@ -121,7 +121,7 @@ public interface IZLinkFrameworkRuntime
     ZLinkFrameworkRuntimeStatus Status { get; }
 
     // Host state와 terminal result 변화를 순서대로 관찰한다.
-    IAsyncEnumerable<ZLinkFrameworkRuntimeStatus> ObserveAsync(
+    IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>> ObserveAsync(
         CancellationToken cancellationToken = default);
 
     // Stateful workload를 이전하고 성공하면 Relocated 상태로 남는다.

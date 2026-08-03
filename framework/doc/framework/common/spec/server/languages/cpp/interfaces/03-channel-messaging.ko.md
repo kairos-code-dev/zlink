@@ -120,6 +120,8 @@ public:
     mesh_node_builder_t &set_actor_limit(std::int32_t limit);
     mesh_node_builder_t &set_spot_limit(std::int32_t limit);
     mesh_node_builder_t &set_activation_concurrency(std::int32_t limit);
+    mesh_node_builder_t &set_instance_spot_idle_timeout(
+      std::chrono::milliseconds timeout);
     mesh_node_socket_config_t &configure_router_socket();
     mesh_peer_connections_t &peer_connections();
     mesh_node_builder_t &set_default_request_timeout(std::chrono::milliseconds timeout);
@@ -223,7 +225,8 @@ public:
     virtual std::unique_ptr<mesh_runtime_observation_t> observe(
       std::string channel_name,
       std::size_t capacity,
-      std::function<void(const client_server_runtime_event_t &)> observer) = 0;
+      std::function<void(
+        const observed_status_t<client_server_runtime_event_t> &)> observer) = 0;
     virtual bool is_ready(std::string channel_name) const = 0;
 };
 
@@ -297,7 +300,8 @@ public:
     virtual std::unique_ptr<fanout_runtime_observation_t> observe(
       std::string channel_name,
       std::size_t capacity,
-      std::function<void(const fanout_runtime_event_t &)> observer) = 0;
+      std::function<void(
+        const observed_status_t<fanout_runtime_event_t> &)> observer) = 0;
 };
 
 class mesh_channel_runtime_options_t {
@@ -319,7 +323,12 @@ public:
 ```
 
 `mailbox_message_budget`와 `mailbox_byte_budget`은 owner별 application mailbox가 보관할 수 있는 메시지 수와
-payload byte 수를 제한한다. 두 값은 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile이
+byte 합계를 제한한다. Byte 회계는 payload 크기만 세지 않는다 —
+`payload 크기 + metadata 크기 + 작업당 고정 비용`을 더한다. Payload가 비어 있어도 작업 하나는 `0` byte가
+아니며, 큰 payload에서도 고정 비용은 그대로 더한다. 합이 `std::uint64_t` 표현 범위를 넘으면 최댓값으로
+고정하고 그 제출을 거절한다. 회계 규칙은
+[Framework API §8.2](../../../../06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)가 소유한다.
+두 값은 startup 전에만 설정한다. `0`은 unlimited가 아니라 Framework profile이
 정한 유한 기본값을 선택한다. Logical Multicast의 local target도 이 용량 제한으로 admission을 판단한다.
 
 `channel(channel_name)` 뒤에는 `client()` 또는 `server()`를 정확히 한 번 호출한다.
@@ -368,6 +377,14 @@ Actor stable type별 limit은 제공하지 않는다.
 기본값은 `128`이고 양수만 허용한다. `0`이나 음수는 socket bind 전에 configuration error다. Population
 capacity와 activation concurrency를 같은 counter나 option으로 합치지 않는다. 모든 값은 MeshNode lifecycle
 시작 전에 고정한다.
+
+`set_instance_spot_idle_timeout(...)`은 유휴 [Instance Spot](../../../../01-glossary.ko.md#entry-spot-user-spot과-instance-spot) 정리 기준 시간이다. 기본값은
+`std::chrono::milliseconds::zero()`이고 `0`은 정리하지 않음을 뜻한다. 허용 범위는 `0`과 양수이며 음수는
+socket bind 전에 configuration error다. 값은 MeshNode lifecycle 시작 전에 고정하고 runtime setter를
+제공하지 않는다. Worker의 `idle_timeout(...)`과는 별개의 설정이며 서로 값을 상속하지 않는다.
+정리 대상은 Instance Spot뿐이고 Entry Spot과 User Spot은 이 설정의 영향을 받지 않는다. 유휴
+판정 조건, `spot_close_reason_t::idle_evicted` 전달과 정리 뒤 cold activation 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다.
 
 Descriptor capacity는 candidate filter에만 사용한다. Framework는 선택한 node에서 Location Store의 typed
 bundle reservation을 원자적으로 얻은 뒤에만 factory를 실행한다. Actor는 Actor slot 하나, Spot은 Spot 전체
@@ -516,6 +533,13 @@ identifier를 바꿀 수 없다. `state`와 event identifier는
 [Runtime monitoring](../../../../24-runtime-monitoring.ko.md)의 lowercase identifier를 그대로 사용한다. 이 runtime은
 읽기 전용이며 `subscriber_connections()`의 manual endpoint 집합을 변경하지 않는다. Manual subscriber로만
 등록한 ChannelName을 조회하면 configuration error다.
+
+`client_server_runtime_t::observe(...)`와 `fanout_runtime_t::observe(...)`가 전달하는 단위는
+[Monitoring interface](08-monitoring.ko.md)가 선언한 `observed_status_t<TStatus>`다. ClientServer와 fanout은
+[Runtime monitoring §3](../../../../24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)의 source 표에서
+ChannelName을 source 키로 갖는 topology source이므로, 두 stream도 같은 envelope로 event variant를 감싸
+observer별 유실 누계를 함께 전달한다. `status` field에 들어가는 값이 snapshot이 아니라 event variant라는
+점만 다르고 `loss`의 의미와 reset·saturation 규칙은 같다.
 
 `fanout_runtime_observation_t`는 fanout observer 등록의 수명과 `close()`만 소유한다.
 `fanout_runtime_t::observe(...)` callback은 `fanout_runtime_event_t`만 받으므로 RouteMesh·ClientServer event나

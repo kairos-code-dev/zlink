@@ -30,7 +30,7 @@ public record SpotRef(
     RoutingId nodeRid) {}
 
 public enum ZLinkSpotCloseReason {
-    EXPLICIT_CLOSE(0), HOST_SHUTDOWN(1), RELOCATION_OUT(2);
+    EXPLICIT_CLOSE(0), HOST_SHUTDOWN(1), RELOCATION_OUT(2), IDLE_EVICTED(3);
     private final int value;
     ZLinkSpotCloseReason(int value) { this.value = value; }
     public int value() { return value; }
@@ -342,7 +342,10 @@ CompletionStage<CartReply> reply = spotClient
     .submit(CartReply.class);       // 생성 또는 기존 owner의 handler가 반환한 reply를 기다린다.
 ```
 
-`ZLinkSpotCloseReason`의 값은 `EXPLICIT_CLOSE=0`, `HOST_SHUTDOWN=1`, `RELOCATION_OUT=2`다. Context의
+`ZLinkSpotCloseReason`의 값은 `EXPLICIT_CLOSE=0`, `HOST_SHUTDOWN=1`, `RELOCATION_OUT=2`,
+`IDLE_EVICTED=3`이다. `IDLE_EVICTED`는 Instance Spot 전용 이유이며 Entry Spot과 User Spot에는 전달하지
+않는다. 유휴 판정 조건과 정리 뒤 재활성화 규칙은
+[Spot 모델 §6.2](../../../../11-spot-model.ko.md#62-유휴-instance-spot-정리)가 소유한다. Context의
 `deadline`은 absolute `Instant`다. Java Spot closing callback에는 별도 Framework cancellation 인자를 추가하지
 않는다. Framework는 deadline에 stage completion 대기를 끝내고 bounded teardown을 진행한다.
 Entry·User·Instance Spot만 callback을 받고 Actor별 closing callback은 제공하지 않는다. Host [Shutdown](../../../../01-glossary.ko.md#shutdown)은 Actor
@@ -386,6 +389,7 @@ public final class systems.zlink.framework.spots.ZLinkSpotCloseReason extends ja
   public static final systems.zlink.framework.spots.ZLinkSpotCloseReason EXPLICIT_CLOSE;
   public static final systems.zlink.framework.spots.ZLinkSpotCloseReason HOST_SHUTDOWN;
   public static final systems.zlink.framework.spots.ZLinkSpotCloseReason RELOCATION_OUT;
+  public static final systems.zlink.framework.spots.ZLinkSpotCloseReason IDLE_EVICTED;
   public static systems.zlink.framework.spots.ZLinkSpotCloseReason[] values();
   public static systems.zlink.framework.spots.ZLinkSpotCloseReason valueOf(java.lang.String);
   public int value();

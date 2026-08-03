@@ -44,18 +44,18 @@ if (mode === '--contract') {
       '동기 `TrySubmit` 계열을 제공하지 않는다',
       '반환 데이터 없이 완료',
       '`DeadlineExceeded`',
-      '`RuntimeShutdown`']],
+      '`ShuttingDown`']],
     [frameworkApi, 'Framework API', [
       'one-way send·publish는 결과값 없이 정상 완료',
       'Target별 수락·실패 결과는 public publish 결과로 반환하거나 publish 전용 monitoring 값으로 집계하지',
-      '`RuntimeShutdown`']],
+      '`ShuttingDown`']],
     [spotMessaging, 'Spot messaging', [
       'Publish 완료는 handler 실행 결과가 아니라 local outbound admission',
       'monitoring snapshot, metric 또는 runtime event로 제공하지 않는다']],
     [scenario, 'Config 13', [
-      '원격 handler 실행 완료가 아니다',
+      '원격 handler 실행 완료를 뜻하지 않는다',
       'timeout 예외',
-      'shutdown']]
+      'Shutdown']]
   ]) {
     for (const fragment of fragments) {
       if (!source.includes(fragment)) fail(`${owner} is missing submit semantic: ${fragment}`);
@@ -187,7 +187,7 @@ if (mode === '--contract') {
     'capacity 대기',
     'timeout 예외',
     'cancellation',
-    'shutdown',
+    'Shutdown',
     'target',
     'route',
     'target이 0개',

@@ -471,10 +471,10 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
     var status = meshRuntime.GetStatus("game.room"); // 노드·peer·channel의 immutable 현재 상태
     var ready = status.IsReady;
 
-    await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
+    await foreach (var observed in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
     {
-        // state/peer 전이가 Sequence 순서로 온다 — 상태 표면의 공통 규칙은
-        // 11-monitoring §2를 참고한다.
+        // observed.Status에 state/peer 전이가 Sequence 순서로 온다.
+        // observed.Loss는 이 관찰자가 놓친 개수다 — 공통 규칙은 11-monitoring §2를 참고한다.
     }
     ```
 
@@ -487,7 +487,11 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
 
     // state/peer 전이가 순서대로 온다. capacity를 넘기면 느린 관찰자는 건너뛴다.
     auto observation = mesh_runtime.observe (
-      "game.room", 64, [] (const mesh_node_snapshot_t &next) { record (next); });
+      "game.room", 64,
+      [] (const observed_status_t<mesh_node_snapshot_t> &observed) {
+          record (observed.status);
+          //  observed.loss가 이 관찰자가 놓친 개수다.
+      });
     ```
 
 === "Java"
@@ -497,7 +501,8 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
     ZLinkMeshNodeSnapshot snapshot = meshRuntime.snapshot("game.room");
     boolean ready = meshRuntime.isReady("game.room");
 
-    // state/peer 전이가 순서대로 온다 — 상태 표면의 공통 규칙은 `11. Monitoring` 장 §2를 참고한다.
+    // subscriber는 ZLinkObservedStatus<ZLinkMeshNodeSnapshot>을 받는다.
+    // status()에 전이가, loss()에 놓친 개수가 담긴다 — 공통 규칙은 `11. Monitoring` 장 §2.
     meshRuntime.observe("game.room", 64).subscribe(subscriber);
     ```
 
@@ -508,7 +513,8 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
     val snapshot = meshRuntime.snapshot("game.room")
     val ready = meshRuntime.isReady("game.room")
 
-    // state/peer 전이가 순서대로 온다 — 상태 표면의 공통 규칙은 `11. Monitoring` 장 §2를 참고한다.
+    // subscriber는 ZLinkObservedStatus<ZLinkMeshNodeSnapshot>을 받는다.
+    // status()에 전이가, loss()에 놓친 개수가 담긴다 — 공통 규칙은 `11. Monitoring` 장 §2.
     meshRuntime.observe("game.room", 64).subscribe(subscriber)
     ```
 
@@ -519,9 +525,9 @@ component 이벤트 스트림을 제공한다. Host termination은 framework run
     const snapshot = meshRuntime.snapshot('game.room');
     const ready = meshRuntime.isReady('game.room');
 
-    for await (const next of meshRuntime.observe('game.room', 64, signal)) {
-      // state/peer 전이가 sequence 순서로 온다 — 상태 표면의 공통 규칙은
-      // `11. Monitoring` 장 §2를 참고한다.
+    for await (const observed of meshRuntime.observe('game.room', 64, signal)) {
+      // observed.status에 전이가, observed.loss에 놓친 개수가 담긴다 —
+      // 공통 규칙은 `11. Monitoring` 장 §2를 참고한다.
     }
     ```
 
@@ -564,9 +570,10 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
     ```csharp
     var runtime = app.Services.GetRequiredService<IZLinkFrameworkRuntime>();
 
-    await foreach (var hostEvent in runtime.ObserveAsync(cancellationToken: ct))
+    await foreach (var observed in runtime.ObserveAsync(cancellationToken: ct))
     {
         // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+        var hostEvent = observed.Status;
         logger.LogInformation(
             "host lifecycle: {State} {Relocation} {Termination}",
             hostEvent.State,
@@ -580,8 +587,9 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
     ```cpp
     // Host 전체 state, effective intent와 terminal outcome을 순서대로 기록한다.
     auto observation = runtime.observe (
-      64, [&] (const framework_runtime_status_t &status) {
+      64, [&] (const observed_status_t<framework_runtime_status_t> &observed) {
           _logger.info ("host lifecycle state changed");
+          //  observed.status가 상태, observed.loss가 놓친 개수다.
       });
     ```
 
@@ -589,9 +597,10 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 
     ```java
     // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
-    runtime.observe().subscribe(new Flow.Subscriber<ZLinkFrameworkRuntimeStatus>() {
+    runtime.observe().subscribe(new Flow.Subscriber<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>() {
         @Override
-        public void onNext(ZLinkFrameworkRuntimeStatus status) {
+        public void onNext(ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus> observed) {
+            ZLinkFrameworkRuntimeStatus status = observed.status();
             logger.info("host lifecycle: {} {} {}",
                 status.state(), status.relocationResult(), status.terminationResult());
         }
@@ -603,7 +612,8 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 
     ```kotlin
     // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
-    runtime.observe().asFlow().collect { status ->
+    runtime.observe().asFlow().collect { observed ->
+        val status = observed.status()
         logger.info("host lifecycle: {} {} {}",
             status.state(), status.relocationResult(), status.terminationResult())
     }
@@ -612,8 +622,9 @@ runtime은 component snapshot을 제공하지만 별도 termination authority나
 === "Node/TypeScript"
 
     ```typescript
-    for await (const status of runtime.observe(signal)) {
+    for await (const observed of runtime.observe(signal)) {
       // Host 전체 state, effective intent와 terminal outcome을 sequence 순서로 기록한다.
+      const status = observed.status;
       logger.log(
         `host lifecycle: ${status.state} ${status.relocationResult} ${status.terminationResult}`
       );

@@ -285,9 +285,9 @@ async onJoinCompleted(completion: ZLinkActorJoinCompletion): Promise<void> {
     case 'rejected':
       this.clearPendingJoin();
       break;
-    // 오류로 끝났다. isRetriable이면 같은 join을 다시 예약해도 된다.
+    // 오류 종류만 받는다. 재시도 여부는 업무 상태와 idempotency를 확인해 결정한다.
     case 'failed':
-      if (completion.isRetriable) this.scheduleApplicationRetry();
+      this.handleJoinFailure(completion.kind);
       break;
   }
 }

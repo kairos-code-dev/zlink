@@ -124,7 +124,7 @@ exception·contract violation은 [deadline](../../../../01-glossary.ko.md#deadli
 Callback은 at-least-once이고 stale attempt와 겹칠 수 있으므로 retry-safe해야 한다.
 
 Spot closing reason은 Java의 `ZLinkSpotCloseReason`을 사용하며 값은 `EXPLICIT_CLOSE=0`, `HOST_SHUTDOWN=1`,
-`RELOCATION_OUT=2`다. `ZLinkSpotClosingContext.deadline`은 absolute `Instant`다. Java lifecycle interface는
+`RELOCATION_OUT=2`, `IDLE_EVICTED=3`이다. `ZLinkSpotClosingContext.deadline`은 absolute `Instant`다. Java lifecycle interface는
 context만 받고 별도 Framework cancellation 타입을 사용하지 않는다. Suspending projection은 cleanup deadline에
 bridge coroutine을 cancel하며 callback은 coroutine cancellation을 그대로 따른다. Actor별 closing callback은
 제공하지 않는다.

@@ -17,10 +17,13 @@ import {
 } from './contract-amendment-impact-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const ledgerPath = path.join(root, 'framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md');
 const traceRelativePath =
   'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json';
 const tracePath = path.join(root, traceRelativePath);
+const tracePolicyPath = path.join(
+  root,
+  'framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.config.json',
+);
 const stableJson = value => `${JSON.stringify(value, null, 2)}\n`;
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex');
 const currentHashCache = new Map();
@@ -111,7 +114,20 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
     fail('manifest entries must be a non-empty array');
     return errors;
   }
-  const ledger = fs.readFileSync(ledgerPath, 'utf8');
+  const tracePolicy = JSON.parse(fs.readFileSync(tracePolicyPath, 'utf8'));
+  const runtimeOwnerIds = new Set([
+    'V11-M3-CORE-VERIFY', 'V11-M4-BIND-CPP', 'V11-M4-BIND-DN',
+    'V11-M4-BIND-JVM', 'V11-M4-BIND-NODE', 'V11-M6-SCAFFOLD-ZERO',
+    'V11-CA-PROTOCOL', 'V11-M7-CONTRACT', 'V11-M7-SAMPLES',
+  ]);
+  for (const category of tracePolicy.categories ?? []) {
+    for (const owner of category.contractTestOwners ?? []) runtimeOwnerIds.add(owner);
+    for (const stage of category.implementationStages ?? []) {
+      for (const suffix of ['CPP', 'DN', 'JVM', 'NODE']) {
+        runtimeOwnerIds.add(stage.replace('{suffix}', suffix));
+      }
+    }
+  }
   const ids = new Set();
   const allowedDispositions = new Set(['retain', 'amend', 'replace', 'add', 'remove']);
   const allowedQuarantine = new Set([
@@ -132,7 +148,9 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
         fail(`${label}: ${field} must be a non-empty string`);
       }
     }
-    if (!ledger.includes(`\`${entry.runtimeOwner}\``)) fail(`${label}: runtimeOwner is not a ledger ID`);
+    if (!runtimeOwnerIds.has(entry.runtimeOwner)) {
+      fail(`${label}: runtimeOwner is not a current trace-policy owner`);
+    }
     const ownerPath = path.join(root, entry.specOwner ?? '');
     if (!fs.existsSync(ownerPath) || !fs.statSync(ownerPath).isFile()) fail(`${label}: specOwner does not exist`);
     if (!Array.isArray(entry.replacementCoverage)) fail(`${label}: replacementCoverage must be an array`);

@@ -20,7 +20,7 @@ fn eagain_returns_false_not_error() {
 fn eagain_sub_returns_none() {
     let ctx = Context::new().unwrap();
     let sub = ctx.sub_socket().unwrap();
-    sub.connect("inproc://rf-sub-eagain-target").unwrap();
+    sub.bind("inproc://rf-sub-eagain-target").unwrap();
     sub.set_subscription("").unwrap();
 
     let mut message = TopicMessage::empty();

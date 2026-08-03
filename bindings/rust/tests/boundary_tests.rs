@@ -128,7 +128,7 @@ fn null_byte_in_topic_rejected() {
 fn null_byte_in_subscription_filter_rejected() {
     let ctx = Context::new().unwrap();
     let sub = ctx.sub_socket().unwrap();
-    sub.connect("inproc://bnd-filter-null-target").unwrap();
+    sub.bind("inproc://bnd-filter-null-target").unwrap();
 
     let result = sub.set_subscription("bad\0filter");
     assert!(result.is_err(), "filter with null byte must be rejected");

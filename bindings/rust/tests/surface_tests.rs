@@ -70,7 +70,7 @@ fn pub_socket_has_publish_no_recv() {
 fn sub_socket_has_subscribe_no_send() {
     let ctx = Context::new().unwrap();
     let sock = ctx.sub_socket().unwrap();
-    sock.connect("inproc://surface-sub-target").unwrap();
+    sock.bind("inproc://surface-sub-target").unwrap();
     sock.set_subscription("").unwrap();
 
     // SubSocket exposes: subscribe, set_subscription, unset_subscription, subscription_at
@@ -121,7 +121,7 @@ fn xpub_socket_has_subscription_event() {
 fn xsub_socket_has_subscribe_no_send() {
     let ctx = Context::new().unwrap();
     let sock = ctx.xsub_socket().unwrap();
-    sock.connect("inproc://surface-xsub-target").unwrap();
+    sock.bind("inproc://surface-xsub-target").unwrap();
     sock.set_subscription("").unwrap();
     let _ = sock.subscription_at(0);
 

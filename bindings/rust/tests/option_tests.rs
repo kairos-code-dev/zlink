@@ -182,7 +182,7 @@ fn xpub_option_verboser() {
 fn sub_option_topics_count() {
     let ctx = Context::new().unwrap();
     let sock = ctx.sub_socket().unwrap();
-    sock.connect("inproc://opt-sub-topics").unwrap();
+    sock.bind("inproc://opt-sub-topics").unwrap();
     sock.set_subscription("a").unwrap();
     sock.set_subscription("b").unwrap();
     let count = sock.sub_options().topics_count().unwrap();
@@ -193,7 +193,7 @@ fn sub_option_topics_count() {
 fn xsub_option_topics_count() {
     let ctx = Context::new().unwrap();
     let sock = ctx.xsub_socket().unwrap();
-    sock.connect("inproc://opt-xsub-topics").unwrap();
+    sock.bind("inproc://opt-xsub-topics").unwrap();
     sock.set_subscription("a").unwrap();
     sock.set_subscription("b").unwrap();
     let count = sock.sub_options().topics_count().unwrap();

@@ -36,7 +36,7 @@ operation enum의 inline 크기를 불필요하게 키우지 않도록 한 번�
 `FnOnce + Send + 'static` 경계와 progress guard로 한 번만 완료한다.
 
 이 선택은 호출부에 raw buffer, transport detail 또는 private FFI를 노출하지 않고, 메시지·native handle·callback의
-lifecycle owner를 binding 내부 operation과 resource 경계에 두기 위한 것이다. 필요한 allocation은 ownership과
+수명과 소유권을 binding 내부 operation과 resource 경계가 관리하게 하기 위한 것이다. 필요한 allocation은 ownership과
 Core ABI의 수명 조건으로 분류했으며, 불필요한 forwarding layer와 service compatibility surface는 삭제했다.
 
 주요 checkpoint commit은 `2c68dd77bf`(raw Core 11 boundary), `bcb3346e9d`(operation state POSD/DDD refactor),

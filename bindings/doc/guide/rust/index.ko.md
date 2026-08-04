@@ -13,7 +13,7 @@ Rust에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합
 
 ```toml
 [dependencies]
-zlink = "6.0"
+zlink = "11.2"
 ```
 
 - **Rust 1.85** 이상 (edition 2024).
@@ -174,7 +174,6 @@ match socket.send().message(msg).submit() {
 | `zlink_socket_monitor_open(...)` | `SocketMonitor::open(&socket)` |
 | `zlink_poller_new()` | `Poller::new()` |
 | `zlink_timer_new()` | `Timer::new()` |
-| `zlink_spot_node_new(ctx, opts)` | `SpotNode::new(&ctx)` |
 
 ---
 
@@ -221,11 +220,9 @@ std::thread::spawn(move || {
 | `stream_recv_sample.rs` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.rs` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.rs` | 모니터 이벤트 수신 |
-| `spot_recv_sample.rs` | SpotNode/Spot PUB/SUB |
-| `spot_request_callback_sample.rs` | SpotNode 콜백 요청 |
-| `actor_single_player_queue_sample.rs` | 액터 조인·이동·메시지 큐 |
-| `actor_room_server_sample.rs` | 방 서버 패턴 |
-| `actor_gateway_relay_sample.rs` | 게이트웨이 릴레이 |
+
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다. Rust framework
+> 바인딩이 준비되면 해당 언어 가이드에서 안내한다.
 
 ```bash
 cd bindings/rust

@@ -1,12 +1,17 @@
+---
+title: "13. 주요 타입 사용 색인 · C++"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 타입 사용 색인
 
-> 이 문서는 application에서 자주 쓰는 public 타입을 기능별로 찾는 안내서다. 정확한
-> signature의 단일 기준은
-> [C++ exact interface 목차](../../../common/spec/server/languages/cpp/interfaces/README.ko.md)다.
+> **이 장의 계약 소유 문서** —
+> [C++ exact interface 목차](../../../common/spec/server/languages/cpp/interfaces/README.ko.md)가
+> 정확한 signature를 소유한다. 이 챕터는 application에서 자주 쓰는 public 타입을
+> 기능별로 찾는 안내서다.
 
 C++ framework의 타입 이름은 `_t` 접미사를 쓴다. **application이 직접 만드는 타입**과
 **DI로 주입받는 타입**을 구분해 읽으면 빠르다 — 전자는 상속하거나 선언하고, 후자는

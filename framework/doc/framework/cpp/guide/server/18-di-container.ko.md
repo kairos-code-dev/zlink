@@ -1,11 +1,15 @@
+---
+title: "18. DI 컨테이너 · C++"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 19. Configuration](19-configuration.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 18. DI 컨테이너
 
-> 정식 계약은 [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)이
-> 다룬다.
+> **이 장의 계약 소유 문서** — [C++ configuration과 host 공개 계약](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)이
+> 다룬다. 이 챕터는 C++에만 있는 내장 DI 컨테이너의 등록·해석 방법을 설명한다.
 
 프레임워크는 ASP.NET Core 스타일의 DI(의존성 주입) 컨테이너를 내장한다.
 `service_collection_t`에 서비스를 등록하고, `service_provider_t`로 꺼낸다.

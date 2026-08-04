@@ -1,12 +1,17 @@
+---
+title: "13. 주요 타입 사용 색인 · Node/TypeScript"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: 운영 — 메트릭 · drain · readiness](12-operations.ko.md) | [다음: 샘플 고르기](14-samples.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 13. 주요 타입 사용 색인
 
-> 이 문서는 application에서 자주 쓰는 public 표면을 기능별로 찾는 안내서다. 정확한
-> signature의 단일 기준은
-> [Node.js exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)다.
+> **이 장의 계약 소유 문서** —
+> [Node.js exact interface 목차](../../../common/spec/server/languages/node/interfaces/README.ko.md)가
+> 정확한 signature를 소유한다. 이 챕터는 application에서 자주 쓰는 public 표면을
+> 기능별로 찾는 안내서다.
 
 Node 표면은 **어디서 import하는지**로 먼저 갈린다.
 

@@ -1,12 +1,17 @@
+---
+title: "16. Options — 설정 목록과 기본값 · Node/TypeScript"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. Options — 설정 목록과 기본값
 
-> 정식 계약은
+> **이 장의 계약 소유 문서** —
 > [Node.js foundation과 configuration 공개 계약](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)이
-> 다룬다.
+> 다룬다. 이 챕터는 그 표면을 목록으로 정리해 무엇을 정할 수 있고 정하지 않으면
+> 어떻게 되는지를 보여준다.
 
 이 챕터는 **무엇을 정할 수 있고 정하지 않으면 어떻게 되는지**를 모은다. 각 옵션이
 무엇을 바꾸는지는 해당 기능 챕터가 설명하고, 여기서는 자리와 기본값을 본다.

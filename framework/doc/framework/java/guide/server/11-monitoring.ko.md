@@ -1,12 +1,16 @@
+---
+title: "11. Monitoring — 상태 관측과 진단 · Java"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
 
-> 정식 계약은
+> **이 장의 계약 소유 문서** —
 > [Java monitoring 공개 인터페이스](../../../common/spec/server/languages/java/interfaces/monitoring.ko.md)가
-> 다룬다.
+> 다룬다. 이 챕터는 그 계약이 노출하는 네 관측 표면을 사용법 중심으로 설명한다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. 연결이 준비되었는지, 어느 peer가 빠졌는지,
 메시지가 어디서 실패했는지도 framework 표면에서 읽어야 한다. Java framework는 이를 **세

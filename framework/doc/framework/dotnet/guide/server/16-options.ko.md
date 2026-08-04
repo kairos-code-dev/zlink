@@ -1,13 +1,18 @@
+---
+title: "16. Options — 설정 목록과 기본값 · C#/.NET"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: E2E 테스트](15-e2e-testing.ko.md) | [다음: ZLink를 어디에 쓰나](17-alternative.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 16. Options — 설정 목록과 기본값
 
-> 각 옵션의 정확한 signature와 값 범위는
+> **이 장의 계약 소유 문서** —
 > [Topology 공개 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)와
 > [Host 구성 인터페이스](../../../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md)가
-> 정의한다. 이 장은 그 표면을 **목록으로 정리하고 변경 시점을 판단**하도록 돕는다.
+> 정확한 signature와 값 범위를 정의한다. 이 장은 그 표면을 **목록으로 정리하고 변경
+> 시점을 판단**하도록 돕는다.
 
 앞의 장들은 기능을 설명하면서 필요한 설정만 그 자리에서 다룬다. 이 장은 지정할 수 있는
 설정 전체를 한곳에 모은 목록이다.

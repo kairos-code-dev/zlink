@@ -1,11 +1,15 @@
+---
+title: "11. Monitoring — 상태 관측과 진단 · Kotlin"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: Location](10-location.ko.md) | [다음: 운영 — 메트릭 · drain · readiness](12-operations.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 11. Monitoring — 상태 관측과 진단
 
-> **관측 표면은 Java와 같다.** 무엇을 볼 수 있고 어떤 규칙이 있는지는
-> [Java 11. Monitoring](../../../java/guide/server/11-monitoring.ko.md)이 다룬다.
+> **이 장의 계약 소유 문서** — 관측 표면은
+> [Java 11. Monitoring](../../../java/guide/server/11-monitoring.ko.md)과 같다.
 > 이 장은 Kotlin에서 달라지는 자리만 적는다.
 
 Java 장을 먼저 읽는다. 상태 표면 넷, message flow 수준, Micrometer 연동, readiness

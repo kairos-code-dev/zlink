@@ -1,11 +1,16 @@
+---
+title: "21. 실행·구성 모델 · C++"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: 3. 핵심 개념](03-concepts.ko.md) | [다음: 18. DI 컨테이너](18-di-container.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 21. 실행·구성 모델
 
-> 정식 계약은 [C++ 공통 runtime 공개 계약](../../../common/spec/server/languages/cpp/interfaces/01-common-runtime.ko.md)과
-> [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)이 다룬다.
+> **이 장의 계약 소유 문서** — [C++ 공통 runtime 공개 계약](../../../common/spec/server/languages/cpp/interfaces/01-common-runtime.ko.md)과
+> [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)이 다룬다. 이
+> 챕터는 C++ framework가 그 개념을 실제로 실행하고 구성하는 방식을 설명한다.
 
 C++ framework가 개념을 실제로 실행하고 구성하는 방식이다. 개념 자체는
 [3. 핵심 개념](03-concepts.ko.md)이 다루고, 이 장은 그것이

@@ -1,11 +1,16 @@
+---
+title: "20. HTTP Hosting · C++"
+---
+
 <!-- framework-adapter-nav:start -->
 [가이드 홈](../../../index.ko.md) | [이전: 19. Configuration](19-configuration.ko.md) | [다음: 4. Backpressure](04-backpressure.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # 20. HTTP Hosting
 
-> 정식 계약은 [C++ HTTP hosting 공개 계약](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md)이 다룬다.
-> 요청을 보내는 쪽은 별도 산출물이다 — HTTP Client 가이드를 본다.
+> **이 장의 계약 소유 문서** — [C++ HTTP hosting 공개 계약](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md)이
+> 다룬다. 이 챕터는 embedded HTTP server를 여는 방법을 설명한다. 요청을 보내는 쪽은
+> 별도 산출물이다 — HTTP Client 가이드를 본다.
 
 ## 1. embedded HTTP server가 하는 일
 

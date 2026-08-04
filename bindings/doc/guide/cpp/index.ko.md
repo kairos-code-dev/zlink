@@ -207,9 +207,6 @@ try {
 | `zlink_socket_monitor_open(...)` | `socket.monitor_open(...)` |
 | `zlink_poller_new()` | `zlink::poller_t{}` |
 | `zlink_timer_new()` | `zlink::timer_t{}` |
-| `zlink_spot_node_new(ctx, opts)` | `zlink::service::spot_node_t{ctx}` |
-| `zlink_spot_new(node)` | `node.create_spot()` |
-| `zlink_spot_node_actor_new(...)` | `node.create_actor("id")` |
 
 ---
 
@@ -257,11 +254,11 @@ std::thread worker ([&ctx] {
 | `stream_recv_sample.cpp` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.cpp` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.cpp` | 모니터 이벤트 수신 |
-| `spot_recv_sample.cpp` | SpotNode/Spot PUB/SUB |
-| `spot_rpc_example.cpp` | SpotNode 채널 요청/응답(RPC) |
-| `actor_single_player_queue_sample.cpp` | 액터 조인·이동·메시지 큐 |
-| `actor_room_server_sample.cpp` | 방 서버 패턴 |
-| `actor_gateway_relay_sample.cpp` | 게이트웨이 릴레이 |
+| `request_reply_async_sample.cpp` | ROUTER/DEALER 비동기 요청/응답 |
+
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework C++ 샘플이 다룬다 —
+> [Bingo](https://github.com/kairos-code-dev/zlink/tree/main/framework/languages/cpp/samples/Bingo) 등
+> `framework/languages/cpp/samples/`를 본다.
 
 ```bash
 cd bindings/cpp

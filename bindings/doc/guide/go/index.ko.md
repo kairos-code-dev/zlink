@@ -1,6 +1,6 @@
 [바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
 
-# Go 바인딩 가이드 (`zlink.systems/zlink`)
+# Go 바인딩 가이드 (`zlink.systems/zlink/v11`)
 
 Go에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념의 깊은 설명은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)가 다루며,
@@ -10,17 +10,17 @@ Go에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합�
 
 ## 설치
 
-**`zlink.systems/zlink`** 모듈로 제공됩니다. 네이티브 코어는 플랫폼별로 함께 번들됩니다.
+**`zlink.systems/zlink/v11`** 모듈로 제공됩니다. 네이티브 코어는 플랫폼별로 함께 번들됩니다.
 
 ```bash
-go get zlink.systems/zlink
+go get zlink.systems/zlink/v11
 ```
 
-- **Go 1.22** 이상.
+- **Go 1.25** 이상.
 - 네이티브를 따로 설치할 필요는 없습니다 — RID별 `.so`/`.dll`을 자동으로 불러옵니다.
 
 ```go
-import zlink "zlink.systems/zlink/contracts"
+import zlink "zlink.systems/zlink/v11"
 ```
 
 ---
@@ -260,9 +260,6 @@ if !ok { /* 메시지 없음 */ }
 | `zlink_socket_monitor_open(...)` | `zlink.OpenSocketMonitor(socket, ...)` |
 | `zlink_poller_new()` | `zlink.NewPoller()` |
 | `zlink_timer_new()` | `zlink.NewTimer()` |
-| `zlink_spot_node_new(ctx, opts)` | `ctx.SpotNode()` |
-| `zlink_spot_node_spot_get_or_new(...)` | `node.Spot()` |
-| `zlink_spot_node_actor_new(...)` | `node.Actor("id")` |
 
 ---
 
@@ -304,11 +301,9 @@ if zlink.Has("draft") {
 | `stream_recv_sample` | STREAM 원시 TCP |
 | `stream_packet_callback_sample` | STREAM 패킷 콜백 |
 | `monitor_recv_sample` | 모니터 이벤트 수신 |
-| `spot_recv_sample` | SpotNode/Spot PUB/SUB |
-| `spot_request_async_sample` | SpotNode 비동기 요청 |
-| `actor_single_player_queue_sample` | 액터 조인/이동/메시지 큐 |
-| `actor_room_server_sample` | 방 서버 액터 패턴 |
-| `actor_gateway_relay_sample` | 게이트웨이 릴레이 |
+
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다. Go framework
+> 바인딩이 준비되면 해당 언어 가이드에서 안내한다.
 
 샘플 실행:
 

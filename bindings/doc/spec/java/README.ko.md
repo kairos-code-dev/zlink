@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "Java 바인딩 구현 청사진"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: C++](../cpp/README.ko.md) | [다음: Node.js](../node/README.ko.md)
+<!-- bindings-nav:end -->
 
 # Java 바인딩 구현 청사진
+
+> **이 장이 정의하는 것** — Java 바인딩이 갖춰야 할 `contracts`/`runtime`
+> 목표 형태와 JPMS export 경계.
 
 이 문서는 Java 바인딩의 목표 형태를 정의한다. 모든 메서드를 빠짐없이 나열하는
 레퍼런스는 아니다. 정확한 public 멤버 목록은 리팩터가 완료된 뒤
@@ -27,6 +34,32 @@ Java public contract 분류는
 이 문서는 breaking target이다. 옛 Java surface를 보존하려는 호환 shim,
 deprecated wrapper, 중복 생성 경로, public runtime alias, direct constructor를
 유지하지 않는다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [Source Of Truth](#source-of-truth) | 의미 원천과 Java 저장소 소유권 경계 |
+| [Current Refactor Rule](#current-refactor-rule) | 리팩터 진행 중 "옳은 방향"을 판정하는 기준 |
+| [Architecture Map](#architecture-map) | `contracts`/`internal`/`runtime` 패키지 트리 |
+| [Public Contract Categories](#public-contract-categories) | contract·runtime 패키지 → 목적 표 |
+| [Native Wait Boundary](#native-wait-boundary) | blocking recv와 poller 기반 수신의 경계 |
+| [Proposed Repository Layout](#proposed-repository-layout) | Gradle 프로젝트 전체 디렉터리 트리 |
+| [Contract Interface Rule](#contract-interface-rule) | interface로 남을 타입과 concrete로 남을 타입 |
+| [Factory Entry Points](#factory-entry-points) | root/context/service factory 메서드 |
+| [Contract File Requirements](#contract-file-requirements) | contract 파일이 import할 수 있는 것/없는 것 |
+| [Runtime Implementation Requirements](#runtime-implementation-requirements) | runtime이 소유하는 구현 세부 |
+| [Socket Contract Shape](#socket-contract-shape) | 공통/타입별 socket 동작 |
+| [Operation Builder Shape](#operation-builder-shape) | builder 시작 메서드와 terminal 메서드 |
+| [Messaging Values](#messaging-values) | `Message`/`Received`/`TopicMessage`/`SubscriptionEvent` 계약 |
+| [Receive And Subscribe Shape](#receive-and-subscribe-shape) | 호출자 제공 저장소와 no-data 구분 |
+| [Handler Registration Naming](#handler-registration-naming) | `set...Handler` 명명 규칙 |
+| [Byte HWM 및 monitoring ABI v2](#byte-hwm-및-monitoring-abi-v2) | unsigned `long` HWM과 monitor snapshot field |
+| [Error And Result Policy](#error-and-result-policy) | typed exception과 검증 시점 |
+| [Spot And Actor Contract Shape](#spot-and-actor-contract-shape) | `SpotNode`/`Spot` 책임과 route 결과 |
+| [Spot Get-Or-Create](#spot-get-or-create) | `getOrCreateSpot` 계약 |
+| [Performance Policy](#performance-policy) | hot path 제약 |
+| [Refactor Workflow](#refactor-workflow) | 정렬 작업 순서 |
+| [Implementation Checklist](#implementation-checklist) | 정렬 선언 전 확인 항목 |
+| [Verification](#verification) | 필수 검증 명령과 구조 검색 |
 
 ## Source Of Truth
 
@@ -698,12 +731,11 @@ Handler 등록 이름은 이벤트 발생이 아니라 등록을 설명한다.
 
 ## Byte HWM 및 monitoring ABI v2
 
-HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다. Java 공개
-interface는 `long`의 64개 bit를 unsigned 값으로 해석하여 Core의 `uint64_t` 전체 범위를
-손실 없이 전달한다. Java caller는 `Long.compareUnsigned`와 `Long.toUnsignedString`을 사용하고,
-Kotlin caller는 `ULong.toLong()`과 `Long.toULong()`으로 변환한다. `0`은 무제한이고 수동
-기본값은 `4_096_000 bytes`다. 이전 `int` overload, alias 또는 count 단위 adapter는 제공하지
-않는다.
+- HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다.
+- Java 공개 interface는 `long`의 64개 bit를 unsigned 값으로 해석하여 Core의 `uint64_t` 전체 범위를 손실 없이 전달한다.
+- Java caller는 `Long.compareUnsigned`와 `Long.toUnsignedString`을 사용하고, Kotlin caller는 `ULong.toLong()`과 `Long.toULong()`으로 변환한다.
+- `0`은 무제한이고 수동 기본값은 `4_096_000 bytes`다.
+- 이전 `int` overload, alias 또는 count 단위 adapter는 제공하지 않는다.
 
 ```java
 public final class ContextOptions {
@@ -719,12 +751,11 @@ public class CommonSocketOptions {
 }
 ```
 
-`MonitorStatus` record는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
-Planned, applied, deferred HWM과 in-flight 사용량은 unsigned `long` byte 값이다. Deferred 값은
-대응하는 `autoHwmDeferredSendHwmValid()` 또는 `autoHwmDeferredRecvHwmValid()`가 `true`일 때만
-유효하다. Pending message 값은 count 진단값으로 남고 byte field와 이름을 공유하지 않는다.
-`abiVersion()`이 `2`가 아니거나 `structSize()`가 binding layout과 다르면
-`UnsupportedOperationException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
+- `MonitorStatus` record는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
+- Planned, applied, deferred HWM과 in-flight 사용량은 unsigned `long` byte 값이다.
+- Deferred 값은 대응하는 `autoHwmDeferredSendHwmValid()` 또는 `autoHwmDeferredRecvHwmValid()`가 `true`일 때만 유효하다.
+- Pending message 값은 count 진단값으로 남고 byte field와 이름을 공유하지 않는다.
+- `abiVersion()`이 `2`가 아니거나 `structSize()`가 binding layout과 다르면 `UnsupportedOperationException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
 
 Java와 Kotlin은 같은 Java method를 호출한다. 별도 Kotlin adapter나 다른 단위의 option을
 추가하지 않는다. Request/reply API는 HWM 값을 인자로 받지 않으며 기존 lifetime과 ownership
@@ -769,12 +800,10 @@ Actor와 SPOT route 결과는 concrete contract 모델이다:
 - `SpotKind`는 Entry Spot과 사용자 Spot을 구분한다.
 - Invalid kind는 성공한 route 결과가 아니다.
 
-Java는 resolve된 Actor ref를 인자로 받는 `SpotNode.sendToActor(ActorRef)`와
-`SpotNode.requestToActor(ActorRef)`를 노출한다. send operation은 submit이
-성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
-완료된다. request operation은 submit이 성공하면 요청 part의 소유권을 넘기고,
-Actor handler가 만든 reply part를 전달한다. Java는 제거된 Discovery route
-table이나 resolver API를 compatibility helper로 되살리면 안 된다.
+- Java는 resolve된 Actor ref를 인자로 받는 `SpotNode.sendToActor(ActorRef)`와 `SpotNode.requestToActor(ActorRef)`를 노출한다.
+- send operation은 submit이 성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면 완료된다.
+- request operation은 submit이 성공하면 요청 part의 소유권을 넘기고, Actor handler가 만든 reply part를 전달한다.
+- Java는 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면 안 된다.
 
 ## Spot Get-Or-Create
 

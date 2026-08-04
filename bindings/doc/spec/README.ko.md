@@ -861,7 +861,7 @@ runtime/native bridge 역할에만 존재하며 public contract 역할로 만들
 - `sendNoWait`, `publishWithFlags`, `requestAsync`, `requestCallback`처럼 operation
   시작점 이름을 늘리는 방식은 만들지 않는다. 같은 operation 이름을 유지하고
   builder 단계가 변형을 흡수한다. async 또는 callback 완료 표면의 언어별
-  마지막 실행 메서드는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)을
+  마지막 실행 메서드는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
   따른다.
 - resource 생성은 public constructor를 여러 runtime class에 흩어 두지 않는다.
   binding별 root facade 또는 context factory가 생성 책임을 가진다. 예를 들어
@@ -1075,7 +1075,7 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
 - `.messages(...)`, `.flags(...)`, `.timeout(...)`, callback submit, async 완료
   마지막 실행 메서드 같은 builder convenience도 public 이면 builder contract의 일부다.
   runtime 내부 shortcut으로만 정의하지 않는다. async 완료 마지막 실행 메서드의
-  언어별 이름과 의미는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)에
+  언어별 이름과 의미는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에
   둔다.
 - payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
   multipart payload를 별도 시작점 오버로드로 나누지 않는다. 외부 List/Vector
@@ -1123,7 +1123,7 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
   결정이 protocol helper에 새고, 사용자가 token 의미를 알아야 한다.
 - async request·async Actor operation은 submit flags를 받지 않는다. callback
   형태는 non-blocking submit을 표현하기 위해 `flags`를 받을 수 있다. 자세한
-  완료 방식 차이는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)을
+  완료 방식 차이는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
   따른다.
 - builder는 한 번 submit된 뒤 다시 submit될 수 없다. 언어가 move-only 또는
   ownership 타입을 제공하면 타입으로 막고, 그렇지 않으면 런타임 상태 검사로
@@ -1162,7 +1162,7 @@ streamSocket.bindActor(sessionRid, actorRef)
 #### 언어별 비동기 실행 표면 기준
 
 언어별 async 또는 callback 완료 마지막 실행 메서드는
-[바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)에 둔다.
+[바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에 둔다.
 
 이 규칙은 POSD 기준에서 Required다. 새 send/request/reply/publish 또는 Actor
 위치·attach public API를 추가하거나 정리할 때는 이 operation builder 형태와
@@ -1803,7 +1803,7 @@ request 는 언어별 async 완료와 callback 완료 방식을 제공할 수 �
 SPOT operation builder 대상의 작업 시작점은 `requestToChannel` /
 `requestToSpot` / `requestToRouter` 이고, raw `DealerSocket` /
 `RouterSocket` 의 작업 시작점은 `request` / `request(peer)` 이다. 어느
-시작점이든 완료 방식은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)에
+시작점이든 완료 방식은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에
 정의한 언어별 마지막 실행 메서드로 선택한다.
 - **성공 시 reply payload 의 `List<Message>` 만 반환한다.** caller 는 이미
   자기가 보낸 request 의 routing_id 와 request_seq 를 알고 있으므로
@@ -2817,7 +2817,7 @@ query client, compatibility alias를 현재 API로 노출하면 안 된다.
 - dispatch, pending map, timeout, reply 매칭은 core C API 에서 처리한다.
   바인딩은 이 로직을 다시 구현하지 않는다.
 - core 는 callback 기반 비동기 모델을 제공한다.
-  바인딩은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)에 따라
+  바인딩은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에 따라
   callback 위에 언어별 완료 객체 반환 표면을 얹을 수 있다. coroutine 연결은 framework가
   맡는다.
 - `request()` 는 thread blocking API 가 아니다.
@@ -2944,7 +2944,7 @@ request 는 두 완료 방식을 가진다.
 
 비동기 request와 callback completion request는 모두 `request`
 entrypoint가 반환하는 `RequestOp` operation builder를 통해 노출된다. 완료 방식별
-flags, timeout, 실패 전달 규칙은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.ko.md)을
+flags, timeout, 실패 전달 규칙은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
 따른다.
 
 C binding 은 `zlink_*_request_part(..., flags, part_flag, timeout, ...)`

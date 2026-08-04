@@ -298,7 +298,7 @@ nav:
         - Rust: bindings/guide/rust/index.ko.md
       - 스펙:
         - Overview: bindings/spec/README.md
-        - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.ko.md
+        - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.md
         - C: bindings/spec/c/README.md
         - .NET: bindings/spec/dotnet/README.md
         - C++: bindings/spec/cpp/README.md

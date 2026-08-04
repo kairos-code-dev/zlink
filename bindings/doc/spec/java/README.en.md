@@ -635,7 +635,7 @@ Representative terminal methods:
 `submit()` starts the async operation and returns `CompletionStage`; `await()`
 is the adapter that waits for the same operation on the current thread. The
 shared language policy is defined in
-[bindings async execution surface policy](../async-coroutine-policy.ko.md).
+[bindings async execution surface policy](../async-coroutine-policy.md).
 
 Do not add separate operation-start families such as `sendNoWait`,
 `sendWithFlags`, `requestAsync`, `publishWithFlags`, or direct

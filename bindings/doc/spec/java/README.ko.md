@@ -646,7 +646,7 @@ payload, flag, timeout, callback, async 동작은 builder 단계다. 대표적�
 
 `submit()`은 `CompletionStage`를 반환하는 async 시작 표면이고, `await()`는 같은 작업의
 완료를 현재 thread에서 기다리는 adapter다. 언어별 비동기 실행 표면 기준은
-[바인딩 비동기 실행 표면 정책](../async-coroutine-policy.ko.md)을 따른다.
+[바인딩 비동기 실행 표면 정책](../async-coroutine-policy.md)을 따른다.
 
 `sendNoWait`, `sendWithFlags`, `requestAsync`, `publishWithFlags`,
 `send(message)` shortcut 같은 별도의 operation-start 계열을 추가하지 않는다.

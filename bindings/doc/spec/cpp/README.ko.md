@@ -73,7 +73,7 @@ title: "C++ 바인딩 최종 구조"
 - C++20은 bindings 라이브러리의 최소 지원 범위다.
 - bindings 라이브러리는 `async_result_t<T>` 기반 완료 객체와 callback submit을 제공할 수 있지만, coroutine awaiter, framework handler executor, framework dispatcher를 소유하지 않는다.
 - framework coroutine은 bindings의 완료 객체나 callback 완료를 framework 실행 경계에서 감싸서 제공한다.
-- 언어별 비동기 실행 표면 기준은 [바인딩 비동기 실행 표면 정책](../async-coroutine-policy.ko.md)을 따른다.
+- 언어별 비동기 실행 표면 기준은 [바인딩 비동기 실행 표면 정책](../async-coroutine-policy.md)을 따른다.
 
 ## 저장소 레이아웃
 
@@ -449,7 +449,7 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 - `send_no_wait`, `publish_with_flags`, `request_async` 같은 operation 시작 오버로드
   계열을 추가하지 않는다. operation 이름은 하나로 유지하고 변형은 빌더가 흡수한다. 종단
   빌더 메서드의 언어별 이름은
-  [바인딩 비동기 실행 표면 정책](../async-coroutine-policy.ko.md)을 따른다.
+  [바인딩 비동기 실행 표면 정책](../async-coroutine-policy.md)을 따른다.
 - `on_send_ready(...)`, `on_packet(...)`, `on_event(...)` 같은 표준 이름 우회나 operation
   별칭을 두지 않는다. 호출 지점은 계층화된 별칭 대신 표준 공개 계약을 그대로 쓴다.
 

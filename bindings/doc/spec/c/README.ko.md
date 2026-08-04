@@ -3,7 +3,7 @@ title: "C 바인딩 구현 청사진"
 ---
 
 <!-- bindings-nav:start -->
-[스펙 목록](../README.ko.md) | [이전: Async & Coroutine Policy](../async-coroutine-policy.ko.md) | [다음: .NET](../dotnet/README.ko.md)
+[스펙 목록](../README.ko.md) | [이전: Async & Coroutine Policy](../async-coroutine-policy.md) | [다음: .NET](../dotnet/README.ko.md)
 <!-- bindings-nav:end -->
 
 # C 바인딩 구현 청사진

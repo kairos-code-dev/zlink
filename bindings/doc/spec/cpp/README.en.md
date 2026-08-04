@@ -262,7 +262,7 @@ submit, but it does not own coroutine awaiters, the framework handler executor,
 or the framework dispatcher. Framework coroutines wrap the bindings completion
 object or callback completion at the framework execution boundary. The shared
 async execution surface policy is defined in
-[bindings async execution surface policy](../async-coroutine-policy.ko.md).
+[bindings async execution surface policy](../async-coroutine-policy.md).
 
 ## Repository Layout
 
@@ -946,7 +946,7 @@ artifact. The completed binding therefore maintains these build rules:
 - Do not add operation-start overload families such as `send_no_wait`,
   `publish_with_flags`, or `request_async`; keep one operation name and let
   the builder absorb the variation. Terminal builder method names follow
-  [bindings async execution surface policy](../async-coroutine-policy.ko.md).
+  [bindings async execution surface policy](../async-coroutine-policy.md).
 - Do not keep canonical-name bypasses such as `on_send_ready(...)`,
   `on_packet(...)`, `on_event(...)`, or operation aliases. Call sites use the
   canonical public contract instead of layered aliases.

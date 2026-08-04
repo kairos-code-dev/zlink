@@ -311,8 +311,8 @@ if zlink.Has("draft") {
 | `stream_packet_callback_sample` | STREAM 패킷 콜백 |
 | `monitor_recv_sample` | 모니터 이벤트 수신 |
 
-> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다. Go framework
-> 바인딩이 준비되면 해당 언어 가이드에서 안내한다.
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다. Go에는 아직
+> framework 바인딩이 없다.
 
 샘플 실행:
 

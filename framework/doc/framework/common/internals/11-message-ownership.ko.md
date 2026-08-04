@@ -4,7 +4,7 @@ title: "11. Payload 소유권과 복사"
 
 # 11. Payload 소유권과 복사
 
-[내부 구조 목차](README.ko.md) · [이전: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md) · [다음: Service wire protocol](service-wire-protocol.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md) · [다음: 12. Service wire protocol](12-service-wire-protocol.ko.md)
 
 > **이 장이 답하는 것** — message 하나가 socket에서 handler까지 가는 동안 byte를 몇 번 복사하는가.
 >
@@ -241,4 +241,4 @@ memory를 잠식한다.
 
 ---
 
-[내부 구조 목차](README.ko.md) · [이전: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md) · [다음: Service wire protocol](service-wire-protocol.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md) · [다음: 12. Service wire protocol](12-service-wire-protocol.ko.md)

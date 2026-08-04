@@ -1,8 +1,8 @@
 ---
-title: "Service wire protocol"
+title: "12. Service wire protocol"
 ---
 
-# Service wire protocol
+# 12. Service wire protocol
 
 [내부 구조 목차](README.ko.md) · [이전: 11. Payload 소유권과 복사](11-message-ownership.ko.md)
 

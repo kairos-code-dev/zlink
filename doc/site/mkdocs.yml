@@ -285,7 +285,7 @@ nav:
           - "9. Session과 Actor 연결": common/internals/09-session-binding.ko.md
           - "10. Liveness와 상태 공개": common/internals/10-liveness-and-state.ko.md
           - "11. Payload 소유권과 복사": common/internals/11-message-ownership.ko.md
-          - "Service wire protocol": common/internals/service-wire-protocol.ko.md
+          - "12. Service wire protocol": common/internals/12-service-wire-protocol.ko.md
   - Bindings:
       - 가이드:
         - Overview: bindings/guide/README.ko.md

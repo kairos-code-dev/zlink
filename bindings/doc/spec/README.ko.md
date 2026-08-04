@@ -1173,6 +1173,8 @@ streamSocket.bindActor(sessionRid, actorRef)
 이 절은 언어별 문서의 세부 예제보다 우선 적용되는 core 계약 요약이다.
 `core/include/zlink.h` 와 언어별 문서 간 불일치가 있으면 이 절을 기준으로 한다.
 
+#### Direct receive callback 제약
+
 - direct receive callback install surface 는 raw `STREAM` 과 SPOT routed
   receive 에만 존재한다.
 - 바인딩은 raw `PAIR`, `DEALER`, `ROUTER` 에 대해 `onReceive` 류 direct data
@@ -1190,6 +1192,8 @@ streamSocket.bindActor(sessionRid, actorRef)
   바인딩 내부 primitive 로만 사용하며, public API 로 추가하려면 먼저 이
   정책 문서와 해당 언어 spec 을 함께 바꾸어 별도 raw/low-level surface 로
   분리해야 한다.
+#### SPOT channel과 dispatch 표면
+
 - SPOT 은 channel-aware 모델이다. 바인딩은
   `create_route_bridge(...)` 또는 동등한 typed bridge,
   `create_publisher(...)` 또는 동등한 publisher handle,
@@ -1205,6 +1209,8 @@ streamSocket.bindActor(sessionRid, actorRef)
 - Actor dispatch surface는 SPOT과 같은 service layer 공개 기능이다. 모든
   바인딩은 언어별 관례에 맞는 공개 타입으로 노출하며, 공통 의미는 아래
   `Actor Dispatch Binding Contract` 절과 `Actor Dispatch Policy` 절을 따른다.
+#### Auto-HWM와 SpotNode 옵션
+
 - `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 과
   `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 는 모든 바인딩에서 typed context option
   으로 노출해야 한다. profile 값은 compact, low latency, balanced, throughput
@@ -1232,6 +1238,8 @@ streamSocket.bindActor(sessionRid, actorRef)
   조정하며, `ZLINK_IO_THREADS`나 data-plane thread 수를 뜻하지 않는다.
   `min`은 1 이상, `max`는 `min` 이상이어야 한다. 명시 설정이 없으면
   CPU가 1개일 때 `min=max=1`, 그 외에는 `min=2`, `max=cpu_count`로 매핑한다.
+#### SPOT status와 snapshot 이름
+
 - SPOT binding status object는 core의
   `disconnected_sub_target_count`,
   `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
@@ -1244,6 +1252,8 @@ streamSocket.bindActor(sessionRid, actorRef)
   `local-pub`는 같은 node 안 subscriber로 보내는 local fanout socket이다.
   (`ingress-sub`, `pub-ingress-tx`, `internal-router`, `internal-router-tx`는
   제거되었으며 snapshot에 포함되지 않는다.)
+#### Dispatch readiness 의미
+
 - `zlink_spot_dispatch_event_handler()`는 SPOT routed receive와 Actor lifecycle readiness의 단일 진입점이다. 바인딩은 direct routed callback을 public API로 노출하지 않는다.
 - `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
   `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
@@ -1260,6 +1270,8 @@ streamSocket.bindActor(sessionRid, actorRef)
   사용한다.
 - 첫 SPOT routed recv 는 hidden activation, hidden queue open, hidden target registration 을
   수행하면 안 된다. 바인딩도 같은 전제를 두고 lazy bootstrap 로직을 올리지 않는다.
+#### Send-ready, Peer 가중치, STREAM 수신 모드
+
 - `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
   send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
   한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
@@ -1295,6 +1307,8 @@ Actor dispatch는 SPOT messaging의 부가 기능이 아니라 service layer의 
 소유하므로 각 공개 타입의 책임을 나누어 노출한다. 구체적인
 surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 
+#### Actor id, ref, lifecycle 진입점
+
 - Actor id는 비어 있지 않은 UTF-8 문자열이며 최대 255 bytes다. NUL 문자는
   허용하지 않는다.
 - Actor ref는 `node_rid`, `actor_id`, `generation`을 가진다.
@@ -1315,6 +1329,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   `SpotNode.leaveActor(actorRef, ...)` 는 Actor ref 만 가진 caller 를 위한
   표면이다. 한쪽만 제공하면 ref-only 흐름 또는 owned-handle 흐름 중 하나가
   불필요하게 복잡해진다.
+#### STREAM session binding
+
 - 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session routing
   id와 actor id 또는 Actor ref를 기준으로 한다.
 - STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
@@ -1326,6 +1342,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - Actor recv info 의 `source_node_rid` 와 `source_session_rid` 는 core 구조체의
   값 필드이므로 nullable / optional 로 문서화하지 않는다. no-data 는 recv 결과
   자체의 `false`, no-data result, `Ok(false)` 같은 표현으로만 전달한다.
+#### Dispatch와 join 결과
+
 - Actor readable dispatch event는 어떤 Actor를 drain해야 하는지 알 수 있어야
   한다. callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에
   Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
@@ -1337,6 +1355,8 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - request reply 표면은 core reply 함수가 지원하는 payload part만 노출한다.
   core reply 함수에는 send flag 인자가 없으므로, 바인딩은 reply builder에
   no-op flag 설정 단계를 추가하지 않는다.
+#### 제거된 API
+
 - remote Actor 생성과 admission handler는 공개 표면에서 제거되었다. 원격 노드에서
   시작해야 하는 Actor는 application이 해당 SpotNode에서 직접 `actor_new`로
   생성한다. 원격 Actor의 checked ref가 필요하면 async `remote_actor_get_ref`
@@ -5027,11 +5047,10 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 
 ## Routing ID로 Peer 끊기
 
-모든 바인딩은 connectable raw socket 타입에 대해 core의 peer-rid disconnect 표면을
-노출한다. raw socket API는 `zlink_disconnect_rid()`에, SpotNode API는
-`zlink_spot_node_disconnect_peer_rid()`에 매핑한다. `StreamSocket`은 bind-only이며
-peer-rid disconnect를 노출하지 않는다. Spot facade 타입도 별도의 peer-rid
-disconnect 메서드를 노출하지 않는다. peer mesh 소유권은 SpotNode에 있기 때문이다.
+- 모든 바인딩은 connectable raw socket 타입에 대해 core의 peer-rid disconnect 표면을 노출한다.
+- raw socket API는 `zlink_disconnect_rid()`에, SpotNode API는 `zlink_spot_node_disconnect_peer_rid()`에 매핑한다.
+- `StreamSocket`은 bind-only이며 peer-rid disconnect를 노출하지 않는다.
+- Spot facade 타입도 별도의 peer-rid disconnect 메서드를 노출하지 않는다. peer mesh 소유권은 SpotNode에 있기 때문이다.
 
 | Language | Raw socket name | SpotNode name |
 |---|---|---|
@@ -5048,13 +5067,10 @@ disconnect 메서드를 노출하지 않는다. peer mesh 소유권은 SpotNode�
 `ZLINK_RID_DUPLICATE_HANDOVER`, 그리고 connect 결과 값 `NOT_FOUND`, `CONFLICT`,
 `BUSY` 를 각 언어의 일반적인 enum/오류 매핑 스타일로 노출해야 한다.
 
-C 바인딩은 native socket option contract를 통해 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`
-값 `0x3034` 를, context option contract를 통해 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES`
-값 `18` 을 노출한다. 상위 바인딩은 이 기능을 typed context option facade로
-노출해야 한다. socket, SpotNode, Spot 의 public facade는 메시지 단위 옵션을
-추가하지 않는다. 호환성을 위해 raw socket 경로를 남겨 둔다면 canonical API와
-명확히 분리하고, 새 문서·샘플·테스트에서는 사용하지 않으며, C 계약(`int` bytes,
-raw 기본값 `0`, 음수 값은 `EINVAL` 로 실패)을 그대로 유지해야 한다.
+- C 바인딩은 native socket option contract를 통해 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `0x3034` 를, context option contract를 통해 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `18` 을 노출한다.
+- 상위 바인딩은 이 기능을 typed context option facade로 노출해야 한다.
+- socket, SpotNode, Spot 의 public facade는 메시지 단위 옵션을 추가하지 않는다.
+- 호환성을 위해 raw socket 경로를 남겨 둔다면 canonical API와 명확히 분리하고, 새 문서·샘플·테스트에서는 사용하지 않으며, C 계약(`int` bytes, raw 기본값 `0`, 음수 값은 `EINVAL` 로 실패)을 그대로 유지해야 한다.
 
 ## 관련 문서
 - `bindings/cpp/`
@@ -5067,14 +5083,11 @@ raw 기본값 `0`, 음수 값은 `EINVAL` 로 실패)을 그대로 유지해야 
 
 ## Core API Surface 6.0.0 정렬
 
-Actor create와 join payload는 aggregate multipart payload를 사용한다. 공개 바인딩
-API는 remote actor create, actor join, actor join receive, actor join reply에 대해
-메시지 컬렉션을 받는다. 단일 메시지 편의 경로는 해당 언어 README가 그 편의
-표면을 명시적으로 유지하기로 한 경우에만 허용한다. 그렇지 않으면 breaking
-alignment 과정에서 canonical multipart 경로 쪽으로 정리하면서 제거한다. 유지하는
-경우에도 내부적으로는 multipart 경로를 호출해야 하며, empty payload와 비어 있는
-메시지 하나가 계속 구분될 수 있어야 한다. admission handler는 callback 동안만
-유효한 borrowed payload view를 받는다.
+- Actor create와 join payload는 aggregate multipart payload를 사용한다.
+- 공개 바인딩 API는 remote actor create, actor join, actor join receive, actor join reply에 대해 메시지 컬렉션을 받는다.
+- 단일 메시지 편의 경로는 해당 언어 README가 그 편의 표면을 명시적으로 유지하기로 한 경우에만 허용한다. 그렇지 않으면 breaking alignment 과정에서 canonical multipart 경로 쪽으로 정리하면서 제거한다.
+- 유지하는 경우에도 내부적으로는 multipart 경로를 호출해야 하며, empty payload와 비어 있는 메시지 하나가 계속 구분될 수 있어야 한다.
+- admission handler는 callback 동안만 유효한 borrowed payload view를 받는다.
 
 Public Registry scalar 설정은 core 8.4.3에서 공개 Discovery/Registry C API와 함께
 제거되었다. 바인딩은 registry option 표면, 이름 있는 registry setter,
@@ -5082,11 +5095,9 @@ compatibility alias를 현재 공개 API로 유지하면 안 된다.
 
 ## Spot Route Bridge API
 
-바인딩은 `SpotNode`가 channel socket을 소유하지 않도록 `SpotRouteBridge` 또는 같은
-의미의 typed handle을 노출해야 한다. bridge는 caller/channel runtime이 소유한
-`ROUTER` socket을 참조하고, Spot route packet을 보내거나 channel receive loop에서
-받은 SPOT relay packet을 SpotNode로 넘긴다. bridge를 닫아도 등록된 channel socket은
-닫히지 않는다.
+- 바인딩은 `SpotNode`가 channel socket을 소유하지 않도록 `SpotRouteBridge` 또는 같은 의미의 typed handle을 노출해야 한다.
+- bridge는 caller/channel runtime이 소유한 `ROUTER` socket을 참조하고, Spot route packet을 보내거나 channel receive loop에서 받은 SPOT relay packet을 SpotNode로 넘긴다.
+- bridge를 닫아도 등록된 channel socket은 닫히지 않는다.
 
 언어별 API는 다음 의미를 빠뜨리지 않아야 한다.
 

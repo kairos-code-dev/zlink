@@ -5,12 +5,14 @@
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
+#include "runtime/eventing/runtime_wake_pipe.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/client_server/weighted_selector.hpp"
 #include "runtime/configuration/service_scope.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 
 #include <zlink/Contracts/Core/routing_id.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
 
 #include <algorithm>
@@ -32,11 +34,23 @@ namespace
 {
 
 constexpr std::string_view default_security_identity = "default";
-constexpr auto pump_interval = std::chrono::milliseconds (2);
 constexpr auto maximum_ready_wait = std::chrono::seconds (5);
 constexpr std::uint32_t default_effective_max_message_bytes =
   static_cast<std::uint32_t> (
     std::numeric_limits<std::int32_t>::max ());
+
+std::atomic<std::uintptr_t> next_client_server_poller_slot{1};
+
+std::uintptr_t next_transport_poller_slot () noexcept
+{
+    auto slot = next_client_server_poller_slot.fetch_add (
+      1, std::memory_order_relaxed);
+    if (slot == 0) {
+        slot = next_client_server_poller_slot.fetch_add (
+          1, std::memory_order_relaxed);
+    }
+    return slot;
+}
 
 std::string connection_key (
   const client_server_server_descriptor_t &descriptor)
@@ -542,6 +556,13 @@ void client_server_location_runtime_t::start ()
 
     _stop.store (false, std::memory_order_release);
     try {
+        _transport_poller = std::make_unique<zlink::poller_t> ();
+        if (!_wake_pipe.open ())
+            throw std::runtime_error ("ClientServer runtime wake pipe creation failed");
+        _transport_poller->add_fd (
+          _wake_pipe.read_fd (),
+          zlink::poll_event_flag_t::pollin,
+          next_transport_poller_slot ());
         for (const auto &channel : _channels) {
             if (channel.server.enabled
                 && !channel.server.bind_endpoints.empty ())
@@ -588,12 +609,15 @@ void client_server_location_runtime_t::start_server (
 
     const auto advertise =
       _advertise_hosts.find (channel.name);
+    raw_client_server_server_options_t options{
+      admission,
+      advertise == _advertise_hosts.end ()
+        ? std::nullopt
+        : std::optional<std::string> (advertise->second)};
+    options.transport_poller = _transport_poller.get ();
+    options.transport_poller_slot = next_transport_poller_slot ();
     auto raw = std::make_unique<raw_client_server_server_t> (
-      raw_client_server_server_options_t{
-        admission,
-        advertise == _advertise_hosts.end ()
-          ? std::nullopt
-          : std::optional<std::string> (advertise->second)});
+      std::move (options));
     raw->start ();
     auto entry = std::make_unique<server_entry_t> ();
     entry->capability = channel.server;
@@ -684,7 +708,49 @@ void client_server_location_runtime_t::run ()
             catch (...) {
             }
         }
-        std::this_thread::sleep_for (pump_interval);
+        if (_stop.load (std::memory_order_acquire))
+            break;
+
+        auto wake_at = next_reconcile;
+        for (const auto &[_, server] : _servers) {
+            if (const auto activity =
+                  server->owner->next_liveness_activity ())
+                wake_at = std::min (wake_at, *activity);
+        }
+        std::vector<std::shared_ptr<raw_client_server_client_t>> clients;
+        {
+            std::lock_guard lock (_gate);
+            for (auto &[_, channel] : _clients) {
+                for (auto &[__, connection] : channel->connections)
+                    clients.push_back (connection.owner);
+            }
+        }
+        for (const auto &client : clients) {
+            if (const auto activity = client->next_liveness_activity ())
+                wake_at = std::min (wake_at, *activity);
+        }
+
+        const auto after_pump = std::chrono::steady_clock::now ();
+        if (wake_at <= after_pump || !_transport_poller)
+            continue;
+        try {
+            zlink::poll_event_t readiness;
+            const auto count = _transport_poller->wait (
+              &readiness,
+              1,
+              std::chrono::duration_cast<std::chrono::milliseconds> (
+                wake_at - after_pump));
+            if (count == 1
+                && readiness.slot != 0
+                && readiness.source_kind == zlink::poll_source_kind_t::fd
+                && readiness.fd == _wake_pipe.read_fd ())
+                _wake_pipe.drain ();
+        }
+        catch (...) {
+            if (!_stop.load (std::memory_order_acquire))
+                continue;
+            break;
+        }
     }
 }
 
@@ -832,11 +898,14 @@ void client_server_location_runtime_t::reconcile_channel (
                           : to_admission (
                               descriptor,
                               admission.effective_max_message_bytes);
+        raw_client_server_client_options_t options{
+          channel.routing_id,
+          admission,
+          std::move (expected)};
+        options.transport_poller = _transport_poller.get ();
+        options.transport_poller_slot = next_transport_poller_slot ();
         auto raw = std::make_shared<raw_client_server_client_t> (
-            raw_client_server_client_options_t{
-              channel.routing_id,
-              admission,
-              std::move (expected)});
+          std::move (options));
         raw->start ();
         std::lock_guard lock (_gate);
         channel.connections.emplace (
@@ -965,7 +1034,8 @@ void client_server_location_runtime_t::dispatch_server (
             return;
         auto claim = mailbox.try_claim (
           mesh::service_mailbox_domain_t::application,
-          64, 4u * 1024u * 1024u);
+          dispatch_limits::receive_batch_messages,
+          dispatch_limits::receive_batch_bytes);
         if (!claim)
             return;
         for (const auto &record : claim->records) {
@@ -1340,12 +1410,29 @@ void client_server_location_runtime_t::stop () noexcept
     for (const auto &[channel_name, _] : _clients)
         _channel_runtime.unbind_client_server_transport (
           channel_name);
+    _wake_pipe.signal ();
     if (_thread.joinable ())
         _thread.join ();
     if (!was_stopped || !_servers.empty () || !_clients.empty ()) {
         stop_clients ();
         stop_servers ();
     }
+    if (_transport_poller && _wake_pipe.read_fd () >= 0) {
+        try {
+            _transport_poller->remove_fd (_wake_pipe.read_fd ());
+        }
+        catch (...) {
+        }
+    }
+    _wake_pipe.close ();
+    if (_transport_poller) {
+        try {
+            _transport_poller->close ();
+        }
+        catch (...) {
+        }
+    }
+    _transport_poller.reset ();
 }
 
 void client_server_location_runtime_t::stop_clients () noexcept

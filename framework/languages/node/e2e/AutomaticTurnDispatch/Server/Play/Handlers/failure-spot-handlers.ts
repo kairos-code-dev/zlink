@@ -1,14 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ZLinkPacket, type ZLinkMessageContext, type ZLinkSpotPacketHandler } from '@zlink-systems/framework';
-import { DelayReq, type DelayRes, type AwaitCancelMsg, type AwaitTimeoutMsg } from '../../../Shared/messages';
+import {
+  DelayReq,
+  type DelayRes,
+  type AwaitCancelMsg,
+  type AwaitTimeoutMsg
+} from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
 import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
+import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 
 @Injectable()
 @ZLinkPacket('AwaitTimeoutMsg')
 export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitTimeoutMsg> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(spot: AwaitProbeSpot, request: AwaitTimeoutMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
@@ -18,7 +28,7 @@ export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitP
       + `|request=${request.requestId}|handler=spot`
     );
     try {
-      const call = spot.context.outbound
+      const call = this.route
         .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
           new DelayReq(request.requestId, request.delayMs, 'timeout'))
         .timeout(request.timeoutMs);
@@ -46,7 +56,10 @@ export class AwaitTimeoutCommandHandler implements ZLinkSpotPacketHandler<AwaitP
 @Injectable()
 @ZLinkPacket('AwaitCancelMsg')
 export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitCancelMsg> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(spot: AwaitProbeSpot, request: AwaitCancelMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
@@ -58,7 +71,7 @@ export class AwaitCancelCommandHandler implements ZLinkSpotPacketHandler<AwaitPr
     const controller = new AbortController();
     const cancelTimer = setTimeout(() => controller.abort(), request.cancelAfterMs);
     try {
-      const call = spot.context.outbound
+      const call = this.route
         .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
           new DelayReq(request.requestId, request.delayMs, 'cancel'))
         .timeout(5000);

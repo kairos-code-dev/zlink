@@ -27,7 +27,7 @@ data class ConsumerOptions(
             val locationKeyPrefix = values.lastRequired("location-key-prefix")
             return ConsumerOptions(
                 httpUrl = values.last("http-url", "http://127.0.0.1:0"),
-                logDir = values.last("log-dir", System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log"),
+                logDir = values.last("log-dir", "logs"),
                 traceLabel = values.last("trace-label", "consumer"),
                 providerEndpoints = endpoints,
                 redisLocationEndpoint = redisLocationEndpoint,

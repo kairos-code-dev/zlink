@@ -4,6 +4,7 @@
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/dispatch/inbound_dispatch_budget.hpp"
 #include "runtime/dispatch/completion_admission_owner.hpp"
+#include "runtime/host/hosted_service_lifecycle.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/mesh/mesh_node_runtime.hpp"
 
@@ -27,7 +28,8 @@ class route_handler_registry_t;
 namespace zlink::framework::runtime
 {
 
-class mesh_node_host_service_t final : public hosted_service_t
+class mesh_node_host_service_t final : public hosted_service_t,
+                                       public hosted_service_lifecycle_t
 {
   public:
     mesh_node_host_service_t (
@@ -52,11 +54,16 @@ class mesh_node_host_service_t final : public hosted_service_t
     actor_manager_t actor_manager ();
     zlink::submit_result_t submit_local_node_send (
       const std::shared_ptr<detail::mesh_node_runtime_t> &node,
-      const std::vector<zlink::message_t> &parts);
-    void seal_application_dispatch () noexcept;
+      std::vector<zlink::message_t> parts);
+    void seal_application_dispatch () noexcept override;
     bool wait_for_accepted_callbacks_until (
-      std::chrono::steady_clock::time_point deadline) noexcept;
-    bool publish_descriptor_state (framework_runtime_state_t state) noexcept;
+      std::chrono::steady_clock::time_point deadline) noexcept override;
+    bool publish_descriptor_state (
+      framework_runtime_state_t state) noexcept override;
+    void visit_relocation_nodes (
+      const std::function<void (
+        const std::shared_ptr<detail::mesh_node_runtime_t> &)> &visitor)
+      const override;
     bool republish_after_store_recovery () noexcept;
     inbound_dispatch_snapshot_t inbound_dispatch_snapshot () const noexcept;
 
@@ -86,6 +93,7 @@ class mesh_node_host_service_t final : public hosted_service_t
       actor_id_t actor_id);
     task_t<std::optional<spot_ref_t>> find_actor_spot (
       actor_id_t actor_id);
+    result_t<void> finalize_local_actor_destroy (const actor_ref_t &actor);
     task_t<bool> destroy_actor (actor_ref_t actor);
 
     std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> _registrations;

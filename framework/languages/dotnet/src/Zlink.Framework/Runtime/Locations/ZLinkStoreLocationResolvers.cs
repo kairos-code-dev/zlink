@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Actors;
+using Zlink.Framework.Runtime.Service;
 using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Locations;
@@ -12,6 +13,7 @@ namespace Zlink.Framework.Runtime.Locations;
 internal sealed class ZLinkStoreLocationResolvers :
     IZLinkMeshNodeLocationResolver
 {
+    private const int MaximumStaleSnapshotRetries = 3;
     private readonly IZLinkLocationRepository _store;
     private readonly ZLinkObservedLocationGenerations _observed;
     private readonly ZLinkLiveLocationRows _liveRows;
@@ -46,30 +48,53 @@ internal sealed class ZLinkStoreLocationResolvers :
         string meshName,
         CancellationToken cancellationToken = default)
     {
-        var rows = await ZLinkLocationStoreRead.ExecuteAsync(
-            _health,
-            "mesh-node-resolver-read",
-            cancellationToken,
-            storeToken => _store.ListAllMeshNodesAsync(meshName, storeToken))
-            .ConfigureAwait(false);
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"autoconnect_store_snapshot mesh={meshName} raw_rows={rows.Count} "
-            + $"raw_rids={string.Join(',', rows.Select(static row => row.Rid.ToString()))}");
-        _observed.ReconcileDescriptors(meshName, rows);
-
-        // The shared acceptance policy rejects lagging lifecycle generation
-        // and descriptor revision views.
-        var live = await _liveRows.FilterAsync(
-                rows,
-                static row => row.OwnerId,
-                _observed.AcceptDescriptor,
+        for (var attempt = 0; ; attempt++)
+        {
+            var rows = await ZLinkLocationStoreRead.ExecuteAsync(
+                _health,
+                "mesh-node-resolver-read",
                 cancellationToken,
-                static row => row.LeaseGeneration)
-            .ConfigureAwait(false);
-        ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"autoconnect_live_snapshot mesh={meshName} live_rows={live.Count} "
-            + $"live_rids={string.Join(',', live.Select(static row => row.Rid.ToString()))}");
-        return live;
+                storeToken => _store.ListAllMeshNodesAsync(meshName, storeToken))
+                .ConfigureAwait(false);
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"autoconnect_store_snapshot mesh={meshName} raw_rows={rows.Count} "
+                + $"raw_rids={string.Join(',', rows.Select(static row => row.Rid.ToString()))}");
+            _observed.ReconcileDescriptors(meshName, rows);
+
+            // The shared acceptance policy rejects lagging lifecycle generation
+            // and descriptor revision views. A local descriptor update may
+            // finish after this snapshot begins but before its rows are
+            // filtered. Retry that bounded race without accepting the older
+            // row; a retired owner remains rejected on every attempt.
+            var rejectedByOlderRevision = false;
+            var live = await _liveRows.FilterAsync(
+                    rows,
+                    static row => row.OwnerId,
+                    row =>
+                    {
+                        var accepted = _observed.AcceptDescriptor(
+                            row,
+                            out var olderRevision);
+                        rejectedByOlderRevision |= olderRevision;
+                        return accepted;
+                    },
+                    cancellationToken,
+                    static row => row.LeaseGeneration)
+                .ConfigureAwait(false);
+            if (!rejectedByOlderRevision
+                || attempt >= MaximumStaleSnapshotRetries)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"autoconnect_live_snapshot mesh={meshName} live_rows={live.Count} "
+                    + $"live_rids={string.Join(',', live.Select(static row => row.Rid.ToString()))}");
+                return live;
+            }
+
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"autoconnect_snapshot_retry mesh={meshName} "
+                + $"reason=older_revision attempt={attempt + 1}");
+            await Task.Yield();
+        }
     }
 
     internal async ValueTask<ZLinkResolvedSpotLocation?> ResolveSpotRowAsync(
@@ -198,6 +223,50 @@ internal sealed class ZLinkStoreLocationResolvers :
     {
         lock (_routeCacheGate)
             _actorRoutes.Remove(key);
+    }
+
+    internal bool InvalidateMessageFollowRoute(
+        ZLinkServiceWireCodec.MessageFollowRecord record)
+    {
+        var source = record.Source;
+        var key = source.IsActor
+            ? new ZLinkActorLocationKey(source.ObjectId)
+            : default;
+        lock (_routeCacheGate)
+        {
+            if (source.IsActor)
+            {
+                if (!_actorRoutes.TryGetValue(key, out var cached))
+                    return false;
+                var row = cached.Row;
+                if (row.ActorId != source.ObjectId
+                    || row.ActorRef.ObjectGeneration != source.ObjectGeneration
+                    || row.OwnerNodeRid != source.TargetNodeRid
+                    || row.ActorRef.NodeRid != source.TargetNodeRid
+                    || row.OwnerNodeGeneration != source.TargetNodeGeneration
+                    || row.AuthorityOwnerGeneration
+                       != source.AuthorityOwnerGeneration
+                    || row.LeaseGeneration <= 0
+                    || (ulong)row.LeaseGeneration != source.OwnerLeaseGeneration)
+                    return false;
+                return _actorRoutes.Remove(key);
+            }
+
+            var spotKey = new ZLinkSpotLocationKey(source.ObjectId);
+            if (!_spotRoutes.TryGetValue(spotKey, out var spotCached))
+                return false;
+            var spot = spotCached.Row;
+            if (spot.SpotId != source.ObjectId
+                || spot.SpotGeneration != source.ObjectGeneration
+                || spot.OwnerNodeRid != source.TargetNodeRid
+                || spot.OwnerNodeGeneration != source.TargetNodeGeneration
+                || spot.AuthorityOwnerGeneration
+                   != source.AuthorityOwnerGeneration
+                || spot.LeaseGeneration <= 0
+                || (ulong)spot.LeaseGeneration != source.OwnerLeaseGeneration)
+                return false;
+            return _spotRoutes.Remove(spotKey);
+        }
     }
 
     internal bool HasCachedActorRoute(ZLinkActorLocationKey key)

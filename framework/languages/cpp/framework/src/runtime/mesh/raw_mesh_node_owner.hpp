@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/backend/raw_route_port.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
 #include "runtime/foundation/operation_registry.hpp"
 #include "runtime/mesh/service_liveness_registry.hpp"
 #include "runtime/mesh/service_mailbox.hpp"
@@ -41,16 +42,21 @@ enum class raw_mesh_pump_result_t
     infrastructure,
     application,
     backpressured,
+    capacity_exceeded,
     protocol_error
 };
 
 struct raw_mesh_node_options_t
 {
     service_node_descriptor_t descriptor;
-    std::size_t application_message_budget = 4096;
-    std::size_t application_byte_budget = 16u * 1024u * 1024u;
-    std::size_t infrastructure_message_budget = 1024;
-    std::size_t infrastructure_byte_budget = 4u * 1024u * 1024u;
+    std::size_t application_message_budget =
+      dispatch_limits::application_mailbox_messages;
+    std::size_t application_byte_budget =
+      dispatch_limits::application_mailbox_bytes;
+    std::size_t infrastructure_message_budget =
+      dispatch_limits::control_mailbox_messages;
+    std::size_t infrastructure_byte_budget =
+      dispatch_limits::control_mailbox_bytes;
     std::uint64_t send_high_water_mark = 4'096'000;
     std::uint64_t receive_high_water_mark = 4'096'000;
     std::optional<std::string> advertise_host;
@@ -254,12 +260,20 @@ class raw_mesh_node_owner_t
     bool send_reply_relay_ack (
       const std::vector<std::uint8_t> &target_routing_id,
       const protocol::reply_relay_ack_t &ack);
+    bool send_message_follow (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::message_follow_notice_t &notice);
     bool send_relocation_control (
       const std::vector<std::uint8_t> &target_routing_id,
       const protocol::relocation_control_t &control);
     raw_mesh_pump_result_t
     pump_one (service_liveness_registry_t::clock_t::time_point now,
               bool accept_application_receive = true);
+    /* Wait for ROUTER input or an already admitted mailbox/control record.
+     * This is the blocking wake-up used by the host ingress loop; it avoids
+     * turning an idle node into a timed polling loop. */
+    bool wait_for_activity (std::chrono::milliseconds timeout,
+                            bool accept_application_receive = true) noexcept;
     std::size_t last_pump_bytes () const noexcept
     {
         return _last_pump_bytes;
@@ -277,6 +291,12 @@ class raw_mesh_node_owner_t
     };
 
     struct pending_unadmitted_application_t
+    {
+        detail::backend::raw_received_t received;
+        std::size_t bytes = 0;
+    };
+
+    struct pending_admission_t
     {
         detail::backend::raw_received_t received;
         std::size_t bytes = 0;
@@ -340,6 +360,8 @@ class raw_mesh_node_owner_t
     void accept_completion_control (
       detail::backend::raw_bytes_t source_routing_id,
       detail::backend::raw_message_t parts);
+    void disconnect_completion_control_source (
+      const detail::backend::raw_bytes_t &source_routing_id) noexcept;
     bool send_completion_control (
       const std::vector<std::uint8_t> &target_routing_id,
       detail::backend::raw_message_t parts);
@@ -360,6 +382,8 @@ class raw_mesh_node_owner_t
     std::deque<pending_unadmitted_application_t>
       _pending_unadmitted_applications;
     std::size_t _pending_unadmitted_application_bytes = 0;
+    std::deque<pending_admission_t> _pending_admissions;
+    std::size_t _pending_admission_bytes = 0;
     std::size_t _last_pump_bytes = 0;
     struct pending_completion_control_t
     {
@@ -368,6 +392,12 @@ class raw_mesh_node_owner_t
     };
     std::mutex _completion_control_mutex;
     std::deque<pending_completion_control_t> _completion_controls;
+    struct completion_control_failure_t
+    {
+        detail::backend::raw_bytes_t source_routing_id;
+        raw_mesh_pump_result_t result = raw_mesh_pump_result_t::protocol_error;
+    };
+    std::optional<completion_control_failure_t> _completion_control_failure;
     bool _accept_completion_controls = false;
     std::shared_ptr<foundation::operation_registry_t> _operations;
     std::map<std::vector<std::uint8_t>, service_node_descriptor_t,

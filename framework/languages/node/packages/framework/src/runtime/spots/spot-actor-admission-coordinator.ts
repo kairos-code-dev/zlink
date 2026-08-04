@@ -1,5 +1,6 @@
 import type { ActorRef, ZLinkActor } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import {
   type ZLinkActorHandoffPacket,
@@ -16,6 +17,7 @@ import type { ZLinkNativeActorJoinSnapshot } from './spot-runtime-ports';
 
 type AdmissionOptions = Pick<ZLinkSpotActivationLifecycleOptions,
   | 'actorHandoffRuntime'
+  | 'admission'
   | 'actorResolver'
   | 'actorTransferRuntime'
   | 'boundSessionRuntime'
@@ -24,6 +26,8 @@ type AdmissionOptions = Pick<ZLinkSpotActivationLifecycleOptions,
   | 'locationClaim'
   | 'messageSerializers'
   | 'nativeSpotNodeProvider'
+  | 'createReceived'
+  | 'createTopicMessage'
   | 'providerResolver'
   | 'runtimeEventPublisher'
 >;
@@ -38,14 +42,17 @@ export class ZLinkSpotActorAdmissionCoordinator {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    requestTerminal?: (response: unknown) => Promise<void> | void
+    requestTerminal?: (response: unknown) => Promise<void> | void,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> {
     const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      undefined,
+      messageFollowOrigin
     );
     if (handoff !== undefined) return await handoff;
     return await this.dispatchActorPacketDirect(
@@ -66,6 +73,8 @@ export class ZLinkSpotActorAdmissionCoordinator {
     if (nativeSpot === undefined) return undefined;
     const nativeDispatch = new ZLinkSpotActorJoinDispatch({
       nativeSpot,
+      createReceived: requireBackendValueFactory(this.options.createReceived, 'Received'),
+      createTopicMessage: requireBackendValueFactory(this.options.createTopicMessage, 'TopicMessage'),
       serial: activation.serial,
       actors: {
         resolveActor: (actorId) => activation.hasDepartedActor(actorId)
@@ -107,6 +116,9 @@ export class ZLinkSpotActorAdmissionCoordinator {
       messageSerializers: this.options.messageSerializers,
       providerResolver: this.options.providerResolver,
       dispatchErrors: this.options.dispatchErrors,
+      claimApplicationWork: this.options.admission === undefined
+        ? undefined
+        : () => this.options.admission!.claim(activation.meshName, 'Spot route dispatch'),
       detachedTaskRunner: this.options.detachedTaskRunner
     });
     nativeDispatch.attach();
@@ -249,4 +261,13 @@ export class ZLinkSpotActorAdmissionCoordinator {
       })
     );
   }
+}
+
+function requireBackendValueFactory<T>(factory: (() => T) | undefined, valueName: string): () => T {
+  return () => {
+    if (factory === undefined) {
+      throw new Error(`Native Spot dispatch requires a backend ${valueName} factory.`);
+    }
+    return factory();
+  };
 }

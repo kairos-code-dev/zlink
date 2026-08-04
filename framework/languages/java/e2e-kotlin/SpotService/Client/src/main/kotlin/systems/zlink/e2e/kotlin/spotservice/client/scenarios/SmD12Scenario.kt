@@ -15,8 +15,8 @@ internal object SmD12Scenario {
     suspend fun run() {
         val actorId = "actor-sm-d12-" + UUID.randomUUID().toString().replace("-", "")
         val profile = Contracts.ActorProfile("Transfer Player", 12, listOf("transfer"))
-        val first = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
-        val second = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT"))
+        val first = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
+        val second = createStreamConnector(Env.get("e2e.stream.b.endpoint"))
         try {
             first.connect().await()
             val firstAuth = first

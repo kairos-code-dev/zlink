@@ -125,6 +125,19 @@ service_liveness_registry_t::tick (clock_t::time_point now)
     return result;
 }
 
+std::optional<service_liveness_registry_t::clock_t::time_point>
+service_liveness_registry_t::next_activity () const
+{
+    std::lock_guard lock (_mutex);
+    std::optional<clock_t::time_point> result;
+    for (const auto &[_, peer] : _peers) {
+        const auto candidate = std::min (peer.deadline, peer.next_probe);
+        if (!result || candidate < *result)
+            result = candidate;
+    }
+    return result;
+}
+
 std::size_t service_liveness_registry_t::size () const
 {
     std::lock_guard lock (_mutex);

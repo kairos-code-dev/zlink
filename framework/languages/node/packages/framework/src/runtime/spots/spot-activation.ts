@@ -12,6 +12,7 @@ import type {
   ZLinkSpotPublisherClient,
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
+import type { ZLinkRuntimeAdmissionGate } from '../admission';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import type {
   ZLinkSpotActorRequestHandlerRegistration,
@@ -27,11 +28,14 @@ import {
   ZLinkUserSpotExecutionMode
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import { throwIfAborted } from '../abort';
 import { ZLinkConfigurationException } from '../configuration';
 import type {
+  ZLinkBackendReceived,
   ZLinkBackendSpot,
-  ZLinkBackendSpotNode
+  ZLinkBackendSpotNode,
+  ZLinkBackendTopicMessage
 } from '../backend/contracts';
 import { ZLinkDispatchErrorReporter } from '../channels';
 import {
@@ -109,12 +113,15 @@ export interface ZLinkSpotActivationLifecycleOptions {
     spotId: RoutingId,
     authority?: ZLinkNativeSpotAuthority
   ) => ZLinkBackendSpot | undefined;
+  readonly createReceived?: () => ZLinkBackendReceived;
+  readonly createTopicMessage?: () => ZLinkBackendTopicMessage;
   readonly nativeSpotNodeProvider?: (meshName: string) => ZLinkBackendSpotNode | undefined;
   readonly actorResolver?: (actorId: string) => ZLinkActor | undefined;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
   readonly boundSessionRuntime?: ZLinkSpotBoundSessionRuntime;
   readonly actorHandoffRuntime?: ZLinkSpotActorHandoffRuntime;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
+  readonly admission?: ZLinkRuntimeAdmissionGate;
   readonly leaveActor: (
     spotId: RoutingId,
     actor: ZLinkActor,
@@ -756,7 +763,8 @@ export class ZLinkSpotActivationLifecycle {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    requestTerminal?: (response: unknown) => Promise<void> | void
+    requestTerminal?: (response: unknown) => Promise<void> | void,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> {
     return await this.actorAdmission.dispatchActorPacket(
       activation,
@@ -765,7 +773,8 @@ export class ZLinkSpotActivationLifecycle {
       returnResponse,
       remoteBoundSessionTarget,
       fallbackActorRef,
-      requestTerminal
+      requestTerminal,
+      messageFollowOrigin
     );
   }
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-kotlin-config.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -150,7 +151,7 @@ gradle_run installDist
 
 if [[ "${run_invalid_scenario}" == "true" ]]; then
   set +e
-  "${INVALID_BIN}" \
+  zlink_kotlin_e2e_run "${INVALID_BIN}" \
     --server-endpoint "${INVALID_ENDPOINT}" \
     --log-dir "${log_dir}" \
     >"${log_dir}/invalid-server.stdout.log" 2>"${log_dir}/invalid-server.stderr.log"
@@ -166,7 +167,7 @@ if [[ "${run_invalid_scenario}" == "true" ]]; then
 fi
 
 if [[ "${run_main_scenarios}" == "true" ]]; then
-  "${MAIN_BIN}" \
+  zlink_kotlin_e2e_run "${MAIN_BIN}" \
     --server-endpoint "${SERVER_ENDPOINT}" \
     --http-endpoint "${HTTP_ENDPOINT}" \
     --log-dir "${log_dir}" \
@@ -176,7 +177,7 @@ if [[ "${run_main_scenarios}" == "true" ]]; then
   wait_port server "${SERVER_ENDPOINT}"
   wait_port evidence "${HTTP_ENDPOINT}"
 
-  "${CLIENT_BIN}" \
+  zlink_kotlin_e2e_run "${CLIENT_BIN}" \
     --http-endpoint "${HTTP_ENDPOINT}" \
     --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
     --log-dir "${log_dir}" \
@@ -211,7 +212,7 @@ stop_current() {
 stop_current
 
 if [[ "${run_mismatch_scenario}" == "true" ]]; then
-  "${JSON_ONLY_BIN}" \
+  zlink_kotlin_e2e_run "${JSON_ONLY_BIN}" \
     --server-endpoint "${MISMATCH_ENDPOINT}" \
     --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
     --log-dir "${log_dir}" \
@@ -221,7 +222,7 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
   wait_port mismatch-server "${MISMATCH_ENDPOINT}"
   wait_port mismatch-evidence "${MISMATCH_HTTP_ENDPOINT}"
 
-  "${CODEC_REQUESTER_BIN}" \
+  zlink_kotlin_e2e_run "${CODEC_REQUESTER_BIN}" \
     --server-endpoint "${MISMATCH_ENDPOINT}" \
     --http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
     --log-dir "${log_dir}" \
@@ -229,7 +230,7 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
   pids+=("$!")
   wait_port codec-requester "${REQUESTER_HTTP_ENDPOINT}"
 
-  "${CLIENT_BIN}" \
+  zlink_kotlin_e2e_run "${CLIENT_BIN}" \
     --http-endpoint "${MISMATCH_HTTP_ENDPOINT}" \
     --codec-requester-http-endpoint "${REQUESTER_HTTP_ENDPOINT}" \
     --log-dir "${log_dir}" \

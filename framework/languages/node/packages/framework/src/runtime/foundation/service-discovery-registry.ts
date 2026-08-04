@@ -24,6 +24,11 @@ interface Current<T> {
   readonly connectionId: string;
 }
 
+interface ClientServerSelectionCycle {
+  readonly values: readonly SelectedClientServer[];
+  cursor: number;
+}
+
 export interface SelectedClientServer {
   readonly descriptor: ClientServerDescriptor;
   readonly connectionId: string;
@@ -33,8 +38,7 @@ export interface SelectedClientServer {
 export class ServiceDiscoveryRegistry {
   private readonly clientServers = new Map<string, Current<ClientServerDescriptor>>();
   private readonly fanoutPublishers = new Map<string, Current<FanoutPublisherDescriptor>>();
-  private readonly clientServerSelectionWeights = new Map<string, Map<string, bigint>>();
-  private readonly clientServerCandidates = new Map<string, readonly Current<ClientServerDescriptor>[]>();
+  private readonly clientServerSelections = new Map<string, ClientServerSelectionCycle>();
 
   admitClientServer(descriptor: ClientServerDescriptor, connectionId: string): boolean {
     validateClientServer(descriptor);
@@ -85,36 +89,15 @@ export class ServiceDiscoveryRegistry {
   }
 
   selectClientServerConnection(channelName: string): SelectedClientServer | undefined {
-    const eligible = this.clientServerCandidatesFor(channelName);
-    const total = eligible.reduce((sum, value) => sum + BigInt(value.descriptor.weight), 0n);
-    if (total === 0n) return undefined;
-    const currentWeights = this.clientServerSelectionWeights.get(channelName) ?? new Map();
-    this.clientServerSelectionWeights.set(channelName, currentWeights);
-    const eligibleIds = new Set(eligible.map(value => value.descriptor.serverRoutingId));
-    for (const serverRoutingId of currentWeights.keys()) {
-      if (!eligibleIds.has(serverRoutingId)) currentWeights.delete(serverRoutingId);
+    let cycle = this.clientServerSelections.get(channelName);
+    if (cycle === undefined) {
+      cycle = this.buildClientServerSelection(channelName);
+      this.clientServerSelections.set(channelName, cycle);
     }
-
-    let selected = eligible[0]!;
-    let selectedWeight: bigint | undefined;
-    for (const current of eligible) {
-      const serverRoutingId = current.descriptor.serverRoutingId;
-      const nextWeight = (currentWeights.get(serverRoutingId) ?? 0n)
-        + BigInt(current.descriptor.weight);
-      currentWeights.set(serverRoutingId, nextWeight);
-      if (selectedWeight === undefined || nextWeight > selectedWeight) {
-        selected = current;
-        selectedWeight = nextWeight;
-      }
-    }
-    currentWeights.set(
-      selected.descriptor.serverRoutingId,
-      currentWeights.get(selected.descriptor.serverRoutingId)! - total
-    );
-    return {
-      descriptor: { ...selected.descriptor },
-      connectionId: selected.connectionId
-    };
+    if (cycle.values.length === 0) return undefined;
+    const selected = cycle.values[cycle.cursor]!;
+    cycle.cursor = (cycle.cursor + 1) % cycle.values.length;
+    return selected;
   }
 
   clientServerDescriptors(channelName: string): readonly ClientServerDescriptor[] {
@@ -181,12 +164,12 @@ export class ServiceDiscoveryRegistry {
   }
 
   private invalidateClientServerCandidates(channelName: string): void {
-    this.clientServerCandidates.delete(channelName);
+    if (this.clientServerSelections.has(channelName)) {
+      this.clientServerSelections.set(channelName, this.buildClientServerSelection(channelName));
+    }
   }
 
-  private clientServerCandidatesFor(channelName: string): readonly Current<ClientServerDescriptor>[] {
-    const cached = this.clientServerCandidates.get(channelName);
-    if (cached !== undefined) return cached;
+  private buildClientServerSelection(channelName: string): ClientServerSelectionCycle {
     const candidates = [...this.clientServers.values()]
       .filter(value =>
         value.descriptor.channelName === channelName
@@ -194,8 +177,27 @@ export class ServiceDiscoveryRegistry {
         && value.descriptor.weight > 0)
       .sort((left, right) =>
         left.descriptor.serverRoutingId.localeCompare(right.descriptor.serverRoutingId));
-    this.clientServerCandidates.set(channelName, candidates);
-    return candidates;
+    const total = candidates.reduce((sum, value) => sum + BigInt(value.descriptor.weight), 0n);
+    const weights = candidates.map(value => ({ value, current: 0n }));
+    const values: SelectedClientServer[] = [];
+    for (let index = 0n; index < total; index += 1n) {
+      let selected = weights[0];
+      for (const candidate of weights) {
+        candidate.current += BigInt(candidate.value.descriptor.weight);
+        if (candidate.current > selected.current
+            || (candidate.current === selected.current
+              && candidate.value.descriptor.serverRoutingId
+                < selected.value.descriptor.serverRoutingId)) {
+          selected = candidate;
+        }
+      }
+      selected.current -= total;
+      values.push(Object.freeze({
+        descriptor: Object.freeze({ ...selected.value.descriptor }),
+        connectionId: selected.value.connectionId
+      }));
+    }
+    return { values: Object.freeze(values), cursor: 0 };
   }
 }
 

@@ -68,7 +68,8 @@
       "userSpotClose": 48,
       "actorCreate": 49,
       "terminalReply": 20,
-      "reservedFirst": 50
+      "messageFollow": 50,
+      "reservedFirst": 51
     },
     "replyEnvelopeFields": ["correlation", "terminalResult", "failureCode", "tail"],
     "createRequestFields": [

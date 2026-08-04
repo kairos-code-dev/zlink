@@ -37,7 +37,7 @@ class ServiceApplication {
         return EvidenceHttpServer(
             state,
             json,
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"),
+            Env.get("e2e.http.endpoint"),
             runtimeOptions,
         )
     }
@@ -45,7 +45,7 @@ class ServiceApplication {
     @Bean
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500))
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
             options.configureLocations().setPollingInterval(Duration.ofMillis(250))
@@ -55,7 +55,7 @@ class ServiceApplication {
                 .traceLabel("kotlin-mon-service")
             options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
             val apiEndpoint = java.net.URI.create(
-                Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"),
+                Env.get("e2e.api.endpoint"),
             )
             options.addClientServerChannel(Contracts.CHANNEL)
                 .server()
@@ -63,7 +63,7 @@ class ServiceApplication {
                 .listen(apiEndpoint.port)
                 .addHandlerGroup(Contracts.HANDLER_GROUP)
             val handshakeEndpoint = java.net.URI.create(
-                Env.get("ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT"),
+                Env.get("e2e.handshake.endpoint"),
             )
             options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
                 .server()
@@ -71,7 +71,7 @@ class ServiceApplication {
                 .listen(handshakeEndpoint.port)
                 .addHandlerGroup(Contracts.HANDLER_GROUP)
             val node = options.addRouteMesh(Contracts.SPOT_MESH)
-            node.listen(Env.get("ZLINK_KOTLIN_E2E_MESH_ENDPOINT"))
+            node.listen(Env.get("e2e.mesh.endpoint"))
                 .setRoutingId(RoutingId.from("svc-a-spot"))
             node.channelName(Contracts.SPOT_CHANNEL)
             node.objects().server()
@@ -86,8 +86,8 @@ class ServiceApplication {
     fun locationStore(): ZLinkRedisLocationStore {
         return ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
                 .setCommandTimeout(Duration.ofMillis(500)),
         )
     }
@@ -111,10 +111,11 @@ class ServiceApplication {
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(ServiceApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

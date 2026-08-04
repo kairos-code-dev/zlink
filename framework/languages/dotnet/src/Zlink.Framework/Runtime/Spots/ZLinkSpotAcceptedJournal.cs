@@ -41,6 +41,67 @@ internal static class ZLinkSpotAcceptedJournal
         }
     }
 
+    // Computes the reservation size without creating the relocation record.
+    // The record itself is materialized only after the serial queue has sealed.
+    internal static int MeasureEncodedLength(
+        ZLinkBackendRouteReceived received,
+        ulong replyRouteId = 0)
+    {
+        ArgumentNullException.ThrowIfNull(received);
+        if (received.OperationId == default
+            || received.TargetNodeGeneration == 0
+            || received.AuthorityOwnerGeneration == 0
+            || received.OwnerLeaseGeneration == 0)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record requires an exact operation and authority fence.");
+        if (received.RequestSource is not { } requestSource
+            || received.SourceNodeRid is not { } sourceNodeRid
+            || requestSource.NodeRid != sourceNodeRid
+            || requestSource.NodeGeneration != received.SourceNodeGeneration
+            || string.IsNullOrWhiteSpace(requestSource.OwnerId)
+            || requestSource.LeaseGeneration == 0)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record requires the exact ingress request-source fence.");
+        if (replyRouteId != 0
+            && (received.RequestSeq != replyRouteId
+                || received.OperationId.Low != replyRouteId))
+            throw new InvalidOperationException(
+                "An accepted Spot request must preserve the source-owned operation correlation as its reply route.");
+        if (replyRouteId == 0 && received.CanReply)
+            throw new InvalidOperationException(
+                "An accepted Spot request cannot omit its source-owned reply route.");
+        if (received.Parts.Count > MaxParts)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record contains too many message parts.");
+
+        var length = 4 + 2; // magic + version
+        length = checked(length
+            + 1
+            + 4 + sourceNodeRid.Size
+            + 8
+            + 4 + Encoding.UTF8.GetByteCount(requestSource.OwnerId)
+            + 8
+            + 1
+            + (string.IsNullOrEmpty(received.SpotId)
+                ? 0
+                : 4 + Encoding.UTF8.GetByteCount(received.SpotId))
+            + 1
+            + (received.RequestSeq.HasValue ? 8 : 0)
+            + 8
+            + 8 + 8
+            + 8 + 8 + 8
+            + 1);
+        var metadataLength = ZLinkMeshMetadataCodec.MeasureEncodedLength(
+            received.Metadata);
+        length = checked(length + 4 + metadataLength + 4);
+        foreach (var part in received.Parts)
+            length = checked(length + 4 + part.Size);
+        if (length > MaxRecordBytes)
+            throw new InvalidOperationException(
+                "An accepted Spot journal record cannot exceed 64 MiB.");
+        return length;
+    }
+
     internal static byte[] Encode(
         ZLinkBackendRouteReceived received,
         ulong replyRouteId = 0)

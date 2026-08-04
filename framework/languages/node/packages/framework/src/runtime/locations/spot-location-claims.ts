@@ -19,6 +19,10 @@ import type {
 import type { ZLinkAuthorityStore, ZLinkSpotLocationStore } from './internal-store-contracts';
 import { encodeAuthorityKey } from './authority-key-codec';
 import { routingIdsEqual } from '../routing-id';
+import {
+  decodeServiceInstanceAuthorityPayload,
+  encodeServiceInstanceAuthorityPayload
+} from '../foundation/service-authority-payload-codec';
 
 export class ZLinkSpotLocationClaims {
   private readonly spots = new Map<string, TrackedSpot>();
@@ -104,6 +108,47 @@ export class ZLinkSpotLocationClaims {
     if (this.spots.get(canonical) === tracked) {
       this.spots.delete(canonical);
     }
+  }
+
+  async beginInstanceClosing(meshName: string, spotId: RoutingId): Promise<boolean> {
+    const canonical = ZLinkLocationKeyCodec.encodeSpotKey({ meshName, spotId });
+    const tracked = this.spots.get(canonical);
+    const store = this.authorityStore;
+    if (tracked?.kind !== 'authority' || store === undefined) {
+      return false;
+    }
+    const key = encodeAuthorityKey('instance_spot', String(spotId));
+    const current = await store.readAuthority(key);
+    if (current.kind !== 'snapshot' || !matchesTrackedAuthority(current, tracked)) {
+      return false;
+    }
+    const decoded = decodeServiceInstanceAuthorityPayload(current.payload);
+    if (decoded?.state !== 'ready' || decoded.activationRecovery !== undefined) {
+      return false;
+    }
+    const result = await store.compareExchangeAuthority(
+      key,
+      current.storeVersion,
+      {
+        kind: 'put',
+        generationTransition: 'preserve',
+        payload: encodeServiceInstanceAuthorityPayload({
+          state: 'closing',
+          stableType: decoded.stableType,
+          spotId: decoded.spotId,
+          ownerId: decoded.ownerId,
+          ownerLeaseGeneration: decoded.ownerLeaseGeneration,
+          ownerMeshName: decoded.ownerMeshName,
+          ownerNodeRid: decoded.ownerNodeRid,
+          ownerNodeGeneration: decoded.ownerNodeGeneration
+        })
+      }
+    );
+    if (result.kind !== 'stored') {
+      return false;
+    }
+    tracked.storeVersion = result.storeVersion.value;
+    return true;
   }
 
   onOwnershipLost(event: ZLinkOwnershipLostEvent): void {

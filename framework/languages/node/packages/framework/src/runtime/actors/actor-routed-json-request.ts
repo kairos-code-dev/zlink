@@ -1,4 +1,4 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
@@ -11,7 +11,7 @@ export async function tryRequestRoutedJson(
 ): Promise<boolean> {
   const request = transport.requestRawToSpot;
   if (request === undefined) return false;
-  const message = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
+  const message = RuntimeMessage.from(Buffer.from(JSON.stringify(payload)));
   try {
     const replyParts = await request.call(transport, target, message, options);
     for (const part of replyParts) part.close();
@@ -43,7 +43,7 @@ export async function requestRoutedJsonReply<T>(
 ): Promise<T> {
   const request = transport.requestRawToSpot;
   if (request === undefined) throw new Error(unavailableMessage);
-  const message = BindingMessage.from(Buffer.from(JSON.stringify(payload)));
+  const message = RuntimeMessage.from(Buffer.from(JSON.stringify(payload)));
   try {
     const replyParts = await request.call(transport, target, message, options);
     try {

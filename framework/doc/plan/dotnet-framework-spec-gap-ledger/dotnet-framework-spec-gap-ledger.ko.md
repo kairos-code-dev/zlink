@@ -1,5 +1,16 @@
 # .NET Framework spec gap audit와 수정 ledger
 
+> 2026-08-04 최신 재검증 기준으로 전체 `Zlink.Framework.UnitTests`는 `1503/1503`,
+> `ContractTests`는 `76/76`, `SampleRegressionTests`는 `145/145`로 통과했고, source
+> build는 warning 0 / error 0이다. packaged contract와 clean consumer도 통과했다.
+> Config 14는 `IS-E2E-01`~`IS-E2E-03`의 Track A process를 통과했지만, 나머지 33개
+> scenario와 전체 aggregate는 아직 닫히지 않았다. 대표 process matrix는 통과했으나,
+> 전체 sample runner는 최신 두 번의 fresh 실행에서 TicTacToe의 leave completion marker
+> 확인 단계가 실패했고, 단독 TicTacToe 실행은 통과했다. 따라서 전체 sample process gate는
+> 미완료로 유지한다. 상세 결과는
+> [`log/20260804-dotnet-plan-runtime-process-recheck.ko.md`](log/20260804-dotnet-plan-runtime-process-recheck.ko.md)에
+> 기록한다.
+
 > 상태: 2026-08-03 20:23 KST live snapshot 기준 Phase A (`.NET Framework` spec gap) 부분 완료다.
 > 최신 `FullyQualifiedName~Runtime` unit filter는 `747/747`로 exit `0`을 반환했다. 실행 중
 > negative startup 검증이 `ZlinkBindException`, `errno 93` stack trace를 남겼지만 testhost는
@@ -52,32 +63,36 @@
 > Sample source 계약 수정, regression `141/141`과 POSD·DDD 점검 결과는
 > [`log/20260803-1106-sample-contract-posd-ddd.ko.md`](log/20260803-1106-sample-contract-posd-ddd.ko.md)에 기록한다.
 >
-> 2026-08-04 route-seal frame admission 수정, focused unit test, 독립 sample process와
-> `framework/doc/framework/common/internals` 대조 결과는
+> 2026-08-04 route-seal frame admission과 same-endpoint auto-connect replacement 수정,
+> focused unit test, 독립 sample process와 `framework/doc/framework/common/internals` 대조
+> 결과는
 > [`log/20260804-runtime-unit-sample-internals.ko.md`](log/20260804-runtime-unit-sample-internals.ko.md)에
-> 기록한다. `ZW-B1` 선택 실행과 6종 독립 sample runner는 통과했지만, 최신 ZoneWorld 전체
-> runner는 `ZW-C2` 뒤 replacement node의 remote Actor bootstrap timeout으로 아직 완료가 아니다.
-> 이 보충 log의 결과가 아래 2026-08-03 snapshot보다 최신이며, broad UnitTests·package-only
-> process·Config 14·독립 audit gate는 별도로 열린 상태다.
+> 기록한다. `AutoConnectReconcilerTests 38/38`, 관련 focused runtime 묶음 `157/157`,
+> Redis focused 묶음 `2/2`와 6종 독립 sample runner가 통과했다. 최신 ZoneWorld 전체
+> process도 exit `0`으로 구현된 scenario와 replacement 이후 후속 process를 통과했지만,
+> 이전 owner route injection harness가 없는 `ZW-B6` 때문에 relocation과 전체 aggregate는
+> withheld다. broad UnitTests·package-only process·Config 14·독립 audit gate는 별도로 열린
+> 상태다. 이 보충 log의 결과가 아래 2026-08-03 snapshot보다 최신이다.
 
 > 범위: `.NET` server framework. HTTP client와 client용 Stream Connector는 공통 server 계약이
 > 직접 요구하는 연결 지점만 포함한다.
 
-## 현재 진행 snapshot (2026-08-03)
+## 현재 진행 snapshot (2026-08-04)
 
-마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. 현재 branch의 `.NET`
-production runtime source와 관련 unit test 변경은 HEAD에 반영되어 있고, runtime filter와 targeted
-unit test로 재검증했다. Package version/export에는 변경이 없지만, 이전 public XML documentation
-변경으로 생긴 package snapshot hash drift를 현재 source hash로 갱신하고 verifier와 clean consumer를
-다시 통과시켰다. E2E source와 runner 변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
+마지막 green package gate와 현재 runtime·E2E 변경을 분리해 판정한다. `.NET` production runtime
+source와 관련 unit test의 이번 endpoint replacement 변경은 현재 working tree에 있으며,
+`AutoConnectReconcilerTests`와 관련 focused runtime test로 재검증했다. Package version/export에는
+변경이 없지만, 이전 public XML documentation 변경으로 생긴 package snapshot hash drift를 당시
+source hash로 갱신하고 verifier와 clean consumer를 통과시킨 evidence가 있다. E2E source와 runner
+변경은 각 process log가 있는 범위만 완료 증거로 사용한다.
 
 | 범위 | 현재 상태 | 다음 조건 |
 |---|---|---|
-| Runtime·contract·package | 최신 전체 Runtime filter `747/747`, 핵심 runtime regression subset `541/541`, configuration·fanout·endpoint subset `54/54`와 ContractTests `76/76`이 통과했다. 새 handoff 재사용·push trace를 포함한 영향 묶음은 `249/249`다. 실행 중 negative startup 검증의 `errno 93` log는 별도 evidence로 남겼다. 관련 stale binding·session error wire focused regression은 최신 checkpoint에서 `5/5`다. | source/unit 결과와 process 결과를 계속 분리하고, C6 evidence 경계를 확인한 뒤 package·clean consumer와 독립 audit gate를 갱신한다. |
-| E2E source·selector·runner | 기존 ST process evidence와 최신 ZoneWorld 전체 실행의 `ZW-B4`, `ZW-C2` 및 client batch 일부가 있다. 전체 실행은 C2 뒤 새 `zone-node-2`의 `bot-ne-y` remote actor creation에서 exit `1`로 실패했다. 단독 `ZW-C3`는 exit `0`이지만 전체 process gate를 대체하지 않는다. 최신 `OBS-C6`는 runtime trace상 두 aggregate가 commit되었지만 Instance Spot evidence assertion에서 실패했다. | ZoneWorld C3 lifecycle 조건과 C6 Instance Spot evidence 조건을 각각 재현·확인한 뒤, 7종 aggregate process evidence를 수집한다. |
-| Phase B sample source conformance | 공통 7종의 source 계약 수정과 regression `141/141`이 통과했다. GameQuest payload/action, ShoppingMall response, Delivery timestamp, Bingo optional/public 범위, ZoneWorld `UpdatePositionMsg`, TicTacToe·SupportChat one-way와 shell·PowerShell inventory가 포함된다. | 실제 process self-check·server evidence·cleanup, raw wire capture, package-only process와 독립 review를 실행한다. ZoneWorld 전체 runner와 ObservabilityOps C6가 아직 process gate를 닫지 못했다. |
-| Config 14 | `InstanceSpot/run_e2e.sh`는 feature-map만 확인하고 exit 2로 종료한다. role server와 client는 없다. | process fixture, role server, client와 36개 scenario evidence를 추가한다. |
-| Phase A 완료 | 미완료. 현재 변경을 사용한 process E2E와 독립 final audit이 없다. | runtime source/unit gate는 통과했으므로 사용자 지정 순서에 따라 sample source conformance를 진행할 수 있다. Phase A process/audit와 Phase B process 완료 판정은 뒤에서 함께 닫는다. |
+| Runtime·contract·package | current source 기준 전체 `Zlink.Framework.UnitTests` `1503/1503`, `ContractTests` `76/76`, `SampleRegressionTests` `145/145`가 통과했고 source build는 warning 0 / error 0이다. `verify_packaged_contract.sh`도 exit 0이다. | mixed-language command 50 process, 공통 cross-language matrix, D2·D4·D6 측정 audit과 독립 final audit을 별도로 닫는다. |
+| E2E source·selector·runner | Track A `IS-E2E-01`~`IS-E2E-03`와 RouteMesh `RM-C1` 3회 fresh 실행, ClientServer `CH-E2E-03`, service `SM-E2-E3`, STREAM `CH-REG-02`, fanout `PS-B1` 대표 process가 통과했다. `ZW-B6`, `ST-I4`, `OBS-C6`, RuntimeMonitoring 일부와 전체 cross-language matrix는 남아 있다. | 남은 scenario의 실제 process evidence와 실패 의미를 소유 layer에서 닫고, 전체 aggregate 분모를 다시 검증한다. |
+| Phase B sample source conformance | 공통 sample source regression `145/145`와 선택 sample의 source process 검증은 통과했다. 그러나 전체 `run_samples.sh`는 최신 두 fresh 실행에서 TicTacToe leave completion marker 단계가 실패했고, 단독 TicTacToe 재실행은 통과했다. 전체 sample process gate는 flaky/open이다. | one-way `Send().Async()`의 remote handler completion이 보장되지 않는 경계를 기준으로 sample cleanup evidence를 설계 검토한 뒤, 전체 runner를 재현 가능하게 통과시킨다. |
+| Config 14 | `InstanceSpot/run_e2e.sh`가 `IS-E2E-01`~`IS-E2E-03`을 Track A role process로 실행하고 세 selector가 통과했다. `IS-E2E-04`~`IS-E2E-36`은 아직 미구현이며 `all`은 fail-closed exit 2다. | 남은 33개 scenario, idle timeout process proof와 aggregate evidence를 추가한다. |
+| Phase A 완료 | 미완료. runtime·unit·contract·package gate와 일부 representative process는 통과했지만 전체 process 분모, Config 14, cross-language matrix, 열린 runtime/E2E blocker와 독립 final audit이 남아 있다. | 남은 process·contract·measurement·audit gate를 각각 닫고, 부분 통과를 전체 완료로 합산하지 않는다. |
 
 ## 공통 실행 규칙 — 네 ledger 동시 진행
 
@@ -1114,40 +1129,43 @@ feature-map, aggregate runner를 대조한 결과다. 이름이나 source type�
 실패 의미까지 확인한다. 아래 항목은 구현·E2E test를 이번 작업에서 수정했다는 뜻이 아니라, 후속 수정
 목록을 고정한 것이다.
 
-#### DN-E2E-IMP-001 — Config 14 Instance Spot process E2E 부재
+#### DN-E2E-IMP-001 — Config 14 Instance Spot process E2E의 부분 구현과 잔여 시나리오
 
-**현재 판정: Config 14 process E2E 미완료.**
+**현재 판정: `IS-E2E-01`~`IS-E2E-03`의 Track A process는 완료되었지만, Config 14 전체 process E2E는 미완료다.**
 
 `framework/doc/framework/common/e2e/config-14-instance-spot.ko.md`는 `IS-E2E-01`부터
 `IS-E2E-36`까지 cold activation, concurrent first call, owner process 종료 뒤 takeover 금지,
 generation 경계, 정상 relocation, close/reactivate, store outage, capacity conflict, deadline과
-handler capability를 요구한다. 현재 `framework/languages/dotnet/e2e/InstanceSpot/feature-map.ko.md`는
-전체 ID inventory를 갖지만 role server·client와 actual-process runner가 없다.
+handler capability를 요구한다. 현재 .NET에는 Track A를 위한 role server·client·selector가 있고,
+`IS-E2E-01`은 cold activation, `IS-E2E-02`는 accepted send, `IS-E2E-03`은 concurrent first-request
+ownership을 실제 process에서 확인한다. 나머지 `IS-E2E-04`~`IS-E2E-36`은 feature-map에 남은
+미구현 항목이며 전체 runner는 이를 성공으로 합산하지 않고 fail-closed 한다.
 
 **수정 목록**
 
-1. Instance Spot role server와 `ZLinkHttpClient` 기반 client를 추가하고, 각 scenario ID를 독립 selector로
-   고정한다.
-2. cold activation과 concurrent first call의 owner 수·generation·single materialization을 role
-   server evidence로 남긴다.
-3. owner process 종료 뒤 다른 runtime이 takeover하거나 callback을 replay하지 않는지, 정상
-   relocate·close/reactivate와 store/capacity/deadline 실패의 terminal 결과를 client와 role server에서
-   함께 확인한다.
+1. Track A에서 사용한 role server, `ZLinkHttpClient` client와 selector 연결을 나머지 scenario에도
+   확장하고, 각 실행의 client-visible 결과와 role server evidence를 함께 남긴다.
+2. owner process 종료 뒤 takeover 금지, generation 경계, 정상 relocation, close/reactivate와
+   store·capacity·deadline 실패의 terminal 결과를 실제 두 process에서 확인한다.
+3. idle timeout을 포함한 Spot-node maintenance 경계와 전체 Config 14 aggregate 분모를 별도
+   process evidence로 닫는다.
 
 #### DN-E2E-IMP-002 — aggregate runner의 Config 12·Config 14 실행 누락
 
-**현재 판정: Config 12 aggregate source는 현재 working tree에서 확장되었고, Config 14는 fail-closed 상태다. 두 Config의 현재 process evidence는 미완료.**
+**현재 판정: Config 12 aggregate source는 현재 working tree에서 확장되었고, Config 14는 Track A
+세 scenario의 process evidence만 있다. 두 Config의 전체 aggregate process evidence는 미완료다.**
 
 `framework/languages/dotnet/e2e/run_e2e_all.sh`의 `CONFIGS`에는 `ChannelEgressRouting`과
 `InstanceSpot`이 포함되어 있고 `RegressionTests.EveryCommonE2EConfigHasAnExplicitAggregateRunnerEntry`가
 Config 1~14의 feature-map·runner·aggregate entry를 검사한다. 현재 dirty 변경에서는 Config 12 runner가
 `CH-E2E-04A/B/C`, `CH-E2E-07A/B/C`와 기존 누락 ID를 aggregate 목록에 넣었지만 `all`을 다시 실행하지
-않았다. Config 14는 여전히 process fixture·role server·client가 없어 `run_e2e.sh all`이 exit 2로
-fail-closed 된다.
+않았다. Config 14는 Track A selector를 실제 실행할 수 있지만, 남은 33개 scenario가 미구현이므로
+`run_e2e.sh all`은 exit 2로 fail-closed 된다.
 
 **수정 목록**
 
-1. 현재 Config 12 변경을 실제 process에서 실행해 selector별 terminal·role evidence를 수집하고 feature-map을 갱신한다. Config 14의 role process fixture도 구현한다.
+1. 현재 Config 12 변경을 실제 process에서 실행해 selector별 terminal·role evidence를 수집하고
+   feature-map을 갱신한다. Config 14는 Track A와 같은 방식으로 남은 role process fixture를 확장한다.
 2. 실행하지 못한 구성은 성공으로 세지 않고, config·scenario ID·누락 이유를 결과에 남긴다.
 3. scenario ID와 role endpoint까지 검사하는 중앙 manifest gate를 추가한다.
 
@@ -1412,8 +1430,9 @@ host를 만들고 `AddZLinkFramework`, `IZLinkRouteMeshRuntime`, `IZLinkLocation
 
 여러 feature-map이 `부분`, `미구현`, `source 구현·process 미검증` 또는 `diagnostic_only`를 기록한다.
 `SpotActorTransfer/Client/Program.cs`는 다수 selector를 `excludedFromAll` 또는 diagnostic-only로 분류하고,
-현재 `ChannelEgressRouting`은 split selector와 aggregate 목록을 확장했으며 `InstanceSpot`은 여전히
-evidence가 없어 exit 2를 반환한다. 현재 변경 이후 aggregate process 결과는 아직 없다.
+현재 `ChannelEgressRouting`은 split selector와 aggregate 목록을 확장했으며 `InstanceSpot`은
+`IS-E2E-01`~`IS-E2E-03`의 process evidence를 남긴다. 다만 `IS-E2E-04`~`IS-E2E-36`이 미구현이므로
+전체 aggregate는 exit 2를 반환한다. 현재 변경 이후 전체 aggregate process 결과는 아직 없다.
 추가한 regression은 Config 1~14의 feature-map·runner·aggregate entry와 inventory를 검사하지만, 각
 scenario의 selector·scenario 파일·role endpoint·bounded terminal evidence까지 일대일로 검사하지 않는다.
 
@@ -2281,3 +2300,36 @@ code, assertion 수, evidence 파일과 cleanup 결과를 포함한다. 실패�
 - [ ] Phase B의 실제 process E2E와 clean package consumer 결과가 sample card별로 기록되었다.
 - [ ] 두 phase에서 기록되지 않은 `.NET` Framework·common sample gap이 0개다.
 - [ ] 마지막 독립 audit이 Phase A와 Phase B를 함께 확인했고, 통합 ledger가 `CLEAN`이다.
+
+## 12. 2026-08-04 최신 runtime·unit·sample gate
+
+앞선 snapshot의 broad UnitTests 중단 판정은 당시 실행 이력으로 보존한다. 현재 source에서
+다시 실행한 결과는 다음과 같다.
+
+| 범위 | 최신 결과 |
+|---|---:|
+| 전체 `Zlink.Framework.UnitTests` | `1503/1503`, failed 0 / skipped 0 |
+| `Zlink.Framework.ContractTests` | `76/76` |
+| `Zlink.Framework.SampleRegressionTests` | `145/145` |
+| .NET 전체 sample runner | 최신 두 fresh 실행이 TicTacToe leave completion marker에서 exit 1; 단독 TicTacToe 최신 실행은 exit 0 |
+| packaged contract·clean consumer | `verify_packaged_contract.sh` exit 0 |
+| source build | warning 0 / error 0 |
+
+이번 결과로 현재 .NET runtime 수정 범위의 unit, contract, source sample regression과 package
+consumer gate를 각각 확인했다. 대표 실제 process도 RouteMesh, ClientServer, service, STREAM,
+fanout과 Config 14 Track A에서 통과했지만, 전체 sample runner의 cleanup evidence는 아직
+재현 가능하게 닫히지 않았다. `common/internals` 대조에서는 route seal frame 보류, command 50
+message-follow codec·fence·조건부 cache invalidation, observer stream terminal semantics와
+activation admission을 현재 source에 반영한 것을 확인했다.
+
+다음 항목은 이 gate에 합산하지 않는다. logical Spot timer의 공유 scheduler 목표는 현재
+source에서 반영했지만 Spot-node idle maintenance의 `PeriodicTimer` 경로와 그 process·churn
+측정, D2·D4·D6 성능·측정 audit, mixed-language process matrix, Config 14의 남은 33개
+scenario와 idle timeout process proof, 지원된 previous-owner route injection harness가 없는
+`ZW-B6`, `ST-I4`, `OBS-C6`과 RuntimeMonitoring의 일부 process blocker다. 이 항목들을 닫기
+전까지 전체 Framework Phase A와 독립 final audit을 `CLEAN`으로 표시하지 않는다. 상세 명령과
+파일별 대조는
+[`log/20260804-dotnet-plan-runtime-process-recheck.ko.md`](log/20260804-dotnet-plan-runtime-process-recheck.ko.md)에
+기록했다. `mkdocs build --strict -f doc/site/mkdocs.yml`는 public `plan/` 링크와 무관한
+상대 경로·nav 설정 경고 140건으로 실패했으므로, 사이트 전체 문서 gate도 별도
+미완료 조건으로 유지한다.

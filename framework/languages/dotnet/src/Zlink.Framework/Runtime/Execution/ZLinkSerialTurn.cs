@@ -4,7 +4,7 @@ internal sealed class ZLinkSerialTurn
 {
     private static readonly AsyncLocal<ZLinkSerialTurn?> CurrentTurn = new();
 
-    private readonly Func<ZLinkSerialTurn, Action, bool> _postResume;
+    private readonly Func<ZLinkSerialTurn, Action, ZLinkSerialPostAdmission> _postResume;
     private readonly Func<Func<CancellationToken, ValueTask>, bool> _postCallback;
     private readonly Action<Exception> _reportError;
     private readonly CancellationToken _executionToken;
@@ -16,7 +16,7 @@ internal sealed class ZLinkSerialTurn
     private int _suspendSignaled;
 
     public ZLinkSerialTurn(
-        Func<ZLinkSerialTurn, Action, bool> postResume,
+        Func<ZLinkSerialTurn, Action, ZLinkSerialPostAdmission> postResume,
         Func<Func<CancellationToken, ValueTask>, bool> postCallback,
         Action<Exception> reportError,
         CancellationToken executionToken)
@@ -123,11 +123,16 @@ internal sealed class ZLinkSerialTurn
     private Task AwaitResumePermitAsync()
     {
         var resume = new TaskCompletionSource();
-        if (!_postResume(this, () => resume.TrySetResult()))
+        var admission = _postResume(this, () => resume.TrySetResult());
+        if (admission != ZLinkSerialPostAdmission.Accepted)
             resume.TrySetException(
-                new ObjectDisposedException(
-                    nameof(ZLinkSerialExecutionQueue),
-                    "ZLink serial execution queue is closed."));
+                new ZLinkFrameworkException(
+                    admission == ZLinkSerialPostAdmission.Closed
+                        ? ZLinkFrameworkErrorKind.ShuttingDown
+                        : ZLinkFrameworkErrorKind.CapacityExceeded,
+                    admission == ZLinkSerialPostAdmission.Closed
+                        ? "The serial execution queue is closed before a yielded turn can resume."
+                        : "The serial execution queue is at capacity before a yielded turn can resume."));
 
         return resume.Task;
     }

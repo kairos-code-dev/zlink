@@ -236,7 +236,9 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
                                                         stream_codec_t codec,
                                                         const zlink::message_t &payload)
 {
-    std::function<task_t<void> (std::string, const zlink::message_t &)> sink;
+    std::function<task_t<void> (std::string,
+                                stream_codec_t,
+                                const zlink::message_t &)> sink;
     detail::actor_gateway_state_t::bound_session_sender_t remote_sender;
     stream_header_t header;
     {
@@ -287,11 +289,11 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
       [sink = std::move (sink), remote_sender = std::move (remote_sender),
        actor_ref = _actor_ref, expected_binding_generation = _expected_binding_generation,
        header = std::move (header),
-       payload] (const std::string &name,
+       payload, codec] (const std::string &name,
                   const send_call_t::metadata_map_t &) mutable {
           try {
               if (sink)
-                  return sink (name, payload).result ();
+                  return sink (name, codec, payload).result ();
               return remote_sender (
                 actor_ref, expected_binding_generation, header, payload);
           }
@@ -908,12 +910,41 @@ result_t<session_actor_t> session_actor_manager_t::get_or_create (std::string ac
 result_t<session_actor_t> session_actor_manager_t::get_or_create_erased (
   std::string actor_type, std::string actor_id, std::optional<zlink::message_t> request)
 {
-    if (auto actor = find (actor_id)) {
-        if (actor->ref ().actor_type () != actor_type) {
-            return result_t<session_actor_t>::failure (framework_error_kind_t::type_mismatch,
-                                                       "actor id is already bound to another type");
+    std::string current_session_id;
+    if (_binding_context) {
+        const std::lock_guard binding_lock (_binding_context->mutex);
+        current_session_id = _binding_context->session_id;
+    }
+    {
+        const std::lock_guard lock (_state->mutex);
+        const auto found = _state->actors_by_id.find (actor_id);
+        if (found != _state->actors_by_id.end ()) {
+            const bool bound_to_other_session =
+              found->second.bound && !found->second.binding_session_id.empty ()
+              && !current_session_id.empty ()
+              && found->second.binding_session_id != current_session_id;
+            if (found->second.ref.actor_type () != actor_type) {
+                return result_t<session_actor_t>::failure (
+                  framework_error_kind_t::type_mismatch,
+                  "actor id is already bound to another type");
+            }
+            if (!found->second.disconnected && !bound_to_other_session) {
+                return result_t<session_actor_t>::success (
+                  session_actor_t (_state, found->second.ref,
+                                   found->second.binding_token));
+            }
+
+            /* A record owned by another session, or a disconnected record,
+             * must not supply the new session with an old route snapshot.
+             * Re-resolve the Actor through the create dispatcher so the
+             * Location Store remains the authority for the current ref. */
+            _state->bound_session_sinks.erase (actor_id);
+            found->second.bound_session_stream_sink = false;
+            found->second.bound_session_route.reset ();
+            found->second.binding_session_id.clear ();
+            found->second.binding_token = 0;
+            _state->actors_by_id.erase (found);
         }
-        return result_t<session_actor_t>::success (*actor);
     }
     return create_erased (std::move (actor_type), std::move (actor_id), std::move (request));
 }
@@ -1274,10 +1305,11 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
             found->second.binding_session_id = std::move (session_id);
             found->second.binding_token = binding_token;
         }
-        _state->bound_session_sinks[actor_id] = [stream = std::move (stream),
-                                                 codec] (std::string packet_name,
-                                                         const zlink::message_t &payload) mutable {
-            stream_header_t header (stream_message_kind_t::send, codec,
+        _state->bound_session_sinks[actor_id] = [stream = std::move (stream)] (
+                                                   std::string packet_name,
+                                                   stream_codec_t payload_codec,
+                                                   const zlink::message_t &payload) mutable {
+            stream_header_t header (stream_message_kind_t::send, payload_codec,
                                     stream_header_flags_t::none, std::nullopt,
                                     std::move (packet_name));
             try {
@@ -1314,8 +1346,10 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
       std::move (actor_ref),
       [state = _state, actor_id, route_client = std::move (route_client),
        route_channel_name = std::move (route_channel_name),
-       target_node_rid = std::move (target_node_rid)] (std::string packet_name,
-                                                       const zlink::message_t &payload) mutable {
+       target_node_rid = std::move (target_node_rid)] (
+       std::string packet_name,
+       stream_codec_t payload_codec,
+       const zlink::message_t &payload) mutable {
           actor_ref_t current_actor_ref;
           {
               const std::lock_guard lock (state->mutex);
@@ -1330,7 +1364,8 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
               route_client
                 .send_to_node (route_channel_name, target_node_rid,
                                make_actor_bound_session_route_request (current_actor_ref,
-                                                                       packet_name, payload))
+                                                                       packet_name, payload_codec,
+                                                                       payload))
                 .submit ().result ().value ();
               return task_t<void> (result_t<void>::success ());
           }
@@ -1344,7 +1379,9 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
 
 void actor_gateway_runtime_t::bind_session_sink (
   actor_ref_t actor_ref,
-  std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
+  std::function<task_t<void> (std::string,
+                              stream_codec_t,
+                              const zlink::message_t &)> sink,
   stream_codec_t codec,
   bool replace_existing)
 {
@@ -1428,9 +1465,14 @@ void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id,
 }
 
 result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
-  const actor_ref_t &actor_ref, std::string packet_name, const zlink::message_t &payload) const
+  const actor_ref_t &actor_ref,
+  std::string packet_name,
+  stream_codec_t codec,
+  const zlink::message_t &payload) const
 {
-    std::function<task_t<void> (std::string, const zlink::message_t &)> sink;
+    std::function<task_t<void> (std::string,
+                                stream_codec_t,
+                                const zlink::message_t &)> sink;
     {
         const std::lock_guard lock (_state->mutex);
         const auto actor_id = std::string (actor_ref.actor_id ());
@@ -1473,7 +1515,7 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
         }
         sink = found_sink->second;
     }
-    auto sent = sink (std::move (packet_name), payload).result ();
+    auto sent = sink (std::move (packet_name), codec, payload).result ();
     if (!sent) {
         return result_t<void>::failure (sent.error_kind (),
                                         sent.error () ? sent.error ()->what ()

@@ -15,6 +15,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkCodecRegistrationTest {
     @Test
@@ -95,6 +96,25 @@ final class ZLinkCodecRegistrationTest {
                 "application/x-unregistered", json));
 
         assertEquals(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, error.kind());
+    }
+
+    @Test
+    void incomingStreamCodecUsesRegisteredTypeWithoutJsonFallback() {
+        ZLinkCodecRegistration registration = new ZLinkCodecRegistration();
+        registration.addStreamCodec(
+            " application/x-protobuf ", ZLinkStreamCodec.PROTOBUF);
+
+        assertEquals(
+            java.util.Optional.of(ZLinkStreamCodec.JSON),
+            registration.streamCodecForReceivedContentType("APPLICATION/JSON"));
+        assertEquals(
+            java.util.Optional.of(ZLinkStreamCodec.PROTOBUF),
+            registration.streamCodecForReceivedContentType(
+                "application/x-protobuf"));
+        assertEquals(
+            java.util.Optional.empty(),
+            registration.streamCodecForReceivedContentType(
+                "application/x-unregistered"));
     }
 
     record Probe(String text) {

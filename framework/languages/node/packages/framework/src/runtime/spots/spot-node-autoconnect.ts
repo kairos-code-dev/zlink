@@ -10,7 +10,7 @@ import {
 } from '../../contracts';
 import type { ZLinkSpotNodeOptions } from '../configuration';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
-import { toBindingRoutingId } from '../routing-id';
+import { toBackendRoutingId as toBackendRoutingId } from '../routing-id';
 import {
   ZLinkLocationRuntime,
   ZLinkOwnerLeaseTracker,
@@ -222,7 +222,7 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
         endpoint: target.endpoint,
         expectedRid: target.nodeRid === undefined
           ? undefined
-          : toBindingRoutingId(target.nodeRid),
+          : toBackendRoutingId(target.nodeRid),
         expectedSecurityIdentity: target.metadata?.securityIdentity,
         expectedLifecycleGeneration: target.lifecycleGeneration
       });

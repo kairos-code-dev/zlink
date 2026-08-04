@@ -1,4 +1,4 @@
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkConfigurationException
 } from '../configuration';

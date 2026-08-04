@@ -68,12 +68,14 @@ inline message_follow_setup_t scenario_runner_t::relocate_for_message_follow (
 {
     const auto actor_id = "actor-message-follow-" + scenario + "-" + unique_suffix ();
     const auto spot_id = "spot-message-follow-" + scenario + "-" + unique_suffix ();
-    create_spot (_nodes.b, spot_id);
-    create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, state_version);
-    const auto old_ref = get_actor_ref (_nodes.a, actor_id);
-    require (join_actor (_nodes.a, actor_id, {scenario, spot_id}).accepted,
+    const auto spot = create_spot_until_placed_on (_nodes.b, spot_id, "actor-b");
+    const auto actor = create_actor_until_placed_on (
+      _nodes.a, actor_id, e2e::actor_type_stateful, state_version, "actor-a");
+    const auto old_ref = get_actor_ref (_nodes.a, actor.actor_id);
+    require (join_actor (_nodes.a, actor.actor_id,
+                         {scenario, spot.spot_id}).accepted,
              scenario + " transfer was rejected.");
-    return {actor_id, old_ref};
+    return {actor.actor_id, old_ref};
 }
 inline void scenario_runner_t::transfer_out_failure ()
 {

@@ -51,7 +51,8 @@ final class ZLinkFrameworkActorSubsystem {
         systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository locationStore,
         java.util.Map<String,
             systems.zlink.framework.runtime.internal.backend
-                .ZLinkInternalMeshNode> meshNodes) {
+                .ZLinkInternalMeshNode> meshNodes,
+        java.util.concurrent.CompletionStage<Void> runtimeReady) {
         var legacyActorNode = registration.spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
@@ -139,7 +140,8 @@ final class ZLinkFrameworkActorSubsystem {
                 storeLocationResolvers,
                 serializer,
                 registration.defaultRequestTimeout(),
-                ZLinkAdmissionRuntime.factory(backendFactory))
+                ZLinkAdmissionRuntime.factory(backendFactory),
+                runtimeReady)
             : null;
         registerActorServices(runtimeHandlers, actorClient, actorDirectory, actors);
         wireActorRuntime(
@@ -151,6 +153,7 @@ final class ZLinkFrameworkActorSubsystem {
             locationLifecycle,
             storeLocationResolvers,
             remoteAddressResolver,
+            meshNodes,
             actors);
         return new ZLinkFrameworkActorSubsystem(actors, actorDirectory, actorClient);
     }
@@ -192,13 +195,51 @@ final class ZLinkFrameworkActorSubsystem {
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
         SpotTransportAddressResolver remoteAddressResolver,
+        java.util.Map<String,
+            systems.zlink.framework.runtime.internal.backend
+                .ZLinkInternalMeshNode> meshNodes,
         ZLinkActorRuntime actors) {
         if (actors == null) {
             return;
         }
 
+        var meshActorNode = registration.meshNodes().stream()
+            .filter(node -> !node.actorFactories().isEmpty())
+            .findFirst()
+            .orElseGet(() -> registration.meshNodes().stream()
+                .filter(node -> node.objectRoleEnabled())
+                .findFirst()
+                .orElse(null));
         actors.setLocationLifecycle(locationLifecycle);
         actors.setStoreLocationResolvers(storeLocationResolvers);
+        meshNodes.values().forEach(node ->
+            node.setApplicationStreamCodecResolver(
+                registration.codecs()::streamCodecForReceivedContentType));
+        if (meshActorNode != null) {
+            var meshNode = meshNodes.get(meshActorNode.meshName());
+            if (meshNode != null) {
+                actors.setMessageFollowNoticeSender(meshNode::sendMessageFollow);
+                try {
+                    meshNode.spotNode().setMessageFollowRelayHandler(
+                        actors::relayMessageFollow);
+                } catch (UnsupportedOperationException ignored) {
+                    // Alternate backends can expose actor runtime without the
+                    // raw M6B service relay boundary.
+                }
+            }
+        }
+        if (storeLocationResolvers != null) {
+            meshNodes.values().forEach(node -> node.setMessageFollowHandler(
+                (sourceNodeRid, notice) -> {
+                    if (!node.status().routingId().equals(
+                        notice.source().targetNodeRid())
+                        || !sourceNodeRid.equals(
+                            notice.target().targetNodeRid())) {
+                        return;
+                    }
+                    storeLocationResolvers.invalidateRouteIfMatches(notice);
+                }));
+        }
         actors.setMessageFlowTracer(new ZLinkMessageFlowTracer(
             registration.dispatchOptions(),
             handlerFactory,

@@ -1,5 +1,8 @@
 import type { RoutingId } from '../../contracts/Common';
-import type { ZLinkSpotKind } from '../../contracts/Spots';
+import type {
+  ZLinkFrameworkRuntimeState,
+  ZLinkSpotKind
+} from '../../contracts';
 
 export interface ZLinkSpotRouteResolver {
   resolve(spotId: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget>;
@@ -25,4 +28,6 @@ export interface ZLinkSpotRouteTarget {
   readonly ownerLeaseGeneration?: bigint;
   /** Store version paired with the authority fence. */
   readonly authorityStoreVersion?: string;
+  /** Current state of the owning MeshNode, when the route was resolved from Location Store. */
+  readonly targetNodeState?: ZLinkFrameworkRuntimeState;
 }

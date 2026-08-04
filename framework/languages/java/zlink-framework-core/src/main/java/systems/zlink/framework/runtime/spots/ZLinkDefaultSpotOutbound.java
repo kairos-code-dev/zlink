@@ -318,7 +318,8 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.targetNodeRid(),
                     address.spotId(),
                     address.spotGeneration(),
-                    address.authorityOwnerGeneration());
+                    address.authorityOwnerGeneration(),
+                    address.ownerLeaseGeneration());
                 systems.zlink.contracts.messaging.Message transportPayload = copyPayload();
                 ZLinkSendCall call = routeMeshEnabled
                     ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
@@ -549,7 +550,8 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     address.targetNodeRid(),
                     address.spotId(),
                     address.spotGeneration(),
-                    address.authorityOwnerGeneration());
+                    address.authorityOwnerGeneration(),
+                    address.ownerLeaseGeneration());
                 systems.zlink.contracts.messaging.Message transportPayload = copyPayload();
                 ZLinkRequestCall call = routeMeshEnabled
                     ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotId(),

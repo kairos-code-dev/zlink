@@ -8,7 +8,8 @@ import {
   ZLinkFrameworkErrorKind
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage, RequestResult } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import { RequestResult } from '../backend/runtime-values';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendActorRecvInfo
@@ -228,7 +229,7 @@ export class ZLinkSpotActorPacketDrain {
     const requestHeader = decodeStreamHeader(messageToBytes(requestHeaderPart));
     const payloadMessage = encodeFrameworkPayloadMessage(payload, this.options.messageSerializers);
     try {
-      return BindingMessage.from(Buffer.from(encodeStreamFrame({
+      return RuntimeMessage.from(Buffer.from(encodeStreamFrame({
         kind,
         codec: ZLinkStreamCodec.Json,
         flags: ZLinkStreamHeaderFlags.None,

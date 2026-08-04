@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Predicate;
 import systems.zlink.contracts.core.RoutingId;
 
 /**
@@ -193,9 +194,15 @@ public final class ZLinkServiceTopologyRegistry {
     }
 
     public synchronized Optional<Peer> selectChannel(String channelName) {
+        return selectChannel(channelName, ignored -> true);
+    }
+
+    public synchronized Optional<Peer> selectChannel(
+        String channelName,
+        Predicate<Peer> isReady) {
         return select(
             "channel:" + requireChannelName(channelName),
-            eligibleChannelTargets(channelName));
+            eligibleChannelTargets(channelName, isReady));
     }
 
     /**
@@ -205,14 +212,26 @@ public final class ZLinkServiceTopologyRegistry {
      * published through admitted peer descriptors.
      */
     public synchronized boolean hasSelectableChannel(String channelName) {
-        return !eligibleChannelTargets(channelName).isEmpty();
+        return hasSelectableChannel(channelName, ignored -> true);
+    }
+
+    public synchronized boolean hasSelectableChannel(
+        String channelName,
+        Predicate<Peer> isReady) {
+        return !eligibleChannelTargets(channelName, isReady).isEmpty();
     }
 
     public synchronized Optional<Peer> selectPlacement() {
+        return selectPlacement(ignored -> true);
+    }
+
+    public synchronized Optional<Peer> selectPlacement(
+        Predicate<Peer> isReady) {
         return selectRange(
             "placement",
             peers().stream()
                 .filter(peer -> peer.descriptor().acceptsPlacement())
+                .filter(isReady)
                 .map(peer -> new WeightedPeer(
                     peer, peer.descriptor().placementWeight()))
                 .toList());
@@ -291,10 +310,16 @@ public final class ZLinkServiceTopologyRegistry {
         return Optional.of(selected.peer());
     }
 
-    private List<WeightedPeer> eligibleChannelTargets(String channelName) {
+    private List<WeightedPeer> eligibleChannelTargets(
+        String channelName,
+        Predicate<Peer> isReady) {
         String requiredChannelName = requireChannelName(channelName);
+        Objects.requireNonNull(isReady, "isReady");
         List<WeightedPeer> eligible = new ArrayList<>();
         for (Peer peer : peers()) {
+            if (!isReady.test(peer)) {
+                continue;
+            }
             for (ZLinkServiceNodeDescriptor.Channel channel
                 : peer.descriptor().channels()) {
                 if (channel.name().equals(requiredChannelName)

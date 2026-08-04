@@ -108,7 +108,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             handlerRegistry,
             dispatcher,
             GetOrStartState,
-            GetActorSpotNode);
+            GetActorSpotNode,
+            actorType => GetActorSpotNodeRuntime(actorType)?.ActivationAdmission);
         _channels = components.Channels;
         _streams = components.Streams;
         _spots = components.Spots;

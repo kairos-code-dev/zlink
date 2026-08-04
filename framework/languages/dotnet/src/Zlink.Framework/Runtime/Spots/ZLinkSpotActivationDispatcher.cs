@@ -354,7 +354,9 @@ internal sealed class ZLinkSpotActivationDispatcher
 
     internal static void RejectApplicationRouteForDrain(
         ZLinkBackendRouteReceived received,
-        string channelName)
+        string channelName,
+        ZLinkAcceptedWorkAdmission admission,
+        bool localTarget)
     {
         using (received)
         {
@@ -362,13 +364,33 @@ internal sealed class ZLinkSpotActivationDispatcher
             try
             {
                 var header = ZLinkEnvelopeCodec.DecodeHeader(received.Parts);
+                var errorKind = admission switch
+                {
+                    ZLinkAcceptedWorkAdmission.QueueFull => localTarget
+                        ? ZLinkFrameworkErrorKind.CapacityExceeded
+                        : ZLinkFrameworkErrorKind.Unavailable,
+                    ZLinkAcceptedWorkAdmission.Closed =>
+                        ZLinkFrameworkErrorKind.ShuttingDown,
+                    ZLinkAcceptedWorkAdmission.RelocationMoving =>
+                        ZLinkFrameworkErrorKind.Unavailable,
+                    _ => ZLinkFrameworkErrorKind.Rejected
+                };
                 var reply = ZLinkSpotReplyEnvelope.EncodeErrorParts(
                     channelName,
                     header.MessageName,
                     header.CorrelationId,
                     new ZLinkFrameworkException(
-                        ZLinkFrameworkErrorKind.Rejected,
-                        "SPOT application admission is sealed for drain."));
+                        errorKind,
+                        admission switch
+                        {
+                            ZLinkAcceptedWorkAdmission.QueueFull =>
+                                "SPOT application admission is at capacity.",
+                            ZLinkAcceptedWorkAdmission.Closed =>
+                                "SPOT application admission is closed.",
+                            ZLinkAcceptedWorkAdmission.RelocationMoving =>
+                                "SPOT application admission is relocating.",
+                            _ => "SPOT application admission was rejected."
+                        }));
                 ZLinkSpotReplySubmitter.SubmitAndDispose(received, reply);
             }
             catch

@@ -11,7 +11,7 @@ internal object SmA5Scenario {
     suspend fun run(spots: SpotHttpDriver) {
         val spotRid = "spot-sm-a5-${System.nanoTime()}"
         val created = postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
+            Env.get("e2e.http.a.endpoint"),
             "/spot/create",
             Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes::class.java
@@ -31,7 +31,7 @@ internal object SmA5Scenario {
         ensure(timer.spotRid == spotRid && timer.started, "SM-A5 stage timer was not started")
 
         val evidence = postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
+            Env.get("e2e.http.a.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf(
@@ -54,7 +54,7 @@ internal object SmA5Scenario {
             "SM-A5 stage evidence missing"
         )
 
-        val closed = postAdmin(Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"), "/admin/close?rid=$spotRid")
+        val closed = postAdmin(Env.get("e2e.http.a.endpoint"), "/admin/close?rid=$spotRid")
         ensure(closed.contains("\"closed\":true"), "SM-A5 did not close the stage spot")
         println("scenario SM-A5 passed")
     }

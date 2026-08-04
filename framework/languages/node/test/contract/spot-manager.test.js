@@ -454,10 +454,86 @@ test('ZLinkSpotManager reports HostShutdown only for shutdown-drained User and I
   );
 });
 
+test('ZLinkSpotManager waits for Instance close cleanup before rematerializing the same intent', async () => {
+  const closeEntered = createDeferred();
+  const releaseClose = createDeferred();
+  let initialized = 0;
+  let closed = 0;
+  class ReusableInstanceSpot {
+    async onInitialize() {
+      initialized++;
+    }
+
+    async onClosing() {
+      closed++;
+      closeEntered.resolve();
+      await releaseClose.promise;
+    }
+  }
+  const spotId = zlink.RoutingId.from('reusable-instance');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['reusable', ReusableInstanceSpot]])
+    ]])
+  });
+
+  await manager.materializeInstance('test.mesh', 'reusable', spotId, 1n);
+  const close = manager.close('test.mesh', spotId);
+  await closeEntered.promise;
+  const rematerialize = manager.materializeInstance('test.mesh', 'reusable', spotId, 2n);
+
+  await Promise.resolve();
+  assert.equal(initialized, 1);
+  releaseClose.resolve();
+  assert.equal(await close, true);
+  await rematerialize;
+
+  assert.equal(initialized, 2);
+  assert.equal(closed, 1);
+  assert.notEqual(await manager.find('test.mesh', spotId), null);
+  await manager.close('test.mesh', spotId);
+});
+
+test('ZLinkSpotManager waits for Instance application quiescence before rematerializing', async () => {
+  const releaseQuiescence = createDeferred();
+  let initialized = 0;
+  class ReusableInstanceSpot {
+    async onInitialize() {
+      initialized++;
+    }
+  }
+  const spotId = zlink.RoutingId.from('quiescence-instance');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['reusable', ReusableInstanceSpot]])
+    ]]),
+    instanceSpotApplicationQuiescenceProvider: () => releaseQuiescence.promise
+  });
+
+  await manager.materializeInstance('test.mesh', 'reusable', spotId, 1n);
+  const close = manager.close('test.mesh', spotId);
+  const rematerialize = manager.materializeInstance('test.mesh', 'reusable', spotId, 2n);
+
+  await Promise.resolve();
+  assert.equal(initialized, 1);
+  releaseQuiescence.resolve();
+  assert.equal(await close, true);
+  await rematerialize;
+
+  assert.equal(initialized, 2);
+  await manager.close('test.mesh', spotId);
+});
+
 test('ZLinkSpotManager evicts an idle Instance Spot with the contracted close reason', async () => {
   let closingReason;
+  const order = [];
   class IdleInstanceSpot {
     async onClosing(context) {
+      order.push('local-close');
       closingReason = context.reason;
     }
   }
@@ -468,14 +544,59 @@ test('ZLinkSpotManager evicts an idle Instance Spot with the contracted close re
       'test.mesh',
       new Map([['idle', IdleInstanceSpot]])
     ]]),
-    instanceSpotIdleTimeoutMs: new Map([['test.mesh', 5]])
+    instanceSpotIdleTimeoutMs: new Map([['test.mesh', 5]]),
+    async beginInstanceIdleClosingAuthority(meshName, candidateSpotId) {
+      assert.equal(meshName, 'test.mesh');
+      assert.equal(String(candidateSpotId), String(spotId));
+      order.push('durable-closing');
+      return true;
+    }
   });
 
   await manager.materializeInstance('test.mesh', 'idle', spotId, 1n);
   await waitFor(() => closingReason !== undefined, 1000);
 
   assert.equal(closingReason, framework.ZLinkSpotCloseReason.IdleEvicted);
+  assert.deepEqual(order, ['durable-closing', 'local-close']);
   assert.equal(await manager.find('test.mesh', spotId), null);
+});
+
+test('ZLinkSpotManager cancels idle eviction when the durable Closing fence loses CAS', async () => {
+  let closingCalls = 0;
+  class IdleInstanceSpot {
+    async onClosing() { closingCalls++; }
+  }
+  const spotId = zlink.RoutingId.from('idle-instance-cas-loser');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['idle', IdleInstanceSpot]])
+    ]]),
+    instanceSpotIdleTimeoutMs: new Map([['test.mesh', 5]]),
+    beginInstanceIdleClosingAuthority: async () => false
+  });
+
+  await manager.materializeInstance('test.mesh', 'idle', spotId, 1n);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+
+  assert.equal(closingCalls, 0);
+  assert.notEqual(await manager.find('test.mesh', spotId), null);
+  await manager.close('test.mesh', spotId);
+});
+
+test('ZLinkSpotManager rejects a public same-Spot operation instead of running it re-entrantly', async () => {
+  class SerialSpot {}
+  const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [SerialSpot] });
+  const created = await manager.create('test.mesh', SerialSpot);
+
+  await manager.executeOnSpot(SerialSpot, created.spotId, async () => {
+    await assert.rejects(
+      () => manager.executeOnSpot(SerialSpot, created.spotId, () => undefined),
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
+    );
+  });
+  await manager.close('test.mesh', created.spotId);
 });
 
 test('ZLinkSpotManager shares concurrent close and finishes cleanup after onClosing failure', async () => {
@@ -1726,7 +1847,7 @@ test('formal Entry Spot LEFT control invokes the Entry Spot lifecycle callback',
   assert.deepEqual(events, ['entry-left:alice']);
 });
 
-test('user Spot join runs source leave on the caller turn without target-to-source deadlock', async () => {
+test('user Spot join rejects a public operation that waits for its current Spot gate', async () => {
   const events = [];
   class RoomSpot {
     constructor(context) {
@@ -1779,18 +1900,11 @@ test('user Spot join runs source leave on the caller turn without target-to-sour
     manager.admitActorJoin('room-b', actor, request, () => {
       events.push('commit:room-b:alice');
     }));
-  const outcome = await Promise.race([
-    move.then(() => 'completed'),
-    new Promise((resolve) => setTimeout(() => resolve('timed-out'), 50))
-  ]);
-
-  assert.equal(outcome, 'completed');
-  assert.deepEqual(events, [
-    'admit:room-b:alice',
-    'leave:room-a:alice',
-    'commit:room-b:alice',
-    'joined:room-b:alice'
-  ]);
+  await assert.rejects(move, (error) => {
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.InvalidOperation);
+    return true;
+  });
+  assert.deepEqual(events, ['admit:room-b:alice']);
   request.close();
 });
 
@@ -2259,6 +2373,72 @@ test('formal remote Actor transfer to Entry Spot materializes state before commi
     );
     await detached[0]();
     assert.deepEqual(events, [['test.mesh', actor, []]]);
+  } finally {
+    transferMessage.close();
+  }
+});
+
+test('formal remote Actor transfer reads referenced state before target admission', async () => {
+  const events = [];
+  const actor = { context: { actorId: 'player-1' } };
+  const transferMessage = zlink.Message.from(JSON.stringify({
+    packetName: '__zlink.actor.join_spot.request',
+    actorType: 'PlayerActor',
+    transferId: 'formal-user-transfer',
+    transferStateReference: 'relocation-state',
+    transferStateChecksumCrc32c: 17,
+    request: Buffer.from('join-room').toString('base64'),
+    handoffBacklog: []
+  }));
+  class RoomSpot {
+    async onActorJoin() {
+      events.push('admission');
+      return { accepted: true };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
+    actorTransferRuntime: {
+      async readPreparedTransferState(reference, checksum) {
+        events.push(['read', reference, checksum]);
+        return Buffer.from('player-state');
+      },
+      async materializeRoutedActor(_actorId, _actorType, _adapterKey, transferState) {
+        events.push(['materialize', transferState.getString('utf8')]);
+        return { actor, actorRef: { actorId: actor.context.actorId, nodeRid: 'target-node', generation: 2n } };
+      },
+      rememberRoutedActorTransferTarget() {},
+      async rollbackRoutedActor() {}
+    }
+  });
+
+  await manager.getOrCreate('test.mesh', RoomSpot, 'room-1');
+  try {
+    await manager.dispatchMeshActorJoin('test.mesh', {
+      spotId: zlink.RoutingId.from('room-1'),
+      actor: null
+    }, {
+      kind: framework.ReceiveKind.SpotControl,
+      kindData: {
+        kind: 'actorControl',
+        currentActor: {
+          nodeRid: zlink.RoutingId.from('source-node'),
+          actorId: actor.context.actorId,
+          generation: 1n
+        }
+      },
+      parts: [transferMessage],
+      replyActorJoin() {
+        return zlink.SubmitResult.Ok;
+      }
+    });
+
+    assert.deepEqual(events, [
+      ['read', 'relocation-state', 17],
+      'admission',
+      ['materialize', 'player-state']
+    ]);
   } finally {
     transferMessage.close();
   }

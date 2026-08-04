@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Host;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -18,14 +19,22 @@ internal sealed class ZLinkSpotNodeCatalog(
     IZLinkBackendSpotNode node,
     string spotChannelName,
     ZLinkCompletionAdmissionOwner completionAdmission,
-    ZLinkLocationLifecycle? lifecycle) : IAsyncDisposable
+    ZLinkLocationLifecycle? lifecycle,
+    ZLinkTimerScheduler timerScheduler,
+    ZLinkActivationConcurrencyAdmission? activationAdmission = null) : IAsyncDisposable
 {
+    // Idle eviction is maintenance work. Limit the amount of candidate
+    // inspection in one tick so a large catalog cannot monopolize the
+    // scheduler or delay application dispatch on the same node.
+    internal const int IdleEvictionBatchSize = 64;
+
     private readonly object _disposeGate = new();
     private readonly CancellationTokenSource _idleEvictionStop = new();
     private readonly TimeSpan _instanceSpotIdleTimeout =
         registration.InstanceSpotIdleTimeout;
     private Task? _disposeTask;
     private Task? _idleEvictionTask;
+    private string? _idleEvictionCursor;
     private int _idleEvictionStopped;
     private readonly ZLinkSpotActivationFactory _activationFactory = new(
         services,
@@ -34,7 +43,10 @@ internal sealed class ZLinkSpotNodeCatalog(
         registration,
         node,
         spotChannelName,
-        completionAdmission);
+        completionAdmission,
+        timerScheduler);
+    private readonly ZLinkActivationConcurrencyAdmission _activationAdmission =
+        activationAdmission ?? new(registration.MaxPendingActivations);
     private readonly ZLinkSpotRetireScheduler? _retireScheduler =
         CreateRetireScheduler(
             services,
@@ -45,8 +57,9 @@ internal sealed class ZLinkSpotNodeCatalog(
     private readonly Dictionary<string, TaskCompletionSource<bool>> _closing = [];
     private readonly Dictionary<string, string> _instanceSpotTypes =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _pendingInstanceSpotTypes =
+    private readonly Dictionary<string, Type> _preparedSpotTypes =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<Type, int> _generatedSpotCreations = [];
     private readonly Dictionary<string, PendingSpotCreation> _pending = [];
     private readonly Dictionary<string, ZLinkSpotActivation> _spots = [];
     private TaskCompletionSource? _creationsDrained;
@@ -73,9 +86,13 @@ internal sealed class ZLinkSpotNodeCatalog(
             var active = _instanceSpotTypes.Count(entry =>
                 StringComparer.Ordinal.Equals(entry.Value, stableType)
                 && _spots.ContainsKey(entry.Key));
-            var activating = _pendingInstanceSpotTypes.Count(entry =>
-                StringComparer.Ordinal.Equals(entry.Value, stableType)
-                && _pending.ContainsKey(entry.Key));
+            var activating = _pending.Values.Count(pending =>
+                IsStableTypeLocked(pending.SpotType, stableType));
+            activating += _preparedSpotTypes.Values.Count(spotType =>
+                IsStableTypeLocked(spotType, stableType));
+            activating += _generatedSpotCreations
+                .Where(entry => IsStableTypeLocked(entry.Key, stableType))
+                .Sum(static entry => entry.Value);
             var closing = _closing.Keys.Count(spotId =>
                 _instanceSpotTypes.TryGetValue(
                     spotId,
@@ -533,7 +550,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             while (await timer.WaitForNextTickAsync(_idleEvictionStop.Token)
                        .ConfigureAwait(false))
             {
-                foreach (var activation in SnapshotActivations())
+                foreach (var activation in SnapshotIdleEvictionCandidates())
                 {
                     if (!IsIdleInstanceCandidate(activation)) continue;
                     var closed = await CloseCoreAsync(
@@ -559,6 +576,67 @@ internal sealed class ZLinkSpotNodeCatalog(
             runtime.ErrorSink.ReportRuntimeTaskException(
                 "instance-spot-idle-eviction",
                 exception);
+        }
+    }
+
+    internal IReadOnlyList<ZLinkSpotActivation>
+        SnapshotIdleEvictionCandidates()
+    {
+        lock (_gate)
+        {
+            if (_spots.Count == 0)
+            {
+                _idleEvictionCursor = null;
+                return Array.Empty<ZLinkSpotActivation>();
+            }
+
+            var candidates = new List<ZLinkSpotActivation>(
+                Math.Min(_spots.Count, IdleEvictionBatchSize));
+            var cursor = _idleEvictionCursor;
+            var cursorPresent = cursor is not null
+                                && _spots.ContainsKey(cursor);
+            var collecting = cursor is null || !cursorPresent;
+
+            foreach (var (spotId, activation) in _spots)
+            {
+                if (!collecting)
+                {
+                    if (StringComparer.Ordinal.Equals(spotId, cursor))
+                        collecting = true;
+                    continue;
+                }
+
+                candidates.Add(activation);
+                if (candidates.Count == IdleEvictionBatchSize)
+                    break;
+            }
+
+            // The cursor can be near the end of the dictionary. Wrap once so
+            // every activation receives a bounded inspection opportunity.
+            if (candidates.Count < IdleEvictionBatchSize && cursorPresent)
+            {
+                foreach (var (spotId, activation) in _spots)
+                {
+                    if (StringComparer.Ordinal.Equals(spotId, cursor))
+                    {
+                        // Include the cursor itself only after all entries
+                        // before it have been visited. This closes the cycle
+                        // when the cursor is the last (or only) entry.
+                        if (candidates.Count < IdleEvictionBatchSize)
+                            candidates.Add(activation);
+                        break;
+                    }
+
+                    candidates.Add(activation);
+                    if (candidates.Count == IdleEvictionBatchSize)
+                        break;
+                }
+            }
+
+            _idleEvictionCursor = candidates.Count == 0
+                ? cursor
+                : candidates[^1].SpotId;
+            return candidates.ToArray();
         }
     }
 
@@ -603,7 +681,9 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             EnsureSpotTypeRegisteredLocked(spotType);
+            EnsureLocalSpotCapacityLocked(spotType);
             BeginCreationLocked();
+            IncrementGeneratedSpotCreationLocked(spotType);
         }
 
         IZLinkBackendSpot? nativeSpot = null;
@@ -659,6 +739,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
         finally
         {
+            lock (_gate)
+                DecrementGeneratedSpotCreationLocked(spotType);
             EndCreation();
         }
     }
@@ -677,6 +759,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             EnsureSpotTypeRegisteredLocked(spotType);
             EnsureCreationAdmissionOpenLocked();
+            ThrowIfClosingLocked(requestedSpotId);
 
             if (_spots.TryGetValue(requestedSpotId, out var existing))
             {
@@ -693,6 +776,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
             else
             {
+                EnsureLocalSpotCapacityLocked(spotType);
                 BeginCreationLocked();
                 pending = new PendingSpotCreation(spotType);
                 _pending.Add(requestedSpotId, pending);
@@ -824,6 +908,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             EnsureSpotTypeRegisteredLocked(spotType);
             EnsureCreationAdmissionOpenLocked();
+            ThrowIfClosingLocked(requestedSpotId);
             if (_spots.TryGetValue(requestedSpotId, out var existing))
             {
                 ThrowIfSpotTypeMismatch(existing.Spot.GetType(), spotType, requestedSpotId);
@@ -835,6 +920,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                     $"SPOT '{requestedSpotId}' is already being materialized.",
                     ZLinkRetryAdvice.RetryAfterBackoff);
 
+            EnsureLocalSpotCapacityLocked(spotType);
             BeginCreationLocked();
             _pending.Add(requestedSpotId, pending);
         }
@@ -878,7 +964,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotId);
-                _pendingInstanceSpotTypes.Remove(requestedSpotId);
+                _preparedSpotTypes.Add(
+                    requestedSpotId,
+                    activation!.Spot.GetType());
             }
             EndCreation();
             return new PreparedReservedSpot(
@@ -891,7 +979,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotId);
-                _pendingInstanceSpotTypes.Remove(requestedSpotId);
+                _preparedSpotTypes.Remove(requestedSpotId);
             }
             if (activation is not null)
                 await activation.DisposeAsync().ConfigureAwait(false);
@@ -922,6 +1010,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             EnsureCreationAdmissionOpenLocked();
+            ThrowIfClosingLocked(requestedSpotId);
             if (_spots.TryGetValue(requestedSpotId, out var existing))
             {
                 ThrowIfSpotTypeMismatch(
@@ -940,9 +1029,9 @@ internal sealed class ZLinkSpotNodeCatalog(
                     $"Instance Spot '{requestedSpotId}' is already being materialized.",
                     ZLinkRetryAdvice.RetryAfterBackoff);
 
+            EnsureLocalSpotCapacityLocked(factory.SpotType);
             BeginCreationLocked();
             _pending.Add(requestedSpotId, pending);
-            _pendingInstanceSpotTypes.Add(requestedSpotId, stableType);
         }
 
         IZLinkBackendSpot? nativeSpot = null;
@@ -968,7 +1057,9 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotId);
-                _pendingInstanceSpotTypes.Remove(requestedSpotId);
+                _preparedSpotTypes.Add(
+                    requestedSpotId,
+                    activation!.Spot.GetType());
             }
             EndCreation();
             return new PreparedReservedSpot(
@@ -982,7 +1073,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             lock (_gate)
             {
                 _pending.Remove(requestedSpotId);
-                _pendingInstanceSpotTypes.Remove(requestedSpotId);
+                _preparedSpotTypes.Remove(requestedSpotId);
             }
             if (activation is not null)
                 await activation.DisposeAsync().ConfigureAwait(false);
@@ -1015,6 +1106,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{prepared.Activation.SpotId}' became visible before publication.");
+            _preparedSpotTypes.Remove(prepared.Activation.SpotId);
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
         }
         ZLinkRuntimeMetrics.RecordSpotCreated(registration.SpotNodeName, "user");
@@ -1076,6 +1168,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"SPOT '{prepared.Activation.SpotId}' became visible before relocation publication.");
+            _preparedSpotTypes.Remove(prepared.Activation.SpotId);
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
             if (prepared.Activation.Spot is IZLinkInstanceSpot)
                 _instanceSpotTypes.Add(
@@ -1112,6 +1205,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.Unavailable,
                     $"Instance Spot '{prepared.Activation.SpotId}' became visible before publication.");
+            _preparedSpotTypes.Remove(prepared.Activation.SpotId);
             _spots.Add(prepared.Activation.SpotId, prepared.Activation);
             _instanceSpotTypes.Add(
                 prepared.Activation.SpotId,
@@ -1130,7 +1224,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         lock (_gate)
         {
-            if (_spots.TryGetValue(spotId, out var existing)
+            if (!_closing.ContainsKey(spotId)
+                && _spots.TryGetValue(spotId, out var existing)
                 && existing.Spot is IZLinkInstanceSpot
                 && existing.NativeSpot.LifecycleGeneration == objectGeneration
                 && registration.InstanceSpotFactories.TryGetValue(
@@ -1157,7 +1252,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         lock (_gate)
         {
-            if (_spots.TryGetValue(spotId, out var existing)
+            if (!_closing.ContainsKey(spotId)
+                && _spots.TryGetValue(spotId, out var existing)
                 && existing.Spot is not IZLinkInstanceSpot
                 && existing.ExecutionMode == ZLinkUserSpotExecutionMode.PerActor
                 && existing.ObjectGeneration == objectGeneration
@@ -1177,8 +1273,9 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     internal async ValueTask DiscardReservedAsync(PreparedReservedSpot prepared)
     {
-        if (!prepared.Existing)
-            await prepared.Activation.DisposeAsync().ConfigureAwait(false);
+        if (prepared.Existing) return;
+        lock (_gate) _preparedSpotTypes.Remove(prepared.Activation.SpotId);
+        await prepared.Activation.DisposeAsync().ConfigureAwait(false);
     }
 
     internal bool HasActiveActors(string spotId)
@@ -1512,6 +1609,131 @@ internal sealed class ZLinkSpotNodeCatalog(
         await activation.DisposeAsync();
     }
 
+    private void ThrowIfClosingLocked(string spotId)
+    {
+        if (_closing.ContainsKey(spotId))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Unavailable,
+                $"SPOT '{spotId}' is being closed.",
+                ZLinkRetryAdvice.RetryAfterBackoff);
+    }
+
+    private void EnsureLocalSpotCapacityLocked(Type spotType)
+    {
+        var total = checked(
+            _spots.Count
+            + _pending.Count
+            + _preparedSpotTypes.Count
+            + _generatedSpotCreations.Values.Sum());
+        if (registration.SpotLimit > 0
+            && total >= registration.SpotLimit)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.CapacityExceeded,
+                $"SPOT node '{registration.SpotNodeName}' reached its local spot limit.",
+                ZLinkRetryAdvice.RetryAfterBackoff);
+
+        if (!TryGetStableTypeLimit(spotType, out var stableType, out var limit)
+            || limit <= 0)
+            return;
+
+        var typeTotal = 0;
+        foreach (var activation in _spots.Values)
+        {
+            if (TryGetStableTypeLimit(
+                    activation.Spot.GetType(),
+                    out var currentType,
+                    out _)
+                && StringComparer.Ordinal.Equals(currentType, stableType))
+                typeTotal++;
+        }
+        foreach (var pending in _pending.Values)
+        {
+            if (TryGetStableTypeLimit(
+                    pending.SpotType,
+                    out var currentType,
+                    out _)
+                && StringComparer.Ordinal.Equals(currentType, stableType))
+                typeTotal++;
+        }
+        foreach (var prepared in _preparedSpotTypes.Values)
+        {
+            if (TryGetStableTypeLimit(
+                    prepared,
+                    out var currentType,
+                    out _)
+                && StringComparer.Ordinal.Equals(currentType, stableType))
+                typeTotal++;
+        }
+        foreach (var (creatingType, count) in _generatedSpotCreations)
+        {
+            if (TryGetStableTypeLimit(
+                    creatingType,
+                    out var currentType,
+                    out _)
+                && StringComparer.Ordinal.Equals(currentType, stableType))
+                typeTotal = checked(typeTotal + count);
+        }
+
+        if (typeTotal >= limit)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.CapacityExceeded,
+                $"SPOT stable type '{stableType}' reached its local activation limit.",
+                ZLinkRetryAdvice.RetryAfterBackoff);
+    }
+
+    private bool IsStableTypeLocked(Type spotType, string stableType)
+    {
+        return TryGetStableTypeLimit(
+                   spotType,
+                   out var currentType,
+                   out _)
+               && StringComparer.Ordinal.Equals(currentType, stableType);
+    }
+
+    private void IncrementGeneratedSpotCreationLocked(Type spotType)
+    {
+        _generatedSpotCreations.TryGetValue(spotType, out var count);
+        _generatedSpotCreations[spotType] = checked(count + 1);
+    }
+
+    private void DecrementGeneratedSpotCreationLocked(Type spotType)
+    {
+        if (!_generatedSpotCreations.TryGetValue(spotType, out var count)
+            || count <= 0)
+            throw new InvalidOperationException(
+                "Generated SPOT creation accounting became inconsistent.");
+        if (count == 1)
+            _generatedSpotCreations.Remove(spotType);
+        else
+            _generatedSpotCreations[spotType] = count - 1;
+    }
+
+    private bool TryGetStableTypeLimit(
+        Type spotType,
+        out string stableType,
+        out int limit)
+    {
+        foreach (var (registeredStableType, relocation) in
+                 registration.InstanceSpotRelocations)
+        {
+            if (relocation.InstanceType != spotType) continue;
+            stableType = registeredStableType;
+            limit = relocation.Placement.MaxActiveObjects ?? 0;
+            return true;
+        }
+        foreach (var (registeredStableType, relocation) in registration.SpotRelocations)
+        {
+            if (relocation.InstanceType != spotType) continue;
+            stableType = registeredStableType;
+            limit = relocation.Placement.MaxActiveObjects ?? 0;
+            return true;
+        }
+
+        stableType = string.Empty;
+        limit = 0;
+        return false;
+    }
+
     private void EnsureSpotTypeRegisteredLocked(Type spotType)
     {
         if (!registration.SpotFactories.Contains(spotType))
@@ -1522,6 +1744,8 @@ internal sealed class ZLinkSpotNodeCatalog(
     private void BeginCreationLocked()
     {
         EnsureCreationAdmissionOpenLocked();
+        _activationAdmission.Acquire(
+            $"SPOT node '{registration.SpotNodeName}'");
         _activeCreations++;
     }
 
@@ -1544,6 +1768,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             }
         }
 
+        _activationAdmission.Release();
         drained?.TrySetResult();
     }
 

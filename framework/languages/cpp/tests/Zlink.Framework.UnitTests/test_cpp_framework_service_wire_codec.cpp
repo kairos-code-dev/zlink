@@ -322,7 +322,8 @@ int main ()
       3,
       {'n', 'o', 'd', 'e'},
       5,
-      7};
+      7,
+      8};
     const auto spot_request = protocol::decode_spot_message_header (
       protocol::encode_spot_message_header (
         protocol::command::spotRequest, {'s', 'o', 'u', 'r', 'c', 'e'},
@@ -334,7 +335,7 @@ int main ()
     assert (spot_request.message_follow_hop_count == 0);
     assert (spot_request.target == spot_fence);
     const protocol::actor_route_fence_t actor_fence{
-      "actor-1", 11, {'n', 'o', 'd', 'e'}, 5, 9};
+      "actor-1", 11, {'n', 'o', 'd', 'e'}, 5, 9, 10};
     const std::optional<std::pair<std::string, std::uint64_t>>
       source_actor{std::pair{"actor-0", 4}};
     const auto actor_send = protocol::decode_actor_message_header (
@@ -348,6 +349,30 @@ int main ()
     assert (actor_send.message_follow_hop_count == 0);
     assert (actor_send.source_actor == source_actor);
     assert (actor_send.target == actor_fence);
+    const protocol::actor_route_fence_t follow_target{
+      "actor-1", 11, {'t', 'a', 'r', 'g', 'e', 't'}, 6, 12, 13};
+    const protocol::message_follow_notice_t follow_notice{
+      actor_fence,
+      follow_target,
+      1,
+      1,
+      4096,
+      {9, correlation},
+      77};
+    assert (protocol::decode_message_follow (
+               protocol::encode_message_follow (follow_notice))
+             == follow_notice);
+    const protocol::message_follow_notice_t one_way_follow_notice{
+      actor_fence,
+      follow_target,
+      1,
+      1,
+      4096,
+      {9, correlation},
+      0};
+    assert (protocol::decode_message_follow (
+               protocol::encode_message_follow (one_way_follow_notice))
+             == one_way_follow_notice);
     const protocol::user_spot_create_header_t user_spot_create{
       correlation,
       {4, 5},

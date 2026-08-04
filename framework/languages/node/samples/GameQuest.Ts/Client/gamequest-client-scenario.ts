@@ -139,6 +139,14 @@ class GameQuestClientScenario {
     const closeOwnerB = await missionB.post('/self-check/owner/player-alice/close').fetch<{ closed: boolean }>();
     zlinkStreamAssert.ensure(closeOwnerA.closed || closeOwnerB.closed, 'Sample scenario assertion failed.');
 
+    // Close is one-way. Sync observes the completed owner lifecycle before
+    // the next one-way action may start a new Instance activation.
+    const closeSync = await apiBReconnectStream.request(syncQuestProgressReq('player-alice'), Object)
+      .packetName(PacketNames.syncQuestProgressReq)
+      .submit<SyncQuestProgressRes>(signal);
+    const afterCloseFirstHunt = requireQuest(closeSync.updatedQuests, QuestIds.FirstHunt);
+    zlinkStreamAssert.ensure(afterCloseFirstHunt.currentCount >= beforeDeactivate.currentCount, 'Sample scenario assertion failed.');
+
     const earlyRuins = await apiBReconnectStream.request(enterAreaReq('player-alice', 'ruins', 'enter-ruins-too-early'), Object)
       .packetName(PacketNames.enterAreaReq)
       .submit<EnterAreaRes>(signal);
@@ -151,12 +159,15 @@ class GameQuestClientScenario {
       .packetName(PacketNames.completeMissionReq)
       .submit<CompleteMissionRes>(signal);
     zlinkStreamAssert.ensure(tutorial.eventId === 'player-alice-mission-tutorial', 'Sample scenario assertion failed.');
+    // Observe the existing projection through a typed request after the
+    // one-way gameplay action before waiting for its actor notification.
+    await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
     await tutorialCompleted;
     const afterReactivate = await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
     const restoredFirstHunt = requireQuest(afterReactivate, QuestIds.FirstHunt);
-    zlinkStreamAssert.ensure(restoredFirstHunt.currentCount === beforeDeactivate.currentCount, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(restoredFirstHunt.status === beforeDeactivate.status, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(restoredFirstHunt.version === beforeDeactivate.version, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(restoredFirstHunt.currentCount === afterCloseFirstHunt.currentCount, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(restoredFirstHunt.status === afterCloseFirstHunt.status, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(restoredFirstHunt.version === afterCloseFirstHunt.version, 'Sample scenario assertion failed.');
     const tutorialPath = requireQuest(afterReactivate, QuestIds.TutorialPath);
     zlinkStreamAssert.ensure(tutorialPath.currentCount === 2, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(tutorialPath.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
@@ -169,6 +180,9 @@ class GameQuestClientScenario {
       .packetName(PacketNames.enterAreaReq)
       .submit<EnterAreaRes>(signal);
     zlinkStreamAssert.ensure(ruins.eventId === 'player-alice-enter-ruins', 'Sample scenario assertion failed.');
+    // Observe the existing projection through a typed request after the
+    // one-way gameplay action before waiting for its actor notification.
+    await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
     const ruinsPush = await ruinsCompleted;
     zlinkStreamAssert.ensure(ruinsPush.payload.progress.currentCount === 2, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(ruinsPush.payload.progress.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');

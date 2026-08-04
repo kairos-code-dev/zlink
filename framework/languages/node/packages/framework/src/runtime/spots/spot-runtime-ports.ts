@@ -6,6 +6,7 @@ import type {
   ZLinkSpot
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import type {
   ZLinkRemoteActorPacketTarget,
   ZLinkRemoteBoundSessionTarget,
@@ -259,6 +260,8 @@ export interface ZLinkSpotActorHandoffRuntime {
     parts: readonly Message[],
     returnResponse?: boolean,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
-    fallbackActorRef?: ActorRef
+    fallbackActorRef?: ActorRef,
+    deadlineUnixMs?: number,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> | undefined;
 }

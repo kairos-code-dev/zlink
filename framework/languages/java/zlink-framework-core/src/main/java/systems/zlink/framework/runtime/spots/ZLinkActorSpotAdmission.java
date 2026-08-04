@@ -408,7 +408,7 @@ final class ZLinkActorSpotAdmission {
                         request.coreMembershipEpoch() + 1);
                 }
                 return runtime.commitDeferredJoinRelocation(request)
-                    .thenCompose(ignored -> {
+                    .thenApply(ignored -> {
                         aggregateCommitted.set(true);
                         runtime.traceActorTransferMarker(
                             "location_committed",
@@ -418,10 +418,7 @@ final class ZLinkActorSpotAdmission {
                             prepared.actorRef(),
                             spotId,
                             request.coreMembershipEpoch() + 1);
-                        return switchBoundSessionRoute(
-                                request,
-                                primaryNode)
-                            .thenApply(routed -> prepared);
+                        return prepared;
                     });
             })
             .thenCompose(prepared -> {
@@ -441,43 +438,58 @@ final class ZLinkActorSpotAdmission {
                     primaryNode);
                 runtime.traceActorTransferMarker(
                     "target_session_bound", actor.context().actorId(), request.transferId());
-                boolean entryTarget = spotSurface instanceof systems.zlink.framework.spots.ZLinkEntrySpot<?>;
-                if (!entryTarget) {
-                    runtime.markJoined(
-                        actor,
-                        actorRef,
-                        spotId,
-                        (ZLinkSpot<?>) spotSurface);
-                } else {
-                    runtime.markJoinedEntrySpot(
-                        actor,
-                        actorRef,
-                        primaryNode.routingId());
-                }
-                if (preparedFence != null) {
-                    // A joined lifecycle callback may send through the bound
-                    // session. Activate the committed transfer before calling
-                    // user code so that this outbound path does not wait on
-                    // the callback that is required to complete the transfer.
-                    primaryNode.activateActorTransfer(preparedFence.token());
-                }
-                return joinedCallback.apply(actor)
-                    .thenRun(() -> runtime.traceActorTransferMarker(
-                        "target_joined_callback", actor.context().actorId(), request.transferId()))
+                return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+                    .yieldCurrent(
+                        runtime.awaitDeferredJoinSourceCleanup(
+                                request,
+                                actorRef,
+                                Duration.ofMillis(Math.max(
+                                    1L,
+                                    request.timeoutMillis())))
+                            .thenRun(() -> completeRemoteMove(runtime, prepared))
+                            .thenCompose(ignored ->
+                                switchBoundSessionRoute(
+                                    request,
+                                    primaryNode)))
                     .thenCompose(ignored -> {
-                        return runtime.deliverDeferredJoinAccepted(
-                            request,
-                            actorRef);
-                    })
-                    .thenCompose(ignored -> backlogReplay.apply(actorRef))
-                    .thenApply(replies -> {
-                        runtime.traceActorTransferMarker(
-                            "target_backlog_replayed", actor.context().actorId(), request.transferId());
-                        return replies;
-                    })
-                    .thenApply(replies -> new RoutedJoin(
-                        completeRemoteMove(runtime, prepared),
-                        ZLinkSpotActorJoinResult.accept(), replies));
+                        boolean entryTarget = spotSurface instanceof systems.zlink.framework.spots.ZLinkEntrySpot<?>;
+                        if (!entryTarget) {
+                            runtime.markJoined(
+                                actor,
+                                actorRef,
+                                spotId,
+                                (ZLinkSpot<?>) spotSurface);
+                        } else {
+                            runtime.markJoinedEntrySpot(
+                                actor,
+                                actorRef,
+                                primaryNode.routingId());
+                        }
+                        if (preparedFence != null) {
+                            // A joined lifecycle callback may send through the bound
+                            // session. Activate the committed transfer before calling
+                            // user code so that this outbound path does not wait on
+                            // the callback that is required to complete the transfer.
+                            primaryNode.activateActorTransfer(preparedFence.token());
+                        }
+                        return joinedCallback.apply(actor)
+                            .thenRun(() -> runtime.traceActorTransferMarker(
+                                "target_joined_callback", actor.context().actorId(), request.transferId()))
+                            .thenCompose(ignoredAfterJoin -> {
+                                return runtime.deliverDeferredJoinAccepted(
+                                    request,
+                                    actorRef);
+                            })
+                            .thenCompose(ignoredAfterDelivery -> backlogReplay.apply(actorRef))
+                            .thenApply(replies -> {
+                                runtime.traceActorTransferMarker(
+                                    "target_backlog_replayed", actor.context().actorId(), request.transferId());
+                                return replies;
+                            })
+                            .thenApply(replies -> new RoutedJoin(
+                                actorRef,
+                                ZLinkSpotActorJoinResult.accept(), replies));
+                    });
             });
         return attempt.exceptionallyCompose(error -> {
             if (aggregateCommitted.get()) {
@@ -545,7 +557,8 @@ final class ZLinkActorSpotAdmission {
                 primaryNode.routingId(),
                 request.actorId(),
                 request.actorGeneration()),
-            command.currentAuthorityOwnerGeneration());
+            command.currentAuthorityOwnerGeneration(),
+            primaryNode.localAuthorityLeaseGeneration());
         return sessionRoutes.switchRoute(
                 command,
                 Duration.ofMillis(Math.max(1L, request.timeoutMillis())))

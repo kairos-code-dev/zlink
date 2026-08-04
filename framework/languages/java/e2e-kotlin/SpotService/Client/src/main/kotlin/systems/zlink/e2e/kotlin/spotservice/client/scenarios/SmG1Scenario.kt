@@ -20,12 +20,12 @@ internal object SmG1Scenario {
     suspend fun run(spots: SpotHttpDriver) {
         val actorId = "actor-sm-g1-" + UUID.randomUUID().toString().replace("-", "")
         val profile = Contracts.ActorProfile("Crash Recovery", 1, listOf("sm-g1"))
-        val crashedConnector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val crashedConnector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             crashedConnector.connect().await()
             authenticateJoinAndEcho(crashedConnector, actorId, profile, "before-crash", 1)
-            signalFile("ZLINK_KOTLIN_E2E_SM_G1_READY_FILE")
-            waitForSignalFile("ZLINK_KOTLIN_E2E_SM_G1_CRASHED_FILE")
+            signalFile("e2e.sm.g1.ready.file")
+            waitForSignalFile("e2e.sm.g1.crashed.file")
 
             expectFailure {
                 crashedConnector
@@ -39,13 +39,13 @@ internal object SmG1Scenario {
                 spots.requestState("room-b", "sm-g1-survivor")
             }
             ensure(survivor.nodeRid == "play-b", "SM-G1 play-b survivor request node mismatch")
-            signalFile("ZLINK_KOTLIN_E2E_SM_G1_FAILED_FILE")
-            waitForSignalFile("ZLINK_KOTLIN_E2E_SM_G1_RESTARTED_FILE")
+            signalFile("e2e.sm.g1.failed.file")
+            waitForSignalFile("e2e.sm.g1.restarted.file")
         } finally {
             closeQuietly(crashedConnector)
         }
 
-        val recoveredConnector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val recoveredConnector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             recoveredConnector.connect().await()
             authenticateJoinAndEcho(recoveredConnector, actorId, profile, "after-restart", 3)

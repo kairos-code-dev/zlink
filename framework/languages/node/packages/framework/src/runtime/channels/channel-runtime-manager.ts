@@ -6,7 +6,7 @@ import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProvider
 import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkMessageFlowModeCell } from '../diagnostics';
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException,

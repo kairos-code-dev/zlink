@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-kotlin-config.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -247,7 +248,7 @@ start_provider() {
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(provider_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    zlink_kotlin_e2e_run "$(provider_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-api" "${api}"
   wait_port "${rid}-http" "${http}"
@@ -258,7 +259,7 @@ start_consumer() {
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(consumer_bin)" >"${log_dir}/consumer.stdout.log" 2>"${log_dir}/consumer.stderr.log" &
+    zlink_kotlin_e2e_run "$(consumer_bin)" >"${log_dir}/consumer.stdout.log" 2>"${log_dir}/consumer.stderr.log" &
   pids+=("$!")
   wait_port consumer-http "${CONSUMER_HTTP}"
 }
@@ -287,7 +288,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-restart.stdout.log" 2>"${log_dir}/client-restart.stderr.log" &
 restart_client_pid="$!"
 pids+=("${restart_client_pid}")
 
@@ -313,7 +314,7 @@ ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-reschedule.stdout.log" 2>"${log_dir}/client-reschedule.stderr.log" &
 reschedule_client_pid="$!"
 pids+=("${reschedule_client_pid}")
 
@@ -340,7 +341,7 @@ ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_HTTP_B_GREEN_ENDPOINT="${HTTP_B_GREEN}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-a4.stdout.log" 2>"${log_dir}/client-a4.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-a4.stdout.log" 2>"${log_dir}/client-a4.stderr.log" &
 a4_client_pid="$!"
 pids+=("${a4_client_pid}")
 
@@ -369,7 +370,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-flapping.stdout.log" 2>"${log_dir}/client-flapping.stderr.log" &
 flapping_client_pid="$!"
 pids+=("${flapping_client_pid}")
 
@@ -394,7 +395,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-b2.stdout.log" 2>"${log_dir}/client-b2.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-b2.stdout.log" 2>"${log_dir}/client-b2.stderr.log" &
 b2_client_pid="$!"
 pids+=("${b2_client_pid}")
 
@@ -416,7 +417,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-c2.stdout.log" 2>"${log_dir}/client-c2.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-c2.stdout.log" 2>"${log_dir}/client-c2.stderr.log" &
 c2_client_pid="$!"
 pids+=("${c2_client_pid}")
 
@@ -442,7 +443,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-c4.stdout.log" 2>"${log_dir}/client-c4.stderr.log" &
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-c4.stdout.log" 2>"${log_dir}/client-c4.stderr.log" &
 c4_client_pid="$!"
 pids+=("${c4_client_pid}")
 
@@ -461,7 +462,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-default.stdout.log" 2>"${log_dir}/client-default.stderr.log"
 fi
 
 if [[ "${SCENARIO}" == "all" ]]; then
@@ -482,7 +483,7 @@ for wave in 1 2; do
     ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${storm_consumer_http}" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${storm_log_dir}" \
-      "$(consumer_bin)" >"${storm_log_dir}/consumer.stdout.log" 2>"${storm_log_dir}/consumer.stderr.log" &
+      zlink_kotlin_e2e_run "$(consumer_bin)" >"${storm_log_dir}/consumer.stdout.log" 2>"${storm_log_dir}/consumer.stderr.log" &
     storm_consumer_pids+=("$!")
     pids+=("$!")
     wait_port "storm-${wave}-${index}-consumer" "${storm_consumer_http}"
@@ -494,7 +495,7 @@ for wave in 1 2; do
     ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
     ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS="$((index * 250))" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${storm_log_dir}" \
-      "$(client_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
+      zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-storm-${wave}-${index}.stdout.log" 2>"${log_dir}/client-storm-${wave}-${index}.stderr.log" &
     storm_pids+=("$!")
     pids+=("$!")
   done
@@ -515,7 +516,7 @@ ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
 ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT="${CURRENT_HTTP_A}" \
 ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client-cleanup.stdout.log" 2>"${log_dir}/client-cleanup.stderr.log"
 fi
 
 for log in "${log_dir}"/client-*.stdout.log; do

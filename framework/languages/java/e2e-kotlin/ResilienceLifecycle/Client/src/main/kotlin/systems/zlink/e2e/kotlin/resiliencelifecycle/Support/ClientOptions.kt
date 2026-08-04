@@ -17,21 +17,21 @@ data class ClientOptions(
     companion object {
         fun fromEnv(): ClientOptions =
             ClientOptions(
-                mode = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "default"),
-                consumerHttpEndpoint = Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
-                logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
-                httpAEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
-                httpBEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),
-                apiBEndpoint = optional("ZLINK_KOTLIN_E2E_API_B_ENDPOINT"),
-                apiAReplacementEndpoint = optional("ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT"),
-                apiBGreenEndpoint = optional("ZLINK_KOTLIN_E2E_API_B_GREEN_ENDPOINT"),
-                httpBGreenEndpoint = optional("ZLINK_KOTLIN_E2E_HTTP_B_GREEN_ENDPOINT"),
-                controlDir = optional("ZLINK_KOTLIN_E2E_CONTROL_DIR"),
-                scenario = Env.get("ZLINK_KOTLIN_E2E_SCENARIO", "all"),
-                stormExitDelayMillis = Env.get("ZLINK_KOTLIN_E2E_STORM_EXIT_DELAY_MS", "0").toLong(),
+                mode = Env.get("e2e.client.mode", "default"),
+                consumerHttpEndpoint = Env.get("e2e.consumer.http.endpoint"),
+                logDir = Env.get("e2e.log.dir", "logs"),
+                httpAEndpoint = optional("e2e.http.a.endpoint"),
+                httpBEndpoint = optional("e2e.http.b.endpoint"),
+                apiBEndpoint = optional("e2e.api.b.endpoint"),
+                apiAReplacementEndpoint = optional("e2e.api.a.replacement.endpoint"),
+                apiBGreenEndpoint = optional("e2e.api.b.green.endpoint"),
+                httpBGreenEndpoint = optional("e2e.http.b.green.endpoint"),
+                controlDir = optional("e2e.control.dir"),
+                scenario = Env.get("e2e.scenario", "all"),
+                stormExitDelayMillis = Env.get("e2e.storm.exit.delay.ms", "0").toLong(),
             )
 
         private fun optional(name: String): String? =
-            System.getenv(name)?.takeIf { it.isNotBlank() }
+            Env.get(name, "").takeIf { it.isNotBlank() }
     }
 }

@@ -5,12 +5,85 @@
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <nlohmann/json.hpp>
+#include <service_wire_constants.hpp>
 
+#include <limits>
+#include <stdexcept>
 #include <typeindex>
 #include <utility>
 
 namespace zlink::framework::detail
 {
+
+namespace
+{
+
+void validate_handoff_backlog_json (const nlohmann::json &backlog)
+{
+    using runtime::protocol::messageFollowBytes;
+    using runtime::protocol::messageFollowMessages;
+    if (!backlog.is_array () || backlog.size () > messageFollowMessages) {
+        throw std::invalid_argument (
+          "Actor handoff backlog exceeds the message limit");
+    }
+
+    std::size_t bytes = 0;
+    const auto add_bytes = [&bytes] (std::size_t value) {
+        if (value > messageFollowBytes
+            || bytes > messageFollowBytes - value) {
+            throw std::invalid_argument (
+              "Actor handoff backlog exceeds the byte limit");
+        }
+        bytes += value;
+    };
+    for (const auto &item : backlog) {
+        if (!item.is_object ()) {
+            throw std::invalid_argument (
+              "Actor handoff backlog item must be an object");
+        }
+        const auto packet_name = item.find ("packetName");
+        if (packet_name == item.end () || !packet_name->is_string ()) {
+            throw std::invalid_argument (
+              "Actor handoff backlog packet name is required");
+        }
+        add_bytes (packet_name->get_ref<const std::string &> ().size ());
+
+        const auto content_type = item.find ("contentType");
+        if (content_type != item.end ()) {
+            if (!content_type->is_string ()) {
+                throw std::invalid_argument (
+                  "Actor handoff backlog content type must be text");
+            }
+            add_bytes (content_type->get_ref<const std::string &> ().size ());
+        }
+
+        const auto payload = item.find ("payload");
+        if (payload == item.end () || !payload->is_array ()) {
+            throw std::invalid_argument (
+              "Actor handoff backlog payload is required");
+        }
+        add_bytes (payload->size ());
+
+        const auto metadata = item.find ("metadata");
+        if (metadata == item.end ())
+            continue;
+        if (!metadata->is_object ()
+            || metadata->size () > runtime::protocol::metadataBytes) {
+            throw std::invalid_argument (
+              "Actor handoff backlog metadata is invalid");
+        }
+        for (const auto &[key, value] : metadata->items ()) {
+            if (!value.is_string ()) {
+                throw std::invalid_argument (
+                  "Actor handoff backlog metadata value must be text");
+            }
+            add_bytes (key.size ());
+            add_bytes (value.get_ref<const std::string &> ().size ());
+        }
+    }
+}
+
+} // namespace
 
 void to_json (nlohmann::json &json, const spot_multicast_route_send_t &value)
 {
@@ -172,8 +245,14 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
     value.bound_session_rid = json.value ("boundSessionRid", "");
     value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
-    value.handoff_backlog =
-      json.value ("handoffBacklog", std::vector<spot_actor_handoff_packet_t>{});
+    const auto handoff_backlog = json.find ("handoffBacklog");
+    if (handoff_backlog != json.end ()) {
+        validate_handoff_backlog_json (*handoff_backlog);
+        value.handoff_backlog =
+          handoff_backlog->get<std::vector<spot_actor_handoff_packet_t>> ();
+    } else {
+        value.handoff_backlog.clear ();
+    }
     value.core_transfer = json.value ("coreTransfer", false);
     value.core_transfer_id_high = json.value ("coreTransferIdHigh", std::uint64_t{0});
     value.core_transfer_id_low = json.value ("coreTransferIdLow", std::uint64_t{0});
@@ -318,6 +397,7 @@ void to_json (nlohmann::json &json, const actor_bound_session_route_request_t &v
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
                           {"packetName", value.packet_name_value},
+                          {"codec", static_cast<std::uint8_t> (value.codec)},
                           {"payload", value.payload}};
 }
 
@@ -328,6 +408,11 @@ void from_json (const nlohmann::json &json, actor_bound_session_route_request_t 
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
     value.packet_name_value = json.at ("packetName").get<std::string> ();
+    const auto codec = json.value ("codec", static_cast<std::uint8_t> (stream_codec_t::raw));
+    if (codec > static_cast<std::uint8_t> (stream_codec_t::protobuf)) {
+        throw std::invalid_argument ("actor bound session route codec is invalid");
+    }
+    value.codec = static_cast<stream_codec_t> (codec);
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
 
@@ -473,7 +558,10 @@ actor_ref_t actor_ref_from_spot_route (const spot_actor_disconnect_route_request
 }
 
 actor_bound_session_route_request_t make_actor_bound_session_route_request (
-  const actor_ref_t &actor_ref, std::string_view packet_name, const zlink::message_t &payload)
+  const actor_ref_t &actor_ref,
+  std::string_view packet_name,
+  stream_codec_t codec,
+  const zlink::message_t &payload)
 {
     return actor_bound_session_route_request_t{.actor_node_rid =
                                                  std::string (actor_ref.node_rid ().value ()),
@@ -481,6 +569,7 @@ actor_bound_session_route_request_t make_actor_bound_session_route_request (
                                                .actor_id = std::string (actor_ref.actor_id ()),
                                                .actor_generation = actor_ref.generation (),
                                                .packet_name_value = std::string (packet_name),
+                                               .codec = codec,
                                                .payload = payload.to_bytes ()};
 }
 

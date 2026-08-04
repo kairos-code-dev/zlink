@@ -3,6 +3,7 @@
 
 #include "runtime/backend/raw_dealer_port.hpp"
 #include "runtime/backend/raw_route_port.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
 #include "runtime/foundation/operation_registry.hpp"
 #include "runtime/mesh/service_liveness_registry.hpp"
 #include "runtime/mesh/service_mailbox.hpp"
@@ -54,8 +55,12 @@ struct raw_client_server_server_options_t
 {
     protocol::client_server_server_admission_t descriptor;
     std::optional<std::string> advertise_host;
-    std::size_t mailbox_message_budget = 4096;
-    std::size_t mailbox_byte_budget = 16u * 1024u * 1024u;
+    std::size_t mailbox_message_budget =
+      dispatch_limits::application_mailbox_messages;
+    std::size_t mailbox_byte_budget =
+      dispatch_limits::application_mailbox_bytes;
+    zlink::poller_t *transport_poller = nullptr;
+    std::uintptr_t transport_poller_slot = 0;
 };
 
 class raw_client_server_server_t
@@ -80,6 +85,8 @@ class raw_client_server_server_t
     std::size_t last_pump_bytes () const noexcept { return _last_pump_bytes; }
     mesh::service_liveness_tick_t tick_liveness (
       mesh::service_liveness_registry_t::clock_t::time_point now);
+    std::optional<mesh::service_liveness_registry_t::clock_t::time_point>
+    next_liveness_activity () const;
     bool reply (
       const mesh::service_mailbox_record_t &request,
       const protocol::application_payload_t &payload);
@@ -120,6 +127,8 @@ struct raw_client_server_client_options_t
     std::vector<std::uint8_t> client_routing_id;
     protocol::client_server_client_admission_t admission;
     protocol::client_server_server_admission_t expected_server;
+    zlink::poller_t *transport_poller = nullptr;
+    std::uintptr_t transport_poller_slot = 0;
 };
 
 class raw_client_server_client_t
@@ -139,6 +148,8 @@ class raw_client_server_client_t
     std::size_t last_pump_bytes () const noexcept { return _last_pump_bytes; }
     mesh::service_liveness_tick_t tick_liveness (
       mesh::service_liveness_registry_t::clock_t::time_point now);
+    std::optional<mesh::service_liveness_registry_t::clock_t::time_point>
+    next_liveness_activity () const;
 
     bool send (const protocol::application_payload_t &payload);
     bool request (

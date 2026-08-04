@@ -5,7 +5,8 @@ import {
   type RoutingId
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type { ZLinkBackendReceived as BackendReceived } from '../backend/runtime-values';
 import type {
   ZLinkRemoteActorPacketTarget,
   ZLinkRemoteBoundSessionTarget
@@ -48,7 +49,7 @@ export class ZLinkSpotActorPacketRelayDispatch {
   constructor(private readonly options: ZLinkSpotActorPacketRelayDispatchOptions) {}
 
   async dispatch(
-    received: BindingReceived,
+    received: BackendReceived,
     actorPacketRelay: ZLinkRemoteActorPacketRelay
   ): Promise<boolean> {
     if (this.options.actorPacketHandler === undefined) {
@@ -70,8 +71,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
             undefined
           )
         };
-    const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
-    const payload = BindingMessage.from(Buffer.from(actorPacketRelay.payload, 'base64'));
+    const header = RuntimeMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
+    const payload = RuntimeMessage.from(Buffer.from(actorPacketRelay.payload, 'base64'));
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
       if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET) {

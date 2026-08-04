@@ -497,7 +497,12 @@ public sealed class StreamSessionForcedCleanupTests
     {
         var registration = new ZLinkFrameworkRegistration();
         var lifetime = new SessionOrderingLifetime();
-        var budget = new ZLinkInboundDispatchBudget(1);
+        // This path cannot classify an application frame before RecvPart. A
+        // single bounded receive reservation preserves the HWM test's
+        // one-message overshoot while preventing a second raw receive.
+        var budget = new ZLinkInboundDispatchBudget(
+            1,
+            maximumConcurrentReceives: 1);
         ZLinkFrameworkRuntime runtime = null!;
         var services = new ServiceCollection()
             .AddSingleton(registration)
@@ -560,7 +565,11 @@ public sealed class StreamSessionForcedCleanupTests
     {
         var registration = new ZLinkFrameworkRegistration();
         var lifetime = new SessionOrderingLifetime();
-        var budget = new ZLinkInboundDispatchBudget(1);
+        // Keep the raw receive reservation explicit so this test verifies the
+        // configured overshoot bound at the multipart boundary.
+        var budget = new ZLinkInboundDispatchBudget(
+            1,
+            maximumConcurrentReceives: 1);
         ZLinkFrameworkRuntime runtime = null!;
         var services = new ServiceCollection()
             .AddSingleton(registration)

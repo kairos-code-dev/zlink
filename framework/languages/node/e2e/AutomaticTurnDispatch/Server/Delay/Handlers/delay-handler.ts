@@ -9,7 +9,7 @@ export class DelayHandler implements ZLinkRequestHandler<DelayReq, DelayRes> {
 
   async handle(request: DelayReq, context: ZLinkMessageContext): Promise<DelayRes> {
     void context;
-    this.evidence.add(`delay-started|rid=${this.evidence.rid}|request=${request.requestId}|marker=${request.marker}`);
+    this.evidence.add(`delay-started|rid=${this.evidence.rid}|request=${request.requestId}|marker=${request.marker}|delayMs=${request.delayMs}`);
     await new Promise((resolve) => setTimeout(resolve, request.delayMs));
     this.evidence.add(`delay-completed|rid=${this.evidence.rid}|request=${request.requestId}|marker=${request.marker}`);
     return {

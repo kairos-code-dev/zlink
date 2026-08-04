@@ -34,15 +34,16 @@ import {
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import {
-  SubmitError,
-  SubmitResult
-} from '@zlink-systems/zlink';
+  SubmitResult,
+  isZLinkBackendResultError
+} from '../backend/runtime-values';
 import {
   ReceiveKind,
   type ReadyRecord,
   type ReceiveRecord
 } from '../foundation/service-runtime-contracts';
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration,
@@ -83,7 +84,7 @@ import {
 } from './spot-node-autoconnect';
 import type { ZLinkSpotRoutedTransport } from './spot-outbound';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
-import { routingIdsEqual, toBindingRoutingId } from '../routing-id';
+import { routingIdsEqual, toBackendRoutingId } from '../routing-id';
 import type {
   ZLinkEntryActorRuntime,
   ZLinkSpotActorTransferRuntime,
@@ -92,6 +93,7 @@ import type {
 } from './spot-runtime-ports';
 import { createAbortError } from '../abort';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
+import type { ServiceMessageFollowRecord } from '../foundation/service-stateful-wire-codec';
 
 const ZLINK_SEND_DONT_WAIT = 1;
 
@@ -122,6 +124,7 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
     record: ReceiveRecord
   ) => void | Promise<void>;
   readonly inboundDispatchBudget?: ZLinkInboundDispatchBudget;
+  readonly messageFollowReceiver?: (record: ServiceMessageFollowRecord) => void;
 }
 
 interface ZLinkPublishSlotWaiter {
@@ -168,6 +171,14 @@ export class ZLinkSpotNodeRuntimeManager {
   private locationAutoConnect?: ZLinkSpotNodeLocationAutoConnectContext;
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
+
+  createReceived() {
+    return this.options.backendAdapterFactory.createReceived();
+  }
+
+  createTopicMessage() {
+    return this.options.backendAdapterFactory.createTopicMessage();
+  }
 
   configureLocationAutoConnect(
     runtime: ZLinkLocationRuntime,
@@ -278,6 +289,7 @@ export class ZLinkSpotNodeRuntimeManager {
             node.setChannelWeight(channelName, channel.weight);
           }
         }
+        node.setMessageFollowHandler?.((record) => this.options.messageFollowReceiver?.(record));
         node.start();
         this.publishers.set(spotNodeName, node.createPublisher());
         for (const endpoint of spotNode.router?.manualConnections ?? []) {
@@ -504,6 +516,20 @@ export class ZLinkSpotNodeRuntimeManager {
     return this.meshNodes.get(meshName);
   }
 
+  sendMessageFollowNotification(
+    sourceNodeRid: string,
+    targetNodeRid: string,
+    record: Omit<ServiceMessageFollowRecord, 'kind'>
+  ): boolean {
+    for (const node of this.meshNodes.values()) {
+      if (String(node.status().routingId) !== sourceNodeRid) continue;
+      if (node.sendMessageFollowNotification === undefined) return false;
+      node.sendMessageFollowNotification(targetNodeRid, record);
+      return true;
+    }
+    return false;
+  }
+
   entrySpotIdForMesh(meshName: string): string | undefined {
     const registration = this.options.registration.spotNodes.get(meshName);
     return registration === undefined
@@ -695,8 +721,6 @@ export class ZLinkSpotNodeRuntimeManager {
     this.entryActivations.clear();
     this.autoConnectLoops.length = 0;
     this.meshPumps.clear();
-    this.meshNodes.clear();
-    this.meshCompletions.clear();
     const publishers = [...this.publishers.values()];
     this.publishers.clear();
     this.rejectPublishSlotWaiters(runtimeShutdownError());
@@ -711,13 +735,15 @@ export class ZLinkSpotNodeRuntimeManager {
     await settle(autoConnectLoops.map((loop) => loop.prepareTransportShutdown()));
     await settle(entryActivations.reverse().map((activation) => activation.dispose()));
     await settle(meshPumps.reverse().map((pump) => pump.dispose()));
-    for (const completions of meshCompletions) {
-      completions.dispose();
-    }
     await settle(meshNodes.reverse().map(async (node) => {
       node.shutdown(1000);
       node.close();
     }));
+    for (const completions of meshCompletions) {
+      completions.dispose();
+    }
+    this.meshNodes.clear();
+    this.meshCompletions.clear();
     await settle(autoConnectLoops.map((loop) => loop.finishTransportShutdown(signal)));
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, 'SPOT node runtime cleanup failed.');
@@ -794,17 +820,22 @@ export class ZLinkSpotNodeRuntimeManager {
     }
     const envelope = decodeChannelEnvelope(record.parts);
     const codecs = { serializers: this.options.registration.messageSerializers };
-    const payload = decodeChannelPayload(envelope, codecs);
+    const decodePayload = () => decodeChannelPayload(envelope, codecs);
     const context = {
       channelName: envelope.header.channelName,
       contentType: envelope.header.contentType
     };
     if (record.kind === ReceiveKind.SpotSend) {
-      await activation.dispatchPacket(envelope.packetName, payload, context, false);
+      await activation.dispatchPacketEncoded(envelope.packetName, decodePayload, context, false);
       return true;
     }
     try {
-      const response = await activation.dispatchPacket(envelope.packetName, payload, context, true);
+      const response = await activation.dispatchPacketEncoded(
+        envelope.packetName,
+        decodePayload,
+        context,
+        true
+      );
       requireEntrySpotReply(record.reply(encodeChannelReplyParts(envelope.header, response, codecs)));
     } catch (error) {
       requireEntrySpotReply(record.reply(encodeChannelErrorReplyParts(envelope.header, error)));
@@ -849,6 +880,8 @@ export class ZLinkSpotNodeRuntimeManager {
       entrySpotType: spotNode.entrySpotType,
       nativeSpot: node.entrySpot() as never,
       nativeNode: node as unknown as ZLinkBackendSpotNode,
+      createReceived: () => this.options.backendAdapterFactory.createReceived(),
+      createTopicMessage: () => this.options.backendAdapterFactory.createTopicMessage(),
       nodeRid: String(node.status().routingId),
       spotNodeName,
       providerResolver: this.options.providerResolver,
@@ -904,7 +937,8 @@ export class ZLinkSpotNodeRuntimeManager {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    requestTerminal?: (response: unknown) => Promise<void> | void
+    requestTerminal?: (response: unknown) => Promise<void> | void,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> {
     let activation = this.primaryEntryActivation();
     if (activation === undefined) {
@@ -936,7 +970,8 @@ export class ZLinkSpotNodeRuntimeManager {
       returnResponse,
       remoteBoundSessionTarget,
       fallbackActorRef,
-      requestTerminal
+      requestTerminal,
+      messageFollowOrigin
     );
   }
 
@@ -1081,7 +1116,7 @@ export class ZLinkSpotNodeRuntimeManager {
       publisher.publish(channelName, topic, parts, { flags });
       return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
-      if (error instanceof SubmitError) {
+      if (isZLinkBackendResultError(error) && error.operation === 'submit') {
         return { status: mapPublishSubmitStatus(error.result) };
       }
       throw error;
@@ -1326,10 +1361,6 @@ function requirePublicRuntimeWeight(value: number, label: string): number {
     );
   }
   return value;
-}
-
-function toBackendRoutingId(routingId: RoutingId) {
-  return toBindingRoutingId(routingId);
 }
 
 interface DescriptorFactoryRegistration {

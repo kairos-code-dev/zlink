@@ -6,7 +6,8 @@ import {
 import type { RoutingId, ZLinkActor } from '../../contracts';
 import type { ZLinkActorHandoffPacket } from '../actors/actor-handoff';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type { ZLinkBackendReceived as BackendReceived } from '../backend/runtime-values';
 import { decodeChannelEnvelope } from '../channels/channel-envelope';
 import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
 import {
@@ -85,7 +86,7 @@ export function decodeRemoteActorJoinPayload(
     readonly actorType: string;
   },
   request: Message,
-  received: BindingReceived,
+  received: BackendReceived,
   raw: boolean,
   envelope?: ReturnType<typeof decodeChannelEnvelope>
 ): ZLinkDecodedRemoteActorJoinRequest {
@@ -111,7 +112,7 @@ export function decodeRemoteActorJoinPayload(
       ? decodeWireRoutingId(payload.actorEntryNodeRid, payload.actorEntryNodeRidHex)
       : undefined,
     actorCreateRequest: typeof payload.actorCreateRequest === 'string'
-      ? BindingMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
+      ? RuntimeMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
       : undefined,
     phase,
     transferId: typeof payload.transferId === 'string' ? payload.transferId : undefined,
@@ -119,7 +120,7 @@ export function decodeRemoteActorJoinPayload(
       ? payload.transferAdapterKey
       : undefined,
     transferState: typeof payload.transferState === 'string'
-      ? BindingMessage.from(Buffer.from(payload.transferState, 'base64'))
+      ? RuntimeMessage.from(Buffer.from(payload.transferState, 'base64'))
       : undefined,
     handoffBacklog: decodeHandoffBacklog(payload.handoffBacklog),
     remoteBoundSessionTarget: decodeRemoteBoundSessionTarget(

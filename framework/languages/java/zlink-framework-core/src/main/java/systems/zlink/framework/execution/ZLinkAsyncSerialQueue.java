@@ -163,7 +163,19 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     public synchronized CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation) {
-        return enqueueAccepted(null, operation);
+        return enqueueAccepted(null, 0, operation);
+    }
+
+    /**
+     * Enqueues an application turn and charges its known payload length in the
+     * application byte budget. The queue also charges the fixed per-turn cost;
+     * callers must pass the payload length before deserializing the payload.
+     */
+    public synchronized CompletionStage<Void> enqueueWithPayloadBytes(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        validatePayloadBytes(payloadBytes);
+        return enqueueAccepted(null, payloadBytes, operation);
     }
 
     /**
@@ -265,7 +277,7 @@ public final class ZLinkAsyncSerialQueue {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("queue owner has relocated"));
         }
-        return enqueueAccepted(record.clone(), operation, relocationRelease);
+        return enqueueAccepted(record.clone(), record.length, operation, relocationRelease);
     }
 
     public synchronized boolean tryEnqueue(Supplier<CompletionStage<Void>> operation) {
@@ -273,7 +285,25 @@ public final class ZLinkAsyncSerialQueue {
             || !canReserve(Lane.APPLICATION, fixedWorkByteCost)) {
             return false;
         }
-        enqueueAccepted(null, operation);
+        enqueueAccepted(null, 0, operation);
+        return true;
+    }
+
+    /**
+     * Attempts to enqueue an application turn with a known payload length.
+     * The length participates in the same byte admission as the fixed turn
+     * cost and is released when the turn reaches its terminal boundary.
+     */
+    public synchronized boolean tryEnqueueWithPayloadBytes(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        validatePayloadBytes(payloadBytes);
+        if (relocated || relocation != null && relocation.frozen
+            || !canRepresentWorkByteCost(payloadBytes)
+            || !canReserve(Lane.APPLICATION, workByteCost(payloadBytes))) {
+            return false;
+        }
+        enqueueAccepted(null, payloadBytes, operation);
         return true;
     }
 
@@ -282,10 +312,11 @@ public final class ZLinkAsyncSerialQueue {
         Supplier<CompletionStage<Void>> operation) {
         java.util.Objects.requireNonNull(record, "record");
         if (relocated || relocation != null && relocation.frozen
+            || !canRepresentWorkByteCost(record.length)
             || !canReserve(Lane.APPLICATION, workByteCost(record.length))) {
             return false;
         }
-        enqueueAccepted(record.clone(), operation);
+        enqueueAccepted(record.clone(), record.length, operation);
         return true;
     }
 
@@ -296,14 +327,23 @@ public final class ZLinkAsyncSerialQueue {
     private CompletionStage<Void> enqueueAccepted(
         byte[] record,
         Supplier<CompletionStage<Void>> operation) {
-        return enqueueAccepted(record, operation, () -> { });
+        return enqueueAccepted(record, record == null ? 0 : record.length, operation, () -> { });
     }
 
     private CompletionStage<Void> enqueueAccepted(
         byte[] record,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueueAccepted(record, payloadBytes, operation, () -> { });
+    }
+
+    private CompletionStage<Void> enqueueAccepted(
+        byte[] record,
+        long payloadBytes,
         Supplier<CompletionStage<Void>> operation,
         Runnable relocationRelease) {
         java.util.Objects.requireNonNull(operation, "operation");
+        validatePayloadBytes(payloadBytes);
         if (relocation != null && relocation.frozen) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException(
@@ -312,7 +352,10 @@ public final class ZLinkAsyncSerialQueue {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("queue sequence exhausted");
         }
-        long byteCost = workByteCost(record == null ? 0 : record.length);
+        if (!canRepresentWorkByteCost(payloadBytes)) {
+            return capacityFailure("application payload exceeds queue byte capacity");
+        }
+        long byteCost = workByteCost(payloadBytes);
         if (!canReserve(Lane.APPLICATION, byteCost)) {
             return capacityFailure("application queue is full");
         }
@@ -375,7 +418,22 @@ public final class ZLinkAsyncSerialQueue {
     }
 
     private long workByteCost(int payloadLength) {
-        return Math.addExact(fixedWorkByteCost, payloadLength);
+        return workByteCost((long) payloadLength);
+    }
+
+    private long workByteCost(long payloadBytes) {
+        validatePayloadBytes(payloadBytes);
+        return Math.addExact(fixedWorkByteCost, payloadBytes);
+    }
+
+    private boolean canRepresentWorkByteCost(long payloadBytes) {
+        return payloadBytes <= Long.MAX_VALUE - fixedWorkByteCost;
+    }
+
+    private static void validatePayloadBytes(long payloadBytes) {
+        if (payloadBytes < 0) {
+            throw new IllegalArgumentException("payloadBytes must be non-negative");
+        }
     }
 
     private CompletionStage<Void> capacityFailure(String message) {
@@ -730,6 +788,8 @@ public final class ZLinkAsyncSerialQueue {
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         var application = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentApplicationExecution();
+        String actorDispatch = systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentActorDispatch();
         Object serialContext = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentSerialExecutionTurn();
         CompletableFuture<T> managed = new CompletableFuture<>();
@@ -752,6 +812,8 @@ public final class ZLinkAsyncSerialQueue {
                 try (var serial = systems.zlink.framework.runtime.internal.handlers
                          .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
                              serialContext);
+                     var actor = systems.zlink.framework.runtime.internal.handlers
+                         .ZLinkSuspendInvocationContext.enterActorDispatch(actorDispatch);
                      var execution = systems.zlink.framework.runtime.internal.handlers
                          .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
                      ZLinkFlowContext.Scope ignored = flow == null
@@ -785,6 +847,8 @@ public final class ZLinkAsyncSerialQueue {
                     try (var serial = systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
                                  serialContext);
+                         var actor = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterActorDispatch(actorDispatch);
                          var execution = systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
                          ZLinkFlowContext.Scope ignored = flow == null
@@ -821,6 +885,8 @@ public final class ZLinkAsyncSerialQueue {
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         var application = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentApplicationExecution();
+        String actorDispatch = systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.currentActorDispatch();
         Object serialContext = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentSerialExecutionTurn();
         CompletableFuture<T> managed = new CompletableFuture<>();
@@ -838,6 +904,8 @@ public final class ZLinkAsyncSerialQueue {
                     try (var serial = systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(
                                  serialContext);
+                         var actor = systems.zlink.framework.runtime.internal.handlers
+                             .ZLinkSuspendInvocationContext.enterActorDispatch(actorDispatch);
                          var execution = systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.enterApplicationExecution(application);
                          ZLinkFlowContext.Scope ignored = flow == null
@@ -941,12 +1009,15 @@ public final class ZLinkAsyncSerialQueue {
                 .ZLinkSuspendInvocationContext.currentSerialExecutionTurn();
             var application = systems.zlink.framework.runtime.internal.handlers
                 .ZLinkSuspendInvocationContext.currentApplicationExecution();
+            String actorDispatch = systems.zlink.framework.runtime.internal.handlers
+                .ZLinkSuspendInvocationContext.currentActorDispatch();
             executor.execute(() -> runWithContext(
                 queue,
                 gate,
                 deferred,
                 serialTurn,
                 application,
+                actorDispatch,
                 command));
         };
     }
@@ -958,6 +1029,7 @@ public final class ZLinkAsyncSerialQueue {
         Object serialTurn,
         systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.ApplicationExecution application,
+        String actorDispatch,
         Runnable command) {
         ZLinkAsyncSerialQueue previous = CURRENT.get();
         CompletableFuture<Void> previousGate = CURRENT_GATE.get();
@@ -967,6 +1039,8 @@ public final class ZLinkAsyncSerialQueue {
         setOrRemove(CURRENT_RELEASE_DEFERRED, deferred);
         try (var serial = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterSerialExecutionTurn(serialTurn);
+             var actor = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterActorDispatch(actorDispatch);
              var execution = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(application)) {
             command.run();

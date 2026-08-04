@@ -1,6 +1,6 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { createHash } from 'node:crypto';
-import { RequestResult } from '@zlink-systems/zlink';
+import { RequestResult } from '../backend/runtime-values';
 import type {
   ActorRef,
   RoutingId,

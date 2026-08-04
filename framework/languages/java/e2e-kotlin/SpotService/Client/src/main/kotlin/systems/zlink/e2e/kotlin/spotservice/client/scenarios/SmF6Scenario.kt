@@ -9,8 +9,8 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJsonArray
 
 internal object SmF6Scenario {
     suspend fun run() {
-        val multiA = Env.get("ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT")
-        val multiB = Env.get("ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT")
+        val multiA = Env.get("e2e.multi.http.a.endpoint")
+        val multiB = Env.get("e2e.multi.http.b.endpoint")
         val suffix = UUID.randomUUID().toString().replace("-", "")
         val sourceSpotRid = "spot-sm-f6-source-$suffix"
         val targetSpotRid = "spot-sm-f6-target-$suffix"

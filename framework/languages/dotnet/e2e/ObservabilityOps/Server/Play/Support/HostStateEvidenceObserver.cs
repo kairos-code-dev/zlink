@@ -26,7 +26,7 @@ internal sealed class HostStateEvidenceObserver(
         try
         {
             await foreach (var status in runtime.ObserveAsync(stoppingToken))
-                evidence.Add($"host-state|rid={rid}|state={status.State}");
+                evidence.Add($"host-state|rid={rid}|state={status.Status.State}");
         }
         catch (OperationCanceledException)
         {
@@ -42,7 +42,7 @@ internal sealed class HostStateEvidenceObserver(
         {
             await foreach (var status in meshRuntime.ObserveAsync(
                                ObservabilityNames.PlayMesh, stoppingToken))
-                foreach (var peer in status.Peers)
+                foreach (var peer in status.Status.Peers)
                     evidence.Add(
                         $"peer-state|rid={rid}|peer={peer.NodeRid}|state={peer.State}");
         }

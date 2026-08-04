@@ -2,6 +2,7 @@
 #pragma once
 
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
 
 #include <zlink/framework/contracts/dispatch/task.hpp>
 
@@ -29,12 +30,18 @@ enum class serial_work_lane_t
 
 struct serial_execution_queue_options_t
 {
-    std::size_t application_message_capacity = 4096;
-    std::size_t application_byte_capacity = 16u * 1024u * 1024u;
-    std::size_t lifecycle_message_capacity = 1024;
-    std::size_t lifecycle_byte_capacity = 4u * 1024u * 1024u;
-    std::chrono::milliseconds owner_time_budget{50};
-    std::size_t lifecycle_burst_limit = 8;
+    std::size_t application_message_capacity =
+      dispatch_limits::application_mailbox_messages;
+    std::size_t application_byte_capacity =
+      dispatch_limits::application_mailbox_bytes;
+    std::size_t lifecycle_message_capacity =
+      dispatch_limits::control_mailbox_messages;
+    std::size_t lifecycle_byte_capacity =
+      dispatch_limits::control_mailbox_bytes;
+    std::chrono::milliseconds owner_time_budget =
+      dispatch_limits::owner_time_budget;
+    std::size_t lifecycle_burst_limit =
+      dispatch_limits::lifecycle_burst_limit;
 };
 
 struct serial_work_options_t
@@ -42,19 +49,21 @@ struct serial_work_options_t
     serial_work_lane_t lane = serial_work_lane_t::application;
     // This is the complete reservation cost: payload, metadata, envelope and
     // queue-node overhead. A zero value uses the fixed minimum reservation.
-    std::size_t byte_cost = 256;
+    std::size_t byte_cost = dispatch_limits::fixed_work_byte_cost;
 };
 
 class serial_execution_queue_t
 {
   public:
-    static constexpr std::size_t fixed_work_byte_cost = 256;
+    static constexpr std::size_t fixed_work_byte_cost =
+      dispatch_limits::fixed_work_byte_cost;
     using error_handler_t = std::function<void (const std::string &, const std::exception_ptr &)>;
     using async_completion_t = std::function<void (std::function<void ()>)>;
     using async_work_t = std::function<void (async_completion_t)>;
 
     explicit serial_execution_queue_t (offload_executor_t &executor,
-                                       std::size_t capacity = 4096,
+                                       std::size_t capacity =
+                                         dispatch_limits::application_mailbox_messages,
                                        error_handler_t error_handler = {},
                                        bool allow_yield = false);
     serial_execution_queue_t (offload_executor_t &executor,
@@ -136,13 +145,16 @@ class serial_execution_queue_t
         std::size_t byte_cost = fixed_work_byte_cost;
     };
 
-    void schedule_drain_locked ();
+    bool schedule_drain_locked ();
     void drain_loop ();
-    void complete_one (std::string name, std::function<void ()> completion);
+    void execute_item (work_item_t item);
+    void complete_one (std::string name,
+                       std::function<void ()> completion,
+                       bool allow_inline_claim = true);
     lane_state_t &lane_locked (serial_work_lane_t lane) noexcept;
     const lane_state_t &lane_locked (serial_work_lane_t lane) const noexcept;
     bool can_enqueue_locked (const serial_work_options_t &options) const noexcept;
-    void enqueue_locked (std::string name,
+    bool enqueue_locked (std::string name,
                          async_work_t work,
                          serial_work_options_t options);
     bool has_ready_locked () const noexcept;

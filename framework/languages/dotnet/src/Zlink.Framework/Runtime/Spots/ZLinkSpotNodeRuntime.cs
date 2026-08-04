@@ -1,12 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 {
     private readonly ZLinkSpotNodeBundleRegistry _bundles;
+    private readonly ZLinkActivationConcurrencyAdmission _activationAdmission;
     private readonly ZLinkFrameworkRegistration _frameworkRegistration;
     private readonly ZLinkSpotMonitoringSnapshotProvider _monitoringSnapshots;
     private readonly ZLinkSpotPeerConnectionSet _peerConnections = new();
@@ -18,6 +20,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly ZLinkCompletionAdmissionOwner _completionAdmission;
+    private readonly ZLinkTimerScheduler _timerScheduler;
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
@@ -49,6 +52,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         IZLinkChannelBackendAdapter channelAdapter,
         IZLinkBackendSpotNode node,
         ZLinkCompletionAdmissionOwner completionAdmission,
+        ZLinkTimerScheduler timerScheduler,
         string spotChannelName,
         ZLinkLocationLifecycle? locationLifecycle,
         ZLinkMeshNodeStartupState? startupState = null,
@@ -60,12 +64,28 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         Registration = registration;
         Node = node;
         _completionAdmission = completionAdmission;
+        _timerScheduler = timerScheduler;
         _locationLifecycle = locationLifecycle;
+        _activationAdmission = new(
+            registration.MaxPendingActivations,
+            active => runtime.SetActivationConcurrency(spotChannelName, active));
         if (node is IZLinkBackendActorMessageFollowIngress
             messageFollowIngress)
             messageFollowIngress.SetActorMessageFollowIngressHandler(
                 parts => ZLinkActorHandoffIngress
                     .TryCaptureOrFollowStaleManagedIngress(runtime, parts));
+        if (node is IZLinkBackendMessageFollowNotifications
+            messageFollowNotifications)
+        {
+            messageFollowNotifications.SetMessageFollowNotificationHandler(
+                (sourceNodeRid, record) =>
+                {
+                    if (sourceNodeRid != record.Source.TargetNodeRid)
+                        return;
+                    services.GetService<ZLinkStoreLocationResolvers>()
+                        ?.InvalidateMessageFollowRoute(record);
+                });
+        }
         if (locationLifecycle is not null)
         {
             if (node is not IZLinkBackendAuthorityObserver authorityObserver)
@@ -113,7 +133,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node,
             spotChannelName,
             _completionAdmission,
-            locationLifecycle);
+            locationLifecycle,
+            _timerScheduler,
+            _activationAdmission);
         _spots.StartIdleEviction();
         if (frameworkRegistration.Locations.ResolveStore() is not null
             && node is IZLinkBackendRelocationReplyRelay relayBackend)
@@ -250,6 +272,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public IZLinkBackendSpotNode Node { get; }
 
     internal ZLinkSpotNodeRegistration Registration { get; }
+
+    internal ZLinkActivationConcurrencyAdmission ActivationAdmission =>
+        _activationAdmission;
 
     internal async ValueTask<(
         UserSpotCreateCompletion Completion,
@@ -1020,7 +1045,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 Registration.SpotNodeName,
                 Registration.SpotMeshChannelName ?? Registration.SpotNodeName,
                 _frameworkRegistration.DefaultRequestTimeout,
-                EntryOutbound);
+                EntryOutbound,
+                _timerScheduler);
             activation.InitializeRuntimeResources(_completionAdmission);
             foreach (var handler in _frameworkRegistration.ScannedHandlerCatalog.SpotHandlers)
                 await activation.ApplyScannedHandlerAsync(handler, _stopSource.Token)

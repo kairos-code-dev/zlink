@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
+#include "runtime/streams/stream_runtime.hpp"
+
+#include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -149,7 +152,7 @@ int stale_session_unbind_preserves_rebind ()
 
     gateway.bind_session_sink (
       actor,
-      [] (std::string, const zlink::message_t &) {
+      [] (std::string, stream_codec_t, const zlink::message_t &) {
           return task_t<void> (result_t<void>::success ());
       });
     gateway.bind_session_stream (
@@ -203,6 +206,101 @@ int actor_send_is_one_shot ()
         rejected = error.kind () == framework_error_kind_t::protocol_error;
     }
     return rejected && client.attempts.load () == 1 ? 0 : 2;
+}
+
+int get_or_create_does_not_reuse_disconnected_record ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    const actor_ref_t stale (
+      node_rid_t::from_string ("actor-node-old"), "player", "actor-reconnect", 7);
+    const actor_ref_t current (
+      node_rid_t::from_string ("actor-node-new"), "player", "actor-reconnect", 8);
+    {
+        const std::lock_guard lock (state->mutex);
+        state->actors_by_id.emplace (
+          "actor-reconnect", actor_record_t{stale, false, true});
+        state->bound_session_sinks.emplace (
+          "actor-reconnect",
+          [] (std::string, stream_codec_t, const zlink::message_t &) {
+              return task_t<void> (result_t<void>::success ());
+          });
+        state->create_dispatcher =
+          [current] (std::string, std::string,
+                     const std::optional<zlink::message_t> &) {
+              return result_t<actor_ref_t>::success (current);
+          };
+    }
+
+    actor_gateway_runtime_t gateway (state);
+    auto manager = gateway.manager ();
+    const auto created = manager.get_or_create ("player", "actor-reconnect");
+    if (!created || created.value ().ref ().node_rid ().value () != "actor-node-new"
+        || created.value ().ref ().generation () != 8) {
+        return 1;
+    }
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto found = state->actors_by_id.find ("actor-reconnect");
+        if (found == state->actors_by_id.end ()
+            || found->second.ref.node_rid ().value () != "actor-node-new"
+            || found->second.disconnected
+            || state->bound_session_sinks.contains ("actor-reconnect")) {
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int get_or_create_refreshes_foreign_session_record ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    const actor_ref_t stale (
+      node_rid_t::from_string ("actor-node-old"), "player", "actor-foreign", 7);
+    const actor_ref_t current (
+      node_rid_t::from_string ("actor-node-current"), "player", "actor-foreign", 7);
+    {
+        const std::lock_guard lock (state->mutex);
+        state->actors_by_id.emplace (
+          "actor-foreign", actor_record_t{stale, true, false});
+        state->create_dispatcher =
+          [current] (std::string, std::string,
+                     const std::optional<zlink::message_t> &) {
+              return result_t<actor_ref_t>::success (current);
+          };
+    }
+
+    actor_gateway_runtime_t gateway (state);
+    gateway.bind_session_stream (
+      "actor-foreign", stream_t{}, stream_codec_t::message_pack, "session-old", 11);
+    auto manager = gateway.manager ();
+
+    zlink::framework::zlink_builder_t builder;
+    builder.stream ("foreign-session-test").bind ("tcp://127.0.0.1:0");
+    auto runtime = stream_runtime_t::from (builder);
+    auto stream = runtime.open_session ("foreign-session-test");
+    session_actor_manager_access_t::attach (manager, std::move (stream));
+
+    const auto refreshed = manager.get_or_create ("player", "actor-foreign");
+    if (!refreshed || refreshed.value ().ref ().node_rid ().value () != "actor-node-current") {
+        return 1;
+    }
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto found = state->actors_by_id.find ("actor-foreign");
+        if (found == state->actors_by_id.end ()
+            || found->second.ref.node_rid ().value () != "actor-node-current"
+            || found->second.binding_session_id == "session-old"
+            || state->bound_session_sinks.contains ("actor-foreign")) {
+            return 2;
+        }
+    }
+    return 0;
 }
 
 int session_disconnect_is_all_settled_and_token_fenced ()
@@ -433,7 +531,7 @@ int bound_session_route_preserves_private_fences ()
       node_rid_t::from_string ("actor-node"), "player", "actor-fenced", 7);
     gateway.bind_session_sink (
       actor,
-      [] (std::string, const zlink::message_t &) {
+      [] (std::string, stream_codec_t, const zlink::message_t &) {
           return task_t<void> (result_t<void>::success ());
       });
     gateway.record_bound_session_route (
@@ -451,7 +549,7 @@ int bound_session_route_preserves_private_fences ()
         return 1;
     }
     if (!gateway.dispatch_bound_session_send (
-          actor, "push", zlink::message_t{})) {
+          actor, "push", stream_codec_t::json, zlink::message_t{})) {
         return 2;
     }
     const auto advanced = gateway.bound_session_route (actor);
@@ -489,6 +587,12 @@ int main ()
     const auto one_shot = actor_send_is_one_shot ();
     if (one_shot != 0)
         return 10 + one_shot;
+    const auto reconnect = get_or_create_does_not_reuse_disconnected_record ();
+    if (reconnect != 0)
+        return 15 + reconnect;
+    const auto foreign = get_or_create_refreshes_foreign_session_record ();
+    if (foreign != 0)
+        return 17 + foreign;
     const auto disconnected =
       session_disconnect_is_all_settled_and_token_fenced ();
     if (disconnected != 0)

@@ -9747,7 +9747,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90",
+        "dotnet:block:a4edeb52313fe926c928",
         "dotnet:block:9613f2fc4045441217c5",
         "dotnet:block:d4b9fef464b5d8bb5dae",
         "dotnet:block:06f480746a642ba10642",
@@ -11078,7 +11078,7 @@
     {
       "heading": "5. ClientServer",
       "ordinal": 3,
-      "startLine": 292,
+      "startLine": 293,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery",
@@ -11289,7 +11289,7 @@
     {
       "heading": "6. Fanout",
       "ordinal": 4,
-      "startLine": 335,
+      "startLine": 336,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery",
@@ -11356,7 +11356,7 @@
     {
       "heading": "3. 공통 topology 상태",
       "ordinal": 1,
-      "startLine": 190,
+      "startLine": 191,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery",
@@ -11389,7 +11389,7 @@
     {
       "heading": "8. Dispatch policy와 diagnostics",
       "ordinal": 5,
-      "startLine": 389,
+      "startLine": 390,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery",
@@ -11401,6 +11401,22 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "role": "package-contract",
       "sha256": "27bd3db4c2b222226c60bf52619aba50afda129af0018436403f482496d2dde1"
+    },
+    {
+      "heading": "2. Host lifecycle",
+      "ordinal": 0,
+      "startLine": 25,
+      "tag": "csharp",
+      "categoryIds": [
+        "topology-discovery",
+        "observability-diagnostics"
+      ],
+      "document": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
+      "id": "dotnet:block:a4edeb52313fe926c928",
+      "language": "dotnet",
+      "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
+      "role": "package-contract",
+      "sha256": "55c01b4e494188c1b6e313cb29c0a3ef27cace857adb2669c9cb9bec8225c11e"
     },
     {
       "heading": "1. Node direct와 ChannelName",
@@ -11530,7 +11546,7 @@
     {
       "heading": "4. RouteMesh",
       "ordinal": 2,
-      "startLine": 241,
+      "startLine": 242,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery",
@@ -11587,22 +11603,6 @@
       "ownershipProfileId": "ownership:f1fe3dff15f3f0c7bd0f",
       "role": "package-contract",
       "sha256": "e8696029a084df1c9cc770c43bf580fdfd819580cd76e0da7740c2aeeb85af3f"
-    },
-    {
-      "heading": "2. Host lifecycle",
-      "ordinal": 0,
-      "startLine": 25,
-      "tag": "csharp",
-      "categoryIds": [
-        "topology-discovery",
-        "observability-diagnostics"
-      ],
-      "document": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
-      "id": "dotnet:block:e6f4752cddcbed821e90",
-      "language": "dotnet",
-      "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
-      "role": "package-contract",
-      "sha256": "66e3288f032dde983c889a94a36f73a66260dc42c415155f81c2b70ae368f536"
     },
     {
       "heading": "3. Host 등록",
@@ -21841,7 +21841,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -21856,7 +21856,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24825,7 +24825,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24840,7 +24840,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24854,7 +24854,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24869,7 +24869,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24883,7 +24883,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24898,7 +24898,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24912,7 +24912,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24927,7 +24927,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24941,7 +24941,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24956,7 +24956,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24970,7 +24970,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -24985,7 +24985,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -24999,7 +24999,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25014,7 +25014,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25028,7 +25028,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25043,7 +25043,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25057,7 +25057,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25072,7 +25072,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25086,7 +25086,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25101,7 +25101,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25202,7 +25202,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25217,7 +25217,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25610,7 +25610,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25625,7 +25625,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -25639,7 +25639,7 @@
         "observability-diagnostics"
       ],
       "codeBlockIds": [
-        "dotnet:block:e6f4752cddcbed821e90"
+        "dotnet:block:a4edeb52313fe926c928"
       ],
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -25654,7 +25654,7 @@
       "representationSources": [
         {
           "codeBlockIds": [
-            "dotnet:block:e6f4752cddcbed821e90"
+            "dotnet:block:a4edeb52313fe926c928"
           ],
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md"
         }
@@ -92646,7 +92646,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkClientServerRuntime.GetStatus#328cd2a16104cf54",
       "kind": "method",
       "language": "dotnet",
-      "line": 316,
+      "line": 317,
       "memberName": "GetStatus",
       "ownerIdentity": "Zlink.Framework::IZLinkClientServerRuntime",
       "packages": [
@@ -92679,7 +92679,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkClientServerRuntime.ObserveAsync#a47e04ba20249176",
       "kind": "method",
       "language": "dotnet",
-      "line": 317,
+      "line": 318,
       "memberName": "ObserveAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkClientServerRuntime",
       "packages": [
@@ -92845,7 +92845,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkDiagnosticsOptions.IncludeMessageSizes#0bd51964d124fea2",
       "kind": "method",
       "language": "dotnet",
-      "line": 415,
+      "line": 416,
       "memberName": "IncludeMessageSizes",
       "ownerIdentity": "Zlink.Framework::IZLinkDiagnosticsOptions",
       "packages": [
@@ -92878,7 +92878,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkDiagnosticsOptions.SetLevel#210f474b7d19b62b",
       "kind": "method",
       "language": "dotnet",
-      "line": 413,
+      "line": 414,
       "memberName": "SetLevel",
       "ownerIdentity": "Zlink.Framework::IZLinkDiagnosticsOptions",
       "packages": [
@@ -92911,7 +92911,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkDiagnosticsOptions.SetSampleRate#74de84077ab355c1",
       "kind": "method",
       "language": "dotnet",
-      "line": 414,
+      "line": 415,
       "memberName": "SetSampleRate",
       "ownerIdentity": "Zlink.Framework::IZLinkDiagnosticsOptions",
       "packages": [
@@ -93689,7 +93689,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFanoutRuntime.GetStatus#5a27939fb93a1881",
       "kind": "method",
       "language": "dotnet",
-      "line": 345,
+      "line": 346,
       "memberName": "GetStatus",
       "ownerIdentity": "Zlink.Framework::IZLinkFanoutRuntime",
       "packages": [
@@ -93722,7 +93722,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFanoutRuntime.ObserveAsync#41831136f20d9b96",
       "kind": "method",
       "language": "dotnet",
-      "line": 346,
+      "line": 347,
       "memberName": "ObserveAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkFanoutRuntime",
       "packages": [
@@ -94281,14 +94281,14 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.ObserveAsync#81d0740bb9dbfcc7",
       "kind": "method",
       "language": "dotnet",
-      "line": 123,
+      "line": 124,
       "memberName": "ObserveAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkFrameworkRuntime",
       "packages": [
@@ -94300,7 +94300,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.ObserveAsync#81d0740bb9dbfcc7",
           "signatureSha256": "81d0740bb9dbfcc7cbc9e361b61f6396b8c14f46b557b3cb8ecba0688e7e179f"
@@ -94314,14 +94314,14 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.RelocateAsync#ace1d0b45ca4176c",
       "kind": "method",
       "language": "dotnet",
-      "line": 126,
+      "line": 127,
       "memberName": "RelocateAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkFrameworkRuntime",
       "packages": [
@@ -94333,7 +94333,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.RelocateAsync#ace1d0b45ca4176c",
           "signatureSha256": "ace1d0b45ca4176c794d7865b9ecf382a290989b1cfacd6e6a82494259c522bc"
@@ -94347,14 +94347,14 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.ShutdownAsync#6acca7f5a1506e5f",
       "kind": "method",
       "language": "dotnet",
-      "line": 130,
+      "line": 131,
       "memberName": "ShutdownAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkFrameworkRuntime",
       "packages": [
@@ -94366,7 +94366,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkFrameworkRuntime.ShutdownAsync#6acca7f5a1506e5f",
           "signatureSha256": "6acca7f5a1506e5f18871ed13f99f3c5afc56e7882e081450b86ebd815d2d5be"
@@ -96454,7 +96454,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteMeshRuntime.GetStatus#e710a94c05f69357",
       "kind": "method",
       "language": "dotnet",
-      "line": 259,
+      "line": 260,
       "memberName": "GetStatus",
       "ownerIdentity": "Zlink.Framework::IZLinkRouteMeshRuntime",
       "packages": [
@@ -96487,7 +96487,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteMeshRuntime.ObserveAsync#5d08cac694cdcaa4",
       "kind": "method",
       "language": "dotnet",
-      "line": 260,
+      "line": 261,
       "memberName": "ObserveAsync",
       "ownerIdentity": "Zlink.Framework::IZLinkRouteMeshRuntime",
       "packages": [
@@ -101146,7 +101146,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkChannelStatus.ZLinkChannelStatus#4e139a8ee1cccfa1",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 220,
+      "line": 221,
       "memberName": "ZLinkChannelStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkChannelStatus",
       "packages": [
@@ -101181,7 +101181,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkClientServerRole.Client#085211f934f1396b",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 293,
+      "line": 294,
       "memberName": "Client",
       "ownerIdentity": "Zlink.Framework::ZLinkClientServerRole",
       "packages": [
@@ -101216,7 +101216,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkClientServerRole.ClientAndServer#78bd8e126267d3fd",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 295,
+      "line": 296,
       "memberName": "ClientAndServer",
       "ownerIdentity": "Zlink.Framework::ZLinkClientServerRole",
       "packages": [
@@ -101251,7 +101251,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkClientServerRole.Server#bb9f4edc02611260",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 294,
+      "line": 295,
       "memberName": "Server",
       "ownerIdentity": "Zlink.Framework::ZLinkClientServerRole",
       "packages": [
@@ -101286,7 +101286,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkClientServerStatus.ZLinkClientServerStatus#06a930d65d33de6e",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 305,
+      "line": 306,
       "memberName": "ZLinkClientServerStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkClientServerStatus",
       "packages": [
@@ -101321,7 +101321,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkClientServerTargetStatus.ZLinkClientServerTargetStatus#2a1e2a78114106fc",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 299,
+      "line": 300,
       "memberName": "ZLinkClientServerTargetStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkClientServerTargetStatus",
       "packages": [
@@ -101356,7 +101356,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkDiagnosticsLevel.Detailed#2f72754ede765a5b",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 408,
+      "line": 409,
       "memberName": "Detailed",
       "ownerIdentity": "Zlink.Framework::ZLinkDiagnosticsLevel",
       "packages": [
@@ -101391,7 +101391,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkDiagnosticsLevel.Errors#4f079f291e5fc664",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 406,
+      "line": 407,
       "memberName": "Errors",
       "ownerIdentity": "Zlink.Framework::ZLinkDiagnosticsLevel",
       "packages": [
@@ -101426,7 +101426,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkDiagnosticsLevel.Normal#8fc04b9cb119b4d1",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 407,
+      "line": 408,
       "memberName": "Normal",
       "ownerIdentity": "Zlink.Framework::ZLinkDiagnosticsLevel",
       "packages": [
@@ -101461,7 +101461,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkDiagnosticsLevel.Off#d6750cbfa9a6526a",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 405,
+      "line": 406,
       "memberName": "Off",
       "ownerIdentity": "Zlink.Framework::ZLinkDiagnosticsLevel",
       "packages": [
@@ -101826,7 +101826,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFanoutStatus.ZLinkFanoutStatus#57e9399e48931098",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 335,
+      "line": 336,
       "memberName": "ZLinkFanoutStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkFanoutStatus",
       "packages": [
@@ -102326,7 +102326,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102347,7 +102347,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationMode.PlannedMaintenance#e31c7560a09eb024",
           "signatureSha256": "e31c7560a09eb024cdb8054bc3c9b0d727069c77a337bbb8b936690e70de560c"
@@ -102361,7 +102361,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102382,7 +102382,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationMode.RollingUpdate#43dd0545a63cd1b9",
           "signatureSha256": "43dd0545a63cd1b9880d0e5e72bc97d1aa06d98fb3499772bbd7deb0b0a5eb0e"
@@ -102396,7 +102396,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
@@ -102415,7 +102415,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationOptions.Deadline#90b58c5110f91286",
           "signatureSha256": "90b58c5110f91286d06a04f925169e444a10f21aa0edf5056ac875cd516fa537"
@@ -102429,7 +102429,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
@@ -102448,7 +102448,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationOptions.Mode#89fd3351cac313f1",
           "signatureSha256": "89fd3351cac313f1f412e9a49abe1ee97961e1627325b47eb5ec4b69f4636cd6"
@@ -102462,7 +102462,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [],
@@ -102481,7 +102481,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationOptions.TargetApplicationVersion#9320f5df1db21475",
           "signatureSha256": "9320f5df1db21475baf382546d514076fed2a23a79f221f69f2db9543cbf4b14"
@@ -102495,7 +102495,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102516,7 +102516,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationOutcome.Blocked#c3a765ed043a214d",
           "signatureSha256": "c3a765ed043a214d948a7ba765df0aeb4094a993ec483cab4fec25f24516c502"
@@ -102530,7 +102530,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102551,7 +102551,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationOutcome.Relocated#af5718c53eb6266a",
           "signatureSha256": "af5718c53eb6266a8dfe0135244eeaceabe3fc504eca8bdf1123c94f951d83be"
@@ -102565,7 +102565,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102586,7 +102586,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.DeadlineExceeded#0e9fe1c1893b237d",
           "signatureSha256": "0e9fe1c1893b237d1876d853efc4673935964ed5a8c03be9f7bf7457deeda05f"
@@ -102600,7 +102600,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102621,7 +102621,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.ManualTopologyUnsupported#7e3530b852639c7a",
           "signatureSha256": "7e3530b852639c7a71a08b108defc739caecc7eee92f51184df562720b89eedd"
@@ -102635,7 +102635,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102656,7 +102656,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.None#bad2c96574768468",
           "signatureSha256": "bad2c96574768468faefa3b453e98a4fed8adf600061cdd6a0a4b65da641046a"
@@ -102670,7 +102670,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102691,7 +102691,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.OperationInProgress#a2743accf7aa34e4",
           "signatureSha256": "a2743accf7aa34e4698443693fae4d9a67d315e2550e2da626ebc7dcbd771e26"
@@ -102705,7 +102705,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102726,7 +102726,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.RelocationDisabled#be50d0020fd36eea",
           "signatureSha256": "be50d0020fd36eea02025a787e34ef41b3a1b30ed92089cc9c2c639bfcdfb8b3"
@@ -102740,7 +102740,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102761,7 +102761,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.RelocationFailed#a228716c3e53917a",
           "signatureSha256": "a228716c3e53917a6a0799a1305316e9f824554e29e55337910212715349af21"
@@ -102775,7 +102775,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102796,7 +102796,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.RuntimeNotReady#5fb8f1f5c413e544",
           "signatureSha256": "5fb8f1f5c413e5443bb84df18ae3a55e3e9e45f189aa2ed3e7bc172d69940531"
@@ -102810,7 +102810,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102831,7 +102831,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.ShutdownRequested#c69694e558874ffc",
           "signatureSha256": "c69694e558874ffc18137849ac3d0cff7c3a2fc0b9246f0511a825b36405b575"
@@ -102845,7 +102845,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102866,7 +102866,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.StateIncompatible#d6ec234430ce5e78",
           "signatureSha256": "d6ec234430ce5e785022d8ad93b8ba586ed81bf8e81507433d4b66ab0d8c0d81"
@@ -102880,7 +102880,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102901,7 +102901,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.StoreUnavailable#0af6fb80a8f91309",
           "signatureSha256": "0af6fb80a8f913091b7800d7ae8472d0a44abe141d112790a25467601b8b3fea"
@@ -102915,7 +102915,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102936,7 +102936,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationReason.TargetUnavailable#266db38b5008c26e",
           "signatureSha256": "266db38b5008c26e8bec830c0167802a790d3f43a382f2df7b9c20f0aaec7b68"
@@ -102950,7 +102950,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -102971,7 +102971,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRelocationResult.ZLinkFrameworkRelocationResult#4686c8b9cb13d423",
           "signatureSha256": "4686c8b9cb13d42384775b1216cbc1d895f8f5c6694f5d8389cc4ef430792a14"
@@ -102985,7 +102985,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103006,7 +103006,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Draining#35c5dec7922a0cfb",
           "signatureSha256": "35c5dec7922a0cfb7ec1c0de0294fd6944374ab8e0211d24d3e5c6883121887f"
@@ -103020,7 +103020,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103041,7 +103041,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Error#df366e6fabc803b7",
           "signatureSha256": "df366e6fabc803b791f793234f6d7b59691ce6a8ad9af9a73495e6c299518f22"
@@ -103055,7 +103055,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103076,7 +103076,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Preparing#fa76212330de4c89",
           "signatureSha256": "fa76212330de4c89e5545e27ea4d25e06002f4acfc348f0fe53fbbeafc8d3106"
@@ -103090,7 +103090,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103111,7 +103111,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Relocated#17cfe74204c47b56",
           "signatureSha256": "17cfe74204c47b56f36f8beb3c17b3a231e40cdaa6b087106ee6aafaeb70bdfd"
@@ -103125,7 +103125,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103146,7 +103146,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Relocating#4fd9651dda759df7",
           "signatureSha256": "4fd9651dda759df7e4eb199424b4a5a3d15a287b92c7cffa81e6f2e3ad3b2f46"
@@ -103160,7 +103160,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103181,7 +103181,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Serving#d501b09d974ddcf7",
           "signatureSha256": "d501b09d974ddcf7a0b50215339ab48b71764f87d93bf5975921fc09472fdd82"
@@ -103195,7 +103195,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103216,7 +103216,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeState.Stopped#ec35d59c7fb80682",
           "signatureSha256": "ec35d59c7fb8068264bd64227a063c27d5017b8983566f55efd4affce2b666df"
@@ -103230,7 +103230,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103239,7 +103239,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeStatus.ZLinkFrameworkRuntimeStatus#d27d417e26382cb0",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 110,
+      "line": 111,
       "memberName": "ZLinkFrameworkRuntimeStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkFrameworkRuntimeStatus",
       "packages": [
@@ -103251,7 +103251,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkRuntimeStatus.ZLinkFrameworkRuntimeStatus#d27d417e26382cb0",
           "signatureSha256": "d27d417e26382cb0a567443a0075725e66902650552ac617e489c8b7bfbd4466"
@@ -103265,7 +103265,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103286,7 +103286,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationOutcome.ForceStopped#5bc292dda8d45588",
           "signatureSha256": "5bc292dda8d45588dcb764dfc0f48539583bc55b9a56a2a308a08085b505345c"
@@ -103300,7 +103300,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103321,7 +103321,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationOutcome.Stopped#f51b47ed823bdf63",
           "signatureSha256": "f51b47ed823bdf63166adc53fb7cc4e03671725cb96fcf257a6a68d2dbc76258"
@@ -103335,7 +103335,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103356,7 +103356,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationReason.DeadlineExceeded#2ce89b003a31cb02",
           "signatureSha256": "2ce89b003a31cb02e5ea49d669182a601025e1d226dd1ed3b6d99013da84cde1"
@@ -103370,7 +103370,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103391,7 +103391,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationReason.None#bad2c96574768468",
           "signatureSha256": "bad2c96574768468faefa3b453e98a4fed8adf600061cdd6a0a4b65da641046a"
@@ -103405,7 +103405,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103426,7 +103426,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationReason.TeardownFailed#27b91ceb2edcf6d5",
           "signatureSha256": "27b91ceb2edcf6d5f991f913096c3d9d971fce846dd55020cdb3fea6c3c6b626"
@@ -103440,7 +103440,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103461,7 +103461,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkFrameworkTerminationResult.ZLinkFrameworkTerminationResult#0e2b8e0b318b4188",
           "signatureSha256": "0e2b8e0b318b41888df1094e82ffd5da82946c967e22cb999856e55eca7ef6d2"
@@ -103681,7 +103681,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -103690,7 +103690,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkInboundDispatchStatus.ZLinkInboundDispatchStatus#c73eebcbb2e328de",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 101,
+      "line": 102,
       "memberName": "ZLinkInboundDispatchStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkInboundDispatchStatus",
       "packages": [
@@ -103702,7 +103702,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkInboundDispatchStatus.ZLinkInboundDispatchStatus#c73eebcbb2e328de",
           "signatureSha256": "c73eebcbb2e328deb15ab9afad62045da86f2e16889a211c79530a1035cf4231"
@@ -105484,7 +105484,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -105505,7 +105505,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkObservationLoss.ZLinkObservationLoss#ef7e5eaa6710fdc2",
           "signatureSha256": "ef7e5eaa6710fdc257410e5b8d6598929258415082a50dd5d0a54df0681ebcea"
@@ -105519,7 +105519,7 @@
         "topology-discovery",
         "observability-diagnostics"
       ],
-      "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+      "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
       "disposition": "v11-first-implementation",
       "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
       "facets": [
@@ -105540,7 +105540,7 @@
       "ownershipProfileId": "ownership:4d3af0a0b1bbe9c0fccd",
       "representationSources": [
         {
-          "codeBlockId": "dotnet:block:e6f4752cddcbed821e90",
+          "codeBlockId": "dotnet:block:a4edeb52313fe926c928",
           "exactInterface": "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md",
           "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkObservedStatus.ZLinkObservedStatus#5a9f81286e1d7bdb",
           "signatureSha256": "5a9f81286e1d7bdb131fbc893a67174bbf39917d9741271372571bbd40d76793"
@@ -105634,7 +105634,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerState.Connecting#8f47b91872b04326",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 212,
+      "line": 213,
       "memberName": "Connecting",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerState",
       "packages": [
@@ -105669,7 +105669,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerState.Draining#09809aa01b0e7879",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 214,
+      "line": 215,
       "memberName": "Draining",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerState",
       "packages": [
@@ -105704,7 +105704,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerState.NotConnected#6018ca0e3f335e3a",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 215,
+      "line": 216,
       "memberName": "NotConnected",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerState",
       "packages": [
@@ -105739,7 +105739,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerState.NotRequired#c736b48c0389e03b",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 216,
+      "line": 217,
       "memberName": "NotRequired",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerState",
       "packages": [
@@ -105774,7 +105774,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerState.Ready#4a9040f6c4518d7d",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 213,
+      "line": 214,
       "memberName": "Ready",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerState",
       "packages": [
@@ -105809,7 +105809,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPeerStatus.ZLinkPeerStatus#25d43c8ee7fcddbf",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 225,
+      "line": 226,
       "memberName": "ZLinkPeerStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkPeerStatus",
       "packages": [
@@ -105844,7 +105844,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkPlacementStatus.ZLinkPlacementStatus#9c37f7f587047135",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 241,
+      "line": 242,
       "memberName": "ZLinkPlacementStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkPlacementStatus",
       "packages": [
@@ -106889,7 +106889,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkRouteMeshStatus.ZLinkRouteMeshStatus#7b3a69059beb7675",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 247,
+      "line": 248,
       "memberName": "ZLinkRouteMeshStatus",
       "ownerIdentity": "Zlink.Framework::ZLinkRouteMeshStatus",
       "packages": [
@@ -109686,7 +109686,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.CapacityExceeded#06f9b94dfd41ade7",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 205,
+      "line": 206,
       "memberName": "CapacityExceeded",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109721,7 +109721,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.Draining#997f0b0c874ab390",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 206,
+      "line": 207,
       "memberName": "Draining",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109756,7 +109756,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.InternalFailure#b631e213b8ee5026",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 207,
+      "line": 208,
       "memberName": "InternalFailure",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109791,7 +109791,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.LocationUnavailable#835051202620bdf9",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 204,
+      "line": 205,
       "memberName": "LocationUnavailable",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109826,7 +109826,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.NoReadyPeer#c2d06a6764e808db",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 202,
+      "line": 203,
       "memberName": "NoReadyPeer",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109861,7 +109861,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.NoReadyTarget#d68de806536c60d0",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 203,
+      "line": 204,
       "memberName": "NoReadyTarget",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109896,7 +109896,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyReason.RuntimeNotReady#b36445f0158cf8fe",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 201,
+      "line": 202,
       "memberName": "RuntimeNotReady",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyReason",
       "packages": [
@@ -109931,7 +109931,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Degraded#a1fbdbebef4f2419",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 193,
+      "line": 194,
       "memberName": "Degraded",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -109966,7 +109966,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Failed#f0ac6f1970f78d63",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 196,
+      "line": 197,
       "memberName": "Failed",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -110001,7 +110001,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Ready#4a9040f6c4518d7d",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 192,
+      "line": 193,
       "memberName": "Ready",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -110036,7 +110036,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Starting#84f6a75f3a1f81fd",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 191,
+      "line": 192,
       "memberName": "Starting",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -110071,7 +110071,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Stopped#91bca4834ff35d1e",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 195,
+      "line": 196,
       "memberName": "Stopped",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -110106,7 +110106,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkTopologyState.Stopping#ddf874bd8e2c4a71",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 194,
+      "line": 195,
       "memberName": "Stopping",
       "ownerIdentity": "Zlink.Framework::ZLinkTopologyState",
       "packages": [
@@ -110141,7 +110141,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkUnhandledDispatchAction.Drop#b5ba871733c29b20",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 392,
+      "line": 393,
       "memberName": "Drop",
       "ownerIdentity": "Zlink.Framework::ZLinkUnhandledDispatchAction",
       "packages": [
@@ -110176,7 +110176,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkUnhandledDispatchAction.LogAndDrop#043a093332515d72",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 391,
+      "line": 392,
       "memberName": "LogAndDrop",
       "ownerIdentity": "Zlink.Framework::ZLinkUnhandledDispatchAction",
       "packages": [
@@ -110211,7 +110211,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkUnhandledDispatchAction.ReplyError#42e44a1cae0f8904",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 390,
+      "line": 391,
       "memberName": "ReplyError",
       "ownerIdentity": "Zlink.Framework::ZLinkUnhandledDispatchAction",
       "packages": [
@@ -110246,7 +110246,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkUnhandledDispatchAction.Throw#b18793a9c3a44246",
       "kind": "enum-value",
       "language": "dotnet",
-      "line": 393,
+      "line": 394,
       "memberName": "Throw",
       "ownerIdentity": "Zlink.Framework::ZLinkUnhandledDispatchAction",
       "packages": [

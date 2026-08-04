@@ -5,14 +5,17 @@
 #include <cstddef>
 #include <limits>
 
+#include "runtime/dispatch/dispatch_limits.hpp"
+
 namespace zlink::framework::runtime
 {
 
 struct receive_batch_budget_t
 {
-    std::size_t max_messages = 64;
-    std::size_t max_bytes = 4u * 1024u * 1024u;
-    std::chrono::milliseconds max_elapsed{5};
+    std::size_t max_messages = dispatch_limits::receive_batch_messages;
+    std::size_t max_bytes = dispatch_limits::receive_batch_bytes;
+    std::chrono::milliseconds max_elapsed =
+      dispatch_limits::receive_batch_time;
     std::size_t messages = 0;
     std::size_t bytes = 0;
     std::chrono::steady_clock::time_point started =

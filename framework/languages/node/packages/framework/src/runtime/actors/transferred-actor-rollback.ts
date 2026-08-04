@@ -4,7 +4,7 @@ import type {
   ZLinkBackendMeshNode
 } from '../backend/contracts';
 import { closeMeshCompletion } from '../backend';
-import { RequestResult } from '@zlink-systems/zlink';
+import { RequestResult } from '../backend/runtime-values';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import { ZLinkActorRetryDelay } from './actor-retry-delay';

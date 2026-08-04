@@ -2,12 +2,12 @@ namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
 /// Drives one reconciler: polling is the correctness path, a change stamp
-/// makes empty ticks O(1), and watch events (when the store supports them)
-/// only wake the next tick early. Event loss is tolerated because the next
-/// polling tick reaches the same state. The desired target set is a join of
-/// peer rows and owner leases, so the skip requires both an unchanged stamp
-/// and an unchanged live owner set: an owner appearing or expiring changes
-/// the join without any row write.
+/// makes empty ticks O(1) when no owner-lease join is active, and watch events
+/// (when the store supports them) only wake the next tick early. Event loss is
+/// tolerated because the next polling tick reaches the same state. When the
+/// desired target set includes owner leases, the loop does not use the row
+/// stamp as a skip signal: an owner appearing or expiring changes the join
+/// without any row write, and the repository has no global owner-set stamp.
 /// </summary>
 internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 {
@@ -25,7 +25,6 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
     private Task? _loop;
     private Task? _watch;
     private ulong? _lastStamp;
-    private long? _lastLiveOwnerSetVersion;
     private bool _lastTickFailed;
 
     internal ZLinkAutoConnectLoop(
@@ -135,9 +134,8 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 
-    /// <summary>Runs one reconcile tick, letting the change stamp skip the
-    /// list read when neither the rows nor the live owner set changed since
-    /// the last successful tick.</summary>
+    /// <summary>Runs one reconcile tick. A row change stamp can skip the list
+    /// read only when no owner-lease join is part of the target set.</summary>
     internal async ValueTask TickAsync(CancellationToken cancellationToken = default)
     {
         if (!_lastTickFailed)
@@ -150,12 +148,8 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
                     .ConfigureAwait(false);
                 if (stamp is not null)
                 {
-                    var liveOwners = _leaseTracker is null
-                        ? 0
-                        : await _leaseTracker.GetLiveOwnerSetVersionAsync(cancellationToken)
-                            .ConfigureAwait(false);
-                    if (_lastStamp == stamp
-                        && _lastLiveOwnerSetVersion == liveOwners
+                    if (_leaseTracker is null
+                        && _lastStamp == stamp
                         && !_reconciler.HasPendingTargets)
                     {
                         return;
@@ -165,7 +159,6 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
                     if (!_lastTickFailed)
                     {
                         _lastStamp = stamp;
-                        _lastLiveOwnerSetVersion = liveOwners;
                     }
 
                     return;
@@ -188,13 +181,27 @@ internal sealed class ZLinkAutoConnectLoop : IAsyncDisposable
 
         await RunReconcileAsync(cancellationToken).ConfigureAwait(false);
         _lastStamp = null;
-        _lastLiveOwnerSetVersion = null;
     }
 
     private async ValueTask RunReconcileAsync(CancellationToken cancellationToken)
     {
         await _reconciler.TickAsync(cancellationToken).ConfigureAwait(false);
         _lastTickFailed = _reconciler.StoreFailed;
+    }
+
+    internal void Wake()
+    {
+        try
+        {
+            if (_wake.CurrentCount == 0)
+                _wake.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (SemaphoreFullException)
+        {
+        }
     }
 
     private async Task LoopAsync(CancellationToken cancellationToken)

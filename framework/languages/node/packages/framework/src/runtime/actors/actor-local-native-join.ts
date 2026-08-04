@@ -1,6 +1,6 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
 import { randomUUID } from 'node:crypto';
-import { RequestResult } from '@zlink-systems/zlink';
+import { RequestResult } from '../backend/runtime-values';
 import type {
   ActorRef,
   RoutingId,
@@ -29,7 +29,7 @@ import {
 import type { ZLinkRemoteBoundSessionTarget } from './actor-runtime-state';
 import type { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
 import type { ZLinkPostCommitActorLocation } from './post-commit-actor-location';
-import { toBindingRoutingId } from '../routing-id';
+import { toBackendRoutingId as toBackendRoutingId } from '../routing-id';
 import { routingIdsEqual } from '../routing-id';
 import type {
   ZLinkActorSourceTransfer,
@@ -134,8 +134,8 @@ export class ZLinkLocalNativeActorJoin {
         const operationId = await submitJoinWhenConnected(
           () => node.joinActorSpot(
             actorRef,
-            toBindingRoutingId(target.targetNodeRid),
-            toBindingRoutingId(target.spotId),
+            toBackendRoutingId(target.targetNodeRid),
+            toBackendRoutingId(target.spotId),
             target.targetSpotGeneration,
             requestPayload,
             timeoutMs
@@ -366,7 +366,7 @@ export class ZLinkLocalNativeActorJoin {
         const operationId = await submitJoinWhenConnected(
           () => node.joinActorEntrySpot(
             actorRef,
-            toBindingRoutingId(targetNodeRid),
+            toBackendRoutingId(targetNodeRid),
             requestPayload,
             timeoutMs
           ),
@@ -526,7 +526,7 @@ export class ZLinkLocalNativeActorJoin {
       let completion;
       try {
         const operationId = node.requestToNode(
-          toBindingRoutingId(targetNodeRid),
+          toBackendRoutingId(targetNodeRid),
           payload,
           { timeoutMs: remainingMs }
         );

@@ -250,10 +250,10 @@ class ClientScenarioContext(
         )
 
     fun adminA(): String =
-        options.httpAEndpoint ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT is required")
+        options.httpAEndpoint ?: throw IllegalStateException("e2e.http.a.endpoint is required")
 
     fun adminB(): String =
-        options.httpBEndpoint ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT is required")
+        options.httpBEndpoint ?: throw IllegalStateException("e2e.http.b.endpoint is required")
 
     fun signal(name: String) {
         val dir = controlDir()
@@ -280,9 +280,9 @@ class ClientScenarioContext(
     fun hasSignal(name: String): Boolean = Files.exists(controlDir().resolve(name))
 
     private fun controlDir(): Path {
-        val value = options.controlDir ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_CONTROL_DIR is required")
+        val value = options.controlDir ?: throw IllegalStateException("e2e.control.dir is required")
         if (value.isBlank()) {
-            throw IllegalStateException("ZLINK_KOTLIN_E2E_CONTROL_DIR is required")
+            throw IllegalStateException("e2e.control.dir is required")
         }
         return Path.of(value)
     }

@@ -119,6 +119,8 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
                 std::string (authority->allocation.target.node_rid.value ())),
               *projected_id,
               authority->object_generation};
+            address.node_generation =
+              authority->allocation.target.node_lifecycle_generation;
             apply_authority (address, *authority);
             cache_ready_route (_spot_routes, spot_id, address);
             return completed (std::optional<spot_address_t>{std::move (address)});
@@ -137,6 +139,7 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
             if (found != descriptors.items.end ())
                 return completed (std::optional<spot_address_t>{spot_address_t{
                   found->mesh_name, found->rid, spot_id,
+                  found->lifecycle_generation, {}, 0, 0, {},
                   found->lifecycle_generation}});
         }
         return completed (std::optional<spot_address_t>{});
@@ -146,6 +149,28 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
     {
         std::lock_guard lock (_route_cache_gate);
         _spot_routes.erase (std::string (spot_id));
+    }
+
+    bool invalidate_spot_address_if_matches (
+      std::string_view spot_id, const spot_address_t &expected) override
+    {
+        std::lock_guard lock (_route_cache_gate);
+        const auto found = _spot_routes.find (std::string (spot_id));
+        if (found == _spot_routes.end ())
+            return false;
+        const auto &cached = found->second.address;
+        if (cached.spot_id != spot_id
+            || cached.node_rid != expected.node_rid
+            || cached.node_generation != expected.node_generation
+            || cached.object_generation != expected.object_generation
+            || cached.authority_owner_generation
+                 != expected.authority_owner_generation
+            || cached.owner.owner_id != expected.owner.owner_id
+            || cached.owner.lease_generation
+                 != expected.owner.lease_generation)
+            return false;
+        _spot_routes.erase (found);
+        return true;
     }
 
     void invalidate_all_routes_after_store_recovery () override
@@ -193,9 +218,38 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
             std::string (authority->allocation.target.node_rid.value ())),
           projection->spot_id,
           projection->spot_generation};
+        address.node_generation =
+          authority->allocation.target.node_lifecycle_generation;
         apply_authority (address, *authority);
         cache_ready_route (_actor_routes, actor_id, address);
         return completed (std::optional<spot_address_t>{std::move (address)});
+    }
+
+    void invalidate_actor_address (std::string_view actor_id) override
+    {
+        std::lock_guard lock (_route_cache_gate);
+        _actor_routes.erase (std::string (actor_id));
+    }
+
+    bool invalidate_actor_address_if_matches (
+      std::string_view actor_id, const spot_address_t &expected) override
+    {
+        std::lock_guard lock (_route_cache_gate);
+        const auto found = _actor_routes.find (std::string (actor_id));
+        if (found == _actor_routes.end ())
+            return false;
+        const auto &cached = found->second.address;
+        if (cached.node_rid != expected.node_rid
+            || cached.node_generation != expected.node_generation
+            || cached.object_generation != expected.object_generation
+            || cached.authority_owner_generation
+                 != expected.authority_owner_generation
+            || cached.owner.owner_id != expected.owner.owner_id
+            || cached.owner.lease_generation
+                 != expected.owner.lease_generation)
+            return false;
+        _actor_routes.erase (found);
+        return true;
     }
 
     task_t<bool> is_peer_ready (std::string mesh_name,

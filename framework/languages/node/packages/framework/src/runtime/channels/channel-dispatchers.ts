@@ -11,10 +11,8 @@ import {
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
-import {
-  SubmitResult,
-  type Message
-} from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
+import { SubmitResult } from '../backend/runtime-values';
 import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import {
   ZLinkConfigurationException,

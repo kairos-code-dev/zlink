@@ -29,15 +29,18 @@ internal sealed class ZLinkChannelReceiveLoop(
             while (!cancellationToken.IsCancellationRequested)
             {
                 Received? received = null;
-                var ownsResumePermit = false;
+                ZLinkInboundReceivePermit? receivePermit = null;
                 try
                 {
                     identity.TickLiveness(router);
                     if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
                         continue;
-                    ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    // Do not wait for application HWM capacity in the only
+                    // loop that also receives ClientServer control frames.
+                    // Return to the poller so control progress continues.
+                    if (!inboundDispatchBudget.TryAcquireReceive(
+                            out receivePermit))
+                        continue;
                     received = router.Recv(RecvFlags.DontWait);
                     if (received is null)
                         continue;
@@ -54,7 +57,11 @@ internal sealed class ZLinkChannelReceiveLoop(
                     var owned = received;
                     received = null;
                     var payloadBytes = MeasurePayloadBytes(owned.Parts);
-                    inboundDispatchBudget.Received(payloadBytes);
+                    var overageReservation = inboundDispatchBudget.Received(
+                        receivePermit,
+                        payloadBytes);
+                    inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
+                    receivePermit = null;
                     _ = await applicationDispatch.PostAsync(
                             token => DispatchClientServerAsync(
                                 channelName,
@@ -69,7 +76,8 @@ internal sealed class ZLinkChannelReceiveLoop(
                                 applicationDispatch.ReplyGate),
                             inboundDispatchBudget,
                             payloadBytes,
-                            cancellationToken)
+                            cancellationToken,
+                            overageReservation)
                         .ConfigureAwait(false);
                 }
                 catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -89,8 +97,7 @@ internal sealed class ZLinkChannelReceiveLoop(
                 finally
                 {
                     received?.Dispose();
-                    inboundDispatchBudget.CompleteReceiveAttempt(
-                        ownsResumePermit);
+                    inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
                 }
             }
         }
@@ -240,14 +247,16 @@ internal sealed class ZLinkChannelReceiveLoop(
         while (!cancellationToken.IsCancellationRequested)
         {
             TopicMessage? topicMessage = new();
-            var ownsResumePermit = false;
+            ZLinkInboundReceivePermit? receivePermit = null;
             try
             {
                 if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
                     continue;
-                ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                // The subscriber loop also receives liveness beacons. Do not
+                // block that control path behind application HWM capacity.
+                if (!inboundDispatchBudget.TryAcquireReceive(
+                        out receivePermit))
+                    continue;
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
                     continue;
 
@@ -274,13 +283,18 @@ internal sealed class ZLinkChannelReceiveLoop(
                 var owned = topicMessage;
                 topicMessage = null;
                 var payloadBytes = MeasurePayloadBytes(owned.Parts);
-                inboundDispatchBudget.Received(payloadBytes);
+                var overageReservation = inboundDispatchBudget.Received(
+                    receivePermit,
+                    payloadBytes);
+                inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
+                receivePermit = null;
                 _ = await applicationDispatch.PostAsync(
                         token => DispatchFanoutAsync(channelName, owned, token),
                         owned.Dispose,
                         inboundDispatchBudget,
                         payloadBytes,
-                        cancellationToken)
+                        cancellationToken,
+                        overageReservation)
                     .ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -294,8 +308,7 @@ internal sealed class ZLinkChannelReceiveLoop(
             finally
             {
                 topicMessage?.Dispose();
-                inboundDispatchBudget.CompleteReceiveAttempt(
-                    ownsResumePermit);
+                inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
             }
         }
     }
@@ -318,14 +331,16 @@ internal sealed class ZLinkChannelReceiveLoop(
         while (!cancellationToken.IsCancellationRequested)
         {
             TopicMessage? topicMessage = new();
-            var ownsResumePermit = false;
+            ZLinkInboundReceivePermit? receivePermit = null;
             try
             {
                 if (!IsReadable(receivePoller.Wait(ReceivePollInterval)))
                     continue;
-                ownsResumePermit = await inboundDispatchBudget.WaitForReceiveCapacityAsync(
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                // Keep liveness processing independent from application
+                // dispatch pressure by returning to the poller immediately.
+                if (!inboundDispatchBudget.TryAcquireReceive(
+                        out receivePermit))
+                    continue;
                 if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
                     continue;
 
@@ -346,13 +361,18 @@ internal sealed class ZLinkChannelReceiveLoop(
                 var owned = topicMessage;
                 topicMessage = null;
                 var payloadBytes = MeasurePayloadBytes(owned.Parts);
-                inboundDispatchBudget.Received(payloadBytes);
+                var overageReservation = inboundDispatchBudget.Received(
+                    receivePermit,
+                    payloadBytes);
+                inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
+                receivePermit = null;
                 _ = await applicationDispatch.PostAsync(
                         token => DispatchFanoutAsync(channelName, owned, token),
                         owned.Dispose,
                         inboundDispatchBudget,
                         payloadBytes,
-                        cancellationToken)
+                        cancellationToken,
+                        overageReservation)
                     .ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)
@@ -366,8 +386,7 @@ internal sealed class ZLinkChannelReceiveLoop(
             finally
             {
                 topicMessage?.Dispose();
-                inboundDispatchBudget.CompleteReceiveAttempt(
-                    ownsResumePermit);
+                inboundDispatchBudget.CompleteReceiveAttempt(receivePermit);
             }
         }
     }

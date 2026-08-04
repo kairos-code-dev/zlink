@@ -199,6 +199,7 @@ class channel_runtime_state_t
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> publisher_bundles;
     std::map<std::string, std::shared_ptr<channel_runtime_bundle_t>> subscriber_bundles;
     std::map<std::string, std::shared_ptr<channel_native_client_t>> native_clients;
+    std::vector<std::weak_ptr<channel_native_client_t>> native_request_clients;
     std::map<std::string, std::shared_ptr<channel_native_publisher_t>> native_publishers;
     std::map<std::string, std::shared_ptr<route_channel_runtime_t>> route_channels;
     std::map<std::string, mesh_node_send_t> mesh_node_senders;

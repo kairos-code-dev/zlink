@@ -186,24 +186,52 @@ final class ZLinkAdmissionRuntime {
         }
 
         void ready(ZLinkBackendAdmissionKey key) {
-            Pending item;
+            ArrayList<Pending> items = new ArrayList<>();
             synchronized (lock) {
                 if (shutdown) {
                     return;
                 }
-                ArrayDeque<Pending> queue = queues.get(key);
-                item = queue == null ? null : pollLive(queue);
-                if (queue != null && queue.isEmpty()) {
-                    queues.remove(key);
-                }
-                if (item == null) {
-                    // Preserve one edge that races between first EAGAIN and enqueue.
-                    readyCredits.put(key, 1);
-                    return;
+                if (key.kind() == ZLinkBackendAdmissionKey.Kind.NODE) {
+                    ArrayList<ZLinkBackendAdmissionKey> emptyKeys =
+                        new ArrayList<>();
+                    for (Map.Entry<ZLinkBackendAdmissionKey, ArrayDeque<Pending>>
+                        entry : queues.entrySet()) {
+                        if (!key.nodeRid().equals(entry.getKey().nodeRid())) {
+                            continue;
+                        }
+                        Pending item = pollLive(entry.getValue());
+                        if (entry.getValue().isEmpty()) {
+                            emptyKeys.add(entry.getKey());
+                        }
+                        if (item != null) {
+                            items.add(item);
+                        }
+                    }
+                    emptyKeys.forEach(queues::remove);
+                } else {
+                    ArrayDeque<Pending> queue = queues.get(key);
+                    Pending item = queue == null ? null : pollLive(queue);
+                    if (queue != null && queue.isEmpty()) {
+                        queues.remove(key);
+                    }
+                    if (item != null) {
+                        items.add(item);
+                    }
                 }
             }
-            if (item.attemptOnce() == AttemptResult.RETRY) {
-                drive(item, 0);
+            if (items.isEmpty()) {
+                // Preserve one edge that races between first EAGAIN and enqueue.
+                synchronized (lock) {
+                    if (!shutdown) {
+                        readyCredits.put(key, 1);
+                    }
+                }
+                return;
+            }
+            for (Pending item : items) {
+                if (item.attemptOnce() == AttemptResult.RETRY) {
+                    drive(item, 0);
+                }
             }
         }
 
@@ -278,12 +306,24 @@ final class ZLinkAdmissionRuntime {
                     pending.add(item);
                     pendingCount++;
                 }
-                if (readyCredits.remove(item.key) != null) {
+                if (consumeReadyCredit(item.key)) {
                     return AwaitResult.RETRY;
                 }
                 enqueueLocked(item);
                 return AwaitResult.QUEUED;
             }
+        }
+
+        private boolean consumeReadyCredit(ZLinkBackendAdmissionKey key) {
+            if (readyCredits.remove(key) != null) {
+                return true;
+            }
+            if (key.kind() == ZLinkBackendAdmissionKey.Kind.NODE
+                || key.nodeRid() == null) {
+                return false;
+            }
+            return readyCredits.remove(
+                ZLinkBackendAdmissionKey.node(key.nodeRid())) != null;
         }
 
         private Pending pollLive(ArrayDeque<Pending> queue) {

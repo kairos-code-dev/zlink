@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet;
 
@@ -30,14 +31,17 @@ internal sealed class ZLinkMeshCompletionTable
     private readonly long _earlyCompletionBytes;
     private readonly int _tombstoneCount;
     private readonly long _tombstoneBytesLimit;
+    private readonly string _meshName;
     private long _earlyBytes;
     private long _tombstoneBytes;
+    private long _overflowCount;
 
     internal ZLinkMeshCompletionTable(
         int earlyCompletionCount = DefaultEarlyCompletionCount,
         long earlyCompletionBytes = DefaultEarlyCompletionBytes,
         int tombstoneCount = DefaultTombstoneCount,
-        long tombstoneBytes = DefaultTombstoneBytes)
+        long tombstoneBytes = DefaultTombstoneBytes,
+        string? meshName = null)
     {
         if (earlyCompletionCount <= 0)
             throw new ArgumentOutOfRangeException(nameof(earlyCompletionCount));
@@ -51,7 +55,16 @@ internal sealed class ZLinkMeshCompletionTable
         _earlyCompletionBytes = earlyCompletionBytes;
         _tombstoneCount = tombstoneCount;
         _tombstoneBytesLimit = tombstoneBytes;
+        _meshName = string.IsNullOrWhiteSpace(meshName)
+            ? "unknown"
+            : meshName;
     }
+
+    // A caller that registers after both bounded retention stores are full
+    // cannot be given the original reply. Keep this condition observable so
+    // the runtime does not turn a bounded-resource failure into a silent
+    // timeout-only outcome.
+    internal long OverflowCount => Volatile.Read(ref _overflowCount);
 
     // A same-process completion can drain on the pump thread between the
     // operation submit and the caller's Register. Retain it until registration,
@@ -147,6 +160,14 @@ internal sealed class ZLinkMeshCompletionTable
             {
                 // The pump still owns these parts at this point. Release them
                 // when neither the result nor a failure marker can be retained.
+                // The counter and metric are the observable CapacityExceeded
+                // outcome for the bounded completion-retention resource.
+                Interlocked.Increment(ref _overflowCount);
+                ZLinkRuntimeMetrics.RecordMessageDropped(
+                    _meshName,
+                    "completion",
+                    "reply",
+                    "capacity_exceeded");
                 dispose = true;
             }
         }

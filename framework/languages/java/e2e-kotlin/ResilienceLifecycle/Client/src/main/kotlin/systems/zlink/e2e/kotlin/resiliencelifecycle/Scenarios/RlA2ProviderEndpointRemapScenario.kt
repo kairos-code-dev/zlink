@@ -13,7 +13,7 @@ fun ClientScenarioContext.runProviderEndpointRemapScenario() {
     waitForTopologyEndpoint(
         "api-a",
         options.apiAReplacementEndpoint
-            ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_API_A_REPLACEMENT_ENDPOINT is required"),
+            ?: throw IllegalStateException("e2e.api.a.replacement.endpoint is required"),
     )
     collectStableProvidersWithout("a2-after-reschedule", "api-b", "api-a")
     post("${adminB()}/admin/restore")

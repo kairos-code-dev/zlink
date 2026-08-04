@@ -3776,7 +3776,7 @@ void test_application_relocation_remote_production_path (
       target.request_to_actor (
         actor,
         {zlink::message_t::from ("relocation-request")},
-        replay_operation, 30s)
+        replay_operation, 30s, {}, 1, 1)
         == zlink::submit_result_t::ok,
       "production relocation request must be admitted by the caller");
     const auto pump_deadline =
@@ -3973,11 +3973,20 @@ void test_application_user_spot_aggregate_remote_production_path (
           [] (const auto &, const auto &, auto) {});
         std::this_thread::sleep_for (1ms);
     }
+    const auto source_admitted = source.has_admitted_peer (
+      target.status ().routing_id (),
+      target.status ().lifecycle_generation ());
+    const auto target_admitted = target.has_admitted_peer (
+      source.status ().routing_id (),
+      source.status ().lifecycle_generation ());
     test.require (
-      source.has_admitted_peer (
-        target.status ().routing_id (),
-        target.status ().lifecycle_generation ()),
-      "production aggregate source must admit the target");
+      source_admitted && target_admitted,
+      "production aggregate source and target must both admit the peer");
+    if (!source_admitted || !target_admitted) {
+        source.stop ();
+        target.stop ();
+        return;
+    }
 
     const auto created_actor = source.create_application_actor (
       "production.aggregate.actor",

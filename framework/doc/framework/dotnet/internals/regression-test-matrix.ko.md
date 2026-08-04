@@ -297,7 +297,6 @@ backend gate 와 별도로 유지한다.
 - `dotnet-http-client.ko.md`
 - `regression-test-matrix.ko.md`
 - `../../common/internals/README.ko.md`
-- `runtime-execution.ko.md`
 - `public-symbol-delta-v11.ko.md`
 - `backend-dependency-policy.ko.md`
 

@@ -119,7 +119,9 @@ raw_client_server_server_t::raw_client_server_server_t (
   raw_client_server_server_options_t options) :
     _options (std::move (options)),
     _mailbox (_options.mailbox_message_budget,
-              _options.mailbox_byte_budget, 256, 1024 * 1024)
+              _options.mailbox_byte_budget,
+              dispatch_limits::control_mailbox_messages,
+              dispatch_limits::control_mailbox_bytes)
 {
     if (_options.descriptor.channel_name.empty ()
         || _options.descriptor.server_routing_id.empty ()) {
@@ -188,7 +190,11 @@ void raw_client_server_server_t::start ()
     auto monitor_poller = std::make_unique<zlink::poller_t> ();
     monitor_poller->add (*monitor, zlink::poll_event_flag_t::pollin, 1);
     _port = std::make_shared<detail::backend::raw_route_port_t> (
-      *router, &_socket_mutex);
+      *router,
+      &_socket_mutex,
+      zlink::poll_event_flag_t::pollin,
+      _options.transport_poller,
+      _options.transport_poller_slot);
     _monitor_poller = std::move (monitor_poller);
     _monitor = std::move (monitor);
     _router = std::move (router);
@@ -566,6 +572,12 @@ raw_client_server_server_t::tick_liveness (
     return result;
 }
 
+std::optional<mesh::service_liveness_registry_t::clock_t::time_point>
+raw_client_server_server_t::next_liveness_activity () const
+{
+    return _liveness.next_activity ();
+}
+
 bool raw_client_server_server_t::reply (
   const mesh::service_mailbox_record_t &request,
   const protocol::application_payload_t &payload)
@@ -683,7 +695,10 @@ void raw_client_server_client_t::start ()
     auto monitor_poller = std::make_unique<zlink::poller_t> ();
     monitor_poller->add (*monitor, zlink::poll_event_flag_t::pollin, 1);
     _port = std::make_shared<detail::backend::raw_dealer_port_t> (
-      *dealer, &_socket_mutex);
+      *dealer,
+      &_socket_mutex,
+      _options.transport_poller,
+      _options.transport_poller_slot);
     _monitor_poller = std::move (monitor_poller);
     _monitor = std::move (monitor);
     _dealer = std::move (dealer);
@@ -972,6 +987,12 @@ raw_client_server_client_t::tick_liveness (
         _ready = false;
     }
     return result;
+}
+
+std::optional<mesh::service_liveness_registry_t::clock_t::time_point>
+raw_client_server_client_t::next_liveness_activity () const
+{
+    return _liveness.next_activity ();
 }
 
 bool raw_client_server_client_t::send (

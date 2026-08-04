@@ -110,6 +110,13 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         byte[] reply = "\"accepted\"".getBytes(
             java.nio.charset.StandardCharsets.UTF_8);
 
+        journal.awaitTargetCommit(
+                relocationId,
+                1,
+                actor,
+                Duration.ofSeconds(1))
+            .toCompletableFuture().join();
+
         var prepared = journal.prepare(operation, actor, reply)
             .toCompletableFuture().join();
         assertEquals(1, prepared.cursor());
@@ -121,6 +128,15 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         assertEquals(2, committed.cursor());
         assertPublished(
             journal, locations, roots, authorityKey, operation, actor, 2);
+
+        journal.markSourceCleanup(operation, actor)
+            .toCompletableFuture().join();
+        journal.awaitSourceCleanup(
+                relocationId,
+                1,
+                actor,
+                Duration.ofSeconds(1))
+            .toCompletableFuture().join();
 
         var delivered = journal.advance(committed, actor, 3)
             .toCompletableFuture().join();

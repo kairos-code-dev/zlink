@@ -50,6 +50,9 @@ import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.internal.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
@@ -57,6 +60,7 @@ import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 
 public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDirectory {
     private static final boolean STREAM_TRACE =
@@ -112,6 +116,13 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         CompletionStage<EntrySpotTarget> select(
             String actorType,
             Duration timeout);
+    }
+
+    @FunctionalInterface
+    public interface MessageFollowNoticeSender {
+        CompletionStage<Void> send(
+            RoutingId sourceNodeRid,
+            ZLinkServiceMessageFollowWireCodec.Notice notice);
     }
 
     public record EntrySpotTarget(
@@ -172,6 +183,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
     private final ZLinkOneWayCalls oneWayCalls;
     private volatile ZLinkDeferredJoinAcceptedRecovery deferredJoinAcceptedRecovery;
+    private volatile MessageFollowNoticeSender messageFollowNoticeSender;
 
     public void beginDrain() {
         draining = true;
@@ -263,6 +275,38 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             request.actorRef());
     }
 
+    CompletionStage<Void> awaitDeferredJoinTargetCommit(
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        ZLinkBackendActorRef actor,
+        java.time.Duration timeout) {
+        ZLinkDeferredJoinAcceptedRecovery recovery =
+            deferredJoinAcceptedRecovery;
+        if (recovery == null || manifest == null) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "deferred Actor Join relocation recovery is unavailable"));
+        }
+        return recovery.awaitTargetCommit(manifest, actor, timeout);
+    }
+
+    public CompletionStage<Void> awaitDeferredJoinSourceCleanup(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkBackendActorRef actor,
+        java.time.Duration timeout) {
+        if (request.completionManifest() == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        ZLinkDeferredJoinAcceptedRecovery recovery =
+            deferredJoinAcceptedRecovery;
+        if (recovery == null) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "deferred Actor Join relocation recovery is unavailable"));
+        }
+        return recovery.awaitSourceCleanup(
+            request.completionManifest(), actor, timeout);
+    }
+
     public CompletionStage<DeferredJoinRelocationRoot>
         loadDeferredJoinRelocation(
             ZLinkActorSpotRoutePackets.TransferRequest request) {
@@ -337,6 +381,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return recovery == null || manifest == null
             ? CompletableFuture.completedFuture(null)
             : recovery.completeSourceCleanup(manifest, actor);
+    }
+
+    CompletionStage<Void> markDeferredJoinAcceptedSourceCleanup(
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        ZLinkBackendActorRef actor) {
+        ZLinkDeferredJoinAcceptedRecovery recovery =
+            deferredJoinAcceptedRecovery;
+        return recovery == null || manifest == null
+            ? CompletableFuture.completedFuture(null)
+            : recovery.markSourceCleanup(manifest, actor);
     }
 
     private CompletionStage<Void> deliverDeferredJoinAcceptedWithRetry(
@@ -1005,7 +1059,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 .thenApply(actor -> {
                     spotNode.rememberActorAuthority(
                         refFor(actor),
-                        authorityOwnerGeneration);
+                        authorityOwnerGeneration,
+                        spotNode.localAuthorityLeaseGeneration());
                     ZLinkActorCreateResponse admission = response.get();
                     return (ZLinkActorCreateResult)
                         new ZLinkActorCreateResult.Created(
@@ -1213,7 +1268,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 1L);
             spotNode.rememberActorAuthority(
                 prepared.actorRef,
-                authorityOwnerGeneration);
+                authorityOwnerGeneration,
+                spotNode.localAuthorityLeaseGeneration());
         }
         actorRegistry.register(
             prepared.actorId,
@@ -1589,23 +1645,58 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     void retainMessageFollowSource(
         ZLinkActor actor,
         ZLinkBackendActorRef sourceActorRef,
-        ZLinkBackendActorRef targetActorRef) {
+        ZLinkBackendActorRef targetActorRef,
+        SpotTransportAddress targetAddress,
+        ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute) {
+        java.util.Objects.requireNonNull(targetAddress, "targetAddress");
+        java.util.Objects.requireNonNull(targetRoute, "targetRoute");
         handoff.retain(
-            actor.context().actorId(), sourceActorRef, targetActorRef, messageFollowDuration,
+            actor.context().actorId(), sourceActorRef, targetActorRef,
+            targetAddress, targetRoute, messageFollowDuration,
             this::removeMessageFollowSource);
         traceRetainedMessageFollowSource(actor, sourceActorRef);
     }
 
-    void retainMessageFollowSource(
-        ZLinkActor actor,
-        ZLinkBackendActorRef sourceActorRef,
+    CompletionStage<Optional<ZLinkStoreLocationResolvers.ActorRoute>>
+        resolveMessageFollowTargetRoute(
+            ZLinkBackendActorRef targetActorRef,
+            SpotTransportAddress targetAddress) {
+        try {
+            return locations.resolveStoredActorRoute(targetActorRef.actorId())
+                .thenApply(route -> {
+                    if (!messageFollowTargetRouteMatches(
+                        route, targetActorRef, targetAddress)) {
+                        return Optional.<ZLinkStoreLocationResolvers.ActorRoute>empty();
+                    }
+                    return Optional.of(route);
+                })
+                .exceptionally(failure -> {
+                    LOGGER.warning("Message Follow target route was not retained for actor "
+                        + targetActorRef.actorId() + ": "
+                        + unwrapCompletionFailure(failure));
+                    return Optional.<ZLinkStoreLocationResolvers.ActorRoute>empty();
+                });
+        } catch (RuntimeException failure) {
+            LOGGER.warning("Message Follow target route lookup failed for actor "
+                + targetActorRef.actorId() + ": " + failure);
+            return CompletableFuture.completedFuture(Optional.empty());
+        }
+    }
+
+    static boolean messageFollowTargetRouteMatches(
+        ZLinkStoreLocationResolvers.ActorRoute route,
         ZLinkBackendActorRef targetActorRef,
         SpotTransportAddress targetAddress) {
-        handoff.retain(
-            actor.context().actorId(), sourceActorRef, targetActorRef,
-            targetAddress, messageFollowDuration,
-            this::removeMessageFollowSource);
-        traceRetainedMessageFollowSource(actor, sourceActorRef);
+        return route != null
+            && targetActorRef != null
+            && targetAddress != null
+            && route.actorRef() != null
+            && route.actorRef().actorId().equals(targetActorRef.actorId())
+            && route.actorRef().objectGeneration() == targetActorRef.generation()
+            && route.actorRef().nodeRid().equals(targetActorRef.nodeRid())
+            && route.nodeRid().equals(targetActorRef.nodeRid())
+            && route.targetNodeGeneration()
+                == targetAddress.targetNodeGeneration();
     }
 
     private void traceRetainedMessageFollowSource(
@@ -1889,7 +1980,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 }
                 spotNode.rememberActorAuthority(
                     actor,
-                    route.authorityOwnerGeneration());
+                    route.authorityOwnerGeneration(),
+                    route.ownerLeaseGeneration());
             });
     }
 
@@ -2549,6 +2641,219 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             && routedTransport != null;
     }
 
+    public void setMessageFollowNoticeSender(
+        MessageFollowNoticeSender sender) {
+        messageFollowNoticeSender = sender;
+    }
+
+    /**
+     * Relays one stale raw Actor record through the committed typed Actor
+     * route. The caller transfers the received parts and admission lease only
+     * when this method returns true.
+     */
+    public boolean relayMessageFollow(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        ZLinkServiceM6BWireCodec.ActorMessage header,
+        byte[] acceptedJournalRecord,
+        List<Message> parts,
+        String contentType,
+        ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+        java.util.function.Consumer<List<Message>> reply,
+        java.util.function.Consumer<Throwable> failure) {
+        if (sourceNodeRid == null
+            || sourceNodeGeneration <= 0
+            || header == null
+            || header.boundSession() != null
+            || parts == null
+            || parts.size() != 2
+            || messageFollowNoticeSender == null) {
+            return false;
+        }
+        ZLinkBackendActorRef staleActor = header.target().actor();
+        ZLinkActorTransferHandoff.MessageFollowSource followSource =
+            handoff.messageFollowSource(staleActor.actorId()).orElse(null);
+        if (followSource == null
+            || !followSource.sourceActorRef().equals(staleActor)
+            || followSource.targetAddress() == null
+            || followSource.targetActorRef().generation()
+                != staleActor.generation()) {
+            return false;
+        }
+        ZLinkStreamHeader streamHeader;
+        try {
+            streamHeader = ZLinkStreamHeaderCodec.decodeOrPlain(
+                parts.get(0).toByteArray());
+            if (streamHeader.requestSequence().isPresent() != header.request()
+                || (header.request()
+                    && !streamHeader.requestSequence().orElseThrow()
+                        .equals(header.correlation()))) {
+                return false;
+            }
+        } catch (RuntimeException invalidHeader) {
+            return false;
+        }
+
+        Message payload;
+        try {
+            payload = parts.get(1);
+        } catch (RuntimeException invalidPayload) {
+            return false;
+        }
+        parts.get(0).close();
+
+        java.util.function.Consumer<Throwable> onFailure = failure == null
+            ? ignored -> { }
+            : failure;
+        boolean resolveTargetFence = followSource.targetRoute() != null
+            && !followSource.messageFollowNoticeClaimed();
+        if (resolveTargetFence
+            && !followSource.tryClaimMessageFollowNotice()) {
+            resolveTargetFence = false;
+        }
+        CompletionStage<ZLinkServiceMessageFollowWireCodec.ActorRoute> targetRoute =
+            CompletableFuture.completedFuture(followSource.targetRoute());
+        final boolean noticeRequired = resolveTargetFence;
+        targetRoute.thenCompose(route -> {
+            ZLinkActorTransferHandoff.MessageFollowSource current =
+                handoff.messageFollowSource(staleActor.actorId()).orElse(null);
+            if (current != followSource) {
+                return CompletableFuture.<MessageFollowRelayResult>failedFuture(
+                    new ZLinkConfigurationException(
+                        "Message Follow route was replaced while relaying"));
+            }
+            return handoff.followWithQueueSnapshot(
+                    staleActor.actorId(),
+                    staleActor.generation(),
+                    payload.size(),
+                    () -> dispatchRemoteJoinedActor(
+                        followSource.targetActorRef(),
+                        streamHeader,
+                        payload,
+                        followSource.targetAddress(),
+                        acceptedJournalRecord))
+                .thenApply(follow -> new MessageFollowRelayResult(
+                    follow.value(),
+                    route,
+                    follow.queue()));
+        }).whenComplete((result, relayFailure) -> {
+            try {
+                if (relayFailure != null) {
+                    if (noticeRequired) {
+                        followSource.releaseMessageFollowNoticeClaim();
+                    }
+                    onFailure.accept(unwrapCompletionFailure(relayFailure));
+                    return;
+                }
+                if (result.reply().isPresent()) {
+                    Message replyMessage = result.reply().orElseThrow();
+                    try {
+                        if (reply != null) {
+                            reply.accept(List.of(replyMessage));
+                        } else {
+                            replyMessage.close();
+                        }
+                    } catch (RuntimeException replyFailure) {
+                        replyMessage.close();
+                        onFailure.accept(replyFailure);
+                    }
+                }
+                if (noticeRequired) {
+                    sendMessageFollowNotice(
+                        sourceNodeRid,
+                        header,
+                        followSource,
+                        result.route(),
+                        result.queue(),
+                        sourceNodeGeneration);
+                }
+            } finally {
+                payload.close();
+                if (inboundDispatchLease != null) {
+                    inboundDispatchLease.close();
+                }
+            }
+        });
+        return true;
+    }
+
+    private void sendMessageFollowNotice(
+        RoutingId sourceNodeRid,
+        ZLinkServiceM6BWireCodec.ActorMessage staleHeader,
+        ZLinkActorTransferHandoff.MessageFollowSource followSource,
+        ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute,
+        ZLinkActorTransferHandoff.MessageFollowQueueSnapshot queue,
+        long sourceNodeGeneration) {
+        if (targetRoute == null
+            || !targetRoute.actorId().equals(
+                staleHeader.target().actor().actorId())
+            || targetRoute.objectGeneration()
+                != staleHeader.target().actor().generation()
+            || !targetRoute.targetNodeRid().equals(
+                followSource.targetActorRef().nodeRid())
+            || targetRoute.targetNodeGeneration()
+                != followSource.targetAddress().targetNodeGeneration()) {
+            LOGGER.warning("Message Follow target route fence changed before notice "
+                + "for actor " + staleHeader.target().actor().actorId());
+            followSource.releaseMessageFollowNoticeClaim();
+            return;
+        }
+        int hopCount = staleHeader.messageFollowHopCount() + 1;
+        if (hopCount > ZLinkServiceMessageFollowWireCodec.MAX_HOP_COUNT) {
+            followSource.releaseMessageFollowNoticeClaim();
+            return;
+        }
+        ZLinkServiceMessageFollowWireCodec.ActorRoute sourceRoute =
+            new ZLinkServiceMessageFollowWireCodec.ActorRoute(
+                staleHeader.target().actor().actorId(),
+                staleHeader.target().actor().generation(),
+                staleHeader.target().actor().nodeRid(),
+                staleHeader.target().targetNodeGeneration(),
+                staleHeader.target().authorityOwnerGeneration(),
+                staleHeader.target().ownerLeaseGeneration());
+        ZLinkServiceMessageFollowWireCodec.Notice notice =
+            new ZLinkServiceMessageFollowWireCodec.Notice(
+                sourceRoute,
+                targetRoute,
+                hopCount,
+                queue.messages(),
+                queue.bytes(),
+                staleHeader.operationHigh(),
+                staleHeader.operationLow(),
+                staleHeader.request() ? staleHeader.correlation() : 0L);
+        try {
+            CompletionStage<Void> sent = java.util.Objects.requireNonNull(
+                messageFollowNoticeSender.send(sourceNodeRid, notice),
+                "Message Follow notice sender returned null");
+            sent.whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    LOGGER.warning("Message Follow notice failed for actor "
+                        + staleHeader.target().actor().actorId()
+                        + " from " + sourceNodeRid
+                        + " sourceGeneration=" + sourceNodeGeneration
+                        + ": " + unwrapCompletionFailure(failure));
+                }
+            });
+        } catch (RuntimeException failure) {
+            LOGGER.warning("Message Follow notice submission failed for actor "
+                + staleHeader.target().actor().actorId()
+                + " from " + sourceNodeRid
+                + ": " + failure);
+        }
+    }
+
+    private static Throwable unwrapCompletionFailure(Throwable failure) {
+        return failure instanceof CompletionException && failure.getCause() != null
+            ? failure.getCause()
+            : failure;
+    }
+
+    private record MessageFollowRelayResult(
+        Optional<Message> reply,
+        ZLinkServiceMessageFollowWireCodec.ActorRoute route,
+        ZLinkActorTransferHandoff.MessageFollowQueueSnapshot queue) {
+    }
+
     public CompletionStage<Optional<Message>> dispatchRemoteJoinedActor(
         ZLinkBackendActorRef actorRef,
         String spotId,
@@ -2569,7 +2874,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return handoff.follow(
                 actorRef.actorId(), actorRef.generation(), payload.size(),
                 () -> dispatchRemoteJoinedActor(
-                    actorRef, header, payload, followSource.targetAddress()));
+                    actorRef,
+                    header,
+                    payload,
+                    followSource.targetAddress(),
+                    new byte[0]));
         }
         return resolveHandle(spotId)
             .thenCompose(remoteAddressResolver::resolve)
@@ -2578,17 +2887,24 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 header,
                 payload,
                 address.orElseThrow(() -> new ZLinkConfigurationException(
-                    "SPOT transport address was not found: " + spotId))));
+                    "SPOT transport address was not found: " + spotId)),
+                new byte[0]));
     }
 
     private CompletionStage<Optional<Message>> dispatchRemoteJoinedActor(
         ZLinkBackendActorRef actorRef,
         systems.zlink.framework.runtime.streams.ZLinkStreamHeader header,
         Message payload,
-        SpotTransportAddress target) {
+        SpotTransportAddress target,
+        byte[] acceptedJournalRecord) {
                 List<Message> parts =
                     ZLinkActorSpotRoutePackets.createActorPacketParts(
-                        actorRef, header, payload, null);
+                        actorRef,
+                        header,
+                        payload,
+                        null,
+                        null,
+                        acceptedJournalRecord);
                 Message packetName = Message.from(parts.getFirst());
                 Message envelope = ZLinkActorEntryTransferEnvelope.encode(parts);
                 List<Message> wireParts = List.of(packetName, envelope);
@@ -2689,6 +3005,18 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
     public CompletionStage<Void> submitActorDispatch(
         String actorId,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return submitActorDispatch(
+            actorId,
+            null,
+            payloadBytes,
+            operation,
+            () -> { });
+    }
+
+    public CompletionStage<Void> submitActorDispatch(
+        String actorId,
         byte[] acceptedJournalRecord,
         Supplier<CompletionStage<Void>> operation) {
         return submitActorDispatch(
@@ -2698,6 +3026,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public CompletionStage<Void> submitActorDispatch(
         String actorId,
         byte[] acceptedJournalRecord,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
+        return submitActorDispatch(
+            actorId,
+            acceptedJournalRecord,
+            null,
+            operation,
+            relocationRelease);
+    }
+
+    private CompletionStage<Void> submitActorDispatch(
+        String actorId,
+        byte[] acceptedJournalRecord,
+        Long payloadBytes,
         Supplier<CompletionStage<Void>> operation,
         Runnable relocationRelease) {
         if (dispatches.isCurrent(actorId)) {
@@ -2715,8 +3057,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             }
             turn = dispatches.prepare(actorId);
         }
-        return dispatches.enqueue(
-            turn, acceptedJournalRecord, operation, relocationRelease);
+        if (acceptedJournalRecord != null) {
+            return dispatches.enqueue(
+                turn, acceptedJournalRecord, operation, relocationRelease);
+        }
+        return payloadBytes == null
+            ? dispatches.enqueue(turn, operation)
+            : dispatches.enqueue(
+                turn, payloadBytes, operation, relocationRelease);
     }
 
     public Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySealActorRelocation(
@@ -2828,7 +3176,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         synchronized (this) {
             turn = dispatches.prepare(actor.context().actorId());
         }
-        dispatches.enqueue(turn, operation)
+        dispatches.enqueue(
+            turn,
+            () -> ZLinkAsyncSerialQueue.yieldCurrent(operation.get()))
             .whenComplete((ignored, error) -> {
                 if (error != null) {
                     failRemoteMove(actor, error);

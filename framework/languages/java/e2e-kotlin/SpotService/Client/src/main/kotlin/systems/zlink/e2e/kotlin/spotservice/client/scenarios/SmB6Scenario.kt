@@ -16,7 +16,7 @@ internal object SmB6Scenario {
         val disconnectActorId = "actor-sm-b6-disconnected-$suffix"
         val profile = Contracts.ActorProfile("Leave", 6, listOf("leave"))
 
-        val leaveClient = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val leaveClient = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             leaveClient.connect().await()
             val auth = leaveClient
@@ -43,7 +43,7 @@ internal object SmB6Scenario {
         }
 
         val leaveEvidence = postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+            Env.get("e2e.http.session.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf("ActorUserLeft|session-a|actor-room-a|$leaveActorId"),
@@ -60,7 +60,7 @@ internal object SmB6Scenario {
             "SM-B6 explicit leave emitted disconnect evidence",
         )
 
-        val disconnectClient = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val disconnectClient = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             val disconnectProfile = Contracts.ActorProfile("Disconnect", 6, listOf("disconnect"))
             disconnectClient.connect().await()
@@ -82,7 +82,7 @@ internal object SmB6Scenario {
         }
 
         val disconnectEvidence = postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+            Env.get("e2e.http.session.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf("ActorUserDisconnected|session-a|actor-room-a|$disconnectActorId"),

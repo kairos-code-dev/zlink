@@ -1,4 +1,4 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ActorRef } from '../../contracts';
 import {
   decodeChannelEnvelope,
@@ -85,7 +85,7 @@ export interface ZLinkRemoteBoundSessionSeal {
 }
 
 export function decodeRemoteBoundSessionSeal(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteBoundSessionSeal | undefined {
   try {
@@ -104,7 +104,7 @@ export function decodeRemoteBoundSessionSeal(
 }
 
 export function decodeRemoteBoundSessionOwnership(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteBoundSessionOwnership | undefined {
   try {
@@ -133,7 +133,7 @@ export interface ZLinkRemoteActorPacketRelay {
 }
 
 export function decodeRemoteBoundSessionSend(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteBoundSessionSend | undefined {
   try {
@@ -195,7 +195,7 @@ function decodeActorRef(payload: {
 }
 
 export function decodeRemoteBoundSessionResponse(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteBoundSessionResponse | undefined {
   const decoded = decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_RESPONSE_PACKET, codecs);
@@ -214,7 +214,7 @@ export function decodeRemoteBoundSessionResponse(
 }
 
 export function decodeRemoteBoundSessionError(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteBoundSessionError | undefined {
   const decoded = decodeRemoteBoundSessionControl(parts, ZLINK_REMOTE_BOUND_SESSION_ERROR_PACKET, codecs);
@@ -232,7 +232,7 @@ export function decodeRemoteBoundSessionError(
 }
 
 export function decodeRemoteActorPacketRelay(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): ZLinkRemoteActorPacketRelay | undefined {
   try {
@@ -274,7 +274,7 @@ function decodeForwardedActorRef(payload: {
 }
 
 function decodeRemoteBoundSessionControl(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   packetName: string,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): {
@@ -310,7 +310,7 @@ function decodeRemoteBoundSessionControl(
 }
 
 function decodeMultipartPayload(
-  parts: readonly BindingMessage[],
+  parts: readonly Message[],
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): {
   readonly packetName?: string;

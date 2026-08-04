@@ -4,6 +4,10 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
+import systems.zlink.contracts.sockets.RequestResult;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
@@ -46,14 +50,30 @@ public final class ZLinkSessionRelocationPeerClient {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(timeout, "timeout");
         byte[] command44 = codec.encodeSessionRelocationRoute(command);
-        return node.requestSessionRelocationRoute(
-                command.session().nodeRid(), command44, timeout)
-            .thenApply(codec::decodeSessionRelocationRouted)
+        return ZLinkActorRetryScheduler.retryRouteUntil(
+                timeout,
+                () -> node.requestSessionRelocationRoute(
+                        command.session().nodeRid(), command44, timeout)
+                    .thenApply(codec::decodeSessionRelocationRouted),
+                ZLinkSessionRelocationPeerClient::isRouteNotConnected)
             .thenCompose(ack -> validateAck(command, ack)
                 ? CompletableFuture.completedFuture(ack)
                 : CompletableFuture.failedFuture(
                     new ZLinkConfigurationException(
                         "command 45 ACK differs from command 44 fence")));
+    }
+
+    private static boolean isRouteNotConnected(Throwable error) {
+        Throwable current = error;
+        while (current instanceof java.util.concurrent.CompletionException
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        if (current instanceof ZlinkRequestException request) {
+            return request.getResult() == RequestResult.NOT_CONNECTED;
+        }
+        return current instanceof ZlinkSubmitException submit
+            && submit.getResult() == SubmitResult.NOT_CONNECTED;
     }
 
     private static boolean validateAck(

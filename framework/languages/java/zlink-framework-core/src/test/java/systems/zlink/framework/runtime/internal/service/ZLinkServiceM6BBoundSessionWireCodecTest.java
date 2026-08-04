@@ -18,7 +18,7 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
     @Test
     void spotAndActorHeadersPreserveOperationAndForwardingFence() {
         var spotRoute = new ZLinkServiceM6BWireCodec.SpotRouteFence(
-            "room", 2, RoutingId.from("target"), 3, 4);
+            "room", 2, RoutingId.from("target"), 3, 4, 5);
         var spot = codec.decodeSpotHeader(codec.encodeSpotHeader(
             true, 0, 7L, 11, 12, 3, "source", spotRoute));
         assertEquals(11, spot.operationHigh());
@@ -152,6 +152,7 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
         return new ZLinkServiceM6BWireCodec.ActorRouteFence(
             new ZLinkBackendActorRef(node, "actor", 11),
             13,
-            17);
+            17,
+            19);
     }
 }

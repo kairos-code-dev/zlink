@@ -124,7 +124,9 @@ public final class QuestStore implements AutoCloseable {
     }
 
     public List<Messages.StoredQuestEvent> events() {
-        return states.values().stream().flatMap(state -> state.events.stream()).toList();
+        // The endpoint is evidence for durable replay, so read the shared
+        // event stream instead of exposing only owners activated in this JVM.
+        return shared.readQuestEvents();
     }
 
     public Set<String> players() {

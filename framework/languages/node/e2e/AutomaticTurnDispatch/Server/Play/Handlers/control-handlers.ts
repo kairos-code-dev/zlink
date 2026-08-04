@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLinkMessage } from '@zlink-systems/framework';
+import { ZLinkMessage, ZLinkUserSpotExecutionMode } from '@zlink-systems/framework';
 import type { ZLinkActorManager, ZLinkMessageContext, ZLinkRequestHandler, ZLinkSpotManager } from '@zlink-systems/framework';
 import { ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
 import type {
@@ -28,7 +28,9 @@ export class EnsureSpotControlHandler implements ZLinkRequestHandler<EnsureSpotR
     void context;
     const created = await this.spots.getOrCreate(
       request.spotId,
-      AwaitProbeSpot.name
+      request.executionMode === ZLinkUserSpotExecutionMode.PerActor
+        ? AutomaticTurnDispatchNames.perActorSpotType
+        : AwaitProbeSpot.name
     )
       .inMesh(AutomaticTurnDispatchNames.spotChannel)
       .submit();

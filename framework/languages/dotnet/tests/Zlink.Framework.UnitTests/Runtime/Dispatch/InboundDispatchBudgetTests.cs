@@ -77,6 +77,144 @@ public sealed class InboundDispatchBudgetTests
     }
 
     [Fact]
+    public async Task Receive_reservations_bound_hwm_overshoot()
+    {
+        var budget = new ZLinkInboundDispatchBudget(
+            applicationHwmBytes: 100,
+            maximumMessageBytes: 10,
+            maximumConcurrentReceives: 2);
+
+        Assert.Equal(120UL, budget.MaximumPendingPayloadBytes);
+
+        var firstPermit = await budget.AcquireReceiveAsync(
+            CancellationToken.None);
+        var firstLease = budget.TrackReceived(firstPermit, 80);
+        budget.CompleteReceiveAttempt(firstPermit);
+
+        var secondPermit = await budget.AcquireReceiveAsync(
+            CancellationToken.None);
+        var secondLease = budget.TrackReceived(secondPermit, 80);
+        budget.CompleteReceiveAttempt(secondPermit);
+
+        var thirdPermit = await budget.AcquireReceiveAsync(
+            CancellationToken.None);
+        var thirdLease = budget.TrackReceived(thirdPermit, 10);
+        budget.CompleteReceiveAttempt(thirdPermit);
+
+        var blocked = budget.AcquireReceiveAsync(CancellationToken.None).AsTask();
+        Assert.False(blocked.IsCompleted);
+
+        secondLease.Dispose();
+        thirdLease.Dispose();
+        var fourthPermit = await blocked;
+        budget.CompleteReceiveAttempt(fourthPermit);
+        firstLease.Dispose();
+
+        Assert.Equal(0UL, budget.PendingPayloadBytes);
+    }
+
+    [Fact]
+    public async Task Concurrent_post_hwm_receives_reserve_only_the_configured_overage_slots()
+    {
+        var budget = new ZLinkInboundDispatchBudget(
+            applicationHwmBytes: 100,
+            maximumMessageBytes: 10,
+            maximumConcurrentReceives: 4);
+        budget.Received(100);
+
+        var permits = await Task.WhenAll(
+            Enumerable.Range(0, 4)
+                .Select(_ => budget.AcquireReceiveAsync(CancellationToken.None).AsTask()));
+        var leases = permits
+            .Select(permit =>
+            {
+                var lease = budget.TrackReceived(permit, 1);
+                budget.CompleteReceiveAttempt(permit);
+                return lease;
+            })
+            .ToArray();
+
+        Assert.Equal(4, budget.OverageReservationCount);
+        var blocked = budget.AcquireReceiveAsync(CancellationToken.None).AsTask();
+        Assert.False(blocked.IsCompleted);
+
+        foreach (var lease in leases)
+            lease.Dispose();
+
+        var next = await blocked.WaitAsync(TimeSpan.FromSeconds(5));
+        var nextLease = budget.TrackReceived(next, 1);
+        budget.CompleteReceiveAttempt(next);
+        nextLease.Dispose();
+
+        Assert.Equal(0, budget.OverageReservationCount);
+        budget.Completed(100, handlerStarted: false);
+        Assert.Equal(0UL, budget.PendingPayloadBytes);
+    }
+
+    [Fact]
+    public void Local_mailbox_tracking_uses_the_same_bounded_overage_slots()
+    {
+        var budget = new ZLinkInboundDispatchBudget(
+            applicationHwmBytes: 100,
+            maximumMessageBytes: 10,
+            maximumConcurrentReceives: 2);
+        budget.Received(100);
+
+        Assert.Null(budget.Track(1));
+        Assert.Equal(0, budget.OverageReservationCount);
+
+        budget.Completed(100, handlerStarted: false);
+        var first = budget.Track(80);
+        var second = budget.Track(80);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(1, budget.OverageReservationCount);
+        Assert.Null(budget.Track(1));
+
+        first!.Dispose();
+        second!.Dispose();
+        Assert.Equal(0, budget.OverageReservationCount);
+        Assert.Equal(0UL, budget.PendingPayloadBytes);
+    }
+
+    [Fact]
+    public async Task Control_receive_reservation_is_available_at_hwm()
+    {
+        var budget = new ZLinkInboundDispatchBudget(
+            applicationHwmBytes: 100,
+            maximumMessageBytes: 10,
+            maximumConcurrentReceives: 1);
+        budget.Received(100);
+
+        var permit = await budget.AcquireReceiveAsync(CancellationToken.None);
+        budget.CompleteReceiveAttempt(permit);
+
+        Assert.False(budget.CanStartApplicationReceive);
+    }
+
+    [Fact]
+    public void Try_receive_does_not_block_when_raw_classification_allowance_is_full()
+    {
+        var budget = new ZLinkInboundDispatchBudget(
+            applicationHwmBytes: 100,
+            maximumMessageBytes: 10,
+            maximumConcurrentReceives: 1);
+        budget.Received(100);
+
+        Assert.True(budget.TryAcquireReceive(out var permit));
+        var lease = budget.TrackReceived(permit, 1);
+        budget.CompleteReceiveAttempt(permit);
+
+        Assert.False(budget.TryAcquireReceive(out _));
+
+        lease.Dispose();
+        Assert.True(budget.TryAcquireReceive(out var next));
+        budget.CompleteReceiveAttempt(next);
+        budget.Completed(100, handlerStarted: false);
+    }
+
+    [Fact]
     public async Task Dispatch_queue_completes_host_byte_accounting_once()
     {
         using var errors = new ZLinkRuntimeErrorSink();
@@ -102,6 +240,54 @@ public sealed class InboundDispatchBudgetTests
         release.TrySetResult();
         var ownsResumePermit = await capacity;
         budget.CompleteReceiveAttempt(ownsResumePermit);
+        await WaitUntilAsync(() => budget.PendingPayloadBytes == 0);
+    }
+
+    [Fact]
+    public async Task Dispatch_queue_rejects_when_full_without_blocking_receive_loop()
+    {
+        using var errors = new ZLinkRuntimeErrorSink();
+        await using var queue = new ZLinkChannelApplicationDispatchQueue(
+            nameof(Dispatch_queue_rejects_when_full_without_blocking_receive_loop),
+            errors,
+            CancellationToken.None);
+        var budget = new ZLinkInboundDispatchBudget(0);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var rejected = 0;
+
+        budget.Received(1);
+        Assert.True(await queue.PostAsync(
+            async _ => await release.Task.ConfigureAwait(false),
+            () => Interlocked.Increment(ref rejected),
+            budget,
+            1,
+            CancellationToken.None));
+        await WaitUntilAsync(() => budget.Snapshot().ActivePayloadBytes == 1);
+
+        for (var index = 0; index < 1024; index++)
+        {
+            budget.Received(1);
+            Assert.True(await queue.PostAsync(
+                static _ => ValueTask.CompletedTask,
+                () => Interlocked.Increment(ref rejected),
+                budget,
+                1,
+                CancellationToken.None));
+        }
+
+        budget.Received(1);
+        var full = queue.PostAsync(
+            static _ => ValueTask.CompletedTask,
+            () => Interlocked.Increment(ref rejected),
+            budget,
+            1,
+            CancellationToken.None);
+        Assert.True(full.IsCompletedSuccessfully);
+        Assert.False(await full);
+        Assert.Equal(1, Volatile.Read(ref rejected));
+
+        release.TrySetResult();
         await WaitUntilAsync(() => budget.PendingPayloadBytes == 0);
     }
 

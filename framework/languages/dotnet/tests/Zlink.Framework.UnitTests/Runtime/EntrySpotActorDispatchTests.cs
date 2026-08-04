@@ -368,6 +368,59 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task ActorActivation_UsesNodeWideConcurrencyAdmission()
+    {
+        var probe = new ControlledCreationProbe();
+        var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddScoped<ControlledCreationProbeActorFactory>()
+            .BuildServiceProvider();
+        var node = new CapturingSpotNode();
+        node.SetRoutingId(RoutingId.From("actor-node"));
+        var registration = new ZLinkFrameworkRegistration();
+        registration.SpotNodes["actor-node"] = new ZLinkSpotNodeRegistration
+        {
+            SpotNodeName = "actor-node",
+            ActorFactories = { ["controlled"] = typeof(ControlledCreationProbeActorFactory) }
+        };
+        registration.ActorCatalog.Build(registration.SpotNodes.Values);
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new CapturingBackendAdapterFactory(node),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+        var admission = new ZLinkActivationConcurrencyAdmission(1);
+        var sessions = new ZLinkActorSessionManager(
+            runtime,
+            services,
+            () => node,
+            null,
+            new ZLinkBoundSessionService(runtime),
+            _ => admission);
+
+        var first = sessions.CreateAndBindActorAsync(
+                "actor-concurrency-first",
+                "controlled")
+            .AsTask();
+        await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var rejected = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await sessions.CreateAndBindActorAsync(
+                "actor-concurrency-second",
+                "controlled"));
+        Assert.Equal(ZLinkFrameworkErrorKind.CapacityExceeded, rejected.Kind);
+        Assert.Equal(1, admission.Active);
+
+        probe.Release.TrySetResult();
+        var firstResult = await first.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("actor-concurrency-first", firstResult.Actor.Context.ActorId);
+        Assert.Equal(0, admission.Active);
+    }
+
+    [Fact]
     public async Task ActorCreation_PublishFailure_CompensatesClaimNativeActorAndRuntimeState()
     {
         var services = new ServiceCollection()
@@ -3775,6 +3828,50 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task Instance_Spot_Request_Refreshes_Stale_Route_Before_Retrying()
+    {
+        var node = new CapturingSpotNode
+        {
+            SpotRequestHandler = parts =>
+            {
+                var requestHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
+                return ZLinkEnvelopeCodec.EncodeParts(
+                    requestHeader with
+                    {
+                        Kind = ZLinkMessageKind.Response,
+                        MessageName = string.Empty
+                    },
+                    new ProbeReply("reply"),
+                    typeof(ProbeReply),
+                    codecs: null);
+            }
+        };
+        node.SpotRequestResults.Enqueue(RequestResult.NotConnected);
+        node.SpotRequestResults.Enqueue(RequestResult.Ok);
+        var (runtime, _) = await CreateStartedRuntimeAsync(
+            node,
+            includeInstanceSpotRoute: true);
+        try
+        {
+            var reply = await new ZLinkInstanceSpotRequestCall<ProbeRouteMessage>(
+                    runtime,
+                    new InstanceSpotIntentAddress(
+                        string.Empty,
+                        string.Empty,
+                        "spot-ready"),
+                    new ProbeRouteMessage("request"))
+                .Async<ProbeReply>();
+
+            Assert.Equal("reply", reply.Value);
+            Assert.Equal(2, node.SpotRequests.Count);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Actor_Send_TargetNotFound_Invalidates_Only_The_Positive_Route()
     {
         var node = new CapturingSpotNode
@@ -5822,6 +5919,7 @@ public sealed partial class EntrySpotActorDispatchTests
         TimeSpan? defaultRequestTimeout = null,
         ZLinkUserSpotExecutionMode userSpotExecutionMode =
             ZLinkUserSpotExecutionMode.SpotWide,
+        bool includeInstanceSpotRoute = false,
         Func<IZLinkLocationRepository, IZLinkLocationRepository>?
             locationStoreWrapper = null,
         IZLinkSpotRetireTarget? retireTarget = null,
@@ -5945,6 +6043,24 @@ public sealed partial class EntrySpotActorDispatchTests
             registration.SpotNodes["entry"].ObjectRole = ZLinkMeshNodeObjectRole.Server;
             registration.SpotNodes["entry"].ObjectRoleSelected = true;
         }
+        if (includeInstanceSpotRoute)
+        {
+            registration.SpotNodes["entry"].InstanceSpotFactories[
+                    "Tests.InstanceSpot"] =
+                new ZLinkInstanceSpotFactoryRegistration(
+                    typeof(ProbeInstanceSpot),
+                    new ZLinkInstanceSpotFactoryConfiguration());
+            registration.SpotNodes["entry"].InstanceSpotRelocations[
+                    "Tests.InstanceSpot"] =
+                new ZLinkObjectRelocationRegistration(
+                    typeof(ProbeInstanceSpot),
+                    new ZLinkObjectPlacementOptions(),
+                    PolicyKind: 0,
+                    AdapterType: null,
+                    AdapterInvoker: null);
+            registration.SpotNodes["entry"].ObjectRole = ZLinkMeshNodeObjectRole.Server;
+            registration.SpotNodes["entry"].ObjectRoleSelected = true;
+        }
         registration.ActorCatalog.Build(registration.SpotNodes.Values);
         var runtime = new ZLinkFrameworkRuntime(
             services,
@@ -6025,6 +6141,14 @@ public sealed partial class EntrySpotActorDispatchTests
                     OwnerNodeGeneration = 1
                 }));
         }
+        if (includeInstanceSpotRoute)
+        {
+            _ = await PublishLocalInstanceSpotAuthorityAsync(
+                locationStore,
+                locationRuntime.OwnerToken,
+                "Tests.InstanceSpot",
+                "spot-ready");
+        }
         return (runtime, actorRef);
     }
 
@@ -6061,6 +6185,49 @@ public sealed partial class EntrySpotActorDispatchTests
                 1,
                 new ZLinkSpotTypeCapacityDelta(
                     ZLinkPlacementObjectKind.UserSpot,
+                    stableType,
+                    1)));
+        var committed = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(key));
+        return committed.Snapshot.ObjectGeneration;
+    }
+
+    private static async ValueTask<ulong> PublishLocalInstanceSpotAuthorityAsync(
+        ZLinkInMemoryLocationStore store,
+        ZLinkLocationOwnerToken owner,
+        string stableType,
+        string spotId)
+    {
+        var key = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
+        if (await store.ReadAuthorityAsync(key) is ZLinkAuthorityReadResult.Found found)
+            return found.Snapshot.ObjectGeneration;
+
+        var payload = ZLinkInstanceSpotAuthorityPayloadCodec.Encode(
+            new ZLinkInstanceSpotAuthorityPayload(
+                ZLinkInstanceSpotAuthorityState.Ready,
+                spotId,
+                stableType,
+                "entry",
+                RoutingId.From("entry-node"),
+                1,
+                owner.OwnerId,
+                checked((ulong)owner.LeaseGeneration),
+                RecoveryReference: null,
+                RecoveryChecksum: 0,
+                ReplayCursor: 0));
+        await ReserveAndCommitLocalAuthorityAsync(
+            store,
+            key,
+            ZLinkPlacementObjectKind.InstanceSpot,
+            stableType,
+            RoutingId.From("entry-node"),
+            owner,
+            payload,
+            new ZLinkCapacityVector(
+                0,
+                1,
+                new ZLinkSpotTypeCapacityDelta(
+                    ZLinkPlacementObjectKind.InstanceSpot,
                     stableType,
                     1)));
         var committed = Assert.IsType<ZLinkAuthorityReadResult.Found>(
@@ -6558,6 +6725,12 @@ public sealed partial class EntrySpotActorDispatchTests
             Context.Handlers.AddHandler<ProbeActorDestroyRequestHandler>("destroy-request");
             Context.Handlers.AddHandler<ProbeActorThrowingRequestHandler>("throw");
         }
+    }
+
+    private sealed class ProbeInstanceSpot(IZLinkInstanceSpotContext context)
+        : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context { get; } = context;
     }
 
     private sealed class EmptyUserSpot(IZLinkSpotContext context) : IZLinkSpot
@@ -7339,6 +7512,8 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public Func<IReadOnlyList<Message>, IReadOnlyList<Message>>? SpotRequestHandler { get; set; }
 
+        public ConcurrentQueue<RequestResult> SpotRequestResults { get; } = new();
+
         public List<(RoutingId NodeRid, string SpotId, ulong Generation)> SpotSends { get; } = [];
 
         public List<(RoutingId NodeRid, string SpotId, ulong Generation)> SpotRequests { get; } = [];
@@ -7493,7 +7668,14 @@ public sealed partial class EntrySpotActorDispatchTests
             if (SpotRequestHandler is null)
                 return false;
             SpotRequests.Add((targetRid, targetSpotId, spotGeneration));
-            callback(RequestResult.Ok, SpotRequestHandler([message]));
+            var result = SpotRequestResults.TryDequeue(out var configured)
+                ? configured
+                : RequestResult.Ok;
+            callback(
+                result,
+                result == RequestResult.Ok
+                    ? SpotRequestHandler([message])
+                    : []);
             return true;
         }
 
@@ -7510,7 +7692,14 @@ public sealed partial class EntrySpotActorDispatchTests
             if (SpotRequestHandler is null)
                 return false;
             SpotRequests.Add((targetRid, targetSpotId, spotGeneration));
-            callback(RequestResult.Ok, SpotRequestHandler(parts));
+            var result = SpotRequestResults.TryDequeue(out var configured)
+                ? configured
+                : RequestResult.Ok;
+            callback(
+                result,
+                result == RequestResult.Ok
+                    ? SpotRequestHandler(parts)
+                    : []);
             return true;
         }
 
@@ -7965,6 +8154,9 @@ public sealed partial class EntrySpotActorDispatchTests
             get => _entrySpot.SpotRequestHandler;
             set => _entrySpot.SpotRequestHandler = value;
         }
+
+        public ConcurrentQueue<RequestResult> SpotRequestResults =>
+            _entrySpot.SpotRequestResults;
 
         public IReadOnlyList<(RoutingId NodeRid, string SpotId, ulong Generation)> SpotSends =>
             _entrySpot.SpotSends;

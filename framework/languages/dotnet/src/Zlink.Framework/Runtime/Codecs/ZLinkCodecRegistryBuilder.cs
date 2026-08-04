@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Zlink.Framework.Runtime.Codecs;
 
 internal sealed class ZLinkCodecRegistryBuilder :
@@ -14,7 +16,10 @@ internal sealed class ZLinkCodecRegistryBuilder :
     private readonly Dictionary<string, ZlinkStreamCodec> _streamCodecsByContentType =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<Type, (string ContentType, IZLinkMessageSerializer Serializer)> _serializerByType = [];
+    // Registration is completed before the runtime starts. Message paths only read this cache,
+    // so first-use resolution must remain safe when several receive workers resolve one type.
+    private readonly ConcurrentDictionary<Type, (string ContentType, IZLinkMessageSerializer Serializer)>
+        _serializerByType = new();
     private (string ContentType, IZLinkMessageSerializer Serializer)? _singleFallbackSerializer;
     private bool _fallbackSerializerAmbiguous;
     private ZLinkCodecRegistrySnapshot _snapshot = ZLinkCodecRegistrySnapshot.Empty;

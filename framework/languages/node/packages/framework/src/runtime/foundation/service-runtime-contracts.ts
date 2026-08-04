@@ -1,9 +1,11 @@
 import type {
   Message,
-  MessageLike,
+} from '../../contracts/Common/Message';
+import type {
   RequestResult,
-  SubmitResult
-} from '@zlink-systems/zlink';
+  SubmitResult,
+  ZLinkBackendMessageLike as MessageLike
+} from '../backend/runtime-values';
 import type { RoutingId } from '../../contracts';
 import type { ServiceActorRef } from './service-stateful-registry';
 import type { ServiceDirectSpotRouteFence } from './service-stateful-wire-codec';
@@ -171,6 +173,12 @@ export interface ReceiveRequirements {
   readonly byteCount: number;
 }
 
+export interface ZLinkMessageFollowOrigin {
+  readonly sourceNodeRid: RoutingId;
+  readonly originalOperation: MeshOperationId;
+  readonly originalReplyRouteId: bigint;
+}
+
 export interface ReceiveRecord {
   readonly kind: number;
   readonly domain: number;
@@ -189,6 +197,7 @@ export interface ReceiveRecord {
   readonly terminalResult: number;
   readonly failureErrno: number;
   readonly parts: Message[];
+  readonly messageFollowOrigin?: ZLinkMessageFollowOrigin;
   readonly onTerminalCompletion?: () => void | Promise<void>;
   reply(parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
   replyActorJoin(

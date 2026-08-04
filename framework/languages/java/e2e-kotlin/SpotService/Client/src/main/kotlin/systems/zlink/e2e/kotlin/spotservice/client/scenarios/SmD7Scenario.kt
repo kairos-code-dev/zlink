@@ -14,7 +14,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 
 internal object SmD7Scenario {
     suspend fun run() {
-        val preAuth = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val preAuth = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             preAuth.connect().await()
             expectFailure {
@@ -36,7 +36,7 @@ internal object SmD7Scenario {
             }
         }
 
-        val authenticated = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val authenticated = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             val profile = Contracts.ActorProfile("Auth Ok", 7, listOf("auth"))
             authenticated.connect().await()

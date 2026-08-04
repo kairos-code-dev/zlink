@@ -232,7 +232,8 @@ class stream_session_dispatcher_t
             const std::lock_guard<std::mutex> dispatch_lock (_stream.dispatch_mutex);
             if (!_stream.dispatch_queue) {
                 _stream.dispatch_queue =
-                  std::make_shared<runtime::serial_execution_queue_t> (*executor, 4096);
+                  std::make_shared<runtime::serial_execution_queue_t> (
+                    *executor, runtime::serial_execution_queue_options_t{});
             }
             queue = _stream.dispatch_queue;
         }

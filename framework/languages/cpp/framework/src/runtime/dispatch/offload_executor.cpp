@@ -69,6 +69,28 @@ bool offload_executor_t::try_submit (std::function<void ()> work)
       });
 }
 
+bool offload_executor_t::try_submit_internal (std::function<void ()> work)
+{
+    {
+        std::lock_guard lock (_mutex);
+        if (_stopping) {
+            return false;
+        }
+        _queue.push (work_item_t{
+          [work = std::move (work)] (std::stop_token) mutable {
+              if (work) {
+                  work ();
+              }
+          },
+          std::stop_source{}});
+        if (_idle_workers == 0 && _live_workers < _max_worker_count) {
+            start_worker_locked ();
+        }
+    }
+    _ready.notify_one ();
+    return true;
+}
+
 bool offload_executor_t::try_submit_cancellable (
   std::function<void (std::stop_token)> work)
 {
@@ -91,12 +113,7 @@ void offload_executor_t::request_stop () noexcept
     std::vector<std::stop_source> cancellations;
     {
         std::lock_guard lock (_mutex);
-        cancellations.reserve (_queue.size () + _active_cancellations.size ());
-        auto queued = _queue;
-        while (!queued.empty ()) {
-            cancellations.push_back (queued.front ().cancellation);
-            queued.pop ();
-        }
+        cancellations.reserve (_active_cancellations.size ());
         for (auto *cancellation : _active_cancellations) {
             if (cancellation != nullptr) {
                 cancellations.emplace_back (*cancellation);

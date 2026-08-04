@@ -8,6 +8,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.actors.ZLinkActorJoinOperationId;
@@ -286,6 +288,146 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                                 + result)));
     }
 
+    /**
+     * Waits until the aggregate commit has transferred the Actor authority to
+     * the target owner. The source uses this infrastructure-side observation
+     * before releasing its local Actor resources.
+     */
+    public CompletionStage<Void> awaitTargetCommit(
+        UUID aggregateId,
+        long aggregateGeneration,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        Objects.requireNonNull(aggregateId, "aggregateId");
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(timeout, "timeout");
+        if (aggregateGeneration <= 0
+            || timeout.isZero()
+            || timeout.isNegative()) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "deferred Join target-commit wait is invalid"));
+        }
+        return await(
+            () -> authority.read(
+                    ZLinkAuthorityKeyCodec.actor(actor.actorId()),
+                    NEVER)
+                .thenApply(result -> {
+                    if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
+                        || snapshot.objectGeneration() != actor.generation()) {
+                        return false;
+                    }
+                    var publication =
+                        ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+                            snapshot.payload());
+                    return publication != null
+                        && publication.aggregateId().equals(aggregateId)
+                        && publication.aggregateGeneration()
+                            == aggregateGeneration
+                        && snapshot.ownerId().equals(
+                            publication.targetOwnerId())
+                        && snapshot.ownerLeaseGeneration()
+                            == publication.targetOwnerLeaseGeneration();
+                }),
+            timeout,
+            "deferred Join target commit");
+    }
+
+    /**
+     * Waits for the source-cleanup CAS that closes the relocation admission
+     * gate before target route activation and application callbacks proceed.
+     */
+    public CompletionStage<Void> awaitSourceCleanup(
+        UUID aggregateId,
+        long aggregateGeneration,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        Objects.requireNonNull(aggregateId, "aggregateId");
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(timeout, "timeout");
+        if (aggregateGeneration <= 0
+            || timeout.isZero()
+            || timeout.isNegative()) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "deferred Join source-cleanup wait is invalid"));
+        }
+        return await(
+            () -> authority.read(
+                    ZLinkAuthorityKeyCodec.actor(actor.actorId()),
+                    NEVER)
+                .thenApply(result -> {
+                    if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
+                        || snapshot.objectGeneration() != actor.generation()) {
+                        return false;
+                    }
+                    var publication =
+                        ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+                            snapshot.payload());
+                    return publication != null
+                        && publication.aggregateId().equals(aggregateId)
+                        && publication.aggregateGeneration()
+                            == aggregateGeneration
+                        && publication.sourceCleanupCompleted()
+                        && snapshot.ownerId().equals(
+                            publication.targetOwnerId())
+                        && snapshot.ownerLeaseGeneration()
+                            == publication.targetOwnerLeaseGeneration();
+                }),
+            timeout,
+            "deferred Join source cleanup");
+    }
+
+    /**
+     * Publishes the source-cleanup phase without releasing the canonical root.
+     * The completion root must remain addressable until the target callback has
+     * advanced its delivery cursor to Delivered.
+     */
+    public CompletionStage<Void> markSourceCleanup(
+        ZLinkActorJoinOperationId operationId,
+        ZLinkBackendActorRef actor) {
+        Objects.requireNonNull(operationId, "operationId");
+        Objects.requireNonNull(actor, "actor");
+        return read(actor.actorId()).thenCompose(current -> {
+            var completion = find(
+                current.root().terminalCompletions(), operationId);
+            if (completion == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "deferred Join source-cleanup operation is missing"));
+            }
+            if (current.publication().sourceCleanupCompleted()) {
+                return CompletableFuture.completedFuture(null);
+            }
+            var stored = new ZLinkRelocationStored(
+                current.publication().reference(),
+                current.publication().checksumCrc32c(),
+                current.snapshot().storeNow(),
+                current.snapshot().storeNow());
+            byte[] completed =
+                ZLinkCanonicalRelocationAuthorityStateCodec
+                    .completeSourceCleanup(
+                        current.snapshot().payload(),
+                        stored,
+                        current.root());
+            return authority.compareExchange(
+                    current.authorityKey(),
+                    new ZLinkAuthorityExpectFound(
+                        current.snapshot().storeVersion()),
+                    new ZLinkAuthorityPut(
+                        completed,
+                        ZLinkAuthorityGenerationTransition.PRESERVE,
+                        Optional.empty(),
+                        Optional.empty()),
+                    NEVER)
+                .thenCompose(result -> result instanceof ZLinkAuthorityStored
+                    ? CompletableFuture.completedFuture(null)
+                    : CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "deferred Join source-cleanup CAS conflicted")));
+        });
+    }
+
     public CompletionStage<Void> abortPrepared(
         UUID aggregateId,
         long aggregateGeneration,
@@ -499,6 +641,9 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                     new IllegalStateException(
                         "deferred Join completion is not durably Delivered"));
             }
+            if (current.publication().sourceCleanupCompleted()) {
+                return release(delivered, actor);
+            }
             var stored = new ZLinkRelocationStored(
                 current.publication().reference(),
                 current.publication().checksumCrc32c(),
@@ -528,6 +673,78 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                     }
                     return release(delivered, actor);
                 });
+        });
+    }
+
+    private CompletionStage<Void> await(
+        Supplier<CompletionStage<Boolean>> condition,
+        Duration timeout,
+        String description) {
+        long timeoutNanos;
+        try {
+            timeoutNanos = timeout.toNanos();
+        } catch (ArithmeticException overflow) {
+            timeoutNanos = Long.MAX_VALUE;
+        }
+        long started = System.nanoTime();
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        poll(condition, started, timeoutNanos, description, result);
+        return result;
+    }
+
+    private void poll(
+        Supplier<CompletionStage<Boolean>> condition,
+        long started,
+        long timeoutNanos,
+        String description,
+        CompletableFuture<Void> result) {
+        if (result.isDone()) {
+            return;
+        }
+        long elapsed = System.nanoTime() - started;
+        if (elapsed >= timeoutNanos) {
+            result.completeExceptionally(new IllegalStateException(
+                description + " did not complete before timeout"));
+            return;
+        }
+        CompletionStage<Boolean> check;
+        try {
+            check = Objects.requireNonNull(
+                condition.get(), "deferred Join wait condition");
+        } catch (Throwable error) {
+            result.completeExceptionally(error);
+            return;
+        }
+        check.whenComplete((ready, error) -> {
+            if (result.isDone()) {
+                return;
+            }
+            if (error != null) {
+                result.completeExceptionally(error);
+                return;
+            }
+            if (Boolean.TRUE.equals(ready)) {
+                result.complete(null);
+                return;
+            }
+            long remaining = timeoutNanos - (System.nanoTime() - started);
+            if (remaining <= 0) {
+                result.completeExceptionally(new IllegalStateException(
+                    description + " did not complete before timeout"));
+                return;
+            }
+            long delayMillis = Math.max(
+                1L,
+                Math.min(10L, TimeUnit.NANOSECONDS.toMillis(remaining)));
+            CompletableFuture.delayedExecutor(
+                    delayMillis,
+                    TimeUnit.MILLISECONDS)
+                .execute(() -> poll(
+                    condition,
+                    started,
+                    timeoutNanos,
+                    description,
+                    result));
         });
     }
 

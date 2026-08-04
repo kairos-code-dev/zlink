@@ -84,7 +84,9 @@ lock에서 직렬화된다(`runtime/mesh/service_mailbox.cpp:43`). 두 축 예�
 
 항목: **A9**
 
-C++은 확정 갭이 둘이다. 두 경로 모두 데이터가 없어질 때까지 한 대상을 완전히 drain한다.
+C++의 fanout·ClientServer 수신 경로는 현재 message·byte·time batch와 회전 cursor를
+사용한다. 이 변경은 공통 internals의 코드 조건을 반영한 것이며, 실제 연결이 계속 유입될
+때 뒤쪽 connection과 control 신호가 진행하는지는 process matrix에서 별도로 확인한다.
 
 | 경로 | 위치 |
 |---|---|
@@ -106,8 +108,8 @@ W1에서 만든 batch 구조를 재사용한다.
 
 | 경로 | 지금 | 할 일 |
 |---|---|---|
-| RouteMesh 채널 | cursor를 weight 합으로 나눈 연속 구간 (`runtime/mesh/service_topology_registry.cpp:422-465`) | 누적값 3단계로 교체. 후보 map key가 NodeRid라 tiebreak는 이미 맞다 |
-| ClientServer | 누적값은 맞지만 tiebreak 키가 **연결 map key** (`runtime/client_server/weighted_selector.hpp:24-60`, 후보 구성 `runtime/client_server/client_server_location_runtime.cpp:1316-1327`) | 후보에 Server RID를 별도 field로 실어 보내고 tiebreak가 그 값만 비교하게 한다 |
+| RouteMesh 채널 | 후보 변경 시 smooth weighted schedule을 계산하고, fallback에서도 누적값과 Node RID tiebreak를 사용한다 (`runtime/mesh/service_topology_registry.cpp:426-650`) | **구현 완료.** schedule을 만들 수 없는 경계는 누적값 fallback으로 처리한다 |
+| ClientServer | 후보에 connection key와 별도의 Server RID tiebreak key를 보관하고, 후보 변경 시 schedule을 계산한다 (`runtime/client_server/weighted_selector.hpp`, `runtime/client_server/client_server_location_runtime.cpp:1316-1327`) | **구현 완료.** connection generation이나 endpoint가 tiebreak를 대신하지 않는다 |
 | **fallback** DEALER fan | ~~winner를 계산해 목록을 회전시키지만 받는 쪽이 집합에 넣어 순서를 지운다~~ | **✔ 완료** — 선택·회전과 죽은 `_auto_connections`를 삭제하고 호출처를 `list_manual_connections()`로 돌렸다 |
 
 **삭제 완료.** `_auto_connections`는 죽은 경로로 확인됐다 — 쓰기가 테스트에만 있고 나머지
@@ -145,15 +147,16 @@ manual만 채운다.
 
 항목: **A2 · D5**
 
-`runtime/actors/actor_client.cpp:591-609,746-756`이 relay **실패** 때만 캐시를 지운다. 성공
-relay를 송신 측에 알리는 경로가 없다. wire command가 확정되기 전에는 시작할 수 없다.
+command 50 `messageFollow`의 C++ local path는 구현했다. relay 성공 뒤 source runtime에
+통지를 보내고 route fence가 맞는 cache만 무효화하는 codec·dispatch·source handler가 현재
+worktree에 있다. 남은 조건은 다른 언어와 섞은 process에서 command body, 인증, fence와 중복
+억제가 같은 결과를 내는지 확인하는 것이다.
 
 ## 독립 항목
 
-**B3 — `preparing → serving` 순서.** `runtime/mesh/raw_mesh_node_owner.cpp:293-305`가
-descriptor를 `serving`으로 게시한 뒤 `_port`와 completion control을 만든다. bind와 주소
-확정 뒤에도 `preparing`을 유지하고, 준비가 끝난 뒤 별도 단계에서 `serving`을 게시한다.
-다른 묶음과 겹치지 않으므로 언제든 진행할 수 있다.
+**B3 — `preparing → serving` 순서.** bind와 주소 확정 뒤에도 descriptor를 `preparing`으로
+유지하고 `_port`, completion control, monitor와 router 준비를 끝낸 뒤 `serving`을 게시한다
+(`runtime/mesh/raw_mesh_node_owner.cpp`). 관련 owner-layer 구현과 vertical unit은 통과했다.
 
 **C부 구조 부채.** application이 관찰할 수 없으므로 우선순위가 가장 낮다.
 
@@ -192,9 +195,11 @@ umbrella `<zlink.hpp>` 의존도 제거했다.
 [Session과 Actor 연결](../../framework/common/internals/09-session-binding.ko.md),
 [Liveness와 상태 공개](../../framework/common/internals/10-liveness-and-state.ko.md),
 [Payload 소유권과 복사](../../framework/common/internals/11-message-ownership.ko.md)와
-`service-wire-protocol.ko.md`를 사용했다. STREAM은 현재 session마다 blocking worker가
-독립적으로 수신하므로 shared connection cursor를 사용하지 않는다는 차이를 남겼다.
-따라서 STREAM을 포함한 전체 topology 행렬의 공정성은 이 기록만으로 완료 판정하지 않는다.
+`service-wire-protocol.ko.md`를 사용했다. STREAM은 listener-wide readiness scheduler가
+여러 session의 receive cursor를 회전시키고, session dispatch는 각 session의 serial queue에서
+수행한다. 따라서 공통 internals가 요구하는 connection-level 회전 구조는 현재 코드에
+반영되어 있다. 다만 STREAM을 포함한 전체 topology 행렬의 공정성은 별도 process 검증
+없이는 완료 판정하지 않는다.
 
 검증은 다음과 같다.
 
@@ -202,13 +207,17 @@ umbrella `<zlink.hpp>` 의존도 제거했다.
 - `framework-unit`: 31/31 PASS
 - `framework-contract`: 8/8 PASS
 - `test_cpp_framework_install_consumer`, `test_cpp_framework_tooling_contract`: PASS
-- 전체 CTest: 56/56 PASS
-- framework sample smoke: Bingo, TicTacToe, DeliveryDispatch, GameQuest, ShoppingMall,
-  SupportChat 6/6 PASS
+- 전체 CTest: 수정 후 fresh aggregate에서 56/56 PASS, `100% tests passed, 0 tests failed out of 56`을
+  확인했다. 여기에는 unit·contract, installed package consumer, connector·HTTP와 6개
+  framework sample이 포함된다.
+- ASan targeted gate: `actor_gateway`, `execution`, `channel_messaging`, `stream_framework`
+  4/4 PASS. LeakSanitizer 오류 없이 종료했다.
+- framework sample smoke: 전체 aggregate 6/6 PASS를 확인했다. 추가 반복은 TicTacToe 10회,
+  GameQuest 12회, SupportChat 15회 연속 PASS였다.
 - `RegistryMessaging/run_e2e.sh RM-C7`: 두 provider process가 `api-a=180`, `api-b=60`을
   기록하고 PASS
 
-W3(A2·D5)는 relay 성공 통지의 command ID·body·인증·fence가 공통 service wire의 closed
-command set에 아직 추가되지 않았으므로 구현하지 않았다. D6의 batch·owner 점유 상한 값은
+W3(A2·D5)는 C++ local path를 구현했지만 command 50의 mixed-process 상호운용 검증은 남아
+있다. D6의 batch·owner 점유 상한 값은
 현재 C++ 기본값과 unit evidence가 있지만 공통 contract의 측정·허용 범위가 확정된 것은
 아니다. 이 두 조건과 STREAM 전체 process matrix는 남은 설계·검증 항목으로 분리한다.

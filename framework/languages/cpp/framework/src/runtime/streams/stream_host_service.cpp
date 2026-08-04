@@ -106,6 +106,315 @@ class session_transport_failure_t final : public std::runtime_error
     int _native_code;
 };
 
+/* One listener-wide readiness scheduler owns the receive cursor for all
+ * externally accepted STREAM connections. A connection worker may block while
+ * it finishes one already-ready frame, but it cannot claim another receive
+ * turn until the scheduler has visited the other ready connections. */
+class stream_receive_scheduler_t final
+{
+    struct slot_t
+    {
+        slot_t (std::uint64_t sequence_, int fd_) : sequence (sequence_), fd (fd_) {}
+
+        std::uint64_t sequence;
+        int fd;
+        bool granted = false;
+        bool closed = false;
+        std::condition_variable changed;
+    };
+
+  public:
+    class lease_t
+    {
+      public:
+        lease_t () noexcept = default;
+
+        lease_t (stream_receive_scheduler_t *owner, std::shared_ptr<slot_t> slot) :
+            _owner (owner),
+            _slot (std::move (slot))
+        {
+        }
+
+        ~lease_t () { reset (); }
+
+        lease_t (const lease_t &) = delete;
+        lease_t &operator= (const lease_t &) = delete;
+
+        lease_t (lease_t &&other) noexcept :
+            _owner (std::exchange (other._owner, nullptr)),
+            _slot (std::move (other._slot))
+        {
+        }
+
+        lease_t &operator= (lease_t &&other) noexcept
+        {
+            if (this != &other) {
+                reset ();
+                _owner = std::exchange (other._owner, nullptr);
+                _slot = std::move (other._slot);
+            }
+            return *this;
+        }
+
+        explicit operator bool () const noexcept
+        {
+            return _owner != nullptr && _slot != nullptr;
+        }
+
+        bool wait_turn (const std::function<bool ()> &stop_requested) const
+        {
+            return _owner != nullptr && _slot != nullptr
+                   && _owner->wait_for_turn (_slot, stop_requested);
+        }
+
+        void release_turn () const noexcept
+        {
+            if (_owner != nullptr && _slot != nullptr) {
+                _owner->release_turn (_slot);
+            }
+        }
+
+        void reset () noexcept
+        {
+            if (_owner != nullptr && _slot != nullptr) {
+                _owner->unregister_slot (_slot);
+            }
+            _owner = nullptr;
+            _slot.reset ();
+        }
+
+      private:
+        stream_receive_scheduler_t *_owner = nullptr;
+        std::shared_ptr<slot_t> _slot;
+    };
+
+    stream_receive_scheduler_t ()
+    {
+        if (::pipe (_wake_fds) != 0) {
+            throw std::runtime_error ("STREAM receive scheduler wake pipe creation failed");
+        }
+        set_nonblocking (_wake_fds[0]);
+        set_nonblocking (_wake_fds[1]);
+    }
+
+    ~stream_receive_scheduler_t ()
+    {
+        stop ();
+        if (_wake_fds[0] >= 0) {
+            ::close (_wake_fds[0]);
+        }
+        if (_wake_fds[1] >= 0) {
+            ::close (_wake_fds[1]);
+        }
+    }
+
+    stream_receive_scheduler_t (const stream_receive_scheduler_t &) = delete;
+    stream_receive_scheduler_t &operator= (const stream_receive_scheduler_t &) = delete;
+
+    void start ()
+    {
+        std::lock_guard lock (_mutex);
+        if (_thread.joinable ()) {
+            return;
+        }
+        _stopped = false;
+        _thread = std::thread ([this] { run (); });
+    }
+
+    lease_t register_connection (int fd)
+    {
+        if (fd < 0) {
+            return {};
+        }
+        std::shared_ptr<slot_t> slot;
+        {
+            std::lock_guard lock (_mutex);
+            if (_stopped) {
+                return {};
+            }
+            slot = std::make_shared<slot_t> (_next_sequence++, fd);
+            _slots.push_back (slot);
+        }
+        wake ();
+        return lease_t (this, std::move (slot));
+    }
+
+    void request_stop () noexcept
+    {
+        {
+            std::lock_guard lock (_mutex);
+            _stopped = true;
+            for (const auto &slot : _slots) {
+                slot->closed = true;
+                slot->changed.notify_all ();
+            }
+        }
+        wake ();
+    }
+
+    void stop () noexcept
+    {
+        request_stop ();
+        if (_thread.joinable ()) {
+            _thread.join ();
+        }
+    }
+
+  private:
+    static void set_nonblocking (int fd) noexcept
+    {
+        const int flags = ::fcntl (fd, F_GETFL, 0);
+        if (flags >= 0) {
+            (void) ::fcntl (fd, F_SETFL, flags | O_NONBLOCK);
+        }
+    }
+
+    void wake () noexcept
+    {
+        if (_wake_fds[1] < 0) {
+            return;
+        }
+        const std::uint8_t marker = 1;
+        const auto written = ::write (_wake_fds[1], &marker, sizeof (marker));
+        (void) written;
+    }
+
+    void drain_wake () noexcept
+    {
+        std::uint8_t markers[64];
+        while (::read (_wake_fds[0], markers, sizeof (markers)) > 0) {
+        }
+    }
+
+    bool wait_for_turn (const std::shared_ptr<slot_t> &slot,
+                        const std::function<bool ()> &stop_requested) const
+    {
+        std::unique_lock lock (_mutex);
+        slot->changed.wait (lock, [&] {
+            return slot->granted || slot->closed || _stopped
+                   || (stop_requested && stop_requested ());
+        });
+        return slot->granted && !slot->closed && !_stopped
+               && !(stop_requested && stop_requested ());
+    }
+
+    void release_turn (const std::shared_ptr<slot_t> &slot) noexcept
+    {
+        {
+            std::lock_guard lock (_mutex);
+            if (slot->closed) {
+                return;
+            }
+            slot->granted = false;
+        }
+        wake ();
+    }
+
+    void unregister_slot (const std::shared_ptr<slot_t> &slot) noexcept
+    {
+        {
+            std::lock_guard lock (_mutex);
+            slot->closed = true;
+            slot->granted = false;
+            slot->changed.notify_all ();
+            _slots.erase (std::remove (_slots.begin (), _slots.end (), slot), _slots.end ());
+        }
+        wake ();
+    }
+
+    void run () noexcept
+    {
+        for (;;) {
+            std::vector<std::shared_ptr<slot_t>> candidates;
+            std::vector<pollfd> poll_fds;
+            {
+                std::lock_guard lock (_mutex);
+                if (_stopped) {
+                    break;
+                }
+                poll_fds.push_back (pollfd{_wake_fds[0], POLLIN, 0});
+                for (const auto &slot : _slots) {
+                    if (!slot->closed && !slot->granted && slot->fd >= 0) {
+                        candidates.push_back (slot);
+                        poll_fds.push_back (pollfd{slot->fd, POLLIN, 0});
+                    }
+                }
+            }
+
+            const int ready = ::poll (poll_fds.data (), poll_fds.size (), -1);
+            if (ready < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+            if (poll_fds[0].revents != 0) {
+                drain_wake ();
+            }
+
+            if (ready <= 0) {
+                continue;
+            }
+
+            std::shared_ptr<slot_t> selected;
+            {
+                std::lock_guard lock (_mutex);
+                if (_stopped) {
+                    break;
+                }
+                std::size_t start = 0;
+                while (start < candidates.size ()
+                       && candidates[start]->sequence < _cursor_sequence) {
+                    ++start;
+                }
+                if (start == candidates.size ()) {
+                    start = 0;
+                }
+                for (std::size_t offset = 0; offset < candidates.size (); ++offset) {
+                    const auto index = (start + offset) % candidates.size ();
+                    const auto &slot = candidates[index];
+                    if (poll_fds[index + 1].revents == 0 || slot->closed || slot->granted) {
+                        continue;
+                    }
+                    selected = slot;
+                    _cursor_sequence = selected->sequence + 1;
+                    break;
+                }
+                if (selected) {
+                    selected->granted = true;
+                    selected->changed.notify_one ();
+                }
+            }
+        }
+
+        std::lock_guard lock (_mutex);
+        for (const auto &slot : _slots) {
+            slot->closed = true;
+            slot->granted = false;
+            slot->changed.notify_all ();
+        }
+    }
+
+    mutable std::mutex _mutex;
+    std::vector<std::shared_ptr<slot_t>> _slots;
+    std::uint64_t _next_sequence = 1;
+    std::uint64_t _cursor_sequence = 1;
+    int _wake_fds[2]{-1, -1};
+    bool _stopped = false;
+    std::thread _thread;
+};
+
+int stream_native_handle (tcp::socket &socket) noexcept
+{
+    return socket.native_handle ();
+}
+
+template <typename TStream>
+int stream_native_handle (TStream &stream) noexcept
+{
+    return stream.next_layer ().native_handle ();
+}
+
 bool is_expected_session_disconnect (const boost::system::error_code &error)
 {
     return error == asio::error::eof || error == asio::error::operation_aborted
@@ -373,6 +682,16 @@ zlink::message_t message_from_bytes (const std::vector<std::uint8_t> &bytes)
 
 constexpr std::size_t default_stream_max_frame_bytes = 16u * 1024u * 1024u;
 
+void validate_stream_frame_size (std::size_t header_size, std::size_t payload_size)
+{
+    if (header_size > default_stream_max_frame_bytes - 6
+        || payload_size > default_stream_max_frame_bytes - 6 - header_size) {
+        throw framework_exception_t (
+          framework_error_kind_t::protocol_error,
+          "STREAM frame exceeds the configured message size");
+    }
+}
+
 struct raw_core_stream_frame_t
 {
     std::vector<std::uint8_t> header;
@@ -388,16 +707,15 @@ class malformed_core_stream_frame_t final : public std::runtime_error
 class core_stream_frame_assembler_t
 {
   public:
-    void append (std::span<const std::byte> part)
+    struct frame_view_t
     {
-        if (part.empty ()) {
-            return;
-        }
-        const auto *begin = reinterpret_cast<const std::uint8_t *> (part.data ());
-        _bytes.insert (_bytes.end (), begin, begin + part.size ());
-    }
+        std::size_t header_size = 0;
+        std::size_t payload_size = 0;
+        std::size_t frame_size = 0;
+        std::span<const std::uint8_t> header;
+    };
 
-    std::optional<raw_core_stream_frame_t> next ()
+    std::optional<frame_view_t> peek () const
     {
         if (_bytes.size () < 6) {
             return std::nullopt;
@@ -417,14 +735,40 @@ class core_stream_frame_assembler_t
         if (_bytes.size () < frame_size) {
             return std::nullopt;
         }
+        return frame_view_t{
+          header_size,
+          payload_size,
+          frame_size,
+          std::span<const std::uint8_t> (_bytes.data () + 6, header_size)};
+    }
 
-        std::vector<std::uint8_t> header (_bytes.begin () + 6,
-                                          _bytes.begin () + 6 + header_size);
+    void append (std::span<const std::byte> part)
+    {
+        if (part.empty ()) {
+            return;
+        }
+        if (part.size () > default_stream_max_frame_bytes
+            || _bytes.size () > default_stream_max_frame_bytes - part.size ()) {
+            throw malformed_core_stream_frame_t (
+              "STREAM receive buffer exceeds the configured message size");
+        }
+        const auto *begin = reinterpret_cast<const std::uint8_t *> (part.data ());
+        _bytes.insert (_bytes.end (), begin, begin + part.size ());
+    }
+
+    std::optional<raw_core_stream_frame_t> next ()
+    {
+        const auto view = peek ();
+        if (!view) {
+            return std::nullopt;
+        }
+
+        std::vector<std::uint8_t> header (view->header.begin (), view->header.end ());
         const auto payload_begin = reinterpret_cast<const std::byte *> (
-          _bytes.data () + 6 + header_size);
+          _bytes.data () + 6 + view->header_size);
         auto payload = zlink::message_t::from (
-          std::span<const std::byte> (payload_begin, payload_size));
-        _bytes.erase (_bytes.begin (), _bytes.begin () + frame_size);
+          std::span<const std::byte> (payload_begin, view->payload_size));
+        _bytes.erase (_bytes.begin (), _bytes.begin () + view->frame_size);
         return raw_core_stream_frame_t{std::move (header), std::move (payload)};
     }
 
@@ -546,6 +890,39 @@ class stream_host_service_t::listener_t
         stream_t stream;
         std::shared_ptr<session_liveness_t> liveness;
         std::function<void ()> force_close;
+    };
+
+    /* Async packet dispatch may outlive the socket reader. Keep the service
+     * scope, session object and Actor manager together until the serial
+     * dispatch queue has completed its last callback. */
+    struct stream_connection_state_t
+    {
+        stream_connection_state_t (detail::service_scope_t scope,
+                                   packet_stream_session_t *session,
+                                   stream_t stream,
+                                   session_actor_manager_t *actors) :
+            scope (std::move (scope)),
+            session (session),
+            stream (std::move (stream)),
+            actors (actors)
+        {
+        }
+
+        ~stream_connection_state_t ()
+        {
+            if (actors != nullptr) {
+                detail::session_actor_manager_access_t::disconnect (*actors);
+            }
+            scope.close ();
+        }
+
+        stream_connection_state_t (const stream_connection_state_t &) = delete;
+        stream_connection_state_t &operator= (const stream_connection_state_t &) = delete;
+
+        detail::service_scope_t scope;
+        packet_stream_session_t *session = nullptr;
+        stream_t stream;
+        session_actor_manager_t *actors = nullptr;
     };
 
     /* zlink.stream.connections.* (runtime-metrics §4.1): session accept and
@@ -731,6 +1108,7 @@ class stream_host_service_t::listener_t
 
     void run ()
     {
+        _receive_scheduler.start ();
         if (_mesh_node && !stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
             run_core_stream ();
             return;
@@ -772,12 +1150,12 @@ class stream_host_service_t::listener_t
 
     void request_stop () noexcept
     {
+        _receive_scheduler.request_stop ();
         if (_inbound_budget) {
             _inbound_budget->wake_waiters ();
         }
         if (!stream_uses_tls (_stream) && !stream_uses_websocket (_stream)) {
             wake_native_accept ();
-            close_core_socket ();
             return;
         }
         asio::post (_io, [this] {
@@ -840,6 +1218,7 @@ class stream_host_service_t::listener_t
                 ++it;
             }
         }
+        _receive_scheduler.stop ();
         {
             const std::lock_guard<std::mutex> lock (_workers_mutex);
             trace_stream_host ("stop-connections-join-workers", _stream);
@@ -881,18 +1260,6 @@ class stream_host_service_t::listener_t
     static std::string core_session_key (const zlink::routing_id_t &rid)
     {
         return rid.to_hex ();
-    }
-
-    void close_core_socket () noexcept
-    {
-        std::lock_guard lock (_core_socket_mutex);
-        if (_core_socket) {
-            try {
-                (void) _core_socket->close ();
-            }
-            catch (...) {
-            }
-        }
     }
 
     result_t<void> send_core_frame (const zlink::routing_id_t &rid,
@@ -1001,10 +1368,14 @@ class stream_host_service_t::listener_t
             poller.add (*_core_socket, zlink::poll_event_flag_t::pollin, 1);
             zlink::received_t received;
             while (!_stop->load (std::memory_order_acquire)) {
-                if (_inbound_budget
-                    && !_inbound_budget->wait_for_application_capacity (
-                      [this] { return _stop->load (std::memory_order_acquire); })) {
-                    break;
+                receive_batch_budget_t batch;
+                // Frames retained by an earlier batch are drained before
+                // waiting for another Core receive. This prevents a peer
+                // whose application HWM is full from retaining work that
+                // could otherwise be processed for another peer.
+                process_core_frames (batch);
+                if (batch.exhausted ()) {
+                    continue;
                 }
 
                 zlink::poll_event_t event;
@@ -1028,15 +1399,6 @@ class stream_host_service_t::listener_t
                 if ((revents & pollerr) != 0 && (revents & pollin) == 0)
                     break;
 
-                // A different ingress transport can consume the remaining
-                // host budget while this poller is waiting. Recheck before
-                // receiving so a ready Core record is not admitted past HWM.
-                if (_inbound_budget
-                    && !_inbound_budget->wait_for_application_capacity (
-                      [this] { return _stop->load (std::memory_order_acquire); })) {
-                    break;
-                }
-
                 // POLLIN guarantees that a receive is worthwhile. DONTWAIT
                 // also makes a stale readiness event harmless: it yields
                 // ZLINK_RECV_NO_DATA and the loop re-arms the poller.
@@ -1055,7 +1417,7 @@ class stream_host_service_t::listener_t
                     }
                     throw std::runtime_error ("Framework STREAM recv failed");
                 }
-                process_core_received (received);
+                process_core_received (received, batch);
                 if (received.routing_id ()) {
                     trace_stream_host (
                       "core-recv", _stream, std::nullopt,
@@ -1083,6 +1445,7 @@ class stream_host_service_t::listener_t
             }
         }
         _core_frame_assemblers.clear ();
+        _core_frame_routing_ids.clear ();
     }
 
     std::shared_ptr<core_session_t>
@@ -1192,6 +1555,8 @@ class stream_host_service_t::listener_t
             current = std::move (found->second);
             _core_sessions.erase (found);
         }
+        _core_frame_assemblers.erase (core_session_key (rid));
+        _core_frame_routing_ids.erase (core_session_key (rid));
         if (!current)
             return;
 
@@ -1231,14 +1596,9 @@ class stream_host_service_t::listener_t
     }
 
     bool dispatch_core_frame (const zlink::routing_id_t &rid,
-                              raw_core_stream_frame_t frame)
+                              raw_core_stream_frame_t frame,
+                              stream_header_t header)
     {
-        auto decoded = _runtime.decode_header (frame.header);
-        if (!decoded) {
-            disconnect_core_peer (rid, "protocol_error");
-            return false;
-        }
-
         std::shared_ptr<core_session_t> current;
         try {
             current = get_or_create_core_session (rid);
@@ -1248,7 +1608,6 @@ class stream_host_service_t::listener_t
             return false;
         }
 
-        auto header = decoded.value ();
         trace_stream_host (
           "core-frame", _stream, header,
           "rid=" + rid.to_hex ()
@@ -1263,12 +1622,6 @@ class stream_host_service_t::listener_t
                 }
             }
             return true;
-        }
-
-        if (_inbound_budget
-            && !_inbound_budget->wait_for_application_capacity (
-              [this] { return _stop->load (std::memory_order_acquire); })) {
-            return false;
         }
 
         const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
@@ -1352,31 +1705,107 @@ class stream_host_service_t::listener_t
         return true;
     }
 
-    void process_core_received (zlink::received_t &received)
+    void process_core_frames (receive_batch_budget_t &budget)
+    {
+        if (!budget.can_receive () || _core_frame_assemblers.empty ()) {
+            return;
+        }
+
+        std::vector<std::string> keys;
+        keys.reserve (_core_frame_assemblers.size ());
+        for (const auto &[key, _] : _core_frame_assemblers) {
+            keys.push_back (key);
+        }
+        std::size_t start = 0;
+        if (!_core_frame_cursor.empty ()) {
+            const auto next = std::upper_bound (
+              keys.begin (), keys.end (), _core_frame_cursor);
+            start = static_cast<std::size_t> (next - keys.begin ());
+            if (start == keys.size ()) {
+                start = 0;
+            }
+        }
+
+        // Visit each Core peer at most once per batch. The cursor continues
+        // from the last visited peer on the next batch.
+        for (std::size_t offset = 0;
+             offset < keys.size () && budget.can_receive (); ++offset) {
+            const auto &key = keys[(start + offset) % keys.size ()];
+            _core_frame_cursor = key;
+            const auto assembler_found = _core_frame_assemblers.find (key);
+            const auto rid_found = _core_frame_routing_ids.find (key);
+            if (assembler_found == _core_frame_assemblers.end ()
+                || rid_found == _core_frame_routing_ids.end ()) {
+                continue;
+            }
+
+            auto &assembler = assembler_found->second;
+            const auto view = assembler.peek ();
+            if (!view) {
+                continue;
+            }
+
+            const auto rid = rid_found->second;
+            const std::vector<std::uint8_t> header_bytes (
+              view->header.begin (), view->header.end ());
+            auto decoded = _runtime.decode_header (header_bytes);
+            if (!decoded) {
+                disconnect_core_peer (rid, "protocol_error");
+                _core_frame_assemblers.erase (key);
+                _core_frame_routing_ids.erase (key);
+                continue;
+            }
+
+            if (decoded.value ().kind () != stream_message_kind_t::control
+                && _inbound_budget
+                && !_inbound_budget->can_start_application_receive ()) {
+                // Keep the complete frame in the assembler. The listener
+                // remains available for control traffic and other peers;
+                // the next bounded poll turn retries this peer after the
+                // application budget changes.
+                continue;
+            }
+
+            auto frame = assembler.next ();
+            if (!frame) {
+                continue;
+            }
+            const auto frame_bytes = view->frame_size;
+            const bool dispatched = dispatch_core_frame (
+              rid, std::move (*frame), std::move (decoded.value ()));
+            budget.account (frame_bytes);
+            if (!dispatched) {
+                _core_frame_assemblers.erase (key);
+                _core_frame_routing_ids.erase (key);
+            }
+        }
+    }
+
+    void process_core_received (zlink::received_t &received,
+                                receive_batch_budget_t &budget)
     {
         if (!received.routing_id ()) {
             return;
         }
         const auto rid = *received.routing_id ();
-        auto &assembler = _core_frame_assemblers[core_session_key (rid)];
+        const auto key = core_session_key (rid);
+        auto &assembler = _core_frame_assemblers[key];
+        _core_frame_routing_ids.insert_or_assign (key, rid);
         try {
             for (const auto &part : received.parts ()) {
                 assembler.append (part.bytes ());
-                while (auto frame = assembler.next ()) {
-                    if (!dispatch_core_frame (rid, std::move (*frame))) {
-                        _core_frame_assemblers.erase (core_session_key (rid));
-                        return;
-                    }
-                }
             }
+            process_core_frames (budget);
         }
         catch (const malformed_core_stream_frame_t &) {
             disconnect_core_peer (rid, "protocol_error");
-            _core_frame_assemblers.erase (core_session_key (rid));
+            _core_frame_assemblers.erase (key);
+            _core_frame_routing_ids.erase (key);
         }
         catch (const std::exception &) {
             disconnect_core_peer (rid, "protocol_error");
-            _core_frame_assemblers.erase (core_session_key (rid));
+            _core_frame_assemblers.erase (key);
+            _core_frame_routing_ids.erase (key);
         }
     }
 
@@ -1721,7 +2150,10 @@ class stream_host_service_t::listener_t
         return bytes;
     }
 
-    template <typename TStream> frame_t read_frame (TStream &socket)
+    template <typename TStream>
+    std::optional<frame_t>
+    read_frame (TStream &socket,
+                const std::function<bool (const stream_header_t &)> &admit_payload)
     {
         auto prefix = read_exact (socket, 6);
         const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
@@ -1729,8 +2161,8 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (prefix[3]) << 16)
                                   | (static_cast<std::size_t> (prefix[4]) << 8)
                                   | static_cast<std::size_t> (prefix[5]);
+        validate_stream_frame_size (header_size, payload_size);
         auto header_bytes = read_exact (socket, header_size);
-        auto payload_bytes = read_exact (socket, payload_size);
         auto header = _runtime.decode_header (header_bytes);
         if (!header) {
             throw framework_exception_t (header.error_kind (), header.error ()
@@ -1738,12 +2170,19 @@ class stream_host_service_t::listener_t
                                                                  : "STREAM header decode failed");
         }
         auto decoded_header = header.value ();
+        if (decoded_header.kind () != stream_message_kind_t::control
+            && admit_payload && !admit_payload (decoded_header)) {
+            return std::nullopt;
+        }
+        auto payload_bytes = read_exact (socket, payload_size);
         trace_stream_host ("read-frame", _stream, decoded_header,
                            "payload_bytes=" + std::to_string (payload_bytes.size ()));
-        return {decoded_header, message_from_bytes (payload_bytes)};
+        return frame_t{decoded_header, message_from_bytes (payload_bytes)};
     }
 
-    frame_t read_frame (websocket_stream_t &socket)
+    std::optional<frame_t>
+    read_frame (websocket_stream_t &socket,
+                const std::function<bool (const stream_header_t &)> &admit_payload)
     {
         beast::flat_buffer buffer;
         socket.read (buffer);
@@ -1763,6 +2202,7 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (bytes[3]) << 16)
                                   | (static_cast<std::size_t> (bytes[4]) << 8)
                                   | static_cast<std::size_t> (bytes[5]);
+        validate_stream_frame_size (header_size, payload_size);
         if (bytes.size () != 6 + header_size + payload_size) {
             throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM WebSocket message size does not match its prefix");
@@ -1777,9 +2217,13 @@ class stream_host_service_t::listener_t
                                                                  : "STREAM header decode failed");
         }
         auto decoded_header = header.value ();
+        if (decoded_header.kind () != stream_message_kind_t::control
+            && admit_payload && !admit_payload (decoded_header)) {
+            return std::nullopt;
+        }
         trace_stream_host ("read-frame", _stream, decoded_header,
                            "payload_bytes=" + std::to_string (payload_bytes.size ()));
-        return {decoded_header, message_from_bytes (payload_bytes)};
+        return frame_t{decoded_header, message_from_bytes (payload_bytes)};
     }
 
     template <typename TStream>
@@ -1841,7 +2285,9 @@ class stream_host_service_t::listener_t
         trace_stream_host ("write-completion", _stream, header, "result=success");
     }
 
-    frame_t read_frame_native (native_tcp_connection_t &connection)
+    std::optional<frame_t>
+    read_frame_native (native_tcp_connection_t &connection,
+                       const std::function<bool (const stream_header_t &)> &admit_payload)
     {
         auto prefix = read_exact_native (connection, 6);
         const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
@@ -1849,8 +2295,8 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (prefix[3]) << 16)
                                   | (static_cast<std::size_t> (prefix[4]) << 8)
                                   | static_cast<std::size_t> (prefix[5]);
+        validate_stream_frame_size (header_size, payload_size);
         auto header_bytes = read_exact_native (connection, header_size);
-        auto payload_bytes = read_exact_native (connection, payload_size);
         auto header = _runtime.decode_header (header_bytes);
         if (!header) {
             throw framework_exception_t (header.error_kind (), header.error ()
@@ -1858,9 +2304,14 @@ class stream_host_service_t::listener_t
                                                                  : "STREAM header decode failed");
         }
         auto decoded_header = header.value ();
+        if (decoded_header.kind () != stream_message_kind_t::control
+            && admit_payload && !admit_payload (decoded_header)) {
+            return std::nullopt;
+        }
+        auto payload_bytes = read_exact_native (connection, payload_size);
         trace_stream_host ("read-frame", _stream, decoded_header,
                            "payload_bytes=" + std::to_string (payload_bytes.size ()));
-        return {decoded_header, message_from_bytes (payload_bytes)};
+        return frame_t{decoded_header, message_from_bytes (payload_bytes)};
     }
 
     void write_all_native (native_tcp_connection_t &connection,
@@ -2016,13 +2467,15 @@ class stream_host_service_t::listener_t
         auto scope = detail::service_scope_t::create (
           *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
-        auto stream = _runtime.open_session (_stream.name);
+        auto stream_instance = _runtime.open_session (_stream.name);
         _runtime.set_session_identity (
-          stream, std::nullopt, local_endpoint_text (tcp_socket (*connection)),
+          stream_instance, std::nullopt, local_endpoint_text (tcp_socket (*connection)),
           remote_endpoint_text (tcp_socket (*connection)));
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
-        detail::session_actor_manager_access_t::attach (session_actors, stream);
-        session_actor_disconnect_guard_t actor_disconnect (session_actors);
+        detail::session_actor_manager_access_t::attach (session_actors, stream_instance);
+        auto connection_state = std::make_shared<stream_connection_state_t> (
+          std::move (scope), &session, std::move (stream_instance), &session_actors);
+        auto &stream = connection_state->stream;
         auto write_mutex = std::make_shared<std::mutex> ();
         if (attach_immediate_writer) {
             _runtime.attach_transport_writer (
@@ -2057,67 +2510,99 @@ class stream_host_service_t::listener_t
             register_active_stream (stream, liveness,
                                     [this, connection] { close_connection (*connection); });
             flush_writes (*connection, stream, flushed, *write_mutex);
-            receive_batch_budget_t batch;
+            auto receive_lease =
+              _receive_scheduler.register_connection (stream_native_handle (*connection));
             while (!_stop->load (std::memory_order_acquire)) {
-                if (!batch.can_receive ()) {
-                    batch = {};
-                    std::this_thread::yield ();
-                    continue;
-                }
-                if (_inbound_budget
-                    && !_inbound_budget->wait_for_application_capacity (
+                if (!receive_lease.wait_turn (
                       [this] { return _stop->load (std::memory_order_acquire); })) {
                     break;
                 }
-                auto frame = read_frame (*connection);
-                batch.account (frame.payload.size ());
-                if (frame.header.kind () == stream_message_kind_t::control) {
-                    if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
-                        liveness->record_pong ();
-                    } else if (frame.header.packet_name () == "$zlink.heartbeat.ping") {
-                        detail::stream_header_t pong (stream_message_kind_t::control,
-                                                      stream_codec_t::raw,
-                                                      stream_header_flags_t::none, std::nullopt,
-                                                      "$zlink.heartbeat.pong", {});
-                        const std::lock_guard<std::mutex> lock (*write_mutex);
-                        write_frame (*connection, pong, zlink::message_t{});
+                receive_batch_budget_t batch;
+                while (!_stop->load (std::memory_order_acquire) && batch.can_receive ()) {
+                    auto frame = read_frame (*connection, [this] (const stream_header_t &) {
+                        return !_inbound_budget
+                               || _inbound_budget->wait_for_application_capacity (
+                                 [this] { return _stop->load (std::memory_order_acquire); });
+                    });
+                    if (!frame) {
+                        break;
                     }
-                    continue;
-                }
-                const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
-                if (_inbound_budget) {
-                    _inbound_budget->received (payload_bytes);
-                }
-                bool handler_started = false;
-                try {
-                    detail::session_actor_manager_access_t::set_codec (
-                      session_actors, frame.header.codec ());
-                    if (_inbound_budget) {
-                        _inbound_budget->handler_started (payload_bytes);
-                        handler_started = true;
-                    }
-                    liveness->record_application_inbound ();
-                    trace_stream_host ("dispatch", _stream, frame.header);
-                    if (auto dispatched =
-                          _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
-                        !dispatched) {
-                        report_packet_dispatch_error (frame.header, dispatched);
-                        if (frame.header.kind () == stream_message_kind_t::request) {
+                    auto received_frame = std::move (*frame);
+                    batch.account (received_frame.payload.size ());
+                    if (received_frame.header.kind () == stream_message_kind_t::control) {
+                        if (received_frame.header.packet_name () == "$zlink.heartbeat.pong") {
+                            liveness->record_pong ();
+                        } else if (received_frame.header.packet_name () == "$zlink.heartbeat.ping") {
+                            detail::stream_header_t pong (stream_message_kind_t::control,
+                                                          stream_codec_t::raw,
+                                                          stream_header_flags_t::none,
+                                                          std::nullopt, "$zlink.heartbeat.pong", {});
                             const std::lock_guard<std::mutex> lock (*write_mutex);
-                            write_error_frame (*connection, frame.header, dispatched);
-                        }
-                    }
-                }
-                catch (...) {
+                            write_frame (*connection, pong, zlink::message_t{});
+                          }
+                        continue;
+                      }
+                    const auto payload_bytes = static_cast<std::uint64_t> (
+                      received_frame.payload.size ());
                     if (_inbound_budget) {
-                        _inbound_budget->completed (payload_bytes, handler_started);
+                        _inbound_budget->received (payload_bytes);
                     }
-                    throw;
+                    detail::session_actor_manager_access_t::set_codec (
+                      session_actors, received_frame.header.codec ());
+                    auto handler_started = std::make_shared<std::atomic_bool> (false);
+                    const auto header = received_frame.header;
+                    trace_stream_host ("dispatch-submit", _stream, header);
+                    auto dispatched = _runtime.dispatch_packet_async (
+                      session, stream, header, received_frame.payload,
+                      [this, connection, connection_state, write_mutex, header, liveness,
+                       handler_started, payload_bytes] (const result_t<void> &result) {
+                          if (_inbound_budget) {
+                              _inbound_budget->completed (
+                                payload_bytes,
+                                handler_started->load (std::memory_order_acquire));
+                          }
+                          trace_stream_host (
+                            "dispatch-complete", _stream, header,
+                            std::string ("result=") + (result ? "success" : "failure"));
+                          if (!result) {
+                              report_packet_dispatch_error (header, result);
+                              if (header.kind () == stream_message_kind_t::request) {
+                                  try {
+                                      const std::lock_guard<std::mutex> lock (*write_mutex);
+                                      write_error_frame (*connection, header, result);
+                                  }
+                                  catch (...) {
+                                  }
+                              }
+                          }
+                          (void) connection_state;
+                          (void) liveness;
+                      },
+                      [this, liveness, handler_started, payload_bytes] {
+                          handler_started->store (true, std::memory_order_release);
+                          if (_inbound_budget) {
+                              _inbound_budget->handler_started (payload_bytes);
+                          }
+                          liveness->record_application_inbound ();
+                      },
+                      [this] { return _stop->load (std::memory_order_acquire); });
+                    if (!dispatched) {
+                        if (_inbound_budget) {
+                            _inbound_budget->completed (payload_bytes, false);
+                        }
+                        report_packet_dispatch_error (header, dispatched);
+                        if (header.kind () == stream_message_kind_t::request) {
+                            try {
+                                const std::lock_guard<std::mutex> lock (*write_mutex);
+                                write_error_frame (*connection, header, dispatched);
+                            }
+                            catch (...) {
+                            }
+                      }
+                    }
+                    flush_writes (*connection, stream, flushed, *write_mutex);
                 }
-                if (_inbound_budget) {
-                    _inbound_budget->completed (payload_bytes, handler_started);
-                }
-                flush_writes (*connection, stream, flushed, *write_mutex);
+                receive_lease.release_turn ();
             }
         }
         catch (const boost::system::system_error &error) {
@@ -2154,8 +2639,20 @@ class stream_host_service_t::listener_t
             }
         }
         if (connected_session) {
+            auto dispatch_disconnect = [this, &session, &stream, connection_state] {
+                auto completed = [this, connection_state] (const result_t<void> &) {
+                    trace_stream_host ("dispatch-disconnected-end", _stream);
+                    (void) connection_state;
+                };
+                auto submitted = _runtime.dispatch_disconnected_async (
+                  session, stream, completed);
+                if (!submitted) {
+                    completed (submitted);
+                }
+            };
             if (_stop->load (std::memory_order_acquire)) {
                 _runtime.mark_disconnected (stream);
+                dispatch_disconnect ();
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
@@ -2166,8 +2663,7 @@ class stream_host_service_t::listener_t
                 if (session_transport_error && !forced) {
                     (void) _runtime.dispatch_error (session, stream, *session_transport_error);
                 }
-                (void) _runtime.dispatch_disconnected (session, stream);
-                trace_stream_host ("dispatch-disconnected-end", _stream);
+                dispatch_disconnect ();
             }
             if (!_stop->load (std::memory_order_acquire)) {
                 try {
@@ -2213,13 +2709,15 @@ class stream_host_service_t::listener_t
         auto scope = detail::service_scope_t::create (
           *_services, detail::service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
-        auto stream = _runtime.open_session (_stream.name);
+        auto stream_instance = _runtime.open_session (_stream.name);
         _runtime.set_session_identity (
-          stream, std::nullopt, native_local_endpoint_text (connection->fd),
+          stream_instance, std::nullopt, native_local_endpoint_text (connection->fd),
           native_remote_endpoint_text (connection->fd));
         auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
-        detail::session_actor_manager_access_t::attach (session_actors, stream);
-        session_actor_disconnect_guard_t actor_disconnect (session_actors);
+        detail::session_actor_manager_access_t::attach (session_actors, stream_instance);
+        auto connection_state = std::make_shared<stream_connection_state_t> (
+          std::move (scope), &session, std::move (stream_instance), &session_actors);
+        auto &stream = connection_state->stream;
         auto write_mutex = std::make_shared<std::mutex> ();
         _runtime.attach_transport_writer (
           stream,
@@ -2251,67 +2749,103 @@ class stream_host_service_t::listener_t
             register_active_stream (stream, liveness,
                                     [this, connection] { close_connection (*connection); });
             flush_writes_native (*connection, stream, flushed, *write_mutex);
-            receive_batch_budget_t batch;
+            int native_fd = -1;
+            {
+                const std::lock_guard<std::mutex> lock (connection->mutex);
+                native_fd = connection->fd;
+            }
+            auto receive_lease = _receive_scheduler.register_connection (native_fd);
             while (!_stop->load (std::memory_order_acquire)) {
-                if (!batch.can_receive ()) {
-                    batch = {};
-                    std::this_thread::yield ();
-                    continue;
-                }
-                if (_inbound_budget
-                    && !_inbound_budget->wait_for_application_capacity (
+                if (!receive_lease.wait_turn (
                       [this] { return _stop->load (std::memory_order_acquire); })) {
                     break;
                 }
-                auto frame = read_frame_native (*connection);
-                batch.account (frame.payload.size ());
-                if (frame.header.kind () == stream_message_kind_t::control) {
-                    if (frame.header.packet_name () == "$zlink.heartbeat.pong") {
-                        liveness->record_pong ();
-                    } else if (frame.header.packet_name () == "$zlink.heartbeat.ping") {
-                        detail::stream_header_t pong (stream_message_kind_t::control,
-                                                      stream_codec_t::raw,
-                                                      stream_header_flags_t::none, std::nullopt,
-                                                      "$zlink.heartbeat.pong", {});
-                        const std::lock_guard<std::mutex> lock (*write_mutex);
-                        write_frame_native (*connection, pong, zlink::message_t{});
+                receive_batch_budget_t batch;
+                while (!_stop->load (std::memory_order_acquire) && batch.can_receive ()) {
+                    auto frame = read_frame_native (*connection, [this] (const stream_header_t &) {
+                        return !_inbound_budget
+                               || _inbound_budget->wait_for_application_capacity (
+                                 [this] { return _stop->load (std::memory_order_acquire); });
+                    });
+                    if (!frame) {
+                        break;
                     }
-                    continue;
-                }
-                const auto payload_bytes = static_cast<std::uint64_t> (frame.payload.size ());
-                if (_inbound_budget) {
-                    _inbound_budget->received (payload_bytes);
-                }
-                bool handler_started = false;
-                try {
-                    detail::session_actor_manager_access_t::set_codec (
-                      session_actors, frame.header.codec ());
-                    if (_inbound_budget) {
-                        _inbound_budget->handler_started (payload_bytes);
-                        handler_started = true;
-                    }
-                    liveness->record_application_inbound ();
-                    trace_stream_host ("dispatch", _stream, frame.header);
-                    if (auto dispatched = _runtime.dispatch_packet (
-                          session, stream, frame.header, frame.payload);
-                        !dispatched) {
-                        report_packet_dispatch_error (frame.header, dispatched);
-                        if (frame.header.kind () == stream_message_kind_t::request) {
+                    auto received_frame = std::move (*frame);
+                    batch.account (received_frame.payload.size ());
+                    if (received_frame.header.kind () == stream_message_kind_t::control) {
+                        if (received_frame.header.packet_name () == "$zlink.heartbeat.pong") {
+                            liveness->record_pong ();
+                        } else if (received_frame.header.packet_name () == "$zlink.heartbeat.ping") {
+                            detail::stream_header_t pong (stream_message_kind_t::control,
+                                                          stream_codec_t::raw,
+                                                          stream_header_flags_t::none,
+                                                          std::nullopt, "$zlink.heartbeat.pong", {});
                             const std::lock_guard<std::mutex> lock (*write_mutex);
-                            write_error_frame_native (*connection, frame.header, dispatched);
-                        }
-                    }
-                }
-                catch (...) {
+                            write_frame_native (*connection, pong, zlink::message_t{});
+                          }
+                        continue;
+                      }
+                    const auto payload_bytes = static_cast<std::uint64_t> (
+                      received_frame.payload.size ());
                     if (_inbound_budget) {
-                        _inbound_budget->completed (payload_bytes, handler_started);
+                        _inbound_budget->received (payload_bytes);
                     }
-                    throw;
+                    detail::session_actor_manager_access_t::set_codec (
+                      session_actors, received_frame.header.codec ());
+                    auto handler_started = std::make_shared<std::atomic_bool> (false);
+                    const auto header = received_frame.header;
+                    trace_stream_host ("dispatch-submit", _stream, header);
+                    auto dispatched = _runtime.dispatch_packet_async (
+                      session, stream, header, received_frame.payload,
+                      [this, connection, connection_state, write_mutex, header, liveness,
+                       handler_started, payload_bytes] (const result_t<void> &result) {
+                          if (_inbound_budget) {
+                              _inbound_budget->completed (
+                                payload_bytes,
+                                handler_started->load (std::memory_order_acquire));
+                          }
+                          trace_stream_host (
+                            "dispatch-complete", _stream, header,
+                            std::string ("result=") + (result ? "success" : "failure"));
+                          if (!result) {
+                              report_packet_dispatch_error (header, result);
+                              if (header.kind () == stream_message_kind_t::request) {
+                                  try {
+                                      const std::lock_guard<std::mutex> lock (*write_mutex);
+                                      write_error_frame_native (*connection, header, result);
+                                  }
+                                  catch (...) {
+                                  }
+                              }
+                          }
+                          (void) connection_state;
+                          (void) liveness;
+                      },
+                      [this, liveness, handler_started, payload_bytes] {
+                          handler_started->store (true, std::memory_order_release);
+                          if (_inbound_budget) {
+                              _inbound_budget->handler_started (payload_bytes);
+                          }
+                          liveness->record_application_inbound ();
+                      },
+                      [this] { return _stop->load (std::memory_order_acquire); });
+                    if (!dispatched) {
+                        if (_inbound_budget) {
+                            _inbound_budget->completed (payload_bytes, false);
+                        }
+                        report_packet_dispatch_error (header, dispatched);
+                        if (header.kind () == stream_message_kind_t::request) {
+                            try {
+                                const std::lock_guard<std::mutex> lock (*write_mutex);
+                                write_error_frame_native (*connection, header, dispatched);
+                            }
+                            catch (...) {
+                            }
+                      }
+                    }
+                    flush_writes_native (*connection, stream, flushed, *write_mutex);
                 }
-                if (_inbound_budget) {
-                    _inbound_budget->completed (payload_bytes, handler_started);
-                }
-                flush_writes_native (*connection, stream, flushed, *write_mutex);
+                receive_lease.release_turn ();
             }
         }
         catch (const session_transport_failure_t &error) {
@@ -2326,8 +2860,20 @@ class stream_host_service_t::listener_t
         catch (...) {
         }
         if (connected_session) {
+            auto dispatch_disconnect = [this, &session, &stream, connection_state] {
+                auto completed = [this, connection_state] (const result_t<void> &) {
+                    trace_stream_host ("dispatch-disconnected-end", _stream);
+                    (void) connection_state;
+                };
+                auto submitted = _runtime.dispatch_disconnected_async (
+                  session, stream, completed);
+                if (!submitted) {
+                    completed (submitted);
+                }
+            };
             if (_stop->load (std::memory_order_acquire)) {
                 _runtime.mark_disconnected (stream);
+                dispatch_disconnect ();
             } else {
                 trace_stream_host ("dispatch-disconnected-begin", _stream);
                 unregister_active_stream (stream);
@@ -2338,8 +2884,7 @@ class stream_host_service_t::listener_t
                 if (session_transport_error && !forced) {
                     (void) _runtime.dispatch_error (session, stream, *session_transport_error);
                 }
-                (void) _runtime.dispatch_disconnected (session, stream);
-                trace_stream_host ("dispatch-disconnected-end", _stream);
+                dispatch_disconnect ();
             }
             if (!_stop->load (std::memory_order_acquire)) {
                 try {
@@ -2419,6 +2964,9 @@ class stream_host_service_t::listener_t
     std::mutex _core_sessions_mutex;
     std::map<std::string, std::shared_ptr<core_session_t>> _core_sessions;
     std::map<std::string, core_stream_frame_assembler_t> _core_frame_assemblers;
+    std::map<std::string, zlink::routing_id_t> _core_frame_routing_ids;
+    std::string _core_frame_cursor;
+    stream_receive_scheduler_t _receive_scheduler;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _ready_mutex;

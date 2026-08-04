@@ -108,9 +108,10 @@ public sealed class RouteMeshRuntimeServiceTests
     {
         await using var fixture = await RuntimeFixture.StartAsync(
             ZLinkMeshNodeObjectRole.Server);
+        using var observerStop = new CancellationTokenSource();
         await using var observer = fixture.Runtime
-            .ObserveAsync(RuntimeFixture.MeshName)
-            .GetAsyncEnumerator();
+            .ObserveAsync(RuntimeFixture.MeshName, observerStop.Token)
+            .GetAsyncEnumerator(observerStop.Token);
         Assert.True(await observer.MoveNextAsync());
 
         for (var index = 0; index < 1100; index++)
@@ -124,7 +125,13 @@ public sealed class RouteMeshRuntimeServiceTests
         Assert.True(await observer.MoveNextAsync());
         Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.Status.State);
         Assert.False(observer.Current.Status.IsReady);
-        Assert.False(await observer.MoveNextAsync());
+
+        var pending = observer.MoveNextAsync().AsTask();
+        await Task.Delay(100);
+        Assert.False(pending.IsCompleted);
+        observerStop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await pending);
     }
 
     [Fact]
@@ -132,9 +139,10 @@ public sealed class RouteMeshRuntimeServiceTests
     {
         await using var fixture = await RuntimeFixture.StartAsync(
             ZLinkMeshNodeObjectRole.Server);
+        using var observerStop = new CancellationTokenSource();
         await using var observer = fixture.Runtime
-            .ObserveAsync(RuntimeFixture.MeshName)
-            .GetAsyncEnumerator();
+            .ObserveAsync(RuntimeFixture.MeshName, observerStop.Token)
+            .GetAsyncEnumerator(observerStop.Token);
         Assert.True(await observer.MoveNextAsync());
 
         fixture.SetHostState(ZLinkFrameworkRuntimeState.Relocating);
@@ -147,7 +155,12 @@ public sealed class RouteMeshRuntimeServiceTests
             Assert.True(await observer.MoveNextAsync());
         Assert.Equal(ZLinkTopologyState.Stopped, observer.Current.Status.State);
         Assert.False(observer.Current.Status.IsReady);
-        Assert.False(await observer.MoveNextAsync());
+        var pendingAfterTerminal = observer.MoveNextAsync().AsTask();
+        await Task.Delay(100);
+        Assert.False(pendingAfterTerminal.IsCompleted);
+        observerStop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            async () => await pendingAfterTerminal);
     }
 
     [Fact]

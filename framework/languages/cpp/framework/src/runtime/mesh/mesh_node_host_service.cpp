@@ -15,6 +15,7 @@
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/locations/sha256.hpp"
 #include "runtime/locations/source_creation_cleanup.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
@@ -227,11 +228,12 @@ actor_create_result_t actor_result_from_terminal (
                 bytes[offset++]));
         reply = wrap_message (zlink::message_t::from (raw));
     }
-    if (state == creation_terminal_state_t::created)
+    if (state == creation_terminal_state_t::created) {
         return actor_create_created_t{
           actor_ref_t{
             node_rid_t::from_string (node), type, id, generation},
           std::move (reply)};
+    }
     if (state == creation_terminal_state_t::rejected)
         return actor_create_rejected_t{std::move (reply)};
     throw framework_exception_t (
@@ -564,14 +566,14 @@ mesh_node_host_service_t::create_actor (
                   result_t<actor_create_result_t>::failure (
                     framework_error_kind_t::already_exists,
                     "Actor already exists"));
+            const auto existing_ref = actor_ref_t{
+              existing->current.allocation.target.node_rid,
+              existing->current.allocation.stable_type,
+              actor_id,
+              existing->current.object_generation};
             return task_t<actor_create_result_t> (
               result_t<actor_create_result_t>::success (
-                actor_create_existing_t{
-                  actor_ref_t{
-                    existing->current.allocation.target.node_rid,
-                    existing->current.allocation.stable_type,
-                    actor_id,
-                    existing->current.object_generation}}));
+                actor_create_existing_t{existing_ref}));
         }
         if (std::holds_alternative<object_type_mismatch_t> (
               reserved))
@@ -1011,6 +1013,86 @@ mesh_node_host_service_t::find_actor_spot (
         std::nullopt));
 }
 
+result_t<void> mesh_node_host_service_t::finalize_local_actor_destroy (
+  const actor_ref_t &actor)
+{
+    if (actor.empty ()) {
+        return result_t<void>::failure (
+          framework_error_kind_t::invalid_operation,
+          "Actor destroy requires an exact ActorRef");
+    }
+
+    std::optional<authority_snapshot_t> removed_snapshot;
+    if (_location_store) {
+        const authority_key_t key{"1:" + std::string (actor.actor_id ())};
+        const auto current = _location_store->read_authority (key).result ();
+        if (!current) {
+            return detail::propagate_failure<void> (
+              current, "Actor destroy authority read failed");
+        }
+        if (const auto *snapshot =
+              std::get_if<authority_snapshot_t> (&current.value ())) {
+            const bool exact =
+              snapshot->allocation.object_kind
+                == placement_object_kind_t::actor
+              && snapshot->allocation.stable_type == actor.actor_type ()
+              && snapshot->object_generation == actor.generation ()
+              && snapshot->allocation.target.node_rid.value ()
+                   == actor.node_rid ().value ();
+            if (exact
+                && snapshot->allocation.state
+                     == placement_allocation_state_t::active) {
+                const auto removed = _location_store
+                  ->compare_exchange_authority (
+                    key, snapshot->store_version,
+                    authority_delete_t{})
+                  .result ();
+                if (!removed) {
+                    return detail::propagate_failure<void> (
+                      removed, "Actor destroy authority delete failed");
+                }
+                if (std::holds_alternative<authority_deleted_t> (
+                      removed.value ())) {
+                    removed_snapshot = *snapshot;
+                }
+            }
+        }
+    }
+
+    if (removed_snapshot && _services) {
+        if (auto actor_resolver =
+              _services->get<actor_address_resolver_t> ()) {
+            const auto &snapshot = *removed_snapshot;
+            const auto expected = spot_address_t{
+              {},
+              zlink::routing_id_t::from (
+                std::string (snapshot.allocation.target.node_rid.value ())),
+              {},
+              0,
+              {},
+              snapshot.object_generation,
+              snapshot.authority_owner_generation,
+              location_owner_token_t{
+                snapshot.allocation.target.owner.owner_id,
+                snapshot.allocation.target.owner.lease_generation},
+              snapshot.allocation.target.node_lifecycle_generation};
+            (void) actor_resolver->get ().invalidate_actor_address_if_matches (
+              actor.actor_id (), expected);
+        }
+    }
+
+    if (_services) {
+        if (auto gateway =
+              _services->get<detail::actor_gateway_runtime_t> ()) {
+            const auto cleaned = gateway->get ().destroy_actor (actor);
+            if (!cleaned) {
+                return cleaned;
+            }
+        }
+    }
+    return result_t<void>::success ();
+}
+
 task_t<bool> mesh_node_host_service_t::destroy_actor (
   actor_ref_t actor)
 {
@@ -1081,6 +1163,30 @@ task_t<bool> mesh_node_host_service_t::destroy_actor (
               framework_error_kind_t::unavailable,
               "Actor authority changed while destroy was pending"));
         }
+        /* A destroy removes the current authority before the next same-Id
+         * incarnation can be created. Invalidate the resolver entry that was
+         * derived from that authority so a new incarnation cannot reuse the
+         * previous node route when its generation is reused. */
+        if (_services) {
+            if (auto actor_resolver =
+                  _services->get<actor_address_resolver_t> ()) {
+                const auto expected = spot_address_t{
+                  {},
+                  zlink::routing_id_t::from (
+                    std::string (snapshot->allocation.target.node_rid.value ())),
+                  {},
+                  0,
+                  {},
+                  snapshot->object_generation,
+                  snapshot->authority_owner_generation,
+                  location_owner_token_t{
+                    snapshot->allocation.target.owner.owner_id,
+                    snapshot->allocation.target.owner.lease_generation},
+                  snapshot->allocation.target.node_lifecycle_generation};
+                (void) actor_resolver->get ().invalidate_actor_address_if_matches (
+                  actor.actor_id (), expected);
+            }
+        }
 
         if (node != _nodes.end ()) {
             auto local_destroyed = (*node)->destroy_application_actor (actor);
@@ -1092,18 +1198,13 @@ task_t<bool> mesh_node_host_service_t::destroy_actor (
                     : "Actor runtime cleanup failed"));
             }
         }
-        if (_services) {
-            if (auto gateway =
-                  _services->get<detail::actor_gateway_runtime_t> ()) {
-                auto gateway_destroyed = gateway->get ().destroy_actor (actor);
-                if (!gateway_destroyed) {
-                    return task_t<bool> (result_t<bool>::failure (
-                      gateway_destroyed.error_kind (),
-                      gateway_destroyed.error ()
-                        ? gateway_destroyed.error ()->what ()
-                        : "Actor gateway cleanup failed"));
-                }
-            }
+        const auto finalized = finalize_local_actor_destroy (actor);
+        if (!finalized) {
+            return task_t<bool> (detail::result_access_t::failure<bool> (
+              framework_exception_t (
+                finalized.error_kind (),
+                finalized.error () ? finalized.error ()->what ()
+                                   : "Actor destroy cleanup failed")));
         }
         return task_t<bool> (result_t<bool>::success (true));
     }
@@ -1650,6 +1751,14 @@ void mesh_node_host_service_t::start (service_provider_t &services)
       &services.get_required<location_repository_t> (),
       [] (location_repository_t *) noexcept {});
     _location_store = store;
+    for (const auto &registration : _registrations) {
+        if (!registration || !registration->spot_state)
+            continue;
+        detail::spot_node_runtime_t (registration->spot_state)
+          .on_destroy_actor ([this] (const actor_ref_t &actor) {
+              return finalize_local_actor_destroy (actor);
+          });
+    }
     auto &location_runtime =
       services.get_required<location_runtime_t> ();
     _location_owner = location_runtime.current_owner_token ();
@@ -1890,9 +1999,111 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 }});
         }
     }
+    auto &spot_resolver =
+      services.get_required<spot_address_resolver_t> ();
+    auto &actor_resolver =
+      services.get_required<actor_address_resolver_t> ();
+    const auto route_cache_max_age = location_runtime.options ().route_cache_max_age;
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto &node = _nodes[index];
         const auto registration = _registrations[index];
+        const auto mesh_name = node->mesh_name ();
+        node->configure_spot_route_fence_resolver (
+          [&spot_resolver, mesh_name] (
+            const zlink::routing_id_t &target_node_rid,
+            std::string_view target_spot_id,
+            std::uint64_t target_spot_generation)
+            -> std::optional<host::route_fence_t> {
+              try {
+                  const auto resolved = spot_resolver
+                    .resolve_spot_address (
+                      mesh_name, std::string (target_spot_id))
+                    .result ();
+                  if (!resolved || !resolved.value ())
+                      return std::nullopt;
+                  const auto &address = *resolved.value ();
+                  if (address.node_rid != target_node_rid
+                      || address.object_generation
+                           != target_spot_generation
+                      || address.authority_owner_generation == 0
+                      || address.owner.lease_generation <= 0)
+                      return std::nullopt;
+                  return host::route_fence_t{
+                    address.authority_owner_generation,
+                    static_cast<std::uint64_t> (
+                      address.owner.lease_generation)};
+              }
+              catch (...) {
+                  return std::nullopt;
+              }
+          },
+          route_cache_max_age);
+        node->configure_actor_route_resolver (
+          [&actor_resolver] (const actor_ref_t &actor)
+            -> std::optional<spot_address_t> {
+              try {
+                  const auto resolved = actor_resolver
+                    .resolve_actor_address (
+                      std::string (actor.actor_id ()))
+                    .result ();
+                  if (!resolved || !resolved.value ())
+                      return std::nullopt;
+                  const auto &address = *resolved.value ();
+                  if (address.object_generation != actor.generation ()
+                      || address.authority_owner_generation == 0
+                      || address.owner.lease_generation <= 0)
+                      return std::nullopt;
+                  return address;
+              }
+              catch (...) {
+                  return std::nullopt;
+              }
+          },
+          [&actor_resolver] (
+            const protocol::actor_route_fence_t &source) {
+              const auto expected = spot_address_t{
+                {},
+                zlink::routing_id_t::from (
+                  source.target_node_routing_id),
+                {},
+                0,
+                {},
+                source.object_generation,
+                source.authority_owner_generation,
+                location_owner_token_t{
+                  {},
+                  static_cast<std::int64_t> (
+                    source.owner_lease_generation)},
+                source.target_node_generation};
+              (void) actor_resolver.invalidate_actor_address_if_matches (
+                source.actor_id, expected);
+          });
+        registration->spot_state->actor_route_admission =
+          [&actor_resolver] (const protocol::actor_route_fence_t &route) {
+              try {
+                  const auto resolved = actor_resolver
+                    .resolve_actor_address (route.actor_id).result ();
+                  if (!resolved || !resolved.value ())
+                      return false;
+                  const auto &address = *resolved.value ();
+                  return address.node_rid
+                           == zlink::routing_id_t::from (
+                             route.target_node_routing_id)
+                         && address.node_generation
+                              == route.target_node_generation
+                         && address.object_generation
+                              == route.object_generation
+                         && address.authority_owner_generation
+                              == route.authority_owner_generation
+                         && address.owner.lease_generation > 0
+                         && static_cast<std::uint64_t> (
+                              address.owner.lease_generation)
+                              == route.owner_lease_generation;
+              }
+              catch (...) {
+                  return false;
+              }
+          };
         node->configure_actor_create_operations (
           [node, store] (const protocol::actor_create_header_t &request,
                   host::actor_create_operation_target_completion_t completion) {
@@ -2223,7 +2434,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                       if (owner.domain == host::ready_domain_t::application) {
                           for (const auto &part : parts) {
                               application_payload_bytes +=
-                                static_cast<std::uint64_t> (part.to_bytes ().size ());
+                                static_cast<std::uint64_t> (part.size ());
                           }
                           _inbound_budget->received (
                             application_payload_bytes);
@@ -2296,19 +2507,15 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                 application_payload_bytes, false);
                               return;
                           }
-                          std::vector<std::vector<std::uint8_t>> owned_part_bytes;
-                          owned_part_bytes.reserve (parts.size ());
-                          for (const auto &part : parts)
-                              owned_part_bytes.push_back (part.to_bytes ());
                           trace_mesh_application (
-                            "submit", record, owned_part_bytes.size ());
+                            "submit", record, parts.size ());
                           try {
                               _application_dispatch->submit (
                                 [this, node, registration, owner, record,
                                  application_payload_bytes,
-                                 part_bytes = std::move (owned_part_bytes)] () mutable {
+                                 parts = std::move (parts)] () mutable {
                                     trace_mesh_application (
-                                      "start", record, part_bytes.size ());
+                                      "start", record, parts.size ());
                                     auto completion_permit =
                                       requires_completion_permit (record.kind)
                                         ? _completion_admission->acquire ()
@@ -2326,26 +2533,17 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                     _inbound_budget->handler_started (
                                       application_payload_bytes);
                                     try {
-                                        std::vector<zlink::message_t> owned_parts;
-                                        owned_parts.reserve (part_bytes.size ());
-                                        for (const auto &bytes : part_bytes) {
-                                            owned_parts.emplace_back (bytes.size ());
-                                            if (!bytes.empty ())
-                                                std::memcpy (
-                                                  owned_parts.back ().data (),
-                                                  bytes.data (), bytes.size ());
-                                        }
                                         detail::spot_node_runtime_t
                                           application_spot_runtime (
                                             registration->spot_state);
                                         const auto framework_handled =
-                                          application_spot_runtime
-                                            .dispatch_mesh_record (
-                                              owner, record, owned_parts,
-                                              *_services, *_serializers);
+                                            application_spot_runtime
+                                              .dispatch_mesh_record (
+                                                owner, record, parts,
+                                                *_services, *_serializers);
                                         trace_mesh_application (
                                           "framework-dispatch", record,
-                                          owned_parts.size (),
+                                          parts.size (),
                                           framework_handled ? "handled"
                                                              : "not-handled");
                                         if (!framework_handled) {
@@ -2354,7 +2552,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                               registration->handlers, *_filters,
                                               _dispatch_options);
                                             auto dispatched = dispatcher.dispatch (
-                                              record, std::move (owned_parts));
+                                              record, std::move (parts));
                                             if (dispatched) {
                                                 trace_mesh_application (
                                                   "route-dispatch", record, 0,
@@ -2368,7 +2566,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                     }
                                     catch (const std::exception &error) {
                                         trace_mesh_application (
-                                          "exception", record, part_bytes.size (),
+                                          "exception", record, parts.size (),
                                           error.what ());
                                         _inbound_budget->completed (
                                           application_payload_bytes, true);
@@ -2378,7 +2576,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                                     }
                                     catch (...) {
                                         trace_mesh_application (
-                                          "exception", record, part_bytes.size (),
+                                          "exception", record, parts.size (),
                                           "unknown");
                                         _inbound_budget->completed (
                                           application_payload_bytes, true);
@@ -2417,7 +2615,9 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 detail::spot_node_runtime_t maintenance (registration->spot_state);
                 (void) maintenance.cleanup_expired_actor_admissions ();
                 if (count == 0)
-                    std::this_thread::sleep_for (std::chrono::milliseconds (1));
+                    (void) node->native_node ().wait_for_dispatch_activity (
+                      std::chrono::milliseconds (100),
+                      _inbound_budget->can_start_application_receive ());
             }
         });
     }
@@ -2449,6 +2649,17 @@ bool mesh_node_host_service_t::wait_for_accepted_callbacks_until (
                    && node->active_application_callbacks () == 0;
         });
     });
+}
+
+void mesh_node_host_service_t::visit_relocation_nodes (
+  const std::function<void (
+    const std::shared_ptr<detail::mesh_node_runtime_t> &)> &visitor)
+  const
+{
+    if (!visitor)
+        return;
+    for (const auto &node : _nodes)
+        visitor (node);
 }
 
 inbound_dispatch_snapshot_t
@@ -2602,7 +2813,7 @@ mesh_node_host_service_t::nodes () const
 
 zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
   const std::shared_ptr<detail::mesh_node_runtime_t> &node,
-  const std::vector<zlink::message_t> &parts)
+  std::vector<zlink::message_t> parts)
 {
     const auto found = std::find (_nodes.begin (), _nodes.end (), node);
     if (found == _nodes.end () || _services == nullptr || _serializers == nullptr)
@@ -2613,11 +2824,6 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
     if (!source_rid)
         return zlink::submit_result_t::not_found;
     node->note_local_node_submit_attempt ();
-
-    std::vector<std::vector<std::uint8_t>> owned_part_bytes;
-    owned_part_bytes.reserve (parts.size ());
-    for (const auto &part : parts)
-        owned_part_bytes.push_back (part.to_bytes ());
 
     {
         std::lock_guard lock (_dispatch_gate_mutex);
@@ -2632,16 +2838,9 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
     try {
         _application_dispatch->submit (
           [this, node, registration, source_rid,
-           part_bytes = std::move (owned_part_bytes)] () mutable {
+           parts = std::move (parts)] () mutable {
               node->application_work_started ();
               try {
-                  std::vector<zlink::message_t> owned_parts;
-                  owned_parts.reserve (part_bytes.size ());
-                  for (const auto &bytes : part_bytes) {
-                      owned_parts.emplace_back (bytes.size ());
-                      if (!bytes.empty ())
-                          std::memcpy (owned_parts.back ().data (), bytes.data (), bytes.size ());
-                  }
                   host::receive_record_t record;
                   record.kind = host::record_kind_t::node_send;
                   record.domain = host::ready_domain_t::application;
@@ -2649,7 +2848,7 @@ zlink::submit_result_t mesh_node_host_service_t::submit_local_node_send (
                   detail::mesh_record_dispatcher_t dispatcher (
                     *_services, *_serializers, registration->handlers, *_filters,
                     _dispatch_options);
-                  (void) dispatcher.dispatch (record, std::move (owned_parts));
+                  (void) dispatcher.dispatch (record, std::move (parts));
               }
               catch (...) {
                   node->local_application_work_finished ();

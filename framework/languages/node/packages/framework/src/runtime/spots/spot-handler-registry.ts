@@ -122,6 +122,12 @@ export class DefaultZLinkSpotHandlerRegistry<TActor extends ZLinkActor = ZLinkAc
     if (topic.trim().length === 0) {
       throw new ZLinkConfigurationException('SPOT subscribe topic must not be empty.');
     }
+    if (this.entries.some((entry) => entry.kind === 'subscribe'
+      && entry.handlerType === handlerType
+      && entry.channelName === channelName
+      && entry.topic === topic)) {
+      return this;
+    }
     this.entries.push({ kind: 'subscribe', handlerType, channelName, topic });
     return this;
   }

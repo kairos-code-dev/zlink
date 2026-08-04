@@ -6,7 +6,6 @@ import {
   ZLinkSpotRelocationReadinessMode,
   ZLinkUserSpotExecutionMode
 } from '../../contracts';
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
   DefaultZLinkActorManager,
   ZLinkActorHandoffCoordinator
@@ -55,6 +54,10 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
     meshName: string,
     spotId: string
   ) => Promise<void>;
+  readonly beginInstanceIdleClosingAuthority: (
+    meshName: string,
+    spotId: string
+  ) => Promise<boolean>;
   readonly createLocationSpotRouteResolver: () => ZLinkSpotRouteResolver | undefined;
   readonly boundSessionRelay: ZLinkBoundSessionRelay;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
@@ -93,7 +96,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
         returnResponse,
         remoteBoundSessionTarget,
         fallbackActorRef,
-        requestTerminal
+        requestTerminal,
+        messageFollowOrigin
       ) => {
         const runtime = this.options.spotNodeRuntime();
         if (runtime === undefined) {
@@ -105,7 +109,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
           returnResponse,
           remoteBoundSessionTarget,
           fallbackActorRef,
-          requestTerminal
+          requestTerminal,
+          messageFollowOrigin
         );
       },
       dispatchEntryActorJoin: async (meshName, actor, handoffBacklog) => {
@@ -136,6 +141,8 @@ export class ZLinkSpotRuntimeOptionsFactory {
       locationLifecycle: this.options.locationLifecycle(),
       releaseInstanceAuthority: (meshName, spotId) =>
         this.options.releaseInstanceAuthority(meshName, String(spotId)),
+      beginInstanceIdleClosingAuthority: (meshName, spotId) =>
+        this.options.beginInstanceIdleClosingAuthority(meshName, String(spotId)),
       instanceSpotApplicationTargetProvider: (meshName, spotId) =>
         this.options.spotNodeRuntime()
           ?.meshNode(meshName)
@@ -165,7 +172,7 @@ export class ZLinkSpotRuntimeOptionsFactory {
                 authority.authorityOwnerGeneration
               );
         const result = restored === undefined
-          ? node.getOrCreateSpot(BindingRoutingId.from(String(spotId)))
+          ? node.getOrCreateSpot(spotId)
           : { spot: restored, created: true };
         return {
           routingId: spotId,
@@ -176,6 +183,16 @@ export class ZLinkSpotRuntimeOptionsFactory {
             if (result.created) result.spot.close();
           }
         } as never;
+      },
+      createReceived: () => {
+        const runtime = this.options.spotNodeRuntime();
+        if (runtime === undefined) throw new Error('Spot backend runtime is not initialized.');
+        return runtime.createReceived();
+      },
+      createTopicMessage: () => {
+        const runtime = this.options.spotNodeRuntime();
+        if (runtime === undefined) throw new Error('Spot backend runtime is not initialized.');
+        return runtime.createTopicMessage();
       },
       nativeSpotNodeProvider: (meshName) =>
         this.options.spotNodeRuntime()?.meshNode(meshName) as never,

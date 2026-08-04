@@ -85,7 +85,9 @@ public sealed partial class ZLinkMessage
         IZLinkMessageCodecRegistry codecs)
     {
         return new ZLinkMessage(
-            payload.AsReadOnlyMemory().ToArray(),
+            // AsReadOnlyMemory is the binding boundary snapshot for native
+            // storage. Do not copy that managed snapshot a second time.
+            payload.AsReadOnlyMemory(),
             contentType,
             null,
             codecs.Snapshot());

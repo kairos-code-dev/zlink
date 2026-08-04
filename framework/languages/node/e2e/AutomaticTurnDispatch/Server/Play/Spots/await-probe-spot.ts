@@ -18,7 +18,10 @@ import {
   SelfCycleHandler,
   SelfSendHandler
 } from '../Handlers/execution-turn-handlers';
-import { AwaitCancelCommandHandler, AwaitTimeoutCommandHandler } from '../Handlers/failure-spot-handlers';
+import {
+  AwaitCancelCommandHandler,
+  AwaitTimeoutCommandHandler
+} from '../Handlers/failure-spot-handlers';
 import { RemoteSpotAwaitCommandHandler, RemoteSpotAwaitHandler } from '../Handlers/remote-spot-handlers';
 import { TimerStartCommandHandler, TimerStopCommandHandler } from '../Handlers/timer-spot-handlers';
 import { SpotActorFastHandler, SpotActorFastSendHandler, SpotActorJoinAwaitHandler, SpotActorPushAwaitHandler, SpotActorAwaitHandler, AwaitActor } from './await-actors';
@@ -28,6 +31,7 @@ import { AwaitTimerState } from './await-timer-state';
 export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
   readonly context!: ZLinkSpotContext<AwaitActor, AwaitProbeSpot>;
   private readonly timers = new Map<string, AwaitTimerState>();
+  private readonly actors = new Map<string, AwaitActor>();
   private counter = 0;
 
   constructor(private readonly evidence: EvidenceStore) {}
@@ -68,10 +72,12 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
   }
 
   async onJoinedActor(actor: AwaitActor): Promise<void> {
+    this.actors.set(actor.actorId, actor);
     this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actorId}`);
   }
 
   async onLeaveActor(actor: AwaitActor): Promise<void> {
+    this.actors.delete(actor.actorId);
     this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotId}|actor=${actor.actorId}`);
   }
 
@@ -82,6 +88,10 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
   writeCounter(value: number): void { this.counter = value; }
 
   resetCounter(): void { this.counter = 0; }
+
+  findActor(actorId: string): AwaitActor | undefined {
+    return this.actors.get(actorId);
+  }
 
   tryAddTimerState(state: AwaitTimerState): boolean {
     if (this.timers.has(state.timerName)) {

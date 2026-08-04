@@ -5,7 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -41,6 +44,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     private final ZLinkBackendSpot backendSpot;
     private final DefaultSpotOutbound outbound;
     private final ZLinkAsyncSerialQueue dispatchQueue;
+    private final ZLinkAsyncSerialQueue infrastructureQueue;
     private final ZLinkHandlerInstanceOwner handlerInstances;
     private final List<DefaultSpotContext> timerContexts = new ArrayList<>();
     private final java.util.Map<String, ZLinkSpotTimerRegistry> actorTimers =
@@ -62,6 +66,8 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         this.backendSpot = backendSpot;
         this.dispatchQueue = new ZLinkAsyncSerialQueue(
             host.serialExecutor(), false);
+        this.infrastructureQueue = new ZLinkAsyncSerialQueue(
+            host.infrastructureExecutor(), false);
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.handlerInstances = host.createHandlerInstances();
     }
@@ -137,6 +143,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     CompletionStage<Void> awaitAllLanes() {
         List<CompletionStage<Void>> lanes = new ArrayList<>();
         lanes.add(dispatchQueue.awaitQuiescence());
+        lanes.add(infrastructureQueue.awaitQuiescence());
         timerContexts.forEach(context -> lanes.add(context.awaitAllLanes()));
         return java.util.concurrent.CompletableFuture.allOf(
             lanes.stream()
@@ -147,16 +154,45 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return dispatchQueue.enqueue(
+        return enqueueDispatch(0, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueDispatch(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return dispatchQueue.enqueueWithPayloadBytes(
+            payloadBytes,
             () -> runApplicationExecution(null, false,
                 () -> host.runEntryDispatch(this, operation)));
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueInfrastructureDispatch(
+        Supplier<CompletionStage<Void>> operation) {
+        Objects.requireNonNull(operation, "operation");
+        return infrastructureQueue.enqueueWithPayloadBytes(
+            0,
+            () -> host.runEntryDispatch(this, operation));
     }
 
     @Override
     public CompletionStage<Void> enqueueActorDispatch(
         String actorId,
         Supplier<CompletionStage<Void>> operation) {
-        return runApplicationExecution(actorId, false, operation);
+        return enqueueActorDispatch(actorId, 0, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        Objects.requireNonNull(actorId, "actorId");
+        return host.enqueueActorDispatch(
+            actorId,
+            payloadBytes,
+            () -> runApplicationExecution(actorId, false, operation));
     }
 
     @Override
@@ -289,6 +325,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     private final ZLinkSpotTimerRegistry timers;
     private final ZLinkHandlerInstanceOwner handlerInstances;
     private final ZLinkAsyncSerialQueue dispatchQueue;
+    private final ZLinkAsyncSerialQueue infrastructureQueue;
     private final java.util.concurrent.ConcurrentHashMap<
         String, ZLinkAsyncSerialQueue> timerQueues =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -401,6 +438,8 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         this.nodeRid = nodeRid;
         this.backendSpot = backendSpot;
         this.dispatchQueue = dispatchQueue;
+        this.infrastructureQueue = new ZLinkAsyncSerialQueue(
+            host.infrastructureExecutor(), false);
         this.executionMode = Objects.requireNonNull(executionMode, "executionMode");
         this.relocationReadiness = Objects.requireNonNull(
             relocationReadiness, "relocationReadiness");
@@ -549,8 +588,15 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
+        return enqueueDispatch(0, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueDispatch(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
         streamTrace("dispatch-enqueue spot=" + spotId());
-        return dispatchQueue.enqueue(() -> {
+        return dispatchQueue.enqueueWithPayloadBytes(payloadBytes, () -> {
             streamTrace("dispatch-start spot=" + spotId());
             CompletionStage<Void> stage = runApplicationExecution(
                 null,
@@ -564,29 +610,119 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     }
 
     @Override
+    public CompletionStage<Void> enqueueInfrastructureDispatch(
+        Supplier<CompletionStage<Void>> operation) {
+        Objects.requireNonNull(operation, "operation");
+        return infrastructureQueue.enqueueWithPayloadBytes(
+            0,
+            operation);
+    }
+
+    @Override
     public CompletionStage<Void> enqueueActorDispatch(
         String actorId,
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueueActorDispatch(actorId, 0, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        long payloadBytes,
         Supplier<CompletionStage<Void>> operation) {
         Objects.requireNonNull(actorId, "actorId");
         streamTrace("actor-enqueue spot=" + spotId() + " actor=" + actorId
             + " shared=" + sharedSpotGate());
-        if (sharedSpotGate()) {
-            if (dispatchQueue.isCurrent()) {
-                return runApplicationExecution(actorId, true, operation);
-            }
-            return dispatchQueue.enqueue(() -> {
-                streamTrace("actor-start spot=" + spotId()
-                    + " actor=" + actorId);
-                CompletionStage<Void> stage = runApplicationExecution(
-                    actorId, true, operation);
-                stage.whenComplete((ignored, error) -> streamTrace(
-                    "actor-complete spot=" + spotId()
-                        + " actor=" + actorId
-                        + " error=" + (error == null ? "none" : error)));
-                return stage;
+        boolean sharedGateAlreadyOwned = sharedSpotGate()
+            && dispatchQueue.isCurrent();
+        Executor sharedGateContext = sharedGateAlreadyOwned
+            ? captureSharedGateContext()
+            : null;
+        return host.enqueueActorDispatch(
+            actorId,
+            payloadBytes,
+            () -> {
+                if (sharedGateAlreadyOwned) {
+                    return runOnOwnedSharedGate(
+                        actorId,
+                        sharedGateContext,
+                        operation);
+                }
+                // The Actor queue owns payload admission. The shared Spot
+                // gate reserves only its fixed turn cost here.
+                return sharedSpotGate()
+                    ? dispatchQueue.enqueue(
+                        () -> runActorApplication(actorId, true, operation))
+                    : runActorApplication(actorId, false, operation);
             });
+    }
+
+    private Executor captureSharedGateContext() {
+        AtomicReference<Runnable> capturedRunner = new AtomicReference<>();
+        AtomicReference<Runnable> pendingCommand = new AtomicReference<>();
+        ZLinkAsyncSerialQueue.propagateCurrent(capturedRunner::set).execute(() -> {
+            Runnable command = pendingCommand.getAndSet(null);
+            if (command == null) {
+                throw new IllegalStateException(
+                    "shared Spot context capture command is missing");
+            }
+            command.run();
+        });
+        Runnable runner = Objects.requireNonNull(
+            capturedRunner.get(),
+            "shared Spot context capture did not produce a runner");
+        return command -> {
+            if (!pendingCommand.compareAndSet(null, command)) {
+                throw new IllegalStateException(
+                    "shared Spot context was already used");
+            }
+            runner.run();
+        };
+    }
+
+    private CompletionStage<Void> runOnOwnedSharedGate(
+        String actorId,
+        Executor sharedGateContext,
+        Supplier<CompletionStage<Void>> operation) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        try {
+            sharedGateContext.execute(() -> {
+                try (var actor = systems.zlink.framework.runtime.internal.handlers
+                         .ZLinkSuspendInvocationContext.enterActorDispatch(actorId)) {
+                    CompletionStage<Void> stage = runActorApplication(
+                        actorId,
+                        true,
+                        operation);
+                    stage.whenComplete((ignored, error) -> {
+                        if (error == null) {
+                            result.complete(null);
+                        } else {
+                            result.completeExceptionally(error);
+                        }
+                    });
+                } catch (RuntimeException failure) {
+                    result.completeExceptionally(failure);
+                }
+            });
+        } catch (RuntimeException failure) {
+            result.completeExceptionally(failure);
         }
-        return runApplicationExecution(actorId, false, operation);
+        return result;
+    }
+
+    private CompletionStage<Void> runActorApplication(
+        String actorId,
+        boolean yieldAllowed,
+        Supplier<CompletionStage<Void>> operation) {
+        streamTrace("actor-start spot=" + spotId()
+            + " actor=" + actorId);
+        CompletionStage<Void> stage = runApplicationExecution(
+            actorId, yieldAllowed, operation);
+        stage.whenComplete((ignored, error) -> streamTrace(
+            "actor-complete spot=" + spotId()
+                + " actor=" + actorId
+                + " error=" + (error == null ? "none" : error)));
+        return stage;
     }
 
     CompletionStage<Void> enqueueAcceptedDispatch(
@@ -622,6 +758,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     CompletionStage<Void> awaitAllLanes() {
         List<CompletionStage<Void>> lanes = new ArrayList<>();
         lanes.add(dispatchQueue.awaitQuiescence());
+        lanes.add(infrastructureQueue.awaitQuiescence());
         timerQueues.values().forEach(
             queue -> lanes.add(queue.awaitQuiescence()));
         return java.util.concurrent.CompletableFuture.allOf(

@@ -3,13 +3,14 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessageFlowLogMode,
+  type ZLinkFrameworkRuntime,
   type ZLinkEntrySpot,
   type ZLinkEntrySpotContext,
   type ZLinkMessage,
   type ZLinkSpotActorJoinResult
 } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkModule, ZLINK_FRAMEWORK_RUNTIME, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
@@ -78,6 +79,7 @@ export async function startSessionHost(): Promise<void> {
           for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
           builder.addStreamNode(AutomaticTurnDispatchNames.streamNode)
             .bind(options.streamEndpoint)
+            .enableActorDispatch()
             .registerSession(AwaitSessionFactory);
 
           return builder.build();
@@ -98,15 +100,45 @@ export async function startSessionHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
   const options = app.get<SessionOptions>(SESSION_OPTIONS);
   const evidence = app.get(EvidenceStore);
+  const frameworkRuntime = app.get<ZLinkFrameworkRuntime>(ZLINK_FRAMEWORK_RUNTIME, { strict: false });
+  let shutdownOperation: Promise<unknown> | undefined;
+  let shutdownError: unknown;
   const server = await startHttpServer(options.httpUrl, [
-    { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'session', rid: options.rid }) },
+    {
+      method: 'GET',
+      path: '/health',
+      handle: () => ({
+        status: frameworkRuntime.status.acceptingWork ? 'ready' : 'draining',
+        role: 'session',
+        rid: options.rid
+      })
+    },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'GET',
+      path: '/status',
+      handle: () => ({
+        state: frameworkRuntime.status.state,
+        acceptingWork: frameworkRuntime.status.acceptingWork,
+        sequence: frameworkRuntime.status.sequence.toString()
+      })
+    },
     {
       method: 'POST',
       path: '/shutdown',
       handle: () => {
-        stopping = true;
-        return { status: 'stopping' };
+        if (shutdownOperation === undefined) {
+          shutdownOperation = frameworkRuntime.shutdown({ deadlineMs: 30_000 });
+          void shutdownOperation.then(
+            () => { stopping = true; },
+            (error: unknown) => { shutdownError = error; stopping = true; }
+          );
+        }
+        return {
+          status: 'draining',
+          acceptingWork: frameworkRuntime.status.acceptingWork,
+          state: frameworkRuntime.status.state
+        };
       }
     }
   ]);
@@ -114,5 +146,6 @@ export async function startSessionHost(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   await closeHttpServer(server);
+  if (shutdownError !== undefined) throw shutdownError;
   await app.close();
 }

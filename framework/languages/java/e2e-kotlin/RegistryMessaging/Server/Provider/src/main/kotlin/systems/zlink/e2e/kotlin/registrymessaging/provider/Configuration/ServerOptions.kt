@@ -30,12 +30,11 @@ data class ServerOptions(
                 index += 2
             }
             val rid = values.last("rid", "node")
-            System.setProperty("zlink.e2e.rid", rid)
             return ServerOptions(
                 rid = rid,
                 instanceId = values.last("instance-id", rid),
                 httpUrl = values.last("http-url", "http://127.0.0.1:0"),
-                logDir = values.last("log-dir", System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log"),
+                logDir = values.last("log-dir", "logs"),
                 evidenceFile = values.lastOrNull("evidence-file"),
                 redisLocationEndpoint = values.lastRequired("redis-location-endpoint"),
                 locationKeyPrefix = values.lastRequired("location-key-prefix"),

@@ -68,6 +68,8 @@ public sealed record PlaceMarkRes(GameState State);
 
 public sealed record LeaveGameMsg(string RoomId);
 
+public sealed record LeaveGameRes(bool Completed);
+
 public sealed record PlayerJoinedNotify(
     string RoomId,
     string ActorId,

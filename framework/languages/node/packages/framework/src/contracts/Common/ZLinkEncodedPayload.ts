@@ -1,8 +1,10 @@
+import { storeEncodedPayload } from './encoded-payload-storage';
+
 export class ZLinkEncodedPayload {
   private readonly payload: Buffer;
 
   private constructor(bytes: Uint8Array) {
-    this.payload = Buffer.from(bytes);
+    this.payload = storeEncodedPayload(this, bytes);
   }
 
   static from(bytes: Uint8Array): ZLinkEncodedPayload {

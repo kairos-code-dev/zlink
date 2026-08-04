@@ -44,6 +44,13 @@ class stop_after_start_service_t final : public hosted_service_t
 
 class play_route_readiness_service_t final : public hosted_service_t
 {
+  private:
+    struct state_t
+    {
+        std::atomic_bool reported{false};
+        std::atomic_bool stopping{false};
+    };
+
   public:
     play_route_readiness_service_t (std::string mesh_name,
                                     std::string node_name,
@@ -61,25 +68,34 @@ class play_route_readiness_service_t final : public hosted_service_t
         auto &runtime = services.get_required<route_mesh_runtime_t> ();
         _observation = runtime.observe (
           _mesh_name, 64,
-          [state, node_name = _node_name, expected_peer = _expected_peer] (
+            [state, node_name = _node_name, expected_peer = _expected_peer] (
             const observed_status_t<mesh_node_snapshot_t> &observed) {
-              const auto &snapshot = observed.status;
-              const auto peer_ready = std::any_of (
-                snapshot.peers.begin (), snapshot.peers.end (),
-                [&expected_peer] (const mesh_peer_snapshot_t &peer) {
-                    return peer.node_rid.to_string () == expected_peer
-                           && peer.state == peer_state_t::ready;
-                });
-              if (!peer_ready
-                  || state->reported.exchange (true, std::memory_order_acq_rel))
-                  return;
-              std::cout << "tictactoe play route ready node=" << node_name
-                        << " peer=" << expected_peer << std::endl;
+              report_if_ready (state, node_name, expected_peer, observed.status);
+          });
+        /* The peer can become ready while the observation registration is being
+         * installed. Poll the same public snapshot until the marker is reported,
+         * so startup readiness does not depend on an event edge being retained. */
+        _worker = std::thread (
+          [state, runtime = &runtime, mesh_name = _mesh_name,
+           node_name = _node_name, expected_peer = _expected_peer] () mutable {
+              while (!state->stopping.load (std::memory_order_acquire)) {
+                  try {
+                      report_if_ready (state, node_name, expected_peer,
+                                       runtime->snapshot (mesh_name));
+                  }
+                  catch (...) {
+                  }
+                  if (state->reported.load (std::memory_order_acquire))
+                      return;
+                  std::this_thread::sleep_for (std::chrono::milliseconds (50));
+              }
           });
     }
 
     void request_stop () noexcept override
     {
+        if (_state)
+            _state->stopping.store (true, std::memory_order_release);
         if (_observation)
             _observation->close ();
     }
@@ -87,21 +103,37 @@ class play_route_readiness_service_t final : public hosted_service_t
     void stop () noexcept override
     {
         request_stop ();
+        if (_worker.joinable ())
+            _worker.join ();
         _observation.reset ();
         _state.reset ();
     }
 
   private:
-    struct state_t
+    static void report_if_ready (const std::shared_ptr<state_t> &state,
+                                 const std::string &node_name,
+                                 const std::string &expected_peer,
+                                 const mesh_node_snapshot_t &snapshot)
     {
-        std::atomic_bool reported{false};
-    };
+        const auto peer_ready = std::any_of (
+          snapshot.peers.begin (), snapshot.peers.end (),
+          [&expected_peer] (const mesh_peer_snapshot_t &peer) {
+              return peer.node_rid.to_string () == expected_peer
+                     && peer.state == peer_state_t::ready;
+          });
+        if (!peer_ready
+            || state->reported.exchange (true, std::memory_order_acq_rel))
+            return;
+        std::cout << "tictactoe play route ready node=" << node_name
+                  << " peer=" << expected_peer << std::endl;
+    }
 
     std::string _mesh_name;
     std::string _node_name;
     std::string _expected_peer;
     std::shared_ptr<state_t> _state;
     std::unique_ptr<mesh_runtime_observation_t> _observation;
+    std::thread _worker;
 };
 
 class play_api_channel_readiness_service_t final : public hosted_service_t

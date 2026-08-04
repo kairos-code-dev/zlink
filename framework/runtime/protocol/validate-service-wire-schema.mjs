@@ -4603,7 +4603,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "queuedMessages", $ref: "u32" },
     { name: "queuedBytes", $ref: "u32" },
     { name: "originalOperation", $ref: "operation-id" },
-    { name: "originalReplyRouteId", $ref: "nonzero-u64" },
+    { name: "originalReplyRouteId", $ref: "u64" },
   ], "$.types", "Message Follow route must preserve exact route, queue accounting and reply identity");
   if (messageFollowRoute?.maximumEncodedBytes?.$bound !== "messageFollowBytes") {
     fail("$.types", "Message Follow route must use the bounded queue byte limit");
@@ -7142,7 +7142,8 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
         userSpotClose: 48,
         actorCreate: 49,
         terminalReply: 20,
-        reservedFirst: 50,
+        messageFollow: 50,
+        reservedFirst: 51,
       },
       replyEnvelopeFields: ["correlation", "terminalResult", "failureCode", "tail"],
       createRequestFields: [

@@ -1,4 +1,7 @@
-import type { MessageLike, Received as BindingReceived } from '@zlink-systems/zlink';
+import type {
+  ZLinkBackendMessageLike as MessageLike,
+  ZLinkBackendReceived as BackendReceived
+} from '../backend/runtime-values';
 import {
   decodeChannelEnvelope,
   encodeChannelErrorReplyParts,
@@ -26,7 +29,7 @@ export function submitRouteReply(operation: ZLinkRouteReplySubmitOperation): boo
 }
 
 export function submitRoutePayloadReply(
-  received: BindingReceived,
+  received: BackendReceived,
   envelope: ReturnType<typeof decodeChannelEnvelope> | undefined,
   payload: unknown
 ): boolean {
@@ -43,7 +46,7 @@ export function submitRoutePayloadReply(
 }
 
 export function submitSpotRouteBridgeReply(
-  received: BindingReceived,
+  received: BackendReceived,
   envelope: ReturnType<typeof decodeChannelEnvelope> | undefined,
   payload: Parameters<typeof encodeSpotRouteBridgeReply>[0]
 ): boolean {
@@ -51,7 +54,7 @@ export function submitSpotRouteBridgeReply(
 }
 
 export function submitRoutedActorJoinReply(
-  received: BindingReceived,
+  received: BackendReceived,
   decoded: ZLinkDecodedRemoteActorJoinRequest,
   payload: unknown
 ): boolean {
@@ -68,7 +71,7 @@ export function submitRoutedActorJoinReply(
 }
 
 export function submitRoutedActorJoinError(
-  received: BindingReceived,
+  received: BackendReceived,
   decoded: ZLinkDecodedRemoteActorJoinRequest,
   error: unknown
 ): boolean {
@@ -119,6 +122,5 @@ function requireRoutedActorJoinEnvelope(
 function isNativeBadAddress(error: unknown): boolean {
   return typeof error === 'object' &&
     error !== null &&
-    (Number((error as { nativeErrno?: unknown }).nativeErrno) === 14 ||
-      /Bad address/i.test(String((error as { message?: unknown }).message ?? '')));
+    Number((error as { nativeErrno?: unknown }).nativeErrno) === 14;
 }

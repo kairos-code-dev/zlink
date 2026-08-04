@@ -12,6 +12,7 @@
 #include "runtime/dispatch/completion_admission_owner.hpp"
 #include "runtime/dispatch/coroutine_executor.hpp"
 #include "runtime/host/framework_runtime.hpp"
+#include "runtime/host/hosted_service_lifecycle.hpp"
 #include "runtime/host/application_hwm_resolver.hpp"
 #include "runtime/http/http_host_service.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
@@ -153,6 +154,12 @@ struct app_state_access_t
     app_state_t *state = nullptr;
 };
 
+runtime::hosted_service_lifecycle_t *lifecycle_of (
+  hosted_service_t *service) noexcept
+{
+    return dynamic_cast<runtime::hosted_service_lifecycle_t *> (service);
+}
+
 class app_state_t
 {
   public:
@@ -207,41 +214,35 @@ class app_state_t
                           << typeid (*service).name () << std::endl;
             }
         };
-        std::vector<hosted_service_t *> stream_services;
-        stream_services.reserve (started.size ());
-        std::vector<hosted_service_t *> http_services;
-        http_services.reserve (started.size ());
-        for (auto it = started.rbegin (); it != started.rend (); ++it) {
-            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
-                stream_services.push_back (*it);
-            } else if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
-                http_services.push_back (*it);
-            }
-        }
-        for (auto *service : stream_services) {
+        std::vector<hosted_service_t *> request_order (
+          started.rbegin (), started.rend ());
+        std::stable_sort (
+          request_order.begin (), request_order.end (), [] (auto *left, auto *right) {
+              const auto *left_lifecycle = lifecycle_of (left);
+              const auto *right_lifecycle = lifecycle_of (right);
+              const auto left_priority = left_lifecycle
+                ? left_lifecycle->shutdown_request_priority () : 0;
+              const auto right_priority = right_lifecycle
+                ? right_lifecycle->shutdown_request_priority () : 0;
+              return left_priority > right_priority;
+          });
+        for (auto *service : request_order)
             service->request_stop ();
-        }
-        for (auto it = started.rbegin (); it != started.rend (); ++it) {
-            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
-                continue;
-            }
-            (*it)->request_stop ();
-        }
-        for (auto *service : http_services) {
+
+        std::vector<hosted_service_t *> stop_order (
+          started.rbegin (), started.rend ());
+        std::stable_sort (
+          stop_order.begin (), stop_order.end (), [] (auto *left, auto *right) {
+              const auto *left_lifecycle = lifecycle_of (left);
+              const auto *right_lifecycle = lifecycle_of (right);
+              const auto left_priority = left_lifecycle
+                ? left_lifecycle->shutdown_stop_priority () : 0;
+              const auto right_priority = right_lifecycle
+                ? right_lifecycle->shutdown_stop_priority () : 0;
+              return left_priority > right_priority;
+          });
+        for (auto *service : stop_order)
             stop_service (service);
-        }
-        for (auto *service : stream_services) {
-            stop_service (service);
-        }
-        for (auto it = started.rbegin (); it != started.rend (); ++it) {
-            if (dynamic_cast<runtime::stream_host_service_t *> (*it) != nullptr) {
-                continue;
-            }
-            if (dynamic_cast<runtime::http_host_service_t *> (*it) != nullptr) {
-                continue;
-            }
-            stop_service (*it);
-        }
     }
 
     template <typename TResult>
@@ -1387,19 +1388,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             spot_runtime.bind_spot_location_resolver (spot_resolver);
             spot_runtime.bind_drain_flag (_state->draining);
             spot_runtime.set_route_client (route_client);
-            if (application_mesh_registration != mesh_node_registrations.end ()) {
-                auto application_mesh = detail::mesh_node_runtime_t::from (
-                  _state->zlink, (*application_mesh_registration)->mesh_name);
-                spot_runtime.on_actor_message_follow (
-                  [application_mesh] (
-                    const actor_ref_t &actor,
-                    const runtime::messaging::envelope_header_t &header,
-                    const zlink::message_t &payload,
-                    std::chrono::milliseconds timeout) {
-                      return application_mesh->relay_application_actor (
-                        actor, header, payload, timeout);
-                  });
-            }
         }
     }
     if (!mesh_node_registrations.empty ()
@@ -1426,6 +1414,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
       std::make_unique<runtime::location_host_service_t> (
         location_owner));
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes;
+    const auto callback_registrations = mesh_node_registrations;
     runtime::mesh_node_host_service_t *mesh_node_service = nullptr;
     if (!mesh_node_registrations.empty ()) {
         auto mesh_service = std::make_unique<runtime::mesh_node_host_service_t> (
@@ -1450,6 +1439,35 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               std::make_unique<actor_manager_t> (
                 mesh_service->actor_manager ()));
         add_hosted_service (std::move (mesh_service));
+    }
+    if (!mesh_nodes.empty ()) {
+        const auto application_mesh_it =
+          std::find_if (mesh_nodes.begin (), mesh_nodes.end (),
+                        [&] (const auto &mesh) {
+                            return mesh->mesh_name () == application_mesh_name;
+                        });
+        const auto application_mesh =
+          application_mesh_it != mesh_nodes.end () ? *application_mesh_it
+                                                   : mesh_nodes.front ();
+        for (const auto &registration : callback_registrations) {
+            detail::spot_node_runtime_t spot_runtime (registration->spot_state);
+            spot_runtime.on_actor_message_follow (
+              [application_mesh] (
+                const actor_ref_t &actor,
+                const runtime::messaging::envelope_header_t &header,
+                const zlink::message_t &payload,
+                std::chrono::milliseconds timeout,
+                const zlink::routing_id_t &source_node,
+                const runtime::protocol::actor_route_fence_t &stale_route,
+                std::uint8_t hop_count,
+                const runtime::protocol::wire_operation_id_t &operation,
+                std::uint64_t reply_route_id) {
+                  return application_mesh->relay_application_actor (
+                    actor, header, payload, timeout,
+                    source_node, stale_route, hop_count, operation,
+                    reply_route_id);
+              });
+        }
     }
     if (!mesh_nodes.empty ()
         && !_state->services.contains (
@@ -1986,10 +2004,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           [mesh, mesh_node_service] (const zlink::routing_id_t &target,
                                     runtime::messaging::message_parts_t parts) {
               const auto local_rid = mesh->routing_id ();
-              const auto submitted = local_rid && *local_rid == target
-                                       ? mesh_node_service->submit_local_node_send (
-                                           mesh, parts.items ())
-                                       : mesh->send_to_node (target, parts.items ());
+              const auto submitted =
+                local_rid && *local_rid == target
+                  ? mesh_node_service->submit_local_node_send (
+                      mesh, std::move (parts).take_items ())
+                  : mesh->send_to_node (target, parts.items ());
               return one_way_native_submit_result (submitted, "MeshNode send");
           },
           [mesh] (const zlink::routing_id_t &target,
@@ -2701,10 +2720,8 @@ bool publish_mesh_descriptor_state (
 {
     bool published = true;
     for (const auto &service : state.hosted_services) {
-        if (auto *mesh =
-              dynamic_cast<runtime::mesh_node_host_service_t *> (
-                service.get ());
-            mesh && !mesh->publish_descriptor_state (desired)) {
+        auto *lifecycle = detail::lifecycle_of (service.get ());
+        if (lifecycle && !lifecycle->publish_descriptor_state (desired)) {
             published = false;
         }
     }
@@ -2903,17 +2920,17 @@ void app_t::run_shared_relocation (
             return;
         }
 
-        std::vector<runtime::mesh_node_host_service_t *> mesh_services;
+        std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> relocation_nodes;
         for (const auto &service : state.hosted_services) {
-            if (auto *mesh =
-                  dynamic_cast<runtime::mesh_node_host_service_t *> (
-                    service.get ())) {
-                mesh_services.push_back (mesh);
-            }
+            if (auto *lifecycle = detail::lifecycle_of (service.get ()))
+                lifecycle->visit_relocation_nodes (
+                  [&relocation_nodes] (const auto &node) {
+                      if (node)
+                          relocation_nodes.push_back (node);
+                  });
         }
 
-        for (auto *mesh_service : mesh_services) {
-            for (const auto &node : mesh_service->nodes ()) {
+        for (const auto &node : relocation_nodes) {
                 auto spot_runtime = detail::spot_node_runtime_t::from (
                   state.zlink, node->mesh_name ());
                 if (!spot_runtime)
@@ -3333,7 +3350,6 @@ void app_t::run_shared_relocation (
                         return;
                     }
                 }
-            }
         }
         terminal.outcome = relocation_outcome_t::relocated;
         terminal.reason = relocation_reason_t::none;
@@ -3447,12 +3463,9 @@ void app_t::run_shared_shutdown (
         }
     }
 
-    std::vector<runtime::mesh_node_host_service_t *> mesh_services;
     for (const auto &service : state.hosted_services) {
-        if (auto *mesh = dynamic_cast<runtime::mesh_node_host_service_t *> (service.get ())) {
-            mesh->seal_application_dispatch ();
-            mesh_services.push_back (mesh);
-        }
+        if (auto *lifecycle = detail::lifecycle_of (service.get ()))
+            lifecycle->seal_application_dispatch ();
     }
 
     auto publish_draining_markers = [&] (bool wait_for_propagation) {
@@ -3498,10 +3511,10 @@ void app_t::run_shared_shutdown (
           std::any_of (state.hosted_services.begin (),
                        state.hosted_services.end (),
                        [] (const auto &service) {
-                           return dynamic_cast<
-                                    runtime::location_auto_connect_host_service_t *> (
-                                    service.get ())
-                                  != nullptr;
+                           const auto *lifecycle =
+                             detail::lifecycle_of (service.get ());
+                           return lifecycle
+                                  && lifecycle->participates_in_drain_propagation ();
                        });
         if (!has_auto_connect)
             return;
@@ -3548,8 +3561,10 @@ void app_t::run_shared_shutdown (
         if (outbound_pending ()) {
             force (shutdown_force_reason_t::deadline_exceeded);
         } else {
-            for (auto *mesh : mesh_services) {
-                if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
+            for (const auto &service : state.hosted_services) {
+                auto *lifecycle = detail::lifecycle_of (service.get ());
+                if (lifecycle
+                    && !lifecycle->wait_for_accepted_callbacks_until (deadline_at)) {
                     force (shutdown_force_reason_t::deadline_exceeded);
                     break;
                 }
@@ -3569,8 +3584,10 @@ void app_t::run_shared_shutdown (
         publish_draining_markers (false);
     }
     if (std::holds_alternative<shutdown_completed_t> (result)) {
-        for (auto *mesh : mesh_services) {
-            if (!mesh->wait_for_accepted_callbacks_until (deadline_at)) {
+        for (const auto &service : state.hosted_services) {
+            auto *lifecycle = detail::lifecycle_of (service.get ());
+            if (lifecycle
+                && !lifecycle->wait_for_accepted_callbacks_until (deadline_at)) {
                 force (shutdown_force_reason_t::deadline_exceeded);
                 break;
             }
@@ -3579,8 +3596,8 @@ void app_t::run_shared_shutdown (
 
     if (std::holds_alternative<shutdown_completed_t> (result)) {
         for (const auto &service : state.hosted_services) {
-            if (auto *stream = dynamic_cast<runtime::stream_host_service_t *> (service.get ());
-                stream && !stream->drain_sessions_until (deadline_at)) {
+            auto *lifecycle = detail::lifecycle_of (service.get ());
+            if (lifecycle && !lifecycle->drain_sessions_until (deadline_at)) {
                 force (std::chrono::steady_clock::now () >= deadline_at
                          ? shutdown_force_reason_t::deadline_exceeded
                          : shutdown_force_reason_t::teardown_failed);
@@ -3625,10 +3642,8 @@ void app_t::run_shared_shutdown (
          * blocks the terminal result indefinitely. */
         try {
             for (const auto &service : state.hosted_services) {
-                if (auto *stream_service =
-                      dynamic_cast<runtime::stream_host_service_t *> (service.get ())) {
-                    stream_service->force_close_sessions (
-                      stream_close_reason_t::server_drain, "drain force stop");
+                if (auto *lifecycle = detail::lifecycle_of (service.get ())) {
+                    lifecycle->force_close_sessions ();
                     runtime::runtime_metrics_t metrics (
                       state.monitoring);
                     if (metrics.enabled ()) {

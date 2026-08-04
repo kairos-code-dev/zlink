@@ -48,6 +48,7 @@ class service_liveness_registry_t
                        const std::vector<std::uint8_t> &connection_id,
                        std::uint64_t probe_id) const;
     service_liveness_tick_t tick (clock_t::time_point now);
+    std::optional<clock_t::time_point> next_activity () const;
     std::size_t size () const;
 
   private:

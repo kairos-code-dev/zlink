@@ -5,7 +5,8 @@ import type {
   ZLinkSpotActorJoinResult
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type { ZLinkBackendReceived as BackendReceived } from '../backend/runtime-values';
 import {
   decodeChannelEnvelope,
   decodeChannelPayload,
@@ -65,7 +66,7 @@ export class ZLinkSpotRoutedActorAdmission {
 
   constructor(private readonly options: ZLinkSpotRoutedActorAdmissionOptions) {}
 
-  async admit(received: BindingReceived): Promise<boolean> {
+  async admit(received: BackendReceived): Promise<boolean> {
     if (received.requestSeq === null) {
       return false;
     }
@@ -95,7 +96,7 @@ export class ZLinkSpotRoutedActorAdmission {
 
   private async admitTransfer(
     decoded: ZLinkDecodedRemoteActorJoinRequest,
-    received: BindingReceived
+    received: BackendReceived
   ): Promise<void> {
     try {
       if (decoded.transferId === undefined) {
@@ -127,7 +128,7 @@ export class ZLinkSpotRoutedActorAdmission {
 
   private async commitTransfer(
     decoded: ZLinkDecodedRemoteActorJoinRequest,
-    received: BindingReceived
+    received: BackendReceived
   ): Promise<void> {
     try {
       const transferId = decoded.transferId;
@@ -273,8 +274,8 @@ export class ZLinkSpotRoutedActorAdmission {
   }
 
   private decodeRemoteActorJoinRequest(
-    parts: readonly BindingMessage[],
-    received: BindingReceived
+    parts: readonly Message[],
+    received: BackendReceived
   ): ZLinkDecodedRemoteActorJoinRequest | undefined {
     if (parts.length < 2 || parts[0].data().length === 0) {
       if (parts.length !== 1 || parts[0].data().length === 0) {
@@ -290,7 +291,7 @@ export class ZLinkSpotRoutedActorAdmission {
         }
         return decodeRemoteActorJoinPayload(
           payload,
-          BindingMessage.from(Buffer.from(payload.request, 'base64')),
+          RuntimeMessage.from(Buffer.from(payload.request, 'base64')),
           received,
           true
         );
@@ -309,7 +310,7 @@ export class ZLinkSpotRoutedActorAdmission {
       }
       return decodeRemoteActorJoinPayload(
         payload,
-        BindingMessage.from(Buffer.from(payload.request, 'base64')),
+        RuntimeMessage.from(Buffer.from(payload.request, 'base64')),
         received,
         false,
         envelope
@@ -326,7 +327,7 @@ export class ZLinkSpotRoutedActorAdmission {
         }
         return decodeRemoteActorJoinPayload(
           header,
-          BindingMessage.from(Buffer.from(parts[1].data())),
+          RuntimeMessage.from(Buffer.from(parts[1].data())),
           received,
           true
         );

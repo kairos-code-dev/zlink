@@ -17,6 +17,7 @@ import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeer;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectPeerResolver;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAutoConnectType;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 /** Resolves public handles from durable authority without legacy location rows. */
@@ -183,6 +184,56 @@ public final class ZLinkStoreLocationResolvers
         spotRoutes.remove(Objects.requireNonNull(spotId, "spotId"));
     }
 
+    /**
+     * Removes a cached route only when every fence field still matches the
+     * cached value. A delayed notice from an older owner cannot erase a newer
+     * positive route admitted after relocation.
+     */
+    public boolean invalidateRouteIfMatches(
+        ZLinkServiceMessageFollowWireCodec.Route fence) {
+        Objects.requireNonNull(fence, "fence");
+        if (fence instanceof ZLinkServiceMessageFollowWireCodec.ActorRoute actor) {
+            CachedRoute<ActorRoute> cached = actorRoutes.get(actor.actorId());
+            if (cached == null
+                || !(cached.value() instanceof ActorRoute route)
+                || !route.actorRef().actorId().equals(actor.actorId())
+                || route.actorRef().objectGeneration() != actor.objectGeneration()
+                || !route.nodeRid().equals(actor.targetNodeRid())
+                || route.targetNodeGeneration() != actor.targetNodeGeneration()
+                || route.authorityOwnerGeneration()
+                    != actor.authorityOwnerGeneration()
+                || route.ownerLeaseGeneration()
+                    != actor.ownerLeaseGeneration()
+                || cached.ownerLeaseGeneration() != actor.ownerLeaseGeneration()) {
+                return false;
+            }
+            return actorRoutes.remove(actor.actorId(), cached);
+        }
+        ZLinkServiceMessageFollowWireCodec.SpotRoute spot =
+            (ZLinkServiceMessageFollowWireCodec.SpotRoute) fence;
+        CachedRoute<SpotRoute> cached = spotRoutes.get(spot.spotId());
+        if (cached == null
+            || !(cached.value() instanceof SpotRoute route)
+            || !route.spotId().equals(spot.spotId())
+            || route.spotGeneration() != spot.objectGeneration()
+            || !route.nodeRid().equals(spot.targetNodeRid())
+            || route.targetNodeGeneration() != spot.targetNodeGeneration()
+            || route.authorityOwnerGeneration()
+                != spot.authorityOwnerGeneration()
+            || route.ownerLeaseGeneration()
+                != spot.ownerLeaseGeneration()
+            || cached.ownerLeaseGeneration() != spot.ownerLeaseGeneration()) {
+            return false;
+        }
+        return spotRoutes.remove(spot.spotId(), cached);
+    }
+
+    public boolean invalidateRouteIfMatches(
+        ZLinkServiceMessageFollowWireCodec.Notice notice) {
+        Objects.requireNonNull(notice, "notice");
+        return invalidateRouteIfMatches(notice.source());
+    }
+
     public void invalidateAllRoutes() {
         spotRoutes.clear();
         actorRoutes.clear();
@@ -209,7 +260,9 @@ public final class ZLinkStoreLocationResolvers
             authority.spotId(),
             snapshot.objectGeneration(),
             authority.nodeRid(),
+            authority.nodeGeneration(),
             snapshot.authorityOwnerGeneration(),
+            snapshot.ownerLeaseGeneration(),
             authority.kind() == ZLinkServiceAuthorityPayloadCodec.Kind.USER
                 ? ZLinkSpotKind.USER
                 : ZLinkSpotKind.INSTANCE);
@@ -242,7 +295,9 @@ public final class ZLinkStoreLocationResolvers
             authority.currentSpotId(),
             authority.meshName(),
             authority.nodeRid(),
-            snapshot.authorityOwnerGeneration());
+            authority.nodeGeneration(),
+            snapshot.authorityOwnerGeneration(),
+            snapshot.ownerLeaseGeneration());
         return admitPositiveRoute(
             actorRoutes, actorId, route, snapshot.ownerId(),
             snapshot.ownerLeaseGeneration(), snapshot.storeVersion());
@@ -317,7 +372,9 @@ public final class ZLinkStoreLocationResolvers
         String spotId,
         long spotGeneration,
         RoutingId nodeRid,
+        long targetNodeGeneration,
         long authorityOwnerGeneration,
+        long ownerLeaseGeneration,
         ZLinkSpotKind spotKind) {
     }
 
@@ -327,7 +384,9 @@ public final class ZLinkStoreLocationResolvers
         String spotId,
         String meshName,
         RoutingId nodeRid,
-        long authorityOwnerGeneration) {
+        long targetNodeGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
     }
 
     public record DirectJoinSessionFence(

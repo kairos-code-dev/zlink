@@ -278,7 +278,8 @@ public final class ZLinkMeshApplicationDispatcher
             String contentType = ZLinkChannelContentTypeFrame.decode(parts);
             Message ownedPayload = payload;
             ZLinkInboundDispatchBudget.Lease ownedLease = lease;
-            boolean accepted = namespace.sendQueue.tryEnqueue(() -> {
+            boolean accepted = namespace.sendQueue.tryEnqueueWithPayloadBytes(
+                payload.size(), () -> {
                 try {
                     ownedLease.handlerStarted();
                     return invoker.executeHandler(() -> invoker.invokeRouteSendHandler(
@@ -342,7 +343,8 @@ public final class ZLinkMeshApplicationDispatcher
             record,
             packetName);
         try {
-            CompletionStage<Void> queued = namespace.sendQueue.enqueue(() -> {
+            CompletionStage<Void> queued = namespace.sendQueue
+                .enqueueWithPayloadBytes(payload.size(), () -> {
                 lease.handlerStarted();
                 CompletionStage<Void> invocation = route != null
                     ? invoker.executeHandler(() -> invoker.invokeRouteSendHandler(
@@ -402,7 +404,8 @@ public final class ZLinkMeshApplicationDispatcher
             record,
             packetName);
         try {
-            CompletionStage<Void> queued = namespace.requestQueue.enqueue(() -> {
+            CompletionStage<Void> queued = namespace.requestQueue
+                .enqueueWithPayloadBytes(payload.size(), () -> {
                 return inboundDispatchBudget.acquireCompletionPermit()
                     .thenCompose(permit -> {
                         try {

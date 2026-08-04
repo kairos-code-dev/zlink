@@ -93,6 +93,42 @@ final class ZLinkActorDispatchSerials {
 
     CompletionStage<Void> enqueue(
         QueuedTurn turn,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueue(turn, payloadBytes, operation, () -> { });
+    }
+
+    synchronized CompletionStage<Void> enqueue(
+        QueuedTurn turn,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation,
+        Runnable relocationRelease) {
+        if (teardowns.containsKey(turn.actorId)) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "actor dispatch admission is closed: " + turn.actorId));
+        }
+        Supplier<CompletionStage<Void>> turnOperation = () -> {
+            synchronized (this) {
+                activeActorIds.add(turn.actorId);
+            }
+            streamTrace("turn-start actor=" + turn.actorId);
+            return runTurn(turn.actorId, operation)
+                .whenComplete((ignored, error) -> {
+                    streamTrace("turn-complete actor=" + turn.actorId
+                        + " error=" + (error == null ? "none" : error));
+                    synchronized (this) {
+                        activeActorIds.remove(turn.actorId);
+                    }
+                });
+        };
+        return turn.queue.enqueueWithPayloadBytes(
+            payloadBytes,
+            turnOperation);
+    }
+
+    CompletionStage<Void> enqueue(
+        QueuedTurn turn,
         byte[] acceptedJournalRecord,
         Supplier<CompletionStage<Void>> operation) {
         return enqueue(

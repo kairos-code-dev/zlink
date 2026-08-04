@@ -1,4 +1,4 @@
-import { Received as BindingReceived } from '@zlink-systems/zlink';
+import type { ZLinkBackendReceived as BackendReceived } from '../backend/runtime-values';
 import type { ActorRef } from '../../contracts';
 import type { ZLinkChannelEnvelopeCodecRegistry } from '../channels/channel-envelope';
 import {
@@ -66,7 +66,7 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
 export class ZLinkSpotRoutedBoundSessionDispatch {
   constructor(private readonly options: ZLinkSpotRoutedBoundSessionDispatchOptions) {}
 
-  async dispatch(received: BindingReceived): Promise<boolean> {
+  async dispatch(received: BackendReceived): Promise<boolean> {
     const seal = decodeRemoteBoundSessionSeal(received.parts, this.options.channelCodecs());
     if (seal !== undefined) {
       const ack = await this.options.routedBoundSessionSealReceiver?.(seal);
@@ -140,7 +140,7 @@ export class ZLinkSpotRoutedBoundSessionDispatch {
     return false;
   }
 
-  private replyOk(received: BindingReceived): void {
+  private replyOk(received: BackendReceived): void {
     if (!isReplyableRequestSeq(received.requestSeq)) {
       return;
     }

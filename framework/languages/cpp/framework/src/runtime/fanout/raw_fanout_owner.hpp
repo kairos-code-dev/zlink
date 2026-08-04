@@ -20,6 +20,7 @@ namespace zlink
 class context_t;
 class pub_socket_t;
 class sub_socket_t;
+class poller_t;
 }
 
 namespace zlink::framework::runtime::fanout
@@ -61,6 +62,7 @@ class raw_fanout_publisher_t
     void start ();
     void close () noexcept;
     std::string endpoint () const;
+    std::chrono::steady_clock::time_point next_activity () const;
     bool publish (const std::string &topic,
                   const protocol::application_payload_t &payload);
     bool tick (std::chrono::steady_clock::time_point now);
@@ -81,7 +83,7 @@ class raw_fanout_publisher_t
 class raw_fanout_subscriber_t
 {
   public:
-    raw_fanout_subscriber_t ();
+    explicit raw_fanout_subscriber_t (zlink::poller_t *poller = nullptr);
     ~raw_fanout_subscriber_t () noexcept;
 
     bool connect_manual (std::vector<std::uint8_t> publisher_routing_id,
@@ -137,10 +139,10 @@ class raw_fanout_subscriber_t
 
     mutable std::mutex _mutex;
     std::unique_ptr<zlink::context_t> _context;
-    zlink::poller_t _poller;
+    std::unique_ptr<zlink::poller_t> _owned_poller;
+    zlink::poller_t *_poller = nullptr;
     std::map<publisher_intent_key_t, connection_t> _connections;
     std::optional<bool> _automatic_mode;
-    std::uintptr_t _next_poller_slot = 1;
     std::size_t _receive_cursor = 0;
     bool _closed = false;
 };

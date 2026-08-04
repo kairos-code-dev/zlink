@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.actors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -13,12 +14,16 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
+import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
+import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
@@ -217,9 +222,114 @@ final class ZLinkActorTransferHandoffTest {
         assertThrows(CompletionException.class, () ->
             handoff.follow(
                     "actor", 8, 1,
-                    () -> CompletableFuture.completedFuture(null))
+                () -> CompletableFuture.completedFuture(null))
                 .toCompletableFuture().join());
         handoff.close();
+    }
+
+    @Test
+    void messageFollowNoticeClaimIsSingleUseUntilExplicitlyReleased() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        handoff.retain(
+            "actor", ref("source", 7), ref("target", 7),
+            Duration.ofMinutes(1), ignored -> { });
+
+        ZLinkActorTransferHandoff.MessageFollowSource source =
+            handoff.messageFollowSource("actor").orElseThrow();
+        assertTrue(source.tryClaimMessageFollowNotice());
+        assertTrue(source.messageFollowNoticeClaimed());
+        assertFalse(source.tryClaimMessageFollowNotice());
+
+        source.releaseMessageFollowNoticeClaim();
+        assertFalse(source.messageFollowNoticeClaimed());
+        assertTrue(source.tryClaimMessageFollowNotice());
+        handoff.close();
+    }
+
+    @Test
+    void messageFollowQueueSnapshotSurvivesCompletionRelease() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        handoff.retain(
+            "actor", ref("source", 7), ref("target", 7),
+            Duration.ofMinutes(1), ignored -> { });
+        CompletableFuture<String> operation = new CompletableFuture<>();
+
+        CompletionStage<ZLinkActorTransferHandoff.FollowResult<String>> result =
+            handoff.followWithQueueSnapshot("actor", 7, 3, () -> operation);
+        ZLinkActorTransferHandoff.MessageFollowSource source =
+            handoff.messageFollowSource("actor").orElseThrow();
+        assertEquals(1, source.pendingMessages());
+        assertEquals(3, source.pendingBytes());
+
+        operation.complete("relayed");
+        ZLinkActorTransferHandoff.FollowResult<String> completed =
+            result.toCompletableFuture().join();
+        assertEquals("relayed", completed.value());
+        assertEquals(1, completed.queue().messages());
+        assertEquals(3, completed.queue().bytes());
+        assertEquals(0, source.pendingMessages());
+        assertEquals(0, source.pendingBytes());
+        handoff.close();
+    }
+
+    @Test
+    void messageFollowRetainsTargetRouteFenceAtInstallation() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute =
+            new ZLinkServiceMessageFollowWireCodec.ActorRoute(
+                "actor", 7, RoutingId.from("target"), 11, 13, 17);
+        SpotTransportAddress targetAddress = new SpotTransportAddress(
+            "router", RoutingId.from("target"), "spot", 7, 11, 13, 17,
+            systems.zlink.framework.spots.ZLinkSpotKind.USER);
+        handoff.retain(
+            "actor", ref("source", 7), ref("target", 7), targetAddress,
+            targetRoute, Duration.ofMinutes(1), ignored -> { });
+
+        assertEquals(
+            targetRoute,
+            handoff.messageFollowSource("actor").orElseThrow().targetRoute());
+        handoff.close();
+    }
+
+    @Test
+    void messageFollowRejectsAddressWithoutTargetRouteFence() {
+        ZLinkActorTransferHandoff handoff = new ZLinkActorTransferHandoff();
+        SpotTransportAddress targetAddress = new SpotTransportAddress(
+            "router", RoutingId.from("target"), "spot", 7, 11, 13, 17,
+            systems.zlink.framework.spots.ZLinkSpotKind.USER);
+
+        assertThrows(IllegalArgumentException.class, () -> handoff.retain(
+            "actor", ref("source", 7), ref("target", 7), targetAddress,
+            null, Duration.ofMinutes(1), ignored -> { }));
+        handoff.close();
+    }
+
+    @Test
+    void messageFollowTargetRouteMatchesBackendActorRefByFields() {
+        RoutingId targetNode = RoutingId.from("target");
+        ZLinkStoreLocationResolvers.ActorRoute route =
+            new ZLinkStoreLocationResolvers.ActorRoute(
+                new systems.zlink.framework.actors.ActorRef(
+                    "actor", 7, "mesh", targetNode),
+                systems.zlink.framework.spots.ZLinkSpotKind.USER,
+                "spot",
+                "mesh",
+                targetNode,
+                11,
+                13,
+                17);
+        ZLinkBackendActorRef targetActor =
+            new ZLinkBackendActorRef(targetNode, "actor", 7);
+        SpotTransportAddress targetAddress = new SpotTransportAddress(
+            "router", targetNode, "spot", 7, 11, 13, 17,
+            systems.zlink.framework.spots.ZLinkSpotKind.USER);
+
+        assertTrue(ZLinkActorRuntime.messageFollowTargetRouteMatches(
+            route, targetActor, targetAddress));
+        assertFalse(ZLinkActorRuntime.messageFollowTargetRouteMatches(
+            route,
+            new ZLinkBackendActorRef(targetNode, "actor", 8),
+            targetAddress));
     }
 
     private static void capture(

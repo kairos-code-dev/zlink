@@ -44,7 +44,7 @@ set(ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT "$ENV{ZLINK_LOCAL_PACKAGE_ROOT}" CACH
   "Root directory containing local package outputs")
 set(ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION "11.2.0" CACHE STRING
   "Exact local zlink_cpp package version consumed by the C++ framework")
-set(ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION "11.1.0" CACHE STRING
+set(ZLINK_FRAMEWORK_CPP_ZLINK_CORE_VERSION "11.2.0" CACHE STRING
   "Exact local zlink Core package version embedded by zlink_cpp")
 if(NOT ZLINK_FRAMEWORK_CPP_LOCAL_PACKAGE_ROOT)
   if(WIN32 AND EXISTS "${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/.artifacts/windows/install/zlink-cpp/${ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION}")
@@ -621,6 +621,16 @@ if(TARGET libuv::uv_a OR TARGET libuv::uv)
   string(APPEND ZLINK_FRAMEWORK_REDIS_EXPORT_DEPENDENCIES
     "find_dependency(libuv CONFIG)\n")
 endif()
+
+set(ZLINK_FRAMEWORK_CPP_PACKAGE_DEPENDENCY_PREFIX_PATH
+  ${CMAKE_PREFIX_PATH})
+foreach(dependency_dir IN ITEMS
+    "${redis++_DIR}" "${hiredis_DIR}" "${libuv_DIR}")
+  if(dependency_dir)
+    list(APPEND ZLINK_FRAMEWORK_CPP_PACKAGE_DEPENDENCY_PREFIX_PATH
+      "${dependency_dir}")
+  endif()
+endforeach()
 
 if(ZLINK_FRAMEWORK_CPP_INSTALL_FRAMEWORK)
   install(TARGETS
@@ -1332,6 +1342,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     test_cpp_framework_messaging
     tests/Zlink.Framework.UnitTests/test_cpp_framework_messaging.cpp
     "framework-unit;framework-regression;messaging")
+  target_include_directories(test_cpp_framework_messaging PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   add_executable(test_cpp_framework_submit_admission
     tests/Zlink.Framework.UnitTests/test_cpp_framework_submit_admission.cpp
     framework/src/runtime/messaging/async_submit_runtime.cpp
@@ -1376,7 +1388,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
       ${CMAKE_COMMAND}
       -DZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
       -DZLINK_FRAMEWORK_CPP_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/package-consumer-install
-      "-DZLINK_FRAMEWORK_CPP_DEPENDENCY_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
+      "-DZLINK_FRAMEWORK_CPP_DEPENDENCY_PREFIX_PATH=${ZLINK_FRAMEWORK_CPP_PACKAGE_DEPENDENCY_PREFIX_PATH}"
       -DZLINK_FRAMEWORK_CPP_EXPECT_REDIS_PLUS_PLUS=${ZLINK_FRAMEWORK_REDIS_EXPORTS_REDIS_PLUS_PLUS}
       -DZLINK_FRAMEWORK_CPP_EXPECT_LIBUV=${ZLINK_FRAMEWORK_REDIS_EXPORTS_LIBUV}
       -P ${CMAKE_CURRENT_LIST_DIR}/tests/Zlink.Framework.PackageTests/install_consumer.cmake)

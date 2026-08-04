@@ -35,6 +35,7 @@ bool timer_t::is_disposed () const noexcept
 void timer_t::cancel () noexcept
 {
     if (_state) {
+        _state->disposed = true;
         if (_state->native_timer && _state->native_timer->valid ()) {
             try {
                 _state->native_timer->stop ();
@@ -42,7 +43,10 @@ void timer_t::cancel () noexcept
             catch (...) {
             }
         }
-        _state->disposed = true;
+        // The native callback captures the shared timer state. Destroy the
+        // native timer after stopping it so that callback storage releases
+        // that capture and does not keep the state in a cycle.
+        _state->native_timer.reset ();
     }
 }
 
@@ -106,7 +110,8 @@ timer_t spot_context_t::add_timer_erased (std::string name,
     if (_state->execution_mode == user_spot_execution_mode_t::per_actor
         && _state->serial_executor) {
         state->lane = std::make_shared<runtime::serial_execution_queue_t> (
-          *_state->serial_executor);
+          *_state->serial_executor,
+          runtime::serial_execution_queue_options_t{});
     }
     state->native_timer = std::make_unique<zlink::timer_t> ();
     auto context = _state;
@@ -394,6 +399,7 @@ void timer_runtime_t::cancel_all () const noexcept
 void timer_runtime_t::cancel_all (spot_context_state_t &context) noexcept
 {
     for (const auto &timer : context.timers) {
+        timer->disposed = true;
         if (timer->native_timer && timer->native_timer->valid ()) {
             try {
                 timer->native_timer->stop ();
@@ -401,8 +407,10 @@ void timer_runtime_t::cancel_all (spot_context_state_t &context) noexcept
             catch (...) {
             }
         }
-        timer->disposed = true;
         timer->running = false;
+        // Stop alone leaves the binding callback object attached to the
+        // native timer. Destroy it to break the callback-to-state cycle.
+        timer->native_timer.reset ();
         if (timer->lane) {
             timer->lane->cancel_pending ();
         }

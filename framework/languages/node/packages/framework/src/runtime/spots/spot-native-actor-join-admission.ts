@@ -11,7 +11,7 @@ import {
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import type {
   ZLinkBackendActorJoinRequest,
   ZLinkBackendSpot
@@ -129,9 +129,9 @@ export class ZLinkSpotNativeActorJoinAdmission {
       return {
         actorType: payload.actorType,
         actorCreateRequest: typeof payload.actorCreateRequest === 'string'
-          ? BindingMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
+          ? RuntimeMessage.from(Buffer.from(payload.actorCreateRequest, 'base64'))
           : undefined,
-        request: BindingMessage.from(Buffer.from(payload.request, 'base64'))
+        request: RuntimeMessage.from(Buffer.from(payload.request, 'base64'))
       };
     } catch {
       return undefined;

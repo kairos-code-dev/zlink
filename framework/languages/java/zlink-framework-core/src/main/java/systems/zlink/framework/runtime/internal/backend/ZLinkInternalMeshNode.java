@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.time.Duration;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
@@ -12,8 +13,10 @@ import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
 import systems.zlink.framework.runtime.internal.binding.spot.PeerChannels;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceRelocationWireCodec;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     void setBind(String endpoint);
@@ -137,6 +140,17 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Alternate backends may not retain Framework application admission.
     }
 
+    /**
+     * Installs the immutable content-type to stream-codec mapping used by
+     * typed Actor ingress. Unknown incoming content types must return an
+     * empty result so the service boundary can report a protocol failure
+     * without attempting a JSON fallback.
+     */
+    default void setApplicationStreamCodecResolver(
+        Function<String, Optional<ZLinkStreamCodec>> resolver) {
+        // Alternate backends may decode the application envelope elsewhere.
+    }
+
     default ZLinkInternalSpotNode spotNode() {
         throw new UnsupportedOperationException("MeshNode Spot backend is not available");
     }
@@ -213,6 +227,28 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
                 "Canonical relocation control is unavailable"));
     }
 
+    /**
+     * Installs the infrastructure-only Message Follow notification endpoint.
+     * The notice carries only route fences and queue accounting; it never
+     * enters a user Spot or Actor mailbox.
+     */
+    default void setMessageFollowHandler(MessageFollowHandler handler) {
+        // Alternate backends may not yet support the command 50 route fence.
+    }
+
+    /**
+     * Sends one exact command 50 notice to the admitted target node. Route
+     * resolution and retry are owned by the caller; this method submits the
+     * notice to the supplied node only.
+     */
+    default CompletionStage<Void> sendMessageFollow(
+        RoutingId targetNodeRid,
+        ZLinkServiceMessageFollowWireCodec.Notice notice) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Message Follow notification is unavailable"));
+    }
+
     default void setRelocationReplyRelayHandler(
         RelocationReplyRelayHandler handler) {
         // Alternate backends may not support command 33/46 dispatch.
@@ -284,6 +320,10 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     default void rememberSpotAuthority(
         SpotAuthorityRoute route) {
         // Alternate backends may resolve the durable route on each call.
+    }
+
+    default long localAuthorityLeaseGeneration() {
+        return 0L;
     }
 
     default void forgetSpotAuthority(
@@ -408,6 +448,13 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         CompletionStage<Void> handle(
             RoutingId sourceNodeRid,
             byte[] command);
+    }
+
+    @FunctionalInterface
+    interface MessageFollowHandler {
+        void handle(
+            RoutingId sourceNodeRid,
+            ZLinkServiceMessageFollowWireCodec.Notice notice);
     }
 
     @FunctionalInterface

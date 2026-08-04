@@ -13,6 +13,7 @@ export class ZLinkRuntimeAdmissionGate {
     if (!this.meshes.has(meshName)) {
       this.meshes.set(meshName, {
         sealed: false,
+        sealedReason: ZLinkFrameworkInternalErrorKind.RequestRejected,
         active: 0,
         waiters: [],
         waiterHead: 0,
@@ -29,12 +30,20 @@ export class ZLinkRuntimeAdmissionGate {
     return this.requireState(meshName).active;
   }
 
-  seal(meshName: string): void {
-    this.requireState(meshName).sealed = true;
+  seal(
+    meshName: string,
+    reason: ZLinkFrameworkInternalErrorKind = ZLinkFrameworkInternalErrorKind.RequestRejected
+  ): void {
+    const state = this.requireState(meshName);
+    state.sealed = true;
+    state.sealedReason = reason;
   }
 
   close(): void {
-    for (const state of this.meshes.values()) state.sealed = true;
+    for (const state of this.meshes.values()) {
+      state.sealed = true;
+      state.sealedReason = ZLinkFrameworkInternalErrorKind.RuntimeShutdown;
+    }
   }
 
   claim(meshName: string, operation: string): ZLinkApplicationWorkClaim {
@@ -55,7 +64,7 @@ export class ZLinkRuntimeAdmissionGate {
       };
     }
     throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.RequestRejected,
+      state.sealedReason,
       `${operation} was rejected because the framework is draining.`
     );
   }
@@ -101,7 +110,9 @@ export class ZLinkRuntimeAdmissionGate {
       return;
     }
     throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.RequestRejected,
+      meshName === undefined
+        ? this.firstSealedReason()
+        : this.requireState(meshName).sealedReason,
       `${operation} was rejected because the framework is draining.`
     );
   }
@@ -112,8 +123,13 @@ export class ZLinkRuntimeAdmissionGate {
     } else if (this.accepts(meshName)) {
       return;
     }
+    const reason = meshName === undefined
+      ? this.firstSealedReason()
+      : this.requireState(meshName).sealedReason;
     throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.ActorCreateRejected,
+      reason === ZLinkFrameworkInternalErrorKind.RuntimeShutdown
+        ? ZLinkFrameworkInternalErrorKind.RuntimeShutdown
+        : ZLinkFrameworkInternalErrorKind.ActorCreateRejected,
       `Actor '${actorId}' create request was rejected because the framework is draining.`
     );
   }
@@ -126,6 +142,13 @@ export class ZLinkRuntimeAdmissionGate {
       `RouteMesh '${meshName}' is not registered.`
     );
   }
+
+  private firstSealedReason(): ZLinkFrameworkInternalErrorKind {
+    for (const state of this.meshes.values()) {
+      if (state.sealed) return state.sealedReason;
+    }
+    return ZLinkFrameworkInternalErrorKind.RuntimeShutdown;
+  }
 }
 
 export interface ZLinkApplicationWorkClaim {
@@ -134,6 +157,7 @@ export interface ZLinkApplicationWorkClaim {
 
 interface ZLinkMeshAdmissionState {
   sealed: boolean;
+  sealedReason: ZLinkFrameworkInternalErrorKind;
   active: number;
   readonly waiters: Array<(() => void) | undefined>;
   waiterHead: number;

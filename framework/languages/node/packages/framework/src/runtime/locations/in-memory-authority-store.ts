@@ -274,6 +274,29 @@ export class ZLinkInMemoryAuthorityStore {
     };
   }
 
+  async removeAllByOwner(
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    signal?.throwIfAborted();
+    let removed = 0;
+    for (const [key, row] of [...this.rows.entries()]) {
+      if (
+        row.snapshot.ownerId !== owner.ownerId
+        || row.snapshot.ownerLeaseGeneration !== owner.leaseGeneration
+      ) continue;
+      if (row.snapshot.allocation.state === 'active') {
+        this.adjustCapacity(this.activeCapacity, row.snapshot.allocation, -1);
+      } else {
+        this.adjustCapacity(this.pendingCapacity, row.snapshot.allocation, -1);
+      }
+      this.rows.delete(key);
+      removed += 1;
+    }
+    if (removed > 0) this.scanRevision++;
+    return BigInt(removed);
+  }
+
   async reserve(
     request: ZLinkObjectReserveRequest,
     signal?: AbortSignal

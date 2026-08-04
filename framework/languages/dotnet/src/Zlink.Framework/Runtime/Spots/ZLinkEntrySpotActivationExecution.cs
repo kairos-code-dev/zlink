@@ -131,7 +131,10 @@ internal sealed partial class ZLinkEntrySpotActivation
     private void QueueSerialized(
         Func<ZLinkEntrySpotActivation, CancellationToken, ValueTask> operation)
     {
-        _serial.TryPost(ct => RunOnLineAsync(operation, ct), out _);
+        var admission = _serial.TryPostApplicationWithAdmission(
+            ct => RunOnLineAsync(operation, ct),
+            out _);
+        ReportSerialAdmissionFailure("entry-spot-serial", admission);
     }
 
     private async ValueTask RunOnLineAsync(
@@ -223,16 +226,33 @@ internal sealed partial class ZLinkEntrySpotActivation
 
     private void QueueRouteDrainTurn()
     {
-        _serial.TryPostNext(
+        var admission = _serial.TryPostNextWithAdmission(
             ct => DispatchRouteDrainTurnAsync(ct),
             out _);
+        ReportSerialAdmissionFailure("entry-spot-route-drain", admission);
     }
 
     private void QueueActorJoinDrainTurn()
     {
-        _serial.TryPostNext(
+        var admission = _serial.TryPostNextWithAdmission(
             ct => DispatchActorJoinDrainTurnAsync(ct),
             out _);
+        ReportSerialAdmissionFailure("entry-spot-actor-join-drain", admission);
+    }
+
+    private void ReportSerialAdmissionFailure(
+        string operationName,
+        ZLinkSerialPostAdmission admission)
+    {
+        if (admission is
+            ZLinkSerialPostAdmission.Accepted
+            or ZLinkSerialPostAdmission.Closed)
+            return;
+        _runtime.ErrorSink.ReportRuntimeTaskException(
+            operationName,
+            new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.CapacityExceeded,
+                "The Entry SPOT serial queue is at capacity."));
     }
 
     public async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)

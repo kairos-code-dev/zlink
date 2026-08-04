@@ -1,6 +1,10 @@
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException
+} from '../framework-errors-internal';
 import { createAbortError, throwIfAborted } from '../abort';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import {
@@ -218,9 +222,13 @@ export class ZLinkSpotNodeRouteTransport {
     });
   }
 
-  private requestFailure(routerChannelId: string, result: number): ZLinkConfigurationException {
-    return new ZLinkConfigurationException(
-      `SpotNode router '${routerChannelId}' spot request failed with result ${result}.`
+  private requestFailure(routerChannelId: string, result: number): Error {
+    return createInternalFrameworkException(
+      result === 102
+        ? ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+        : ZLinkFrameworkInternalErrorKind.RouteNotConnected,
+      `SpotNode router '${routerChannelId}' spot request failed with result ${result}.`,
+      result === 109 || result === 113
     );
   }
 

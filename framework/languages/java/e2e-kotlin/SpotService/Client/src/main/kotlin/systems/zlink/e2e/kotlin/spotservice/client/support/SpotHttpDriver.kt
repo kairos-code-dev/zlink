@@ -4,8 +4,8 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 
 internal class SpotHttpDriver(
-    private val playA: String = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
-    private val playB: String = Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),
+    private val playA: String = Env.get("e2e.http.a.endpoint"),
+    private val playB: String = Env.get("e2e.http.b.endpoint"),
 ) {
     suspend fun requestState(
         spotRid: String,

@@ -22,7 +22,7 @@ internal object SmG4Scenario {
             repeat(8) { index ->
                 val actorId = "actor-sm-g4-$index-" + UUID.randomUUID().toString().replace("-", "")
                 val profile = Contracts.ActorProfile("Bound Load $index", 14, listOf("load", "session-$index"))
-                val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+                val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
                 connectors += connector
                 actorIds += actorId
                 values += "push-$index"

@@ -31,6 +31,7 @@ final class DefaultInstanceSpotContext
     private final DefaultSpotOutbound outbound;
     private final ZLinkHandlerInstanceOwner handlerInstances;
     private final ZLinkAsyncSerialQueue dispatchQueue;
+    private final ZLinkAsyncSerialQueue infrastructureQueue;
     private final ZLinkSpotHandlerCatalog handlers = new ZLinkSpotHandlerCatalog(
         "Instance Spot handler registration is only allowed while configure is running");
     private final ZLinkInstanceSpotHandlerRegistry publicHandlers =
@@ -53,6 +54,8 @@ final class DefaultInstanceSpotContext
         this.backendSpot = Objects.requireNonNull(backendSpot, "backendSpot");
         this.dispatchQueue = new ZLinkAsyncSerialQueue(
             host.serialExecutor(), false);
+        this.infrastructureQueue = new ZLinkAsyncSerialQueue(
+            host.infrastructureExecutor(), false);
         this.handlerInstances = host.createHandlerInstances();
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.timers = host.createTimerRegistry(
@@ -87,7 +90,9 @@ final class DefaultInstanceSpotContext
     }
 
     CompletionStage<Void> awaitQuiescence() {
-        return dispatchQueue.awaitQuiescence();
+        return CompletableFuture.allOf(
+            dispatchQueue.awaitQuiescence().toCompletableFuture(),
+            infrastructureQueue.awaitQuiescence().toCompletableFuture());
     }
 
     boolean hasActiveTimers() {
@@ -131,7 +136,21 @@ final class DefaultInstanceSpotContext
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return dispatchQueue.enqueue(operation);
+        return enqueueDispatch(0, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueDispatch(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return dispatchQueue.enqueueWithPayloadBytes(payloadBytes, operation);
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueInfrastructureDispatch(
+        Supplier<CompletionStage<Void>> operation) {
+        Objects.requireNonNull(operation, "operation");
+        return infrastructureQueue.enqueueWithPayloadBytes(0, operation);
     }
 
     @Override

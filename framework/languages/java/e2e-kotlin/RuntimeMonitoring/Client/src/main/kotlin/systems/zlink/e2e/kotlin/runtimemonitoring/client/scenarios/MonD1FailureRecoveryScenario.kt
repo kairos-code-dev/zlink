@@ -2,6 +2,7 @@ package systems.zlink.e2e.kotlin.runtimemonitoring.client.scenarios
 
 import java.net.Socket
 import java.net.URI
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import systems.zlink.e2e.kotlin.runtimemonitoring.Contracts
@@ -55,17 +56,21 @@ class MonD1FailureRecoveryScenario(
     private fun startServiceB(): Process {
         val stdout = Path.of(options.logDir, "filtered-service-restart.stdout.log").toFile()
         val stderr = Path.of(options.logDir, "filtered-service-restart.stderr.log").toFile()
-        val process = ProcessBuilder(options.filteredServiceBin)
+        val config = Path.of(options.logDir, "filtered-service-restart.properties")
+        Files.writeString(
+            config,
+            listOf(
+                "e2e.rid=svc-b",
+                "e2e.redis.location.endpoint=${Env.get("e2e.redis.location.endpoint")}",
+                "e2e.location.key.prefix=${Env.get("e2e.location.key.prefix")}",
+                "e2e.api.endpoint=${options.filteredApiEndpoint}",
+                "e2e.http.endpoint=${options.filteredServiceHttp}",
+                "e2e.log.dir=${options.logDir}",
+            ).joinToString("\n") + "\n",
+        )
+        val process = ProcessBuilder(options.filteredServiceBin, "--e2e-config", config.toString())
             .redirectOutput(stdout)
             .redirectError(stderr)
-        process.environment()["ZLINK_KOTLIN_E2E_RID"] = "svc-b"
-        process.environment()["ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"] =
-            Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT")
-        process.environment()["ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"] =
-            Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")
-        process.environment()["ZLINK_KOTLIN_E2E_API_ENDPOINT"] = options.filteredApiEndpoint
-        process.environment()["ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"] = options.filteredServiceHttp
-        process.environment()["ZLINK_KOTLIN_E2E_LOG_DIR"] = options.logDir
         return process.start()
     }
 

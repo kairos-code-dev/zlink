@@ -151,6 +151,14 @@ final class EntrySpotActivation
     }
 
     @Override
+    CompletionStage<Void> appendSpotHandler(
+        CompletionStage<Void> tail,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return context.enqueueDispatch(payloadBytes, operation);
+    }
+
+    @Override
     CompletionStage<Void> appendActorLifecycle(
         CompletionStage<Void> tail,
         ZLinkBackendActorLifecycleEvent event,

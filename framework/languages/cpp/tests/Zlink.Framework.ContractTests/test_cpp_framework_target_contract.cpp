@@ -329,12 +329,15 @@ int main ()
                     && transfer_runner.find ("ZLINK_CPP_E2E_NODE_B_STREAM")
                          == std::string::npos,
                   "E2E-CP-56", "Config 10 does not pass the session gateway endpoints");
-    gate.require (transfer_client.find ("create_actor (_nodes.a")
+    gate.require (transfer_client.find ("create_actor_until_placed_on")
                     != std::string::npos
+                    && transfer_client.find ("create_actor (node, actor_id")
+                         != std::string::npos
                     && transfer_client.find ("join_actor (_nodes.a")
                          != std::string::npos
-                    && transfer_client.find (
-                         "join_actor (_nodes.b, actor_id, {\"ST-F5\", spot_a_final})")
+                    && transfer_client.find ("join_actor (_nodes.b, actor.actor_id")
+                         != std::string::npos
+                    && transfer_client.find ("placed_spot_a_final.spot_id")
                          != std::string::npos
                     && transfer_client.find ("probe_actor (_nodes.a")
                          != std::string::npos,

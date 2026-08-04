@@ -4,6 +4,7 @@
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/mesh/mesh_node_host_service.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
@@ -368,6 +369,20 @@ template <typename TSubmit> bool submit_until_ok (TSubmit submit)
     return false;
 }
 
+void configure_vertical_route_fences (
+  zlink::framework::detail::mesh_node_runtime_t &node)
+{
+    // This vertical test exercises the raw MeshNode transport without the
+    // application Location Store. Supply the same non-zero owner fence that
+    // the target objects receive from the minimal stateful runtime.
+    node.configure_spot_route_fence_resolver (
+      [] (const zlink::routing_id_t &, std::string_view, std::uint64_t)
+        -> std::optional<zlink::framework::runtime::host::route_fence_t> {
+          return zlink::framework::runtime::host::route_fence_t{1, 1};
+      },
+      std::chrono::minutes (1));
+}
+
 bool receive_one (zlink::framework::detail::mesh_node_runtime_t &node,
                   zlink::framework::runtime::host::record_kind_t expected_kind,
                   const std::string &expected_text,
@@ -477,6 +492,31 @@ make_named_node (std::string mesh_name, std::string routing_id)
     return state;
 }
 
+void register_mesh_location_resolvers (
+  zlink::framework::service_collection_t &services)
+{
+    services.add_factory<zlink::framework::runtime::store_location_resolvers_t> (
+      [] (zlink::framework::service_provider_t &provider) {
+          return std::make_unique<zlink::framework::runtime::store_location_resolvers_t> (
+            provider.get_required<zlink::framework::location_repository_t> ());
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    services.add_factory<zlink::framework::runtime::spot_address_resolver_t> (
+      [] (zlink::framework::service_provider_t &provider) {
+          return std::shared_ptr<zlink::framework::runtime::spot_address_resolver_t> (
+            &provider.get_required<zlink::framework::runtime::store_location_resolvers_t> (),
+            [] (zlink::framework::runtime::spot_address_resolver_t *) noexcept {});
+      },
+      zlink::framework::service_lifetime_t::singleton);
+    services.add_factory<zlink::framework::runtime::actor_address_resolver_t> (
+      [] (zlink::framework::service_provider_t &provider) {
+          return std::shared_ptr<zlink::framework::runtime::actor_address_resolver_t> (
+            &provider.get_required<zlink::framework::runtime::store_location_resolvers_t> (),
+            [] (zlink::framework::runtime::actor_address_resolver_t *) noexcept {});
+      },
+      zlink::framework::service_lifetime_t::singleton);
+}
+
 zlink::framework::framework_runtime_state_t
 read_mesh_state (faulting_mesh_location_repository_t &store,
                  const std::string &mesh_name,
@@ -506,6 +546,7 @@ void verify_descriptor_retire_order_and_pre_seal_rollback ()
       std::unique_ptr<zlink::framework::location_repository_t> (owned_store.release ()));
     services.add_singleton<zlink::framework::runtime::location_runtime_t> (
       std::make_unique<zlink::framework::runtime::location_runtime_t> (store));
+    register_mesh_location_resolvers (services);
     auto provider = services.build_provider ();
     provider.get_required<zlink::framework::runtime::location_runtime_t> ().start (
       *first->routing_id);
@@ -635,6 +676,7 @@ void verify_local_node_submit_bridge ()
       std::unique_ptr<zlink::framework::location_repository_t> (owned_store.release ()));
     services.add_singleton<zlink::framework::runtime::location_runtime_t> (
       std::make_unique<zlink::framework::runtime::location_runtime_t> (location_store));
+    register_mesh_location_resolvers (services);
     auto provider = services.build_provider ();
     // The MeshNode publishes its descriptor under an owner lease, so the
     // Location runtime starts first just as the host does in production.
@@ -1352,6 +1394,7 @@ int run_cross_process_delivery ()
       zlink::framework::mesh_peer_connection_t{
         1, {}, endpoint});
     zlink::framework::detail::mesh_node_runtime_t node (state);
+    configure_vertical_route_fences (node);
     node.start ();
     assert (wait_until_admitted (node));
     char reciprocal_ready = 0;
@@ -1439,7 +1482,9 @@ int run_cross_process_delivery ()
             zlink::routing_id_t::from (std::string ("vertical-b")), "target-actor",
             formal_descriptors[1]),
           actor_parts,
-          zlink::framework::detail::mesh_metadata_codec_t::encode (metadata));
+          zlink::framework::detail::mesh_metadata_codec_t::encode (metadata),
+          1,
+          1);
     }));
     char actor_ack = 0;
     assert (read (formal_ack_pipe[0], &actor_ack, sizeof (actor_ack))

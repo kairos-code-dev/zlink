@@ -465,7 +465,7 @@ scenario 본문은 아래 흐름을 유지한다.
    받는다.
 2. warmup에서 사용할 operation을 정의한다.
 3. measured phase에서 사용할 operation을 정의한다.
-4. 완료 기준을 metrics에 기록한다.
+4. operation 완료 확정 기준을 metrics에 기록한다.
 5. payload 크기와 byte pattern을 검증한다.
 
 request 시나리오는 요청과 응답이 한 함수 안에서 보이게 둔다. 아래 흐름의 각 줄은 실제 언어별

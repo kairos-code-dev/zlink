@@ -14,7 +14,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 
 internal object SmD4Scenario {
     suspend fun run() {
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             connector.connect().await()
             val profile = Contracts.ActorProfile("Multi Bind", 9, listOf("multi", "bind"))

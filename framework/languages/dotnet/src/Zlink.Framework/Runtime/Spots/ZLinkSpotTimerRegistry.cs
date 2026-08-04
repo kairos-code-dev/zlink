@@ -10,8 +10,11 @@ internal sealed record ZLinkSpotLogicalTimerSnapshot(
 
 internal sealed class ZLinkSpotTimerRegistry(
     Func<bool> flowCaptureEnabled,
-    bool restorePending = false) : IAsyncDisposable
+    bool restorePending = false,
+    ZLinkTimerScheduler? scheduler = null) : IAsyncDisposable
 {
+    private readonly ZLinkTimerScheduler _scheduler = scheduler ?? new();
+    private readonly bool _ownsScheduler = scheduler is null;
     private readonly object _lifecycleGate = new();
     private readonly List<ZLinkSpotTimerRegistration> _timers = [];
     private Task? _finalization;
@@ -89,7 +92,8 @@ internal sealed class ZLinkSpotTimerRegistry(
                     null,
                     flowCaptureEnabled(),
                     ZLinkFlowOrigin.Timer),
-                startFrozen: _restorePending);
+                startFrozen: _restorePending,
+                scheduler: _scheduler);
             _timers.Add(new ZLinkSpotTimerRegistration(
                 timer,
                 handlerType,
@@ -251,7 +255,8 @@ internal sealed class ZLinkSpotTimerRegistry(
                         null,
                         flowCaptureEnabled(),
                         ZLinkFlowOrigin.Timer),
-                    startFrozen: true);
+                    startFrozen: true,
+                    scheduler: _scheduler);
                 _timers.Add(new ZLinkSpotTimerRegistration(
                     timer,
                     snapshot.HandlerType,
@@ -301,7 +306,8 @@ internal sealed class ZLinkSpotTimerRegistry(
                     null,
                     flowCaptureEnabled(),
                     ZLinkFlowOrigin.Timer),
-                startFrozen: true);
+                startFrozen: true,
+                scheduler: _scheduler);
             var restored = new ZLinkSpotTimerRegistration(
                 timer,
                 snapshot.HandlerType,
@@ -367,19 +373,38 @@ internal sealed class ZLinkSpotTimerRegistry(
         if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
-    private static async Task CompleteFinalizationAsync(
+    private async Task CompleteFinalizationAsync(
         IReadOnlyList<ZLinkSpotTimerRegistration> timers,
         TaskCompletionSource completion)
     {
+        List<Exception>? failures = null;
         try
         {
             await DisposeTimersAsync(timers).ConfigureAwait(false);
-            completion.TrySetResult();
         }
         catch (Exception exception)
         {
-            completion.TrySetException(exception);
+            (failures ??= []).Add(exception);
         }
+
+        if (_ownsScheduler)
+        {
+            try
+            {
+                await _scheduler.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (failures is null)
+            completion.TrySetResult();
+        else if (failures is [var failure])
+            completion.TrySetException(failure);
+        else
+            completion.TrySetException(new AggregateException(failures));
     }
 
     private sealed record ZLinkSpotTimerRegistration(

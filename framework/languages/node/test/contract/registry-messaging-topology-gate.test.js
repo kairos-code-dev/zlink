@@ -20,6 +20,6 @@ test('RM-A1 obtains peer rows and connection evidence from application roles', (
   assert.match(endpoints, /locationQuery\.listMeshNodeDescriptors/);
   assert.doesNotMatch(endpoints, /state:\s*ZLinkLocationTopologyState\.Ready/);
   assert.match(scenario, /api-a.*api-b/s);
-  assert.match(scenario, /providerEvidence.*api-a/s);
-  assert.match(scenario, /providerEvidence.*api-b/s);
+  assert.match(scenario, /providerEvidence[\s\S]*providerAUrl/);
+  assert.match(scenario, /providerEvidence[\s\S]*providerBUrl/);
 });

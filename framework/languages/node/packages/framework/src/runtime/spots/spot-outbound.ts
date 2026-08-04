@@ -1,8 +1,10 @@
 import {
   ZLinkFrameworkInternalErrorKind,
-  createInternalFrameworkException
+  createInternalFrameworkException,
+  internalFrameworkErrorKind
 } from '../framework-errors-internal';
-import { ZLinkSpotKind } from '../../contracts';
+import { ZLinkFrameworkRuntimeState, ZLinkSpotKind } from '../../contracts';
+import { ZLinkFrameworkException } from '../../contracts/Errors';
 import type {
   RoutingId,
   ZLinkChannelClient,
@@ -22,7 +24,7 @@ import {
   throwAlreadySubmitted,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
+import { normalizeOpaqueRoutingId } from '../routing-id';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
@@ -34,6 +36,7 @@ import type { ZLinkSpotRouteTarget } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import {
   resolveSpotHandle,
+  refreshSpotHandle,
   type SpotHandle,
   type ResolvedSpotHandle
 } from './spot-handle';
@@ -645,7 +648,29 @@ export async function requestToSpotHandle<TReply = unknown>(
     return await transport.requestToSpot<TReply>(target, request, transportOptions);
   };
 
-  return await requestResolved(await requireSpotRef(spot, options.signal));
+  const resolved = await requireSpotRef(spot, options.signal);
+  try {
+    return await requestResolved(resolved);
+  } catch (error) {
+    if (!shouldRefreshAfterRouteDisconnect(resolved, error)) {
+      throw error;
+    }
+    let refreshed: ResolvedSpotHandle | undefined;
+    try {
+      refreshed = await refreshSpotHandle(spot, options.signal);
+    } catch {
+      throw error;
+    }
+    if (isShutdownTargetState(refreshed?.targetNodeState)) {
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
+        `Spot '${String(spot.spotId)}' target host is shutting down.`,
+        false,
+        error
+      );
+    }
+    throw error;
+  }
 }
 
 async function requireSpotRef(handle: SpotHandle, signal?: AbortSignal): Promise<ResolvedSpotHandle> {
@@ -665,46 +690,27 @@ function spotRefToSpotRouteTarget(
     targetNodeRid: normalizeSpotRefRoutingId(spot.nodeRid),
     spotId: normalizeSpotRefRoutingId(spot.spotId),
     spotKind: spot.spotKind ?? ZLinkSpotKind.User,
-    targetSpotGeneration: spot.spotGeneration
+    targetSpotGeneration: spot.spotGeneration,
+    targetNodeState: spot.targetNodeState
   };
 }
 
-function normalizeSpotRefRoutingId(routingId: RoutingId): RoutingId {
-  const value = routingId as unknown;
-  if (value instanceof BindingRoutingId) {
-    return routingId;
-  }
-  if (typeof value === 'string') {
-    return BindingRoutingId.from(value) as unknown as RoutingId;
-  }
-  const bytes = routingIdBytesOf(value);
-  if (bytes !== undefined) {
-    return BindingRoutingId.from(bytes) as unknown as RoutingId;
-  }
-  const toHex = (value as { readonly toHex?: unknown } | null)?.toHex;
-  if (typeof toHex === 'function') {
-    return BindingRoutingId.fromHex(toHex.call(value)) as unknown as RoutingId;
-  }
-  return BindingRoutingId.from(String(routingId)) as unknown as RoutingId;
+function shouldRefreshAfterRouteDisconnect(
+  target: ResolvedSpotHandle,
+  error: unknown
+): boolean {
+  return target.targetNodeState === ZLinkFrameworkRuntimeState.Serving
+    && error instanceof ZLinkFrameworkException
+    && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RouteNotConnected;
 }
 
-function routingIdBytesOf(value: unknown): Uint8Array | undefined {
-  if (value === null || typeof value !== 'object') {
-    return undefined;
-  }
-  const toBytes = (value as { readonly toBytes?: unknown }).toBytes;
-  if (typeof toBytes === 'function') {
-    const bytes = toBytes.call(value);
-    return bytes instanceof Uint8Array ? bytes : undefined;
-  }
-  const candidate = (value as { readonly bytes?: unknown; readonly _bytes?: unknown }).bytes
-    ?? (value as { readonly _bytes?: unknown })._bytes;
-  if (candidate instanceof Uint8Array) {
-    return candidate;
-  }
-  const data = (candidate as { readonly data?: unknown } | undefined)?.data;
-  if (Array.isArray(data) && data.every((item) => Number.isInteger(item) && item >= 0 && item <= 255)) {
-    return Uint8Array.from(data);
-  }
-  return undefined;
+function isShutdownTargetState(
+  state: ResolvedSpotHandle['targetNodeState']
+): boolean {
+  return state === ZLinkFrameworkRuntimeState.Draining
+    || state === ZLinkFrameworkRuntimeState.Stopped;
+}
+
+function normalizeSpotRefRoutingId(routingId: RoutingId): RoutingId {
+  return normalizeOpaqueRoutingId(routingId);
 }

@@ -301,7 +301,7 @@ function closeSocketEndpoints(target: unknown, boundEndpoints: Set<string>, conn
   }
 }
 
-function isEndpointCloseIgnorableError(error: unknown): boolean {
+export function isEndpointCloseIgnorableError(error: unknown): boolean {
   return isContextTerminatedError(error) || (
     error instanceof Error && 'code' in error &&
     ((error as { code: unknown }).code === 604 || (error as { code: unknown }).code === zlink.ConnectResult.NotFound)

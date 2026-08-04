@@ -130,6 +130,8 @@ await (options.OperationGroup switch
     "sm-a7-a8-c4" => RunA7A8C4Async(playA, gateway),
     "sm-a3-a6-b4-b7" => RunA3A6B4B7Async(playA, playB, options.SessionAStreamEndpoint),
     "sm-a1-a2-a4-f1-f2" => RunA1A2A4F1F2Async(playA, playB),
+    "instance-track-a" => InstanceSpotTrackAScenario.RunAsync(playA, playB),
+    "instance-idle" => InstanceSpotIdleEvictionScenario.RunAsync(playA),
     _ => throw new InvalidOperationException($"Unsupported SpotService operation group '{options.OperationGroup}'.")
 });
 

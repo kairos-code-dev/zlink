@@ -42,6 +42,7 @@ export declare const ServiceWireCommand: {
     readonly userSpotCreate: 47;
     readonly userSpotClose: 48;
     readonly actorCreate: 49;
+    readonly messageFollow: 50;
 };
 export declare const ServiceWireFlag: {
     readonly metadata: 1;

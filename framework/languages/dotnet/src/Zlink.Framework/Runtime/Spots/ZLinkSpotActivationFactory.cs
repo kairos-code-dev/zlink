@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -9,7 +10,8 @@ internal sealed class ZLinkSpotActivationFactory(
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node,
     string spotChannelName,
-    ZLinkCompletionAdmissionOwner completionAdmission)
+    ZLinkCompletionAdmissionOwner completionAdmission,
+    ZLinkTimerScheduler timerScheduler)
 {
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
@@ -76,7 +78,8 @@ internal sealed class ZLinkSpotActivationFactory(
                 userSpotOptions?.RelocationReadiness
                 ?? ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
                 restoreLogicalTimers: !invokeCreate,
-                completionAdmission: completionAdmission);
+                completionAdmission: completionAdmission,
+                timerScheduler: timerScheduler);
 
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,
@@ -143,7 +146,8 @@ internal sealed class ZLinkSpotActivationFactory(
                 registration.Router?.SocketConfig.SendTimeout
                 ?? frameworkRegistration.DefaultSocketSendTimeout,
                 restoreLogicalTimers: restoreLogicalTimers,
-                completionAdmission: completionAdmission);
+                completionAdmission: completionAdmission,
+                timerScheduler: timerScheduler);
             var spot = (IZLinkInstanceSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,
                 spotType,

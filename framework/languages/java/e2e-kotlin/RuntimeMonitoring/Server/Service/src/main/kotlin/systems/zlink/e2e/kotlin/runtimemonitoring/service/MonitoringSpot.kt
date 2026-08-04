@@ -13,10 +13,8 @@ import systems.zlink.framework.spots.ZLinkTimerTick
 import java.time.Duration
 
 class MonitoringSpot(
-    private val context: ZLinkSpotContext,
+    override val context: ZLinkSpotContext,
 ) : ZLinkSuspendingSpot<ZLinkActor>() {
-    override fun context(): ZLinkSpotContext = context
-
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
         val options = ZLinkTimerOptions(
             ZLinkTimerOverrunPolicy.SKIP_LATE_TICKS,

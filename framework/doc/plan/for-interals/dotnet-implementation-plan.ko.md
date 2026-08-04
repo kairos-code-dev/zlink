@@ -17,8 +17,9 @@ C++와 달리 W2를 독립적으로 진행할 수 있다.
 자원으로 구현할 수 있다.
 
 관찰자 stream은 source별 최신 상태와 terminal 보관을 분리하는 구조로 이미 재작성되었다.
-현재 가장 큰 남은 조건은 command 50 relay 통지의 mixed-process 증거와 모든 topology의
-수신 공정성 process matrix이다.
+RouteMesh, ClientServer, service, STREAM, fanout 대표 process 경로도 fresh run으로
+확인했다. 현재 남은 조건은 command 50 relay 통지의 mixed-process 증거, 다른 언어를
+포함하는 공통 process matrix, 그리고 Config 14의 나머지 process 시나리오다.
 
 ## 순서
 
@@ -33,9 +34,9 @@ C++와 달리 W2를 독립적으로 진행할 수 있다.
    │
 4. W2 selector                   RouteMesh·ClientServer plan 구현
    │
-5. W6 수신 공정성                코드 경로 반영, 전체 process matrix 대기
+5. W6 수신 공정성                코드와 대표 process 반영, 공통 matrix 대기
    │
-6. W4 유휴 정리                  local close 경로 반영, process 증거 대기
+6. W4 유휴 정리                  local close 경로 반영, idle 정리 process 검증 완료
    │
 7. W3 relay 통지                 .NET wire·relay·conditional invalidation 구현
    │
@@ -73,10 +74,11 @@ early 저장 공간이 가득 차면 tombstone을 남겨 늦게 `Register`한 �
 먼저 선택하고 32 turn 뒤 application에 yield debt를 적용하므로 A10의 실행 순서를 직접
 표현한다.
 
-**D2 — 수신 회계 lock.** `Runtime/Dispatch/ZLinkInboundDispatchBudget.cs:64,93,99`가 수신·
-handler 시작·완료·snapshot에 같은 `_gate`를 쓴다. HWM 판정용 `pendingBytes`만 process 단위
-atomic으로 두고 관측 누계는 cache-line 분리 shard로 나눈다. `HandlerStarted`가 HWM 판정에
-필요 없다면 metric counter로 분리해 hot path의 세 번째 동기화를 없앤다.
+**D2 — 수신 회계 lock.** 현재 `ZLinkInboundDispatchBudget`은 HWM 판정에 필요한
+`_pendingPayloadBytes`를 process 단위 atomic counter로 관리하고, handler active byte는
+128-byte 간격의 8개 shard에서 별도로 집계한다. `_gate`는 HWM 경계를 지나는 pause·resume와
+capacity callback 등록에만 사용하며, 수신·handler 시작·완료·snapshot은 그 lock을 기다리지
+않는다. `HandlerStarted`는 HWM 판정에서 분리되어 active metric만 갱신한다.
 
 > **worker별 permit 덩어리 예약은 쓰지 않는다.** 쓰지 않은 local 잔량을 pending으로 세면
 > HWM보다 일찍 멈추고, 세지 않으면 초과량이 커진다.
@@ -90,10 +92,12 @@ control로 분류된 record는 즉시 reservation을 반환하고 application re
 유지한다. 이 규칙은 common spec과 internals에 반영했으며, W1 회귀 테스트는 `R = 1`과 multipart
 경계에서 overshoot가 더 늘지 않는지를 확인한다.
 
-**D4 — 복사.** `Runtime/Messaging/ZLinkMessageRuntime.cs:82`의 binding 경계 payload 복사는
-유지한다. relocation accepted record는 queue admission 때 만들지 않고 seal 이후에만
-materialize하며, payload는 accepted work item이 소유한다. 따라서 현재 남은 D4는 공개
-binding 경계와 deserialize 경로의 전체 copy audit이다.
+**D4 — 복사.** `Runtime/Messaging/ZLinkMessageRuntime.cs`의 binding 경계 payload 복사는
+유지한다. `Message.AsReadOnlyMemory()`가 이미 관리 메모리 snapshot을 반환하므로
+`FromEnvelopePayload`에서는 그 snapshot을 다시 배열로 복사하지 않는다. relocation accepted
+record는 queue admission 때 만들지 않고 seal 이후에만 materialize하며, payload는 accepted
+work item이 소유한다. 공개 `ZLinkEncodedPayload`의 방어적 복사는 public codec 계약이므로
+유지하고, span deserializer 경로에서는 binding buffer를 직접 읽는다.
 
 ## W5 — 관찰자 (구조 변경 큼)
 
@@ -105,6 +109,7 @@ terminal만 버리고 observer별 `ZLinkObservationLoss`와 runtime metric을 �
 
 | 위치 | 현재 구현 | 확인 |
 |---|---|---|
+| `Runtime/Host/ZLinkRouteMeshRuntimeService.cs` | Core monitor event와 descriptor change를 hub가 받아 latest status와 terminal status를 observer별 queue에 전달 | `ZLinkObservationQueue` |
 | `Runtime/Locations/ZLinkFanoutRuntimeService.cs` | latest slot + terminal FIFO + loss envelope | `ZLinkObservationQueue` |
 | `Runtime/Channels/ZLinkClientServerRuntimeService.cs` | latest slot + terminal FIFO + loss envelope | `ZLinkObservationQueue` |
 
@@ -139,8 +144,19 @@ mesh pump는 ready-owner claim·count/byte/time batch·rotation을 사용한다.
 receive state를 정렬한 뒤 cursor로 회전하며 multipart 경계와 HWM reservation을 유지한다.
 Entry Spot actor lifecycle drain도 같은 batch 상한을 사용한다.
 
-다만 조항 범위가 topology와 binding까지 넓으므로 코드 반영만으로 전체를 증명할 수 없다.
-언어×topology process matrix는 별도 검증 조건으로 남긴다.
+대표 process matrix는 다음 fresh run으로 확인했다. 각 runner는 실제 host/client 또는
+publisher/subscriber process를 실행한다.
+
+| 경로 | 실행 | 결과 |
+|---|---|---|
+| RouteMesh | `LocationMessaging:RM-C1` | PASS × 3 fresh runs — `e2e/LocationMessaging/logs/20260804-151159-624467/`, `20260804-151637-642662/`, `20260804-151704-644935/` |
+| ClientServer | `ChannelEgressRouting:CH-E2E-03` | PASS — `e2e/ChannelEgressRouting/logs/20260804-151221-626528/` |
+| service | `SpotService:sm-e2-e3` | PASS — `e2e/SpotService/logs/20260804-151237-628321/` |
+| STREAM | `ChannelEgressRouting:CH-REG-02` | PASS — `e2e/ChannelEgressRouting/logs/20260804-151338-635494/` |
+| fanout | `PubSub:PS-B1` | PASS — `e2e/PubSub/logs/20260804-151313-632318/` |
+
+이 기록은 .NET 대표 경로의 process 증거다. 다른 언어를 포함하는 공통 matrix와
+mixed-process relay는 별도 cross-language gate로 남긴다.
 
 ## W4 — 유휴 정리 (신규 기능)
 
@@ -150,7 +166,15 @@ Entry Spot actor lifecycle drain도 같은 batch 상한을 사용한다.
 `JoinedActorCount`·relocation 참여·pending application work를 제외한다. 후보는 serial
 quiescence 뒤 `IdleEvicted` callback을 호출하고 local activation을 dispose한 뒤 location
 record를 release한다. 새 call과의 경쟁은 `_closing` transaction과 serial barrier가 조정한다.
-instance Spot process 증거와 cold activation/ordinary message matrix는 별도 검증으로 남긴다.
+Track A의 `IS-E2E-01`·`IS-E2E-02`·`IS-E2E-03`은 각각 fresh process에서 cold request,
+cold send, concurrent first request와 동일 owner 수렴을 확인했다. 각각의 근거는
+`e2e/SpotService/logs/20260804-145911-582473/`,
+`e2e/SpotService/logs/20260804-150030-587658/`,
+`e2e/SpotService/logs/20260804-150104-591087/`이다. 추가한 `IS-E2E-08`은
+`e2e/SpotService/logs/20260804-165721-1053531/`에서 실제 idle 경과를 기다린 뒤
+`IdleEvicted` 종료 callback, 같은 Spot ID의 두 번째 cold activation과 두 request를
+확인했다. 따라서 .NET의 idle local close와 해당 process 증거는 확인했지만, 나머지
+Instance Spot 시나리오와 ordinary message matrix는 별도 검증으로 남긴다.
 
 ## W3 — relay 통지
 
@@ -166,10 +190,17 @@ invalidation을 호출한다. Actor marker는 lease 수명에, Spot marker는 fo
 
 application이 관찰할 수 없으므로 우선순위가 가장 낮다.
 
-- relocation 드라이버 3종을 단일 상태기계로
-- `Runtime/Service/ZLinkManagedMeshNode.cs`(8,271줄) 분해 — 줄 수가 아니라 책임별 후보로
-- `Runtime/Backend/Contracts`의 interface 26개 중 구현이 하나뿐인 것을 이름으로 나열해 정리
-- `ZLinkLegacyMonitoringModels` 정리
+- relocation 드라이버 3종을 단일 상태기계로 합치는 작업은 남아 있다.
+- channel selection plan·cursor·retained current는 `Runtime/Service/ZLinkMeshChannelSelection.cs`로
+  분리했고, peer 상태와 owned mailbox도 각각 `Runtime/Service/ZLinkMeshPeer.cs`와
+  `Runtime/Service/ZLinkMeshOwnedMailbox.cs`로 옮겼다. peer admission의 RID·endpoint·중복
+  연결 판정은 `Runtime/Service/ZLinkMeshPeerAdmission.cs`로 분리했다. 현재
+  `Runtime/Service/ZLinkManagedMeshNode.cs`는 8,171줄이며 relocation·operation dispatch의
+  추가 분해 후보는 남아 있다.
+- `Runtime/Backend/Contracts`의 interface 26개 중 구현이 하나뿐인 항목은 구조 부채로
+  남아 있다.
+- monitoring model은 Mesh, ClientServer, Fanout owner 파일로 분리했다. 이 변경으로
+  구조 부채 전체가 해소된 것은 아니다.
 
 ## 검증
 

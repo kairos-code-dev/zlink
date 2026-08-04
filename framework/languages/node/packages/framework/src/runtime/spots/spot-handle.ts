@@ -1,4 +1,8 @@
-import type { RoutingId, ZLinkSpotKind } from '../../contracts';
+import type {
+  RoutingId,
+  ZLinkFrameworkRuntimeState,
+  ZLinkSpotKind
+} from '../../contracts';
 
 declare const spotHandleBrand: unique symbol;
 
@@ -30,6 +34,8 @@ export interface ResolvedSpotHandle {
   readonly spotId: RoutingId;
   readonly spotKind?: ZLinkSpotKind;
   readonly spotGeneration?: bigint;
+  /** Current state of the owning MeshNode, when the Location Store provides it. */
+  readonly targetNodeState?: ZLinkFrameworkRuntimeState;
 }
 
 type SpotHandleResolver = (signal?: AbortSignal) => Promise<ResolvedSpotHandle | undefined>;

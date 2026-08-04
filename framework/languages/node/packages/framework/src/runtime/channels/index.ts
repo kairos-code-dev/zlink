@@ -24,10 +24,10 @@ export {
 } from './channel-clients';
 export {
   ZLinkChannelReceiveLoop,
+  ZLinkReceiveRoundRobinCoordinator,
   ZLinkRouteReceiveLoop,
   ZLinkSubscriberReceiveLoop
 } from './channel-receive-loops';
-export { ZLinkDealerChannelClientTransport } from './dealer-channel-client-transport';
 export {
   ZLinkChannelPublishDispatcher,
   ZLinkChannelRequestDispatcher,

@@ -5,6 +5,8 @@
 #include <zlink/framework/contracts/eventing/health.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
 
+#include "runtime/host/hosted_service_lifecycle.hpp"
+
 #include <atomic>
 #include <cstddef>
 #include <memory>
@@ -14,7 +16,8 @@
 namespace zlink::framework::runtime
 {
 
-class http_host_service_t final : public hosted_service_t
+class http_host_service_t final : public hosted_service_t,
+                                   public hosted_service_lifecycle_t
 {
   public:
     http_host_service_t (http_options_snapshot_t options,
@@ -25,6 +28,7 @@ class http_host_service_t final : public hosted_service_t
     void start (service_provider_t &services) override;
     void request_stop () noexcept override;
     void stop () noexcept override;
+    int shutdown_stop_priority () const noexcept override { return 100; }
 
   private:
     class listener_t;

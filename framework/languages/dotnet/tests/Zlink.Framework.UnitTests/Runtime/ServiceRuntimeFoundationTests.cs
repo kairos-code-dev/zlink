@@ -13,6 +13,103 @@ namespace Zlink.Framework.UnitTests;
 public sealed class ServiceRuntimeFoundationTests
 {
     [Fact]
+    public void MessageFollow_RoundTripsVersionedInfrastructureRecord()
+    {
+        var source = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowActorKind,
+            "actor-1",
+            11,
+            RoutingId.From("source-node"),
+            12,
+            13,
+            14);
+        var target = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowActorKind,
+            "actor-1",
+            11,
+            RoutingId.From("target-node"),
+            15,
+            16,
+            17);
+        var record = new ZLinkServiceWireCodec.MessageFollowRecord(
+            source,
+            target,
+            1,
+            3,
+            4096,
+            new MeshOperationId(21, 22),
+            23);
+
+        var encoded = ZLinkServiceWireCodec.EncodeMessageFollow(record);
+
+        Assert.Equal((byte)50, encoded[3]);
+        Assert.Equal((byte)1, encoded[5]);
+        Assert.Equal(
+            (uint)(encoded.Length - 10),
+            BinaryPrimitives.ReadUInt32BigEndian(encoded.AsSpan(6)));
+        Assert.True(ZLinkServiceWireCodec.TryDecodeMessageFollow(
+            encoded,
+            out var decoded,
+            out var error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        Assert.Equal(record, decoded);
+        Assert.Equal(
+            encoded,
+            ZLinkServiceWireCodec.EncodeMessageFollow(decoded));
+    }
+
+    [Fact]
+    public void MessageFollow_RejectsVersionLengthAndBoundsViolations()
+    {
+        var route = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowSpotKind,
+            "spot-1",
+            3,
+            RoutingId.From("node"),
+            4,
+            5,
+            6);
+        var encoded = ZLinkServiceWireCodec.EncodeMessageFollow(
+            new ZLinkServiceWireCodec.MessageFollowRecord(
+                route,
+                route,
+                8,
+                1024,
+                16 * 1024 * 1024,
+                new MeshOperationId(7, 8),
+                0));
+
+        var wrongVersion = encoded.ToArray();
+        wrongVersion[5] = 2;
+        Assert.False(ZLinkServiceWireCodec.TryDecodeMessageFollow(
+            wrongVersion,
+            out _,
+            out var wrongVersionError));
+        Assert.Equal(
+            ZLinkServiceWireCodec.DecodeError.UnsupportedVersion,
+            wrongVersionError);
+
+        var trailing = encoded.Concat(new byte[] { 0 }).ToArray();
+        Assert.False(ZLinkServiceWireCodec.TryDecodeMessageFollow(
+            trailing,
+            out _,
+            out var trailingError));
+        Assert.Equal(
+            ZLinkServiceWireCodec.DecodeError.InvalidField,
+            trailingError);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ZLinkServiceWireCodec.MessageFollowRecord(
+                route,
+                route,
+                1,
+                1025,
+                0,
+                new MeshOperationId(1, 0),
+                0));
+    }
+
+    [Fact]
     public void GeneratedLivenessFixtures_DecodeWithExactErrors()
     {
         var frameworkRoot = Common.FrameworkTestEnvironment.GetFrameworkRoot();
@@ -933,6 +1030,65 @@ public sealed class ServiceRuntimeFoundationTests
                 && peer.State == MeshPeerState.Admitted));
     }
 
+    [Fact]
+    public async Task ManagedNode_Tcp_SameEndpoint_Replacement_RemainsAdmitted_Across_Repeated_Lifecycles()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var local = new ZLinkManagedMeshNode(context, "tcp-replacement");
+        await using var localBackend = new ZLinkBackendSpotNodeWrapper(local);
+        var suffix = Guid.NewGuid().ToString("N");
+        var localRid = RoutingId.From($"tcp-replacement-local-{suffix}");
+        var remoteEndpoint = string.Empty;
+        ZLinkManagedMeshNode? remote = null;
+
+        local.SetRoutingId(localRid);
+        local.SetBind("tcp://127.0.0.1:0");
+        local.Start();
+
+        try
+        {
+            for (var generation = 0; generation < 3; generation++)
+            {
+                if (remote is not null)
+                {
+                    await remote.DisposeAsync();
+                    remote = null;
+
+                    // The auto-connect owner removes the old intent before it
+                    // installs the new RID at the same endpoint.
+                    localBackend.DisconnectPeer(remoteEndpoint);
+                }
+
+                var remoteRid = RoutingId.From(
+                    $"tcp-replacement-remote-{generation}-{suffix}");
+                remote = new ZLinkManagedMeshNode(context, "tcp-replacement");
+                remote.SetRoutingId(remoteRid);
+                remote.SetBind(
+                    generation == 0
+                        ? "tcp://127.0.0.1:0"
+                        : remoteEndpoint);
+                remote.Start();
+                remoteEndpoint = remote.Status().LocalEndpoint;
+
+                localBackend.ConnectPeer(remoteRid, remoteEndpoint, "none");
+
+                var expectedRid = remoteRid;
+                await WaitUntilAsync(() =>
+                    local.Peers().Any(peer =>
+                        peer.RoutingId == expectedRid
+                        && peer.State == MeshPeerState.Admitted)
+                    && remote!.Peers().Any(peer =>
+                        peer.RoutingId == localRid
+                        && peer.State == MeshPeerState.Admitted));
+            }
+        }
+        finally
+        {
+            if (remote is not null)
+                await remote.DisposeAsync();
+        }
+    }
+
 
     [Theory]
     [InlineData(false)]
@@ -1370,6 +1526,22 @@ public sealed class ServiceRuntimeFoundationTests
                 Assert.Empty(reply);
             }));
         Assert.Equal(RequestResult.Backpressured, result);
+    }
+
+    [Fact]
+    public void CompletionTable_OverflowBeyondRetentionIsObservable()
+    {
+        var table = new ZLinkMeshCompletionTable(
+            earlyCompletionCount: 1,
+            earlyCompletionBytes: 64,
+            tombstoneCount: 1,
+            tombstoneBytes: 32);
+
+        table.Complete(Completion(new MeshOperationId(0, 20)), []);
+        table.Complete(Completion(new MeshOperationId(0, 21)), []);
+        table.Complete(Completion(new MeshOperationId(0, 22)), []);
+
+        Assert.Equal(1, table.OverflowCount);
     }
 
     [Fact]

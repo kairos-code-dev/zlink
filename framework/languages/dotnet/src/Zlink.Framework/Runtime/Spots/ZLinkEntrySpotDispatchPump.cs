@@ -88,7 +88,10 @@ internal sealed class ZLinkEntrySpotDispatchPump(
                             {
                                 ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
                                     received,
-                                    activation.ChannelName);
+                                    activation.ChannelName,
+                                    ZLinkAcceptedWorkAdmission.Closed,
+                                    received.SourceNodeRid is null
+                                    || received.SourceNodeRid == activation.NodeRid);
                                 continue;
                             }
 

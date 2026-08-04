@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.spots;
 
-import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
@@ -11,6 +10,7 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
+import systems.zlink.framework.runtime.internal.streams.ZLinkStreamErrorPayload;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 
@@ -62,7 +62,7 @@ final class ActorPacketFrames {
     }
 
     static Message encodeError(Header packetHeader, Throwable error) {
-        byte[] body = errorMessage(error).getBytes(StandardCharsets.UTF_8);
+        byte[] body = ZLinkStreamErrorPayload.encode(error);
         if (!packetHeader.streamHeader() || packetHeader.requestSeq().isEmpty()) {
             return Message.from(body);
         }
@@ -90,16 +90,6 @@ final class ActorPacketFrames {
             header.correlationId(),
             header.flowId(),
             header.flowOrigin());
-    }
-
-    private static String errorMessage(Throwable error) {
-        if (error == null) {
-            return "handler failed";
-        }
-        String message = error.getMessage();
-        return message == null || message.isBlank()
-            ? error.getClass().getSimpleName()
-            : message;
     }
 
     record Header(

@@ -1,11 +1,12 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import type { ActorRef } from '../../contracts';
 import {
   ZLinkFrameworkException,
   ZLinkSpotKind
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import {
   decodeActorRequestDeadlineUnixMs,
@@ -70,6 +71,7 @@ export interface ZLinkActorHandoffPacket {
     readonly nodeRid: string;
   };
   readonly messageFollowContext: ZLinkActorMessageFollowContext;
+  readonly messageFollowOrigin?: ZLinkMessageFollowOrigin;
 }
 
 export interface ZLinkActorHandoffRequestSource {
@@ -163,6 +165,14 @@ export interface ZLinkActorHandoffCoordinatorOptions {
     requestSeq: bigint | undefined,
     flags: number
   ) => void;
+  readonly onMessageFollowRelayed?: (
+    actorId: string,
+    targetActorRef: ActorRef,
+    context: ZLinkActorMessageFollowContext,
+    origin: ZLinkMessageFollowOrigin,
+    queuedMessages: number,
+    queuedBytes: number
+  ) => void | Promise<void>;
   readonly isStaleActorRef?: (actorId: string, actorRef?: ActorRef) => boolean;
   readonly isCurrentHandoffTarget?: (actorId: string, spotId: string) => boolean;
   readonly isCurrentActorRef?: (actorId: string, actorRef: ActorRef) => boolean;
@@ -241,7 +251,8 @@ export class ZLinkActorHandoffCoordinator {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    deadlineUnixMs?: number
+    deadlineUnixMs?: number,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> | undefined {
     const incomingContext = actorMessageFollowContext(fallbackActorRef);
     const originalDeadlineUnixMs = deadlineUnixMs
@@ -268,7 +279,8 @@ export class ZLinkActorHandoffCoordinator {
         returnResponse,
         remoteBoundSessionTarget,
         fallbackActorRef,
-        context
+        context,
+        messageFollowOrigin
       );
       this.admitBounded(handoff.pending.length, handoff.pendingBytes, packet);
       handoff.pendingBytes += packetBytes(packet);
@@ -800,7 +812,6 @@ export class ZLinkActorHandoffCoordinator {
     } catch {
       throw actorLocationStale(actorId);
     }
-    this.options.onMarker?.('message_follow_relay', actorId, undefined, advanced);
     const payload = encodeMessageFollowRemoteActorPacketRelayPayload({
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,
@@ -817,6 +828,7 @@ export class ZLinkActorHandoffCoordinator {
       await this.options.routedTransport.sendToSpot(target, payload, {
         packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET
       });
+      await this.messageFollowRelayed(actorId, entry, packet, advanced);
       return undefined;
     }
     const remainingMs = remainingRequestTime(
@@ -835,9 +847,10 @@ export class ZLinkActorHandoffCoordinator {
       if (reply.ok === false) {
         throw actorRelayError(actorId, reply.errorKind, reply.error);
       }
+      await this.messageFollowRelayed(actorId, entry, packet, advanced);
       return reply.response;
     }
-    return await awaitBeforeDeadline(
+    const response = await awaitBeforeDeadline(
       requestRoutedJsonReply(
         this.options.routedTransport,
         target,
@@ -863,6 +876,27 @@ export class ZLinkActorHandoffCoordinator {
       actorId,
       remainingMs
     );
+    await this.messageFollowRelayed(actorId, entry, packet, advanced);
+    return response;
+  }
+
+  private async messageFollowRelayed(
+    actorId: string,
+    entry: MessageFollowRoute,
+    packet: ZLinkActorHandoffPacket,
+    context: ZLinkActorMessageFollowContext
+  ): Promise<void> {
+    this.options.onMarker?.('message_follow_relay', actorId, undefined, context);
+    if (packet.messageFollowOrigin !== undefined) {
+      await this.options.onMessageFollowRelayed?.(
+        actorId,
+        entry.targetActorRef,
+        context,
+        packet.messageFollowOrigin,
+        entry.queuedMessages,
+        entry.queuedBytes
+      );
+    }
   }
 }
 
@@ -873,8 +907,8 @@ export function decodeHandoffPacket(packet: ZLinkActorHandoffPacket): {
 } {
   return {
     parts: [
-      BindingMessage.from(Buffer.from(packet.header, 'base64')) as Message,
-      BindingMessage.from(Buffer.from(packet.payload, 'base64')) as Message
+      RuntimeMessage.from(Buffer.from(packet.header, 'base64')) as Message,
+      RuntimeMessage.from(Buffer.from(packet.payload, 'base64')) as Message
     ],
     remoteBoundSessionTarget: packet.remoteBoundSessionTarget === undefined
       ? undefined
@@ -954,7 +988,8 @@ function encodePacket(
   returnResponse: boolean,
   remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
   fallbackActorRef?: ActorRef,
-  messageFollowContext?: ZLinkActorMessageFollowContext
+  messageFollowContext?: ZLinkActorMessageFollowContext,
+  messageFollowOrigin?: ZLinkMessageFollowOrigin
 ): ZLinkActorHandoffPacket {
   if (messageFollowContext === undefined) {
     throw new Error('Actor handoff packet requires a Message Follow context.');
@@ -965,6 +1000,7 @@ function encodePacket(
     payload: Buffer.from(parts[1].data()).toString('base64'),
     returnResponse,
     messageFollowContext,
+    ...(messageFollowOrigin === undefined ? {} : { messageFollowOrigin }),
     remoteBoundSessionTarget: remoteBoundSessionTarget === undefined
       ? undefined
       : {

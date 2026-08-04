@@ -99,6 +99,14 @@ case "$SCENARIO_SET" in
   sm-g3|sm-g4)
     NEED_PLAY_B=0
     ;;
+  instance-track-a)
+    NEED_SESSION_NODES=0
+    NEED_PLAY_B=1
+    ;;
+  instance-idle)
+    NEED_SESSION_NODES=0
+    NEED_PLAY_B=0
+    ;;
   sm-f6)
     NEED_SESSION_NODES=0
     NEED_PLAY_B=0
@@ -695,6 +703,9 @@ start_named_server() {
           --message-follow-duration-milliseconds 7000
           --owner-lease-ttl-milliseconds 30000
         )
+      fi
+      if [[ "$SCENARIO_SET" == "instance-idle" ]]; then
+        PLAY_A_ARGS+=(--instance-spot-idle-timeout-milliseconds 100)
       fi
       if [[ "$SCENARIO_SET" == "sm-g5" || "$SCENARIO_SET" == "sm-g5a" || "$SCENARIO_SET" == "sm-g5b" ]]; then
         PLAY_A_ARGS+=(--population-limit 1000)

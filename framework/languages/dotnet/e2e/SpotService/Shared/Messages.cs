@@ -58,6 +58,28 @@ public sealed record StateReq(string Operation, int Delta);
 
 public sealed record StateRes(string SpotRid, string NodeRid, int Value);
 
+public sealed record InstanceColdRequestReq(string SpotId, string OperationId);
+
+public sealed record InstanceColdRequestRes(
+    string SpotId,
+    string OperationId,
+    bool Succeeded,
+    string ErrorKind,
+    string NodeRid,
+    int Value);
+
+public sealed record InstanceColdSendReq(string SpotId, string OperationId);
+
+public sealed record InstanceColdSendRes(
+    string SpotId,
+    string OperationId,
+    bool Accepted,
+    string ErrorKind);
+
+public sealed record InstanceColdRequest(string OperationId);
+
+public sealed record InstanceColdSend(string OperationId);
+
 public sealed record ReservedSpotIdProbeReq(string SpotId);
 
 public sealed record ReservedSpotIdProbeRes(

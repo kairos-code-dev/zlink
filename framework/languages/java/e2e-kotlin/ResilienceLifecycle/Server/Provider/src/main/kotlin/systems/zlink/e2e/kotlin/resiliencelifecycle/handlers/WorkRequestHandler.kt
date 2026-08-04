@@ -2,7 +2,7 @@ package systems.zlink.e2e.kotlin.resiliencelifecycle.handlers
 
 import systems.zlink.e2e.kotlin.resiliencelifecycle.Contracts
 import systems.zlink.e2e.kotlin.resiliencelifecycle.ScenarioState
-import systems.zlink.framework.channels.ZLinkRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 import kotlinx.coroutines.delay
 import systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
@@ -13,7 +13,7 @@ class WorkRequestHandler(
 ) : ZLinkSuspendingRequestHandler<Contracts.WorkReq, Contracts.WorkRes> {
     override suspend fun handle(
         request: Contracts.WorkReq,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): Contracts.WorkRes {
         when {
             state.grayFailure() && request.value().startsWith("b6-gray-") -> {

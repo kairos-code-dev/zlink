@@ -115,7 +115,10 @@ class actor_gateway_state_t
         const actor_ref_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
-    std::map<std::string, std::function<task_t<void> (std::string, const zlink::message_t &)>>
+    std::map<std::string,
+             std::function<task_t<void> (std::string,
+                                         stream_codec_t,
+                                         const zlink::message_t &)>>
       bound_session_sinks;
     std::vector<relayed_frame_t> relayed_frames;
     std::vector<relayed_frame_t> bound_session_pushes;
@@ -165,7 +168,9 @@ class actor_gateway_runtime_t
                              bool replace_existing = true);
     void
     bind_session_sink (actor_ref_t actor_ref,
-                       std::function<task_t<void> (std::string, const zlink::message_t &)> sink,
+                       std::function<task_t<void> (std::string,
+                                                   stream_codec_t,
+                                                   const zlink::message_t &)> sink,
                        stream_codec_t codec = stream_codec_t::message_pack,
                        bool replace_existing = true);
     void record_bound_session_route (const actor_ref_t &actor_ref,
@@ -182,6 +187,7 @@ class actor_gateway_runtime_t
                                 std::uint64_t binding_token = 0);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,
+                                                stream_codec_t codec,
                                                 const zlink::message_t &payload) const;
     void on_join_spot (actor_gateway_state_t::join_spot_dispatcher_t dispatcher);
     void on_create (actor_gateway_state_t::create_dispatcher_t dispatcher);

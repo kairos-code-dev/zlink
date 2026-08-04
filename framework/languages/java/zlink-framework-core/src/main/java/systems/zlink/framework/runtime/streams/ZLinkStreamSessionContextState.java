@@ -2,7 +2,6 @@ package systems.zlink.framework.runtime.streams;
 
 import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -20,6 +19,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
+import systems.zlink.framework.runtime.internal.streams.ZLinkStreamErrorPayload;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 import systems.zlink.framework.streams.ZLinkSession;
@@ -330,11 +330,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private CompletionStage<Void> sendErrorReply(
         ZLinkStreamHeader requestHeader,
         Throwable error) {
-        String message = unwrap(error).getMessage();
-        if (message == null || message.isBlank()) {
-            message = unwrap(error).getClass().getName();
-        }
-        try (Message payload = Message.from(message.getBytes(StandardCharsets.UTF_8))) {
+        try (Message payload = Message.from(ZLinkStreamErrorPayload.encode(error))) {
             ZLinkStreamHeader replyHeader =
                 ZLinkStreamHeader.createErrorResponse(requestHeader, requestHeader.packetName());
             submitReplyAsync(replyHeader, payload.toByteArray());

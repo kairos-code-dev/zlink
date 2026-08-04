@@ -440,7 +440,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
         if (spotNode != null) {
             spotNode.rememberActorAuthority(
                 target,
-                update.targetAuthorityOwnerGeneration());
+                update.targetAuthorityOwnerGeneration(),
+                spotNode.localAuthorityLeaseGeneration());
         }
         return awaitRouteReady(target).thenCompose(ignored -> {
             ZLinkBoundActor actor;

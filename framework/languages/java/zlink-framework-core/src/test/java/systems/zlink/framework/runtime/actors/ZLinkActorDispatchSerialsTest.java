@@ -10,6 +10,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 
 final class ZLinkActorDispatchSerialsTest {
     @Test
@@ -139,5 +140,35 @@ final class ZLinkActorDispatchSerialsTest {
             first.toCompletableFuture(),
             second.toCompletableFuture()).join();
         assertEquals(List.of("first", "second"), order);
+    }
+
+    @Test
+    void yieldedContinuationDoesNotBlockTheNextActorTurn() throws Exception {
+        ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> secondStarted = new CompletableFuture<>();
+
+        CompletionStage<Void> first = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            () -> {
+                firstStarted.complete(null);
+                return ZLinkAsyncSerialQueue.yieldCurrent(remote);
+            });
+        CompletionStage<Void> second = dispatches.enqueue(
+            dispatches.prepare("actor-1"),
+            () -> {
+                secondStarted.complete(null);
+                return CompletableFuture.completedFuture(null);
+            });
+
+        firstStarted.get();
+        secondStarted.get();
+        assertFalse(first.toCompletableFuture().isDone());
+
+        remote.complete(null);
+        CompletableFuture.allOf(
+            first.toCompletableFuture(),
+            second.toCompletableFuture()).join();
     }
 }

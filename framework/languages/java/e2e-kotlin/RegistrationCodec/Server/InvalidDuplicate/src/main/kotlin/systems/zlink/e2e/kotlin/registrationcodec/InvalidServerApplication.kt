@@ -38,9 +38,10 @@ class InvalidServerApplication {
 }
 
 fun runInvalidServerApplication(vararg args: String): AutoCloseable {
+    Env.configure(args)
     val builder = SpringApplicationBuilder(InvalidServerApplication::class.java)
         .web(WebApplicationType.NONE)
     builder.application().setKeepAlive(true)
-    val context = builder.run(*args)
+    val context = builder.run(*Env.applicationArgs(args))
     return AutoCloseable { context.close() }
 }

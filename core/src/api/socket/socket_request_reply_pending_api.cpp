@@ -34,18 +34,20 @@ int reqrep::lookup_socket_pending_request_by_seq (
     return 0;
 }
 
-void reqrep::erase_socket_pending_request (
+bool reqrep::erase_socket_pending_request (
   const std::shared_ptr<reqrep::socket_request_reply_state_t> &state_,
   const reqrep::pending_key_t &key_)
 {
     if (!state_)
-        return;
+        return false;
 
     reqrep::pending_request_t pending;
     if (reqrep::remove_socket_pending_request (state_, key_, &pending)) {
         zlink::request_timeout::cancel (pending.timeout_task);
         zlink::request_completion::release_reservation (&state_->completion);
+        return true;
     }
+    return false;
 }
 
 void reqrep::record_socket_pending_transport_pair (

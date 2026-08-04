@@ -204,7 +204,9 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
           this.options.flowCreationEnabled?.() ?? true
         ) ?? {})
       });
-      const result = this.options.routedTransport.submit === undefined
+      const submit = this.options.routedTransport.submitInfrastructure
+        ?? this.options.routedTransport.submit;
+      const result = submit === undefined
         ? await this.options.routedTransport.sendToSpot(
             {
               routerChannelId: remoteTarget.routerChannelId,
@@ -215,7 +217,8 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
             payload,
             { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
           )
-        : await this.options.routedTransport.submit(
+        : await submit.call(
+            this.options.routedTransport,
             remoteTarget.routerChannelId,
             String(remoteTarget.targetNodeRid),
             ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,

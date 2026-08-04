@@ -16,7 +16,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 internal object SmRemoteActorSessionScenario {
     suspend fun run() {
         val actorId = "actor-sm-remote-" + UUID.randomUUID().toString().replace("-", "")
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.b.endpoint"))
         val profile = Contracts.ActorProfile("Remote Player", 24, listOf("remote", "relay"))
         try {
             connector.connect().await()
@@ -53,11 +53,11 @@ internal object SmRemoteActorSessionScenario {
             ensure(push.actorId == actorId, "SM-D2 remote bound-session push actor mismatch")
 
             waitForSessionEvidence(
-                Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT"),
+                Env.get("e2e.http.b.endpoint"),
                 "ActorCreated|play-b|entry|$actorId",
             )
             waitForSessionEvidence(
-                Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
+                Env.get("e2e.http.a.endpoint"),
                 "ActorUserJoined|play-a|room-a|$actorId",
                 "ActorUserRequest|play-a|room-a|$actorId/remote-user-echo",
             )

@@ -379,6 +379,22 @@ class actor_client_impl_t final : public actor_client_t
         _actor_locations (std::move (actor_locations)),
         _location_options (std::move (options))
     {
+        for (const auto &mesh_node : _mesh_nodes) {
+            if (!mesh_node)
+                continue;
+            mesh_node->set_message_follow_invalidation_handler (
+              [this] (const auto &notice) {
+                  invalidate_cached_route_on_message_follow (notice);
+              });
+        }
+    }
+
+    ~actor_client_impl_t () override
+    {
+        for (const auto &mesh_node : _mesh_nodes) {
+            if (mesh_node)
+                mesh_node->set_message_follow_invalidation_handler ({});
+        }
     }
 
   protected:
@@ -506,20 +522,8 @@ class actor_client_impl_t final : public actor_client_t
         spot_id_t spot_id;
         std::string mesh_name;
         std::uint64_t authority_owner_generation = 0;
+        std::uint64_t owner_lease_generation = 0;
     };
-
-    result_t<resolved_actor_t> resolve_explicit_actor (const actor_ref_t &actor_ref)
-    {
-        if (actor_ref.empty () || actor_ref.node_rid ().empty ()) {
-            return result_t<resolved_actor_t>::failure (
-              framework_error_kind_t::not_found,
-              "actor send requires a non-empty actor ref and node rid");
-        }
-        return result_t<resolved_actor_t>::success (
-          resolved_actor_t{
-            actor_ref, actor_ref, actor_ref.node_rid (),
-            spot_id_t (std::string (actor_ref.node_rid ().value ())), {}, 0});
-    }
 
     result_t<resolved_actor_t> resolve_actor (const std::string &actor_id, stale_policy_t policy)
     {
@@ -571,7 +575,9 @@ class actor_client_impl_t final : public actor_client_t
           snapshot->allocation.target.node_rid,
           projection->spot_id,
           snapshot->allocation.target.mesh_name,
-          snapshot->authority_owner_generation};
+          snapshot->authority_owner_generation,
+          static_cast<std::uint64_t> (
+            snapshot->owner.lease_generation)};
         const auto lease_lifetime = _store->owner_admission_lifetime (snapshot->owner);
         if (_location_options.route_cache_max_age > std::chrono::milliseconds::zero ()
             && lease_lifetime) {
@@ -664,7 +670,9 @@ class actor_client_impl_t final : public actor_client_t
             if (kind == runtime::messaging::message_kind_t::command) {
                 const auto deadline = std::chrono::steady_clock::now () + timeout;
                 auto submit = runtime.send_to_actor (
-                  actor.native_ref, copied, {}, actor.authority_owner_generation);
+                  actor.native_ref, copied, {},
+                  actor.authority_owner_generation,
+                  actor.owner_lease_generation);
                 while (submit == zlink::submit_result_t::not_connected
                        && std::chrono::steady_clock::now () < deadline) {
                     // Actor creation and binding complete before every peer has
@@ -673,7 +681,9 @@ class actor_client_impl_t final : public actor_client_t
                     // send has the same semantics as later sends.
                     std::this_thread::sleep_for (std::chrono::milliseconds (1));
                     submit = runtime.send_to_actor (
-                      actor.native_ref, copied, {}, actor.authority_owner_generation);
+                      actor.native_ref, copied, {},
+                      actor.authority_owner_generation,
+                      actor.owner_lease_generation);
                 }
                 if (submit != zlink::submit_result_t::ok) {
                     if (submit == zlink::submit_result_t::terminated) {
@@ -693,7 +703,8 @@ class actor_client_impl_t final : public actor_client_t
             detail::host::operation_id_t operation_id;
             const auto submit =
               runtime.request_to_actor (actor.native_ref, copied, operation_id, timeout, {},
-                                        actor.authority_owner_generation);
+                                        actor.authority_owner_generation,
+                                        actor.owner_lease_generation);
             if (submit != zlink::submit_result_t::ok) {
                 if (submit == zlink::submit_result_t::terminated) {
                     return detail::boundary_failure<std::optional<zlink::message_t>> (
@@ -753,6 +764,35 @@ class actor_client_impl_t final : public actor_client_t
         }
         std::lock_guard lock (_route_cache_gate);
         _route_cache.erase (std::string (actor.framework_ref.actor_id ()));
+    }
+
+    void invalidate_cached_route_on_message_follow (
+      const runtime::protocol::message_follow_notice_t &notice)
+    {
+        const auto *source = std::get_if<runtime::protocol::actor_route_fence_t> (
+          &notice.source);
+        const auto *target = std::get_if<runtime::protocol::actor_route_fence_t> (
+          &notice.target);
+        if (!source || !target
+            || source->actor_id != target->actor_id
+            || source->object_generation != target->object_generation)
+            return;
+        std::lock_guard lock (_route_cache_gate);
+        const auto found = _route_cache.find (source->actor_id);
+        if (found == _route_cache.end ())
+            return;
+        const auto &cached = found->second.actor;
+        if (cached.framework_ref.generation () != source->object_generation
+            || cached.authority_owner_generation
+                 != source->authority_owner_generation
+            || cached.owner_lease_generation
+                 != source->owner_lease_generation
+            || cached.native_ref.node_rid ().empty ()
+            || cached.native_ref.node_rid ().value ()
+                 != zlink::routing_id_t::from (
+                      source->target_node_routing_id).to_string ())
+            return;
+        _route_cache.erase (found);
     }
 
     std::shared_ptr<detail::mesh_node_runtime_t> first_mesh_node () const

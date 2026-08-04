@@ -28,7 +28,9 @@
 #include <set>
 #include <span>
 #include <string>
+#include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 namespace zlink::framework::runtime::stateful
@@ -95,6 +97,10 @@ enum class join_admission_t
     rejected
 };
 
+using route_fence_t = std::pair<std::uint64_t, std::uint64_t>;
+using spot_route_fence_resolver_t = std::function<std::optional<route_fence_t> (
+  const zlink::routing_id_t &, std::string_view, std::uint64_t)>;
+
 struct actor_join_completion_t
 {
     join_admission_t join_result = join_admission_t::rejected;
@@ -148,6 +154,12 @@ struct receive_record_t
     zlink::routing_id_t source_node_rid =
       zlink::routing_id_t::from (std::uint32_t{0});
     std::uint64_t source_binding_generation = 0;
+    /* Preserve the target fence until the Spot owner admits the message.
+     * The owner must be able to reject stale work before body deserialization. */
+    std::optional<protocol::spot_route_fence_t> spot_route;
+    std::optional<protocol::actor_route_fence_t> actor_route;
+    std::uint8_t message_follow_hop_count = 0;
+    std::uint64_t reply_route_id = 0;
     std::string channel_name;
     std::string topic;
     int terminal_result = 0;
@@ -201,6 +213,7 @@ struct host_options_t
     mesh::raw_mesh_node_options_t mesh;
     std::string entry_spot_name = "entry";
     std::set<std::string> object_stable_types;
+    std::chrono::milliseconds route_cache_max_age{15'000};
     std::size_t user_spot_operation_capacity = 65'536;
     std::chrono::milliseconds user_spot_operation_replay_retention =
       std::chrono::minutes (5);
@@ -443,6 +456,9 @@ class public_host_runtime_t :
     void set_channel_weight (const std::string &channel_name,
                              std::uint32_t weight);
     mesh::raw_mesh_node_owner_t &transport () noexcept;
+    bool send_message_follow (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const protocol::message_follow_notice_t &notice);
     stateful::stateful_object_runtime_t &objects () noexcept;
     stateful::stream_session_registry_t &sessions () noexcept;
     void configure_maintenance (
@@ -465,6 +481,8 @@ class public_host_runtime_t :
     void configure_user_spot_operations (
       std::shared_ptr<zlink::framework::location_repository_t> store,
       user_spot_materializer_t materializer);
+    void configure_spot_route_fence_resolver (
+      spot_route_fence_resolver_t resolver);
     void configure_actor_create_operations (
       actor_create_operation_target_t target);
     void configure_instance_spot_operations (
@@ -486,6 +504,8 @@ class public_host_runtime_t :
         const stateful::accepted_record_authority_query_t &)> resolver);
     void configure_session_relocation_store (
       std::shared_ptr<stateful::relocation_store_port_t> relocations);
+    void configure_message_follow_handler (
+      std::function<void (const protocol::message_follow_notice_t &)> handler);
     bool seal_session_remote (
       const zlink::routing_id_t &session_owner_node,
       protocol::session_relocation_seal_t seal,
@@ -552,14 +572,16 @@ class public_host_runtime_t :
       const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
       std::span<const std::uint8_t> metadata = {},
-      std::uint64_t authority_owner_generation = 0);
+      std::uint64_t authority_owner_generation = 0,
+      std::uint64_t owner_lease_generation = 0);
     zlink::submit_result_t request_to_actor (
       const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
       operation_id_t &operation,
       std::chrono::milliseconds timeout,
       std::span<const std::uint8_t> metadata = {},
-      std::uint64_t authority_owner_generation = 0);
+      std::uint64_t authority_owner_generation = 0,
+      std::uint64_t owner_lease_generation = 0);
     zlink::submit_result_t send_to_node (
       const zlink::routing_id_t &target,
       const std::vector<zlink::message_t> &parts);
@@ -581,6 +603,9 @@ class public_host_runtime_t :
                                 const receive_record_t &,
                                 std::vector<zlink::message_t>)> &dispatch,
       bool accept_application_receive = true);
+    bool wait_for_dispatch_activity (
+      std::chrono::milliseconds timeout,
+      bool accept_application_receive = true) noexcept;
     bool prepare_actor_transfer (const actor_transfer_prepare_t &prepare,
                                  actor_transfer_token_t &token,
                                  actor_transfer_prepare_result_t &result);
@@ -639,6 +664,12 @@ class public_host_runtime_t :
       record_kind_t kind,
       const std::vector<zlink::message_t> &parts,
       std::optional<operation_id_t> operation = std::nullopt);
+    std::optional<route_fence_t> resolve_spot_route_fence (
+      const zlink::routing_id_t &target_node_rid,
+      std::string_view target_spot_id,
+      std::uint64_t target_spot_generation);
+    void invalidate_spot_route_fence (
+      const protocol::message_follow_notice_t &notice);
     bool complete_local_request (
       operation_id_t operation,
       const std::vector<zlink::message_t> &parts);
@@ -662,6 +693,14 @@ class public_host_runtime_t :
     std::shared_ptr<zlink::framework::location_repository_t>
       _user_spot_store;
     user_spot_materializer_t _user_spot_materializer;
+    spot_route_fence_resolver_t _spot_route_fence_resolver;
+    struct cached_spot_route_fence_t
+    {
+        route_fence_t fence;
+        std::chrono::steady_clock::time_point expires_at;
+    };
+    std::mutex _route_cache_mutex;
+    std::map<std::string, cached_spot_route_fence_t> _spot_route_fences;
     actor_create_operation_target_t _actor_create_target;
     instance_spot_activation_materializer_t
       _instance_spot_materializer;
@@ -670,6 +709,8 @@ class public_host_runtime_t :
     location_owner_token_t _instance_spot_owner;
     std::function<std::optional<location_owner_token_t> ()>
       _session_route_owner_resolver;
+    std::function<void (const protocol::message_follow_notice_t &)>
+      _message_follow_handler;
     std::shared_ptr<stateful::relocation_store_port_t>
       _session_relocations;
     struct session_seal_terminal_record_t

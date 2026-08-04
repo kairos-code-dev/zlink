@@ -6,14 +6,18 @@ import type {
   ZLinkSpotRequestHandler
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
-import { zlinkMessageMetadata } from '../../contracts';
+import { ZLinkFrameworkException, zlinkMessageMetadata } from '../../contracts';
 import {
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
   ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
-import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type {
+  ZLinkBackendReceived as BackendReceived
+} from '../backend/runtime-values';
+import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import {
   decodeChannelEnvelope,
@@ -32,6 +36,7 @@ import {
 import { resolveLifecycleHandler } from '../handlers/handler-instance-scope';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkApplicationWorkClaim } from '../admission';
 import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
 import { REMOTE_ACTOR_JOIN_PACKET } from './spot-remote-codec';
 import {
@@ -40,6 +45,10 @@ import {
   submitRouteReply
 } from './spot-route-replies';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  internalFrameworkErrorKind
+} from '../framework-errors-internal';
 
 interface ZLinkSpotRoutePacketDispatchOptions {
   readonly packetHandlers: ReadonlyMap<string, readonly ZLinkSpotHandlerRegistration[]>;
@@ -49,6 +58,7 @@ interface ZLinkSpotRoutePacketDispatchOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly claimApplicationWork?: () => ZLinkApplicationWorkClaim;
 }
 
 const SPOT_DIRECT_ENVELOPE = 'zlink.framework.spot-direct.v1';
@@ -64,7 +74,7 @@ interface ZLinkSpotDirectEnvelope {
 export class ZLinkSpotRoutePacketDispatch {
   constructor(private readonly options: ZLinkSpotRoutePacketDispatchOptions) {}
 
-  async dispatch(received: BindingReceived): Promise<boolean> {
+  async dispatch(received: BackendReceived): Promise<boolean> {
     const directEnvelope = decodeSpotDirectEnvelope(received.parts);
     if (directEnvelope !== undefined) {
       await this.dispatchSpotDirectEnvelope(received, directEnvelope);
@@ -118,32 +128,6 @@ export class ZLinkSpotRoutePacketDispatch {
       }
       return true;
     }
-    let payload: unknown;
-    try {
-      payload = decodeChannelPayload(envelope, this.channelCodecs());
-    } catch (error) {
-      this.options.dispatchErrors?.report({
-        surface: ZLinkDispatchErrorSurface.SpotRoute,
-        messageKind: replyable ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
-        reason: ZLinkDispatchErrorReason.PayloadDecodeFailed,
-        action,
-        packetName: envelope.packetName,
-        channelName: envelope.header.channelName,
-        spotId: this.options.nativeSpotId,
-        sourceRid: received.routingId === null ? undefined : String(received.routingId),
-        correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
-        flowId: envelope.header.flowId,
-        flowOrigin: envelope.header.flowOrigin,
-        error
-      });
-      if (replyable) {
-        submitRouteReply(appendRouteReplyParts(
-          received.reply(),
-          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
-        ));
-      }
-      return true;
-    }
     const context = {
       channelName: envelope.header.channelName,
       contentType: envelope.header.contentType,
@@ -153,25 +137,34 @@ export class ZLinkSpotRoutePacketDispatch {
     };
     try {
       let response: unknown;
-      await runWithFlow(createInboundFlow(
-        envelope.header.flowId,
-        envelope.header.flowOrigin,
-        this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
-      ), () =>
-        this.options.serial.execute(async () => {
-          const spot = this.options.getTarget();
-          for (const registration of registrations) {
-            const handler = await resolveLifecycleHandler(
-              spot,
-              registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
-              this.options.providerResolver
-            );
-            response = await handler.handle(spot, payload, context);
-          }
-        }, zlinkSerialWorkOptions(
-          envelope.payload.byteLength,
-          zlinkMetadataByteLength(envelope.header.metadata)
-        )));
+      const applicationClaim = this.options.claimApplicationWork?.();
+      try {
+        await runWithFlow(createInboundFlow(
+          envelope.header.flowId,
+          envelope.header.flowOrigin,
+          this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+        ), () =>
+          this.options.serial.execute(async () => {
+            const spot = this.options.getTarget();
+            // Keep the wire payload raw until this Spot has acquired its
+            // execution authority. A rejected or superseded work item must not
+            // pay the deserialization cost.
+            const payload = decodeChannelPayload(envelope, this.channelCodecs());
+            for (const registration of registrations) {
+              const handler = await resolveLifecycleHandler(
+                spot,
+                registration.handlerType as Type<ZLinkSpotPacketHandler<ZLinkSpot, unknown> | ZLinkSpotRequestHandler<ZLinkSpot, unknown, unknown>>,
+                this.options.providerResolver
+              );
+              response = await handler.handle(spot, payload, context);
+            }
+          }, zlinkSerialWorkOptions(
+            envelope.payload.byteLength,
+            zlinkMetadataByteLength(envelope.header.metadata)
+          )));
+      } finally {
+        applicationClaim?.close();
+      }
       if (replyable) {
         submitRouteReply(appendRouteReplyParts(
           received.reply(),
@@ -183,7 +176,10 @@ export class ZLinkSpotRoutePacketDispatch {
       this.options.dispatchErrors?.report({
         surface: ZLinkDispatchErrorSurface.SpotRoute,
         messageKind: replyable ? ZLinkDispatchMessageKind.Request : ZLinkDispatchMessageKind.Send,
-        reason: ZLinkDispatchErrorReason.HandlerException,
+        reason: error instanceof ZLinkFrameworkException
+          && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed
+          ? ZLinkDispatchErrorReason.PayloadDecodeFailed
+          : ZLinkDispatchErrorReason.HandlerException,
         action,
         packetName: envelope.packetName,
         channelName: envelope.header.channelName,
@@ -197,7 +193,7 @@ export class ZLinkSpotRoutePacketDispatch {
       if (replyable) {
         submitRouteReply(appendRouteReplyParts(
           received.reply(),
-          encodeChannelErrorReplyParts(envelope.header, error instanceof Error ? error.message : String(error))
+          encodeChannelErrorReplyParts(envelope.header, error)
         ));
       }
       return true;
@@ -205,7 +201,7 @@ export class ZLinkSpotRoutePacketDispatch {
   }
 
   private async dispatchSpotDirectEnvelope(
-    received: BindingReceived,
+    received: BackendReceived,
     envelope: ZLinkSpotDirectEnvelope
   ): Promise<void> {
     const replyable = envelope.kind === ZLinkChannelMessageKind.Request && isReplyableRequestSeq(received.requestSeq);
@@ -284,7 +280,7 @@ export class ZLinkSpotRoutePacketDispatch {
   }
 }
 
-function decodeSpotDirectEnvelope(parts: readonly BindingMessage[]): ZLinkSpotDirectEnvelope | undefined {
+function decodeSpotDirectEnvelope(parts: readonly Message[]): ZLinkSpotDirectEnvelope | undefined {
   if (parts.length !== 1) {
     return undefined;
   }
@@ -324,8 +320,8 @@ function decodeSpotDirectEnvelope(parts: readonly BindingMessage[]): ZLinkSpotDi
   }
 }
 
-function encodeSpotDirectReply(ok: boolean, response?: unknown, error?: string): BindingMessage {
-  return BindingMessage.from(Buffer.from(JSON.stringify({
+function encodeSpotDirectReply(ok: boolean, response?: unknown, error?: string): Message {
+  return RuntimeMessage.from(Buffer.from(JSON.stringify({
     marker: SPOT_DIRECT_ENVELOPE,
     ok,
     response,

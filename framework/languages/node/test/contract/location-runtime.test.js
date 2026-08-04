@@ -721,6 +721,95 @@ test('location lifecycle releases placement Actor authority for the exact native
   await runtime.stop();
 });
 
+test('location lifecycle durably closes an exact Ready Instance before deleting its authority', async () => {
+  const locationStore = new internal.ZLinkInMemoryLocationStore();
+  const runtime = runtimeFor(locationStore, { ownerId: 'owner-a' });
+  const ownerLeaseGeneration = 5n;
+  const payload = internal.encodeServiceInstanceAuthorityPayload({
+    state: 'ready',
+    stableType: 'Room',
+    spotId: 'room-1',
+    ownerId: 'owner-a',
+    ownerLeaseGeneration,
+    ownerMeshName: 'play',
+    ownerNodeRid: 'node-a',
+    ownerNodeGeneration: 3n
+  });
+  let current = {
+    kind: 'snapshot',
+    storeVersion: { value: 'authority-v1' },
+    payload,
+    objectGeneration: 7n,
+    authorityOwnerGeneration: 11n,
+    ownerId: 'owner-a',
+    ownerLeaseGeneration,
+    allocation: {
+      state: 'active',
+      objectKind: 'instance_spot',
+      stableType: 'Room',
+      descriptor: { meshName: 'play', rid: rid('node-a') },
+      descriptorLifecycleGeneration: 3n,
+      capacity: { actors: 0, spots: 1 }
+    },
+    storeNow: new Date(0)
+  };
+  const mutations = [];
+  const authorityStore = {
+    async readAuthority() {
+      return current;
+    },
+    async compareExchangeAuthority(_key, expectedVersion, mutation) {
+      mutations.push({ expectedVersion: expectedVersion.value, mutation });
+      if (mutation.kind === 'put') {
+        current = {
+          ...current,
+          storeVersion: { value: 'authority-v2' },
+          payload: mutation.payload
+        };
+        return {
+          kind: 'stored',
+          storeVersion: current.storeVersion,
+          storeNow: new Date(0)
+        };
+      }
+      current = { kind: 'missing', storeNow: new Date(0) };
+      return {
+        kind: 'deleted',
+        storeVersion: { value: 'authority-v3' },
+        storeNow: new Date(0)
+      };
+    }
+  };
+  const lifecycle = new internal.ZLinkLocationLifecycle(
+    runtime,
+    locationStore,
+    'play',
+    authorityStore
+  );
+  lifecycle.trackInstanceSpot({
+    meshName: 'play',
+    spotId: 'room-1',
+    stableType: 'Room',
+    nodeRid: rid('node-a'),
+    nodeGeneration: 3n,
+    objectGeneration: 7n,
+    authorityOwnerGeneration: 11n,
+    ownerId: 'owner-a',
+    ownerLeaseGeneration,
+    storeVersion: 'authority-v1'
+  });
+
+  assert.equal(await lifecycle.beginInstanceSpotClosing('play', 'room-1'), true);
+  assert.equal(internal.decodeServiceInstanceAuthorityPayload(current.payload).state, 'closing');
+  assert.equal(mutations[0].expectedVersion, 'authority-v1');
+  assert.equal(mutations[0].mutation.generationTransition, 'preserve');
+
+  await lifecycle.releaseSpot('play', 'room-1');
+  assert.equal(mutations[1].expectedVersion, 'authority-v2');
+  assert.deepEqual(mutations[1].mutation, { kind: 'delete' });
+  assert.equal(current.kind, 'missing');
+});
+
 test('location lifecycle claims spots and binds actor session routes with takeover', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const nodeA = await lifecycleNode(store, 'owner-a', 'node-a');
@@ -909,6 +998,50 @@ test('store location resolver returns a live remote ActorRef', async () => {
 
   assert.deepEqual(await resolversFor(store).resolveActorRef('alice'), actorRef);
   await runtime.stop();
+});
+
+test('Actor Message Follow invalidation preserves a newer cached owner fence', () => {
+  const resolver = resolversFor(new internal.ZLinkInMemoryLocationStore());
+  const route = {
+    meshName: 'play',
+    actorRef: {
+      nodeRid: rid('node-new'),
+      actorId: 'alice',
+      objectGeneration: 9n,
+      meshName: 'play'
+    },
+    actorType: 'player',
+    ownerNodeGeneration: 11n,
+    ownerId: 'owner-new',
+    ownerLeaseGeneration: 13n,
+    authorityOwnerGeneration: 17n,
+    authorityStoreVersion: 'v2'
+  };
+  resolver.directActorRoutes.set('alice', {
+    row: route,
+    expiresAtMs: Number.MAX_SAFE_INTEGER,
+    storeVersion: 'v2'
+  });
+
+  assert.equal(resolver.invalidateActorRouteIfMatches({
+    actorId: 'alice',
+    objectGeneration: 8n,
+    targetNodeRid: 'node-old',
+    targetNodeGeneration: 7n,
+    authorityOwnerGeneration: 5n,
+    ownerLeaseGeneration: 3n
+  }), false);
+  assert.equal(resolver.directActorRoutes.has('alice'), true);
+
+  assert.equal(resolver.invalidateActorRouteIfMatches({
+    actorId: 'alice',
+    objectGeneration: 9n,
+    targetNodeRid: 'node-new',
+    targetNodeGeneration: 11n,
+    authorityOwnerGeneration: 17n,
+    ownerLeaseGeneration: 13n
+  }), true);
+  assert.equal(resolver.directActorRoutes.has('alice'), false);
 });
 
 test('location spot route resolver bridges internal routed transport', async () => {
@@ -1105,7 +1238,6 @@ test('production repository removes provider-owned records in one fenced conditi
     leaseGeneration: claimed.token.leaseGeneration,
     updatedAt: now
   }, internal.ZLinkLocationWriteIntent.NewClaim);
-
   writes.length = 0;
   assert.equal(await repository.removeAllByOwner(claimed.token), 3n);
   assert.equal(writes.length, 1);

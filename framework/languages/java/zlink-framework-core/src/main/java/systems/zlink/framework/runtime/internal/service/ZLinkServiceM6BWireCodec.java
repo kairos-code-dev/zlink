@@ -57,6 +57,9 @@ public final class ZLinkServiceM6BWireCodec {
         writer.nonzero(
             target.authorityOwnerGeneration(),
             "authorityOwnerGeneration");
+        writer.nonzero(
+            target.ownerLeaseGeneration(),
+            "expectedOwnerLeaseGeneration");
         return writer.toByteArray();
     }
 
@@ -93,7 +96,8 @@ public final class ZLinkServiceM6BWireCodec {
             reader.nonzeroU64("targetSpotGeneration"),
             reader.rid("targetNodeRid"),
             reader.nonzeroU64("targetNodeGeneration"),
-            reader.nonzeroU64("authorityOwnerGeneration"));
+            reader.nonzeroU64("authorityOwnerGeneration"),
+            reader.nonzeroU64("expectedOwnerLeaseGeneration"));
         reader.end();
         return new SpotMessage(
             request,
@@ -178,6 +182,9 @@ public final class ZLinkServiceM6BWireCodec {
         writer.nonzero(
             target.authorityOwnerGeneration(),
             "authorityOwnerGeneration");
+        writer.nonzero(
+            target.ownerLeaseGeneration(),
+            "expectedOwnerLeaseGeneration");
         if (boundSession != null) {
             writer.rid(
                 boundSession.sourceSessionRid(), "sourceSessionRid");
@@ -240,7 +247,8 @@ public final class ZLinkServiceM6BWireCodec {
                 targetActorId,
                 targetActorGeneration),
             reader.nonzeroU64("targetNodeGeneration"),
-            reader.nonzeroU64("authorityOwnerGeneration"));
+            reader.nonzeroU64("authorityOwnerGeneration"),
+            reader.nonzeroU64("expectedOwnerLeaseGeneration"));
         BoundSessionTail boundSession =
             (header.flags() & boundFlags) == boundFlags
                 ? new BoundSessionTail(
@@ -1171,13 +1179,15 @@ public final class ZLinkServiceM6BWireCodec {
         long spotGeneration,
         RoutingId targetNodeRid,
         long targetNodeGeneration,
-        long authorityOwnerGeneration) {
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
         public SpotRouteFence {
             Objects.requireNonNull(spotId, "spotId");
             Objects.requireNonNull(targetNodeRid, "targetNodeRid");
             if (spotGeneration <= 0
                 || targetNodeGeneration <= 0
-                || authorityOwnerGeneration <= 0) {
+                || authorityOwnerGeneration <= 0
+                || ownerLeaseGeneration <= 0) {
                 throw protocol("Spot route fence generations must be nonzero");
             }
         }
@@ -1205,12 +1215,14 @@ public final class ZLinkServiceM6BWireCodec {
     public record ActorRouteFence(
         ZLinkBackendActorRef actor,
         long targetNodeGeneration,
-        long authorityOwnerGeneration) {
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
         public ActorRouteFence {
             Objects.requireNonNull(actor, "actor");
             if (actor.generation() <= 0
                 || targetNodeGeneration <= 0
-                || authorityOwnerGeneration <= 0) {
+                || authorityOwnerGeneration <= 0
+                || ownerLeaseGeneration <= 0) {
                 throw protocol("Actor route fence generations must be nonzero");
             }
         }
@@ -1784,6 +1796,9 @@ public final class ZLinkServiceM6BWireCodec {
         writer.nonzero(
             target.authorityOwnerGeneration(),
             "expectedAuthorityOwnerGeneration");
+        writer.nonzero(
+            target.ownerLeaseGeneration(),
+            "expectedOwnerLeaseGeneration");
     }
 
     private static ActorRouteFence readActorRoute(Reader reader) {
@@ -1794,7 +1809,8 @@ public final class ZLinkServiceM6BWireCodec {
             new ZLinkBackendActorRef(
                 targetNodeRid, actorId, actorGeneration),
             reader.nonzeroU64("targetNodeGeneration"),
-            reader.nonzeroU64("expectedAuthorityOwnerGeneration"));
+            reader.nonzeroU64("expectedAuthorityOwnerGeneration"),
+            reader.nonzeroU64("expectedOwnerLeaseGeneration"));
     }
 
     private static ZLinkServiceWireException protocol(String message) {

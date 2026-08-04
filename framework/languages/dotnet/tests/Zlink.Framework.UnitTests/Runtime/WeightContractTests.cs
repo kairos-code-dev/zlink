@@ -5,6 +5,7 @@ using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Configuration.Builders;
+using Zlink.Framework.Runtime.Service;
 using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
@@ -164,6 +165,93 @@ public sealed class WeightContractTests
     }
 
     [Fact]
+    public void SelectionPlanPrecomputesTheExactSmoothWeightedOrder()
+    {
+        WeightedCandidate[] candidates =
+        [
+            new("a", 100),
+            new("b", 300)
+        ];
+        var plan = new ZLinkWeightedSelectionPlan<
+            WeightedCandidate,
+            string>(
+            candidates,
+            static candidate => candidate.Weight,
+            static candidate => candidate.Name,
+            retainedCurrents: null,
+            StringComparer.Ordinal,
+            StringComparer.Ordinal);
+
+        var selected = Enumerable.Range(0, 4)
+            .Select(_ => plan.Select()!.Name)
+            .ToArray();
+
+        Assert.Equal(new[] { "b", "a", "b", "b" }, selected);
+    }
+
+    [Fact]
+    public void SelectionPlanKeepsRetainedCurrentsWhenTopologyChanges()
+    {
+        WeightedCandidate[] initialCandidates =
+        [
+            new("a", 100),
+            new("b", 100)
+        ];
+        var initial = new ZLinkWeightedSelectionPlan<
+            WeightedCandidate,
+            string>(
+            initialCandidates,
+            static candidate => candidate.Weight,
+            static candidate => candidate.Name,
+            retainedCurrents: null,
+            StringComparer.Ordinal,
+            StringComparer.Ordinal);
+
+        Assert.Equal("a", initial.Select()!.Name);
+        var retained = initial.CaptureCurrents();
+        WeightedCandidate[] replacementCandidates =
+        [
+            new("b", 100),
+            new("c", 100)
+        ];
+        var replacement = new ZLinkWeightedSelectionPlan<
+            WeightedCandidate,
+            string>(
+            replacementCandidates,
+            static candidate => candidate.Weight,
+            static candidate => candidate.Name,
+            retained,
+            StringComparer.Ordinal,
+            StringComparer.Ordinal);
+
+        Assert.Equal("b", replacement.Select()!.Name);
+    }
+
+    [Fact]
+    public void MeshChannelSelectionKeepsDeclaredChannelsSeparateFromEligibleTargets()
+    {
+        var selection = new ZLinkMeshChannelSelection();
+        var target = new ZLinkMeshChannelTarget(
+            RoutingId.From("node-a"),
+            weight: 100);
+
+        selection.Rebuild(
+            ["events"],
+            _ => [target]);
+
+        Assert.True(selection.IsDeclared("events"));
+        Assert.True(selection.TrySelect("events", out var selected));
+        Assert.Equal(target.RoutingId, selected);
+
+        selection.Rebuild(
+            ["events"],
+            _ => Array.Empty<ZLinkMeshChannelTarget>());
+
+        Assert.True(selection.IsDeclared("events"));
+        Assert.False(selection.TrySelect("events", out _));
+    }
+
+    [Fact]
     public void ObjectPlacementFiltersCapacityAndZeroWeightBeforeSelection()
     {
         var eligible = Descriptor(
@@ -220,6 +308,70 @@ public sealed class WeightContractTests
         Assert.False(ZLinkSpotRuntimeManager.IsEligibleCandidate(
             spotTypeFull,
             "room"));
+    }
+
+    [Fact]
+    public void Placement_candidates_require_an_admitted_peer_for_the_same_generation()
+    {
+        var local = Descriptor(
+            weight: 100,
+            actors: new ZLinkPopulationCapacity(0, 0, 10),
+            spots: new ZLinkPopulationCapacity(0, 0, 10),
+            spotType: new ZLinkSpotTypeCapacity(
+                ZLinkPlacementObjectKind.UserSpot,
+                "room",
+                0,
+                0,
+                10)) with
+        {
+            Rid = RoutingId.From("local-target")
+        };
+        var current = local with
+        {
+            Rid = RoutingId.From("current-target"),
+            LifecycleGeneration = 7
+        };
+        var stale = local with
+        {
+            Rid = RoutingId.From("stale-target"),
+            LifecycleGeneration = 9
+        };
+        var peers = new[]
+        {
+            new MeshNodePeer(
+                1,
+                MeshPeerSource.Discovery,
+                MeshPeerState.Admitted,
+                current.Rid,
+                current.LifecycleGeneration,
+                1,
+                current.Endpoint,
+                0,
+                0,
+                0),
+            new MeshNodePeer(
+                2,
+                MeshPeerSource.Discovery,
+                MeshPeerState.Admitted,
+                stale.Rid,
+                stale.LifecycleGeneration - 1,
+                1,
+                stale.Endpoint,
+                0,
+                0,
+                0)
+        };
+
+        var filtered = ZLinkMeshNodeTargetAvailability.FilterAdmitted(
+                local.Rid,
+                new[] { local, current, stale },
+                peers)
+            .Select(static candidate => candidate.Rid)
+            .ToArray();
+
+        Assert.Equal(
+            new[] { local.Rid, current.Rid },
+            filtered);
     }
 
     private static ZLinkMeshNodeDescriptor Descriptor(

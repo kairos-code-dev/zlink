@@ -18,8 +18,6 @@ public sealed class RegressionTests
         "06-location-store.ko.md",
         "dotnet-http-client.ko.md",
         "regression-test-matrix.ko.md",
-        "runtime-lifecycle.ko.md",
-        "runtime-execution.ko.md",
         "backend-dependency-policy.ko.md",
     ];
 

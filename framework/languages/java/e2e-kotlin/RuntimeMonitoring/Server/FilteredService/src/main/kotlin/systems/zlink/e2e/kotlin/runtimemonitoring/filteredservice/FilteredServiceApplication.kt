@@ -32,20 +32,20 @@ class FilteredServiceApplication {
 
     @Bean
     fun evidenceHttpServer(state: EvidenceState, json: ObjectMapper): EvidenceHttpServer {
-        return EvidenceHttpServer(state, json, Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"))
+        return EvidenceHttpServer(state, json, Env.get("e2e.http.endpoint"))
     }
 
     @Bean
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/filtered-service-flow.log")
                 .traceLabel("kotlin-mon-filtered-service")
             options.addHandlersFromPackageOf(WorkRequestHandler::class.java)
             val apiEndpoint = java.net.URI.create(
-                Env.get("ZLINK_KOTLIN_E2E_API_ENDPOINT"),
+                Env.get("e2e.api.endpoint"),
             )
             options.addClientServerChannel(Contracts.CHANNEL)
                 .server()
@@ -62,8 +62,8 @@ class FilteredServiceApplication {
     fun locationStore(): ZLinkRedisLocationStore {
         return ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
                 .setCommandTimeout(Duration.ofMillis(500)),
         )
     }
@@ -71,10 +71,11 @@ class FilteredServiceApplication {
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(FilteredServiceApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

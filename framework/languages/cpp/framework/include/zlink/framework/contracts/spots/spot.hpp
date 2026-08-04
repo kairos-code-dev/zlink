@@ -1120,16 +1120,19 @@ class spot_context_t
               auto result = completion->task ();
               auto completed = std::make_shared<std::atomic_bool> (false);
               auto shared_work = std::make_shared<TWork> (std::move (work));
-              auto pending = std::make_shared<std::shared_ptr<task_type>> ();
               const auto scheduled = scheduler->try_schedule (
-                [shared_work, pending, completion, completed,
+                [shared_work, completion, completed,
                  cancellation] (std::stop_token) mutable {
                     try {
-                        *pending = std::make_shared<task_type> (
-                          detail::invoke_worker_async (*shared_work, cancellation));
+                        auto pending =
+                          detail::invoke_worker_async (*shared_work, cancellation);
+                        /* The inner task state owns this observer. Capturing
+                         * pending in the observer would make an incomplete
+                         * I/O task retain its own state after the wrapper has
+                         * timed out. */
                         observe_task_completion (
-                          **pending,
-                          [pending, completion, completed, cancellation] (
+                          pending,
+                          [completion, completed, cancellation] (
                             const result_t<result_type> &value) mutable {
                               if (cancellation.stop_requested ()) {
                                   completed->store (true);
@@ -1749,7 +1752,7 @@ class spot_handler_registry_t
                                             void *actor,
                                             service_provider_t &services,
                                             serializer_registry_t &serializers,
-                                            const zlink::message_t &message,
+                                            zlink::message_t message,
                                             spot_inbound_message_t metadata = {},
                                             bool serial_dispatch = true,
                                             std::string actor_execution_key = {},

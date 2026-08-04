@@ -238,7 +238,7 @@ final class ZLinkChannelRouteDispatcher {
             return false;
         }
         Message payload = Message.from(packet.payload());
-        registry.routeRequestQueue(channelName).enqueue(() ->
+        registry.routeRequestQueue(channelName).enqueueWithPayloadBytes(payload.size(), () ->
             handler.handle(source, payload)
                 .thenAccept(reply -> ZLinkChannelDispatchReporter.replyAndClose(
                     router,
@@ -261,7 +261,8 @@ final class ZLinkChannelRouteDispatcher {
         ZLinkInboundDispatchBudget.Lease lease =
             inboundDispatchBudget.track(payload.size());
         try {
-            CompletionStage<Void> queued = registry.routeRequestQueue(channelName).enqueue(() ->
+            CompletionStage<Void> queued = registry.routeRequestQueue(channelName)
+                .enqueueWithPayloadBytes(payload.size(), () ->
                 inboundDispatchBudget.acquireCompletionPermit()
                     .thenCompose(permit -> {
                         try {
@@ -360,7 +361,8 @@ final class ZLinkChannelRouteDispatcher {
         ZLinkInboundDispatchBudget.Lease lease =
             inboundDispatchBudget.track(payload.size());
         try {
-            CompletionStage<Void> queued = registry.routeSendQueue(channelName).enqueue(() ->
+            CompletionStage<Void> queued = registry.routeSendQueue(channelName)
+                .enqueueWithPayloadBytes(payload.size(), () ->
                 invokeStarted(lease, () -> invoker.executeHandler(() ->
                     invoker.invokeRouteSendHandler(
                         channelName, registration, source, payload, Map.of(), contentType)))

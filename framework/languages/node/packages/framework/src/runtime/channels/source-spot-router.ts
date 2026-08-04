@@ -1,4 +1,4 @@
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import { createAbortError, throwIfAborted } from '../abort';

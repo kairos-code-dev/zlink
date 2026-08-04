@@ -12,6 +12,7 @@ import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoRes
 import systems.zlink.e2e.kotlin.registrationcodec.PackedEchoReq
 import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.configuration.CodecRequesterOptions
 import systems.zlink.e2e.kotlin.registrationcodec.codecrequester.endpoints.CodecRequesterHttpServer
+import systems.zlink.e2e.kotlin.registrationcodec.Env
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
@@ -56,9 +57,10 @@ class CodecRequesterApplication {
 }
 
 fun runCodecRequesterApplication(vararg args: String): AutoCloseable {
+    Env.configure(args)
     val builder = SpringApplicationBuilder(CodecRequesterApplication::class.java)
         .web(WebApplicationType.NONE)
     builder.application().setKeepAlive(true)
-    val context = builder.run(*args)
+    val context = builder.run(*Env.applicationArgs(args))
     return AutoCloseable { context.close() }
 }

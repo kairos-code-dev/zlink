@@ -9,7 +9,8 @@ internal sealed class ZLinkActorCreationCoordinator(
     IZLinkActorLocationLifecycle? lifecycle,
     Func<ZLinkActorRuntimeState, ZLinkActorContext> ensureActorContext,
     Func<IZLinkActor, ZLinkActorRuntimeState, ZLinkActorContext> bindActorContext,
-    Func<ZLinkActorRuntimeState, ZLinkBackendActorRef, CancellationToken, ValueTask> teardownActor)
+    Func<ZLinkActorRuntimeState, ZLinkBackendActorRef, CancellationToken, ValueTask> teardownActor,
+    Func<string, ZLinkActivationConcurrencyAdmission?>? getActivationAdmission = null)
 {
     private IZLinkActorLocationLifecycle? Lifecycle { get; } = lifecycle;
 
@@ -66,6 +67,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                     () => ActivateActorCoreAsync(
                         state,
                         actorId,
+                        actorType,
                         factoryType,
                         createRequest,
                         CancellationToken.None,
@@ -144,6 +146,7 @@ internal sealed class ZLinkActorCreationCoordinator(
             return await ActivateRelocatedActorCoreAsync(
                     state,
                     actorId,
+                    actorType,
                     factoryType,
                     relocation,
                     relocationState,
@@ -162,6 +165,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 activate: ct => ActivateRelocatedActorCoreAsync(
                     state,
                     actorId,
+                    actorType,
                     factoryType,
                     relocation,
                     relocationState,
@@ -195,6 +199,7 @@ internal sealed class ZLinkActorCreationCoordinator(
     private async ValueTask<IZLinkActor> ActivateRelocatedActorCoreAsync(
         ZLinkActorRuntimeState state,
         string actorId,
+        string actorType,
         Type factoryType,
         ZLinkObjectRelocationRegistration relocation,
         ReadOnlyMemory<byte> relocationState,
@@ -202,39 +207,48 @@ internal sealed class ZLinkActorCreationCoordinator(
         ulong authorityOwnerGeneration,
         CancellationToken cancellationToken)
     {
-        await using var scope = services.CreateAsyncScope();
-        EnsureNativeActorRef(
-            state,
-            actorId,
-            ZLinkMessage.Empty,
-            objectGeneration,
-            authorityOwnerGeneration);
-        var context = ensureActorContext(state);
+        var activationAdmission = getActivationAdmission?.Invoke(actorType);
+        activationAdmission?.Acquire($"ACTOR '{actorId}'");
         try
         {
-            var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
-            var actor = await factory.CreateAsync(context, cancellationToken)
-                .ConfigureAwait(false);
-            if (actor is null)
-                throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
-            if (!ReferenceEquals(actor.Context, context))
-                throw new InvalidOperationException(
-                    $"Actor factory '{factoryType}' must return an Actor that exposes the provided context.");
+            await using var scope = services.CreateAsyncScope();
+            EnsureNativeActorRef(
+                state,
+                actorId,
+                ZLinkMessage.Empty,
+                objectGeneration,
+                authorityOwnerGeneration);
+            var context = ensureActorContext(state);
+            try
+            {
+                var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
+                var actor = await factory.CreateAsync(context, cancellationToken)
+                    .ConfigureAwait(false);
+                if (actor is null)
+                    throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
+                if (!ReferenceEquals(actor.Context, context))
+                    throw new InvalidOperationException(
+                        $"Actor factory '{factoryType}' must return an Actor that exposes the provided context.");
 
-            await ZLinkActorRelocationRegistry.RestoreAsync(
-                    scope.ServiceProvider,
-                    relocation,
-                    actor,
-                    relocationState,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            bindActorContext(actor, state);
-            return actor;
+                await ZLinkActorRelocationRegistry.RestoreAsync(
+                        scope.ServiceProvider,
+                        relocation,
+                        actor,
+                        relocationState,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                bindActorContext(actor, state);
+                return actor;
+            }
+            catch (Exception activationFailure)
+            {
+                await DestroyStagedNativeActorAsync(state, activationFailure).ConfigureAwait(false);
+                throw;
+            }
         }
-        catch (Exception activationFailure)
+        finally
         {
-            await DestroyStagedNativeActorAsync(state, activationFailure).ConfigureAwait(false);
-            throw;
+            activationAdmission?.Release();
         }
     }
 
@@ -254,6 +268,7 @@ internal sealed class ZLinkActorCreationCoordinator(
             return await ActivateActorCoreAsync(
                     state,
                     actorId,
+                    actorType,
                     factoryType,
                     createRequest,
                     cancellationToken,
@@ -274,6 +289,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 activate: ct => ActivateActorCoreAsync(
                     state,
                     actorId,
+                    actorType,
                     factoryType,
                     createRequest,
                     ct,
@@ -307,39 +323,49 @@ internal sealed class ZLinkActorCreationCoordinator(
     private async ValueTask<IZLinkActor> ActivateActorCoreAsync(
         ZLinkActorRuntimeState state,
         string actorId,
+        string actorType,
         Type factoryType,
         ZLinkMessage createRequest,
         CancellationToken cancellationToken,
         ulong? reservedGeneration = null,
         ulong? reservedAuthorityOwnerGeneration = null)
     {
-        await using var scope = services.CreateAsyncScope();
-        EnsureNativeActorRef(
-            state,
-            actorId,
-            createRequest,
-            reservedGeneration,
-            reservedAuthorityOwnerGeneration);
-        var context = ensureActorContext(state);
+        var activationAdmission = getActivationAdmission?.Invoke(actorType);
+        activationAdmission?.Acquire($"ACTOR '{actorId}'");
         try
         {
-            var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
-            var actor = await factory.CreateAsync(context, cancellationToken)
-                .ConfigureAwait(false);
-            if (actor is null)
-                throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
+            await using var scope = services.CreateAsyncScope();
+            EnsureNativeActorRef(
+                state,
+                actorId,
+                createRequest,
+                reservedGeneration,
+                reservedAuthorityOwnerGeneration);
+            var context = ensureActorContext(state);
+            try
+            {
+                var factory = (IZLinkActorFactory)scope.ServiceProvider.GetRequiredService(factoryType);
+                var actor = await factory.CreateAsync(context, cancellationToken)
+                    .ConfigureAwait(false);
+                if (actor is null)
+                    throw new InvalidOperationException($"Actor factory '{factoryType}' returned null.");
 
-            if (!ReferenceEquals(actor.Context, context))
-                throw new InvalidOperationException(
-                    $"Actor factory '{factoryType}' must return an Actor that exposes the provided context.");
+                if (!ReferenceEquals(actor.Context, context))
+                    throw new InvalidOperationException(
+                        $"Actor factory '{factoryType}' must return an Actor that exposes the provided context.");
 
-            bindActorContext(actor, state);
-            return actor;
+                bindActorContext(actor, state);
+                return actor;
+            }
+            catch (Exception activationFailure)
+            {
+                await DestroyStagedNativeActorAsync(state, activationFailure).ConfigureAwait(false);
+                throw;
+            }
         }
-        catch (Exception activationFailure)
+        finally
         {
-            await DestroyStagedNativeActorAsync(state, activationFailure).ConfigureAwait(false);
-            throw;
+            activationAdmission?.Release();
         }
     }
 

@@ -17,6 +17,7 @@ import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 
 final class ZLinkStoreLocationResolversTest {
     private static final Instant NOW =
@@ -40,7 +41,10 @@ final class ZLinkStoreLocationResolversTest {
                     case "readOwnerLease" ->
                         CompletableFuture.completedFuture(
                             new ZLinkOwnerLeaseFound(
-                                new ZLinkLocationOwnerToken("owner-a", 7),
+                                new ZLinkLocationOwnerToken(
+                                    "owner-a",
+                                    ((ZLinkAuthoritySnapshot) current.get())
+                                        .ownerLeaseGeneration()),
                                 NOW.plusSeconds(30),
                                 NOW));
                     default -> throw new UnsupportedOperationException(
@@ -90,6 +94,56 @@ final class ZLinkStoreLocationResolversTest {
 
         assertNull(
             resolvers.resolveSpot("room-a").toCompletableFuture().join());
+    }
+
+    @Test
+    void messageFollowInvalidatesOnlyTheExactCachedRouteFence() {
+        AtomicInteger reads = new AtomicInteger();
+        AtomicReference<Object> current = new AtomicReference<>(
+            readySpotSnapshot());
+        ZLinkLocationRepository store = (ZLinkLocationRepository)
+            Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] {ZLinkLocationRepository.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "read" -> {
+                        reads.incrementAndGet();
+                        yield CompletableFuture.completedFuture(current.get());
+                    }
+                    case "readOwnerLease" ->
+                        CompletableFuture.completedFuture(
+                            new ZLinkOwnerLeaseFound(
+                                new ZLinkLocationOwnerToken("owner-a", 7),
+                                NOW.plusSeconds(30),
+                                NOW));
+                    default -> throw new UnsupportedOperationException(
+                        method.getName());
+                });
+        ZLinkLocationOptions options = new ZLinkLocationOptions();
+        options.setRouteCacheMaxAge(Duration.ofSeconds(10));
+        var resolvers = new ZLinkStoreLocationResolvers(
+            ZLinkRegisteredLocationStores.fromUnified(store), options);
+
+        resolvers.resolveSpot("room-a").toCompletableFuture().join();
+        var oldRoute = new ZLinkServiceMessageFollowWireCodec.SpotRoute(
+            "room-a", 5, NODE, 11, 13, 7);
+        var wrongLease = new ZLinkServiceMessageFollowWireCodec.SpotRoute(
+            "room-a", 5, NODE, 11, 13, 8);
+        assertFalse(resolvers.invalidateRouteIfMatches(wrongLease));
+        assertEquals(1, reads.get());
+
+        assertTrue(resolvers.invalidateRouteIfMatches(oldRoute));
+        current.set(readySpotSnapshot(9, 21, 7, 17, "v2"));
+        resolvers.resolveSpot("room-a").toCompletableFuture().join();
+        assertEquals(2, reads.get());
+
+        // A delayed notice from the previous owner must not erase v2.
+        assertFalse(resolvers.invalidateRouteIfMatches(oldRoute));
+        assertEquals(
+            9,
+            resolvers.resolveSpot("room-a")
+                .toCompletableFuture().join().spotGeneration());
+        assertEquals(2, reads.get());
     }
 
     @Test
@@ -160,28 +214,37 @@ final class ZLinkStoreLocationResolversTest {
     }
 
     private static ZLinkAuthoritySnapshot readySpotSnapshot() {
+        return readySpotSnapshot(5, 13, 7, 11, "v1");
+    }
+
+    private static ZLinkAuthoritySnapshot readySpotSnapshot(
+        long objectGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration,
+        long nodeGeneration,
+        String storeVersion) {
         byte[] payload = new ZLinkServiceAuthorityPayloadCodec().encodeUser(
             ZLinkServiceAuthorityPayloadCodec.State.READY,
             "RoomSpot",
             "room-a",
             "owner-a",
-            7,
+            ownerLeaseGeneration,
             "game",
             NODE,
-            11);
+            nodeGeneration);
         return new ZLinkAuthoritySnapshot(
-            "v1",
+            storeVersion,
             payload,
-            5,
-            13,
+            objectGeneration,
+            authorityOwnerGeneration,
             "owner-a",
-            7,
+            ownerLeaseGeneration,
             new ZLinkPlacementAllocation(
                 ZLinkPlacementAllocationState.ACTIVE,
                 ZLinkPlacementObjectKind.USER_SPOT,
                 "RoomSpot",
                 new ZLinkMeshNodeDescriptorKey("game", NODE),
-                11,
+                nodeGeneration,
                 ZLinkPlacementCapacityBundle.spot(
                     ZLinkPlacementObjectKind.USER_SPOT,
                     "RoomSpot",

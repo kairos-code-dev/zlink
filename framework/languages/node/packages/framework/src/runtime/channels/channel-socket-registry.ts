@@ -26,7 +26,8 @@ import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
 import { ZLinkRouteMemberSnapshot } from './route-member-snapshot';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { Message as BindingMessage, type Message } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type { Message } from '../../contracts/Common/Message';
 import { ServiceDiscoveryRegistry } from '../foundation/service-discovery-registry';
 import {
   decodeClientServerControl,
@@ -798,7 +799,7 @@ export class ZLinkChannelSocketRegistry {
       reply = encodeClientServerReject(1);
     }
     if (received.requestSeq !== null) {
-      const message = BindingMessage.from(reply);
+      const message = RuntimeMessage.from(reply);
       try {
         router.reply(received.routingId as RoutingId, received.requestSeq, message);
       } finally {
@@ -1064,7 +1065,7 @@ export class ZLinkChannelSocketRegistry {
         channelName,
         nowMs + CLIENT_SERVER_PROBE_INTERVAL_MS
       );
-      const payload = BindingMessage.from(FANOUT_LIVENESS_PAYLOAD);
+      const payload = RuntimeMessage.from(FANOUT_LIVENESS_PAYLOAD);
       try {
         publisher.publish(FANOUT_LIVENESS_TOPIC, payload, 0);
       } finally {
@@ -1175,7 +1176,7 @@ export class ZLinkChannelSocketRegistry {
         }
         const record = decodeClientServerControl(received.parts[0]!.data());
         if (record.kind === 'livenessProbe') {
-          const ack = BindingMessage.from(encodeClientServerLivenessAck(record.probeId));
+          const ack = RuntimeMessage.from(encodeClientServerLivenessAck(record.probeId));
           try {
             if (!connection.dealer.send(ack, 0)) {
               throw new ZLinkConfigurationException(
@@ -1281,7 +1282,7 @@ export class ZLinkChannelSocketRegistry {
     },
     probeId: bigint
   ): void {
-    const message = BindingMessage.from(encodeClientServerLivenessProbe(probeId));
+    const message = RuntimeMessage.from(encodeClientServerLivenessProbe(probeId));
     const submitted = connection.dealer.request(message, (result, parts) => {
       try {
         const current = this.clientServerConnections.get(connectionId);
@@ -1334,7 +1335,7 @@ export class ZLinkChannelSocketRegistry {
   ): void {
     const router = this.channelRouters.get(peer.channelName);
     if (router === undefined) return;
-    const message = BindingMessage.from(encodeClientServerLivenessProbe(probeId));
+    const message = RuntimeMessage.from(encodeClientServerLivenessProbe(probeId));
     try {
       router.send(peer.routingId, message, 0);
     } finally {
@@ -1363,7 +1364,7 @@ export class ZLinkChannelSocketRegistry {
     const clients = this.clientServerAdmittedClients.get(channelName);
     if (router === undefined || clients === undefined) return;
     for (const routingId of [...clients]) {
-      const message = BindingMessage.from(encodeClientServerUpdate(
+      const message = RuntimeMessage.from(encodeClientServerUpdate(
         descriptor,
         normalizedMessageLimit(router.maxMessageSize)
       ));
@@ -1575,7 +1576,7 @@ function requestClientServerAdmission(
   securityIdentity: string,
   timeoutMs: number
 ): Promise<ZLinkClientServerAdmission> {
-  const message = BindingMessage.from(encodeClientServerHello({
+  const message = RuntimeMessage.from(encodeClientServerHello({
     channelName,
     securityIdentity,
     normalizedEffectiveMaxMessageBytes: normalizedMessageLimit(dealer.maxMessageSize)

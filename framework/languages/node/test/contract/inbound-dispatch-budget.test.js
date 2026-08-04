@@ -4,6 +4,29 @@ const test = require('node:test');
 const framework = require('../../packages/framework/dist/internal');
 const backend = require('../../packages/framework/dist/runtime/backend');
 
+test('receive round-robin resumes with the next ready socket owner', () => {
+  const coordinator = new framework.ZLinkReceiveRoundRobinCoordinator();
+  const first = coordinator.register();
+  const second = coordinator.register();
+  const third = coordinator.register();
+  coordinator.setReady(first, true);
+  coordinator.setReady(second, true);
+  coordinator.setReady(third, true);
+
+  assert.equal(coordinator.tryAcquire(first), true);
+  coordinator.release(first);
+  assert.equal(coordinator.tryAcquire(first), false);
+  assert.equal(coordinator.tryAcquire(second), true);
+  coordinator.release(second);
+  assert.equal(coordinator.tryAcquire(third), true);
+  coordinator.release(third);
+
+  coordinator.setReady(first, false);
+  assert.equal(coordinator.tryAcquire(second), true);
+  coordinator.unregister(second);
+  assert.equal(coordinator.tryAcquire(third), true);
+});
+
 test('Channel and fanout HWM count only the application payload frame', async () => {
   const observed = [];
   const budget = {

@@ -1,12 +1,11 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import {
-  Message as BindingMessage,
   RequestResult,
-  SubmitError,
   SubmitResult,
-  RequestError,
-  SendFlags
-} from '@zlink-systems/zlink';
+  isZLinkBackendResultError,
+  ZLINK_BACKEND_SEND_NONE
+} from '../backend/runtime-values';
 import type {
   ActorRef,
   RoutingId,
@@ -359,7 +358,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       correlationId
     });
     return [
-      BindingMessage.from(Buffer.from(header)) as Message,
+      RuntimeMessage.from(Buffer.from(header)) as Message,
       encodeFrameworkPayloadMessage(message, this.options.messageSerializers)
     ];
   }
@@ -372,14 +371,14 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
     const node = this.requireNode(meshName);
     try {
       return mapSubmitResult(
-        node.sendToActor(actor, toMessageLikeParts(parts), { flags: SendFlags.None }),
+        node.sendToActor(actor, toMessageLikeParts(parts), { flags: ZLINK_BACKEND_SEND_NONE }),
         'Actor send'
       );
     } catch (error) {
-      if (error instanceof SubmitError) {
+      if (isZLinkBackendResultError(error)) {
         return mapSubmitResult(error.result, 'Actor send');
       }
-      throw error instanceof RequestError
+      throw isZLinkBackendResultError(error)
         ? mapRequestError(error, 'Actor send')
         : mapSubmitError(error, 'Actor send');
     }
@@ -445,7 +444,7 @@ export class DefaultZLinkActorClient implements ZLinkActorClient {
       throw routeNotConnected('Actor request requires a running MeshNode completion table.');
     }
     const operationId = node.requestToActor(actor, toMessageLikeParts(parts), {
-      flags: SendFlags.None,
+      flags: ZLINK_BACKEND_SEND_NONE,
       timeoutMs
     });
     const completion = await completions.wait(operationId, signal);
@@ -582,13 +581,13 @@ export async function forwardEncodedActorPacket(
   const target = toBackendActorRef(actor);
   const parts = [header, payload];
   if (!returnResponse) {
-    if (node.sendToActor(target, parts, { flags: SendFlags.None }) !== SubmitResult.Ok) {
+    if (node.sendToActor(target, parts, { flags: ZLINK_BACKEND_SEND_NONE }) !== SubmitResult.Ok) {
       throw routeNotConnected('Actor handoff send submit was not accepted.');
     }
     return undefined;
   }
   const operationId = node.requestToActor(target, parts, {
-    flags: SendFlags.None,
+    flags: ZLINK_BACKEND_SEND_NONE,
     timeoutMs
   });
   const completion = await completions.wait(operationId);
@@ -716,7 +715,7 @@ function decodeActorReply<TReply>(
       const frame = tryDecodeStreamFrame(reply[0].data());
       if (frame !== undefined) {
         const header = decodeStreamHeader(frame.header);
-        const payload = BindingMessage.from(frame.payload) as Message;
+        const payload = RuntimeMessage.from(frame.payload) as Message;
         try {
           return decodeActorReplyPayload<TReply>(header.kind, payload, serializers);
         } finally {
@@ -767,7 +766,7 @@ function mapSubmitError(error: unknown, operationName: string): Error {
   if (error instanceof ZLinkFrameworkException) {
     return error;
   }
-  if (error instanceof SubmitError) {
+  if (isZLinkBackendResultError(error)) {
     switch (error.result) {
       case SubmitResult.NotConnected:
         return routeNotConnected(`${operationName} failed because the target route is not connected.`, error);
@@ -842,9 +841,10 @@ function mapRequestResult(result: number, operationName: string): Error {
   }
 }
 
-function mapRequestError(error: RequestError, operationName: string): Error {
+function mapRequestError(error: { readonly result: number }, operationName: string): Error {
   return mapRequestResult(error.result, operationName);
 }
+
 
 function routeNotConnected(message: string, cause?: unknown): ZLinkFrameworkException {
   return createInternalFrameworkException(

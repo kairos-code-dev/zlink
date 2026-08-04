@@ -4,22 +4,30 @@ import {
   ZlinkStreamDispatchMode,
   ZlinkStreamException
 } from '@zlink-systems/stream-connector';
-import type { AwaitScenarioRes, AwaitShutdownRecoveryReq, AwaitShutdownScenarioReq } from '../../Shared/messages';
+import type {
+  AwaitScenarioRes,
+  AwaitShutdownRecoveryReq,
+  AwaitShutdownScenarioReq,
+  AutomaticTurnDispatchRes,
+  ProbeReq
+} from '../../Shared/messages';
+import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import type { ClientOptions } from './client-options';
 import { ensure } from './scenario-assert';
 
 export async function runShutdownWait(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
   const spotId = requireOption(options.spotId, 'spot-rid');
+  const scenarioId = options.shutdownScenarioId ?? 'TD-F5';
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
     const reply = await client.request({ requestId, spotId, delayMs: 30000 } satisfies AwaitShutdownScenarioReq)
       .packetName('AwaitShutdownScenarioReq').timeout(90000).submit<AwaitScenarioRes>();
-    throw new Error(`TD-F5 expected shutdown during a pending await, but '${reply.operation}' completed.`);
+    throw new Error(`${scenarioId} expected shutdown during a pending await, but '${reply.operation}' completed.`);
   } catch (error) {
     if (error instanceof ZlinkStreamException || isAbortLike(error)) {
-      console.log('execution-turn shutdown wait result=passed');
+      console.log(`execution-turn ${scenarioId} shutdown wait result=passed`);
       return;
     }
     throw error;
@@ -31,17 +39,46 @@ export async function runShutdownWait(options: ClientOptions): Promise<void> {
 export async function runShutdownRecovery(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
   const spotId = requireOption(options.spotId, 'spot-rid');
+  const scenarioId = options.shutdownScenarioId ?? 'TD-F5';
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
     const result = await client.request({ requestId, spotId } satisfies AwaitShutdownRecoveryReq)
       .packetName('AwaitShutdownRecoveryReq').timeout(30000).submit<AwaitScenarioRes>();
-    ensure(result.operation === 'await.e3-shutdown-recovery', 'TD-F5 recovery operation mismatch.');
-    ensure(result.spotId === spotId, 'TD-F5 recovery Spot routing id mismatch.');
+    ensure(result.operation === 'await.e3-shutdown-recovery', `${scenarioId} recovery operation mismatch.`);
+    ensure(result.spotId === spotId, `${scenarioId} recovery Spot routing id mismatch.`);
     ensure(result.evidence.some((line) => line.includes(`request=${requestId}`)
       && line.includes('marker=shutdown-recovery-probe')),
-    'TD-F5 recovery probe marker missing.');
-    console.log('execution-turn shutdown recovery result=passed');
+    `${scenarioId} recovery probe marker missing.`);
+    console.log(`execution-turn ${scenarioId} shutdown recovery result=passed`);
+  } finally {
+    await client.close();
+  }
+}
+
+export async function runShutdownAdmission(options: ClientOptions): Promise<void> {
+  const requestId = requireOption(options.requestId, 'request-id');
+  const spotId = requireOption(options.spotId, 'spot-rid');
+  const scenarioId = options.shutdownScenarioId ?? 'TD-F5A';
+  const client = createClient(options.sessionAStreamEndpoint);
+  await client.connect();
+  try {
+    const request = {
+      requestId,
+      marker: 'shutdown-admission'
+    } satisfies ProbeReq;
+    const reply = await client.request(request)
+      .packetName('ProbeReq')
+      .metadata(AutomaticTurnDispatchNames.spotIdMetadata, spotId)
+      .timeout(10000)
+      .submit<AutomaticTurnDispatchRes>();
+    throw new Error(`${scenarioId} accepted a new request after shutdown seal: ${reply.marker}`);
+  } catch (error) {
+    if (isShuttingDown(error)) {
+      console.log(`execution-turn ${scenarioId} shutdown admission result=passed`);
+      return;
+    }
+    throw error;
   } finally {
     await client.close();
   }
@@ -66,4 +103,13 @@ function requireOption(value: string | undefined, name: string): string {
 
 function isAbortLike(error: unknown): boolean {
   return error instanceof Error && /abort|cancel|close|closed|disconnect|terminated/i.test(error.message);
+}
+
+function isShuttingDown(error: unknown): boolean {
+  if (!(error instanceof ZlinkStreamException)) return false;
+  const remote = error.error.cause;
+  return typeof remote === 'object'
+    && remote !== null
+    && 'code' in remote
+    && remote.code === 'ShuttingDown';
 }

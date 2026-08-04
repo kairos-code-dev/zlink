@@ -43,6 +43,8 @@ import type {
   ZLinkLocationWriteStatus,
   ZLinkObjectCommitRequest,
   ZLinkObjectCommitResult,
+  ZLinkObjectAbortRequest,
+  ZLinkObjectAbortResult,
   ZLinkObjectCreationCompleteRequest,
   ZLinkObjectCreationCompleteResult,
   ZLinkObjectReserveRequest,
@@ -76,7 +78,7 @@ import {
 import { ZLinkLocationWriteStatus as WriteStatus } from '../../contracts/Locations';
 import { ZLinkInMemoryLocationStore } from './in-memory-location-store';
 import { storeKey } from './in-memory-provider-location-store';
-import { encodeAuthorityKey } from './authority-key-codec';
+import { decodeAuthorityKey, encodeAuthorityKey } from './authority-key-codec';
 import { ZLinkAggregateInventoryStore } from './aggregate-inventory-store';
 
 const PREFIX = 'zlink:v11:';
@@ -1535,6 +1537,64 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
     }
   }
 
+  override async abort(
+    request: ZLinkObjectAbortRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectAbortResult> {
+    const key = encodeAuthorityKey(request.key.kind, request.key.globalId);
+    const rowKey = authorityKey(key.value);
+    for (;;) {
+      signal?.throwIfAborted();
+      const current = await this.provider.read(rowKey, signal);
+      if (current.kind === 'missing') return { kind: 'stale' };
+      const record = decodeJson<AuthorityRecord>(current.value.bytes);
+      if (
+        record.reservationId !== request.reservationId
+        || current.value.version.value !== request.expectedStoreVersion
+        || record.snapshot.allocation.state !== 'reserved'
+        || !sameCreationTarget(record.snapshot, request.target)
+      ) {
+        return { kind: 'stale' };
+      }
+      const leaseKey = ownerKey(request.target.owner.ownerId);
+      const capacityRowKey = capacityKey(
+        request.target.meshName,
+        String(request.target.nodeRid)
+      );
+      const [leaseRead, capacityRead] = await Promise.all([
+        this.provider.read(leaseKey, signal),
+        this.provider.read(capacityRowKey, signal)
+      ]);
+      if (!sameLiveOwner(leaseRead, record.snapshot)) return { kind: 'stale' };
+      const capacity = capacityRead.kind === 'missing'
+        ? emptyCapacityRecord()
+        : decodeJson<CapacityRecord>(capacityRead.value.bytes);
+      const result = await this.provider.write({
+        conditions: [
+          { kind: 'version', key: rowKey, expected: current.value.version },
+          versionCondition(leaseKey, leaseRead),
+          conditionFor(capacityRowKey, capacityRead)
+        ],
+        mutations: [
+          { kind: 'delete', key: rowKey },
+          {
+            kind: 'put',
+            key: capacityRowKey,
+            bytes: encodeJson({
+              active: capacity.active,
+              pending: subtractCapacity(
+                capacity.pending,
+                record.snapshot.allocation.capacity
+              )
+            } satisfies CapacityRecord)
+          }
+        ]
+      }, signal);
+      if (result.kind === 'conflict') continue;
+      return { kind: 'aborted' };
+    }
+  }
+
   override async completeCreation(
     request: ZLinkObjectCreationCompleteRequest,
     signal?: AbortSignal
@@ -2231,7 +2291,7 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
     const leaseKey = ownerKey(owner.ownerId);
     const lease = await this.provider.read(leaseKey, signal);
     if (liveOwnerLeaseGeneration(lease) !== owner.leaseGeneration) return 0n;
-    let removed = 0n;
+    let removed = await this.removeOwnedAuthorities(owner, signal);
     const candidates: OwnerCleanupCandidate[] = [];
     for (const prefix of [
       `${PREFIX}mesh:`,
@@ -2275,6 +2335,85 @@ export class ZLinkLocationStoreRepository extends ZLinkInMemoryLocationStore {
       );
     }
     return removed + await super.removeAllByOwner(owner);
+  }
+
+  private async removeOwnedAuthorities(
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    const candidates: OwnerCleanupCandidate[] = [];
+    for (;;) {
+      const pageCandidates: OwnerCleanupCandidate[] = [];
+      let cursor: ZLinkStoreScanCursor | undefined;
+      let expired = false;
+      do {
+        const result = await this.provider.scan({
+          prefix: `${PREFIX}authority:`,
+          cursor,
+          limit: 1_000
+        }, signal);
+        if (result.kind === 'expired') {
+          expired = true;
+          break;
+        }
+        for (const item of result.value.items) {
+          pageCandidates.push({ key: item.key, scanVersion: item.value.version });
+        }
+        cursor = result.value.nextCursor;
+      } while (cursor !== undefined);
+      if (expired) {
+        candidates.length = 0;
+        continue;
+      }
+      candidates.push(...pageCandidates);
+      break;
+    }
+
+    let removed = 0n;
+    for (const candidate of candidates) {
+      signal?.throwIfAborted();
+      const current = await this.provider.read(candidate.key, signal);
+      if (current.kind === 'missing'
+        || current.value.version.value !== candidate.scanVersion.value) continue;
+      const record = decodeJson<AuthorityRecord>(current.value.bytes);
+      if (
+        record.snapshot.ownerId !== owner.ownerId
+        || record.snapshot.ownerLeaseGeneration !== owner.leaseGeneration
+        || record.aggregate !== undefined
+      ) continue;
+      const encodedAuthority = decodeURIComponent(
+        candidate.key.value.slice(`${PREFIX}authority:`.length)
+      );
+      const identity = decodeAuthorityKey({ value: encodedAuthority } as ZLinkAuthorityKey);
+      if (record.snapshot.allocation.state === 'active') {
+        const result = await this.compareExchangeAuthority(
+          { value: encodedAuthority } as ZLinkAuthorityKey,
+          current.value.version as unknown as ZLinkAuthorityStoreVersion,
+          { kind: 'delete' },
+          signal
+        );
+        if (result.kind === 'deleted') removed += 1n;
+        continue;
+      }
+      if (record.reservationId === undefined) continue;
+      const aborted = await this.abort({
+        key: identity,
+        reservationId: record.reservationId,
+        expectedStoreVersion: current.value.version.value,
+        target: {
+          meshName: record.snapshot.allocation.descriptor.meshName,
+          nodeRid: record.snapshot.allocation.descriptor.rid,
+          nodeLifecycleGeneration:
+            record.snapshot.allocation.descriptorLifecycleGeneration,
+          owner: {
+            ownerId: record.snapshot.ownerId,
+            leaseGeneration: record.snapshot.ownerLeaseGeneration
+          }
+        }
+      }, signal);
+      if (aborted.kind === 'aborted') removed += 1n;
+    }
+    return removed;
   }
 
   private async removeOwnerCleanupBatch(

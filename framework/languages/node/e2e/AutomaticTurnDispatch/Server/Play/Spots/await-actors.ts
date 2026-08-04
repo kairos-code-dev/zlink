@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_CHANNEL_CLIENT } from '@zlink-systems/nestjs';
+import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
 import { DelayReq } from '../../../Shared/messages';
 import type {
   ActorJoinAwaitReq,
@@ -8,6 +8,7 @@ import type {
   ActorFastMsg,
   ActorFastReq,
   ActorAwaitReq,
+  DeferredJoinFailureMsg,
   DelayRes
 } from '../../../Shared/messages';
 import { ActorPushNotify, AutomaticTurnDispatchNames } from '../../../Shared/messages';
@@ -15,7 +16,7 @@ import type {
   ZLinkActor,
   ZLinkActorContext,
   ZLinkActorFactory,
-  ZLinkChannelClient,
+  ZLinkRouteClient,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
   ZLinkMessage,
@@ -72,7 +73,7 @@ export class EntryActorAwaitHandler
 {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
   ) {}
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
@@ -84,7 +85,7 @@ export class EntryActorAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     const target = actorEvidenceTarget(this.evidence, actor);
-    await recordActorAwaitEvidence(this.evidence, this.channels, target, actor, request);
+    await recordActorAwaitEvidence(this.evidence, this.route, target, actor, request);
     return actorReply('TD-D', request.requestId, actor, target, 'actor-await-completed');
   }
 }
@@ -99,7 +100,7 @@ export class SpotActorAwaitHandler
   implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorAwaitReq, ActorAwaitRes> {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
   ) {}
 
   @ZLinkSpotActorRequest('ActorAwaitReq')
@@ -111,7 +112,7 @@ export class SpotActorAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     const target = actorEvidenceTarget(this.evidence, actor);
-    await recordActorAwaitEvidence(this.evidence, this.channels, target, actor, request);
+    await recordActorAwaitEvidence(this.evidence, this.route, target, actor, request);
     return actorReply('TD-D', request.requestId, actor, target, 'actor-await-completed');
   }
 }
@@ -218,7 +219,7 @@ export class EntryActorPushAwaitHandler
 {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
   ) {}
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
@@ -230,7 +231,7 @@ export class EntryActorPushAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     const target = actorEvidenceTarget(this.evidence, actor);
-    await recordActorPushAwaitEvidence(this.evidence, this.channels, target, actor, request, false);
+    await recordActorPushAwaitEvidence(this.evidence, this.route, target, actor, request, false);
     return actorReply('TD-F3', request.requestId, actor, target, 'actor-push-await-completed');
   }
 }
@@ -245,7 +246,7 @@ export class SpotActorPushAwaitHandler
   implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorPushAwaitReq, ActorAwaitRes> {
   constructor(
     private readonly evidence: EvidenceStore,
-    @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
   ) {}
 
   @ZLinkSpotActorRequest('ActorPushAwaitReq')
@@ -257,7 +258,7 @@ export class SpotActorPushAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     const target = actorEvidenceTarget(this.evidence, actor);
-    await recordActorPushAwaitEvidence(this.evidence, this.channels, target, actor, request, true);
+    await recordActorPushAwaitEvidence(this.evidence, this.route, target, actor, request, true);
     return actorReply('TD-F3', request.requestId, actor, target, 'actor-push-await-completed');
   }
 }
@@ -310,6 +311,52 @@ export class SpotActorJoinAwaitHandler
   }
 }
 
+@Injectable()
+@zlinkSpotActorRequestHandler({
+  spot: () => AwaitProbeSpot,
+  actor: () => AwaitActor,
+  packetName: 'DeferredJoinFailureMsg'
+})
+export class SpotActorDeferredJoinFailureHandler
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, DeferredJoinFailureMsg, ActorAwaitRes> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  @ZLinkSpotActorRequest('DeferredJoinFailureMsg')
+  async handle(
+    spot: AwaitProbeSpot,
+    actor: AwaitActor,
+    context: ZLinkMessageContext,
+    request: DeferredJoinFailureMsg
+  ): Promise<ActorAwaitRes> {
+    void context;
+    if (actor.actorId !== request.firstActorId) {
+      throw new Error(`TD-E2A first Actor '${request.firstActorId}' was not the handler owner.`);
+    }
+    const second = spot.findActor(request.secondActorId);
+    if (second === undefined) {
+      throw new Error(`TD-E2A source Actor '${request.secondActorId}' was not a member.`);
+    }
+    actor.context.joinSpot(
+      request.firstTargetSpotId,
+      new DelayReq(request.requestId, 25, 'td-e2a-first')
+    ).timeout(5000).defer();
+    second.context.joinSpot(
+      request.secondTargetSpotId,
+      new DelayReq(request.requestId, 25, 'td-e2a-second')
+    ).timeout(5000).defer();
+    this.evidence.add(
+      `deferred-join-failure-registered|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
+      + `|request=${request.requestId}|mode=${request.failureMode}`
+    );
+    if (request.failureMode === 'cancel') {
+      const error = new Error('TD-E2A cancellation fixture.');
+      error.name = 'AbortError';
+      throw error;
+    }
+    throw new Error('TD-E2A exception fixture.');
+  }
+}
+
 interface ActorEvidenceTarget {
   readonly spotId: unknown;
   readonly nodeRid: unknown;
@@ -324,7 +371,7 @@ function actorEvidenceTarget(evidence: EvidenceStore, actor: AwaitActor): ActorE
 
 async function recordActorAwaitEvidence(
   evidence: EvidenceStore,
-  channels: ZLinkChannelClient,
+  route: ZLinkRouteClient,
   target: ActorEvidenceTarget,
   actor: AwaitActor,
   request: ActorAwaitReq
@@ -333,12 +380,13 @@ async function recordActorAwaitEvidence(
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
     `actor-await-started|rid=${evidence.rid}|spot=${target.spotId}`
-    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
+    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
+    + `|delayMs=${request.delayMs}|handler=actor`
   );
-  const call = channels
+  const call = route
     .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
       new DelayReq(request.requestId, request.delayMs, `actor-${actor.actorId}`))
-    .timeout(5000);
+    .timeout(30000);
   evidence.add(
     `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
@@ -383,7 +431,7 @@ async function recordActorJoinEvidence(
 
 async function recordActorPushAwaitEvidence(
   evidence: EvidenceStore,
-  channels: ZLinkChannelClient,
+  route: ZLinkRouteClient,
   target: ActorEvidenceTarget,
   actor: AwaitActor,
   request: ActorPushAwaitReq,
@@ -394,7 +442,7 @@ async function recordActorPushAwaitEvidence(
     `actor-push-await-started|rid=${evidence.rid}|spot=${target.spotId}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  const call = channels
+  const call = route
     .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
       new DelayReq(request.requestId, request.delayMs, `actor-push-${actor.actorId}`))
     .timeout(5000);

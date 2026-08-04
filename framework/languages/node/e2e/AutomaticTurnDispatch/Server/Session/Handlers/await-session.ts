@@ -35,6 +35,7 @@ import {
   IoWorkerBatchReq,
   IoWorkerBatchRes,
   CpuWorkerAwaitMsg,
+  DeferredJoinFailureMsg,
   SelfCycleMsg,
   SelfSendMsg,
   ProbeReq
@@ -293,6 +294,12 @@ class AwaitSession implements ZLinkSession {
       return;
     }
 
+    if (dispatch.packetName === 'DeferredJoinFailureMsg') {
+      decodePacket(payload, DeferredJoinFailureMsg);
+      await this.relayToActor(dispatch, payload, signal);
+      return;
+    }
+
     if (dispatch.packetName === 'ActorPushAwaitReq') {
       decodePacket(payload, ActorPushAwaitReq);
       await this.relayToActor(dispatch, payload, signal);
@@ -351,12 +358,7 @@ class AwaitSession implements ZLinkSession {
   ): Promise<AwaitScenarioRes> {
     await this.ensurePlaySpot(request.spotId, signal);
     const spot = await this.requireSpotHandle(request.spotId, signal);
-    await this.outbound
-      .sendToSpot(spot.spotId, Object.assign(new ProbeMsg(), {
-        requestId: request.requestId,
-        marker: 'shutdown-recovery-probe'
-      }))
-      .submit();
+    await this.sendRecoveryProbeWhenRouteIsReady(spot.spotId, request, signal);
     await this.requestPlayEvidenceWait(request.requestId, 'probe-completed', signal);
     const evidence = await this.requestPlayEvidence(request.requestId, signal);
     if (!evidence.evidence.some((line) =>
@@ -371,6 +373,28 @@ class AwaitSession implements ZLinkSession {
       spotId: request.spotId,
       evidence: evidence.evidence
     };
+  }
+
+  private async sendRecoveryProbeWhenRouteIsReady(
+    spotId: string,
+    request: AwaitShutdownRecoveryReq,
+    signal?: AbortSignal
+  ): Promise<AutomaticTurnDispatchRes> {
+    const deadline = Date.now() + 30_000;
+    while (true) {
+      try {
+        return await this.outbound
+          .requestToSpot(spotId, Object.assign(new ProbeReq(), {
+            requestId: request.requestId,
+            marker: 'shutdown-recovery-probe'
+          }))
+          .timeout(5000)
+          .submit<AutomaticTurnDispatchRes>(signal);
+      } catch (error) {
+        if (!isTransientRouteReadinessFailure(error) || Date.now() >= deadline) throw error;
+        await sleep(50, signal);
+      }
+    }
   }
 
   private async ensurePlaySpot(spotId: string, signal?: AbortSignal): Promise<void> {
@@ -476,6 +500,22 @@ class AwaitSession implements ZLinkSession {
     return spot;
   }
 
+}
+
+function isTransientRouteReadinessFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /not connected|result 109|host unreachable|timed out|disconnected/i.test(message);
+}
+
+async function sleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted === true) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
 }
 
 function decodePacket<T extends object>(payload: ZLinkMessage, type: new () => T): T {

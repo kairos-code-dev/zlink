@@ -605,6 +605,7 @@ internal sealed class ZLinkActorMessageFollower
     }
 
     private async ValueTask FollowAsync(
+        ActorQueue queue,
         MessageFollowFrame frame,
         CancellationToken cancellationToken)
     {
@@ -661,6 +662,7 @@ internal sealed class ZLinkActorMessageFollower
                             frame.RequestSource,
                             frame.ApplicationMetadata))
                     {
+                        TrySendMessageFollowNotification(queue, frame);
                         submitted = true;
                         return;
                     }
@@ -706,6 +708,69 @@ internal sealed class ZLinkActorMessageFollower
         }
     }
 
+    private void TrySendMessageFollowNotification(
+        ActorQueue queue,
+        MessageFollowFrame frame)
+    {
+        if (!frame.MessageFollowRoute.Lease.TryClaimMessageFollowNotice())
+            return;
+
+        var operationId = frame.MessageFollowRouteContext.OperationId;
+        var hopCount = frame.MessageFollowRouteContext.MessageFollowHopCount;
+        if (operationId == default
+            || frame.SourceNodeRid.IsEmpty
+            || hopCount is 0 or > ZLinkServiceWireCodec.MessageFollowMaximumHopCount)
+        {
+            frame.MessageFollowRoute.Lease.ReleaseMessageFollowNoticeClaim();
+            return;
+        }
+
+        try
+        {
+            var source = frame.MessageFollowRoute.SourceActor;
+            var target = frame.MessageFollowRoute.TargetActor;
+            var record = new ZLinkServiceWireCodec.MessageFollowRecord(
+                new ZLinkServiceWireCodec.MessageFollowRoute(
+                    ZLinkServiceWireCodec.MessageFollowActorKind,
+                    source.ActorId,
+                    source.Generation,
+                    source.NodeRid,
+                    frame.MessageFollowRoute.SourceNodeGeneration,
+                    frame.MessageFollowRoute.SourceAuthorityOwnerGeneration,
+                    frame.MessageFollowRoute.SourceOwnerLeaseGeneration),
+                new ZLinkServiceWireCodec.MessageFollowRoute(
+                    ZLinkServiceWireCodec.MessageFollowActorKind,
+                    target.ActorId,
+                    target.Generation,
+                    target.NodeRid,
+                    frame.MessageFollowRoute.TargetNodeGeneration,
+                    frame.MessageFollowRoute.TargetAuthorityOwnerGeneration,
+                    frame.MessageFollowRoute.TargetOwnerLeaseGeneration),
+                hopCount,
+                queue.SnapshotQueuedMessages(),
+                queue.SnapshotQueuedBytes(),
+                operationId,
+                frame.RequestId == 0 ? 0 : frame.RequestId);
+            var node = _runtime
+                .GetMeshNodeRuntime(frame.MessageFollowRoute.TargetMeshName)
+                .Node;
+            if (node is not IZLinkBackendMessageFollowNotifications sender
+                || !sender.TrySendMessageFollowNotification(
+                    frame.SourceNodeRid,
+                    record))
+                frame.MessageFollowRoute.Lease.ReleaseMessageFollowNoticeClaim();
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException
+                or ZlinkException
+                or ZLinkFrameworkException)
+        {
+            frame.MessageFollowRoute.Lease.ReleaseMessageFollowNoticeClaim();
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"message follow notification failed: {exception.Message}");
+        }
+    }
+
     private static ValueTask DelayRetryAsync(CancellationToken cancellationToken)
         => new(Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken));
 
@@ -719,6 +784,18 @@ internal sealed class ZLinkActorMessageFollower
         private bool _retired;
         private int _count;
         private long _bytes;
+
+        internal uint SnapshotQueuedMessages()
+        {
+            lock (_lifecycleGate)
+                return checked((uint)_count);
+        }
+
+        internal uint SnapshotQueuedBytes()
+        {
+            lock (_lifecycleGate)
+                return checked((uint)_bytes);
+        }
 
         public bool TryEnqueue(MessageFollowFrame frame)
         {
@@ -767,7 +844,8 @@ internal sealed class ZLinkActorMessageFollower
                 {
                     try
                     {
-                        await owner.FollowAsync(frame, cancellationToken).ConfigureAwait(false);
+                        await owner.FollowAsync(this, frame, cancellationToken)
+                            .ConfigureAwait(false);
                     }
                     finally
                     {

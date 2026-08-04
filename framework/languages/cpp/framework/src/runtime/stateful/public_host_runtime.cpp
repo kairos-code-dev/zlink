@@ -5,6 +5,7 @@
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/sha256.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
 #include "runtime/dispatch/receive_batch_budget.hpp"
 
 #include <algorithm>
@@ -50,6 +51,8 @@ const char *pump_result_name (mesh::raw_mesh_pump_result_t result) noexcept
             return "application";
         case mesh::raw_mesh_pump_result_t::backpressured:
             return "backpressured";
+        case mesh::raw_mesh_pump_result_t::capacity_exceeded:
+            return "capacity-exceeded";
         case mesh::raw_mesh_pump_result_t::protocol_error:
             return "protocol-error";
     }
@@ -147,6 +150,58 @@ std::vector<zlink::message_t> decode_parts (
           "framework multipart payload has trailing bytes");
     }
     return parts;
+}
+
+std::optional<std::pair<std::uint64_t, std::uint64_t>>
+read_route_owner_fence (
+  const std::shared_ptr<zlink::framework::location_repository_t> &store,
+  char object_kind,
+  std::string_view object_id,
+  std::uint64_t object_generation,
+  std::uint64_t authority_owner_generation = 0,
+  std::uint64_t owner_lease_generation = 0)
+{
+    if (object_id.empty () || object_generation == 0)
+        return std::nullopt;
+    if (authority_owner_generation != 0
+        || owner_lease_generation != 0) {
+        if (authority_owner_generation == 0
+            || owner_lease_generation == 0)
+            return std::nullopt;
+        return std::pair{authority_owner_generation,
+                         owner_lease_generation};
+    }
+    if (!store)
+        return std::nullopt;
+    try {
+        auto read = store->read_authority (
+          authority_key_t{
+            std::string (1, object_kind) + ":" + std::string (object_id)})
+          .result ();
+        if (!read)
+            return std::nullopt;
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&read.value ());
+        if (!snapshot || snapshot->object_generation != object_generation
+            || snapshot->authority_owner_generation == 0
+            || snapshot->owner.lease_generation <= 0)
+            return std::nullopt;
+        return std::pair{
+          snapshot->authority_owner_generation,
+          static_cast<std::uint64_t> (snapshot->owner.lease_generation)};
+    }
+    catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::string spot_route_cache_key (
+  const zlink::routing_id_t &target_node_rid,
+  std::string_view target_spot_id,
+  std::uint64_t target_spot_generation)
+{
+    return target_node_rid.to_string () + ":" + std::string (target_spot_id)
+           + ":" + std::to_string (target_spot_generation);
 }
 
 zlink::submit_result_t submitted (bool accepted)
@@ -574,12 +629,17 @@ zlink::submit_result_t spot_handle_t::send_to_spot (
     const auto target_node_generation =
       peer ? peer->descriptor.lifecycle_generation
            : _host->status ().lifecycle_generation ();
+    const auto route_fence = _host->resolve_spot_route_fence (
+      target_node_rid, target_spot_id, target_spot_generation);
+    if (!route_fence)
+        return zlink::submit_result_t::not_found;
     const auto target = protocol::spot_route_fence_t{
       target_spot_id,
       target_spot_generation,
       target_node_rid.to_bytes (),
       target_node_generation,
-      target_spot_generation};
+      route_fence->first,
+      route_fence->second};
     return submitted (_host->transport ().send_to_spot (
       target_node_rid.to_bytes (), spot_id (), target,
       _host->encode_application (parts, metadata)));
@@ -606,12 +666,19 @@ zlink::submit_result_t spot_handle_t::request_to_spot (
     const auto target_node_generation =
       peer ? peer->descriptor.lifecycle_generation
            : _host->status ().lifecycle_generation ();
+    const auto route_fence = _host->resolve_spot_route_fence (
+      target_node_rid, target_spot_id, target_spot_generation);
+    if (!route_fence) {
+        _host->release_completion (operation);
+        return zlink::submit_result_t::not_found;
+    }
     const auto target = protocol::spot_route_fence_t{
       target_spot_id,
       target_spot_generation,
       target_node_rid.to_bytes (),
       target_node_generation,
-      target_spot_generation};
+      route_fence->first,
+      route_fence->second};
     const auto host = _host;
     const auto accepted = _host->transport ().request_to_spot (
       target_node_rid.to_bytes (), spot_id (), target,
@@ -805,6 +872,13 @@ void public_host_runtime_t::configure_stateful_dispatch (
         _objects, *_transport, std::move (resolver));
 }
 
+void public_host_runtime_t::configure_message_follow_handler (
+  std::function<void (const protocol::message_follow_notice_t &)> handler)
+{
+    std::lock_guard lock (_mutex);
+    _message_follow_handler = std::move (handler);
+}
+
 void public_host_runtime_t::start ()
 {
     std::lock_guard lock (_mutex);
@@ -953,6 +1027,13 @@ mesh::raw_mesh_node_owner_t &public_host_runtime_t::transport () noexcept
     return *_transport;
 }
 
+bool public_host_runtime_t::send_message_follow (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const protocol::message_follow_notice_t &notice)
+{
+    return _transport->send_message_follow (target_routing_id, notice);
+}
+
 stateful::stateful_object_runtime_t &
 public_host_runtime_t::objects () noexcept
 {
@@ -984,6 +1065,20 @@ void public_host_runtime_t::configure_user_spot_operations (
           "User Spot operations must be configured before start");
     _user_spot_store = std::move (store);
     _user_spot_materializer = std::move (materializer);
+    std::lock_guard route_cache_lock (_route_cache_mutex);
+    _spot_route_fences.clear ();
+}
+
+void public_host_runtime_t::configure_spot_route_fence_resolver (
+  spot_route_fence_resolver_t resolver)
+{
+    std::lock_guard lock (_mutex);
+    if (_started)
+        throw std::logic_error (
+          "Spot route fence resolver must be configured before host start");
+    _spot_route_fence_resolver = std::move (resolver);
+    std::lock_guard route_cache_lock (_route_cache_mutex);
+    _spot_route_fences.clear ();
 }
 
 void public_host_runtime_t::configure_actor_create_operations (
@@ -1922,8 +2017,19 @@ actor_handle_t public_host_runtime_t::create_reserved_actor (
                   != reserved.object_generation
                 || found->second.second.authority_owner_generation
                      != reserved.authority_owner_generation)
+            {
+                const auto adopted = _objects.adopt_reserved_actor_owner (
+                  reserved, actor_type);
+                if (adopted == stateful::stateful_error_t::none) {
+                    found->second.second = reserved;
+                    return actor_handle_t (
+                      shared_from_this (),
+                      framework_actor_ref (reserved, found->second.first),
+                      reserved);
+                }
                 throw std::runtime_error (
                   "reserved Actor generation does not match the local Actor");
+            }
             return actor_handle_t (
               shared_from_this (),
               framework_actor_ref (found->second.second, found->second.first),
@@ -1954,11 +2060,88 @@ actor_handle_t public_host_runtime_t::create_reserved_actor (
       shared_from_this (), framework_actor_ref (*object, actor_type), *object);
 }
 
+std::optional<route_fence_t>
+public_host_runtime_t::resolve_spot_route_fence (
+  const zlink::routing_id_t &target_node_rid,
+  std::string_view target_spot_id,
+  std::uint64_t target_spot_generation)
+{
+    spot_route_fence_resolver_t resolver;
+    std::shared_ptr<zlink::framework::location_repository_t> store;
+    {
+        std::lock_guard lock (_mutex);
+        resolver = _spot_route_fence_resolver;
+        store = _user_spot_store;
+    }
+    if (resolver) {
+        try {
+            return resolver (
+              target_node_rid, target_spot_id, target_spot_generation);
+        }
+        catch (...) {
+            return std::nullopt;
+        }
+    }
+
+    const auto key = spot_route_cache_key (
+      target_node_rid, target_spot_id, target_spot_generation);
+    {
+        std::lock_guard lock (_route_cache_mutex);
+        const auto found = _spot_route_fences.find (key);
+        if (found != _spot_route_fences.end ()) {
+            if (std::chrono::steady_clock::now ()
+                < found->second.expires_at)
+                return found->second.fence;
+            _spot_route_fences.erase (found);
+        }
+    }
+
+    const auto fence = read_route_owner_fence (
+      store, '2', target_spot_id, target_spot_generation);
+    if (fence && _options.route_cache_max_age
+                     > std::chrono::milliseconds::zero ()) {
+        std::lock_guard lock (_route_cache_mutex);
+        _spot_route_fences.insert_or_assign (
+          key,
+          cached_spot_route_fence_t{
+            *fence,
+            std::chrono::steady_clock::now ()
+              + _options.route_cache_max_age});
+    }
+    return fence;
+}
+
+void public_host_runtime_t::invalidate_spot_route_fence (
+  const protocol::message_follow_notice_t &notice)
+{
+    const auto *source = std::get_if<protocol::spot_route_fence_t> (
+      &notice.source);
+    if (!source)
+        return;
+    const auto target_node = zlink::routing_id_t::from (
+      source->target_node_routing_id);
+    const auto key = spot_route_cache_key (
+      target_node, source->spot_id, source->object_generation);
+    std::lock_guard lock (_route_cache_mutex);
+    const auto found = _spot_route_fences.find (key);
+    if (found == _spot_route_fences.end ())
+        return;
+
+    // A late notice may describe an older owner lease. Do not remove a
+    // route that was published after that notice.
+    const route_fence_t source_fence{
+      source->authority_owner_generation,
+      source->owner_lease_generation};
+    if (found->second.fence == source_fence)
+        _spot_route_fences.erase (found);
+}
+
 zlink::submit_result_t public_host_runtime_t::send_to_actor (
   const actor_ref_t &target,
   const std::vector<zlink::message_t> &parts,
   std::span<const std::uint8_t> metadata,
-  std::uint64_t authority_owner_generation)
+  std::uint64_t authority_owner_generation,
+  std::uint64_t owner_lease_generation)
 {
     const auto target_routing_id =
       zlink::routing_id_t::from (
@@ -1978,6 +2161,11 @@ zlink::submit_result_t public_host_runtime_t::send_to_actor (
     const auto authority_generation = authority_owner_generation != 0
       ? authority_owner_generation
       : object ? object->authority_owner_generation : target.generation ();
+    const auto route_fence = read_route_owner_fence (
+      _user_spot_store, '1', target.actor_id (), target.generation (),
+      authority_generation, owner_lease_generation);
+    if (!route_fence || route_fence->first != authority_generation)
+        return zlink::submit_result_t::not_found;
     return submitted (_transport->send_to_actor (
       zlink::routing_id_t::from (
         std::string (target.node_rid ().value ())).to_bytes (), std::nullopt,
@@ -1987,7 +2175,8 @@ zlink::submit_result_t public_host_runtime_t::send_to_actor (
         zlink::routing_id_t::from (
           std::string (target.node_rid ().value ())).to_bytes (),
         node_generation,
-        authority_generation},
+        authority_generation,
+        route_fence->second},
       encode_application (parts, metadata)));
 }
 
@@ -1997,7 +2186,8 @@ zlink::submit_result_t public_host_runtime_t::request_to_actor (
   operation_id_t &operation,
   std::chrono::milliseconds timeout,
   std::span<const std::uint8_t> metadata,
-  std::uint64_t authority_owner_generation)
+  std::uint64_t authority_owner_generation,
+  std::uint64_t owner_lease_generation)
 {
     operation = next_operation ();
     if (!try_reserve_completion (operation))
@@ -2023,6 +2213,13 @@ zlink::submit_result_t public_host_runtime_t::request_to_actor (
     const auto authority_generation = authority_owner_generation != 0
       ? authority_owner_generation
       : object ? object->authority_owner_generation : target.generation ();
+    const auto route_fence = read_route_owner_fence (
+      _user_spot_store, '1', target.actor_id (), target.generation (),
+      authority_generation, owner_lease_generation);
+    if (!route_fence || route_fence->first != authority_generation) {
+        release_completion (operation);
+        return zlink::submit_result_t::not_found;
+    }
     const auto host = shared_from_this ();
     const auto accepted = _transport->request_to_actor (
       zlink::routing_id_t::from (
@@ -2033,7 +2230,8 @@ zlink::submit_result_t public_host_runtime_t::request_to_actor (
         zlink::routing_id_t::from (
           std::string (target.node_rid ().value ())).to_bytes (),
         node_generation,
-        authority_generation},
+        authority_generation,
+        route_fence->second},
       encode_application (parts, metadata), timeout,
       [host, operation] (foundation::operation_terminal_t terminal,
                          std::vector<std::uint8_t> payload) mutable {
@@ -2190,6 +2388,8 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
     location_owner_token_t instance_owner;
     std::function<std::optional<location_owner_token_t> ()>
       session_route_owner_resolver;
+    std::function<void (const protocol::message_follow_notice_t &)>
+      message_follow_handler;
     {
         std::lock_guard lock (_mutex);
         store = _user_spot_store;
@@ -2201,17 +2401,44 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
         instance_owner = _instance_spot_owner;
         session_route_owner_resolver =
           _session_route_owner_resolver;
+        message_follow_handler = _message_follow_handler;
     }
     std::size_t count = 0;
+    receive_batch_budget_t infrastructure_budget;
     while (auto claim = _transport->mailbox ().try_claim (
-             mesh::service_mailbox_domain_t::infrastructure, 64,
-             4u * 1024u * 1024u)) {
+             mesh::service_mailbox_domain_t::infrastructure,
+             dispatch_limits::receive_batch_messages,
+             dispatch_limits::receive_batch_bytes)) {
         for (auto &mailbox_record : claim->records) {
+            std::size_t record_bytes = 0;
+            for (const auto &part : mailbox_record.parts)
+                record_bytes = part.size () >
+                                   std::numeric_limits<std::size_t>::max ()
+                                     - record_bytes
+                                 ? std::numeric_limits<std::size_t>::max ()
+                                 : record_bytes + part.size ();
+            infrastructure_budget.account (record_bytes);
             ++count;
             try {
                 const auto wire =
                   protocol::decode_header (
                     mailbox_record.parts.front ());
+                if (wire.kind == protocol::command::messageFollow) {
+                    if (mailbox_record.parts.size () != 1
+                        || mailbox_record.source_node_generation == 0)
+                        continue;
+                    const auto notice = protocol::decode_message_follow (
+                      mailbox_record.parts.front ());
+                    invalidate_spot_route_fence (notice);
+                    if (message_follow_handler) {
+                        try {
+                            message_follow_handler (notice);
+                        }
+                        catch (...) {
+                        }
+                    }
+                    continue;
+                }
                 if (wire.kind
                     == protocol::command::relocationReady) {
                     if (mailbox_record.parts.size () != 1)
@@ -4313,6 +4540,8 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
             }
         }
         (void) _transport->mailbox ().release (*claim);
+        if (infrastructure_budget.exhausted ())
+            break;
     }
     return count;
 }
@@ -4349,6 +4578,12 @@ std::size_t public_host_runtime_t::dispatch_ready (
             break;
         }
         ++count;
+        if (pumped == mesh::raw_mesh_pump_result_t::capacity_exceeded) {
+            trace_mesh_host (
+              "completion-control-capacity-exceeded",
+              "source connection was disconnected before the next control record");
+            break;
+        }
         if (pumped == mesh::raw_mesh_pump_result_t::application) {
             // Re-evaluate the host-wide byte budget before starting the next
             // application receive. Infrastructure controls may still arrive
@@ -4508,7 +4743,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
     while (accept_application_receive && !application_dispatch_started) {
         auto claim = _transport->mailbox ().try_claim (
           mesh::service_mailbox_domain_t::application, 1,
-          16u * 1024u * 1024u);
+          dispatch_limits::application_mailbox_bytes);
         if (!claim)
             break;
         trace_mesh_host (
@@ -4560,12 +4795,18 @@ std::size_t public_host_runtime_t::dispatch_ready (
                     const auto spot = protocol::decode_spot_message_header (
                       mailbox_record.parts.front (), wire.kind);
                     owner.spot_id = spot.target.spot_id;
+                    record.spot_route = spot.target;
                 } else if (kind == record_kind_t::actor_send
                            || kind == record_kind_t::actor_request) {
                     owner.owner_kind = owner_kind_t::actor;
                     const auto actor =
                       protocol::decode_actor_message_header (
                         mailbox_record.parts.front (), wire.kind);
+                    record.actor_route = actor.target;
+                    record.message_follow_hop_count =
+                      actor.message_follow_hop_count;
+                    record.reply_route_id =
+                      mailbox_record.request_sequence.value_or (0);
                     std::string actor_type;
                     {
                         std::lock_guard lock (_mutex);
@@ -4620,6 +4861,24 @@ std::size_t public_host_runtime_t::dispatch_ready (
     return count;
 }
 
+bool public_host_runtime_t::wait_for_dispatch_activity (
+  std::chrono::milliseconds timeout,
+  bool accept_application_receive) noexcept
+{
+    try {
+        {
+            std::lock_guard lock (_mutex);
+            if (!_local_application_dispatches.empty ())
+                return true;
+        }
+        return _transport->wait_for_activity (
+          timeout, accept_application_receive);
+    }
+    catch (...) {
+        return false;
+    }
+}
+
 bool public_host_runtime_t::prepare_actor_transfer (
   const actor_transfer_prepare_t &prepare,
   actor_transfer_token_t &token,
@@ -4654,9 +4913,8 @@ bool public_host_runtime_t::prepare_actor_transfer (
           _objects.begin_membership_move (
             *actor, *target);
     }
-    if (error != stateful::stateful_error_t::none) {
+    if (error != stateful::stateful_error_t::none)
         return false;
-    }
     token._host = shared_from_this ();
     token._membership = membership;
     token._role = prepare.role;
@@ -5008,9 +5266,15 @@ bool actor_transfer_token_t::commit (
         _membership_epoch = membership_epoch;
         return true;
     }
-    const auto [error, _] =
+    const auto [error, current] =
       host->objects ().commit_membership_move (_membership);
     _terminal = true;
+    if (error == stateful::stateful_error_t::none) {
+        std::lock_guard lock (host->_mutex);
+        const auto found = host->_actors.find (_membership.actor.key);
+        if (found != host->_actors.end ())
+            found->second.second = current;
+    }
     return error == stateful::stateful_error_t::none;
 }
 
@@ -5022,10 +5286,16 @@ bool actor_transfer_token_t::activate ()
              != actor_transfer_role_t::target
         || _membership_epoch == 0)
         return false;
-    const auto [error, _] =
+    const auto [error, current] =
       host->objects ().commit_membership_move (
         _membership);
     _terminal = true;
+    if (error == stateful::stateful_error_t::none) {
+        std::lock_guard lock (host->_mutex);
+        const auto found = host->_actors.find (_membership.actor.key);
+        if (found != host->_actors.end ())
+            found->second.second = current;
+    }
     return error
            == stateful::stateful_error_t::none;
 }

@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -21,11 +22,13 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         Registration = registration;
         ErrorSink = errorSink;
         InboundDispatchBudget = new ZLinkInboundDispatchBudget(
-            registration.InboundDispatchOptions.EffectiveApplicationHwmBytes);
+            registration.InboundDispatchOptions.EffectiveApplicationHwmBytes,
+            registration.ResolveMaximumApplicationMessageBytes());
         CompletionAdmission = new ZLinkCompletionAdmissionOwner(
             DefaultPendingRequestLimit,
             DefaultCompletionSendLimit,
             registration.InboundDispatchOptions.EffectiveApplicationHwmBytes);
+        TimerScheduler = new ZLinkTimerScheduler();
         TaskRunner = new ZLinkRuntimeTaskRunner(
             ErrorSink,
             StopTokenSource.Token,
@@ -44,6 +47,8 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
     public ZLinkInboundDispatchBudget InboundDispatchBudget { get; }
 
     public ZLinkCompletionAdmissionOwner CompletionAdmission { get; }
+
+    public ZLinkTimerScheduler TimerScheduler { get; }
 
     public ZLinkRuntimeTaskRunner TaskRunner { get; }
 
@@ -192,6 +197,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         await CaptureAsync(() => WaitForListenerTasksAsync(resources.ListenerTasks)).ConfigureAwait(false);
 
         Capture(CompletionAdmission.Dispose);
+        await CaptureAsync(TimerScheduler.DisposeAsync).ConfigureAwait(false);
         Capture(ErrorSink.Dispose);
         Capture(StopTokenSource.Dispose);
         await CaptureAsync(() => DisposeSafelyAsync(Context)).ConfigureAwait(false);

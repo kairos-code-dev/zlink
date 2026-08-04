@@ -38,6 +38,8 @@ import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
+import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.ZLinkSpot;
 
@@ -64,6 +66,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         new AtomicBoolean();
     private final AtomicReference<ZLinkDeferredJoinAcceptedRecovery.Manifest>
         acceptedCompletionManifest = new AtomicReference<>();
+    private final AtomicReference<CompletionStage<Void>>
+        deferredSourceCleanup = new AtomicReference<>();
 
     ZLinkActorSpotJoinCall(
         ZLinkActorRuntime.DefaultActorContext context,
@@ -171,9 +175,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         validateTimeout(timeout);
         long timeoutNanos = timeout.toNanos();
         long now = System.nanoTime();
-        long deadline = timeoutNanos >= Long.MAX_VALUE - now
-            ? Long.MAX_VALUE
-            : now + timeoutNanos;
+        long deadline = saturatedDeadline(now, timeoutNanos);
         ZLinkActorJoinOperationId operationId = newOperationId();
         if (!context.tryClaimDeferredJoin(deferred)) {
             throw new ZLinkFrameworkException(
@@ -263,33 +265,41 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         }
         ZLinkActorSpotJoinCall bounded =
             (ZLinkActorSpotJoinCall) timeout(remaining);
-        return bounded.execute(operationId).handle((result, error) -> {
-                if (error != null) {
-                    Throwable cause = unwrap(error);
-                    ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
-                        ? framework.kind()
-                        : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
-                    return (ZLinkActorJoinCompletion) new ZLinkActorJoinCompletion.Failed(
+        // A deferred Join is an infrastructure/lifecycle operation. It must
+        // not inherit the application execution context of the handler that
+        // registered it; otherwise a synchronous barrier activation can make
+        // the Join's own same-Actor wait look like a forbidden application
+        // wait.
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(null)) {
+            return bounded.execute(operationId).handle((result, error) -> {
+                    if (error != null) {
+                        Throwable cause = unwrap(error);
+                        ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
+                            ? framework.kind()
+                            : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
+                        return (ZLinkActorJoinCompletion) new ZLinkActorJoinCompletion.Failed(
+                            operationId,
+                            kind);
+                    }
+                    if (result instanceof ZLinkActorJoinOutcome.Accepted accepted) {
+                        return new ZLinkActorJoinCompletion.Accepted(
+                            operationId,
+                            accepted.actor(),
+                            accepted.reply());
+                    }
+                    ZLinkActorJoinOutcome.Rejected rejected =
+                        (ZLinkActorJoinOutcome.Rejected) result;
+                    return new ZLinkActorJoinCompletion.Rejected(
                         operationId,
-                        kind);
-                }
-                if (result instanceof ZLinkActorJoinOutcome.Accepted accepted) {
-                    return new ZLinkActorJoinCompletion.Accepted(
-                        operationId,
-                        accepted.actor(),
-                        accepted.reply());
-                }
-                ZLinkActorJoinOutcome.Rejected rejected =
-                    (ZLinkActorJoinOutcome.Rejected) result;
-                return new ZLinkActorJoinCompletion.Rejected(
-                    operationId,
-                    rejected.reply());
-            })
-            .thenCompose(completion ->
-                completion instanceof ZLinkActorJoinCompletion.Accepted
-                    && bounded.acceptedCompletionDeliveredOnTarget.get()
-                    ? CompletableFuture.completedFuture(null)
-                    : notifyCompletion(completion));
+                        rejected.reply());
+                })
+                .thenCompose(completion ->
+                    completion instanceof ZLinkActorJoinCompletion.Accepted
+                        && bounded.acceptedCompletionDeliveredOnTarget.get()
+                        ? CompletableFuture.completedFuture(null)
+                        : notifyCompletion(completion));
+        }
     }
 
     static Duration remainingTimeout(long deadlineNanos) {
@@ -297,6 +307,13 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         return remainingNanos <= 0
             ? null
             : Duration.ofNanos(remainingNanos);
+    }
+
+    static long saturatedDeadline(long now, long timeoutNanos) {
+        return timeoutNanos > 0
+            && now > Long.MAX_VALUE - timeoutNanos
+            ? Long.MAX_VALUE
+            : now + timeoutNanos;
     }
 
     private CompletionStage<Void> notifyCompletion(
@@ -470,36 +487,68 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             return CompletableFuture.completedFuture(null);
         }
         ZLinkBackendActorRef sourceActorRef = context.actorRef();
-        CompletionStage<Void> rebound = sessionAlreadyRebound
-            ? CompletableFuture.completedFuture(null)
-            : context.rebindNativeActor(result.actor(), timeout);
+        CompletionStage<Void> deferredCleanup = deferredSourceCleanup.get();
+        boolean sourceCleanupWasStarted = deferredCleanup != null;
+        CompletionStage<Void> rebound = sourceCleanupWasStarted
+            ? deferredCleanup
+            : sessionAlreadyRebound
+                ? CompletableFuture.completedFuture(null)
+                : context.rebindNativeActor(result.actor(), timeout);
         Supplier<CompletionStage<Void>> cleanup = () -> rebound
             .thenCompose(ignored -> {
-                String joinedSpotId = effectiveJoinedSpotId(result);
-                if (entryTarget) {
-                    context.markMovedToEntrySpot(
-                        result.actor(),
-                        new ZLinkActorRuntime.EntrySpotTarget(
-                            result.actor().nodeRid(),
-                            joinedSpotId));
-                } else {
-                    context.markJoined(
-                        result.actor(), joinedSpotId, services.spotResolver().apply(joinedSpotId));
-                }
-                services.actors().abandonSourceLocationOwnership(context.actor());
-                services.actors().completeRemoteMove(context.actor());
-                if (retainMessageFollowSource
-                    && messageFollowInstalled.compareAndSet(false, true)) {
-                    services.actors().retainMessageFollowSource(
-                        context.actor(), sourceActorRef, result.actor(),
-                        java.util.Objects.requireNonNull(
-                            messageFollowAddress.get(),
-                            "committed Message Follow address"));
-                }
-                return services.actors()
-                    .completeDeferredJoinAcceptedSourceCleanup(
-                        acceptedCompletionManifest.get(),
-                        result.actor());
+                CompletionStage<
+                    java.util.Optional<ZLinkStoreLocationResolvers.ActorRoute>>
+                    targetRoute = retainMessageFollowSource
+                            && !sourceCleanupWasStarted
+                        ? services.actors().resolveMessageFollowTargetRoute(
+                            result.actor(),
+                            java.util.Objects.requireNonNull(
+                                messageFollowAddress.get(),
+                                "committed Message Follow address"))
+                        : CompletableFuture.completedFuture(
+                            java.util.Optional.empty());
+                return targetRoute.thenCompose(route -> {
+                    if (requiresMessageFollowTargetRoute(
+                        retainMessageFollowSource,
+                        sourceCleanupWasStarted,
+                        route.isPresent())) {
+                        return CompletableFuture.failedFuture(
+                            new ZLinkConfigurationException(
+                                "committed Message Follow target route was unavailable: "
+                                    + result.actor().actorId()));
+                    }
+                    String joinedSpotId = effectiveJoinedSpotId(result);
+                    if (entryTarget) {
+                        context.markMovedToEntrySpot(
+                            result.actor(),
+                            new ZLinkActorRuntime.EntrySpotTarget(
+                                result.actor().nodeRid(),
+                                joinedSpotId));
+                    } else {
+                        context.markJoined(
+                            result.actor(), joinedSpotId,
+                            services.spotResolver().apply(joinedSpotId));
+                    }
+                    if (!sourceCleanupWasStarted) {
+                        services.actors().abandonSourceLocationOwnership(
+                            context.actor());
+                        services.actors().completeRemoteMove(context.actor());
+                    }
+                    if (retainMessageFollowSource
+                        && !sourceCleanupWasStarted
+                        && messageFollowInstalled.compareAndSet(false, true)) {
+                        services.actors().retainMessageFollowSource(
+                            context.actor(), sourceActorRef, result.actor(),
+                            java.util.Objects.requireNonNull(
+                                messageFollowAddress.get(),
+                                "committed Message Follow address"),
+                            toMessageFollowActorRoute(route.orElseThrow()));
+                    }
+                    return services.actors()
+                        .completeDeferredJoinAcceptedSourceCleanup(
+                            acceptedCompletionManifest.get(),
+                            result.actor());
+                });
             });
         if (retainMessageFollowSource
             && !deferred.get()
@@ -520,6 +569,15 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         return joinedSpotId == null || joinedSpotId.toString().isBlank()
             ? spotId
             : joinedSpotId;
+    }
+
+    static boolean requiresMessageFollowTargetRoute(
+        boolean retainMessageFollowSource,
+        boolean sourceCleanupWasStarted,
+        boolean routePresent) {
+        return retainMessageFollowSource
+            && !sourceCleanupWasStarted
+            && !routePresent;
     }
 
     private CompletionStage<ZLinkBackendActorJoinResult> joinRemoteRoutedSpot(
@@ -543,7 +601,9 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     explicitTargetNode,
                     spotId,
                     value.spotGeneration(),
+                    value.targetNodeGeneration(),
                     value.authorityOwnerGeneration(),
+                    value.ownerLeaseGeneration(),
                     value.spotKind())))
             .thenApply(address -> address.orElseThrow(() ->
                 new ZLinkConfigurationException("SPOT transport address was not found: " + spotId)))
@@ -690,6 +750,15 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             sessionRouteCommand44);
                 return completionManifest.thenCompose(manifest -> {
                     acceptedCompletionManifest.set(manifest);
+                    CompletionStage<Void> sourceCleanup = manifest == null
+                        ? CompletableFuture.completedFuture(null)
+                        : beginDeferredSourceCleanup(
+                            address,
+                            currentActorRef,
+                            manifest);
+                    if (manifest != null) {
+                        deferredSourceCleanup.set(sourceCleanup);
+                    }
                     List<Message> commitParts =
                         ZLinkActorSpotRoutePackets.createCommitRequestParts(
                             transferId,
@@ -721,7 +790,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             manifest,
                             sessionRouteCommand44);
                     try {
-                        return requestTransfer(address, commitParts)
+                        CompletionStage<List<Message>> targetReply =
+                            requestTransfer(address, commitParts);
+                        return sourceCleanup
+                            .thenCompose(ignored -> targetReply)
                             .thenCompose(reply -> {
                                 if (corePrepared != null) {
                                     commitCoreTransfer(
@@ -729,10 +801,10 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                                         membershipEpoch,
                                         sourceCoreCommitted);
                                 }
-                                installMessageFollowSource(
-                                    address, currentActorRef, reply);
-                                return forwardLateBacklog(
-                                    address, reply, commit.backlog());
+                                return installMessageFollowSource(
+                                        address, currentActorRef, reply)
+                                    .thenCompose(ignored -> forwardLateBacklog(
+                                        address, reply, commit.backlog()));
                             })
                             .whenComplete((ignored, commitError) ->
                                 commitParts.forEach(Message::close));
@@ -776,35 +848,85 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                                 membershipEpoch,
                                 sourceCoreCommitted);
                         }
-                        installMessageFollowSource(
-                            address,
-                            currentActorRef,
+                        ZLinkBackendActorRef committedActorRef =
                             new ZLinkBackendActorRef(
                                 address.targetNodeRid(),
                                 currentActorRef.actorId(),
-                                currentActorRef.generation()));
-                        if (operationId != null) {
-                            acceptedCompletionDeliveredOnTarget.set(true);
-                        }
-                        admissionReply.close();
-                        return CompletableFuture.completedFuture(
-                            new ZLinkBackendActorJoinResult(
-                                ZLinkBackendRequestResult.OK,
-                                0,
-                                new ZLinkBackendActorRef(
-                                    address.targetNodeRid(),
-                                    currentActorRef.actorId(),
-                                    currentActorRef.generation()),
-                                address.spotId(),
-                                currentActorRef.generation(),
-                                0,
-                                List.of(Message.from(
-                                    admissionReplyBytes))));
+                                currentActorRef.generation());
+                        return installMessageFollowSource(
+                                address, currentActorRef, committedActorRef)
+                            .thenApply(ignored -> {
+                                if (operationId != null) {
+                                    acceptedCompletionDeliveredOnTarget.set(true);
+                                }
+                                admissionReply.close();
+                                return new ZLinkBackendActorJoinResult(
+                                    ZLinkBackendRequestResult.OK,
+                                    0,
+                                    committedActorRef,
+                                    address.spotId(),
+                                    currentActorRef.generation(),
+                                    0,
+                                    List.of(Message.from(
+                                        admissionReplyBytes)));
+                            })
+                            .exceptionallyCompose(installError -> {
+                                Throwable installCause = unwrap(installError);
+                                admissionReply.close();
+                                failPackets(committedBacklog.get(), installCause);
+                                services.actors().failRemoteMove(actor, installCause);
+                                return CompletableFuture.failedFuture(installCause);
+                            });
                     });
             }));
     }
 
-    private void installMessageFollowSource(
+    private CompletionStage<Void> beginDeferredSourceCleanup(
+        SpotTransportAddress address,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest) {
+        ZLinkBackendActorRef targetActorRef = new ZLinkBackendActorRef(
+            address.targetNodeRid(),
+            sourceActorRef.actorId(),
+            sourceActorRef.generation());
+        return services.actors()
+            .awaitDeferredJoinTargetCommit(
+                manifest,
+                targetActorRef,
+                timeout)
+            .thenCompose(ignored ->
+                ZLinkActorRetryScheduler.retryRouteUntil(
+                    timeout,
+                    () -> services.actors()
+                        .resolveMessageFollowTargetRoute(
+                            targetActorRef,
+                            address)
+                        .thenCompose(route -> route.isPresent()
+                            ? CompletableFuture.completedFuture(route)
+                            : CompletableFuture.failedFuture(
+                                new IllegalStateException(
+                                    "committed Message Follow target route is not ready"))),
+                    ignoredError -> true))
+            .thenCompose(route -> {
+                if (messageFollowInstalled.compareAndSet(false, true)) {
+                    services.actors().retainMessageFollowSource(
+                        context.actor(),
+                        sourceActorRef,
+                        targetActorRef,
+                        address,
+                        toMessageFollowActorRoute(route.orElseThrow()));
+                }
+                services.actors().abandonSourceLocationOwnership(
+                    context.actor());
+                services.actors().completeRemoteMove(context.actor());
+                return services.actors()
+                    .markDeferredJoinAcceptedSourceCleanup(
+                        manifest,
+                        targetActorRef);
+            });
+    }
+
+    private CompletionStage<Void> installMessageFollowSource(
         SpotTransportAddress address,
         ZLinkBackendActorRef sourceActorRef,
         List<Message> commitReplyParts) {
@@ -815,20 +937,43 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         ZLinkActorSpotRoutePackets.JoinReply reply =
             ZLinkActorSpotRoutePackets.decodeJoinReply(commitReplyParts.get(0));
         try {
-            installMessageFollowSource(address, sourceActorRef, reply.actorRef());
+            return installMessageFollowSource(address, sourceActorRef, reply.actorRef());
         } finally {
             reply.reply().close();
         }
     }
 
-    private void installMessageFollowSource(
+    private CompletionStage<Void> installMessageFollowSource(
         SpotTransportAddress address,
         ZLinkBackendActorRef sourceActorRef,
         ZLinkBackendActorRef targetActorRef) {
-        if (messageFollowInstalled.compareAndSet(false, true)) {
-            services.actors().retainMessageFollowSource(
-                context.actor(), sourceActorRef, targetActorRef, address);
-        }
+        return services.actors()
+            .resolveMessageFollowTargetRoute(targetActorRef, address)
+            .thenCompose(route -> {
+                if (route.isEmpty()) {
+                    return CompletableFuture.failedFuture(
+                        new ZLinkConfigurationException(
+                            "committed Message Follow target route was unavailable: "
+                                + targetActorRef.actorId()));
+                }
+                if (messageFollowInstalled.compareAndSet(false, true)) {
+                    services.actors().retainMessageFollowSource(
+                        context.actor(), sourceActorRef, targetActorRef, address,
+                        toMessageFollowActorRoute(route.orElseThrow()));
+                }
+                return CompletableFuture.completedFuture(null);
+            });
+    }
+
+    private static ZLinkServiceMessageFollowWireCodec.ActorRoute
+        toMessageFollowActorRoute(ZLinkStoreLocationResolvers.ActorRoute route) {
+        return new ZLinkServiceMessageFollowWireCodec.ActorRoute(
+            route.actorRef().actorId(),
+            route.actorRef().objectGeneration(),
+            route.nodeRid(),
+            route.targetNodeGeneration(),
+            route.authorityOwnerGeneration(),
+            route.ownerLeaseGeneration());
     }
 
     private static List<

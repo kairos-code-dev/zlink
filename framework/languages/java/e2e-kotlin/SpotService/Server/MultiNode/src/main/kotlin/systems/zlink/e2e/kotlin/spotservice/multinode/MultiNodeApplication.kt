@@ -108,19 +108,20 @@ class MultiNodeApplication {
     fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
         )
 
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            systems.zlink.e2e.kotlin.spotservice.Env.configure(args)
             val options = MultiNodeOptions.parse(args)
             val builder = SpringApplicationBuilder(MultiNodeApplication::class.java)
                 .web(WebApplicationType.NONE)
                 .properties(options.toProperties())
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*systems.zlink.e2e.kotlin.spotservice.Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
 
@@ -382,7 +383,7 @@ data class MultiNodeOptions(
             return MultiNodeOptions(
                 rid = required(values, "rid"),
                 httpUrl = required(values, "http-url"),
-                logDir = values["log-dir"] ?: Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
+                logDir = values["log-dir"] ?: Env.get("e2e.log.dir", "logs"),
                 evidenceFile = values["evidence-file"].orEmpty(),
                 multiRouteAEndpoint = values["multi-route-a-endpoint"].orEmpty(),
                 multiRouteBEndpoint = values["multi-route-b-endpoint"].orEmpty(),

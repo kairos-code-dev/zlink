@@ -27,7 +27,7 @@ data class ServerOptions(
             return ServerOptions(
                 rid = values["rid"] ?: "workflow",
                 httpUrl = values["http-url"] ?: "http://127.0.0.1:0",
-                logDir = values["log-dir"] ?: System.getProperty("java.io.tmpdir") + "/zlink-kotlin-e2e-log",
+                logDir = values["log-dir"] ?: "logs",
                 evidenceFile = values["evidence-file"],
                 redisLocationEndpoint = values["redis-location-endpoint"]
                     ?: throw IllegalArgumentException("--redis-location-endpoint is required."),

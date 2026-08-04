@@ -123,8 +123,18 @@ export class ZLinkSpotActorDispatcher {
     message: TMessage,
     context: Partial<ZLinkMessageContext> = {}
   ): Promise<void> {
+    return this.dispatchSendDecoded(actor, packetName, () => message, context);
+  }
+
+  dispatchSendDecoded<TMessage>(
+    actor: ZLinkActor,
+    packetName: string,
+    decode: () => TMessage,
+    context: Partial<ZLinkMessageContext> = {}
+  ): Promise<void> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Send, actor, packetName);
+      const message = decode();
       await this.invokeHandler<
         ZLinkSpotActorSendHandler<ZLinkSpot, ZLinkActor, TMessage>,
         void
@@ -145,7 +155,28 @@ export class ZLinkSpotActorDispatcher {
     request: TRequest,
     context: Partial<ZLinkMessageContext> = {}
   ): Promise<TReply> {
-    return this.dispatchRequestThen<TRequest, TReply, TReply>(actor, packetName, request, context, (reply) => reply);
+    return this.dispatchRequestThenDecoded<TRequest, TReply, TReply>(
+      actor,
+      packetName,
+      () => request,
+      context,
+      (reply) => reply
+    );
+  }
+
+  dispatchRequestDecoded<TRequest, TReply>(
+    actor: ZLinkActor,
+    packetName: string,
+    decode: () => TRequest,
+    context: Partial<ZLinkMessageContext> = {}
+  ): Promise<TReply> {
+    return this.dispatchRequestThenDecoded<TRequest, TReply, TReply>(
+      actor,
+      packetName,
+      decode,
+      context,
+      (reply) => reply
+    );
   }
 
   dispatchRequestThen<TRequest, TReply, TResult>(
@@ -155,8 +186,25 @@ export class ZLinkSpotActorDispatcher {
     context: Partial<ZLinkMessageContext> = {},
     afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult
   ): Promise<TResult> {
+    return this.dispatchRequestThenDecoded(
+      actor,
+      packetName,
+      () => request,
+      context,
+      afterReply
+    );
+  }
+
+  dispatchRequestThenDecoded<TRequest, TReply, TResult>(
+    actor: ZLinkActor,
+    packetName: string,
+    decode: () => TRequest,
+    context: Partial<ZLinkMessageContext> = {},
+    afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult
+  ): Promise<TResult> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Request, actor, packetName);
+      const request = decode();
       return await this.invokeHandler<
         ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>,
         TResult

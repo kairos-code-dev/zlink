@@ -1,4 +1,3 @@
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type { RoutingId } from '../../contracts';
 import type { ZLinkBackendSpot, ZLinkBackendSpotNode } from '../backend/contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
@@ -94,7 +93,7 @@ function spotRouteRoutingIdCandidates(routingId: RoutingId): ReadonlySet<string>
   const text = String(routingId);
   candidates.add(text.toLowerCase());
   try {
-    candidates.add(BindingRoutingId.from(text).toHex().toLowerCase());
+    candidates.add(Buffer.from(text, 'utf8').toString('hex'));
   } catch {
     // This legacy route path also receives routing ids already encoded as hex strings.
   }

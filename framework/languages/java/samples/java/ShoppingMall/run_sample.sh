@@ -5,6 +5,7 @@ set +m
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
+cd "$ROOT_DIR"
 if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --glob '*.java'; then
   echo "ShoppingMall server code must use location-store automatic connections" >&2
   exit 1
@@ -93,7 +94,6 @@ sample.apiBHttpUrl=${api_b_http}
 EOF
 chmod 0600 "$workflow_a_config" "$workflow_b_config" "$api_a_config" "$api_b_config" "$client_config"
 
-cd "$ROOT_DIR"
 gradle_run :Server:CommerceApi:installDist :Server:OrderWorkflow:installDist :Client:installDist >"$LOG_DIR/build.log" 2>&1
 start_role() {
   local name="$1" binary="$2" config="$3"

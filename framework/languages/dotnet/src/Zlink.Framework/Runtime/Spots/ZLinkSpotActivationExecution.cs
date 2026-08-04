@@ -511,9 +511,22 @@ internal sealed partial class ZLinkSpotActivation
             ownerLeaseGeneration: ownerLeaseGeneration,
             sourceNodeGeneration: requestSource.NodeGeneration,
             requestSource: requestSource);
-        var accepted = ZLinkSpotAcceptedJournal.CaptureOrDispose(
-            received,
-            request ? operationId.Low : 0);
+        int acceptedJournalLength;
+        try
+        {
+            acceptedJournalLength = ZLinkSpotAcceptedJournal.MeasureEncodedLength(
+                received,
+                request ? operationId.Low : 0);
+        }
+        catch
+        {
+            received.Dispose();
+            throw;
+        }
+        Func<ReadOnlyMemory<byte>> acceptedJournalFactory =
+            () => ZLinkSpotAcceptedJournal.Encode(
+                received,
+                request ? operationId.Low : 0);
 
         var queued = QueueApplicationSerialized(
             static async (activation, state, ct) =>
@@ -543,10 +556,11 @@ internal sealed partial class ZLinkSpotActivation
                 }
             },
             new DurableActivationDispatch(received, completion, request),
-            accepted,
+            acceptedJournalLength,
+            acceptedJournalFactory,
             false,
             request,
-            () =>
+            _ =>
             {
                 received.Dispose();
                 completion.TrySetException(new ZLinkFrameworkException(
@@ -832,10 +846,13 @@ internal sealed partial class ZLinkSpotActivation
         if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
         {
             onRejected?.Invoke();
+            ReportUnobservedInboundAdmission(
+                "spot-inbound-admission",
+                onRejected is null);
             return false;
         }
 
-        var queued = _serial.Queue(
+        var admission = _serial.QueueWithAdmission(
             async (activation, ct) =>
             {
                 using (lease)
@@ -845,9 +862,11 @@ internal sealed partial class ZLinkSpotActivation
             {
                 lease.Dispose();
                 onRejected?.Invoke();
-            });
-        if (!queued) lease.Dispose();
-        return queued;
+            },
+            reportUnobservedAdmission: onRejected is null);
+        if (admission != ZLinkSerialPostAdmission.Accepted)
+            lease.Dispose();
+        return admission == ZLinkSerialPostAdmission.Accepted;
     }
 
     private bool QueueApplicationSerializedNext(
@@ -858,10 +877,13 @@ internal sealed partial class ZLinkSpotActivation
         if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
         {
             onRejected?.Invoke();
+            ReportUnobservedInboundAdmission(
+                "spot-inbound-admission-next",
+                onRejected is null);
             return false;
         }
 
-        var queued = _serial.QueueNext(
+        var admission = _serial.QueueNextWithAdmission(
             async (activation, ct) =>
             {
                 using (lease)
@@ -871,9 +893,11 @@ internal sealed partial class ZLinkSpotActivation
             {
                 lease.Dispose();
                 onRejected?.Invoke();
-            });
-        if (!queued) lease.Dispose();
-        return queued;
+            },
+            reportUnobservedAdmission: onRejected is null);
+        if (admission != ZLinkSerialPostAdmission.Accepted)
+            lease.Dispose();
+        return admission == ZLinkSerialPostAdmission.Accepted;
     }
 
     private bool QueueApplicationSerialized<TState>(
@@ -904,19 +928,33 @@ internal sealed partial class ZLinkSpotActivation
         return queued;
     }
 
+    private void ReportUnobservedInboundAdmission(
+        string operation,
+        bool unobserved)
+    {
+        if (!unobserved)
+            return;
+        _runtime.ErrorSink.ReportRuntimeTaskException(
+            operation,
+            new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Rejected,
+                "SPOT application admission was closed before the work was queued."));
+    }
+
     private bool QueueApplicationSerialized<TState>(
         Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
         TState state,
-        ReadOnlyMemory<byte> acceptedJournalRecord,
+        int acceptedJournalLength,
+        Func<ReadOnlyMemory<byte>> acceptedJournalFactory,
         bool previousOwnerMessageFollow,
         bool countAsRequest,
-        Action onRejected,
+        Action<ZLinkAcceptedWorkAdmission> onRejected,
         Action onMoving,
         Action relocationRelease)
     {
         if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
         {
-            onRejected();
+            onRejected(ZLinkAcceptedWorkAdmission.Closed);
             return false;
         }
 
@@ -931,7 +969,8 @@ internal sealed partial class ZLinkSpotActivation
         }
 
         var admission = _serial.QueueAccepted(
-            acceptedJournalRecord,
+            acceptedJournalLength,
+            acceptedJournalFactory,
             async (activation, ct) =>
             {
                 using (lease)
@@ -947,7 +986,7 @@ internal sealed partial class ZLinkSpotActivation
         if (admission == ZLinkAcceptedWorkAdmission.RelocationMoving)
             onMoving();
         else
-            onRejected();
+            onRejected(admission);
         return false;
     }
 
@@ -969,28 +1008,43 @@ internal sealed partial class ZLinkSpotActivation
             }
             replyRouteId = correlation;
         }
-        var acceptedJournalRecord = ZLinkSpotAcceptedJournal.CaptureOrDispose(
-            received,
-            replyRouteId);
+        int acceptedJournalLength;
+        try
+        {
+            acceptedJournalLength = ZLinkSpotAcceptedJournal.MeasureEncodedLength(
+                received,
+                replyRouteId);
+        }
+        catch
+        {
+            received.Dispose();
+            throw;
+        }
+        Func<ReadOnlyMemory<byte>> acceptedJournalFactory =
+            () => ZLinkSpotAcceptedJournal.Encode(received, replyRouteId);
 
         return QueueApplicationSerialized(
             static (activation, state, ct) =>
                 activation.DispatchQueuedApplicationRouteAsync(state, ct),
             received,
-            acceptedJournalRecord,
+            acceptedJournalLength,
+            acceptedJournalFactory,
             received.MessageFollowHopCount != 0,
             received.CanReply,
-            () =>
+            admission =>
             {
                 ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
                     received,
-                    ChannelName);
+                    ChannelName,
+                    admission,
+                    received.SourceNodeRid is null
+                    || received.SourceNodeRid == NodeRid);
             },
             () =>
             {
                 if (!TryHoldForMessageFollow(
                         received,
-                        acceptedJournalRecord.LongLength))
+                        acceptedJournalLength))
                     ZLinkSpotActivationDispatcher
                         .RejectApplicationRouteForRelocation(
                             received,
@@ -1464,6 +1518,8 @@ internal sealed partial class ZLinkSpotActivation
                 messageFollow,
                 operationId,
                 messageFollowHopCount,
+                received.SourceNodeRid,
+                received.RequestSeq ?? 0,
                 retained,
                 metadata,
                 lease);
@@ -1503,7 +1559,15 @@ internal sealed partial class ZLinkSpotActivation
             ? ZLinkSpotMessageFollowResult.Followed
             : ZLinkSpotMessageFollowResult.Full;
         if (followed == ZLinkSpotMessageFollowResult.Followed)
+        {
+            TrySendMessageFollowNotification(
+                messageFollow,
+                received.SourceNodeRid,
+                received.RequestSeq ?? 0,
+                received.OperationId,
+                checked((byte)(received.MessageFollowHopCount + 1)));
             ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
+        }
         return followed;
     }
 
@@ -1511,6 +1575,8 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkSpotMessageFollow messageFollow,
         MeshOperationId operationId,
         byte messageFollowHopCount,
+        RoutingId? sourceNodeRid,
+        ulong replyRouteId,
         IReadOnlyList<Message> retained,
         ReadOnlyMemory<byte> metadata,
         ZLinkSpotMessageFollow.AdmissionLease admission)
@@ -1532,6 +1598,12 @@ internal sealed partial class ZLinkSpotActivation
                 .ConfigureAwait(false);
             if (result.Status == ZLinkOneWaySubmitStatus.Submitted)
             {
+                TrySendMessageFollowNotification(
+                    messageFollow,
+                    sourceNodeRid,
+                    replyRouteId,
+                    operationId,
+                    messageFollowHopCount);
                 ZLinkFrameworkDebugLog.SpotDiscovery("message_follow_relay");
                 return;
             }
@@ -1550,6 +1622,65 @@ internal sealed partial class ZLinkSpotActivation
         finally
         {
             admission.Dispose();
+        }
+    }
+
+    private void TrySendMessageFollowNotification(
+        ZLinkSpotMessageFollow messageFollow,
+        RoutingId? sourceNodeRid,
+        ulong replyRouteId,
+        MeshOperationId operationId,
+        byte hopCount)
+    {
+        if (!messageFollow.TryClaimMessageFollowNotice())
+            return;
+        if (sourceNodeRid is not { } source
+            || source.IsEmpty
+            || operationId == default
+            || hopCount is 0 or > ZLinkServiceWireCodec.MessageFollowMaximumHopCount)
+        {
+            messageFollow.ReleaseMessageFollowNoticeClaim();
+            return;
+        }
+
+        try
+        {
+            var admission = messageFollow.AdmissionSnapshot();
+            var record = new ZLinkServiceWireCodec.MessageFollowRecord(
+                new ZLinkServiceWireCodec.MessageFollowRoute(
+                    ZLinkServiceWireCodec.MessageFollowSpotKind,
+                    SpotId,
+                    ObjectGeneration,
+                    NodeRid,
+                    SourceNodeLifecycleGeneration,
+                    messageFollow.SourceAuthorityOwnerGeneration,
+                    checked((ulong)messageFollow.SourceOwner.LeaseGeneration)),
+                new ZLinkServiceWireCodec.MessageFollowRoute(
+                    ZLinkServiceWireCodec.MessageFollowSpotKind,
+                    SpotId,
+                    ObjectGeneration,
+                    messageFollow.TargetNodeRid,
+                    messageFollow.TargetNodeGeneration,
+                    messageFollow.TargetAuthorityOwnerGeneration,
+                    checked((ulong)messageFollow.TargetOwner.LeaseGeneration)),
+                hopCount,
+                checked((uint)admission.Records),
+                checked((uint)admission.Bytes),
+                operationId,
+                replyRouteId);
+            var node = _runtime.GetMeshNodeRuntime(MeshName).Node;
+            if (node is not IZLinkBackendMessageFollowNotifications sender
+                || !sender.TrySendMessageFollowNotification(source, record))
+                messageFollow.ReleaseMessageFollowNoticeClaim();
+        }
+        catch (Exception exception)
+            when (exception is InvalidOperationException
+                or ZlinkException
+                or ZLinkFrameworkException)
+        {
+            messageFollow.ReleaseMessageFollowNoticeClaim();
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"spot message follow notification failed: {exception.Message}");
         }
     }
 

@@ -5,6 +5,7 @@ import {
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
+import type { ZLinkDetachedTaskRunner } from '../spots/spot-actor-join-dispatch';
 import type {
   ZLinkBoundSessionResponsePort,
   ZLinkRemoteBoundSessionPort,
@@ -26,6 +27,7 @@ export interface ZLinkBoundSessionRelayOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
+  readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
   readonly actorSessionNode: (actorId: string) => ZLinkBackendActorSessionNode | undefined;
   readonly actorLocationResolver?: () => ZLinkStoreLocationResolvers | undefined;
   readonly destroyedActorRefs: ReadonlyMap<string, ActorRef>;
@@ -47,6 +49,7 @@ export class ZLinkBoundSessionRelay {
       meshRouters: options.meshRouters,
       spotManager: options.spotManager,
       spotNodeRuntime: options.spotNodeRuntime,
+      detachedTaskRunner: options.detachedTaskRunner,
       errorSink: options.errorSink,
       actorLocationResolver: options.actorLocationResolver
     });

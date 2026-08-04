@@ -27,8 +27,8 @@ runtime이 무엇을 고쳐야 하는지 정리한 목록이다. 배경과 판�
 
 | 언어 | 확정 갭 | 특히 큰 것 |
 |---|---|---|
-| C++ | A1(둘 다) · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2 | Channel DEALER fan 경로에 **효과 없는 선택 로직**이 남아 있다. 삭제하고 core `lb_t`를 고쳐야 한다 |
-| .NET | A2 mixed-process · A3 process evidence · A9 process matrix · D2 · D3/D4 audit · D6 | local runtime 경로는 W1·W2·W4·W5·W3까지 반영했지만 package/process와 cross-language 증거가 남아 있다 |
+| C++ | local runtime 구현은 A1 · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2까지 반영 | 남은 판정은 A2 mixed-process, A3 경쟁 process, A9 전체 topology matrix, D6 공통 기본값 측정이다. C++ 단독 unit·sample 결과와 공통 gate를 분리해 기록한다 |
+| .NET | A2 mixed-process · A3 remaining process evidence · A9 cross-language matrix · D6 common decision | D2는 atomic pending·sharded active accounting으로 해소했고 D3 bounded receive reservation과 D4 copy audit를 반영했다. local runtime과 대표 .NET process matrix는 통과했으며, mixed-process relay·남은 Instance Spot 행·공통 값 판정이 남아 있다 |
 | Java | A2(mixed-process) · A3(cross-node 경쟁 규칙) · A4(D6) · A5(wire) · A6(D6) · A8(payload audit) · A9(process matrix) · A10(D6) · D4 · D6 | public error kind, queue 구조, idle eviction local path, 수신 budget과 command 50 local path는 구현했지만 mixed-process wire·기본값·전체 process evidence·내부 copy 회계가 남아 있다 |
 | Node | A1(RouteMesh) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4b · B5 · D1 · D4 | Spot·Actor queue에 한도가 아예 없다 |
 
@@ -83,13 +83,14 @@ topology마다 다르다 — RouteMesh는 NodeRid, ClientServer는 Server RID다
 
 | 언어 | 현재 알고리즘 | 확인 위치 | 판정 |
 |---|---|---|---|
-| C++ | cursor를 weight 합으로 나눈 **연속 구간**에서 고른다. 후보 map key가 NodeRid라 tiebreak 키는 맞다 | `cpp/runtime/mesh/service_topology_registry.cpp:422-465` (`cursor++ % total_weight`) | **갭.** 절차가 누적값 방식이 아니다 |
+| C++ | 후보 변경 시 smooth weighted schedule을 계산하고, schedule을 만들 수 없으면 누적값 fallback을 사용한다. 두 경로 모두 Node RID 오름차순 tiebreak를 적용한다 | `cpp/runtime/mesh/service_topology_registry.cpp:426-650` | **구현.** local selector unit이 통과했으며, aggregate process 순서 검증은 별도 gate다 |
 | .NET | topology 변경 때 전체 후보를 NodeRid로 정렬해 smooth weighted selection plan을 만들고, send 경로는 plan cursor를 진행한다 | `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`, `dotnet/Runtime/Channels/ZLinkWeightedSelectionPlan.cs` | **구현.** `WeightContractTests`에서 sequence·retained current·tiebreak를 검증 |
 | Java | 후보별 current를 갱신하는 **smooth weighted round-robin**을 사용하고 NodeRid 오름차순으로 동점을 결정한다 | `java/runtime/internal/service/ZLinkServiceTopologyRegistry.java` | **구현.** `M6ARuntimeContractTest`에서 선택 순서와 weight를 검증 |
 | Node | 같은 방식(gcd로 줄인 연속 block) | `node/runtime/foundation/service-topology-registry.ts:333-354` | **갭.** 같은 결함 |
 
-Java는 W2에서 누적 current 방식으로 닫혔다. C++·.NET·Node의 기존 판정은 그대로 남아
-있으며, Java의 구현만으로 다른 언어의 갭이 닫히지는 않는다.
+Java는 W2에서 누적 current 방식으로 닫혔다. C++도 schedule과 fallback 양쪽에 같은
+누적값·tiebreak 규칙을 반영했다. 언어별 구현은 각자의 unit·process evidence로 판정하며,
+한 언어의 결과만으로 다른 언어의 갭을 닫지는 않는다.
 
 > **C++의 DEALER fan은 fallback 경로이며, 정식 ClientServer는 framework가 고른다.**
 >
@@ -118,11 +119,11 @@ Java는 W2에서 누적 current 방식으로 닫혔다. C++·.NET·Node의 기�
 |---|---|---|---|---|
 | Node | 누적값 3단계 ✓ | `serverRoutingId` ✓ | `node/runtime/foundation/service-discovery-registry.ts:80-115` | **충족** |
 | .NET | 누적값 3단계 ✓ | Server RID 오름차순 ✓ | `dotnet/Runtime/Channels/ZLinkClientServerClientRuntime.cs` | **구현.** connection revision 변경 때 selection plan을 재생성한다 |
-| C++ | 누적값 3단계 ✓ | **연결 map key** ✗ | 절차 `cpp/runtime/client_server/weighted_selector.hpp:24-60`, 후보 구성 `cpp/runtime/client_server/client_server_location_runtime.cpp:1316-1327` | **갭.** key가 자동 연결은 `serverRid+lifecycleGeneration`, 수동 연결은 endpoint 기반이다 |
+| C++ | 누적값 3단계 ✓ | Server RID 별도 tiebreak key ✓ | `cpp/runtime/client_server/weighted_selector.hpp`, 후보 구성 `cpp/runtime/client_server/client_server_location_runtime.cpp:1316-1327` | **구현.** connection generation이나 endpoint가 tiebreak를 대신하지 않는다 |
 | Java | current 갱신 기반 smooth weighted round-robin ✓ | Server RID ✓ | `java/runtime/channels/ZLinkChannelSocketRegistry.java` | **구현.** `ZLinkClientServerM6RuntimeTest`에서 선택 순서와 연결 세대를 검증 |
 
 **나머지 언어의 ClientServer 수정은 작다.** C++은 후보에 Server RID를 별도 field로 실어
-보내고 tiebreak가 그 값만 비교하게 한다. .NET은 `OrderByDescending`에 Server RID
+보내고 tiebreak가 그 값만 비교하게 했다. .NET은 `OrderByDescending`에 Server RID
 오름차순 두 번째 키를 붙인다. Java는 절차를 누적값 방식으로 바꾼다.
 
 ### A1b. Framework가 Core의 연결 관리를 대신하는 자리
@@ -265,7 +266,7 @@ relay success와 source notification을 함께 검증한 cross-language gate는 
 | 언어 | 현재 | 확인 위치 |
 |---|---|---|
 | C++ | 현재 worktree에 command 50 codec·source notification·cache invalidation diff가 있다. mixed-process gate는 남아 있다 | `cpp/runtime/protocol/service_wire_codec.cpp`, `cpp/runtime/mesh/mesh_node_runtime.cpp`, `cpp/runtime/actors/actor_client.cpp` |
-| .NET | command 50 codec와 source/target fence 검증을 거쳐 Actor·Spot relay 성공 후 source node에 route-level notification을 한 번만 보낸다. 수신 측은 조건이 맞는 cache entry만 제거한다 | `dotnet/Runtime/Service/ZLinkServiceMessageFollowWireCodec.cs`, `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`, `dotnet/Runtime/Locations/ZLinkStoreLocationResolvers.cs` |
+| .NET | command 50 codec와 source/target fence 검증을 거쳐 Actor·Spot relay 성공 후 source node에 route-level notification을 한 번만 보낸다. 수신 측은 조건이 맞는 cache entry만 제거한다. local unit과 .NET process 경로는 통과했지만 mixed-language process gate는 남아 있다 | `dotnet/Runtime/Service/ZLinkServiceMessageFollowWireCodec.cs`, `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`, `dotnet/Runtime/Locations/ZLinkStoreLocationResolvers.cs` |
 | Java | command 50 codec·known-command 판정·admitted peer 뒤의 raw infrastructure dispatch·M6B relay success·source notification·exact route-fence cache invalidation을 연결했다. Java 내부 unit/integration/sample은 통과했지만 mixed-language process gate는 남아 있다 | `java/runtime/internal/service/ZLinkServiceMessageFollowWireCodec.java`, `java/runtime/binding/ZLinkJavaRawMeshNode.java`, `java/runtime/actors/ZLinkActorRuntime.java`, `java/runtime/locations/ZLinkStoreLocationResolvers.java` |
 | Node | 통지가 optional method 호출이고 **구현체가 없다** | `node/runtime/host/index.ts:404-410`, `node/runtime/actors/actor-transport-delivery-gate.ts:3-16` |
 
@@ -290,8 +291,8 @@ Instance Spot이 유휴 기준을 넘겨 local instance를 내릴 때 호출하�
 
 | 언어 | 확인 위치 | 판정 |
 |---|---|---|
-| C++ | `cpp-inc/contracts/spots/spot.hpp:101-106` | **갭** |
-| .NET | `dotnet/Runtime/Spots/ZLinkSpotNodeCatalog.cs`, `ZLinkSpotActivationExecution.cs` | **local 구현.** idle candidate·serial quiescence·`OnClosingAsync`·local dispose·location release를 연결했으며, instance process/cold-activation evidence가 남았다 |
+| C++ | `cpp-inc/contracts/spots/spot.hpp:101-106`, `cpp/runtime/spots/spot_runtime.cpp` | **local 구현.** `idle_evicted=3`, timeout timer, quiescence 검사, admission seal, owner-layer 조건부 teardown을 연결했고 execution unit에서 종료 사유와 경쟁 경계를 확인했다. cross-node 경쟁 process evidence는 남았다 |
+| .NET | `dotnet/Runtime/Spots/ZLinkSpotNodeCatalog.cs`, `ZLinkSpotActivationExecution.cs` | **local 구현 및 일부 process 확인.** idle candidate·serial quiescence·`OnClosingAsync`·local dispose·location release를 연결했다. `IS-E2E-01`·`02`·`03` Track A와 `IS-E2E-08` idle eviction fresh process가 통과했다. 나머지 Instance Spot 행과 ordinary-message 경쟁 행은 남았다 |
 | Java | `java/spots/ZLinkSpotCloseReason.java`, `java/runtime/spots/ZLinkInstanceSpotActivation.java`, `java/runtime/spots/ZLinkSpotRuntime.java` | **구현.** timer·quiescence·READY→CLOSING CAS·admission cache 봉인·조건부 delete까지 연결했고 local integration evidence가 있다 |
 | Node | `node/contracts/Spots/ZLinkSpot.ts:19-23` | **갭** |
 
@@ -324,6 +325,12 @@ CAS가 성공하면 같은 route fence를 cache에서 제거하고, closing call
 순서대로 수행한다. `InstanceSpotRuntimeIntegrationTest`는 authority 삭제 뒤 일반
 message가 `NOT_FOUND`가 되고 명시적인 instance intent가 새 instance를 활성화하는지
 확인한다.
+
+C++도 같은 local 경계를 연결했다. Instance Spot timer는 Spot당 하나의 후보 상태를 갱신하고,
+application·lifecycle queue, active callback, relocation과 pending creation을 확인한 뒤
+owner layer의 admission seal을 거친다. local Entry Spot authority는 actor kind, generation,
+target node와 active 상태를 함께 비교한 뒤에만 제거한다. 따라서 enum이나 timer만 추가된
+상태가 아니라, 종료 사유부터 local authority 정리까지 하나의 경로로 구현되어 있다.
 
 공통 계약으로 남은 정의는 다음과 같다.
 
@@ -375,7 +382,7 @@ node/runtime/foundation/service-mailbox.ts:89-93
 
 | 언어 | 실행 queue 한도 | 확인 위치 |
 |---|---|---|
-| C++ | 건수만 | `cpp/runtime/execution/serial_execution_queue.cpp:296-317` |
+| C++ | application·lifecycle 두 FIFO lane이 건수와 `fixed_work_byte_cost + payloadBytes`를 함께 예약하고 terminal에서 반납한다 | `cpp/runtime/execution/serial_execution_queue.hpp`, `cpp/runtime/execution/serial_execution_queue.cpp` | **local 구현.** lane별 capacity와 회귀 unit을 확인했다 |
 | .NET | application·lifecycle 두 FIFO lane이 count와 `WorkItemFixedCostBytes + payloadBytes`를 함께 예약하고 handler terminal에서 반납한다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs` |
 | Java | runtime-owned queue가 건수·byte 두 축을 함께 예약하고 active entry도 포함한다 | `java/execution/ZLinkAsyncSerialQueue.java:17-23,121-154,337-376`; Spot·Actor production queue 생성 경로 |
 | Node | **한도 없음.** promise chain tail에 무한히 붙는다 | `node/runtime/spots/spot-serial-executor.ts:109-113`, `node/runtime/actors/actor-mailbox.ts:1-12` |
@@ -443,7 +450,7 @@ schema의 숫자 code도 정의되었지만, 후자는 언어별 encode·decode�
 
 | 언어 | 현재 | 확인 위치 |
 |---|---|---|
-| C++ | 작업 하나를 실행한 뒤 다음 drain을 다시 예약한다. owner별 경과 시간과 ready owner 공정성 제어는 없다 | `cpp/runtime/execution/serial_execution_queue.cpp:449,485-488,503-508,542-544` |
+| C++ | claim 시작 시각을 기록하고 owner time budget 경계에서 남은 작업을 ready 상태로 돌린다. lifecycle burst limit과 양보 부채도 별도로 적용한다 | `cpp/runtime/execution/serial_execution_queue.cpp:664-678,859-862` | **local 구현.** 기본값은 10 ms와 8 turns이며 공통 D6 판정은 남았다 |
 | .NET | claim generation과 10ms owner slice를 기록하고, slice가 끝나면 ready queue로 재등록한다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs` |
 | Java | queue owner의 claim 시작 시각과 owner time budget을 기록하고 상한에 도달하면 다음 turn을 executor에 재등록한다 | `java/execution/ZLinkAsyncSerialQueue.java:23,448-494` |
 | Node | owner별 promise tail을 계속 잇는다 | `node/runtime/spots/spot-serial-executor.ts:109-113` |
@@ -487,7 +494,7 @@ D6이 값을 정하기 전까지는 구조만 만들고 상한값은 설정으�
 
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
-| C++ | Spot 제출은 nonblocking `try_post_async`를 쓰지만 full을 `Rejected`로 반환한다 | `cpp/runtime/spots/spot_runtime.cpp:924-935,2426-2429` | **갭.** 대기는 아니고 **오류 kind가 틀렸다** |
+| C++ | Spot 제출은 nonblocking `try_post_async`를 사용하고 full을 `capacity_exceeded`로 반환한다 | `cpp-inc/contracts/spots/spot.hpp:1085,1166`, `cpp/runtime/spots/spot_runtime.cpp` | **local 구현.** 같은 runtime 포화와 remote unavailable을 구분하는 unit evidence가 있다 |
 | .NET | full은 `CapacityExceeded`, closed는 `ShuttingDown`으로 구분하고 remote/relocation admission은 `Unavailable`로 변환한다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs`, `ZLinkSpotActivationDispatcher.cs` | **구현.** focused serial/admission test 통과 |
 | Java | production Spot·Actor 경로가 runtime-owned bounded queue의 payload-aware admission을 사용한다 | `java/runtime/spots/ZLinkDefaultSpotContext.java`, `java/runtime/spots/ZLinkDefaultInstanceSpotContext.java`, `java/execution/ZLinkAsyncSerialQueue.java` | **부분 구현.** 같은 runtime capacity failure는 `CapacityExceeded`로 끝나며 일반 payload 길이도 회계에 포함한다. 공통 기본값·언어 간 wire 검증은 D6과 별도 gate로 남아 있다 |
 | Node | 한도가 없다 | `node/runtime/spots/spot-serial-executor.ts:79-113` | **갭.** A4가 닫힌 뒤 함께 판정 |
@@ -498,7 +505,7 @@ D6이 값을 정하기 전까지는 구조만 만들고 상한값은 설정으�
 |---|---|
 | Java | lifecycle lane에 별도 건수·byte 한도로 예약하고 FIFO 뒤에 넣는다 (`java/execution/ZLinkAsyncSerialQueue.java`) |
 | .NET | essential slot이 application capacity를 우회한다 (`dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs:577-585`) |
-| C++ | barrier가 앞쪽 제출을 쓰지만 **같은 capacity**에 걸린다 (`cpp/runtime/execution/serial_execution_queue.cpp:360-374`) |
+| C++ | lifecycle lane에 별도 capacity를 예약하고 FIFO로 제출한다 (`cpp/runtime/execution/serial_execution_queue.hpp`, `serial_execution_queue.cpp`) |
 | Node | barrier가 같은 무한 tail을 쓴다 (`node/runtime/spots/spot-serial-executor.ts:75-77`) |
 
 조항이 요구하는 것은 **별도 한도를 가진 별도 lane**이다. Java는 앞쪽 삽입과 capacity
@@ -510,9 +517,9 @@ D6이 값을 정하기 전까지는 구조만 만들고 상한값은 설정으�
 
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
-| C++ | 한 subscriber를 `for(;;)`로 완전히 drain한다. 내부 connection 순회도 매번 처음부터 시작한다 | `cpp/runtime/fanout/fanout_location_runtime.cpp:298-340`, `cpp/runtime/fanout/raw_fanout_owner.cpp:266-333` | **갭** |
+| C++ | fanout·ClientServer·service·RouteMesh·STREAM 수신 경로에 message·byte·time batch와 회전 cursor를 적용한다 | `cpp/runtime/fanout/`, `cpp/runtime/client_server/`, `cpp/runtime/mesh/`, `cpp/runtime/streams/` | **local 구현.** 전체 topology process matrix는 별도 gate다 |
 | Java | 공통 batch가 64건·1 MiB·2 ms를 제한하고 fanout·STREAM·ClientServer control·Spot activation·raw mesh 경로가 회전 cursor 또는 재등록을 사용한다 | `java/runtime/internal/dispatch/ZLinkReceiveBatchBudget.java`, `java/runtime/binding/ZLinkJavaMeshDispatchPump.java`, `java/runtime/channels/`, `java/runtime/streams/` | **부분 충족.** bridge의 opaque `drain()`과 전체 topology process matrix evidence는 남아 있다 |
-| .NET | channel loop·mesh ready-owner pump·STREAM receive-state loop·Entry Spot lifecycle drain에 count/byte/time batch와 nonblocking receive를 적용 | `dotnet/Runtime/Channels/ZLinkChannelReceiveLoop.cs`, `ZLinkMeshDispatchPump.cs`, `ZLinkStreamNodeRuntime.cs`, `ZLinkEntrySpotDispatchPump.cs` | **코드 충족.** 언어×topology process matrix는 별도 gate |
+| .NET | channel loop·mesh ready-owner pump·STREAM receive-state loop·Entry Spot lifecycle drain에 count/byte/time batch와 nonblocking receive를 적용 | `dotnet/Runtime/Channels/ZLinkChannelReceiveLoop.cs`, `ZLinkMeshDispatchPump.cs`, `ZLinkStreamNodeRuntime.cs`, `ZLinkEntrySpotDispatchPump.cs` | **코드와 대표 process 충족.** RouteMesh·ClientServer·service·STREAM·fanout fresh run이 통과했으며, 다른 언어를 포함하는 공통 matrix는 별도 gate |
 | Node | connection별 loop가 한 record 처리 후 event loop에 양보 | `node/runtime/channels/channel-receive-loops.ts:283-306` | 충족 |
 
 Java는 `29`의 조항을 기준으로 RouteMesh, ClientServer, service, STREAM, fanout을
@@ -529,13 +536,10 @@ Java는 `29`의 조항을 기준으로 RouteMesh, ClientServer, service, STREAM,
 완전히 drain하는지도 확인한다. Java의 남은 항목은 이 행렬에 대한 multi-process 실행
 기록이다.
 
-C++은 fanout 외에 **ClientServer도 확정 갭이다.** 각 server·client의 `pump_one()`을
-데이터가 없어질 때까지 무제한 반복한 뒤에야 liveness tick과 다음 connection을 처리한다
-(`cpp/runtime/client_server/client_server_location_runtime.cpp:947-948,966-967`). 연속 ingress에서
-뒤쪽 connection과 확인 신호가 밀린다.
-
-수정은 두 경로가 같다 — 각 drain에 건수·byte·경과 시간 상한을 적용하고 다음 실행은 회전
-cursor에서 시작한다. 관측·control drain에도 같은 상한이 필요한지는 따로 측정한다.
+C++은 fanout·ClientServer·service·RouteMesh·STREAM에 같은 batch budget 원칙을 연결했다.
+각 drain은 건수·byte·경과 시간 중 먼저 도달하는 조건에서 멈추고 다음 실행은 회전 cursor에서
+시작한다. 코드가 있다는 사실만으로 연속 ingress에서 뒤쪽 connection과 확인 신호가 진행한다는
+결론을 내리지 않으므로, 실제 multi-process matrix는 아직 별도 gate로 남긴다.
 
 ### A10. Lifecycle 우선 실행 — `14-actor-model` §3
 
@@ -544,7 +548,7 @@ Lifecycle lane과 application lane이 함께 ready이면 lifecycle을 먼저 실
 
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
-| C++ | join barrier를 **앞쪽 삽입**으로 처리한다. 우선 실행은 되지만 시간 상한이 없다 | `cpp/runtime/execution/serial_execution_queue.cpp:360-374` | **갭.** lane 분리와 시간 상한 |
+| C++ | application·lifecycle 두 FIFO lane을 분리하고 lifecycle 우선 선택, 8-turn burst limit, 10 ms owner time budget과 after-active phase를 사용한다 | `cpp/runtime/execution/serial_execution_queue.cpp` | **local 구현.** 앞쪽 삽입 경로를 제거했고 execution unit이 lane 순서·양보를 확인한다 |
 | Java | application·lifecycle·continuation을 별도 FIFO로 두고 lifecycle burst limit과 owner time budget을 적용한다 | `java/execution/ZLinkAsyncSerialQueue.java` | **부분 구현.** 앞쪽 삽입을 사용하지 않고 payload 회계를 연결했지만 공통 기본값 D6이 남아 있다 |
 | .NET | application·lifecycle 두 lane을 항상 분리하고 lifecycle 우선 선택, 32-turn yield debt, 10ms owner slice를 적용한다 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs` | **구현.** serial focused test 통과 |
 | Node | `postBarrierTurn`이 기존 promise tail 뒤에 붙는다 | `node/runtime/spots/spot-serial-executor.ts:75-77,109-113` | **갭.** 우선 실행이 아예 없다 |
@@ -561,7 +565,7 @@ application turn이 실행된다.
 | 언어 | 현재 | 확인 위치 | 판정 |
 |---|---|---|---|
 | .NET | source별 latest slot, bounded terminal FIFO, observer별 coalesced/discarded loss envelope를 사용한다 | `dotnet/Runtime/Diagnostics/ZLinkObservationQueue.cs`, fanout/client-server/route-mesh services | **구현.** terminal overflow metric regression 포함 |
-| C++ | full이면 oldest 폐기 | `cpp/runtime/client_server/client_server_location_runtime.cpp:217-268` | **갭** |
+| C++ | shared observation dispatcher, bounded queue, nonterminal coalescing, terminal 보관 상한과 observer별 loss envelope를 사용한다 | `cpp/runtime/diagnostics/runtime_observation.hpp`, `cpp-inc/contracts/monitoring/framework_runtime.hpp` | **local 구현.** terminal retention·loss counter·stream non-close를 unit/contract로 확인했고 aggregate process evidence는 별도 gate다 |
 | Node | full이면 oldest 폐기 + **terminal을 넣은 뒤 stream을 닫는다** | drop `node/runtime/host/route-mesh-runtime.ts:670-679`, `close()` `:701`, 공용 queue drop `node/runtime/diagnostics/topology-runtime-projections.ts:327`, close `:342` | **갭 2건** |
 | Java | source별 최신 상태를 합치고 terminal을 보존하며 `ZLinkObservedStatus<T>`로 loss 누계를 전달한다. terminal에서 stream을 닫지 않는다 | `java/runtime/internal/monitoring/ZLinkStatusPublisher.java`, `java/monitoring/ZLinkObservedStatus.java`, `java/monitoring/ZLinkObservationLoss.java` | **구현.** publisher unit test·Spring test·RuntimeMonitoring sample이 통과 |
 
@@ -592,8 +596,8 @@ Java public 반환형과 유실 회계는 구현되었다. 다른 언어의 raw 
 
 | 언어 | public 표면 | 유실 회계 |
 |---|---|---|
-| C++ | raw callback (`cpp-inc/contracts/monitoring/framework_runtime.hpp:63`, `route_mesh_runtime.hpp:97`) | 없음 |
-| .NET | `IAsyncEnumerable<TStatus>` (`dotnet/Contracts/Configuration/ZLinkDrainContracts.cs:117`) | overflow를 runtime metric에만 기록 |
+| C++ | `observed_status_t<TStatus>` callback (`cpp-inc/contracts/monitoring/framework_runtime.hpp`) | `coalesced_count`·`discarded_terminal_count`를 observer별 envelope로 전달 |
+| .NET | `IAsyncEnumerable<ZLinkObservedStatus<TStatus>>` (`dotnet/Contracts/Configuration/ZLinkDrainContracts.cs:128`) | observer별 `coalescedCount`·`discardedTerminalCount`를 envelope로 전달하고 overflow metric도 기록 |
 | Java | `Flow.Publisher<ZLinkObservedStatus<ZLinkMeshNodeSnapshot>>` (`java/monitoring/ZLinkRouteMeshRuntime.java`) | `ZLinkStatusPublisher`가 coalesced·discarded terminal을 subscriber별로 포화 누계 |
 | Node | raw status (`node/contracts/RouteMesh/RuntimeTopology.ts:92`) | 없음 |
 
@@ -603,24 +607,26 @@ Java public 반환형과 유실 회계는 구현되었다. 다른 언어의 raw 
 
 ### B2. 직렬 queue의 inline 실행 — C++
 
-`cpp/runtime/execution/serial_execution_queue.cpp:129-146`. `resume_scheduler()`가 await
-continuation을 queue에 다시 넣지 못하면 호출 스레드에서 그대로 실행한다. 이미 실행 중인
-작업과 동시에 돌 수 있어 직렬성이 깨진다.
+`cpp/runtime/execution/serial_execution_queue.cpp`의 `resume_scheduler()`는 await
+continuation을 호출자 stack에서 inline 실행하지 않는다. 재등록이 포화되면
+`capacity_exceeded` terminal failure로 끝내고, executor가 종료 중이면 `shutting_down`으로
+끝낸다. 회귀 unit은 두 경로가 기존 작업과 동시에 실행되지 않는지 확인한다.
 
 > **범위 주의.** `try_post_async`의 일반 실패 경로가 아니라 **await 재개** 경로에만
 > 해당한다. 앞선 판정에서 이 범위를 잘못 잡았다.
 
-**수정 방향.** queue가 닫혔거나 가득 차서 continuation을 재등록하지 못하면 inline 실행이
-아니라 terminal failure로 완료한다.
+**판정 — local 해소.** queue가 닫혔거나 가득 차서 continuation을 재등록하지 못하면 inline
+실행하지 않고 terminal failure로 완료한다. package와 process 경로는 aggregate gate에서
+별도로 확인한다.
 
 ### B3. `preparing → serving` 순서 위반 — C++
 
 `13:261-262`는 peer 수락·handler·객체 runtime 준비를 마친 **뒤에** `serving`을 공개하도록
-정한다. C++은 descriptor를 `serving`으로 게시한 뒤 `_port`와 completion control을 만든다
-(`cpp/runtime/mesh/raw_mesh_node_owner.cpp:307-310`, 이어지는 port·control 준비 `:312-325`).
+정한다. C++은 bind와 주소 확정 뒤 `_port`, completion control, monitor와 router를 준비한
+뒤에만 descriptor를 `serving`으로 게시한다 (`cpp/runtime/mesh/raw_mesh_node_owner.cpp`).
 
-**수정 방향.** bind와 주소 확정 뒤에도 descriptor는 `preparing`으로 두고, port·handler·peer
-admission 준비가 끝난 뒤 별도 단계에서 `serving`을 게시한다.
+**판정 — local 해소.** bind와 주소 확정 뒤에도 descriptor를 `preparing`으로 두고, 준비가
+끝난 뒤 별도 단계에서 `serving`을 게시한다. vertical runtime unit이 이 순서를 확인한다.
 
 ### B4. Completion table 무음 드롭 — .NET
 
@@ -696,13 +702,17 @@ application이 알아챌 수 없으므로 spec 위반은 아니다. 우선순위
 
 **.NET**
 - relocation 드라이버 3종을 단일 상태기계로
-- `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`(현재 8,292줄) 분해. 줄 수가 아니라
-  책임별 분해 후보를 기록한다
+- channel selection plan·cursor·retained current는 `dotnet/Runtime/Service/ZLinkMeshChannelSelection.cs`로
+  분리했고, peer 상태와 owned mailbox도 각각 `dotnet/Runtime/Service/ZLinkMeshPeer.cs`와
+  `dotnet/Runtime/Service/ZLinkMeshOwnedMailbox.cs`로 옮겼다. peer admission의 RID·endpoint·
+  중복 연결 판정은 `dotnet/Runtime/Service/ZLinkMeshPeerAdmission.cs`로 분리했다. 현재
+  `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`는 8,171줄이며 relocation·operation dispatch
+  책임별 추가 분해 후보를 기록한다
 - `Runtime/Backend/Contracts`의 interface 26개 중 **구현이 하나뿐인 것**을 이름으로 나열해
   정리한다
-- `ZLinkLegacyMonitoringModels` 정리
-- `ZLinkSerialExecutionQueue`의 `reservedPrioritySlots` — A10에서 우선 실행으로 바꾸거나
-  쓰지 않으면 제거
+- monitoring model을 Mesh, ClientServer, Fanout owner 파일로 분리했다
+- `ZLinkSerialExecutionQueue`의 `reservedPrioritySlots`를 제거하고 lifecycle lane 우선 선택으로
+  바꿨다
 
 **Java**
 - `ZLinkOneWayCalls`는 `runtime/internal/calls/`의 공통 구현으로 통합했다.
@@ -731,7 +741,7 @@ application이 알아챌 수 없으므로 spec 위반은 아니다. 우선순위
 
 | 위치 | 문제 |
 |---|---|
-| `cpp/runtime/client_server/weighted_selector.hpp:29` | 호출마다 후보 `std::map`을 새로 만들고 전체 credit을 갱신 |
+| `cpp/runtime/client_server/weighted_selector.hpp` | 후보 변경 시 후보 정규화와 schedule 계산을 수행하고, send 경로는 precomputed cursor를 진행한다 |
 
 | `node/runtime/foundation/service-discovery-registry.ts:80` | 호출마다 filter·sort·`Set` 생성 후 전체 누적값 갱신 |
 
@@ -757,14 +767,16 @@ Floyd·Brent 방식). 탐색에는 **걸음 수와 시간 두 상한**을 두고
 
 ### D2. 수신 byte 회계가 모든 handler를 하나의 lock으로 직렬화한다
 
-**세 언어가 같은 구조다.** 수신 확인, handler 시작, 완료, snapshot이 모두 같은 lock을
-잡으므로 message마다 process 전역 lock을 두세 번 통과한다. 코어 수를 늘려도 처리량이
-늘지 않는다.
+**이전 구현은 세 언어가 같은 구조였다.** 수신 확인, handler 시작, 완료, snapshot이 모두
+같은 lock을 잡으므로 message마다 process 전역 lock을 두세 번 통과했다. 현재 .NET은 이
+판정을 해소했다. HWM 판정용 pending byte는 atomic counter이고, active byte는 128-byte
+간격의 shard counter로 분리했다. `_gate`는 HWM 경계의 pause·resume와 callback 등록에만
+사용한다.
 
 | 언어 | 확인 위치 |
 |---|---|
-| .NET | `dotnet/Runtime/Dispatch/ZLinkInboundDispatchBudget.cs` — reservation gate와 observation snapshot이 같은 lock을 사용 |
-| C++ | `cpp/runtime/dispatch/inbound_dispatch_budget.hpp:32,42,53,62,69` |
+| .NET | `dotnet/Runtime/Dispatch/ZLinkInboundDispatchBudget.cs` — atomic pending byte, 8개 active shard, HWM 경계 lock으로 분리 **해소** |
+| C++ | `cpp/runtime/dispatch/inbound_dispatch_budget.hpp` — pending payload는 process 단위 atomic이고, active·received·completed 관측값은 16개 shard로 나눈다 **해소** |
 | Java | `java/runtime/internal/dispatch/ZLinkInboundDispatchBudget.java:71,81,102,119,133` |
 
 Node는 event loop 하나이므로 해당하지 않는다. **불필요한 atomic을 강제하지 않는다.**
@@ -772,7 +784,7 @@ Node는 event loop 하나이므로 해당하지 않는다. **불필요한 atomic
 Java는 `payloadLock`과 `completionLock`을 분리하고 close flag를 volatile로 정리했다.
 `ZLinkInboundDispatchBudget` unit test가 통과했다. 다른 언어의 기존 판정은 유지한다.
 
-**수정 방향.** HWM permit 획득·반환과 관측용 누계를 분리한다.
+**수정 결과.** HWM permit 획득·반환과 관측용 누계를 분리했다.
 
 > **worker별 덩어리 예약은 쓰지 않는다.** 쓰지 않은 worker local 잔량을 pending으로 세면
 > HWM보다 일찍 수신을 멈추고, 세지 않으면 여러 worker가 동시에 잔량을 소비해 초과량이
@@ -821,11 +833,13 @@ application lease의 terminal 반환이 함께 줄어드는지를 확인해야 �
 | `java/ZLinkEncodedPayload.java` | 공개 경계에서 생성과 `bytes()` 접근 시 방어적 복사 |
 | `java/messaging/ZLinkMessage.java`, `ZLinkMessageOwnershipTest` | `fromEncoded`가 payload 객체 identity를 유지하지만 empty 판정·serializer 경로는 `bytes()`를 호출 |
 | `node/contracts/Common/ZLinkEncodedPayload.ts:4,12` | 생성과 `data()`에서 각각 복사 |
-| `dotnet/Runtime/Messaging/ZLinkMessageRuntime.cs:82` | binding 경계에서 envelope payload를 복사 |
+| `dotnet/Runtime/Messaging/ZLinkMessageRuntime.cs:82` | binding 경계에서 envelope payload를 한 번 snapshot하며, 동일 snapshot의 추가 `ToArray()`는 제거 |
 | `dotnet/Runtime/Execution/ZLinkSerialExecutionQueue.cs` | relocation seal 이후 accepted record를 materialize |
 
 **수정 방향.** 공개 API의 불변성은 유지하되 runtime 내부 소유권 이전에는 복사하지 않는
-경로를 따로 둔다. Java는 encoded message 객체 재사용을 구현했지만, `ZLinkPayloadEncoding`
+경로를 따로 둔다. .NET은 binding이 반환한 managed snapshot을 `ZLinkMessage`가 다시
+복사하지 않도록 수정했고, 공개 `ZLinkEncodedPayload`의 방어적 복사는 public codec 계약으로
+유지한다. Java는 encoded message 객체 재사용을 구현했지만, `ZLinkPayloadEncoding`
 과 serializer가 public byte accessor를 거치는 경로까지 내부 copy 회계를 닫지는 않았다.
 .NET의 이동 기록은 봉인 이후에만 만든다
 ([11. Payload 소유권과 복사 §3](../../framework/common/internals/11-message-ownership.ko.md)).
@@ -895,7 +909,13 @@ application lease의 terminal 반환이 함께 줄어드는지를 확인해야 �
 추가한다. 값을 정하려면 측정이 선행되므로 이 항목은 **측정 후 판정**이다. A6와
 `14-actor-model` §3의 starvation 보장이 이 값에 걸려 있다.
 
-Java는 공통 판정 전의 provisional 값을 사용한다. 현재 owner time budget은 10 ms,
+Java는 공통 판정 전의 provisional 값을 사용한다. .NET은 owner time budget 10 ms,
+lifecycle burst limit 32 turns, receive batch 64 messages·4 MiB·1 ms, 작업당 고정 비용
+256 bytes, application queue 4,096 messages·64 MiB, lifecycle queue 256 messages·4 MiB,
+raw receive reservation 16개를 사용한다. 이 값은 .NET unit/process 동작을 고정한 local
+값이며, 언어 간 공통 기본값과 허용 범위는 측정 후 별도 판정한다.
+
+Java의 현재 owner time budget은 10 ms,
 lifecycle burst limit은 8 turns, receive batch는 64 messages·1 MiB·2 ms이고, 작업당 고정
 비용은 256 bytes다. application queue 기본값은 1,024 messages·64 MiB, lifecycle queue
 기본값은 128 messages·4 MiB다. 이 값은 unit test와 runtime 동작을 고정하는 값이지 네
@@ -914,6 +934,9 @@ lifecycle burst limit은 8 turns, receive batch는 64 messages·1 MiB·2 ms이�
 
 ### 2026-08-04 C++ runtime 검증 기록
 
+아래 항목은 command 50과 STREAM scheduler를 반영하기 전의 중간 기록이다. 현재 판정은
+뒤의 `aggregate 재검증` 절을 우선한다.
+
 아래 기록의 W3 판정은 command 50 schema amendment 이전의 상태를 보존한 것이다. 현재
 worktree에는 command 50 정의가 있으므로, 현재 공통 판정은 위 A2 절의 표를 따른다.
 
@@ -930,20 +953,18 @@ worktree에는 command 50 정의가 있으므로, 현재 공통 판정은 위 A2
   message·byte·time batch, HWM pending 회계, 준비 완료 전 publish 금지로 반영했다.
   deferred barrier의 activation은 예약 barrier 뒤에서 새치기하지 않고 별도 after-active
   phase에서 실행한다.
-- W3(A2·D5)의 relay 성공 통지는 당시 공통 service wire schema에 command ID·body·auth·fence가
-  고정되지 않아 구현하지 않았다. 현재 command 50 schema가 추가된 뒤에도 이 기록의
-  C++ 변경과 다른 언어의 mixed-process 연결은 별도 gate로 남아 있다.
-- A9의 STREAM은 session마다 독립 worker가 blocking read를 수행하는 구조라 shared
-  connection cursor를 사용하지 않는다. RouteMesh·ClientServer·service·fanout의 공유
-  pump 경로는 batch budget과 회전 cursor를 적용했지만, 언어×topology 전체 행렬의 성능
-  검증은 이 기록으로 완료 판정하지 않는다.
+- W3(A2·D5)는 이 기록 시점에는 공통 service wire schema의 command ID·body·auth·fence가
+  고정되지 않아 구현하지 않았다.
+- A9의 STREAM도 이 기록 시점에는 session별 blocking worker로 기록했다. 이후 listener-wide
+  readiness scheduler와 receive cursor를 연결했으며, 언어×topology 전체 행렬의 성능 검증은
+  현재도 별도 gate다.
 
 검증 결과는 C++ `framework-unit` 31/31, sample smoke 6/6이다. 전체 build는 runtime 및
 관련 test/sample target까지 통과했지만, 별도 `zlink_cpp_e2e_store_failure_consumer`
 target이 `main` 없는 소스를 링크하는 기존 aggregate build 오류로 전체 target build는
 완료되지 않았다.
 
-### 2026-08-04 C++ plan 구현 갱신 및 최종 gate
+### 2026-08-04 C++ plan 구현 갱신 및 aggregate 재검증
 
 위 기록 뒤 C++ build cache와 sample runner의 package provenance를 다시 맞췄다. 기존
 `samples/sample-build-common.sh`는 cache를 읽는다고 설명하면서 `zlink_cpp` 11.1.0을
@@ -965,9 +986,10 @@ runner가 기존 build cache의 `ZLINK_FRAMEWORK_CPP_ZLINK_CPP_VERSION`과
 
 공통 문서는 `02-serialization`, `06-routing-and-cache`, `07-dispatch-loop`,
 `08-object-lifecycle`, `09-session-binding`, `10-liveness-and-state`,
-`11-message-ownership`와 `service-wire-protocol`을 기준으로 대조했다. STREAM은 현재
-session마다 독립 blocking worker가 수신하므로 shared connection cursor를 적용하지 않는
-구조 차이가 남아 있다. 따라서 STREAM을 포함한 전체 topology 행렬의 공정성은 별도 process
+`11-message-ownership`와 `service-wire-protocol`을 기준으로 대조했다. STREAM은
+listener-wide readiness scheduler가 여러 session의 receive cursor를 회전시키고,
+session dispatch는 각 session의 serial queue에서 수행한다. 따라서 공통 internals가 요구하는
+구조는 현재 코드에 반영했지만, STREAM을 포함한 전체 topology 행렬의 공정성은 별도 process
 검증 조건으로 남긴다.
 
 현재 source 기준 검증 결과는 다음과 같다.
@@ -978,14 +1000,14 @@ session마다 독립 blocking worker가 수신하므로 shared connection cursor
 | `ctest ... -L framework-unit` | 31/31 PASS |
 | `ctest ... -L framework-contract` | 8/8 PASS |
 | installed package consumer 및 tooling configure | PASS, `zlink_cpp` 11.2.0 |
-| 전체 CTest | 56/56 PASS |
-| framework sample smoke | 6/6 PASS |
+| 전체 CTest | 수정 후 fresh aggregate 56/56 PASS (`100% tests passed, 0 tests failed out of 56`) |
+| ASan targeted | `actor_gateway`, `execution`, `channel_messaging`, `stream_framework` 4/4 PASS; LeakSanitizer 오류 없음 |
+| framework sample smoke | 전체 aggregate 6/6 PASS; 추가 반복은 TicTacToe 10회, GameQuest 12회, SupportChat 15회 PASS |
 | RegistryMessaging `RM-C7` | 실제 provider process 결과 `api-a=180`, `api-b=60`, PASS |
 
-W3(A2·D5)는 relay 성공 통지의 command ID·body·인증·fence가 공통 service wire의 closed
-command set에 고정되지 않아 구현하지 않았다. D6의 상한 값은 현재 C++ 기본값과 unit
-evidence가 있어도 공통 contract의 측정·허용 범위가 확정된 것은 아니며, STREAM 전체
-process matrix와 함께 남은 조건으로 관리한다.
+W3(A2·D5)는 C++ local path를 구현했지만 command 50의 mixed-process 상호운용 검증은 남아
+있다. D6의 상한 값은 현재 C++ 기본값과 unit evidence가 있어도 공통 contract의 측정·허용
+범위가 확정된 것은 아니며, STREAM 전체 process matrix와 함께 남은 조건으로 관리한다.
 
 ---
 

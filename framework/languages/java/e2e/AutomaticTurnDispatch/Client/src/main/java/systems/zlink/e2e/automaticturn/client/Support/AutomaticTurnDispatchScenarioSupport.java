@@ -30,18 +30,60 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     public void runTerminatorSurface() {
-        ensureMethods(systems.zlink.framework.channels.ZLinkRequestCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.framework.actors.ZLinkActorJoinCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.framework.spots.ZLinkWorkerCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.httpclient.ZLinkHttpServerRequestBuilder.class,
-            "submit", "async", "yield");
-        ensure(java.util.Arrays.stream(
-                systems.zlink.httpclient.ZLinkHttpRequestBuilder.class.getMethods())
-            .noneMatch(method -> "fetch".equals(method.getName())),
-            "TD-A1 blocking HTTP fetch must not be public");
+        compileTimeTerminatorSurface();
+    }
+
+    private static void compileTimeTerminatorSurface() {
+        // These method references make the exact Java interface contract a compile-time check.
+        java.util.function.BiFunction<
+            systems.zlink.framework.channels.ZLinkRequestCall,
+            Class<Object>,
+            CompletionStage<Object>> requestSubmit =
+            systems.zlink.framework.channels.ZLinkRequestCall::submit;
+        java.util.function.BiFunction<
+            systems.zlink.framework.channels.ZLinkRequestCall,
+            Class<Object>,
+            CompletionStage<Object>> requestYield =
+            systems.zlink.framework.channels.ZLinkRequestCall::yield;
+        java.util.function.Function<
+            systems.zlink.framework.actors.ZLinkActorJoinCall,
+            systems.zlink.framework.actors.ZLinkActorJoinCall> joinTimeout =
+            call -> call.timeout(Duration.ZERO);
+        java.util.function.Consumer<systems.zlink.framework.actors.ZLinkActorJoinCall> joinDefer =
+            systems.zlink.framework.actors.ZLinkActorJoinCall::defer;
+        java.util.function.Function<
+            systems.zlink.framework.spots.ZLinkWorkerCall<Object>,
+            CompletionStage<Object>> workerSubmit =
+            systems.zlink.framework.spots.ZLinkWorkerCall::submit;
+        java.util.function.Function<
+            systems.zlink.framework.spots.ZLinkWorkerCall<Object>,
+            CompletionStage<Object>> workerYield =
+            systems.zlink.framework.spots.ZLinkWorkerCall::yield;
+        java.util.function.Function<
+            systems.zlink.httpclient.ZLinkHttpServerRequestBuilder,
+            CompletionStage<Void>> serverSubmit =
+            systems.zlink.httpclient.ZLinkHttpServerRequestBuilder::submit;
+        java.util.function.BiFunction<
+            systems.zlink.httpclient.ZLinkHttpExecutionTurn,
+            CompletionStage<Object>,
+            CompletionStage<Object>> serverAsync =
+            systems.zlink.httpclient.ZLinkHttpExecutionTurn::async;
+        java.util.function.BiFunction<
+            systems.zlink.httpclient.ZLinkHttpExecutionTurn,
+            CompletionStage<Object>,
+            CompletionStage<Object>> serverYield =
+            systems.zlink.httpclient.ZLinkHttpExecutionTurn::yield;
+        java.util.function.BiFunction<
+            systems.zlink.httpclient.ZLinkHttpRequestBuilder,
+            Class<Object>,
+            CompletionStage<Object>> clientFetch =
+            systems.zlink.httpclient.ZLinkHttpRequestBuilder::fetch;
+        if (requestSubmit == null || requestYield == null || joinTimeout == null
+            || joinDefer == null || workerSubmit == null || workerYield == null
+            || serverSubmit == null || serverAsync == null || serverYield == null
+            || clientFetch == null) {
+            throw new IllegalStateException("TD-A1 terminator contract references were not created");
+        }
     }
 
     public void runAsyncHoldsTurn(ZLinkStreamConnector connector) throws Exception {
@@ -961,16 +1003,6 @@ public final class AutomaticTurnDispatchScenarioSupport {
 
     private void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
         assertOrder(options.playHttpEndpoint() + "/evidence", requestId, expectedOrder);
-    }
-
-    private void ensureMethods(Class<?> type, String... names) {
-        java.util.Set<String> actual = java.util.Arrays.stream(type.getMethods())
-            .map(java.lang.reflect.Method::getName)
-            .collect(java.util.stream.Collectors.toSet());
-        for (String name : names) {
-            ensure(actual.contains(name),
-                "TD-A1 missing " + type.getSimpleName() + "." + name);
-        }
     }
 
     private void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)

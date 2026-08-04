@@ -1,6 +1,4 @@
-import {
-  RecvFlags
-} from '@zlink-systems/zlink';
+import { ZLINK_BACKEND_RECV_DONT_WAIT } from './runtime-values';
 import {
   operationRequiresReply,
   ReadyDomain,
@@ -124,7 +122,7 @@ export class ZLinkMeshDispatchPump {
     try {
       for (;;) {
         readyBatch.reset();
-        const drained = this.node.drainReady(domain, readyBatch, RecvFlags.DontWait);
+        const drained = this.node.drainReady(domain, readyBatch, ZLINK_BACKEND_RECV_DONT_WAIT);
         if (!drained.ok || drained.records.length === 0) {
           return;
         }
@@ -134,7 +132,7 @@ export class ZLinkMeshDispatchPump {
             receiveBatch.reset();
             for (;;) {
               if (budgetPaused(applicationBudget)) return;
-              const received = claim.recvBatch(receiveBatch, RecvFlags.DontWait);
+              const received = claim.recvBatch(receiveBatch, ZLINK_BACKEND_RECV_DONT_WAIT);
               if (!received.ok) {
                 break;
               }

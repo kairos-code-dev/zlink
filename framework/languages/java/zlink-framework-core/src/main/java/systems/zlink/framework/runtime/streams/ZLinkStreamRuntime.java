@@ -851,13 +851,16 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkMessage sessionPayload = ZLinkMessage.fromEncoded(
             ZLinkMessagePayloads.encoded(payloadCopy),
             serializer);
+        long payloadBytes = payloadCopy.size();
         payloadCopy.close();
         trace("stream-node dispatch-enqueue node=" + streamNode.name()
             + " routingId=" + routingId
             + " name=" + dispatchHeader.packetName()
             + " requestSeq=" + dispatchHeader.requestSequence().orElse(null)
             + " correlation=" + dispatchHeader.correlationId().orElse(null));
-        CompletionStage<Void> completion = state.queue().enqueue(() -> {
+        CompletionStage<Void> completion = state.queue().enqueueWithPayloadBytes(
+            payloadBytes,
+            () -> {
             if (lease != null) {
                 lease.handlerStarted();
             }

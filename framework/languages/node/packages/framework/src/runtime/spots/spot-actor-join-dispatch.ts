@@ -12,13 +12,13 @@ import { ZLinkBackendSpotDispatchEvent } from '../backend/contracts';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendActorRecvInfo,
-  ZLinkBackendSpot
+  ZLinkBackendReceived,
+  ZLinkBackendSpot,
+  ZLinkBackendTopicMessage
 } from '../backend/contracts';
 import type { Message } from '../../contracts/Common/Message';
-import type {
-  Message as BindingMessage,
-  RequestResult
-} from '@zlink-systems/zlink';
+import type { RequestResult } from '../backend/runtime-values';
+type RuntimeMessage = Message;
 import type {
   ZLinkRemoteBoundSessionTarget
 } from '../actors';
@@ -36,6 +36,7 @@ import {
 } from './spot-subscription-dispatch';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkApplicationWorkClaim } from '../admission';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 import type {
   ZLinkSpotActorTransferRuntime,
@@ -102,6 +103,8 @@ export interface ZLinkDetachedTaskRunner {
 
 interface ZLinkSpotActorJoinDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
+  readonly createReceived: () => ZLinkBackendReceived;
+  readonly createTopicMessage: () => ZLinkBackendTopicMessage;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly actors: ZLinkSpotActorAdmissionRuntime;
   readonly packets?: ZLinkSpotActorPacketRuntime;
@@ -109,6 +112,7 @@ interface ZLinkSpotActorJoinDispatchOptions {
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly claimApplicationWork?: () => ZLinkApplicationWorkClaim;
   readonly detachedTaskRunner?: ZLinkDetachedTaskRunner;
 }
 
@@ -155,6 +159,7 @@ export class ZLinkSpotActorJoinDispatch {
     });
     this.routedFrames = new ZLinkSpotRoutedFrameDispatch({
       nativeSpot: options.nativeSpot,
+      createReceived: options.createReceived,
       nativeSpotId: this.nativeSpotId,
       serial: options.serial,
       resolveActor: actors.resolveActor,
@@ -185,10 +190,12 @@ export class ZLinkSpotActorJoinDispatch {
       messageSerializers: options.messageSerializers,
       providerResolver: options.providerResolver,
       dispatchErrors: options.dispatchErrors,
+      claimApplicationWork: options.claimApplicationWork,
       waitIdle: waitSpotDispatchIdle
     });
     this.subscriptions = new ZLinkSpotSubscriptionDispatch({
       nativeSpot: options.nativeSpot,
+      createTopicMessage: options.createTopicMessage,
       serial: options.serial,
       getTarget: () => actors.getTarget() as ZLinkSpot,
       messageSerializers: options.messageSerializers,
@@ -205,7 +212,7 @@ export class ZLinkSpotActorJoinDispatch {
 
   async dispatchSubscriptionRecord(
     topic: string,
-    parts: readonly BindingMessage[],
+    parts: readonly RuntimeMessage[],
     sourceRid: RoutingId | null
   ): Promise<void> {
     await this.subscriptions.dispatchRecord(topic, parts, sourceRid);

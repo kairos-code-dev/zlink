@@ -628,7 +628,9 @@ service_topology_registry_t::select (const std::string &channel_name)
               "RouteMesh selection cumulative value is exhausted");
         }
         cumulative += static_cast<std::int64_t> (weight);
-        if (selected == nullptr || cumulative > selected_cumulative) {
+        if (selected == nullptr || cumulative > selected_cumulative
+            || (cumulative == selected_cumulative
+                && node_id < selected->descriptor.node_routing_id)) {
             selected = &peer->second;
             selected_cumulative = cumulative;
         }

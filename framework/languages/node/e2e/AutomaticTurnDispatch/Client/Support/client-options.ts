@@ -4,6 +4,7 @@ export interface ClientOptions {
   readonly scenario: string;
   readonly requestId?: string;
   readonly spotId?: string;
+  readonly shutdownScenarioId?: string;
 }
 
 export function parseClientOptions(value: unknown): ClientOptions {
@@ -14,7 +15,8 @@ export function parseClientOptions(value: unknown): ClientOptions {
     sessionBStreamEndpoint: required(values, 'sessionBStreamEndpoint'),
     scenario: optional(values, 'scenario') ?? 'full',
     requestId: optional(values, 'requestId'),
-    spotId: optional(values, 'spotId')
+    spotId: optional(values, 'spotId') ?? optional(values, 'spotRid'),
+    shutdownScenarioId: optional(values, 'shutdownScenarioId')
   };
 }
 

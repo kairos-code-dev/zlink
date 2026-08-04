@@ -3,17 +3,22 @@ package systems.zlink.framework.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.monitoring.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
@@ -216,6 +221,63 @@ final class ZLinkAsyncSerialQueueTest {
             .get(3, TimeUnit.SECONDS);
         assertTrue(queue.tryEnqueueRelocatable(
             new byte[1],
+            () -> CompletableFuture.completedFuture(null)));
+    }
+
+    @Test
+    void regularApplicationTurnsChargePayloadBytesAndEmptyTurnsUseCountCapacity()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            null,
+            false,
+            2,
+            10,
+            2,
+            10,
+            4,
+            2,
+            Duration.ofSeconds(1));
+        CompletableFuture<Void> active = new CompletableFuture<>();
+
+        queue.enqueueWithPayloadBytes(6, () -> active);
+        assertFalse(queue.tryEnqueueWithPayloadBytes(
+            0,
+            () -> CompletableFuture.completedFuture(null)));
+
+        active.complete(null);
+        queue.awaitQuiescence().toCompletableFuture()
+            .get(3, TimeUnit.SECONDS);
+        assertTrue(queue.tryEnqueueWithPayloadBytes(
+            0,
+            () -> CompletableFuture.completedFuture(null)));
+    }
+
+    @Test
+    void unrepresentablePayloadCostCompletesWithCapacityExceeded() {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue(
+            null,
+            false,
+            2,
+            Long.MAX_VALUE,
+            2,
+            Long.MAX_VALUE,
+            4,
+            2,
+            Duration.ofSeconds(1));
+
+        CompletionException failure = assertThrows(
+            CompletionException.class,
+            () -> queue.enqueueWithPayloadBytes(
+                Long.MAX_VALUE,
+                () -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture()
+                .join());
+        ZLinkFrameworkException error = assertInstanceOf(
+            ZLinkFrameworkException.class,
+            failure.getCause());
+        assertEquals(ZLinkFrameworkErrorKind.CAPACITY_EXCEEDED, error.kind());
+        assertFalse(queue.tryEnqueueWithPayloadBytes(
+            Long.MAX_VALUE,
             () -> CompletableFuture.completedFuture(null)));
     }
 

@@ -2557,11 +2557,11 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.equal(routeRequests[0].packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.packetName, '__zlink.actor.packet.relay');
   assert.equal(routeRequests[0].request.actorId, 'actor-remote');
-  assert.equal(routeRequests[0].request.returnResponse, true);
-  assert.equal(routeRequests[0].request.messageFollowContext.request, true);
+  assert.equal(routeRequests[0].request.returnResponse, false);
+  assert.equal(routeRequests[0].request.messageFollowContext.request, false);
   assert.equal(routeRequests[0].request.messageFollowContext.objectGeneration, '7');
   assert.equal(typeof routeRequests[0].request.messageFollowContext.correlationId, 'string');
-  assert.equal(routeRequests[0].request.messageFollowContext.replyRouteId.length > 0, true);
+  assert.equal(routeRequests[0].request.messageFollowContext.replyRouteId, undefined);
   assert.match(
     routeRequests[0].request.messageFollowContext.payloadChecksumSha256,
     /^[0-9a-f]{64}$/
@@ -2661,6 +2661,12 @@ test('runtime host completes local bound actor request without native SessionRel
   const stream = recordingStream('session-local-actor', 'session-node');
   const state = new framework.ZLinkActorRuntimeState(actorRef.actorId);
   const dispatches = [];
+  let releaseDispatch;
+  const dispatchCanComplete = new Promise((resolve) => { releaseDispatch = resolve; });
+  let dispatchStarted;
+  const dispatchDidStart = new Promise((resolve) => { dispatchStarted = resolve; });
+  let dispatchCompleted;
+  const dispatchDidComplete = new Promise((resolve) => { dispatchCompleted = resolve; });
   state.setNativeActorRef(actorRef);
   state.setJoinedSpot('play-node');
   const host = new framework.ZLinkFrameworkRuntimeHost({
@@ -2690,6 +2696,9 @@ test('runtime host completes local bound actor request without native SessionRel
         header: protocolCodecs.ZlinkStreamHeaderCodec.decode(bytesOf(parts[0])),
         payload: JSON.parse(new TextDecoder().decode(bytesOf(parts[1])))
       });
+      dispatchStarted();
+      await dispatchCanComplete;
+      dispatchCompleted();
       return { joined: true };
     }
   });
@@ -2705,9 +2714,15 @@ test('runtime host completes local bound actor request without native SessionRel
     metadata: connector.ZlinkStreamMetadataMap.empty
   });
   try {
-    await actor.relay(framework.ZLinkMessage.fromEncoded(
+    const relaying = actor.relay(framework.ZLinkMessage.fromEncoded(
       framework.ZLinkEncodedPayload.from(Buffer.from(JSON.stringify({ roomId: 'room-a' })))
     ));
+    await dispatchDidStart;
+    await relaying;
+    assert.equal(stream.writes.length, 0);
+    releaseDispatch();
+    await dispatchDidComplete;
+    await new Promise((resolve) => setImmediate(resolve));
   } finally {
     context.exitDispatch();
   }

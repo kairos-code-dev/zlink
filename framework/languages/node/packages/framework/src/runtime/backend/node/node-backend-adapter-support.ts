@@ -1,5 +1,6 @@
 import { loadBinding } from '../node-backend-adapter';
 import type { ZLinkBackendObject } from '../contracts';
+import { ZLinkBackendResultError } from '../runtime-values';
 
 export type ZLinkBindingModule = typeof import('@zlink-systems/zlink');
 export const zlink = loadBinding() as ZLinkBindingModule;
@@ -206,7 +207,7 @@ function appendOperationParts(operation: unknown, payload: unknown): ZLinkBindin
     if (!hasOperationMethod(current, 'message')) {
       throw new TypeError('Binding operation does not expose message().');
     }
-    current = current.message(part);
+    current = current.message(toNativeMessageLike(part));
   }
   return current as ZLinkBindingOperation;
 }
@@ -231,6 +232,10 @@ export function isRouteRecvRetryable(error: unknown): boolean {
       isNativeBadAddress(error));
 }
 
+export function isPollerInterruptedError(error: unknown): boolean {
+  return error instanceof zlink.RecvError && error.nativeErrno === 4;
+}
+
 function isNativeBadAddress(error: { nativeErrno?: unknown; message?: unknown }): boolean {
   return error.nativeErrno === 14 || /Bad address/i.test(String(error.message ?? ''));
 }
@@ -240,15 +245,19 @@ export function submitBindingSend(
   payload: unknown,
   flags: number
 ): boolean {
-  let current = operation;
-  if (Array.isArray(payload)) {
-    for (const part of payload) {
-      current = current.message(part);
+  try {
+    let current = operation;
+    if (Array.isArray(payload)) {
+      for (const part of payload) {
+        current = current.message(toNativeMessageLike(part));
+      }
+    } else {
+      current = current.message(toNativeMessageLike(payload));
     }
-  } else {
-    current = current.message(payload);
+    return current.flags(flags).submit();
+  } catch (error) {
+    throw translateBindingResultError(error);
   }
-  return current.flags(flags).submit();
 }
 
 export function submitBindingRequestCallback(
@@ -258,22 +267,27 @@ export function submitBindingRequestCallback(
   flags: number,
   timeoutMs: number | undefined
 ): boolean {
-  let current: ZLinkBindingRequestSubmitOperation | undefined;
-  if (Array.isArray(payload)) {
-    for (const part of payload) {
-      current = current === undefined ? operation.message(part) : current.message(part);
+  try {
+    let current: ZLinkBindingRequestSubmitOperation | undefined;
+    if (Array.isArray(payload)) {
+      for (const part of payload) {
+        const nativePart = toNativeMessageLike(part);
+        current = current === undefined ? operation.message(nativePart) : current.message(nativePart);
+      }
+    } else {
+      current = operation.message(toNativeMessageLike(payload));
     }
-  } else {
-    current = operation.message(payload);
+    current ??= operation.message(Buffer.alloc(0));
+    if (timeoutMs !== undefined) {
+      current = current.timeout(timeoutMs);
+    }
+    if (flags !== 0) {
+      return current.flags(flags).submit(callback);
+    }
+    return current.submit(callback);
+  } catch (error) {
+    throw translateBindingResultError(error);
   }
-  current ??= operation.message(Buffer.alloc(0));
-  if (timeoutMs !== undefined) {
-    current = current.timeout(timeoutMs);
-  }
-  if (flags !== 0) {
-    return current.flags(flags).submit(callback);
-  }
-  return current.submit(callback);
 }
 
 export function submitBindingRequest<TParts extends unknown[]>(
@@ -347,7 +361,34 @@ export function disableSocketLinger(target: unknown): void {
 }
 
 export function toNativeRoutingId(routingId: unknown): unknown {
-  return typeof routingId === 'string' ? zlink.RoutingId.from(routingId) : routingId;
+  if (typeof routingId === 'string') return zlink.RoutingId.from(routingId);
+  const toHex = (routingId as { readonly toHex?: unknown } | null)?.toHex;
+  return typeof toHex === 'function'
+    ? zlink.RoutingId.fromHex(toHex.call(routingId))
+    : routingId;
+}
+
+function toNativeMessageLike(message: unknown): unknown {
+  if (message instanceof zlink.Message || Buffer.isBuffer(message)
+      || message instanceof Uint8Array || typeof message === 'string') {
+    return message;
+  }
+  const data = (message as { readonly data?: unknown } | null)?.data;
+  if (typeof data === 'function') {
+    const bytes = data.call(message);
+    if (bytes instanceof Uint8Array) return Buffer.from(bytes);
+  }
+  return message;
+}
+
+function translateBindingResultError(error: unknown): unknown {
+  if (error instanceof zlink.SubmitError) {
+    return new ZLinkBackendResultError('submit', error.result, error.nativeErrno, { cause: error });
+  }
+  if (error instanceof zlink.RequestError) {
+    return new ZLinkBackendResultError('request', error.result, error.nativeErrno, { cause: error });
+  }
+  return error;
 }
 
 export function toNativeActorRef(actor: unknown): unknown {

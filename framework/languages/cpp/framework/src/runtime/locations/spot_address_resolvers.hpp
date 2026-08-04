@@ -25,6 +25,7 @@ struct spot_address_t
     std::uint64_t object_generation = 0;
     std::uint64_t authority_owner_generation = 0;
     location_owner_token_t owner;
+    std::uint64_t node_generation = 0;
 };
 
 class spot_address_resolver_t
@@ -34,6 +35,13 @@ class spot_address_resolver_t
     virtual task_t<std::optional<spot_address_t>>
     resolve_spot_address (std::string mesh_name, std::string spot_id) = 0;
     virtual void invalidate_spot_address (std::string_view spot_id) = 0;
+    virtual bool invalidate_spot_address_if_matches (
+      std::string_view spot_id, const spot_address_t &expected)
+    {
+        (void) spot_id;
+        (void) expected;
+        return false;
+    }
     virtual void invalidate_all_routes_after_store_recovery () = 0;
 };
 
@@ -43,6 +51,17 @@ class actor_address_resolver_t
     virtual ~actor_address_resolver_t () = default;
     virtual task_t<std::optional<spot_address_t>>
     resolve_actor_address (std::string actor_id) = 0;
+    virtual void invalidate_actor_address (std::string_view actor_id)
+    {
+        (void) actor_id;
+    }
+    virtual bool invalidate_actor_address_if_matches (
+      std::string_view actor_id, const spot_address_t &expected)
+    {
+        (void) actor_id;
+        (void) expected;
+        return false;
+    }
 };
 
 } // namespace zlink::framework::runtime

@@ -4,6 +4,7 @@
 #include "runtime/channels/channel_runtime.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/dispatch/receive_batch_budget.hpp"
+#include "runtime/eventing/runtime_wake_pipe.hpp"
 #include "runtime/fanout/raw_fanout_owner.hpp"
 #include "runtime/locations/location_runtime.hpp"
 
@@ -11,6 +12,7 @@
 #include <zlink/framework/contracts/configuration/services.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
+#include <zlink/Contracts/Eventing/poller.hpp>
 
 #include <atomic>
 #include <map>
@@ -61,6 +63,7 @@ class fanout_location_runtime_t
     void reconcile_subscriber (
       subscriber_entry_t &subscriber);
     void pump ();
+    void wait_for_activity (std::chrono::milliseconds timeout) noexcept;
     void stop_publishers () noexcept;
     void stop_subscribers () noexcept;
     result_t<void> publish (
@@ -83,6 +86,8 @@ class fanout_location_runtime_t
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
+    std::unique_ptr<zlink::poller_t> _subscriber_poller;
+    eventing::runtime_wake_pipe_t _wake_pipe;
     mutable std::mutex _gate;
     std::map<std::string, std::unique_ptr<publisher_entry_t>>
       _publishers;

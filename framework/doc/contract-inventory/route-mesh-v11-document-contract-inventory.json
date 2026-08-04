@@ -384,7 +384,7 @@
         "09-session-binding.ko.md",
         "10-liveness-and-state.ko.md",
         "11-message-ownership.ko.md",
-        "service-wire-protocol.ko.md"
+        "12-service-wire-protocol.ko.md"
       ],
       "readme_required_fragments": [
         "Framework 공통 내부 구조",
@@ -419,7 +419,7 @@
           "framework가 추가로 만드는 복사는 0",
           "raw byte"
         ],
-        "service-wire-protocol.ko.md": [
+        "12-service-wire-protocol.ko.md": [
           "schema가 command ID",
           "`livenessProbe`"
         ]
@@ -528,7 +528,7 @@
   },
   "formal_documents": [
     {
-      "path": "framework/doc/framework/common/internals/service-wire-protocol.ko.md",
+      "path": "framework/doc/framework/common/internals/12-service-wire-protocol.ko.md",
       "required_fragments": [
         "`livenessProbe`",
         "`livenessAck`",

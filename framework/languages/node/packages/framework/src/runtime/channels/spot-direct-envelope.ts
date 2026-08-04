@@ -1,7 +1,5 @@
-import type {
-  Message,
-  MessageLike
-} from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkBackendMessageLike as MessageLike } from '../backend/runtime-values';
 import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkChannelMessageKind } from './channel-envelope';
 

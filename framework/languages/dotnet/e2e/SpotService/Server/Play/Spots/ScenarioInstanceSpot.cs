@@ -1,4 +1,5 @@
 using SpotService.Shared;
+using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
 
 namespace SpotService.Server.Play.Spots;
@@ -20,8 +21,10 @@ internal sealed class ScenarioInstanceSpot(
         ZLinkSpotClosingContext context,
         CancellationToken cleanupCancellationToken)
     {
-        _ = context;
         cleanupCancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"instance-closing|rid={evidence.Rid}|spot={Context.SpotId}"
+            + $"|reason={context.Reason}");
         return ValueTask.CompletedTask;
     }
 }
@@ -43,3 +46,45 @@ internal sealed class ScenarioInstanceStateHandler(EvidenceStore evidence)
             0));
     }
 }
+
+[ZLinkSpotRequestHandler("InstanceColdRequest")]
+internal sealed class ScenarioInstanceColdRequestHandler(EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioInstanceSpot, InstanceColdRequest, InstanceColdRequestReply>
+{
+    public ValueTask<InstanceColdRequestReply> HandleAsync(
+        ScenarioInstanceSpot spot,
+        InstanceColdRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"instance-request|rid={evidence.Rid}|spot={spot.Context.SpotId}"
+            + $"|operation={request.OperationId}");
+        return ValueTask.FromResult(new InstanceColdRequestReply(
+            spot.Context.SpotId,
+            request.OperationId,
+            spot.Context.NodeRid.ToString()));
+    }
+}
+
+[ZLinkSpotPacketHandler("InstanceColdSend")]
+internal sealed class ScenarioInstanceColdSendHandler(EvidenceStore evidence)
+    : IZLinkSpotPacketHandler<ScenarioInstanceSpot, InstanceColdSend>
+{
+    public ValueTask HandleAsync(
+        ScenarioInstanceSpot spot,
+        InstanceColdSend message,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"instance-send|rid={evidence.Rid}|spot={spot.Context.SpotId}"
+            + $"|operation={message.OperationId}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed record InstanceColdRequestReply(
+    string SpotId,
+    string OperationId,
+    string NodeRid);

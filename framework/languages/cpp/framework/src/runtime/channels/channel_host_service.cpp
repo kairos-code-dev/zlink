@@ -4,10 +4,13 @@
 #include "runtime/configuration/service_scope.hpp"
 
 #include "runtime/channels/channel_packet_dispatcher.hpp"
+#include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/channel_socket_options.hpp"
 #include "runtime/channels/socket_monitor_event.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
+#include "runtime/dispatch/offload_executor.hpp"
 
 #include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink/Contracts/Core/context.hpp>
@@ -27,7 +30,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <mutex>
@@ -78,6 +80,13 @@ class channel_host_service_t::server_loop_t
         for (const auto &endpoint : _endpoints) {
             _router->bind (endpoint);
         }
+        const auto hardware_workers = static_cast<std::size_t> (
+          std::max (1u, std::thread::hardware_concurrency ()));
+        const auto max_handler_workers = std::max<std::size_t> (
+          1, std::min<std::size_t> (hardware_workers, 8));
+        _handler_executor = std::make_unique<offload_executor_t> (
+          0, max_handler_workers, dispatch_limits::application_mailbox_messages,
+          std::chrono::milliseconds (100), "zlink-channel-server");
         _poller.add (*_router, zlink::poll_event_flag_t::pollin, 1);
         _poller.add (_monitor, zlink::poll_event_flag_t::pollin, 2);
     }
@@ -89,10 +98,6 @@ class channel_host_service_t::server_loop_t
         while (!_stop->load (std::memory_order_acquire)) {
             apply_runtime_options ();
             flush_replies ();
-            if (!_inbound_budget->wait_for_application_capacity (
-                  [this] { return _stop->load (std::memory_order_acquire); })) {
-                break;
-            }
             zlink::poll_event_t readiness;
             std::size_t ready_count = 0;
             try {
@@ -134,14 +139,18 @@ class channel_host_service_t::server_loop_t
             }
             dispatch_async (std::move (received));
         }
-        join_workers ();
+        if (_handler_executor) {
+            _handler_executor->drain ();
+        }
         flush_replies ();
         drain_monitor_events ();
     }
 
     void stop () noexcept
     {
-        join_workers ();
+        if (_handler_executor) {
+            _handler_executor->drain ();
+        }
         flush_replies ();
         try {
             _poller.close ();
@@ -169,7 +178,6 @@ class channel_host_service_t::server_loop_t
             catch (...) {
             }
         }
-        join_workers ();
         clear_replies ();
         if (_router) {
             _router.reset ();
@@ -216,11 +224,12 @@ class channel_host_service_t::server_loop_t
             ? static_cast<std::uint64_t> (request_parts[1].size ())
             : 0;
         _inbound_budget->received (payload_bytes);
-        try {
-          std::lock_guard<std::mutex> lock (_workers_mutex);
-          _workers.emplace_back ([this, routing_id = std::move (routing_id), request_seq,
-                                  payload_bytes,
-                                  request_parts = std::move (request_parts)] () mutable {
+        auto shared_parts = std::make_shared<
+          zlink::framework::runtime::messaging::message_parts_t> (
+            std::move (request_parts));
+        const auto rejection_routing_id = routing_id;
+        auto work = [this, routing_id = std::move (routing_id), request_seq,
+                     payload_bytes, shared_parts] () mutable {
             auto completion_permit =
               request_seq ? _completion_admission->acquire ()
                           : completion_admission_owner_t::permit_t{};
@@ -234,7 +243,7 @@ class channel_host_service_t::server_loop_t
             auto scope = detail::service_scope_t::create (
               *_services, detail::service_scope_kind_t::handler_invocation);
             auto reply = dispatcher.dispatch_server_message (
-              _channel_name, request_parts, scope.provider (), *_serializers, *_handlers);
+              _channel_name, *shared_parts, scope.provider (), *_serializers, *_handlers);
             if (!reply || reply.value ().size () == 0 || !routing_id || !request_seq) {
                 _inbound_budget->completed (payload_bytes, true);
                 return;
@@ -248,12 +257,41 @@ class channel_host_service_t::server_loop_t
             catch (...) {
                 _inbound_budget->completed (payload_bytes, true);
             }
-          });
-        }
-        catch (...) {
+        };
+        if (!_handler_executor || !_handler_executor->try_submit (std::move (work))) {
             _inbound_budget->completed (payload_bytes, false);
-            throw;
+            if (request_seq) {
+                queue_capacity_reply (rejection_routing_id, *request_seq, *shared_parts);
+            }
         }
+    }
+
+    void queue_capacity_reply (const std::optional<zlink::routing_id_t> &routing_id,
+                               std::uint64_t request_seq,
+                               const zlink::framework::runtime::messaging::message_parts_t &parts)
+    {
+        if (!routing_id || request_seq == 0) {
+            return;
+        }
+        auto request = runtime::messaging::envelope_codec_t{}.decode_header (parts);
+        if (!request || request.value ().kind != runtime::messaging::message_kind_t::request) {
+            return;
+        }
+        framework_exception_t error (
+          framework_error_kind_t::capacity_exceeded,
+          "channel application dispatch queue is full");
+        detail::channel_reply_writer_t writer;
+        auto reply = writer.reply_raw_envelope (
+          writer.create_error_header (_channel_name, request.value (), error),
+          zlink::message_t::from (""));
+        if (reply.size () == 0) {
+            return;
+        }
+        std::lock_guard<std::mutex> reply_lock (_replies_mutex);
+        if (_replies.size () >= dispatch_limits::control_mailbox_messages) {
+            return;
+        }
+        _replies.push_back (completed_reply_t{routing_id, request_seq, std::move (reply), {}});
     }
 
     void reply (const completed_reply_t &completed)
@@ -297,17 +335,6 @@ class channel_host_service_t::server_loop_t
                 std::cerr << "zlink framework channel late reply ignored\n";
             }
         }
-    }
-
-    void join_workers () noexcept
-    {
-        std::lock_guard<std::mutex> lock (_workers_mutex);
-        for (auto &worker : _workers) {
-            if (worker.joinable ()) {
-                worker.join ();
-            }
-        }
-        _workers.clear ();
     }
 
     void clear_replies () noexcept
@@ -403,8 +430,7 @@ class channel_host_service_t::server_loop_t
     zlink::poller_t _poller;
     std::set<std::string> _pending_handshake_remotes;
     std::optional<int> _applied_peer_weight;
-    std::mutex _workers_mutex;
-    std::vector<std::thread> _workers;
+    std::unique_ptr<offload_executor_t> _handler_executor;
     std::mutex _replies_mutex;
     std::deque<completed_reply_t> _replies;
 };
@@ -437,6 +463,13 @@ class channel_host_service_t::subscriber_loop_t
         detail::apply_common_channel_socket_options (*_subscriber, _capability);
         _subscriber->set_subscription ("");
         apply_runtime_connections ();
+        const auto hardware_workers = static_cast<std::size_t> (
+          std::max (1u, std::thread::hardware_concurrency ()));
+        const auto max_handler_workers = std::max<std::size_t> (
+          1, std::min<std::size_t> (hardware_workers, 8));
+        _handler_executor = std::make_unique<offload_executor_t> (
+          0, max_handler_workers, dispatch_limits::application_mailbox_messages,
+          std::chrono::milliseconds (100), "zlink-channel-subscriber");
         _poller.add (*_subscriber, zlink::poll_event_flag_t::pollin, 1);
     }
 
@@ -446,10 +479,6 @@ class channel_host_service_t::subscriber_loop_t
     {
         while (!_stop->load (std::memory_order_acquire)) {
             apply_runtime_connections ();
-            if (!_inbound_budget->wait_for_application_capacity (
-                  [this] { return _stop->load (std::memory_order_acquire); })) {
-                break;
-            }
             zlink::poll_event_t readiness;
             std::size_t ready_count = 0;
             try {
@@ -478,11 +507,13 @@ class channel_host_service_t::subscriber_loop_t
             }
             dispatch_async (std::move (message));
         }
-        join_workers ();
     }
 
     void stop () noexcept
     {
+        if (_handler_executor) {
+            _handler_executor->drain ();
+        }
         try {
             _poller.close ();
         }
@@ -502,7 +533,6 @@ class channel_host_service_t::subscriber_loop_t
             catch (...) {
             }
         }
-        join_workers ();
         if (_subscriber) {
             _subscriber.reset ();
         }
@@ -538,40 +568,24 @@ class channel_host_service_t::subscriber_loop_t
             ? static_cast<std::uint64_t> (parts[1].size ())
             : 0;
         _inbound_budget->received (payload_bytes);
-        try {
-          std::lock_guard<std::mutex> lock (_workers_mutex);
-          _workers.emplace_back ([this, payload_bytes,
-                                  parts = std::move (parts)] () mutable {
+        auto shared_parts = std::make_shared<
+          zlink::framework::runtime::messaging::message_parts_t> (std::move (parts));
+        auto work = [this, payload_bytes, shared_parts] () mutable {
             _inbound_budget->handler_started (payload_bytes);
             try {
             detail::channel_packet_dispatcher_t dispatcher (_runtime);
             auto scope = detail::service_scope_t::create (
               *_services, detail::service_scope_kind_t::handler_invocation);
-            (void) dispatcher.dispatch_server_message (_channel_name, parts, scope.provider (),
+            (void) dispatcher.dispatch_server_message (_channel_name, *shared_parts,
+                                                       scope.provider (),
                                                        *_serializers, *_handlers);
             }
             catch (...) {
             }
             _inbound_budget->completed (payload_bytes, true);
-          });
-        }
-        catch (...) {
+        };
+        if (!_handler_executor || !_handler_executor->try_submit (std::move (work))) {
             _inbound_budget->completed (payload_bytes, false);
-            throw;
-        }
-    }
-
-    void join_workers ()
-    {
-        std::vector<std::thread> workers;
-        {
-            std::lock_guard<std::mutex> lock (_workers_mutex);
-            workers.swap (_workers);
-        }
-        for (auto &worker : workers) {
-            if (worker.joinable ()) {
-                worker.join ();
-            }
         }
     }
 
@@ -614,8 +628,7 @@ class channel_host_service_t::subscriber_loop_t
     std::unique_ptr<zlink::sub_socket_t> _subscriber;
     zlink::poller_t _poller;
     std::set<std::string> _connected;
-    std::mutex _workers_mutex;
-    std::vector<std::thread> _workers;
+    std::unique_ptr<offload_executor_t> _handler_executor;
 };
 
 channel_host_service_t::channel_host_service_t (message_bus_t bus,

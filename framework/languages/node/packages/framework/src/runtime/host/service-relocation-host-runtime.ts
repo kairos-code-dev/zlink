@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SubmitResult } from '@zlink-systems/zlink';
+import { SubmitResult } from '../backend/runtime-values';
 import type {
   RoutingId,
   Type,

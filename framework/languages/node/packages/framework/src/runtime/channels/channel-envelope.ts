@@ -1,4 +1,5 @@
-import { Message, type MessageLike } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkBackendMessageLike as MessageLike } from '../backend/runtime-values';
 import { randomUUID } from 'node:crypto';
 import {
   ZLinkFrameworkErrorKind,
@@ -7,14 +8,19 @@ import {
   type ZLinkMessageSerializer,
   type ZLinkFlowOrigin
 } from '../../contracts';
+import { borrowEncodedPayload } from '../../contracts/Common/encoded-payload-storage';
 import { ZLinkConfigurationException } from '../configuration';
 import {
   ZLinkFrameworkInternalErrorKind,
   createInternalFrameworkException
 } from '../framework-errors-internal';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
-import { selectSerializer } from '../messaging/payload-codec';
+import {
+  contentTypeForSerializer,
+  selectSerializer
+} from '../messaging/payload-codec';
 import { currentOrCreateFlow } from '../diagnostics/flow-context';
+import { codecsForFrameworkPacket } from './channel-framework-packets';
 
 export const ZLINK_CHANNEL_FORMAT_MARKER = 0xf2;
 
@@ -72,14 +78,15 @@ export function encodeChannelEnvelopeParts(
   createFlow = true,
   metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs);
+  const messageName = resolveFrameworkPacketName(payload, packetName, 'Channel');
+  const encoded = encodePayload(payload, codecsForFrameworkPacket(messageName, codecs));
   const flow = currentOrCreateFlow('Application', createFlow);
   const envelopeCorrelationId = correlationIdForOutboundKind(kind, correlationId);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind,
     channelName,
-    messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
+    messageName,
     contentType: encoded.contentType,
     correlationId: envelopeCorrelationId,
     deadline: timeoutMs === undefined ? null : new Date(Date.now() + timeoutMs).toISOString(),
@@ -101,13 +108,14 @@ export function encodeChannelPublishEnvelopeParts(
   createFlow = true,
   metadata: ReadonlyMap<string, string> = new Map()
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload, codecs);
+  const messageName = resolveFrameworkPacketName(payload, packetName, 'Channel');
+  const encoded = encodePayload(payload, codecsForFrameworkPacket(messageName, codecs));
   const flow = currentOrCreateFlow('Application', createFlow);
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Publish,
     channelName,
-    messageName: resolveFrameworkPacketName(payload, packetName, 'Channel'),
+    messageName,
     contentType: encoded.contentType,
     correlationId: null,
     deadline: null,
@@ -125,7 +133,10 @@ export function encodeChannelReplyParts(
   payload: unknown,
   codecs?: ZLinkChannelEnvelopeCodecRegistry
 ): readonly MessageLike[] {
-  const encoded = encodePayload(payload ?? Buffer.alloc(0), codecs);
+  const encoded = encodePayload(
+    payload ?? Buffer.alloc(0),
+    codecsForFrameworkPacket(request.messageName, codecs)
+  );
   const header: ZLinkChannelEnvelopeHeader = {
     formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
     kind: ZLinkChannelMessageKind.Response,
@@ -279,7 +290,11 @@ function encodePayload(
   const serializer = selectSerializer(value, codecs);
   if (serializer !== undefined && !(Buffer.isBuffer(value) || value instanceof Uint8Array || isMessage(value))) {
     const contentType = requireDefaultSerializerContentType(codecs, serializer);
-    return { contentType, message: serializer.serialize(value).data() };
+    const payload = serializer.serialize(value);
+    return {
+      contentType,
+      message: borrowEncodedPayload(payload) ?? payload.data()
+    };
   }
   return { contentType: contentTypeOf(value), message: toMessageLike(value) };
 }
@@ -334,15 +349,13 @@ function requireDefaultSerializerContentType(
   codecs: ZLinkChannelEnvelopeCodecRegistry | undefined,
   serializer: ZLinkMessageSerializer
 ): string {
-  if (codecs === undefined) {
-    throw new ZLinkConfigurationException('Channel payload serializer registry is unavailable.');
+  const contentType = contentTypeForSerializer(serializer, codecs);
+  if (contentType === undefined) {
+    throw new ZLinkConfigurationException(
+      'Channel payload serializer is not registered under a content type.'
+    );
   }
-  for (const [contentType, registered] of codecs.serializers.entries()) {
-    if (registered === serializer) {
-      return contentType;
-    }
-  }
-  throw new ZLinkConfigurationException('Channel payload serializer is not registered under a content type.');
+  return contentType;
 }
 
 function parseWireJson(payload: string): unknown {

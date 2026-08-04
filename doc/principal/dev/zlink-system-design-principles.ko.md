@@ -1,6 +1,6 @@
 # ZLink 시스템 개발 원칙
 
-> [`general-design-principles.ko.md`](./general-design-principles.ko.md)의 범용 설계 원칙을
+> [POSDDD](./posddd.ko.md)의 범용 설계 원칙을
 > ZLink 코어·바인딩, 그리고 ZLink 위에서 만드는 애플리케이션에 적용하는 규칙.
 > 범용 원칙과 충돌하지 않는다 — 여기서는 ZLink 고유의 적용 방식, 개념·계약 어휘, 시스템
 > 소프트웨어에만 해당하는 규칙만 다룬다.
@@ -8,15 +8,19 @@
 > 공개 계약의 언어 간 정렬(parity) 정책은 `AGENTS.md`의 "Framework public contract parity"가
 > 정본이다. 여기서는 그 정책을 설계 원칙 관점에서 어떻게 지키는지만 다룬다 — 정책 자체가
 > 바뀌면 `AGENTS.md`를 고친다.
+>
+> **독자**: ZLink 코어·바인딩을 만들거나, ZLink 위에서 애플리케이션을 만드는 개발자다.
+> "이 상황에 범용 설계 원칙을 ZLink에서는 구체적으로 어떻게 적용하는가"라는 질문에
+> 대한 답을 찾는다.
 
-이 문서는 세 부분으로 나뉜다.
+이 문서는 다음 부분으로 나뉜다.
 
-1. **원칙의 ZLink 적용** — 범용 원칙(특히 아키텍처 선택)을 ZLink 코어와 ZLink 기반
-   애플리케이션 각각에 어떻게 적용하는지.
-2. **ZLink 고유 개념과 계약** — RoutingId·handle·public contract처럼 이 코드베이스에서만
-   쓰이는 어휘와, 그 어휘가 지켜야 하는 계약.
-3. **시스템 소프트웨어 전용 규칙** — 헤더/구현 분리처럼 시스템 소프트웨어에만 해당하는 구체
-   규칙.
+- **원칙의 ZLink 적용** — 범용 원칙(특히 아키텍처 선택)을 ZLink 코어와 ZLink 기반
+  애플리케이션 각각에 어떻게 적용하는지.
+- **ZLink 고유 개념과 계약** — RoutingId·handle·public contract처럼 이 코드베이스에서만
+  쓰이는 어휘와, 그 어휘가 지켜야 하는 계약.
+- **시스템 소프트웨어 전용 규칙** — 헤더/구현 분리처럼 시스템 소프트웨어에만 해당하는 구체
+  규칙.
 
 ---
 
@@ -24,7 +28,7 @@
 
 ## 아키텍처 선택 적용
 
-범용 문서 3부는 헥사고날과 레이어드+public contract/runtime 분리를 "선택지"로 설명한다.
+범용 문서 2부는 헥사고날과 레이어드+public contract/runtime 분리를 "선택지"로 설명한다.
 ZLink 생태계에서는 대상에 따라 아래처럼 확정한다.
 
 **ZLink 코어·바인딩 자체 (시스템 소프트웨어) → 레이어드 + public contract/runtime 분리.**
@@ -48,9 +52,51 @@ ZLink 생태계에서는 대상에 따라 아래처럼 확정한다.
 +--------------------------------+
 ```
 
+이 분리는 core 하나로 끝나지 않는다. core·bindings·framework 세 경계가 같은 패턴을
+독립적으로 반복한다 — 각 layer는 아래 layer의 **배포된 공개 표면**만 알고, 아래 layer의
+runtime 내부는 모른다.
+
+```text
++---------------------------------+
+| framework/languages/<lang>      |
+|  Public Contract  |  Runtime    |
++---------------------------------+
+    depends on published package
+    (NuGet, npm, Maven — 소스 참조 아님)
+              v
++---------------------------------+
+| bindings/<lang>                 |
+|  Public Contract  |  Runtime    |
++---------------------------------+
+    depends on published artifact
+    (설치된 헤더 + 공유 라이브러리 — core/src 아님)
+              v
++---------------------------------+
+| core                            |
+|  Public Contract  |  Runtime    |
+|  (core/include/)  | (core/src/) |
++---------------------------------+
+```
+
+- **core**: `core/include/`(공개 헤더, `zlink.h`가 단일 기준)가 public contract이고
+  `core/src/`가 runtime이다. `core/src/`를 직접 포함하는 코드는 core 밖에 없다.
+- **bindings/&lt;lang&gt;**: core의 공개 헤더와 빌드된 공유 라이브러리(패키지로 배포된 것)에만
+  의존한다. 바인딩 자신도 내부적으로 공개 표면(Contracts)과 구현(Runtime)을 나눈다 — .NET
+  바인딩의 분리가 다른 언어 바인딩이 수렴해야 할 기준이다.
+- **framework/languages/&lt;lang&gt;**: 바인딩의 소스가 아니라 배포된 패키지(NuGet
+  `Systems.Zlink`, npm `@zlink-systems/zlink`, Maven `systems.zlink:zlink`)에 의존한다.
+  바인딩 내부 구현을 참조하는 framework 코드는 없다.
+
 **ZLink를 사용해 만드는 애플리케이션(샘플, 게임 서버 등) → 헥사고날.** 업무 규칙과 use case가
-ZLink·Redis·HTTP 같은 구체 기술보다 오래 살아야 하기 때문이다. 소스 구조에서는 adapter 구현을
-application 안에 넣지 않는다.
+ZLink·Redis·HTTP 같은 구체 기술보다 오래 살아야 하기 때문이다.
+
+샘플 자체의 로직은 단순해서 헥사고날 없이도 충분히 동작한다. 그런데도 샘플에 이 구조를
+쓰는 이유는, 샘플이 보여줘야 하는 것이 "ZLink API를 어떻게 부르는가"만이 아니기 때문이다.
+이 문서는 프레임워크 사용법뿐 아니라 그 프레임워크를 실제 애플리케이션에 배치하는
+아키텍처 패턴까지 함께 가이드한다 — 독자가 이 구조를 그대로 복제해서 시작하면, 코드가
+커지면서 업무 규칙에 ZLink 호출이 뒤섞이는 상황을 처음부터 피하게 된다.
+
+소스 구조에서는 adapter 구현을 application 안에 넣지 않는다.
 
 ```text
 Server/<role>/
@@ -109,7 +155,7 @@ wiring·codec 세부는 계약에 새지 않게 숨긴다. 레이어드 구조�
 
 # 2부 — ZLink 고유 개념과 계약
 
-## 도메인은 시스템 개념이다
+## 시스템 소프트웨어의 도메인
 
 엔터프라이즈 소프트웨어의 도메인이 주문·결제·고객 같은 업무 개념이라면, ZLink 코어의 도메인은
 context·handle·socket·message·buffer·ownership·lifecycle·timeout·error code처럼 사용자가
@@ -117,25 +163,34 @@ context·handle·socket·message·buffer·ownership·lifecycle·timeout·error c
 
 ## 시스템 이벤트 스토밍 어휘
 
-ZLink 코어·바인딩에 새 기능을 설계할 때는 업무 사건 대신 상태 전이·계약 사건을 먼저 적는다.
+이벤트 스토밍(범용 원칙 문서의 "두 번 설계하기" 참고)은 인터페이스를 스케치하기
+전에 "무슨 일이 일어나는가"를 사건으로 먼저 적는 발견 기법이다. ZLink 코어·바인딩에
+새 기능을 설계할 때는 업무 사건 대신 상태 전이·계약 사건을 먼저 적는다. 아래는 사건
+이름을 짓는 방식을 보여주는 예시이지, 지금 존재하는 API 목록이 아니다 — 실제 이름과
+existence 여부는 공개 헤더·spec을 기준으로 확인한다.
+
 예: `HandleCreated`, `BufferMoved`, `SocketBound`, `PeerDisconnected`, `ReadTimedOut`,
 `ResourceClosed`, `MessageMoved`.
 
 command는 API 호출이나 내부 runtime 요청이 된다. 예: `CreateHandle`, `SendMessage`,
 `PollReadable`, `CloseResource`. 이 호출이 어떤 사건을 만들고 어떤 오류 계약을 갖는지 적는다.
 
-entity와 aggregate 후보는 business object가 아니라 handle·message buffer·identifier·socket
-endpoint·descriptor처럼 public contract에서 생명주기나 소유권을 갖는 개념이다.
+entity와 aggregate(식별자로 판단하는 개체, 불변 조건을 함께 지키는 경계 — 범용 원칙
+문서의 "정보 은닉"·"코드 명확성" 참고) 후보는 business object가 아니라 handle·message
+buffer·identifier·socket endpoint·descriptor처럼 public contract에서 생명주기나
+소유권을 갖는 개념이다.
 
 ## bounded context 적용
 
-runtime·transport·codec·storage·binding은 서로 다른 bounded context가 **될 수 있는** 후보다 —
-계층으로 나뉘어 있다는 사실만으로 자동 성립하지는 않는다. 판단 기준은 `timeout`·
-`cancellation`·`backpressure`·`ownership` 같은 단어가 그 경계를 넘을 때 **의미가 실제로
-달라지는가**다. 예를 들어 transport 계층의 timeout(연결 타임아웃)과 API 계층의 timeout(호출
-타임아웃)이 다른 의미라면 경계를 명확히 하고, 같은 의미라면 억지로 나누지 않는다.
+bounded context(같은 단어가 같은 모델을 가리키는 경계 — 범용 원칙 문서의 "정보 은닉"
+참고)로 보면, runtime·transport·codec·storage·binding은 서로 다른 bounded context가
+**될 수 있는** 후보다 — 계층으로 나뉘어 있다는 사실만으로 자동 성립하지는 않는다. 판단
+기준은 `timeout`·`cancellation`·`backpressure`·`ownership` 같은 단어가 그 경계를 넘을 때
+**의미가 실제로 달라지는가**다. 예를 들어 transport 계층의 timeout(연결 타임아웃)과 API
+계층의 timeout(호출 타임아웃)이 다른 의미라면 경계를 명확히 하고, 같은 의미라면 억지로
+나누지 않는다.
 
-## 비즈니스 DDD 용어를 그대로 가져오지 않는다
+## 비즈니스 DDD 용어를 그대로 가져오지 않기
 
 `ContextAggregate`, `SocketRepository`, `MessageDomainService` 같은 이름은 호출자에게 도움이
 안 되면 피한다. 대신 아래를 분명히 한다.
@@ -161,6 +216,51 @@ core·cpp·dotnet·java·kotlin·node·rust·python 문서와 API에서 같은 �
 공개 계약을 언어별로 새로 만들지, 기존 계약을 따를지의 판단 기준(스펙/가이드 문서 근거 여부,
 한 언어 구현만으로는 공개 계약 신설 근거가 안 되는 것 등)은 `AGENTS.md`의
 "Framework public contract parity"를 따른다.
+
+## 실제 사례 — 소켓 핸들 종료(`zlink_close`)의 설계
+
+위 개념들이 실제 공개 API 하나에 어떻게 다 같이 적용되는지, `zlink_close()`로 처음부터
+끝까지 짚는다.
+
+**이벤트 스토밍.** `zlink_close()` 호출이 만드는 사건과 그 사건을 가르는 조건:
+
+- `SocketClosed` — 정상 종료. 결과 `ZLINK_CLOSE_OK`.
+- `CloseRejectedBusy` — 같은 핸들에 진행 중인 콜백이나 이미 admit된 API 호출이 있어서
+  지금은 종료할 수 없다. 결과 `ZLINK_CLOSE_BUSY`(errno `EBUSY`/`EDEADLK`).
+- `CloseRejectedAlreadyShutdown` — 이미 닫힌 핸들에 다시 종료를 요청했다. 결과
+  `ZLINK_CLOSE_SHUTDOWN`(errno `ESHUTDOWN`).
+- `CloseRejectedInvalidHandle` — 핸들이 NULL이거나 무효하다. 결과
+  `ZLINK_CLOSE_INVALID_HANDLE`(errno `EFAULT`/`ESTALE`).
+
+command는 `zlink_close(handle)` 호출 자체이고, actor는 그 핸들을 쓰던 애플리케이션
+스레드다.
+
+**entity와 불변 조건.** 소켓 핸들이 entity다 — 포인터로 식별하고, 생성부터 종료까지
+상태가 바뀐다. "지금 종료할 수 있는가"는 그 핸들에 딸린 불변 조건이다: 같은 핸들에
+진행 중인 콜백이나 admit된 API가 있으면 종료로 전이할 수 없다. 이 불변 조건을 지키는
+유일한 통로가 `zlink_close()` 자신이다 — 호출자가 "지금 종료 가능한가"를 직접 계산할
+방법은 없고, 그 판단은 핸들이 캡슐화한다.
+
+**오류 처리 판단.** 세 실패 사건 모두 마스킹하지 않고 그대로 표면화한다 — 특히 BUSY는
+재시도가 가능하지만, 언제 재시도할지는 호출자가 정해야 하므로(어떤 콜백이 끝나길
+기다리는지, 얼마나 기다릴지는 내부에서 알 수 없다) 조용히 재시도하도록 마스킹하지
+않는다. 반대로 send-ready·monitor 콜백 **안에서** 자기 핸들을 닫는 경우는 오류로 만들지
+않고 콜백이 끝난 뒤로 미루도록 의미 자체를 재정의했다 — 이건 "오류를 정의로 없앤다"(1부)의
+실제 적용이다. 콜백 안에서의 self-close라는 흔한 패턴을 오류로 만드는 대신, "콜백 종료 후
+처리"로 재정의해서 오류 자체를 없앴다.
+
+**bounded context — 같은 "종료"가 계층마다 계약 강도가 다르다.** socket 핸들은 이미
+닫힌 뒤 `zlink_close()`를 다시 불러도 `ZLINK_CLOSE_SHUTDOWN`으로 걸러진다 — 런타임이
+지켜주는 계약이다. 반면 context는 `zlink_ctx_term()` 이후 그 핸들을 다시 쓰는 것 자체가
+금지되고, 어기면 정의되지 않은 동작이다 — 걸러주는 런타임이 없는, 호출자가 스스로
+지켜야 하는 계약이다. 같은 단어 "종료"가 socket 계층과 context 계층에서 계약 강도가
+다르다는 사실이, 위 "bounded context 적용"에서 말한 "경계를 넘을 때 의미가 실제로
+달라지는가"의 실제 사례다.
+
+**이름 일관성.** `ZLINK_CLOSE_BUSY`·`ZLINK_CLOSE_SHUTDOWN`·`ZLINK_CLOSE_INVALID_HANDLE`은
+`zlink_close`뿐 아니라 `zlink_ctx_term`·`zlink_ctx_shutdown`도 함께 쓰는 같은
+`zlink_close_result_t`다 — "종료 결과"라는 개념이 socket이든 context든 같은 이름·같은
+표현으로 쓰인다.
 
 ---
 
@@ -189,7 +289,7 @@ ZLink의 기본 목표 커버리지는 **라인 커버리지 80%**다. 이 숫�
   backpressure, 샘플 회귀 테스트를 우선해야 한다.
 - 커버리지 숫자가 높아도, 사용자가 보는 중요한 동작이 빠져 있으면 품질을 증명하지 못한다.
 - 80% 아래로 내려가려면, 생성 코드·플랫폼별 연결 코드·통합/계약 테스트가 더 적합한 코드처럼
-  명확한 이유가 있어야 한다 (범용 문서 2부의 예외 판단 기준을 따른다).
+  명확한 이유가 있어야 한다 (범용 문서 1부 끝의 "예외를 판단하는 기준"을 따른다).
 - 숫자만 올리는 얕은 테스트를 추가하지 않는다.
 
 모듈이 공개 API나 언어 간 계약을 노출한다면, 구현 세부를 넓게 고정하는 테스트보다 초점이
@@ -211,4 +311,4 @@ ZLink의 기본 목표 커버리지는 **라인 커버리지 80%**다. 이 숫�
 ---
 
 > 이 문서는 범용 원칙의 대체물이 아니라 적용 계층이다. 여기 없는 판단은
-> [`general-design-principles.ko.md`](./general-design-principles.ko.md)를 따른다.
+> [POSDDD](./posddd.ko.md)를 따른다.

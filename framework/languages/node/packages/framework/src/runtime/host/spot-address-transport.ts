@@ -1,8 +1,8 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
 import {
   SubmitResult,
-  type MessageLike
-} from '@zlink-systems/zlink';
+  type ZLinkBackendMessageLike as MessageLike
+} from '../backend/runtime-values';
 import {
   ZLinkFrameworkException,
   type RoutingId
@@ -11,7 +11,10 @@ import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
 } from '../messaging/submission-result';
-import { ZLinkSpotKind } from '../../contracts';
+import {
+  ZLinkFrameworkRuntimeState,
+  ZLinkSpotKind
+} from '../../contracts';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import {
   closeMeshCompletion,
@@ -121,6 +124,20 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
           )
         ) {
           this.options.resolver()?.invalidate?.(spotId);
+          let refreshed: import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined;
+          try {
+            refreshed = await this.resolveExisting(spotId, call.signal);
+          } catch {
+            refreshed = undefined;
+          }
+          if (isShutdownTargetState(refreshed?.targetNodeState)) {
+            throw createInternalFrameworkException(
+              ZLinkFrameworkInternalErrorKind.RuntimeShutdown,
+              `Spot '${String(spotId)}' target host is shutting down.`,
+              false,
+              error
+            );
+          }
           if (call.instanceSpot && allowStaleInstanceRetry) {
             return this.requestToSpotAddressOnce<TReply>(spotId, request, call, false);
           }
@@ -323,4 +340,11 @@ function mapSubmitResult(result: number): ZLinkSubmitResult {
         `Instance Spot submission failed with result ${result}.`
       );
   }
+}
+
+function isShutdownTargetState(
+  state: import('../../contracts').ZLinkFrameworkRuntimeState | undefined
+): boolean {
+  return state === ZLinkFrameworkRuntimeState.Draining
+    || state === ZLinkFrameworkRuntimeState.Stopped;
 }

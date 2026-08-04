@@ -9,9 +9,7 @@ import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProvider
 import { ZLinkEncodedPayload, ZLinkMessage } from '../../contracts';
 import { throwIfAborted } from '../abort';
 import type { Message } from '../../contracts/Common/Message';
-import {
-  Message as BindingMessage
-} from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import {
   ZLinkConfigurationException
 } from '../configuration';
@@ -134,7 +132,7 @@ export class ZLinkSpotActorMembership {
         this.options.actorTransferRuntime?.clearRoutedActor(actor);
       });
     }
-    const request = BindingMessage.from(Buffer.alloc(0));
+    const request = RuntimeMessage.from(Buffer.alloc(0));
     try {
       const context = actor.context as typeof actor.context & {
         [ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME](

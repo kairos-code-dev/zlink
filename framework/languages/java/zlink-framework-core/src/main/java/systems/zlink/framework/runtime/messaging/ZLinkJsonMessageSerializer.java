@@ -60,20 +60,21 @@ public final class ZLinkJsonMessageSerializer implements ZLinkMessageSerializer 
 
     @Override
     public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+        byte[] bytes = payload.bytes();
         if (type == Message.class) {
-            return type.cast(Message.from(payload.bytes()));
+            return type.cast(Message.from(bytes));
         }
         if (type == byte[].class) {
-            return type.cast(payload.bytes());
+            return type.cast(bytes);
         }
         try {
-            return mapper.readValue(payload.bytes(), type);
+            return mapper.readValue(bytes, type);
         } catch (IOException ex) {
             throw new IllegalArgumentException(
                 "failed to deserialize JSON message as "
                     + type.getName()
                     + " payload="
-                    + new String(payload.bytes(), java.nio.charset.StandardCharsets.UTF_8),
+                    + new String(bytes, java.nio.charset.StandardCharsets.UTF_8),
                 ex);
         }
     }

@@ -271,6 +271,8 @@ export class RawServiceMeshRuntime {
       } else {
         router.disconnect(endpoint);
       }
+    } catch (error) {
+      if (!isAlreadyDisconnectedError(error)) throw error;
     } finally {
       if (current !== undefined) this.removePeer(current);
       this.topology.forgetNotRequired(nodeRoutingId);
@@ -285,11 +287,16 @@ export class RawServiceMeshRuntime {
   }
 
   disconnectPeerEndpoint(endpoint: string): void {
-    this.requireStarted().disconnect(endpoint);
-    this.endpointOnlyPeers.delete(endpoint);
-    for (const peer of this.topology.peers()) {
-      if (peer.descriptor.advertisedEndpoint === endpoint) {
-        this.removePeer(peer);
+    try {
+      this.requireStarted().disconnect(endpoint);
+    } catch (error) {
+      if (!isAlreadyDisconnectedError(error)) throw error;
+    } finally {
+      this.endpointOnlyPeers.delete(endpoint);
+      for (const peer of this.topology.peers()) {
+        if (peer.descriptor.advertisedEndpoint === endpoint) {
+          this.removePeer(peer);
+        }
       }
     }
   }
@@ -302,10 +309,12 @@ export class RawServiceMeshRuntime {
     );
   }
 
-  isPeerRouteReady(nodeRoutingId: string): boolean {
+  isPeerRouteReady(nodeRoutingId: string, lifecycleGeneration?: bigint): boolean {
     if (this.upgradingEndpointPeers.has(nodeRoutingId)) return false;
     const peer = this.topology.peer(nodeRoutingId);
     return peer !== undefined
+      && (lifecycleGeneration === undefined
+        || peer.descriptor.lifecycleGeneration === lifecycleGeneration)
       && this.liveness.isReady(nodeRoutingId, peer.connectionId);
   }
 
@@ -362,7 +371,10 @@ export class RawServiceMeshRuntime {
   }
 
   sendToChannel(channelName: string, payload: ServiceApplicationPayload): boolean {
-    const selected = this.topology.selectChannel(channelName);
+    const selected = this.topology.selectChannel(
+      channelName,
+      peer => this.isLocalOrReadyPeer(peer.descriptor.nodeRoutingId)
+    );
     if (selected === undefined) return false;
     if (selected.descriptor.nodeRoutingId === this.descriptor.nodeRoutingId) {
       return this.mailbox.tryEnqueue({
@@ -391,10 +403,18 @@ export class RawServiceMeshRuntime {
     payload: ServiceApplicationPayload,
     timeoutMs: number
   ): PendingOperation<RawServiceRequestResult> | undefined {
-    const selected = this.topology.selectChannel(channelName);
+    const selected = this.topology.selectChannel(
+      channelName,
+      peer => this.isLocalOrReadyPeer(peer.descriptor.nodeRoutingId)
+    );
     return selected === undefined
       ? undefined
       : this.requestToTarget(selected.descriptor.nodeRoutingId, payload, timeoutMs, channelName);
+  }
+
+  private isLocalOrReadyPeer(nodeRoutingId: string): boolean {
+    return nodeRoutingId === this.descriptor.nodeRoutingId
+      || this.isPeerRouteReady(nodeRoutingId);
   }
 
   setServiceIngress(handler: RawServiceIngressHandler): void {
@@ -678,7 +698,6 @@ export class RawServiceMeshRuntime {
       ) {
         return 'protocolError';
       }
-      decodeApplicationPayload(received.parts[1]!);
       let owner: string;
       let correlation: bigint | undefined;
       if (header.command === M6aServiceWireCommand.nodeSend) {
@@ -1231,6 +1250,13 @@ function validCompletionControlRecord(parts: readonly Uint8Array[]): boolean {
   return completionControlCommand(parts) !== undefined
     && parts.reduce((total, part) => total + part.byteLength, 0)
       <= MAX_COMPLETION_CONTROL_BYTES;
+}
+
+function isAlreadyDisconnectedError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('nativeErrno' in error)) {
+    return false;
+  }
+  return (error as { readonly nativeErrno?: unknown }).nativeErrno === 2;
 }
 
 function completionControlCommand(

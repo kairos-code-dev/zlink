@@ -71,6 +71,7 @@ export class ZLinkBoundedSerialScheduler {
   private lifecycleStreak = 0;
   private lifecycleDebt = false;
   private claimStartedAt?: number;
+  private readonly idleWaiters: Array<() => void> = [];
 
   constructor(
     private readonly executeRecord: (record: ZLinkSerialWorkRecord<unknown>) => Promise<void>,
@@ -175,6 +176,11 @@ export class ZLinkBoundedSerialScheduler {
     return this.draining || this.hasReady();
   }
 
+  whenIdle(): Promise<void> {
+    if (!this.hasPendingWork) return Promise.resolve();
+    return new Promise(resolve => this.idleWaiters.push(resolve));
+  }
+
   private byteCost(options: ZLinkSerialWorkOptions): number {
     const payloadBytes = options.payloadBytes ?? 0;
     const metadataBytes = options.metadataBytes ?? 0;
@@ -218,6 +224,7 @@ export class ZLinkBoundedSerialScheduler {
       this.draining = false;
       this.claimStartedAt = undefined;
       if (this.hasReady()) this.scheduleDrain();
+      else this.resolveIdleWaiters();
     }
   }
 
@@ -257,6 +264,10 @@ export class ZLinkBoundedSerialScheduler {
 
   private hasReady(): boolean {
     return this.application.records.length > 0 || this.lifecycle.records.length > 0;
+  }
+
+  private resolveIdleWaiters(): void {
+    for (const resolve of this.idleWaiters.splice(0)) resolve();
   }
 }
 

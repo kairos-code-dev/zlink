@@ -15,7 +15,7 @@ internal object SmA8Scenario {
             spots.requestState("room-a", "worker-follow-up")
         }
         ensure(followUp.value.contains("worker-follow-up"), "SM-A8 follow-up state was not applied")
-        val evidenceEndpoint = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT")
+        val evidenceEndpoint = Env.get("e2e.http.a.endpoint")
         waitForEvidence(evidenceEndpoint, "WorkerFollowUpBeforeComplete")
         waitForEvidence(evidenceEndpoint, "WorkerCompleted")
         println("scenario SM-A8 passed")

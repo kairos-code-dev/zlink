@@ -23,6 +23,6 @@ test('TA-B3 removes and restores the real owner route while preserving the actor
   assert.match(scenario, /waitForControl\(options, 'route-restored'\)/);
   assert.match(scenario, /waitForRouteState\(options, actor\.actor, 'disconnected'\)/);
   assert.match(scenario, /waitForRouteState\(options, actor\.actor, 'connected'\)/);
-  assert.match(runner, /peer-fault\.js.*remove/);
+  assert.match(runner, /ss -K dst 127\.0\.0\.1 dport = "\$ACTOR_ROUTER_PORT"/);
   assert.match(runner, /kill -CONT "\$ACTOR_PID"/);
 });

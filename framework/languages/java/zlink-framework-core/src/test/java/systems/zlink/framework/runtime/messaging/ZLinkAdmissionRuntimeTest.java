@@ -329,6 +329,69 @@ final class ZLinkAdmissionRuntimeTest {
     }
 
     @Test
+    void nodeReadySignalRetriesEachPendingRouteForThatNode() {
+        FakeSource source = new FakeSource(Duration.ofSeconds(1));
+        var nodeA = systems.zlink.contracts.core.RoutingId.from("node-a");
+        var nodeB = systems.zlink.contracts.core.RoutingId.from("node-b");
+        AtomicInteger actorAAttempts = new AtomicInteger();
+        AtomicInteger actorBAttempts = new AtomicInteger();
+        AtomicInteger actorOtherAttempts = new AtomicInteger();
+
+        var actorA = submit(
+            source,
+            ZLinkBackendAdmissionKey.actor(nodeA, "actor-a", 1),
+            () -> actorAAttempts.incrementAndGet() == 2,
+            () -> { }).toCompletableFuture();
+        var actorB = submit(
+            source,
+            ZLinkBackendAdmissionKey.actor(nodeA, "actor-b", 1),
+            () -> actorBAttempts.incrementAndGet() == 2,
+            () -> { }).toCompletableFuture();
+        var actorOther = submit(
+            source,
+            ZLinkBackendAdmissionKey.actor(nodeB, "actor-c", 1),
+            () -> actorOtherAttempts.incrementAndGet() == 2,
+            () -> { }).toCompletableFuture();
+
+        source.ready(ZLinkBackendAdmissionKey.node(nodeA));
+
+        assertEquals(0, systems.zlink.framework.runtime.messaging
+            .OneWayTestStatus.status(actorA));
+        assertEquals(0, systems.zlink.framework.runtime.messaging
+            .OneWayTestStatus.status(actorB));
+        assertFalse(actorOther.isDone());
+        assertEquals(2, actorAAttempts.get());
+        assertEquals(2, actorBAttempts.get());
+        assertEquals(1, actorOtherAttempts.get());
+
+        actorOther.cancel(false);
+    }
+
+    @Test
+    void nodeReadyCreditWakesAnActorSubmittedAfterTheReadinessSignal() {
+        FakeSource source = new FakeSource(Duration.ofSeconds(1));
+        var node = systems.zlink.contracts.core.RoutingId.from("node-a");
+        AtomicInteger attempts = new AtomicInteger();
+
+        var result = submit(
+            source,
+            ZLinkBackendAdmissionKey.actor(node, "actor-a", 1),
+            () -> {
+                int current = attempts.incrementAndGet();
+                if (current == 1) {
+                    source.ready(ZLinkBackendAdmissionKey.node(node));
+                    return false;
+                }
+                return true;
+            },
+            () -> { }).toCompletableFuture();
+
+        assertEquals(0, systems.zlink.framework.runtime.messaging
+            .OneWayTestStatus.status(result));
+        assertEquals(2, attempts.get());
+    }
+
+    @Test
     void timeoutTerminalIsNotReplayedWhenTheRouteRecovers() throws Exception {
         FakeSource source = new FakeSource(Duration.ofNanos(1));
         AtomicInteger oldAttempts = new AtomicInteger();

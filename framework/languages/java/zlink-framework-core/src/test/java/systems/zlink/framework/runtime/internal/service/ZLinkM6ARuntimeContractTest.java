@@ -338,6 +338,56 @@ final class ZLinkM6ARuntimeContractTest {
     }
 
     @Test
+    void livenessRequiresAProbeAckBeforeAConnectionCanBeSelected() {
+        var liveness = new ZLinkServiceLivenessRegistry(
+            Duration.ofSeconds(5), Duration.ofSeconds(15));
+        RoutingId peer = RoutingId.from("peer-ready");
+        long now = 100;
+
+        liveness.admit(peer, "pipe", now);
+        assertFalse(liveness.isReady(peer, "pipe"));
+        assertTrue(liveness.requestProbe(peer, "pipe", now));
+        assertFalse(liveness.requestProbe(peer, "pipe", now));
+
+        var probe = liveness.tick(now).probes().getFirst();
+        assertTrue(liveness.acknowledgeProbe(
+            peer, "pipe", probe.probeId()).isPresent());
+        assertFalse(liveness.isReady(peer, "pipe"));
+        assertTrue(liveness.acknowledge(
+            peer, "pipe", probe.probeId(), now + 1));
+        assertTrue(liveness.isReady(peer, "pipe"));
+        assertFalse(liveness.requestProbe(peer, "pipe", now + 1));
+    }
+
+    @Test
+    void topologySelectionCanExcludeAnAdmittedButNotReadyPeer() {
+        var topology = new ZLinkServiceTopologyRegistry(
+            descriptor("mesh", "local", 1, 1, List.of(), 100));
+        var peerA = descriptor(
+            "mesh", "peer-a", 1, 1,
+            List.of(new ZLinkServiceNodeDescriptor.Channel("orders", 100)),
+            100);
+        var peerB = descriptor(
+            "mesh", "peer-b", 1, 1,
+            List.of(new ZLinkServiceNodeDescriptor.Channel("orders", 100)),
+            100);
+        topology.admit(peerA, "pipe-a");
+        topology.admit(peerB, "pipe-b");
+
+        assertEquals(
+            RoutingId.from("peer-b"),
+            topology.selectChannel(
+                    "orders",
+                    peer -> peer.descriptor().nodeRoutingId()
+                        .equals(RoutingId.from("peer-b")))
+                .orElseThrow()
+                .descriptor()
+                .nodeRoutingId());
+        assertFalse(topology.hasSelectableChannel(
+            "orders", ignored -> false));
+    }
+
+    @Test
     void mailboxSerializesEachOwnerAndKeepsInfrastructureReserve() {
         var mailbox = new ZLinkServiceMailbox(2, 8, 1, 8);
         assertTrue(mailbox.tryEnqueue(record(

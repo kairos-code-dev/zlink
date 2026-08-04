@@ -182,6 +182,16 @@ final class SpotActivation
         if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
             return drainUnhandledActorJoinsAsync();
         }
+        if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_READABLE
+            && host.isActorInfrastructureControl(info.actorMessages())) {
+            CompletionStage<Void> control = context.enqueueInfrastructureDispatch(
+                () -> dispatchActorMessages(info.actorMessages()));
+            return control.whenComplete((ignored, error) -> {
+                for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
+                    actorMessage.close();
+                }
+            });
+        }
         return context.enqueueDispatch(() -> dispatchEventAsync(info)
             .whenComplete((ignored, error) -> {
                 for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {

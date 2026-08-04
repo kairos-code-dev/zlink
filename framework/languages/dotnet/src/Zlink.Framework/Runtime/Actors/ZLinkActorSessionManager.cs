@@ -5,7 +5,8 @@ internal sealed partial class ZLinkActorSessionManager(
     IServiceProvider services,
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
     ZLinkLocationLifecycle? locationLifecycle,
-    IZLinkBoundSessionService boundSessionService)
+    IZLinkBoundSessionService boundSessionService,
+    Func<string, ZLinkActivationConcurrencyAdmission?>? getActivationAdmission = null)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new(
         services,
@@ -26,7 +27,8 @@ internal sealed partial class ZLinkActorSessionManager(
             LocationLifecycle?.ActorOwnership,
             EnsureActorContext,
             BindActorContext,
-            ExecuteActorTeardownAttemptAsync);
+            ExecuteActorTeardownAttemptAsync,
+            getActivationAdmission);
 
     private ZLinkActorDispatchRouter DispatchRouter => _dispatchRouterInitialized
         ??= new ZLinkActorDispatchRouter(runtime, _actorSessions, BindActorContext);

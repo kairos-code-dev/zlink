@@ -31,7 +31,7 @@ class TriggerApplication {
         client: ZLinkClient,
     ): TriggerHttpServer {
         return TriggerHttpServer(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"),
+            Env.get("e2e.http.endpoint"),
             state,
             json,
             client,
@@ -41,24 +41,25 @@ class TriggerApplication {
     @Bean
     fun frameworkConfigurer(): ZLinkFrameworkConfigurer {
         return ZLinkFrameworkConfigurer { options ->
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/trigger-flow.log")
                 .traceLabel("kotlin-mon-trigger")
             options.addClientServerChannel(Contracts.CHANNEL)
                 .client()
-                .connect(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"))
+                .connect(Env.get("e2e.service.api.endpoint"))
         }
     }
 
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(TriggerApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

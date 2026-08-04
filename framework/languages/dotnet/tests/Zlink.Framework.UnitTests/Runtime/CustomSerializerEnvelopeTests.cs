@@ -56,6 +56,26 @@ public sealed class CustomSerializerEnvelopeTests
     }
 
     [Fact]
+    public async Task Serializer_Type_Cache_Is_Safe_For_Concurrent_First_Use()
+    {
+        var codecs = new ZLinkCodecRegistryBuilder();
+        var serializer = new MarkerSerializer();
+        codecs.AddSerializer("application/avro", serializer);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 256).Select(_ => Task.Run(() =>
+        {
+            Assert.True(codecs.TryResolveSerializer(typeof(Probe), out var contentType, out var resolved));
+            return (contentType, resolved);
+        })));
+
+        Assert.All(results, result =>
+        {
+            Assert.Equal("application/avro", result.contentType);
+            Assert.Same(serializer, result.resolved);
+        });
+    }
+
+    [Fact]
     public void Protobuf_Extension_RoundTrips_Protobuf_Payload()
     {
         var codecs = new ZLinkCodecRegistryBuilder();

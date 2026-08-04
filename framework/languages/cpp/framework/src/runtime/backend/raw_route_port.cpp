@@ -55,15 +55,21 @@ raw_request_result_t map_request_result (zlink::request_result_t result) noexcep
 
 raw_route_port_t::raw_route_port_t (zlink::router_socket_t &socket,
                                     std::mutex *shared_socket_mutex,
-                                    zlink::poll_event_flag_t receive_events) :
-    _poller (),
+                                    zlink::poll_event_flag_t receive_events,
+                                    zlink::poller_t *shared_poller,
+                                    std::uintptr_t poller_slot) :
+    _owned_poller (shared_poller == nullptr
+                     ? std::make_unique<zlink::poller_t> ()
+                     : nullptr),
+    _poller (shared_poller != nullptr ? shared_poller : _owned_poller.get ()),
+    _poller_slot (poller_slot == 0 ? 1 : poller_slot),
     _socket (&socket),
     _socket_mutex (shared_socket_mutex != nullptr ? shared_socket_mutex
                                                   : &_owned_socket_mutex),
     _receive_events (receive_events)
 {
     if (_receive_events != zlink::poll_event_flag_t::none) {
-        _poller.add (socket, _receive_events, 1);
+        _poller->add (socket, _receive_events, _poller_slot);
     }
 }
 
@@ -171,7 +177,8 @@ zlink::poll_event_flag_t raw_route_port_t::poll (
     if (_socket == nullptr || _receive_events == zlink::poll_event_flag_t::none)
         return zlink::poll_event_flag_t::none;
     zlink::poll_event_t event;
-    if (_poller.wait (&event, 1, timeout) != 1 || event.slot != 1)
+    if (_poller->wait (&event, 1, timeout) != 1
+        || event.slot != _poller_slot)
         return zlink::poll_event_flag_t::none;
     return event.revents;
 }
@@ -241,10 +248,15 @@ bool raw_route_port_t::reply (const raw_received_t &request, const raw_message_t
 void raw_route_port_t::close () noexcept
 {
     std::lock_guard lock (*_socket_mutex);
+    auto *socket = _socket;
     _socket = nullptr;
     if (_receive_events != zlink::poll_event_flag_t::none) {
         try {
-            _poller.close ();
+            if (_owned_poller) {
+                _owned_poller->close ();
+            } else if (socket != nullptr) {
+                _poller->remove (*socket);
+            }
         }
         catch (...) {
         }

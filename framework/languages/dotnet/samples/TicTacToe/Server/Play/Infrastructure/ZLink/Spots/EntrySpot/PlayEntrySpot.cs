@@ -57,7 +57,9 @@ internal sealed class PlayEntrySpot(
         logger.LogInformation(
             "entry spot: actor destroy requested. actor={ActorId}",
             actor.ActorId);
-        await Context.DestroyActorAsync(actor, cancellationToken);
+        // Finished-room cleanup is server lifecycle work. It must finish even
+        // when the client closes immediately after receiving the leave reply.
+        await Context.DestroyActorAsync(actor, CancellationToken.None);
         logger.LogInformation(
             "entry spot: actor destroy completed. actor={ActorId}",
             actor.ActorId);

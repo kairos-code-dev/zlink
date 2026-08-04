@@ -4,26 +4,20 @@ import {
   type ServiceNodeState,
   type ServiceObjectRole
 } from './service-topology-registry';
+import {
+  SERVICE_WIRE_MAGIC,
+  SERVICE_WIRE_MAJOR,
+  SERVICE_WIRE_REQUIRED_CAPABILITY,
+  ServiceWireCommand
+} from './service-wire-constants.generated';
 
 const PREFIX_SIZE = 5;
 const MAX_U32 = 0xffff_ffff;
 const MAX_U64 = 0xffff_ffff_ffff_ffffn;
-export const M6A_SERVICE_WIRE_MAGIC = [0x5a, 0x4d] as const;
-export const M6A_SERVICE_WIRE_MAJOR = 1;
-export const M6A_SERVICE_WIRE_REQUIRED_CAPABILITY = 'framework-service-v11';
-export const M6aServiceWireCommand = Object.freeze({
-  hello: 1,
-  admit: 2,
-  reject: 3,
-  update: 4,
-  livenessProbe: 5,
-  livenessAck: 6,
-  nodeSend: 16,
-  nodeRequest: 17,
-  channelSend: 18,
-  channelRequest: 19,
-  reply: 20
-});
+export const M6A_SERVICE_WIRE_MAGIC = SERVICE_WIRE_MAGIC;
+export const M6A_SERVICE_WIRE_MAJOR = SERVICE_WIRE_MAJOR;
+export const M6A_SERVICE_WIRE_REQUIRED_CAPABILITY = SERVICE_WIRE_REQUIRED_CAPABILITY;
+export const M6aServiceWireCommand = ServiceWireCommand;
 
 export interface ServiceApplicationPayload {
   readonly packetName: string;
@@ -149,6 +143,19 @@ export function encodeApplicationPayload(payload: ServiceApplicationPayload): Bu
 }
 
 export function decodeApplicationPayload(frame: Uint8Array): ServiceApplicationPayload {
+  const decoded = decodeApplicationPayloadView(frame);
+  return {
+    ...decoded,
+    payload: Buffer.from(decoded.payload)
+  };
+}
+
+/**
+ * Decodes only the M6A envelope fields and returns a view of its payload.
+ * Callers use this after their transport or binding admission decision when
+ * they must hand the multipart bytes to another runtime-owned queue.
+ */
+export function decodeApplicationPayloadView(frame: Uint8Array): ServiceApplicationPayload {
   const reader = new Reader(frame);
   if (reader.u8('version') !== 1) fail('Invalid application payload version.');
   const bodyLength = reader.u32('bodyLength');
@@ -157,9 +164,27 @@ export function decodeApplicationPayload(frame: Uint8Array): ServiceApplicationP
   const contentType = reader.text8('contentType');
   const payloadLength = reader.u32('payloadLength');
   if (payloadLength !== reader.remaining) fail('Application payload length mismatch.');
-  const payload = reader.bytes(payloadLength, 'payload');
+  const payload = reader.view(payloadLength, 'payload');
   reader.end();
   return { packetName, contentType, payload };
+}
+
+/**
+ * Validates the M6A envelope without retaining a second payload buffer. The
+ * stateful activation path uses this before storing a durable request; the
+ * application payload itself remains owned by the original frame until the
+ * message is admitted to an execution queue.
+ */
+export function validateApplicationPayloadFrame(frame: Uint8Array): void {
+  const reader = new Reader(frame);
+  if (reader.u8('version') !== 1) fail('Invalid application payload version.');
+  const bodyLength = reader.u32('bodyLength');
+  if (bodyLength !== reader.remaining) fail('Application payload body length mismatch.');
+  reader.text8('packetName');
+  reader.text8('contentType');
+  const payloadLength = reader.u32('payloadLength');
+  reader.skip(payloadLength, 'payload');
+  reader.end();
 }
 
 export function encodeRouteMeshAdmission(
@@ -513,6 +538,18 @@ class Reader {
 
   end(): void {
     if (this.remaining !== 0) fail('Trailing bytes are forbidden.');
+  }
+
+  skip(length: number, field: string): void {
+    this.require(length, field);
+    this.offset += length;
+  }
+
+  view(length: number, field: string): Buffer {
+    this.require(length, field);
+    const result = this.buffer.subarray(this.offset, this.offset + length);
+    this.offset += length;
+    return result;
   }
 
   private require(length: number, field: string): void {

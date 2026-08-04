@@ -12,7 +12,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 internal object SmD5Scenario {
     suspend fun run() {
         val actorId = "actor-sm-d5-notified-" + UUID.randomUUID().toString().replace("-", "")
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             val profile = Contracts.ActorProfile("Disconnect", 5, listOf("disconnect"))
             connector.connect().await()
@@ -34,7 +34,7 @@ internal object SmD5Scenario {
         }
 
         val evidence = postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+            Env.get("e2e.http.session.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf(

@@ -109,6 +109,15 @@ internal static class PlayHostFactory
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingIdPrefix(options.Rid);
+            if (options.InstanceSpotIdleTimeoutMilliseconds is > 0)
+            {
+                spot.SetInstanceSpotIdleTimeout(
+                    TimeSpan.FromMilliseconds(
+                        options.InstanceSpotIdleTimeoutMilliseconds.Value));
+                evidence.Add(
+                    $"instance-idle-config|rid={options.Rid}"
+                    + $"|milliseconds={options.InstanceSpotIdleTimeoutMilliseconds.Value}");
+            }
             if (!string.IsNullOrWhiteSpace(options.SpotRouterAdvertiseHost))
             {
                 spot.SetAdvertiseHost(options.SpotRouterAdvertiseHost);
@@ -159,6 +168,7 @@ internal static class PlayHostFactory
         SpotLifecycleEndpoints.MapSpotLifecycleEndpoints(app);
         SpotFailureEndpoints.MapSpotFailureEndpoints(app);
         SpotInteractionEndpoints.MapSpotInteractionEndpoints(app);
+        InstanceSpotEndpoints.MapInstanceSpotEndpoints(app);
         app.MapGet("/mesh-snapshot", (IZLinkRouteMeshRuntime meshRuntime) =>
             Results.Ok(meshRuntime.GetStatus(SpotServiceNames.SpotChannel)));
         return app;

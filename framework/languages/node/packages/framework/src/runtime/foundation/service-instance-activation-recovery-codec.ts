@@ -1,8 +1,6 @@
 import { crc32c } from './service-relocation-runtime';
 import {
-  decodeApplicationPayload,
-  encodeApplicationPayload,
-  type ServiceApplicationPayload
+  validateApplicationPayloadFrame
 } from './service-wire-m6a-codec';
 import type { ServiceInstanceActivationTarget } from './service-stateful-wire-codec';
 import { validateServiceMetadataFrame } from './service-metadata-codec';
@@ -24,14 +22,15 @@ export interface ServiceInstanceActivationRecoveryEnvelope {
   readonly replyRouteId?: bigint;
   readonly deadlineUnixMs: bigint;
   readonly metadataFrame?: Uint8Array;
-  readonly applicationPayload: ServiceApplicationPayload;
+  readonly applicationPayloadFrame: Uint8Array;
 }
 
 export function encodeInstanceActivationRecoveryEnvelope(
   value: ServiceInstanceActivationRecoveryEnvelope
 ): Buffer {
   requireOperation(value);
-  const applicationPayload = encodeApplicationPayload(value.applicationPayload);
+  validateApplicationPayloadFrame(value.applicationPayloadFrame);
+  const applicationPayload = Buffer.from(value.applicationPayloadFrame);
   const body = concat(
     text8(value.target.targetSpotId, 'targetSpotId'),
     text8(value.target.stableType, 'stableType'),
@@ -112,7 +111,8 @@ export function decodeInstanceActivationRecoveryEnvelope(
   const metadataFrame = hasMetadata === 1
     ? body.metadataFrame()
     : undefined;
-  const applicationPayload = decodeApplicationPayload(body.takeRemaining());
+  const applicationPayloadFrame = body.takeRemaining();
+  validateApplicationPayloadFrame(applicationPayloadFrame);
   if (!body.done) {
     throw new TypeError('Instance activation recovery envelope has trailing bytes.');
   }
@@ -133,7 +133,7 @@ export function decodeInstanceActivationRecoveryEnvelope(
     ...(replyRouteId === undefined ? {} : { replyRouteId }),
     deadlineUnixMs,
     ...(metadataFrame === undefined ? {} : { metadataFrame }),
-    applicationPayload
+    applicationPayloadFrame
   };
 }
 

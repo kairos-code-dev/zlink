@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include "runtime/dispatch/dispatch_limits.hpp"
+
 #include <array>
 #include <condition_variable>
 #include <cstddef>
@@ -201,8 +203,10 @@ class stateful_object_runtime_t
         std::stop_token)>;
 
     explicit stateful_object_runtime_t (
-      std::size_t application_capacity = 4096,
-      std::size_t infrastructure_capacity = 1024);
+      std::size_t application_capacity =
+        dispatch_limits::application_mailbox_messages,
+      std::size_t infrastructure_capacity =
+        dispatch_limits::control_mailbox_messages);
 
     void configure_relocation_state (
       relocation_state_capture_t capture,
@@ -215,6 +219,11 @@ class stateful_object_runtime_t
       const object_ref_t &reserved,
       const std::string &stable_type,
       std::vector<std::uint8_t> creation_request);
+    // Accepts the next authority fence for an actor that is retained as a
+    // remote copy while ownership returns to this node.
+    stateful_error_t adopt_reserved_actor_owner (
+      const object_ref_t &reserved,
+      const std::string &stable_type);
     stateful_error_t commit_create (std::uint64_t attempt);
     stateful_error_t abort_create (std::uint64_t attempt);
     create_result_t activate_instance (

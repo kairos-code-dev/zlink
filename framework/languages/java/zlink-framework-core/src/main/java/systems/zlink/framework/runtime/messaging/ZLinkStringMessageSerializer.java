@@ -19,14 +19,15 @@ public final class ZLinkStringMessageSerializer implements ZLinkMessageSerialize
 
     @Override
     public <T> T deserialize(ZLinkEncodedPayload payload, Class<T> type) {
+        byte[] bytes = payload.bytes();
         if (type == Message.class) {
-            return type.cast(Message.from(payload.bytes()));
+            return type.cast(Message.from(bytes));
         }
         if (type == byte[].class) {
-            return type.cast(payload.bytes());
+            return type.cast(bytes);
         }
         if (type == String.class) {
-            return type.cast(new String(payload.bytes(), StandardCharsets.UTF_8));
+            return type.cast(new String(bytes, StandardCharsets.UTF_8));
         }
         throw new IllegalArgumentException("unsupported message type: " + type.getName());
     }

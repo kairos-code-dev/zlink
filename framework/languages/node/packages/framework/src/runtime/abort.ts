@@ -6,6 +6,13 @@ export class ZLinkAbortError extends Error {
   }
 }
 
+export class ZLinkDeadlineExceededError extends Error {
+  constructor(message = 'The operation deadline was exceeded.') {
+    super(message);
+    this.name = 'DeadlineExceededError';
+  }
+}
+
 export function createAbortError(): ZLinkAbortError {
   return new ZLinkAbortError();
 }
@@ -13,6 +20,14 @@ export function createAbortError(): ZLinkAbortError {
 export function isAbortError(error: unknown): boolean {
   return error instanceof ZLinkAbortError
     || (error instanceof DOMException && error.name === 'AbortError');
+}
+
+export function createDeadlineExceededError(message?: string): ZLinkDeadlineExceededError {
+  return new ZLinkDeadlineExceededError(message);
+}
+
+export function isDeadlineExceededError(error: unknown): boolean {
+  return error instanceof ZLinkDeadlineExceededError;
 }
 
 export function throwIfAborted(signal: AbortSignal | undefined): void {

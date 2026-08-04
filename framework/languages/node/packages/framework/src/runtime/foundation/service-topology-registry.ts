@@ -1,4 +1,5 @@
 import { descriptorConnectionNotRequired } from './route-mesh-connection-policy';
+import { SmoothWeightedSelection } from './service-weighted-selection';
 
 export type ServiceNodeState =
   | 'preparing'
@@ -56,6 +57,11 @@ export type PeerAdmissionResult =
 
 const REQUIRED_CAPABILITY = 'framework-service-v11';
 const MAX_CAPACITY = 0x7fff_ffff;
+const MAX_PUBLIC_WEIGHT = 10_000;
+
+interface ServiceSelectionCacheEntry {
+  readonly selection: SmoothWeightedSelection<unknown>;
+}
 
 /** Owns immutable peer snapshots and fences late physical-connection events. */
 export class ServiceTopologyRegistry {
@@ -63,7 +69,7 @@ export class ServiceTopologyRegistry {
   private readonly peersByRid = new Map<string, AdmittedServicePeer>();
   private readonly notRequiredByRid = new Map<string, ServiceNodeDescriptor>();
   private readonly knownByRid = new Map<string, ServiceNodeDescriptor>();
-  private readonly selectionWeights = new Map<string, Map<string, bigint>>();
+  private readonly selections = new Map<string, ServiceSelectionCacheEntry>();
 
   constructor(local: ServiceNodeDescriptor) {
     validateDescriptor(local);
@@ -92,6 +98,7 @@ export class ServiceTopologyRegistry {
         this.notRequiredByRid.delete(nodeRoutingId);
       }
     }
+    this.rebuildSelections();
   }
 
   admit(
@@ -123,6 +130,7 @@ export class ServiceTopologyRegistry {
       this.peersByRid.delete(descriptor.nodeRoutingId);
       this.remember(descriptor);
       this.notRequiredByRid.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
+      this.rebuildSelections();
       return 'notRequired';
     }
     this.notRequiredByRid.delete(descriptor.nodeRoutingId);
@@ -173,6 +181,7 @@ export class ServiceTopologyRegistry {
       connectionDiscriminator
     });
     this.remember(descriptor);
+    this.rebuildSelections();
     return 'admitted';
   }
 
@@ -180,6 +189,7 @@ export class ServiceTopologyRegistry {
     const current = this.peersByRid.get(nodeRoutingId);
     if (current === undefined || current.connectionId !== connectionId) return false;
     this.peersByRid.delete(nodeRoutingId);
+    this.rebuildSelections();
     return true;
   }
 
@@ -219,6 +229,7 @@ export class ServiceTopologyRegistry {
       this.notRequiredByRid.set(nodeRoutingId, descriptor);
       this.remember(descriptor);
     }
+    this.rebuildSelections();
   }
 
   markNotRequired(descriptor: ServiceNodeDescriptor): void {
@@ -233,10 +244,11 @@ export class ServiceTopologyRegistry {
     this.peersByRid.delete(descriptor.nodeRoutingId);
     this.remember(descriptor);
     this.notRequiredByRid.set(descriptor.nodeRoutingId, cloneDescriptor(descriptor));
+    this.rebuildSelections();
   }
 
   forgetNotRequired(nodeRoutingId: string): void {
-    this.notRequiredByRid.delete(nodeRoutingId);
+    if (this.notRequiredByRid.delete(nodeRoutingId)) this.rebuildSelections();
   }
 
   knownDescriptor(nodeRoutingId: string): ServiceNodeDescriptor | undefined {
@@ -261,66 +273,80 @@ export class ServiceTopologyRegistry {
     }
   }
 
-  selectChannel(channelName: string): AdmittedServicePeer | undefined {
+  selectChannel(
+    channelName: string,
+    isReady: (peer: AdmittedServicePeer) => boolean = () => true
+  ): AdmittedServicePeer | undefined {
     requireText(channelName, 'channelName');
-    const local: AdmittedServicePeer = {
-      descriptor: this.localDescriptor(),
-      connectionId: 'local',
-      connectionDiscriminator: 'local'
-    };
-    const eligible = [local, ...this.peers()]
-      .map(peer => ({ peer, channel: findChannel(peer.descriptor, channelName) }))
-      .filter((value): value is {
-        peer: AdmittedServicePeer;
-        channel: ServiceChannelDescriptor;
-      } => value.channel !== undefined && value.peer.descriptor.state === 'serving' && value.channel.weight > 0);
-    return this.selectWeighted(
+    return this.selectWeightedCycle(
       `channel:${channelName}`,
-      eligible,
+      () => {
+        const local: AdmittedServicePeer = {
+          descriptor: cloneDescriptor(this.local),
+          connectionId: 'local',
+          connectionDiscriminator: 'local'
+        };
+        return [local, ...this.peersByRid.values()].map(peer => ({
+          peer: clonePeer(peer),
+          channel: findChannel(peer.descriptor, channelName)
+        })).filter((value): value is {
+          peer: AdmittedServicePeer;
+          channel: ServiceChannelDescriptor;
+        } => value.channel !== undefined
+          && value.peer.descriptor.state === 'serving'
+          && value.channel.weight > 0);
+      },
       value => value.channel.weight,
       value => value.peer.descriptor.nodeRoutingId,
-      (left, right) => left.peer.descriptor.nodeRoutingId.localeCompare(right.peer.descriptor.nodeRoutingId)
+      (left, right) => left.peer.descriptor.nodeRoutingId.localeCompare(right.peer.descriptor.nodeRoutingId),
+      value => isReady(value.peer)
     )?.peer;
   }
 
-  selectPlacement(): AdmittedServicePeer | undefined {
-    const eligible = this.peers().filter(peer => {
-      const descriptor = peer.descriptor;
-      return descriptor.state === 'serving'
-        && descriptor.objectRole === 'server'
-        && descriptor.placementWeight > 0
-        && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
-        && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit;
-    });
-    return this.selectWeighted(
+  selectPlacement(
+    isReady: (peer: AdmittedServicePeer) => boolean = () => true
+  ): AdmittedServicePeer | undefined {
+    return this.selectWeightedCycle(
       'placement',
-      eligible,
+      () => [...this.peersByRid.values()].filter(peer => {
+        const descriptor = peer.descriptor;
+        return descriptor.state === 'serving'
+          && descriptor.objectRole === 'server'
+          && descriptor.placementWeight > 0
+          && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
+          && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit;
+      }).map(clonePeer),
       peer => peer.descriptor.placementWeight,
       peer => peer.descriptor.nodeRoutingId,
-      (left, right) => left.descriptor.nodeRoutingId.localeCompare(right.descriptor.nodeRoutingId)
+      (left, right) => left.descriptor.nodeRoutingId.localeCompare(right.descriptor.nodeRoutingId),
+      isReady
     );
   }
 
-  selectObjectPlacement(stableType: string): ServiceNodeDescriptor | undefined {
+  selectObjectPlacement(
+    stableType: string,
+    isReady: (descriptor: ServiceNodeDescriptor) => boolean = () => true
+  ): ServiceNodeDescriptor | undefined {
     requireText(stableType, 'stableType');
-    const capability = `object-type:${stableType}`;
-    const candidates = [
-      this.local,
-      ...this.peers().map(peer => peer.descriptor)
-    ].filter(descriptor =>
-      descriptor.state === 'serving'
-      && descriptor.objectRole === 'server'
-      && descriptor.placementWeight > 0
-      && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
-      && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit
-      && descriptor.protocolCapabilities.includes(capability)
-    );
-    return this.selectWeighted(
+    return this.selectWeightedCycle(
       `object:${stableType}`,
-      candidates,
+      () => {
+        const capability = `object-type:${stableType}`;
+        return [this.local, ...this.peersByRid.values()].map(value =>
+          'descriptor' in value ? value.descriptor : value
+        ).filter(descriptor =>
+          descriptor.state === 'serving'
+          && descriptor.objectRole === 'server'
+          && descriptor.placementWeight > 0
+          && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
+          && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit
+          && descriptor.protocolCapabilities.includes(capability)
+        ).map(cloneDescriptor);
+      },
       descriptor => descriptor.placementWeight,
       descriptor => descriptor.nodeRoutingId,
-      (left, right) => left.nodeRoutingId.localeCompare(right.nodeRoutingId)
+      (left, right) => left.nodeRoutingId.localeCompare(right.nodeRoutingId),
+      isReady
     );
   }
 
@@ -340,35 +366,31 @@ export class ServiceTopologyRegistry {
       .sort();
   }
 
-  private selectWeighted<T>(
+  private selectWeightedCycle<T>(
     key: string,
-    eligible: readonly T[],
+    eligible: () => readonly T[],
     weight: (value: T) => number,
     identity: (value: T) => string,
-    compare: (left: T, right: T) => number
+    compare: (left: T, right: T) => number,
+    accept: (value: T) => boolean = () => true
   ): T | undefined {
-    const ordered = [...eligible].sort(compare);
-    const weighted = ordered.map(value => ({ value, weight: BigInt(weight(value)), id: identity(value) }));
-    const total = weighted.reduce((sum, value) => sum + value.weight, 0n);
-    if (total === 0n) return undefined;
-    const current = this.selectionWeights.get(key) ?? new Map<string, bigint>();
-    this.selectionWeights.set(key, current);
-    const eligibleIds = new Set(weighted.map(value => value.id));
-    for (const id of current.keys()) {
-      if (!eligibleIds.has(id)) current.delete(id);
+    let entry = this.selections.get(key);
+    if (entry === undefined) {
+      const selection = new SmoothWeightedSelection<unknown>(() => eligible()
+        .map(value => ({
+          value,
+          id: identity(value),
+          weight: weight(value)
+        }))
+        .sort((left, right) => compare(left.value as T, right.value as T)));
+      entry = { selection };
+      this.selections.set(key, entry);
     }
-    let selected = weighted[0]!;
-    let selectedCurrent: bigint | undefined;
-    for (const candidate of weighted) {
-      const next = (current.get(candidate.id) ?? 0n) + candidate.weight;
-      current.set(candidate.id, next);
-      if (selectedCurrent === undefined || next > selectedCurrent) {
-        selected = candidate;
-        selectedCurrent = next;
-      }
-    }
-    current.set(selected.id, current.get(selected.id)! - total);
-    return selected.value;
+    return entry.selection.select(value => accept(value as T)) as T | undefined;
+  }
+
+  private rebuildSelections(): void {
+    for (const entry of this.selections.values()) entry.selection.rebuild();
   }
 }
 
@@ -427,7 +449,7 @@ function validateCapacity(value: number, allowZero: boolean, field: string): voi
 }
 
 function validatePublicWeight(value: number, field: string): void {
-  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_PUBLIC_WEIGHT) {
     throw new RangeError(`${field} must be an integer in 0..10000.`);
   }
 }

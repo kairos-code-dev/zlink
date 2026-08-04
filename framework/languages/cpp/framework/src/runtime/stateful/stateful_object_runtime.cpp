@@ -247,6 +247,45 @@ create_result_t stateful_object_runtime_t::begin_reserved_object (
             attempt, reserved, true};
 }
 
+stateful_error_t stateful_object_runtime_t::adopt_reserved_actor_owner (
+  const object_ref_t &reserved,
+  const std::string &stable_type)
+{
+    std::lock_guard lock (_mutex);
+    if (reserved.kind != object_kind_t::actor
+        || !valid_text (reserved.key) || !valid_text (stable_type)
+        || reserved.object_generation == 0
+        || reserved.authority_owner_generation == 0
+        || !valid_text (reserved.mesh_name)
+        || !valid_text (reserved.node_id)) {
+        return stateful_error_t::invalid;
+    }
+    const auto found = _objects.find (key_for (reserved));
+    if (found == _objects.end ())
+        return stateful_error_t::not_found;
+    auto &record = found->second;
+    if (record.stable_type != stable_type)
+        return stateful_error_t::type_mismatch;
+    if (record.reference.object_generation
+        != reserved.object_generation)
+        return stateful_error_t::generation_stale;
+    if (record.reference == reserved)
+        return stateful_error_t::none;
+    if (record.state != object_state_t::ready)
+        return stateful_error_t::moving;
+    if (record.reference.mesh_name != reserved.mesh_name
+        || record.reference.node_id == reserved.node_id
+        || record.reference.authority_owner_generation == 0
+        || record.reference.authority_owner_generation
+             == std::numeric_limits<std::uint64_t>::max ()
+        || reserved.authority_owner_generation
+             != record.reference.authority_owner_generation + 1) {
+        return stateful_error_t::generation_stale;
+    }
+    record.reference = reserved;
+    return stateful_error_t::none;
+}
+
 stateful_error_t stateful_object_runtime_t::commit_create (
   std::uint64_t attempt)
 {

@@ -4,34 +4,69 @@ internal sealed class ZLinkSerialWorkItem
 {
     private readonly Func<CancellationToken, ValueTask> _callback;
     private readonly Action? _relocationRelease;
+    private readonly Func<ReadOnlyMemory<byte>>? _acceptedPayloadFactory;
+    private readonly object _acceptedPayloadGate = new();
+    private bool _acceptedPayloadCreated;
+    private ReadOnlyMemory<byte> _acceptedPayload;
 
     private readonly TaskCompletionSource _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ZLinkSerialWorkItem(
         Func<CancellationToken, ValueTask> callback,
-        ZLinkAcceptedWorkRecord? acceptedRecord = null,
         Action? relocationRelease = null,
         bool previousOwnerMessageFollow = false,
         ZLinkSerialWorkLane lane = ZLinkSerialWorkLane.Application,
-        long accountingBytes = ZLinkSerialExecutionQueue.WorkItemFixedCostBytes)
+        long accountingBytes = ZLinkSerialExecutionQueue.WorkItemFixedCostBytes,
+        ulong acceptedSequence = 0,
+        ReadOnlyMemory<byte> acceptedPayload = default,
+        Func<ReadOnlyMemory<byte>>? acceptedPayloadFactory = null)
     {
         _callback = callback;
-        AcceptedRecord = acceptedRecord;
         _relocationRelease = relocationRelease;
         PreviousOwnerMessageFollow = previousOwnerMessageFollow;
         Lane = lane;
         AccountingBytes = accountingBytes > 0
             ? accountingBytes
             : throw new ArgumentOutOfRangeException(nameof(accountingBytes));
+        AcceptedSequence = acceptedSequence;
+        _acceptedPayload = acceptedPayload;
+        _acceptedPayloadFactory = acceptedPayloadFactory;
+        _acceptedPayloadCreated = acceptedPayloadFactory is null;
     }
 
     public Task Completion => _completion.Task;
 
-    public ZLinkAcceptedWorkRecord? AcceptedRecord { get; }
+    public ulong AcceptedSequence { get; }
+    public ReadOnlyMemory<byte> AcceptedPayload
+    {
+        get
+        {
+            if (_acceptedPayloadFactory is null)
+                return _acceptedPayload;
+            lock (_acceptedPayloadGate)
+            {
+                if (!_acceptedPayloadCreated)
+                {
+                    _acceptedPayload = _acceptedPayloadFactory();
+                    _acceptedPayloadCreated = true;
+                }
+                return _acceptedPayload;
+            }
+        }
+    }
+    public bool IsAccepted => AcceptedSequence != 0;
     public bool PreviousOwnerMessageFollow { get; }
     public ZLinkSerialWorkLane Lane { get; }
     public long AccountingBytes { get; }
+
+    public ZLinkAcceptedWorkRecord CreateAcceptedRecord()
+    {
+        if (!IsAccepted)
+            throw new InvalidOperationException(
+                "Only accepted work can create a relocation record.");
+        return new ZLinkAcceptedWorkRecord(AcceptedSequence, AcceptedPayload);
+    }
 
     public void ReleaseForRelocation(Action<Exception> onUnhandledException)
     {

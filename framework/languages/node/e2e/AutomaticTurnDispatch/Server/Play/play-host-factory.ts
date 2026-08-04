@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, ZLinkUserSpotExecutionMode, type ZLinkFrameworkRuntime } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLinkHttpClientModule, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkHttpClientModule, ZLinkModule, ZLINK_FRAMEWORK_RUNTIME, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
@@ -39,6 +39,7 @@ import {
   EntryActorAwaitHandler,
   SpotActorFastHandler,
   SpotActorFastSendHandler,
+  SpotActorDeferredJoinFailureHandler,
   SpotActorJoinAwaitHandler,
   SpotActorPushAwaitHandler,
   SpotActorAwaitHandler,
@@ -46,6 +47,7 @@ import {
   AwaitEntrySpot
 } from './Spots/await-actors';
 import { AwaitProbeSpot } from './Spots/await-probe-spot';
+import { PerActorAwaitProbeSpot } from './Spots/per-actor-await-probe-spot';
 
 export async function startPlayHost(): Promise<void> {
   let stopping = false;
@@ -76,8 +78,9 @@ export async function startPlayHost(): Promise<void> {
         .addRequestHandler('AwaitEvidenceReq', AwaitEvidenceControlHandler)
         .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler)
         .channel(AutomaticTurnDispatchNames.controlChannel).server();
-      builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel)
-        .peerConnections().connect(options.delayEndpoint);
+      const delayMesh = builder.addRouteMesh(AutomaticTurnDispatchNames.delayChannel);
+      delayMesh.peerConnections().connect(options.delayEndpoint);
+      delayMesh.channel(AutomaticTurnDispatchNames.delayChannel).client();
       const spotRoute = builder.addRouteMesh(AutomaticTurnDispatchNames.spotRouteChannel)
         .listen(options.spotRouteEndpoint)
         .routingId(options.rid);
@@ -99,6 +102,14 @@ export async function startPlayHost(): Promise<void> {
         AwaitProbeSpot.name,
         AwaitProbeSpot,
         (factory) => factory.disableRelocation()
+      );
+      objectServer.addSpotFactory(
+        AutomaticTurnDispatchNames.perActorSpotType,
+        PerActorAwaitProbeSpot,
+        (factory) => {
+          factory.executionMode(ZLinkUserSpotExecutionMode.PerActor);
+          factory.recreateOnRelocation();
+        }
       );
       spotMesh.channel(AutomaticTurnDispatchNames.spotChannel).server();
       for (const peer of options.spotRouterPeers) spotMesh.peerConnections().connect(peer.rid, peer.endpoint);
@@ -163,24 +174,56 @@ export async function startPlayHost(): Promise<void> {
       SpotActorAwaitHandler,
       SpotActorFastHandler,
       SpotActorFastSendHandler,
+      SpotActorDeferredJoinFailureHandler,
       SpotActorJoinAwaitHandler,
       SpotActorPushAwaitHandler,
-      AwaitProbeSpot
+      AwaitProbeSpot,
+      PerActorAwaitProbeSpot
     ]
   })(PlayModule);
 
   const app = await NestFactory.createApplicationContext(PlayModule, { logger: false, abortOnError: false });
   const options = app.get<PlayOptions>(PLAY_OPTIONS);
   const evidence = app.get(EvidenceStore);
+  const frameworkRuntime = app.get<ZLinkFrameworkRuntime>(ZLINK_FRAMEWORK_RUNTIME, { strict: false });
+  let shutdownOperation: Promise<unknown> | undefined;
+  let shutdownError: unknown;
   const server = await startHttpServer(options.httpUrl, [
-    { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'play', rid: options.rid }) },
+    {
+      method: 'GET',
+      path: '/health',
+      handle: () => ({
+        status: frameworkRuntime.status.acceptingWork ? 'ready' : 'draining',
+        role: 'play',
+        rid: options.rid
+      })
+    },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'GET',
+      path: '/status',
+      handle: () => ({
+        state: frameworkRuntime.status.state,
+        acceptingWork: frameworkRuntime.status.acceptingWork,
+        sequence: frameworkRuntime.status.sequence.toString()
+      })
+    },
     {
       method: 'POST',
       path: '/shutdown',
       handle: () => {
-        stopping = true;
-        return { status: 'stopping' };
+        if (shutdownOperation === undefined) {
+          shutdownOperation = frameworkRuntime.shutdown({ deadlineMs: 30_000 });
+          void shutdownOperation.then(
+            () => { stopping = true; },
+            (error: unknown) => { shutdownError = error; stopping = true; }
+          );
+        }
+        return {
+          status: 'draining',
+          acceptingWork: frameworkRuntime.status.acceptingWork,
+          state: frameworkRuntime.status.state
+        };
       }
     }
   ]);
@@ -188,5 +231,6 @@ export async function startPlayHost(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   await closeHttpServer(server);
+  if (shutdownError !== undefined) throw shutdownError;
   await app.close();
 }

@@ -146,7 +146,8 @@ public final class ZLinkServiceWireCodec {
                  ServiceWireConstants.COMMAND_REPLY_RELAY_ACK,
                  ServiceWireConstants.COMMAND_USER_SPOT_CREATE,
                  ServiceWireConstants.COMMAND_USER_SPOT_CLOSE,
-                 ServiceWireConstants.COMMAND_ACTOR_CREATE -> true;
+                 ServiceWireConstants.COMMAND_ACTOR_CREATE,
+                 ServiceWireConstants.COMMAND_MESSAGE_FOLLOW -> true;
             default -> false;
         };
     }

@@ -157,7 +157,8 @@ final class ZLinkChannelMessageDispatcher {
             ZLinkInboundDispatchBudget.Lease lease =
                 inboundDispatchBudget.track(payload.size());
             try {
-                CompletionStage<Void> queued = registry.publishQueue(channelName).enqueue(() ->
+                CompletionStage<Void> queued = registry.publishQueue(channelName)
+                    .enqueueWithPayloadBytes(payload.size(), () ->
                     invokeStarted(lease, () -> invoker.executeHandler(() ->
                         invoker.invokePublishHandler(
                             channelName, registration, topic, payload, contentType)))
@@ -234,7 +235,8 @@ final class ZLinkChannelMessageDispatcher {
         ZLinkInboundDispatchBudget.Lease lease =
             inboundDispatchBudget.track(payload.size());
         try {
-            CompletionStage<Void> queued = registry.sendQueue(channelName).enqueue(() ->
+            CompletionStage<Void> queued = registry.sendQueue(channelName)
+                .enqueueWithPayloadBytes(payload.size(), () ->
                 invokeStarted(lease, () -> invoker.executeHandler(() ->
                     invoker.invokeSendHandler(
                         channelName, registration, payload, Map.of(), contentType)))
@@ -289,7 +291,8 @@ final class ZLinkChannelMessageDispatcher {
         ZLinkInboundDispatchBudget.Lease lease =
             inboundDispatchBudget.track(payload.size());
         try {
-            CompletionStage<Void> queued = registry.requestQueue(channelName).enqueue(() ->
+            CompletionStage<Void> queued = registry.requestQueue(channelName)
+                .enqueueWithPayloadBytes(payload.size(), () ->
                 inboundDispatchBudget.acquireCompletionPermit()
                     .thenCompose(permit -> {
                         try {

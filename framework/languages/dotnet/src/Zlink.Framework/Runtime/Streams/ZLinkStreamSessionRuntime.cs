@@ -237,10 +237,12 @@ internal sealed class ZLinkStreamSessionRuntime : IAsyncDisposable
         }
     }
 
-    public void EnqueueConnected(string localAddr, string remoteAddr)
+    public ZLinkSerialPostAdmission EnqueueConnected(
+        string localAddr,
+        string remoteAddr)
     {
         _connectionReady.TrySetResult((localAddr, remoteAddr));
-        _ = _serial.EnqueueControl(
+        return _serial.EnqueueControl(
             cancellationToken => MarkConnectedAsync(localAddr, remoteAddr, cancellationToken));
     }
 

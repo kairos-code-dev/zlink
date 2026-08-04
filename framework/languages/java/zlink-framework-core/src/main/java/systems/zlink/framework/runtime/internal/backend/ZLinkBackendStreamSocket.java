@@ -1,6 +1,9 @@
 package systems.zlink.framework.runtime.internal.backend;
 
 import java.util.List;
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
@@ -49,4 +52,19 @@ public interface ZLinkBackendStreamSocket
         ZLinkStreamHeader header,
         List<Message> parts,
         SendFlags flags);
+
+    /**
+     * Completes after an internal bound-Actor request has been handled by the
+     * target Framework runtime. This is not an application-facing API.
+     */
+    default CompletionStage<List<Message>> requestBoundActor(
+        RoutingId sessionRid,
+        String actorId,
+        ZLinkStreamHeader header,
+        List<Message> parts,
+        Duration timeout) {
+        return CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "bound Actor request is unavailable"));
+    }
 }

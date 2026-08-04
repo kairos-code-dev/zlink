@@ -28,6 +28,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -194,6 +195,8 @@ public final class ZLinkSpotRuntime
         thread.setDaemon(true);
         return thread;
     });
+    private final ExecutorService infrastructureExecutor =
+        Executors.newVirtualThreadPerTaskExecutor();
 
     public ZLinkSpotRuntime(
         ZLinkBackendAdapterProvider backendFactory,
@@ -1448,6 +1451,22 @@ public final class ZLinkSpotRuntime
                 firstFailure = closeRuntimeComponent(node::close, firstFailure);
             }
             timerExecutor.shutdownNow();
+            infrastructureExecutor.shutdown();
+            try {
+                if (!infrastructureExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    infrastructureExecutor.shutdownNow();
+                    infrastructureExecutor.awaitTermination(4, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException interrupted) {
+                infrastructureExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+                if (firstFailure == null) {
+                    firstFailure = new ZLinkConfigurationException(
+                        "failed to close Spot infrastructure executor", interrupted);
+                } else {
+                    firstFailure.addSuppressed(interrupted);
+                }
+            }
             workerPool.close();
             if (ownsContext) {
                 firstFailure = closeRuntimeComponent(context::close, firstFailure);
@@ -3437,6 +3456,11 @@ public final class ZLinkSpotRuntime
     }
 
     @Override
+    Executor infrastructureExecutor() {
+        return infrastructureExecutor;
+    }
+
+    @Override
     DefaultSpotOutbound createContextOutbound(
         ZLinkBackendSpot backendSpot,
         RoutingId nodeRid) {
@@ -3819,6 +3843,15 @@ public final class ZLinkSpotRuntime
             actorId, operation);
     }
 
+    @Override
+    CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return actorSessions.runtime().submitActorDispatch(
+            actorId, payloadBytes, operation);
+    }
+
     private DefaultSpotOutbound createSpotOutbound(
         ZLinkBackendSpot backendSpot,
         String meshName,
@@ -3904,6 +3937,19 @@ public final class ZLinkSpotRuntime
                 headerPart.actor(),
                 headerPart.sourceNodeRid(),
                 headerPart.sourceSessionRid());
+            if (packetHeader.requestSeq().isPresent()) {
+                // The native STREAM bind is terminal only after this target
+                // runtime has installed the session context.
+                try (Message acknowledgement = Message.from(new byte[0])) {
+                    primaryNode.replyActorNoBind(
+                        headerPart.actor(),
+                        headerPart.sourceNodeRid(),
+                        headerPart.sourceSessionRid(),
+                        headerPart.requestId(),
+                        headerPart.flags(),
+                        List.of(acknowledgement));
+                }
+            }
             closePendingActorHeader(headerPart, pendingHeader);
             return true;
         }
@@ -3913,6 +3959,22 @@ public final class ZLinkSpotRuntime
             return true;
         }
         return false;
+    }
+
+    boolean isActorInfrastructureControl(
+        List<ZLinkBackendActorReceived> actorMessages) {
+        if (actorMessages == null || actorMessages.isEmpty()) {
+            return false;
+        }
+        try {
+            String packetName = ActorPacketFrames.decode(
+                actorMessages.get(0)).packetName();
+            return REMOTE_BOUND_SESSION_BIND_PACKET_NAME.equals(packetName)
+                || ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME
+                    .equals(packetName);
+        } catch (RuntimeException malformed) {
+            return false;
+        }
     }
 
     Supplier<CompletionStage<Void>> actorLifecycleTransition(
@@ -4100,7 +4162,10 @@ public final class ZLinkSpotRuntime
         ZLinkInboundDispatchBudget.Lease lease) {
         CompletionStage<Void> queued;
         try {
-            queued = dispatchLine.enqueueActorDispatch(actor.context().actorId(), () -> {
+            queued = dispatchLine.enqueueActorDispatch(
+                actor.context().actorId(),
+                payloadCopy.size(),
+                () -> {
                     if (packetHeader.flowId().isEmpty()) {
                         return dispatchActorPacketToHandler(
                             dispatchLine.dispatchOutbound(), handler, spotSurface, actor,

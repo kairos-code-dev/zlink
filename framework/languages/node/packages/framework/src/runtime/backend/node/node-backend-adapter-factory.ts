@@ -1,4 +1,4 @@
-import type { Context, TopicMessage } from '@zlink-systems/zlink';
+import type { Context, Received, TopicMessage } from '@zlink-systems/zlink';
 import type {
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext,
@@ -17,6 +17,7 @@ import type {
 import {
   closeWithBusyRetry,
   isContextTerminatedError,
+  isPollerInterruptedError,
   zlink,
   type ZLinkBindingModule
 } from './node-backend-adapter-support';
@@ -27,6 +28,14 @@ import { ZLinkNodeMeshBackendAdapter } from './node-mesh-backend-adapter';
 export { isDisconnectRouteNotFoundError } from './node-socket-backend-adapter';
 
 export class ZLinkNodeBackendAdapterFactory implements ZLinkBackendAdapterFactory {
+  createReceived(): Received {
+    return new zlink.Received();
+  }
+
+  createTopicMessage(): TopicMessage {
+    return new zlink.TopicMessage();
+  }
+
   createChannelAdapter(): ZLinkChannelBackendAdapter {
     return new ZLinkNodeChannelBackendAdapter();
   }
@@ -145,8 +154,13 @@ function createNodeReadablePoller(
   let disposed = false;
   return {
     wait(timeoutMs: number): boolean {
-      return poller.wait(events, timeoutMs) > 0
-        && events.hasEvent(0, zlink.PollEventFlag.PollIn);
+      try {
+        return poller.wait(events, timeoutMs) > 0
+          && events.hasEvent(0, zlink.PollEventFlag.PollIn);
+      } catch (error) {
+        if (isPollerInterruptedError(error)) return false;
+        throw error;
+      }
     },
     dispose(): void {
       if (disposed) return;

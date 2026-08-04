@@ -7,15 +7,18 @@ internal sealed class ZLinkInboundDispatchLease : IDisposable
 {
     private readonly ZLinkInboundDispatchBudget _budget;
     private readonly ulong _payloadBytes;
+    private readonly bool _overageReservation;
     private int _started;
     private int _disposed;
 
     internal ZLinkInboundDispatchLease(
         ZLinkInboundDispatchBudget budget,
-        ulong payloadBytes)
+        ulong payloadBytes,
+        bool overageReservation = false)
     {
         _budget = budget;
         _payloadBytes = payloadBytes;
+        _overageReservation = overageReservation;
     }
 
     internal void StartDispatch()
@@ -30,6 +33,7 @@ internal sealed class ZLinkInboundDispatchLease : IDisposable
             return;
         _budget.Completed(
             _payloadBytes,
-            Volatile.Read(ref _started) != 0);
+            Volatile.Read(ref _started) != 0,
+            _overageReservation);
     }
 }

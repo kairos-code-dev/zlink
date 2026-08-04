@@ -214,12 +214,14 @@ export class ZLinkChannelDispatchPipeline {
     fields: ZLinkChannelDispatchFields,
     signal?: AbortSignal
   ): Promise<{ readonly handlerInvoked: boolean; readonly value?: TResult }> {
-    const payload = decodeChannelPayload(envelope, codecs);
     let value: TResult | undefined;
     const handlerInvoked = await invokeZLinkHandlerFilters(
       this.filters,
       this.createFilterContext(context, fields),
       async () => {
+        // Filters are the channel admission gate. Decode only after they have
+        // allowed the handler turn to proceed.
+        const payload = decodeChannelPayload(envelope, codecs);
         value = await handler.handle(payload, context);
       },
       signal

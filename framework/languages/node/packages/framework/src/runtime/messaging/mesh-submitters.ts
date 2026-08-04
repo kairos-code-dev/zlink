@@ -52,18 +52,16 @@ export class ZLinkMeshSubmitterRegistry {
       return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
       if (error instanceof ZLinkMeshTerminalResult) return error.result;
-      if (error instanceof ZLinkFrameworkException
-        && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RuntimeShutdown) {
-        return { status: ZLinkSubmitStatus.Shutdown };
-      }
-      if (error instanceof Error && /timed out/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.TimedOut };
-      }
-      if (error instanceof Error && /queue is full/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.Backpressured };
-      }
-      if (error instanceof Error && /disposed|shutdown|terminated/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.Shutdown };
+      if (error instanceof ZLinkFrameworkException) {
+        switch (internalFrameworkErrorKind(error)) {
+          case ZLinkFrameworkInternalErrorKind.RuntimeShutdown:
+            return { status: ZLinkSubmitStatus.Shutdown };
+          case ZLinkFrameworkInternalErrorKind.DeadlineExceeded:
+          case ZLinkFrameworkInternalErrorKind.WorkerTimedOut:
+            return { status: ZLinkSubmitStatus.TimedOut };
+          case ZLinkFrameworkInternalErrorKind.WorkerQueueFull:
+            return { status: ZLinkSubmitStatus.Backpressured };
+        }
       }
       throw error;
     }

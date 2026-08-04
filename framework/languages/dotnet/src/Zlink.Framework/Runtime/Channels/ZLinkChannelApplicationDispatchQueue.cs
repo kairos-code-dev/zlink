@@ -38,12 +38,13 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
             CancellationToken.None);
     }
 
-    internal async ValueTask<bool> PostAsync(
+    internal ValueTask<bool> PostAsync(
         Func<CancellationToken, ValueTask> dispatch,
         Action reject,
         ZLinkInboundDispatchBudget budget,
         ulong payloadBytes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool overageReservation = false)
     {
         ArgumentNullException.ThrowIfNull(dispatch);
         ArgumentNullException.ThrowIfNull(reject);
@@ -52,29 +53,25 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
             dispatch,
             reject,
             budget,
-            payloadBytes);
+            payloadBytes,
+            overageReservation);
         if (Volatile.Read(ref _stopped) != 0)
         {
             Reject(work);
-            return false;
+            return ValueTask.FromResult(false);
         }
 
-        try
+        if (cancellationToken.IsCancellationRequested
+            || !_queue.Writer.TryWrite(work))
         {
-            await _queue.Writer.WriteAsync(work, cancellationToken)
-                .ConfigureAwait(false);
-            return true;
-        }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (ChannelClosedException)
-        {
+            // The receive loop must not wait for application dispatch space.
+            // A full application queue is observable through the supplied
+            // rejection path, while infrastructure/control receives continue.
+            Reject(work);
+            return ValueTask.FromResult(false);
         }
 
-        Reject(work);
-        return false;
+        return ValueTask.FromResult(true);
     }
 
     public async ValueTask DisposeAsync()
@@ -139,7 +136,8 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
                 {
                     work.Budget.Completed(
                         work.PayloadBytes,
-                        handlerStarted);
+                        handlerStarted,
+                        work.OverageReservation);
                 }
         }
         }
@@ -167,7 +165,10 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
         }
         finally
         {
-            work.Budget.Completed(work.PayloadBytes, handlerStarted: false);
+            work.Budget.Completed(
+                work.PayloadBytes,
+                handlerStarted: false,
+                overageReservation: work.OverageReservation);
         }
     }
 
@@ -186,7 +187,8 @@ internal sealed class ZLinkChannelApplicationDispatchQueue : IAsyncDisposable
         Func<CancellationToken, ValueTask> Dispatch,
         Action Reject,
         ZLinkInboundDispatchBudget Budget,
-        ulong PayloadBytes);
+        ulong PayloadBytes,
+        bool OverageReservation);
 }
 
 internal sealed class ZLinkChannelReplyGate

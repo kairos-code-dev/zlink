@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-kotlin-config.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -174,7 +175,7 @@ ZLINK_KOTLIN_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_MESH_ENDPOINT="${MESH_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(service_bin)" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
+  zlink_kotlin_e2e_run "$(service_bin)" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
 pids+=("$!")
 wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
@@ -185,7 +186,7 @@ ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${FILTERED_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
+  zlink_kotlin_e2e_run "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
 pids+=("$!")
 wait_port filtered-service-api "${FILTERED_API_ENDPOINT}"
 wait_port filtered-service-http "${FILTERED_SERVICE_HTTP}"
@@ -195,7 +196,7 @@ ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
 ZLINK_KOTLIN_E2E_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_HTTP_ENDPOINT="${THROWING_SERVICE_HTTP}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
+  zlink_kotlin_e2e_run "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
 pids+=("$!")
 wait_port throwing-service-api "${THROWING_API_ENDPOINT}"
 wait_port throwing-service-http "${THROWING_SERVICE_HTTP}"
@@ -205,7 +206,7 @@ ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT="${API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT="${FILTERED_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT="${THROWING_API_ENDPOINT}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
+  zlink_kotlin_e2e_run "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
 pids+=("$!")
 wait_port trigger-http "${TRIGGER_HTTP}"
 
@@ -222,7 +223,7 @@ ZLINK_KOTLIN_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
 ZLINK_KOTLIN_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" \
 ZLINK_KOTLIN_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  zlink_kotlin_e2e_run "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 if [[ "${SCENARIO}" == "all" ]]; then

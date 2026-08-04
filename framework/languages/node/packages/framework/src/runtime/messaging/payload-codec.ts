@@ -1,5 +1,5 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import {
   isZLinkMessage,
   ZLinkMessage,
@@ -9,11 +9,30 @@ import {
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { createZLinkMessageFromEncoded } from '../../contracts/Common/ZLinkMessage';
+import { borrowEncodedPayload } from '../../contracts/Common/encoded-payload-storage';
 import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkSerializerRegistryLike {
   readonly serializers: ReadonlyMap<string, ZLinkMessageSerializer>;
 }
+
+interface ZLinkSelectableMessageSerializer extends ZLinkMessageSerializer {
+  canSerialize?(value: unknown): boolean;
+}
+
+interface ZLinkSerializerSelectionPlan {
+  readonly serializers: readonly ZLinkSelectableMessageSerializer[];
+  readonly contentTypes: ReadonlyMap<ZLinkMessageSerializer, string>;
+  readonly defaultSerializer: ZLinkMessageSerializer | undefined;
+  select(value: unknown): ZLinkMessageSerializer | undefined;
+  contentTypeOf(serializer: ZLinkMessageSerializer): string | undefined;
+}
+
+// Registration maps are created during host configuration and are immutable
+// for the runtime lifetime. Compile the candidate list and reverse content
+// type lookup once per map so the message path does not allocate arrays or
+// scan the registry for every payload.
+const serializerSelectionPlans = new WeakMap<object, ZLinkSerializerSelectionPlan>();
 
 export function encodeFrameworkPayloadMessage(
   payload: unknown,
@@ -21,7 +40,7 @@ export function encodeFrameworkPayloadMessage(
 ): Message {
   if (isZLinkMessage(payload)) {
     if (payload.isEncoded()) {
-      return toBindingMessage(payload.toEncodedPayload());
+      return toRuntimeMessage(payload.toEncodedPayload());
     }
     return encodeFrameworkPayloadMessage(payload.decode(), registry);
   }
@@ -38,10 +57,10 @@ export function encodeFrameworkPayloadMessage(
 
   const serializer = selectSerializer(payload, registry);
   if (serializer !== undefined) {
-    return toBindingMessage(serializer.serialize(payload));
+    return toRuntimeMessage(serializer.serialize(payload));
   }
 
-  return BindingMessage.from(Buffer.from(JSON.stringify(payload ?? null)));
+  return RuntimeMessage.from(Buffer.from(JSON.stringify(payload ?? null)));
 }
 
 export function decodeFrameworkPayloadMessage<T>(
@@ -71,14 +90,15 @@ function decodeFrameworkPayload<T>(
   }
 
   const serializer = selectDefaultSerializer(registry);
-  const parsedPayload = parseJsonPayload(message);
   if (serializer !== undefined) {
     // A selective extension is also the only available decoder for an
-    // inbound non-JSON stream frame. JSON remains the wire fallback when the
-    // same registry is used for framework-owned messages that were encoded
-    // without a matching application type.
-    if (parsedPayload.valid && isSelectableSerializer(serializer)) {
-      return parsedPayload.value as T;
+    // inbound non-JSON stream frame. Only inspect JSON-shaped bytes for the
+    // framework fallback; binary payloads go directly to the extension.
+    if (isSelectableSerializer(serializer) && looksLikeJson(message.data())) {
+      const parsedPayload = parseJsonPayload(message);
+      if (parsedPayload.valid) {
+        return parsedPayload.value as T;
+      }
     }
     return serializer.deserialize(
       ZLinkEncodedPayload.from(message.data()),
@@ -86,6 +106,7 @@ function decodeFrameworkPayload<T>(
     );
   }
 
+  const parsedPayload = parseJsonPayload(message);
   if (parsedPayload.valid) {
     return parsedPayload.value as T;
   }
@@ -113,61 +134,109 @@ export function wrapFrameworkPayloadMessage(
 export function selectDefaultSerializer(
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessageSerializer | undefined {
-  const serializers = serializerMapOf(registry);
-  if (serializers?.size === 1) {
-    const only = serializers.values().next().value as ZLinkSelectableMessageSerializer | undefined;
-    // Decode has no object value with which to run canSerialize. A single
-    // selective extension is therefore the only possible decoder for its
-    // non-JSON stream payloads; encode-side selection still uses the actual
-    // payload and falls back to JSON when the extension does not match.
-    if (only?.canSerialize !== undefined) {
-      return only;
-    }
-  }
-  return selectSerializer(undefined, registry);
+  return serializerSelectionPlanOf(registry)?.defaultSerializer;
 }
 
 export function selectSerializer(
   value: unknown,
   registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
 ): ZLinkMessageSerializer | undefined {
+  return serializerSelectionPlanOf(registry)?.select(value);
+}
+
+export function contentTypeForSerializer(
+  serializer: ZLinkMessageSerializer,
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
+): string | undefined {
+  return serializerSelectionPlanOf(registry)?.contentTypeOf(serializer);
+}
+
+function isSelectableSerializer(serializer: ZLinkMessageSerializer): serializer is ZLinkSelectableMessageSerializer & { canSerialize: (value: unknown) => boolean } {
+  return typeof (serializer as ZLinkSelectableMessageSerializer).canSerialize === 'function';
+}
+
+function serializerSelectionPlanOf(
+  registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>
+): ZLinkSerializerSelectionPlan | undefined {
   const serializers = serializerMapOf(registry);
   if (serializers === undefined || serializers.size === 0) {
     return undefined;
   }
-  const selectable = [...serializers.values()] as ZLinkSelectableMessageSerializer[];
-  const matching = selectable.filter((serializer) =>
-    serializer.canSerialize?.(value) === true
-  );
-  if (matching.length === 1) {
-    return matching[0];
+  const key = serializers as object;
+  const cached = serializerSelectionPlans.get(key);
+  if (cached !== undefined) {
+    return cached;
   }
-  if (matching.length > 1) {
-    throw new ZLinkConfigurationException(
-      'Payload serializer is ambiguous because more than one serializer accepts the payload.'
-    );
+  const entries: ZLinkSelectableMessageSerializer[] = [];
+  const contentTypes = new Map<ZLinkMessageSerializer, string>();
+  for (const [contentType, serializer] of serializers) {
+    entries.push(serializer as ZLinkSelectableMessageSerializer);
+    contentTypes.set(serializer, contentType);
   }
-  if (serializers.size === 1) {
-    const only = selectable[0];
-    // A selective extension must not become the process-wide default for
-    // framework-owned payloads that it explicitly does not accept. JSON is
-    // the typed payload fallback when no extension matches.
-    return only.canSerialize === undefined || only.canSerialize(value) ? only : undefined;
+  const frozenEntries = Object.freeze(entries);
+  const defaultSerializer = frozenEntries.length === 1
+    ? frozenEntries[0]
+    : selectSerializerFromEntries(frozenEntries, undefined);
+  const plan: ZLinkSerializerSelectionPlan = {
+    serializers: frozenEntries,
+    contentTypes,
+    defaultSerializer,
+    select: (value) => selectSerializerFromEntries(frozenEntries, value),
+    contentTypeOf: (serializer) => contentTypes.get(serializer)
+  };
+  serializerSelectionPlans.set(key, plan);
+  return plan;
+}
+
+function selectSerializerFromEntries(
+  serializers: readonly ZLinkSelectableMessageSerializer[],
+  value: unknown
+): ZLinkMessageSerializer | undefined {
+  let matching: ZLinkMessageSerializer | undefined;
+  let matchingCount = 0;
+  let allSelectable = true;
+  for (const serializer of serializers) {
+    if (!isSelectableSerializer(serializer)) {
+      allSelectable = false;
+      continue;
+    }
+    if (serializer.canSerialize(value) === true) {
+      matching = serializer;
+      matchingCount += 1;
+      if (matchingCount > 1) {
+        throw new ZLinkConfigurationException(
+          'Payload serializer is ambiguous because more than one serializer accepts the payload.'
+        );
+      }
+    }
   }
-  if (selectable.every((serializer) => serializer.canSerialize !== undefined)) {
-    return undefined;
+  if (matchingCount === 1) return matching;
+  if (serializers.length === 1) {
+    return isSelectableSerializer(serializers[0]!) ? undefined : serializers[0];
   }
+  if (allSelectable) return undefined;
   throw new ZLinkConfigurationException(
     'Payload serializer is ambiguous because more than one serializer is registered.'
   );
 }
 
-interface ZLinkSelectableMessageSerializer extends ZLinkMessageSerializer {
-  canSerialize?(value: unknown): boolean;
-}
-
-function isSelectableSerializer(serializer: ZLinkMessageSerializer): serializer is ZLinkSelectableMessageSerializer & { canSerialize: (value: unknown) => boolean } {
-  return typeof (serializer as ZLinkSelectableMessageSerializer).canSerialize === 'function';
+function looksLikeJson(bytes: Uint8Array): boolean {
+  let index = 0;
+  while (index < bytes.byteLength) {
+    const value = bytes[index]!;
+    if (value !== 0x20 && value !== 0x09 && value !== 0x0a && value !== 0x0d) break;
+    index += 1;
+  }
+  if (index >= bytes.byteLength) return false;
+  const first = bytes[index]!;
+  return first === 0x7b // {
+    || first === 0x5b // [
+    || first === 0x22 // "
+    || first === 0x2d // -
+    || (first >= 0x30 && first <= 0x39)
+    || first === 0x74 // t
+    || first === 0x66 // f
+    || first === 0x6e; // n
 }
 
 function parseJsonPayload(message: Message): {
@@ -201,6 +270,9 @@ function isMessage(value: unknown): value is Message {
     && typeof (value as { data?: unknown }).data === 'function';
 }
 
-function toBindingMessage(payload: ZLinkEncodedPayload): Message {
-  return BindingMessage.from(payload.data());
+function toRuntimeMessage(payload: ZLinkEncodedPayload): Message {
+  const owned = borrowEncodedPayload(payload);
+  return owned === undefined
+    ? RuntimeMessage.from(payload.data())
+    : RuntimeMessage.fromOwned(owned);
 }

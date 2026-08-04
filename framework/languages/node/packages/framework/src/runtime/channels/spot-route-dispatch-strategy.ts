@@ -1,4 +1,4 @@
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { RoutingId } from '../../contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkBackendSpot, ZLinkBackendSpotNode, ZLinkBackendSpotRouteBridge } from '../backend/contracts';

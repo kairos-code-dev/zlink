@@ -13,6 +13,7 @@
 #include <zlink/Contracts/Sockets/results.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <set>
 #include <stdexcept>
@@ -22,6 +23,8 @@ namespace zlink::framework::runtime::fanout
 {
 namespace
 {
+
+std::atomic<std::uintptr_t> next_fanout_poller_slot{1};
 
 std::vector<zlink::message_t> materialize (
   const std::vector<std::vector<std::uint8_t>> &parts)
@@ -114,6 +117,14 @@ std::string raw_fanout_publisher_t::endpoint () const
     return _endpoint;
 }
 
+std::chrono::steady_clock::time_point
+raw_fanout_publisher_t::next_activity () const
+{
+    std::lock_guard lock (_mutex);
+    return _socket ? _next_beacon
+                   : std::chrono::steady_clock::now () + fanout_beacon_interval;
+}
+
 bool raw_fanout_publisher_t::publish (
   const std::string &topic,
   const protocol::application_payload_t &payload)
@@ -159,8 +170,12 @@ raw_fanout_publisher_t::beacon_payload ()
     return value;
 }
 
-raw_fanout_subscriber_t::raw_fanout_subscriber_t () :
-    _context (std::make_unique<zlink::context_t> ())
+raw_fanout_subscriber_t::raw_fanout_subscriber_t (zlink::poller_t *poller) :
+    _context (std::make_unique<zlink::context_t> ()),
+    _owned_poller (poller == nullptr
+                     ? std::make_unique<zlink::poller_t> ()
+                     : nullptr),
+    _poller (poller != nullptr ? poller : _owned_poller.get ())
 {
 }
 
@@ -254,10 +269,12 @@ void raw_fanout_subscriber_t::close () noexcept
             close_connection_locked (connection);
         }
         _connections.clear ();
-        try {
-            _poller.close ();
-        }
-        catch (...) {
+        if (_owned_poller) {
+            try {
+                _owned_poller->close ();
+            }
+            catch (...) {
+            }
         }
         context = std::move (_context);
     }
@@ -296,7 +313,7 @@ raw_fanout_subscriber_t::try_receive (
             continue;
         zlink::poll_event_t readiness;
         try {
-            if (_poller.wait (
+            if (_poller->wait (
                   &readiness, 1, std::chrono::milliseconds::zero ())
                   != 1
                 || readiness.slot != connection.poller_slot
@@ -409,10 +426,11 @@ bool raw_fanout_subscriber_t::connect_locked (
     }
     connection_t connection;
     connection.endpoint = std::move (endpoint);
-    connection.poller_slot = _next_poller_slot++;
-    if (_next_poller_slot == 0) {
-        _next_poller_slot = 1;
-    }
+    connection.poller_slot =
+      next_fanout_poller_slot.fetch_add (1, std::memory_order_relaxed);
+    if (connection.poller_slot == 0)
+        connection.poller_slot =
+          next_fanout_poller_slot.fetch_add (1, std::memory_order_relaxed);
     connection.automatic = automatic;
     const auto [inserted, was_inserted] =
       _connections.emplace (std::move (intent), std::move (connection));
@@ -436,7 +454,7 @@ void raw_fanout_subscriber_t::close_connection_locked (connection_t &connection)
         return;
     }
     try {
-        _poller.remove (*connection.socket);
+        _poller->remove (*connection.socket);
     }
     catch (...) {
     }
@@ -455,8 +473,8 @@ void raw_fanout_subscriber_t::reopen_locked (connection_t &connection)
     socket->options ().linger (std::chrono::milliseconds (0));
     socket->set_subscription ("");
     socket->connect (connection.endpoint);
-    _poller.add (*socket, zlink::poll_event_flag_t::pollin,
-                 connection.poller_slot);
+    _poller->add (*socket, zlink::poll_event_flag_t::pollin,
+                  connection.poller_slot);
     connection.socket = std::move (socket);
     connection.ready = false;
     connection.deadline = {};

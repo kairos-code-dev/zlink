@@ -5,11 +5,15 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 
-[ZLinkSpotActorSendHandler(nameof(LeaveGameMsg))]
+[ZLinkSpotActorRequestHandler(nameof(LeaveGameMsg))]
 internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandler> logger)
-    : IZLinkSpotActorSendHandler<TicTacToeGame, PlayActor, LeaveGameMsg>
+    : IZLinkSpotActorRequestHandler<
+        TicTacToeGame,
+        PlayActor,
+        LeaveGameMsg,
+        LeaveGameRes>
 {
-    public async ValueTask HandleAsync(
+    public async ValueTask<LeaveGameRes> HandleAsync(
         TicTacToeGame spot,
         PlayActor actor,
         IZLinkMessageContext context,
@@ -31,5 +35,6 @@ internal sealed class PlayActorLeaveGameHandler(ILogger<PlayActorLeaveGameHandle
             "actor: LeaveGameMsg completed. actor={ActorId}, roomId={RoomId}",
             actor.ActorId,
             message.RoomId);
+        return new LeaveGameRes(true);
     }
 }

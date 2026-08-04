@@ -54,7 +54,7 @@ class supportchat_session_t final : public packet_stream_session_t
             auto verified =
               co_await _channels
                 .request ("supportchat.api",
-                          authenticate_user_req_t{
+                            authenticate_user_req_t{
                             payload.parse_json<authenticate_req_t> ().access_token})
                 .submit<authenticate_user_res_t> ();
             if (!verified.accepted) {

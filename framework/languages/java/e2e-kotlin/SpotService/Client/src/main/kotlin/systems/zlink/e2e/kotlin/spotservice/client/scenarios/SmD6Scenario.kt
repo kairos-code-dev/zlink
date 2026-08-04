@@ -13,8 +13,8 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
 
 internal object SmD6Scenario {
     suspend fun run() {
-        val bound = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
-        val shadow = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT"))
+        val bound = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
+        val shadow = createStreamConnector(Env.get("e2e.stream.b.endpoint"))
         try {
             val boundProfile = Contracts.ActorProfile("Bound", 6, listOf("bound"))
             val shadowProfile = Contracts.ActorProfile("Shadow", 6, listOf("shadow"))

@@ -18,6 +18,13 @@ constexpr std::size_t prefix_size = 5;
 constexpr std::uint8_t application_payload_version = 1;
 constexpr std::uint8_t application_payload_flow_version = 2;
 
+void append_nonzero_u64 (std::vector<std::uint8_t> &bytes,
+                         std::uint64_t value,
+                         const char *field);
+std::uint64_t read_nonzero_u64 (std::span<const std::uint8_t> bytes,
+                                std::size_t &offset,
+                                const char *field);
+
 bool valid_flow_id (std::string_view value) noexcept
 {
     if (value.size () != 36)
@@ -436,7 +443,8 @@ std::vector<std::uint8_t> encode_spot_message_header (
         || message_follow_hop_count > 8
         || target.object_generation == 0
         || target.target_node_generation == 0
-        || target.authority_owner_generation == 0) {
+        || target.authority_owner_generation == 0
+        || target.owner_lease_generation == 0) {
         throw service_wire_error_t ("invalid Spot route fence");
     }
     std::vector<std::uint8_t> result{
@@ -453,6 +461,7 @@ std::vector<std::uint8_t> encode_spot_message_header (
       result, target.target_node_routing_id, "target node RID");
     append_u64 (result, target.target_node_generation);
     append_u64 (result, target.authority_owner_generation);
+    append_u64 (result, target.owner_lease_generation);
     return result;
 }
 
@@ -493,11 +502,13 @@ spot_message_header_t decode_spot_message_header (
       read_bytes8 (bytes, offset, "target node RID");
     result.target.target_node_generation = read_u64 (bytes, offset);
     result.target.authority_owner_generation = read_u64 (bytes, offset);
+    result.target.owner_lease_generation = read_u64 (bytes, offset);
     if ((result.operation.high == 0 && result.operation.low == 0)
         || result.message_follow_hop_count > 8
         || result.target.object_generation == 0
         || result.target.target_node_generation == 0
         || result.target.authority_owner_generation == 0
+        || result.target.owner_lease_generation == 0
         || offset != bytes.size ()) {
         throw service_wire_error_t (
           "invalid or trailing Spot route fence");
@@ -522,7 +533,8 @@ std::vector<std::uint8_t> encode_actor_message_header (
         || message_follow_hop_count > 8
         || target.object_generation == 0
         || target.target_node_generation == 0
-        || target.authority_owner_generation == 0) {
+        || target.authority_owner_generation == 0
+        || target.owner_lease_generation == 0) {
         throw service_wire_error_t ("invalid Actor route fence");
     }
     std::vector<std::uint8_t> result{
@@ -548,6 +560,7 @@ std::vector<std::uint8_t> encode_actor_message_header (
       result, target.target_node_routing_id, "target node RID");
     append_u64 (result, target.target_node_generation);
     append_u64 (result, target.authority_owner_generation);
+    append_u64 (result, target.owner_lease_generation);
     return result;
 }
 
@@ -601,16 +614,207 @@ actor_message_header_t decode_actor_message_header (
       read_bytes8 (bytes, offset, "target node RID");
     result.target.target_node_generation = read_u64 (bytes, offset);
     result.target.authority_owner_generation = read_u64 (bytes, offset);
+    result.target.owner_lease_generation = read_u64 (bytes, offset);
     if ((result.operation.high == 0 && result.operation.low == 0)
         || result.message_follow_hop_count > 8
         || result.target.object_generation == 0
         || result.target.target_node_generation == 0
         || result.target.authority_owner_generation == 0
+        || result.target.owner_lease_generation == 0
         || offset != bytes.size ()) {
         throw service_wire_error_t (
           "invalid or trailing Actor route fence");
     }
     return result;
+}
+
+namespace
+{
+
+std::vector<std::uint8_t> encode_message_follow_route_body (
+  const message_follow_route_t &route)
+{
+    std::vector<std::uint8_t> body;
+    std::visit (
+      [&body] (const auto &value) {
+          using route_type = std::decay_t<decltype (value)>;
+          if constexpr (std::is_same_v<route_type, actor_route_fence_t>) {
+              append_text8 (body, value.actor_id, "Message Follow Actor ID");
+              append_nonzero_u64 (
+                body, value.object_generation,
+                "Message Follow Actor generation");
+              append_bytes8 (
+                body, value.target_node_routing_id,
+                "Message Follow Actor node RID");
+              append_nonzero_u64 (
+                body, value.target_node_generation,
+                "Message Follow Actor node generation");
+              append_nonzero_u64 (
+                body, value.authority_owner_generation,
+                "Message Follow Actor authority generation");
+              append_nonzero_u64 (
+                body, value.owner_lease_generation,
+                "Message Follow Actor owner lease generation");
+          } else {
+              append_text8 (body, value.spot_id, "Message Follow Spot ID");
+              append_nonzero_u64 (
+                body, value.object_generation,
+                "Message Follow Spot generation");
+              append_bytes8 (
+                body, value.target_node_routing_id,
+                "Message Follow Spot node RID");
+              append_nonzero_u64 (
+                body, value.target_node_generation,
+                "Message Follow Spot node generation");
+              append_nonzero_u64 (
+                body, value.authority_owner_generation,
+                "Message Follow Spot authority generation");
+              append_nonzero_u64 (
+                body, value.owner_lease_generation,
+                "Message Follow Spot owner lease generation");
+          }
+      },
+      route);
+    if (body.size () > std::numeric_limits<std::uint16_t>::max ()) {
+        throw service_wire_error_t (
+          "Message Follow route body exceeds u16 length");
+    }
+    return body;
+}
+
+message_follow_route_t decode_message_follow_route (
+  std::span<const std::uint8_t> bytes,
+  std::size_t &offset)
+{
+    if (offset >= bytes.size ())
+        throw service_wire_error_t (
+          "Message Follow route kind is truncated");
+    const auto kind = bytes[offset++];
+    const auto length = read_u16 (bytes, offset);
+    if (bytes.size () - offset < length)
+        throw service_wire_error_t (
+          "Message Follow route body is truncated");
+    const auto body = bytes.subspan (offset, length);
+    offset += length;
+    std::size_t body_offset = 0;
+    if (kind == 1) {
+        actor_route_fence_t route;
+        route.actor_id = read_text8 (
+          body, body_offset, "Message Follow Actor ID");
+        route.object_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Actor generation");
+        route.target_node_routing_id = read_bytes8 (
+          body, body_offset, "Message Follow Actor node RID");
+        route.target_node_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Actor node generation");
+        route.authority_owner_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Actor authority generation");
+        route.owner_lease_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Actor owner lease generation");
+        if (body_offset != body.size ())
+            throw service_wire_error_t (
+              "Message Follow Actor route has trailing bytes");
+        return route;
+    }
+    if (kind == 2) {
+        spot_route_fence_t route;
+        route.spot_id = read_text8 (
+          body, body_offset, "Message Follow Spot ID");
+        route.object_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Spot generation");
+        route.target_node_routing_id = read_bytes8 (
+          body, body_offset, "Message Follow Spot node RID");
+        route.target_node_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Spot node generation");
+        route.authority_owner_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Spot authority generation");
+        route.owner_lease_generation = read_nonzero_u64 (
+          body, body_offset, "Message Follow Spot owner lease generation");
+        if (body_offset != body.size ())
+            throw service_wire_error_t (
+              "Message Follow Spot route has trailing bytes");
+        return route;
+    }
+    throw service_wire_error_t ("unknown Message Follow route kind");
+}
+
+} // namespace
+
+std::vector<std::uint8_t>
+encode_message_follow (const message_follow_notice_t &notice)
+{
+    if (notice.hop_count == 0
+        || notice.hop_count > messageFollowHopCount
+        || notice.queued_messages > messageFollowMessages
+        || notice.queued_bytes > messageFollowBytes
+        || (notice.original_operation.high == 0
+            && notice.original_operation.low == 0)
+        || notice.source.index () != notice.target.index ()) {
+        throw service_wire_error_t (
+          "Message Follow notice contains an invalid fence or bound");
+    }
+    const auto source = encode_message_follow_route_body (notice.source);
+    const auto target = encode_message_follow_route_body (notice.target);
+    std::vector<std::uint8_t> body;
+    body.push_back (notice.source.index () == 0 ? 1 : 2);
+    append_u16 (body, static_cast<std::uint16_t> (source.size ()));
+    body.insert (body.end (), source.begin (), source.end ());
+    body.push_back (notice.target.index () == 0 ? 1 : 2);
+    append_u16 (body, static_cast<std::uint16_t> (target.size ()));
+    body.insert (body.end (), target.begin (), target.end ());
+    body.push_back (notice.hop_count);
+    append_u32 (body, notice.queued_messages);
+    append_u32 (body, notice.queued_bytes);
+    append_u64 (body, notice.original_operation.high);
+    append_u64 (body, notice.original_operation.low);
+    append_u64 (body, notice.original_reply_route_id);
+    if (body.size () > messageFollowBytes) {
+        throw service_wire_error_t (
+          "Message Follow notice exceeds its encoded byte bound");
+    }
+    std::vector<std::uint8_t> result{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::messageFollow), 0, 1};
+    append_u32 (result, static_cast<std::uint32_t> (body.size ()));
+    result.insert (result.end (), body.begin (), body.end ());
+    return result;
+}
+
+message_follow_notice_t
+decode_message_follow (std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::messageFollow || header.flags != 0)
+        throw service_wire_error_t (
+          "record is not a Message Follow notice");
+    std::size_t offset = prefix_size;
+    if (offset >= bytes.size () || bytes[offset++] != 1)
+        throw service_wire_error_t (
+          "Message Follow notice version must be one");
+    const auto body_length = read_u32 (bytes, offset);
+    if (body_length > messageFollowBytes
+        || bytes.size () - offset != body_length)
+        throw service_wire_error_t (
+          "Message Follow notice has an invalid body length");
+    const auto body = bytes.subspan (offset, body_length);
+    std::size_t body_offset = 0;
+    message_follow_notice_t notice;
+    notice.source = decode_message_follow_route (body, body_offset);
+    notice.target = decode_message_follow_route (body, body_offset);
+    if (body_offset >= body.size ())
+        throw service_wire_error_t (
+          "Message Follow hop count is truncated");
+    notice.hop_count = body[body_offset++];
+    notice.queued_messages = read_u32 (body, body_offset);
+    notice.queued_bytes = read_u32 (body, body_offset);
+    notice.original_operation.high = read_u64 (body, body_offset);
+    notice.original_operation.low = read_u64 (body, body_offset);
+    notice.original_reply_route_id = read_u64 (body, body_offset);
+    if (body_offset != body.size ())
+        throw service_wire_error_t (
+          "Message Follow notice has trailing bytes");
+    (void) encode_message_follow (notice);
+    return notice;
 }
 
 std::vector<std::uint8_t> encode_session_relocation_route (

@@ -45,13 +45,35 @@ public final class ZLinkServiceLivenessRegistry {
         String connectionId,
         long nowNanos) {
         requireConnection(nodeRoutingId, connectionId);
+        PeerState current = peers.get(nodeRoutingId);
+        if (current != null && current.connectionId.equals(connectionId)) {
+            return;
+        }
         peers.put(
             nodeRoutingId,
             new PeerState(
                 connectionId,
                 addExact(nowNanos, peerTimeoutNanos),
                 addExact(nowNanos, probeIntervalNanos),
-                0));
+                0,
+                false));
+    }
+
+    /** Requests the first probe immediately after a new connection is admitted. */
+    public synchronized boolean requestProbe(
+        RoutingId nodeRoutingId,
+        String connectionId,
+        long nowNanos) {
+        PeerState state = peers.get(nodeRoutingId);
+        if (state == null
+            || !state.connectionId.equals(connectionId)
+            || state.ready
+            || state.outstandingProbe != 0
+            || state.nextProbeNanos <= nowNanos) {
+            return false;
+        }
+        state.nextProbeNanos = Math.min(state.nextProbeNanos, nowNanos);
+        return true;
     }
 
     public synchronized boolean disconnect(
@@ -93,7 +115,17 @@ public final class ZLinkServiceLivenessRegistry {
         state.outstandingProbe = 0;
         state.deadlineNanos = addExact(nowNanos, peerTimeoutNanos);
         state.nextProbeNanos = addExact(nowNanos, probeIntervalNanos);
+        state.ready = true;
         return true;
+    }
+
+    public synchronized boolean isReady(
+        RoutingId nodeRoutingId,
+        String connectionId) {
+        PeerState state = peers.get(nodeRoutingId);
+        return state != null
+            && state.connectionId.equals(connectionId)
+            && state.ready;
     }
 
     public synchronized Tick tick(long nowNanos) {
@@ -159,16 +191,19 @@ public final class ZLinkServiceLivenessRegistry {
         private long deadlineNanos;
         private long nextProbeNanos;
         private long outstandingProbe;
+        private boolean ready;
 
         private PeerState(
             String connectionId,
             long deadlineNanos,
             long nextProbeNanos,
-            long outstandingProbe) {
+            long outstandingProbe,
+            boolean ready) {
             this.connectionId = connectionId;
             this.deadlineNanos = deadlineNanos;
             this.nextProbeNanos = nextProbeNanos;
             this.outstandingProbe = outstandingProbe;
+            this.ready = ready;
         }
     }
 }

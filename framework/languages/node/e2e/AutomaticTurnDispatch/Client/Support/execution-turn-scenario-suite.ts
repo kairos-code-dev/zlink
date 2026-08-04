@@ -19,6 +19,7 @@ import type {
   CounterReadRes,
   CounterResetMsg,
   CpuWorkerAwaitMsg,
+  DeferredJoinFailureMsg,
   EnsureSpotReq,
   EnsureSpotRes,
   HttpAwaitMsg,
@@ -171,6 +172,129 @@ export class ExecutionTurnScenarioSuite {
     await this.sendSpot(spot, { requestId } satisfies TimerStopMsg, 'TimerStopMsg');
   }
 
+  async tdD4(): Promise<void> {
+    const perActorSpot = `execution-turn-per-actor-${uniqueId()}`;
+    await this.ensureSpot(perActorSpot, 'play-a', 'per_actor');
+    const actors = await this.createActorContext(perActorSpot);
+    await this.ensureActorInSpot(actors.actorA, actors.spotId, 'TD-D4-join-a');
+    await this.ensureActorInSpot(actors.actorB, actors.spotId, 'TD-D4-join-b');
+    const actorRequestId = newId('TD-D4-actor-a');
+    const actorPending = this.actorRequest<ActorAwaitRes>(actors.actorA, {
+      requestId: actorRequestId,
+      delayMs: 5000,
+      terminator: 'async'
+    } satisfies ActorAwaitReq, 'ActorAwaitReq');
+    await this.evidence(actorRequestId, 'actor-await-held');
+
+    const actorASecondRequestId = newId('TD-D4-actor-a-second');
+    const actorASecond = this.actorRequest<ActorAwaitRes>(actors.actorA, {
+      requestId: actorASecondRequestId,
+      marker: 'actor-a-fast'
+    } satisfies ActorFastReq, 'ActorFastReq');
+
+    const timerRequests = [
+      { requestId: newId('TD-D4-timer-a'), timerName: newId('timer-a') },
+      { requestId: newId('TD-D4-timer-b'), timerName: newId('timer-b') }
+    ];
+    let timersStopped = false;
+    const stopTimers = async (): Promise<void> => {
+      if (timersStopped) return;
+      timersStopped = true;
+      for (const timer of timerRequests) {
+        await this.sendSpot(actors.spotId, { requestId: timer.requestId } satisfies TimerStopMsg, 'TimerStopMsg');
+      }
+    };
+    for (const timer of timerRequests) {
+      await this.sendSpot(actors.spotId, {
+        requestId: timer.requestId,
+        timerName: timer.timerName,
+        mode: 'fast',
+        periodMs: 40,
+        delayMs: 0
+      } satisfies TimerStartMsg, 'TimerStartMsg');
+      await delay(25);
+    }
+
+    const actorBRequestId = newId('TD-D4-actor-b');
+    const actorB = this.actorRequest<ActorAwaitRes>(actors.actorB, {
+      requestId: actorBRequestId,
+      marker: 'actor-b-fast'
+    } satisfies ActorFastReq, 'ActorFastReq');
+    try {
+      await Promise.all([actorB, ...timerRequests.map(async (timer) => {
+        const evidence = await this.evidence(timer.requestId, 'timer-fast-completed');
+        ensure(evidence.some((line) => line.includes(`request=${timer.requestId}`)),
+          `TD-D4 timer '${timer.timerName}' did not complete.`);
+      })]);
+
+      const evidenceBeforeAResumes = await this.evidenceSnapshot(actorRequestId);
+      ensure(!evidenceBeforeAResumes.some((line) => line.includes('actor-await-resumed')),
+        'TD-D4 Actor A resumed before the independent lanes were checked.');
+      await stopTimers();
+
+      await Promise.all([actorPending, actorASecond]);
+      const actorEvidence = await this.evidenceSnapshot(actorRequestId);
+      const actorResumedIndex = actorEvidence.findIndex((line) => line.includes('actor-await-resumed'));
+      const actorBCompletedIndex = actorEvidence.findIndex((line) =>
+        line.includes(`request=${actorBRequestId}`) && line.includes('actor-fast-completed'));
+      ensure(actorBCompletedIndex >= 0 && actorBCompletedIndex < actorResumedIndex,
+        'TD-D4 Actor B did not complete before Actor A resumed.');
+      for (const timer of timerRequests) {
+        const timerCompletedIndex = actorEvidence.findIndex((line) =>
+          line.includes(`request=${timer.requestId}`) && line.includes('timer-fast-completed'));
+        ensure(timerCompletedIndex >= 0 && timerCompletedIndex < actorResumedIndex,
+          `TD-D4 timer '${timer.timerName}' did not complete before Actor A resumed.`);
+      }
+      const actorACompletedIndex = actorEvidence.findIndex((line) =>
+        line.includes(`request=${actorRequestId}`) && line.includes('actor-await-completed'));
+      const actorASecondStartedIndex = actorEvidence.findIndex((line) =>
+        line.includes(`request=${actorASecondRequestId}`) && line.includes('actor-fast-started'));
+      ensure(actorACompletedIndex >= 0 && actorASecondStartedIndex > actorACompletedIndex,
+        'TD-D4 Actor A second request re-entered before the first request completed.');
+    } finally {
+      await stopTimers();
+    }
+  }
+
+  async tdD5(): Promise<void> {
+    const actors = await this.createActorContext(await this.spot());
+    const yieldRequestId = newId('TD-D5-yield');
+    let failure: unknown;
+    try {
+      await this.actorRequest<ActorAwaitRes>(actors.actorA, {
+        requestId: yieldRequestId,
+        delayMs: 100,
+        terminator: 'yield'
+      } satisfies ActorAwaitReq, 'ActorAwaitReq');
+    } catch (error) {
+      failure = error;
+    }
+    ensure(failure !== undefined, 'TD-D5 unsupported Actor Yield completed unexpectedly.');
+    const failureError = typeof failure === 'object' && failure !== null && 'error' in failure
+      ? (failure as { error?: unknown }).error
+      : undefined;
+    const failureMessage = typeof failureError === 'string'
+      ? failureError
+      : failureError !== undefined
+        ? JSON.stringify(failureError)
+        : failure instanceof Error ? failure.message : String(failure);
+    ensure(/yield|invalid.?operation/i.test(failureMessage),
+      `TD-D5 failure did not identify the unsupported Yield context: ${failureMessage}`);
+    const evidence = await this.evidenceSnapshot(yieldRequestId);
+    ensure(!evidence.some((line) => line.includes(`request=${yieldRequestId}`)
+      && (line.includes('actor-await-resumed') || line.includes('actor-await-completed'))),
+    'TD-D5 unsupported Yield unexpectedly resumed the Actor operation.');
+
+    const asyncRequestId = newId('TD-D5-async');
+    const asyncReply = await this.actorRequest<ActorAwaitRes>(actors.actorA, {
+      requestId: asyncRequestId,
+      delayMs: 20,
+      terminator: 'async'
+    } satisfies ActorAwaitReq, 'ActorAwaitReq');
+    ensure(asyncReply.marker === 'actor-await-completed',
+      'TD-D5 Async contrast did not complete.');
+  }
+
   async tdD6(): Promise<void> {
     const spot = await this.spot();
     for (const terminator of ['async', 'yield'] as const) {
@@ -238,6 +362,47 @@ export class ExecutionTurnScenarioSuite {
       'TD-E3 opposite joins did not both complete.');
   }
 
+  async tdE2A(): Promise<void> {
+    const actors = await this.createActorContext(await this.spot());
+    await this.ensureActorInSpot(actors.actorA, actors.spotId, 'TD-E2A-prepare-a');
+    await this.ensureActorInSpot(actors.actorB, actors.spotId, 'TD-E2A-prepare-b');
+
+    for (const failureMode of ['exception', 'cancel'] as const) {
+      const requestId = newId(`TD-E2A-${failureMode}`);
+      const firstTargetSpotId = `td-e2a-${failureMode}-a-${uniqueId()}`;
+      const secondTargetSpotId = `td-e2a-${failureMode}-b-${uniqueId()}`;
+      await this.ensureSpot(firstTargetSpotId, 'play-a');
+      await this.ensureSpot(secondTargetSpotId, 'play-a');
+      let failure: unknown;
+      try {
+        await this.actorRequest<ActorAwaitRes>(actors.actorA, {
+          requestId,
+          firstActorId: actors.actorA,
+          secondActorId: actors.actorB,
+          firstTargetSpotId,
+          secondTargetSpotId,
+          failureMode
+        } satisfies DeferredJoinFailureMsg, 'DeferredJoinFailureMsg');
+      } catch (error) {
+        failure = error;
+      }
+      ensure(failure !== undefined, `TD-E2A ${failureMode} handler completed unexpectedly.`);
+      await this.evidence(requestId, 'deferred-join-failure-registered');
+
+      const probe = await this.actorRequest<ActorAwaitRes>(actors.actorA, {
+        requestId,
+        marker: `${failureMode}-source-still-member`
+      } satisfies ActorFastReq, 'ActorFastReq');
+      ensure(probe.marker === `${failureMode}-source-still-member`,
+        `TD-E2A ${failureMode} source Actor did not remain usable.`);
+      const evidence = await this.evidence(requestId, 'actor-fast-completed');
+      ensure(!evidence.some((line) => line.includes(`request=${requestId}`)
+        && (line.includes(`spot=${firstTargetSpotId}`) || line.includes(`spot=${secondTargetSpotId}`))
+        && (line.includes('actor-joined') || line.includes('actor-admitted'))),
+      `TD-E2A ${failureMode} unexpectedly started a deferred Join.`);
+    }
+  }
+
   async tdF1(): Promise<void> {
     const owner = await this.spot();
     const target = `td-f1-target-${uniqueId()}`;
@@ -263,6 +428,16 @@ export class ExecutionTurnScenarioSuite {
 
   async tdF5(): Promise<void> {
     for (const terminator of ['async', 'yield'] as const) await this.verifyCancellationRecovery(terminator);
+  }
+
+  async tdF5A(): Promise<void> {
+    const spot = await this.spot();
+    const requestId = newId('TD-F5A-preflight');
+    const reply = await this.spotRequest<AutomaticTurnDispatchRes>(spot, {
+      requestId,
+      marker: 'shutdown-preflight'
+    } satisfies ProbeReq, 'ProbeReq');
+    ensure(reply.marker === 'shutdown-preflight', 'TD-F5A shutdown preflight probe failed.');
   }
 
   async tdF6(): Promise<void> {
@@ -480,10 +655,22 @@ export class ExecutionTurnScenarioSuite {
       requestId: newId(scenarioId), targetSpotId: spotId
     } satisfies ActorJoinAwaitReq, 'ActorJoinAwaitReq');
     ensure(reply.marker.includes('actor-join'), `${scenarioId} actor placement failed.`);
+    const deadline = Date.now() + 30000;
+    const joinedMarker = `actor-joined|rid=play-a|spot=${spotId}|actor=${actorId}`;
+    while (Date.now() < deadline) {
+      const evidence = await this.evidenceSnapshot(reply.requestId);
+      if (evidence.some((line) => line.includes(joinedMarker))) return;
+      await delay(25);
+    }
+    throw new Error(`${scenarioId} actor '${actorId}' did not join Spot '${spotId}'.`);
   }
 
-  private async ensureSpot(spotId: string, targetNode: string): Promise<void> {
-    const builder = this.client.request({ spotId } satisfies EnsureSpotReq).packetName('EnsureSpotReq');
+  private async ensureSpot(
+    spotId: string,
+    targetNode: string,
+    executionMode?: EnsureSpotReq['executionMode']
+  ): Promise<void> {
+    const builder = this.client.request({ spotId, executionMode } satisfies EnsureSpotReq).packetName('EnsureSpotReq');
     if (targetNode !== 'play-a') builder.metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, targetNode);
     const result = await builder.timeout(30000).submit<EnsureSpotRes>();
     ensure(result.spotId === spotId, `Spot creation failed for '${spotId}'.`);

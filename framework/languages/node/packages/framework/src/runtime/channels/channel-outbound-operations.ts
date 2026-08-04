@@ -1,5 +1,9 @@
-import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
-import type { Message } from '@zlink-systems/zlink';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException,
+  internalFrameworkErrorKind
+} from '../framework-errors-internal';
+import type { Message } from '../../contracts/Common/Message';
 import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
@@ -23,6 +27,8 @@ import { requirePublicFanoutTopic } from './fanout-service-wire';
 import { ZLinkChannelDispatchServices } from './channel-dispatch-services';
 import { codecsForFrameworkPacket } from './channel-framework-packets';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
+import { ZLinkFrameworkException } from '../../contracts';
+import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 
 const ZLINK_SEND_DONT_WAIT = 1 as ZLinkBackendSendFlags;
 
@@ -112,7 +118,7 @@ export class ZLinkChannelOutboundOperations {
         () => closeMessages(parts)
       );
     } catch (error) {
-      if (error instanceof Error && /timed out/i.test(error.message)) {
+      if (isSubmitDeadline(error)) {
         return { status: ZLinkSubmitStatus.TimedOut };
       }
       throw error;
@@ -285,7 +291,7 @@ export class ZLinkChannelOutboundOperations {
         () => closeMessages(parts)
       );
     } catch (error) {
-      if (error instanceof Error && /timed out/i.test(error.message)) {
+      if (isSubmitDeadline(error)) {
         return publishResult(ZLinkSubmitStatus.TimedOut);
       }
       throw error;
@@ -353,7 +359,7 @@ export class ZLinkChannelOutboundOperations {
         () => closeMessages(parts)
       );
     } catch (error) {
-      if (error instanceof Error && /timed out/i.test(error.message)) {
+      if (isSubmitDeadline(error)) {
         return { status: ZLinkSubmitStatus.TimedOut };
       }
       throw error;
@@ -477,8 +483,7 @@ export class ZLinkChannelOutboundOperations {
     } catch (error) {
       if (
         this.sockets.routeMemberStatus(routerChannelId, targetNodeRid) === 'disconnected'
-        && error instanceof Error
-        && (/timed out/i.test(error.message) || error.name === 'ZLinkRouteDisconnectedError')
+        && (isSubmitDeadline(error) || error instanceof ZLinkRouteDisconnectedError)
       ) {
         throw createInternalFrameworkException(
           ZLinkFrameworkInternalErrorKind.RouteNotConnected,
@@ -501,6 +506,11 @@ export class ZLinkChannelOutboundOperations {
       else this.pendingRequests.set(channel, remaining);
     }
   }
+}
+
+function isSubmitDeadline(error: unknown): boolean {
+  return error instanceof ZLinkFrameworkException
+    && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.DeadlineExceeded;
 }
 
 function publishResult(status: ZLinkSubmitStatus): ZLinkSubmitResult {

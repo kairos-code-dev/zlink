@@ -12,7 +12,7 @@ internal object SmD11Scenario {
     suspend fun run(spots: SpotHttpDriver) {
         val actorId = "actor-sm-d11-mixed"
         val profile = Contracts.ActorProfile("Mixed", 11, listOf("stream", "channel"))
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             connector.connect().await()
             val auth = connector

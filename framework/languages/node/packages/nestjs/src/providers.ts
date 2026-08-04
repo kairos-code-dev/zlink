@@ -366,12 +366,18 @@ function createProviderResolver(moduleRef: ModuleRef, discovery?: DiscoveryServi
     },
     async create<T>(type: Type<T>): Promise<T> {
       try {
-        return await moduleRef.resolve(type, undefined, { strict: false });
+        // Spot and actor lifecycles request a fresh application object for
+        // each activation. ModuleRef.resolve() returns the registered
+        // singleton when the application also lists that class as a Nest
+        // provider, which would make later Spot contexts overwrite earlier
+        // activations. ModuleRef.create() preserves dependency injection
+        // while creating an independent object.
+        return await moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
       } catch {
         // Fall back to direct construction through Nest for classes that are
         // not registered as providers.
       }
-      return moduleRef.create(type as unknown as import('@nestjs/common').Type<T>);
+      return await moduleRef.resolve(type, undefined, { strict: false });
     }
   };
   Object.defineProperty(

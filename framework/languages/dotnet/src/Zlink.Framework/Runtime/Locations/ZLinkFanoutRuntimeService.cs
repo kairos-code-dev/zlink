@@ -74,7 +74,8 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
         const int capacity = 1024;
         var observer = new ZLinkObservationQueue<ZLinkFanoutRuntimeEvent>(
             capacity,
-            static item => item.Sequence);
+            static item => item.Sequence,
+            "fanout");
         lock (_gate)
         {
             _ = RequireState(channelName);
@@ -256,8 +257,6 @@ internal sealed class ZLinkFanoutRuntimeService : IZLinkFanoutRuntime, IDisposab
         _hostLifecycle.Changed -= OnHostStateChanged;
         lock (_gate)
         {
-            foreach (var observer in _observers.Values.SelectMany(static value => value))
-                observer.Complete();
             _observers.Clear();
         }
     }

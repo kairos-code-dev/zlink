@@ -14,6 +14,8 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkRequestException;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 
@@ -86,6 +88,29 @@ final class ZLinkSessionRelocationPeerClientTest {
         assertEquals(1, submissions.get());
         assertEquals(0, normalizations.get());
         assertFalse(gate.open);
+    }
+
+    @Test
+    void retriesOnlyTransportNotConnectedBeforeTheRouteAck() {
+        var codec = new ZLinkServiceM6BWireCodec();
+        var command = command();
+        AtomicInteger submissions = new AtomicInteger();
+        ZLinkInternalMeshNode node = node((target, encoded) -> {
+            assertEquals(SESSION_OWNER, target);
+            assertEquals(command, codec.decodeSessionRelocationRoute(encoded));
+            if (submissions.incrementAndGet() == 1) {
+                throw new CompletionException(
+                    new ZlinkRequestException(RequestResult.NOT_CONNECTED));
+            }
+            return codec.encodeSessionRelocationRouted(ack(command));
+        });
+
+        new ZLinkSessionRelocationPeerClient(node, codec)
+            .switchRoute(command, Duration.ofSeconds(1))
+            .toCompletableFuture()
+            .join();
+
+        assertEquals(2, submissions.get());
     }
 
     private static ZLinkInternalMeshNode node(Sender sender) {

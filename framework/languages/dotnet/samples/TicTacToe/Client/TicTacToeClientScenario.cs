@@ -189,8 +189,12 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             observerSawMilestone.Payload.ActorId,
             observerSawMilestone.Payload.Wins);
 
-        await client1.Send(new LeaveGameMsg(room.RoomId)).Async(cancellationToken);
-        await client2.Send(new LeaveGameMsg(room.RoomId)).Async(cancellationToken);
+        var client1Leave = await client1.Request(new LeaveGameMsg(room.RoomId))
+            .Async<LeaveGameRes>(cancellationToken);
+        ZlinkStreamAssert.Ensure(client1Leave.Completed, "Assertion failed: client1Leave.Completed");
+        var client2Leave = await client2.Request(new LeaveGameMsg(room.RoomId))
+            .Async<LeaveGameRes>(cancellationToken);
+        ZlinkStreamAssert.Ensure(client2Leave.Completed, "Assertion failed: client2Leave.Completed");
     }
 
     private static async ValueTask<JoinGameRes> JoinGameAsync(

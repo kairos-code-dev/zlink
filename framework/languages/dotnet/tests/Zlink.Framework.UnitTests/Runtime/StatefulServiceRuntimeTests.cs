@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Framework.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Backend.DotNet;
 using Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
@@ -10,6 +11,8 @@ using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Service;
+using Zlink.Framework.Runtime.Spots;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -1897,6 +1900,295 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task LocalSpotCatalogRejectsPreparedActivationAfterSpotCapacityIsReached()
+    {
+        ProductionUserSpot.Reset();
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            var node = options.AddRouteMesh("objects")
+                .Listen($"tcp://127.0.0.1:{FindFreeTcpPort()}")
+                .SetSpotLimit(1);
+            node.Objects()
+                .Server()
+                .AddSpotFactory<ProductionUserSpot>(
+                    "Tests.ProductionUserSpot",
+                    factory => factory
+                        .StableTypeLimit(1)
+                        .DisableRelocation());
+        });
+
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        await locations.StartAsync(
+            runtime.PrepareLocationNodeRoutingId(),
+            CancellationToken.None);
+        PreparedReservedSpot? prepared = null;
+        ZLinkSpotNodeRuntime? node = null;
+        ZLinkSpotNodeCatalog? generatedCatalog = null;
+        await using var timerScheduler = new ZLinkTimerScheduler();
+        try
+        {
+            await runtime.StartAsync(CancellationToken.None);
+            node = runtime.GetSpotNodeRuntime("objects");
+            prepared = await node.Catalog.PrepareReservedAsync(
+                typeof(ProductionUserSpot),
+                $"prepared-{Guid.NewGuid():D}",
+                objectGeneration: 1,
+                authorityOwnerGeneration: 1,
+                ZLinkMessage.Empty,
+                CancellationToken.None);
+
+            var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                () => node.Catalog.PrepareReservedAsync(
+                        typeof(ProductionUserSpot),
+                        $"prepared-{Guid.NewGuid():D}",
+                        objectGeneration: 2,
+                        authorityOwnerGeneration: 2,
+                        ZLinkMessage.Empty,
+                        CancellationToken.None)
+                    .AsTask());
+            Assert.Equal(
+                ZLinkFrameworkErrorKind.CapacityExceeded,
+                error.Kind);
+
+            if (prepared is { } reservedPrepared)
+            {
+                await node.Catalog.DiscardReservedAsync(reservedPrepared);
+                prepared = null;
+            }
+            generatedCatalog = new ZLinkSpotNodeCatalog(
+                provider,
+                runtime,
+                runtime.Registration,
+                node.Registration,
+                node.Node,
+                "objects",
+                runtime.CompletionAdmission,
+                lifecycle: null,
+                timerScheduler: timerScheduler);
+            var createGate = ProductionUserSpot.BlockNextCreate();
+            var firstCreate = generatedCatalog.CreateAsync(
+                    typeof(ProductionUserSpot),
+                    ZLinkMessage.Empty,
+                    CancellationToken.None)
+                .AsTask();
+            try
+            {
+                await createGate.Entered.Task.WaitAsync(
+                    TimeSpan.FromSeconds(5));
+                var generatedError = await Assert.ThrowsAsync<ZLinkFrameworkException>(
+                    () => generatedCatalog.CreateAsync(
+                            typeof(ProductionUserSpot),
+                            ZLinkMessage.Empty,
+                            CancellationToken.None)
+                        .AsTask());
+                Assert.Equal(
+                    ZLinkFrameworkErrorKind.CapacityExceeded,
+                    generatedError.Kind);
+            }
+            finally
+            {
+                createGate.Release.TrySetResult();
+            }
+            var generated = await firstCreate;
+            Assert.Equal(ZLinkSpotCreateState.Created, generated.State);
+        }
+        finally
+        {
+            if (prepared is { } reserved && node is { } spotNode)
+                await spotNode.Catalog.DiscardReservedAsync(reserved);
+            if (generatedCatalog is not null)
+                await generatedCatalog.DisposeAsync();
+            await timerScheduler.DisposeAsync();
+            await runtime.StopAsync(CancellationToken.None);
+            await locations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task InstanceSpotMonitoringIncludesPreparedActivation()
+    {
+        var relocationStore = new TestRelocationStore();
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            options.AddRelocationStore(relocationStore);
+            var node = options.AddRouteMesh("objects")
+                .Listen($"tcp://127.0.0.1:{FindFreeTcpPort()}");
+            node.Objects()
+                .Server()
+                .AddInstanceSpotFactory<MonitoringInstanceSpot>(
+                    "Tests.MonitoringInstanceSpot",
+                    factory => factory
+                        .StableTypeLimit(1)
+                        .DisableRelocation());
+        });
+
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        await locations.StartAsync(
+            runtime.PrepareLocationNodeRoutingId(),
+            CancellationToken.None);
+        PreparedReservedSpot? prepared = null;
+        try
+        {
+            await runtime.StartAsync(CancellationToken.None);
+            var node = runtime.GetSpotNodeRuntime("objects");
+            prepared = await node.Catalog.PrepareInstanceReservedAsync(
+                "Tests.MonitoringInstanceSpot",
+                $"instance-{Guid.NewGuid():D}",
+                objectGeneration: 1,
+                authorityOwnerGeneration: 1,
+                CancellationToken.None);
+
+            var snapshot = Assert.Single(
+                node.GetInstanceSpotMonitoringSnapshots());
+            Assert.Equal(0UL, snapshot.ActiveCount);
+            Assert.Equal(1UL, snapshot.ActivatingCount);
+            Assert.Equal(0UL, snapshot.ClosingCount);
+        }
+        finally
+        {
+            if (prepared is { } reserved)
+                await runtime.GetSpotNodeRuntime("objects")
+                    .Catalog.DiscardReservedAsync(reserved);
+            await runtime.StopAsync(CancellationToken.None);
+            await locations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task InstanceSpotIdleInspectionRotatesWithABoundedBatch()
+    {
+        const string stableType = "Tests.IdleBatchInstanceSpot";
+        var relocationStore = new TestRelocationStore();
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseTestLocationStore();
+            options.AddRelocationStore(relocationStore);
+            var node = options.AddRouteMesh("objects")
+                .Listen($"tcp://127.0.0.1:{FindFreeTcpPort()}")
+                .SetSpotLimit(128);
+            node.Objects()
+                .Server()
+                .AddInstanceSpotFactory<MonitoringInstanceSpot>(
+                    stableType,
+                    factory => factory
+                        .StableTypeLimit(128)
+                        .DisableRelocation());
+        });
+
+        await using var provider = services.BuildServiceProvider();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        await locations.StartAsync(
+            runtime.PrepareLocationNodeRoutingId(),
+            CancellationToken.None);
+        ZLinkSpotNodeCatalog? catalog = null;
+        ZLinkTimerScheduler? timerScheduler = null;
+        ZLinkSpotNodeCatalog? singleCatalog = null;
+        ZLinkTimerScheduler? singleTimerScheduler = null;
+        try
+        {
+            await runtime.StartAsync(CancellationToken.None);
+            var nodeRuntime = runtime.GetSpotNodeRuntime("objects");
+            timerScheduler = new ZLinkTimerScheduler();
+            catalog = new ZLinkSpotNodeCatalog(
+                provider,
+                runtime,
+                runtime.Registration,
+                nodeRuntime.Registration,
+                nodeRuntime.Node,
+                "objects",
+                runtime.CompletionAdmission,
+                lifecycle: null,
+                timerScheduler: timerScheduler!);
+            var total = ZLinkSpotNodeCatalog.IdleEvictionBatchSize + 1;
+
+            for (var index = 0; index < total; index++)
+            {
+                var prepared = await catalog.PrepareInstanceReservedAsync(
+                    stableType,
+                    $"idle-batch-{index}-{Guid.NewGuid():N}",
+                    objectGeneration: 1,
+                    authorityOwnerGeneration: 1,
+                    CancellationToken.None);
+                await catalog.PublishInstanceReservedAsync(
+                    prepared,
+                    objectGeneration: 1,
+                    authorityOwnerGeneration: 1,
+                    CancellationToken.None);
+            }
+
+            var first = catalog.SnapshotIdleEvictionCandidates();
+            var second = catalog.SnapshotIdleEvictionCandidates();
+            var distinct = first
+                .Concat(second)
+                .Select(static activation => activation.SpotId)
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+
+            Assert.Equal(ZLinkSpotNodeCatalog.IdleEvictionBatchSize, first.Count);
+            Assert.Equal(ZLinkSpotNodeCatalog.IdleEvictionBatchSize, second.Count);
+            Assert.Equal(total, distinct);
+
+            singleTimerScheduler = new ZLinkTimerScheduler();
+            singleCatalog = new ZLinkSpotNodeCatalog(
+                provider,
+                runtime,
+                runtime.Registration,
+                nodeRuntime.Registration,
+                nodeRuntime.Node,
+                "objects",
+                runtime.CompletionAdmission,
+                lifecycle: null,
+                timerScheduler: singleTimerScheduler);
+            var singlePrepared = await singleCatalog.PrepareInstanceReservedAsync(
+                stableType,
+                $"idle-single-{Guid.NewGuid():N}",
+                objectGeneration: 1,
+                authorityOwnerGeneration: 1,
+                CancellationToken.None);
+            await singleCatalog.PublishInstanceReservedAsync(
+                singlePrepared,
+                objectGeneration: 1,
+                authorityOwnerGeneration: 1,
+                CancellationToken.None);
+
+            var singleFirst = singleCatalog.SnapshotIdleEvictionCandidates();
+            var singleSecond = singleCatalog.SnapshotIdleEvictionCandidates();
+            Assert.Single(singleFirst);
+            Assert.Single(singleSecond);
+            Assert.Equal(singleFirst[0].SpotId, singleSecond[0].SpotId);
+        }
+        finally
+        {
+            if (singleCatalog is not null)
+                await singleCatalog.DisposeAsync();
+            if (singleTimerScheduler is not null)
+                await singleTimerScheduler.DisposeAsync();
+            if (catalog is not null)
+                await catalog.DisposeAsync();
+            if (timerScheduler is not null)
+                await timerScheduler.DisposeAsync();
+            await runtime.StopAsync(CancellationToken.None);
+            await locations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task FrameworkHostAutomaticallyExecutesRemoteUserSpotCreateAndCloseAgainstAuthorityStore()
     {
         ProductionUserSpot.Reset();
@@ -3488,6 +3780,12 @@ public sealed class StatefulServiceRuntimeTests
             internal TaskCompletionSource Release { get; } =
                 new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+    }
+
+    private sealed class MonitoringInstanceSpot(IZLinkInstanceSpotContext context)
+        : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context { get; } = context;
     }
 
     private sealed record ProductionCreateReply(string Value);

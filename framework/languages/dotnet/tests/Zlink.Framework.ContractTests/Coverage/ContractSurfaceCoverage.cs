@@ -1318,7 +1318,16 @@ public sealed class ContractSurfaceCoverage
         var text = node.ToFullString();
         var replacements = node.DescendantNodesAndSelf()
             .OfType<TypeSyntax>()
-            .Where(type => !type.Ancestors().Any(static ancestor => ancestor is TypeSyntax))
+            // `notnull` is a constraint keyword, not a type symbol. Roslyn
+            // represents it in the constraint syntax as an identifier-like
+            // TypeSyntax, but semantic binding cannot resolve it as a type.
+            // Keep the exact constraint text in the canonical signature.
+            .Where(type => !string.Equals(
+                               type.ToString(),
+                               "notnull",
+                               StringComparison.Ordinal)
+                           && !type.Ancestors().Any(
+                               static ancestor => ancestor is TypeSyntax))
             .OrderByDescending(static type => type.SpanStart)
             .ToArray();
         foreach (var type in replacements)

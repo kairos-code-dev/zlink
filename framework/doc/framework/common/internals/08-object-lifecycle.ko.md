@@ -132,19 +132,38 @@ Application이 새 호출을 시작할 수는 있으며, 그때 중복 실행 �
 
 ## 5. 활성 객체를 언제 정리하고 무엇으로 막는가
 
-### 지금 넷 다 정리하지 않는다
+### 유휴 정리는 Instance Spot만 대상으로 한다
 
-**네 구현 모두 조용한 Spot·Actor를 정리하는 코드가 없다.** 마지막 활동 시각을 기록하는
-곳도, 주기적으로 훑는 곳도 없다. 객체는 소유권을 잃거나 명시적으로 없앨 때만 사라진다.
+이 장의 유휴 정리 기준을 .NET runtime은 `ZLinkSpotNodeCatalog`가 소유한다. 설정된
+`InstanceSpotIdleTimeout`이 양수이면 catalog가 주기적으로 후보를 검사한다. 한 번의
+검사에서 최대 64개만 확인하고 마지막 검사 위치를 다음 주기에 이어서 사용하므로, Spot
+수가 많아도 유지보수 작업이 application dispatch를 독점하지 않는다.
 
-즉 **한 번 만들어진 객체는 process가 살아 있는 한 남는다.** 방을 계속 만드는 서비스는
-메모리가 단조 증가한다.
+후보는 Instance Spot으로 한정한다. Actor membership이 없고, relocation이나 Message
+Follow에 참여하지 않으며, application 작업이 대기 중이지 않은 activation만 후보가
+된다. 마지막 application 작업이 끝난 시각부터 timeout이 지나야 후보로 인정한다.
+
+정리 transaction을 시작하면 catalog는 같은 Spot ID에 대한 다른 close 요청과 합친다.
+serial quiescence를 다시 확인한 뒤 `IdleEvicted` 사유로 closing callback을 호출하고,
+activation을 dispose하며, Location Store의 Spot location을 release한다. 따라서 callback
+실행 중에 새 작업을 받지 않으며, callback이 끝나기 전에 location을 지우지 않는다.
+
+이 과정에서 location row가 아직 release 중인데 Instance intent request가 이전 route를
+사용하면 .NET runtime은 route를 무효화하고 location이 Missing 또는 새 Ready 상태가
+될 때까지 다시 읽는다. 이 동작은 이미 수락된 application request를 재전송하는 retry가
+아니라, cold activation을 결정하기 위한 owner route 갱신이다. 일반 Spot의 stale route
+오류에는 이 동작을 적용하지 않는다.
+
+다른 Framework 언어의 유휴 정리 상태와 공통 process 검증 결과는 이 .NET 구조 설명만으로
+완료로 간주하지 않는다. 각 언어는 같은 종료 조건과 process evidence를 별도로 확인해야
+한다.
 
 ### 상한은 있지만 배치 단계에서만 쓴다
 
-세 구현이 활성 객체 수 상한을 갖고 있는데, **그 값을 배치를 고를 때만 쓴다** — 상한에
+활성 객체 수 상한은 **배치 선택과 로컬 활성화** 양쪽에서 적용해야 한다 — 상한에
 가까운 node를 후보에서 빼거나 새 객체 생성을 거절한다. 이미 만들어진 객체를 **줄이는
-동작은 없다.** 한 구현은 상한 자체가 없어 무제한 맵에 쌓인다.
+동작과 새 활성화를 서로 다른 판단으로 두면, 이미 해당 node를 가리키는 요청이 상한을
+우회할 수 있다.
 
 **결정 — 상한은 두 지점에서 쓴다.**
 
@@ -174,12 +193,20 @@ Instance Spot 한정으로 추가했다([Spot 모델](../spec/11-spot-model.ko.m
 
 ## 6. 메모리 회계를 어느 단위로 하는가
 
-**네 구현 모두 process 단위 byte 회계만 있다.** 처리 대기 byte가 상한에 도달하면 새
-application 수신을 멈춘다. 상한은 넷이 같은 방식으로 정한다 — 컨테이너 한도나 힙
-한도에서 프로필별 비율(2 / 5 / 10 / 20 %)을 적용한다. 이 부분은 잘 맞는다.
+process 단위 byte 회계와 Spot 단위 byte 회계는 서로 다른 회계 단위다. process
+단위 byte 회계는 수신 대기 payload를 byte로 제한하고, Spot 단위 byte 회계는
+lane별 작업 건수와 byte를 함께 제한한다. 한쪽의 숫자를 다른 쪽의 상한으로 재사용하지
+않는다.
 
-**빠진 것은 Spot 단위 byte 회계다.** 대기열 제한이 **건수**로만 있다. 이동 중에만 byte
-한도가 붙는다.
+현재 .NET의 `ZLinkSerialExecutionQueue`는 application과 lifecycle을 별도 FIFO lane으로
+두고 각 lane에 count·byte reservation을 둔다. application 기본값은 4,096건·64 MiB,
+lifecycle 기본값은 256건·4 MiB이며, accepted application work는 payload와 작업당
+고정 비용을 함께 예약한다. reservation은 handler terminal completion에서 반납한다.
+relocation hold는 별도로 1,024건·16 MiB 상한을 사용한다.
+
+따라서 process HWM이 남아 있어도 Spot queue가 먼저 포화될 수 있고, 반대로 Spot queue에
+여유가 있어도 process inbound admission이 먼저 멈출 수 있다. 두 결과를 같은
+`CapacityExceeded` 상황으로 뭉뚱그리지 않고 owning queue의 admission 결과로 구분한다.
 
 ### 대기열 한도는 쌓인 payload 크기로 정한다
 
@@ -211,9 +238,9 @@ envelope·metadata·queue node를 포함한다. 정확히 계산할 수 없는 �
 process 단위 회계가 이미 byte로 되어 있다(§6 첫 문단). 같은 기준을 Spot 단위로 내리면
 되고, 두 층이 같은 단위를 쓰므로 어느 층에서 걸렸는지도 구분된다.
 
-**결정 — 상한이 없는 실행 대기열을 두지 않는다.** 두 구현의 Spot 대기열이 사실상
-무제한이다 — 하나는 기본 상한이 정수 최대값이고, 다른 하나는 깊이를 세지 않는 연결
-구조다([Framework API](../spec/06-framework-api.ko.md)).
+**결정 — 상한이 없는 실행 대기열을 두지 않는다.** 각 lane은 건수와 byte reservation을
+모두 가져야 하며, relocation hold도 별도 상한을 가져야 한다
+([Framework API](../spec/06-framework-api.ko.md)).
 
 초과했을 때의 결과는 **하나가 아니다.** 제출 계열과 대기열 위치에 따라 갈리므로 구현이
 하나로 뭉뚱그리면 안 된다. 표는 [2. Spot·Actor 실행 직렬화 「2. 실행 권한을 만들 때의 함정」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정)에 있다.

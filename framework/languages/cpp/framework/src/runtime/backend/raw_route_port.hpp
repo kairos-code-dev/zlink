@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -49,7 +50,9 @@ class raw_route_port_t
       zlink::router_socket_t &socket,
       std::mutex *shared_socket_mutex = nullptr,
       zlink::poll_event_flag_t receive_events =
-        zlink::poll_event_flag_t::pollin);
+        zlink::poll_event_flag_t::pollin,
+      zlink::poller_t *shared_poller = nullptr,
+      std::uintptr_t poller_slot = 1);
 
     bool send (const raw_bytes_t &target_routing_id, const raw_message_t &parts);
     bool send_completion_control (
@@ -69,7 +72,9 @@ class raw_route_port_t
     void close () noexcept;
 
   private:
-    zlink::poller_t _poller;
+    std::unique_ptr<zlink::poller_t> _owned_poller;
+    zlink::poller_t *_poller;
+    std::uintptr_t _poller_slot;
     zlink::router_socket_t *_socket;
     std::mutex _owned_socket_mutex;
     std::mutex *_socket_mutex;

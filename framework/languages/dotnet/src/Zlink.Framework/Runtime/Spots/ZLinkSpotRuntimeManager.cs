@@ -1,3 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Service;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotRuntimeManager(
@@ -10,6 +14,9 @@ internal sealed class ZLinkSpotRuntimeManager(
     private readonly ZLinkFrameworkRegistration _frameworkRegistration = registration;
     private readonly IZLinkLocationRepository? _locationStore =
         registration.Locations.ResolveStore();
+    private readonly IZLinkMeshNodeLocationResolver? _locationResolver =
+        services.GetService<IZLinkMeshNodeLocationResolver>()
+        ?? services.GetService<ZLinkStoreLocationResolvers>();
     private readonly ZLinkEntrySpotActorRouter _entrySpotActors = new(runtime);
     private long _nextPlacementSelection;
 
@@ -150,13 +157,14 @@ internal sealed class ZLinkSpotRuntimeManager(
             cancellationToken);
         deadlineToken.CancelAfter(timeout);
         var meshName = source.Registration.SpotNodeName;
-        var descriptors = await locationStore.ListAllMeshNodesAsync(
+        var descriptors = await ListLiveMeshNodesAsync(
                 meshName, deadlineToken.Token)
             .ConfigureAwait(false);
-        var eligible = descriptors
+        var placementEligible = descriptors
             .Where(candidate => IsEligibleCandidate(candidate, stableType))
             .OrderBy(static candidate => candidate.Rid.ToHex(), StringComparer.Ordinal)
             .ToList();
+        var eligible = FilterRouteReadyCandidates(source, placementEligible);
         var encoded = request.Encode(_frameworkRegistration.Codecs);
         var applicationPayload = ZLinkApplicationPayloadEnvelopeCodec.Encode(
             string.Empty,
@@ -177,7 +185,9 @@ internal sealed class ZLinkSpotRuntimeManager(
                     eligible,
                     static candidate => candidate.PlacementWeight,
                     ref _nextPlacementSelection);
-            if (selectedTarget is null && reservationRefreshAttempt == 0)
+            if (selectedTarget is null
+                && placementEligible.Count == 0
+                && reservationRefreshAttempt == 0)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.CapacityExceeded,
                     $"No Ready User Spot target is available for '{stableType}'.",
@@ -190,16 +200,17 @@ internal sealed class ZLinkSpotRuntimeManager(
                         TimeSpan.FromMilliseconds(backoffMilliseconds),
                         deadlineToken.Token)
                     .ConfigureAwait(false);
-                descriptors = await locationStore.ListAllMeshNodesAsync(
+                descriptors = await ListLiveMeshNodesAsync(
                         meshName,
                         deadlineToken.Token)
                     .ConfigureAwait(false);
-                eligible = descriptors
+                placementEligible = descriptors
                     .Where(candidate => IsEligibleCandidate(candidate, stableType))
                     .OrderBy(
                         static candidate => candidate.Rid.ToHex(),
                         StringComparer.Ordinal)
                     .ToList();
+                eligible = FilterRouteReadyCandidates(source, placementEligible);
                 continue;
             }
             target = selectedTarget;
@@ -289,16 +300,17 @@ internal sealed class ZLinkSpotRuntimeManager(
                         TimeSpan.FromMilliseconds(backoffMilliseconds),
                         deadlineToken.Token)
                     .ConfigureAwait(false);
-                descriptors = await locationStore.ListAllMeshNodesAsync(
+                descriptors = await ListLiveMeshNodesAsync(
                         meshName,
                         deadlineToken.Token)
                     .ConfigureAwait(false);
-                eligible = descriptors
+                placementEligible = descriptors
                     .Where(candidate => IsEligibleCandidate(candidate, stableType))
                     .OrderBy(
                         static candidate => candidate.Rid.ToHex(),
                         StringComparer.Ordinal)
                     .ToList();
+                eligible = FilterRouteReadyCandidates(source, placementEligible);
                 continue;
             }
             throw new ZLinkFrameworkException(
@@ -436,6 +448,27 @@ internal sealed class ZLinkSpotRuntimeManager(
             && (capacity.Limit == 0
                 || capacity.Active + (long)capacity.Reserved
                 < capacity.Limit));
+
+    private static List<ZLinkMeshNodeDescriptor> FilterRouteReadyCandidates(
+        ZLinkSpotNodeRuntime source,
+        IReadOnlyList<ZLinkMeshNodeDescriptor> candidates) =>
+        ZLinkMeshNodeTargetAvailability.FilterAdmitted(
+                source.Node.RoutingId,
+                candidates,
+                source.Node.MeshPeers())
+            .ToList();
+
+    private ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(
+        string meshName,
+        CancellationToken cancellationToken)
+    {
+        if (_locationResolver is null)
+            throw new ZLinkConfigurationException(
+                "Remote User Spot creation requires the live MeshNode resolver.");
+        return _locationResolver.ListLiveMeshNodesAsync(
+            meshName,
+            cancellationToken);
+    }
 
     private async ValueTask<ZLinkSpotCreateResult?> JoinExistingAsync(
         string spotId,

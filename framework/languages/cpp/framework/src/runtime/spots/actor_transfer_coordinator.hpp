@@ -9,7 +9,9 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace zlink::framework::detail
@@ -71,6 +73,50 @@ struct handoff_packet_t
     bool is_request = false;
 };
 
+/* These framework-owned metadata keys preserve the routing context needed by
+ * a late handoff relay. They never enter application metadata because the
+ * public context projection filters the __zlink namespace. */
+inline constexpr std::string_view actor_handoff_source_node_key =
+  "__zlink.actorHandoffSourceNode";
+inline constexpr std::string_view actor_handoff_route_actor_id_key =
+  "__zlink.actorHandoffRouteActorId";
+inline constexpr std::string_view actor_handoff_route_object_generation_key =
+  "__zlink.actorHandoffRouteObjectGeneration";
+inline constexpr std::string_view actor_handoff_route_target_node_key =
+  "__zlink.actorHandoffRouteTargetNode";
+inline constexpr std::string_view actor_handoff_route_target_node_generation_key =
+  "__zlink.actorHandoffRouteTargetNodeGeneration";
+inline constexpr std::string_view actor_handoff_route_authority_generation_key =
+  "__zlink.actorHandoffRouteAuthorityGeneration";
+inline constexpr std::string_view actor_handoff_route_lease_generation_key =
+  "__zlink.actorHandoffRouteLeaseGeneration";
+inline constexpr std::string_view actor_handoff_hop_count_key =
+  "__zlink.actorHandoffHopCount";
+inline constexpr std::string_view actor_handoff_operation_high_key =
+  "__zlink.actorHandoffOperationHigh";
+inline constexpr std::string_view actor_handoff_operation_low_key =
+  "__zlink.actorHandoffOperationLow";
+inline constexpr std::string_view actor_handoff_reply_route_key =
+  "__zlink.actorHandoffReplyRoute";
+
+struct actor_move_completion_t
+{
+    std::optional<std::chrono::steady_clock::duration> elapsed;
+    std::vector<handoff_packet_t> backlog;
+    bool completed = false;
+};
+
+inline constexpr std::size_t actor_handoff_backlog_max_messages = 1024;
+inline constexpr std::size_t actor_handoff_backlog_max_bytes = 16u * 1024u * 1024u;
+
+enum class handoff_append_result_t
+{
+    appended,
+    not_moving,
+    duplicate_request,
+    capacity_exceeded
+};
+
 class actor_transfer_coordinator_t
 {
   public:
@@ -83,15 +129,26 @@ class actor_transfer_coordinator_t
     // moves complete with nullopt.
     std::optional<std::chrono::steady_clock::duration>
     complete_move (const std::string &actor_key);
+    // Completes a source move while atomically taking packets that arrived
+    // after the first handoff snapshot. The caller relays that bounded batch
+    // after the owner transition without leaving a race between queue drain
+    // and move completion.
+    actor_move_completion_t complete_move_and_take_backlog (const std::string &actor_key);
+    // Used by a local commit: take one replay batch while the move still
+    // blocks direct dispatch, then close the move only when no later batch is
+    // present. Messages submitted after closure enter the actor queue after
+    // the already-posted replay work.
+    actor_move_completion_t finish_move_replay (const std::string &actor_key);
     bool blocks_dispatch (const std::string &actor_key) const;
     std::optional<actor_move_phase_t> phase (const std::string &actor_key) const;
     std::optional<std::string> transfer_id (const std::string &actor_key) const;
 
-    // In-flight handoff (spot-actor spec §10). One-way packets that arrive while
-    // the actor is moving are preserved here in arrival order; the commit path
-    // drains them into the commit request, and packets that race the commit ack
-    // enter the Message Follow route afterwards.
-    bool try_append_backlog (const std::string &actor_key, handoff_packet_t packet);
+    // In-flight handoff (spot-actor spec §10). Packets are preserved in arrival
+    // order until the commit path drains them into the commit request. The
+    // result identifies a full temporary queue so the caller can return
+    // Unavailable for requests and drop one-way operations.
+    handoff_append_result_t try_append_backlog (const std::string &actor_key,
+                                                handoff_packet_t packet);
     std::vector<handoff_packet_t> take_backlog (const std::string &actor_key);
 
     // Message Follow route lifetime (§10.4): activated when the source confirms
@@ -115,6 +172,10 @@ class actor_transfer_coordinator_t
     void release_message_follow (const std::string &actor_key,
                                  std::uint64_t generation,
                                  std::size_t payload_bytes) noexcept;
+    bool mark_message_follow_notified (
+      const std::string &actor_key,
+      std::uint64_t generation,
+      std::vector<std::uint8_t> source_node_routing_id);
     std::vector<removed_actor_message_follow_t>
     remove_expired_message_follow (std::chrono::steady_clock::time_point now);
 
@@ -157,12 +218,14 @@ class actor_transfer_coordinator_t
         std::string transfer_id;
         std::size_t in_flight_messages = 0;
         std::size_t in_flight_bytes = 0;
+        std::set<std::vector<std::uint8_t>> notified_sources;
     };
 
     mutable std::mutex _mutex;
     std::map<std::string, move_state_t> _moves;
     std::map<std::string, pending_actor_admission_t> _admissions;
     std::map<std::string, std::vector<handoff_packet_t>> _backlogs;
+    std::map<std::string, std::size_t> _backlog_bytes;
     std::map<std::string, message_follow_route_t> _message_follow_routes;
     std::uint64_t _next_transfer_id = 1;
 };

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Buffers.Binary;
+using Zlink.Framework.Runtime.Dispatch;
 
 namespace Zlink.Framework.Runtime.Streams;
 
@@ -168,8 +169,24 @@ internal sealed class ZLinkStreamReceiveBuffer : IDisposable
 
 internal sealed class ZLinkStreamInboundFrame(Message header, Message payload) : IDisposable
 {
+    private ZLinkInboundDispatchLease? _dispatchLease;
+
     internal Message? Header { get; private set; } = header;
     internal Message? Payload { get; private set; } = payload;
+
+    // A frame that was received before the HWM became full keeps its dispatch
+    // reservation while it waits for the session queue. This prevents a
+    // complete frame from being reclassified as a new receive on retry.
+    internal void AttachDispatchLease(ZLinkInboundDispatchLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        if (Interlocked.CompareExchange(ref _dispatchLease, lease, null) is not null)
+            throw new InvalidOperationException(
+                "A STREAM frame already owns an inbound dispatch lease.");
+    }
+
+    internal ZLinkInboundDispatchLease? TakeDispatchLease() =>
+        Interlocked.Exchange(ref _dispatchLease, null);
 
     internal long ByteLength => checked((long)(Header?.Size ?? 0) + (Payload?.Size ?? 0));
 
@@ -183,6 +200,7 @@ internal sealed class ZLinkStreamInboundFrame(Message header, Message payload) :
     {
         Header?.Dispose();
         Payload?.Dispose();
+        Interlocked.Exchange(ref _dispatchLease, null)?.Dispose();
         Header = null;
         Payload = null;
     }

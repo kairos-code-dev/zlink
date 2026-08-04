@@ -157,11 +157,11 @@ export class ZLinkSpotActorPacketDispatch {
         await this.options.onDisconnectActor(actor);
         return undefined;
       }
-      const payload = this.decodePayload(actorId, parts[1], header, messageKind, action);
-      return this.dispatchDecodedActorPacket(
+      const decodePayload = this.createPayloadDecoder(parts[1]);
+      return this.dispatchActorPacket(
         actor,
         actorId,
-        payload,
+        decodePayload,
         header,
         messageKind,
         action,
@@ -218,35 +218,14 @@ export class ZLinkSpotActorPacketDispatch {
     throw missingActorError;
   }
 
-  private decodePayload(
-    actorId: string,
-    message: Message,
-    header: ReturnType<typeof decodeStreamHeader>,
-    messageKind: ZLinkDispatchMessageKind,
-    action: ZLinkDispatchErrorAction
-  ): unknown {
-    try {
-      return decodeFrameworkTypedPayloadMessage(message, this.options.messageSerializers);
-    } catch (error) {
-      this.options.dispatchErrors?.report({
-        surface: ZLinkDispatchErrorSurface.SpotActor,
-        messageKind,
-        reason: ZLinkDispatchErrorReason.PayloadDecodeFailed,
-        action,
-        packetName: header.name,
-        spotId: this.options.spotId(),
-        actorId,
-        correlationId: header.correlationId ?? header.requestSeq?.toString(),
-        error
-      });
-      throw error;
-    }
+  private createPayloadDecoder(message: Message): () => unknown {
+    return () => decodeFrameworkTypedPayloadMessage(message, this.options.messageSerializers);
   }
 
-  private async dispatchDecodedActorPacket(
+  private async dispatchActorPacket(
     actor: ZLinkActor,
     actorId: string,
-    payload: unknown,
+    decodePayload: () => unknown,
     header: ReturnType<typeof decodeStreamHeader>,
     messageKind: ZLinkDispatchMessageKind,
     action: ZLinkDispatchErrorAction,
@@ -266,7 +245,7 @@ export class ZLinkSpotActorPacketDispatch {
     });
     try {
       if (header.kind === ZLinkStreamMessageKind.Send) {
-        await dispatcher.dispatchSend(actor, header.name, payload, {
+        await dispatcher.dispatchSendDecoded(actor, header.name, decodePayload, {
           meshName: this.options.spot.context.meshName,
           metadata: zlinkMessageMetadata(header.metadata),
           correlationId: header.correlationId ?? undefined
@@ -288,7 +267,7 @@ export class ZLinkSpotActorPacketDispatch {
       }
       const requestSeq = header.requestSeq;
       if (returnResponse && requestTerminal !== undefined) {
-        await dispatcher.dispatchRequestThen(actor, header.name, payload, {
+        await dispatcher.dispatchRequestThenDecoded(actor, header.name, decodePayload, {
           meshName: this.options.spot.context.meshName,
           metadata: zlinkMessageMetadata(header.metadata),
           correlationId: header.correlationId ?? header.requestSeq.toString()
@@ -299,7 +278,7 @@ export class ZLinkSpotActorPacketDispatch {
         return undefined;
       }
       if (returnResponse || this.options.actorResponseSender === undefined) {
-        const response = await dispatcher.dispatchRequest(actor, header.name, payload, {
+        const response = await dispatcher.dispatchRequestDecoded(actor, header.name, decodePayload, {
           meshName: this.options.spot.context.meshName,
           metadata: zlinkMessageMetadata(header.metadata),
           correlationId: header.correlationId ?? header.requestSeq.toString()
@@ -307,7 +286,7 @@ export class ZLinkSpotActorPacketDispatch {
         this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
         return response;
       }
-      await dispatcher.dispatchRequestThen(actor, header.name, payload, {
+      await dispatcher.dispatchRequestThenDecoded(actor, header.name, decodePayload, {
         meshName: this.options.spot.context.meshName,
         metadata: zlinkMessageMetadata(header.metadata),
         correlationId: header.correlationId ?? header.requestSeq.toString()
@@ -332,7 +311,10 @@ export class ZLinkSpotActorPacketDispatch {
         reason: error instanceof ZLinkFrameworkException
           && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.ActorDispatchHandlerNotFound
           ? ZLinkDispatchErrorReason.HandlerMissing
-          : ZLinkDispatchErrorReason.HandlerException,
+          : error instanceof ZLinkFrameworkException
+            && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed
+            ? ZLinkDispatchErrorReason.PayloadDecodeFailed
+            : ZLinkDispatchErrorReason.HandlerException,
         action,
         packetName: header.name,
         spotId: this.options.spotId(),

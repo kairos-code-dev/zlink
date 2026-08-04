@@ -42,6 +42,7 @@ public final class Program implements AutoCloseable {
             throw new IllegalArgumentException(
                 "Usage: spot-actor-transfer-client --config <path> --scenario <selector>");
         }
+        systems.zlink.e2e.spotactortransfer.shared.Env.configure(args);
         try (Program program = new Program(ClientOptions.load(args[1]))) {
             String selected = args[3];
             for (String scenario : scenarios(selected)) {

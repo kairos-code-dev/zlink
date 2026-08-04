@@ -106,6 +106,24 @@ create_spot (http::client_t &node, const std::string &spot_id, const std::string
       .submit<e2e::create_spot_res_t> ().result ().value ().body;
 }
 
+e2e::create_spot_res_t create_spot_until_placed_on (
+  http::client_t &node,
+  const std::string &base_spot_id,
+  const std::string &target_node_rid,
+  const std::string &mode = "accept")
+{
+    for (unsigned attempt = 0; attempt != 64; ++attempt) {
+        const auto spot_id = attempt == 0
+          ? base_spot_id
+          : base_spot_id + "-placement-" + std::to_string (attempt);
+        auto created = create_spot (node, spot_id, mode);
+        if (created.node_rid == target_node_rid)
+            return created;
+    }
+    throw std::runtime_error (
+      "could not place Spot on " + target_node_rid + " after 64 attempts");
+}
+
 e2e::actor_create_res_t create_actor (http::client_t &node,
                                       const std::string &actor_id,
                                       const std::string &actor_type,
@@ -114,6 +132,25 @@ e2e::actor_create_res_t create_actor (http::client_t &node,
     return node.post ("/actors")
       .body (e2e::actor_create_req_t{actor_id, actor_type, state_version})
       .submit<e2e::actor_create_res_t> ().result ().value ().body;
+}
+
+e2e::actor_create_res_t create_actor_until_placed_on (
+  http::client_t &node,
+  const std::string &base_actor_id,
+  const std::string &actor_type,
+  int state_version,
+  const std::string &target_node_rid)
+{
+    for (unsigned attempt = 0; attempt != 64; ++attempt) {
+        const auto actor_id = attempt == 0
+          ? base_actor_id
+          : base_actor_id + "-placement-" + std::to_string (attempt);
+        auto created = create_actor (node, actor_id, actor_type, state_version);
+        if (created.node_rid == target_node_rid)
+            return created;
+    }
+    throw std::runtime_error (
+      "could not place Actor on " + target_node_rid + " after 64 attempts");
 }
 
 e2e::gate_release_res_t release_joined_gate (http::client_t &node, const std::string &spot_id)

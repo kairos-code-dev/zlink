@@ -11,6 +11,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestCallb
 import java.util.List;
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferId;
@@ -18,6 +19,8 @@ import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepar
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferPrepareResult;
 import systems.zlink.framework.runtime.internal.binding.spot.ActorTransferToken;
 import systems.zlink.framework.runtime.internal.binding.spot.PrepareActorTransferResult;
+import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.contracts.sockets.SendFlags;
 
 
@@ -44,6 +47,16 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     default void setApplicationReceiver(ZLinkMeshApplicationReceiver receiver) {
         // Alternate backends may not support process-local Node direct dispatch.
+    }
+
+    /**
+     * Installs the owner-layer relay for a stale Actor route. The handler may
+     * return true only after it takes ownership of parts and the dispatch
+     * lease; false leaves both with the caller.
+     */
+    default void setMessageFollowRelayHandler(
+        MessageFollowRelayHandler handler) {
+        // Alternate backends may not support the raw service Actor relay.
     }
 
     default java.util.Optional<Integer> submitLocalNodeSend(
@@ -210,9 +223,20 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         return false;
     }
 
+    default long localAuthorityLeaseGeneration() {
+        return 0L;
+    }
+
     default void rememberActorAuthority(
         ZLinkBackendActorRef actor,
         long authorityOwnerGeneration) {
+    }
+
+    default void rememberActorAuthority(
+        ZLinkBackendActorRef actor,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
+        rememberActorAuthority(actor, authorityOwnerGeneration);
     }
 
     CompletionStage<ZLinkBackendActorJoinResult> joinActor(
@@ -330,6 +354,20 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         RoutingId sessionRid,
         long bindingGeneration,
         long lastAcceptedSessionSequence) {
+    }
+
+    @FunctionalInterface
+    interface MessageFollowRelayHandler {
+        boolean handle(
+            RoutingId sourceNodeRid,
+            long sourceNodeGeneration,
+            ZLinkServiceM6BWireCodec.ActorMessage header,
+            byte[] acceptedJournalRecord,
+            List<Message> parts,
+            String contentType,
+            ZLinkInboundDispatchBudget.Lease inboundDispatchLease,
+            Consumer<List<Message>> reply,
+            Consumer<Throwable> failure);
     }
 
 }

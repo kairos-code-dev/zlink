@@ -33,6 +33,10 @@ class offload_executor_t
 
     bool try_submit (std::function<void ()> work);
     bool try_submit_cancellable (std::function<void (std::stop_token)> work);
+    // Internal scheduler work is accounted for by its owning bounded queue.
+    // It must not be rejected only because application worker submissions
+    // filled the executor's public queue.
+    bool try_submit_internal (std::function<void ()> work);
     void submit (std::function<void ()> work);
     void request_stop () noexcept;
     void drain ();

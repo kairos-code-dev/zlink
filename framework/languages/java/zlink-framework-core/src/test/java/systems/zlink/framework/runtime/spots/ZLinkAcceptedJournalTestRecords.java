@@ -36,6 +36,7 @@ final class ZLinkAcceptedJournalTestRecords {
             new ZLinkServiceM6BWireCodec.ActorRouteFence(
                 new ZLinkBackendActorRef(nodeRid, actorId, 1),
                 1,
+                1,
                 1),
             new ZLinkServiceM6BWireCodec.BoundSessionTail(
                 RoutingId.from("journal-session"), 1, 1));
@@ -71,7 +72,7 @@ final class ZLinkAcceptedJournalTestRecords {
             0,
             sourceSpotId,
             new ZLinkServiceM6BWireCodec.SpotRouteFence(
-                targetSpotId, 1, nodeRid, 1, 1));
+                targetSpotId, 1, nodeRid, 1, 1, 1));
         var wire = new ZLinkServiceM6AWireCodec();
         return ZLinkServiceFrozenRecordCodec.encodeSpot(
             owner,

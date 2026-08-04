@@ -9,7 +9,7 @@ export function startServiceB(options: ClientOptions, logName: string): ManagedP
 }
 
 export function startReplacementService(options: ClientOptions, logName: string): ManagedProcess {
-  return startService(options, options.serviceMain, options.replacementServiceConfig, logName);
+  return startService(options, options.filteredServiceMain, options.replacementServiceConfig, logName);
 }
 
 function startService(options: ClientOptions, main: string, config: string, logName: string): ManagedProcess {

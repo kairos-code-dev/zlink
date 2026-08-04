@@ -267,8 +267,15 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                 { YieldAllowed: true }
             && ZLinkSerialTurn.Current is not null)
         {
-            await operation(_activation, state, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await operation(_activation, state, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                RecordApplicationWorkCompleted();
+            }
             return;
         }
 
@@ -363,10 +370,31 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
     public bool Queue(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action? onSkipped = null)
+        => QueueWithAdmission(
+                operation,
+                onSkipped,
+                reportUnobservedAdmission: onSkipped is null)
+            == ZLinkSerialPostAdmission.Accepted;
+
+    internal ZLinkSerialPostAdmission QueueWithAdmission(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action? onSkipped = null,
+        bool reportUnobservedAdmission = false)
     {
         var claim = TryAcquireApplicationClaim(actorLane: false);
-        if (claim is null) return false;
-        if (_queue.TryPost(
+        if (claim is null)
+        {
+            onSkipped?.Invoke();
+            var claimAdmission = IsStoppingOrDisposed()
+                ? ZLinkSerialPostAdmission.Closed
+                : ZLinkSerialPostAdmission.QueueFull;
+            ReportApplicationAdmissionIfUnobserved(
+                "spot-application-admission",
+                claimAdmission,
+                reportUnobservedAdmission);
+            return claimAdmission;
+        }
+        var admission = _queue.TryPostApplicationWithAdmission(
                 async ct =>
                 {
                     try
@@ -379,11 +407,17 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                         claim.Release();
                     }
                 },
-                out _))
-            return true;
+                out _);
+        if (admission == ZLinkSerialPostAdmission.Accepted)
+            return admission;
 
         claim.Release();
-        return false;
+        onSkipped?.Invoke();
+        ReportApplicationAdmissionIfUnobserved(
+            "spot-application-admission",
+            admission,
+            reportUnobservedAdmission);
+        return admission;
     }
 
     internal bool QueueLifecycle(
@@ -396,22 +430,45 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             return false;
         }
 
-        if (_queue.TryPostNext(
+        var admission = _queue.TryPostNextWithAdmission(
                 ct => ExecuteLifecycleOperationAsync(operation, ct),
-                out _))
+                out _);
+        if (admission == ZLinkSerialPostAdmission.Accepted)
             return true;
 
         onSkipped?.Invoke();
+        ReportLifecycleAdmission(admission);
         return false;
     }
 
     internal bool QueueNext(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action? onSkipped = null)
+        => QueueNextWithAdmission(
+                operation,
+                onSkipped,
+                reportUnobservedAdmission: onSkipped is null)
+            == ZLinkSerialPostAdmission.Accepted;
+
+    internal ZLinkSerialPostAdmission QueueNextWithAdmission(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action? onSkipped = null,
+        bool reportUnobservedAdmission = false)
     {
         var claim = TryAcquireApplicationClaim(actorLane: false);
-        if (claim is null) return false;
-        if (_queue.TryPostApplication(
+        if (claim is null)
+        {
+            onSkipped?.Invoke();
+            var claimAdmission = IsStoppingOrDisposed()
+                ? ZLinkSerialPostAdmission.Closed
+                : ZLinkSerialPostAdmission.QueueFull;
+            ReportApplicationAdmissionIfUnobserved(
+                "spot-application-admission",
+                claimAdmission,
+                reportUnobservedAdmission);
+            return claimAdmission;
+        }
+        var admission = _queue.TryPostApplicationWithAdmission(
                 async ct =>
                 {
                     try
@@ -424,11 +481,56 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                         claim.Release();
                     }
                 },
-                out _))
-            return true;
+                out _);
+        if (admission == ZLinkSerialPostAdmission.Accepted)
+            return admission;
 
         claim.Release();
-        return false;
+        onSkipped?.Invoke();
+        ReportApplicationAdmissionIfUnobserved(
+            "spot-application-admission",
+            admission,
+            reportUnobservedAdmission);
+        return admission;
+    }
+
+    private bool IsStoppingOrDisposed() =>
+        Volatile.Read(ref _stopping) != 0 || _isDisposed();
+
+    private void ReportLifecycleAdmission(ZLinkSerialPostAdmission admission)
+    {
+        if (admission == ZLinkSerialPostAdmission.Closed
+            && (Volatile.Read(ref _stopping) != 0 || _isDisposed()))
+            return;
+        _errorSink.ReportRuntimeTaskException(
+            "spot-lifecycle-admission",
+            new ZLinkFrameworkException(
+                admission == ZLinkSerialPostAdmission.Closed
+                    ? ZLinkFrameworkErrorKind.ShuttingDown
+                    : ZLinkFrameworkErrorKind.CapacityExceeded,
+                admission == ZLinkSerialPostAdmission.Closed
+                    ? "The SPOT lifecycle queue closed before admission."
+                    : "The SPOT lifecycle queue reached its configured capacity."));
+    }
+
+    private void ReportApplicationAdmissionIfUnobserved(
+        string operation,
+        ZLinkSerialPostAdmission admission,
+        bool unobserved)
+    {
+        if (!unobserved
+            || Volatile.Read(ref _stopping) != 0
+            || _isDisposed())
+            return;
+        _errorSink.ReportRuntimeTaskException(
+            operation,
+            new ZLinkFrameworkException(
+                admission == ZLinkSerialPostAdmission.Closed
+                    ? ZLinkFrameworkErrorKind.ShuttingDown
+                    : ZLinkFrameworkErrorKind.CapacityExceeded,
+                admission == ZLinkSerialPostAdmission.Closed
+                    ? "The SPOT application queue closed before admission."
+                    : "The SPOT application queue reached its configured capacity."));
     }
 
     public ZLinkAcceptedWorkAdmission QueueAccepted(
@@ -449,6 +551,42 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         Action relocationRelease,
         bool previousOwnerMessageFollow,
         out Task completion)
+        => QueueAcceptedCore(
+            acceptedJournalRecord.Length,
+            null,
+            acceptedJournalRecord,
+            operation,
+            relocationRelease,
+            previousOwnerMessageFollow,
+            out completion);
+
+    internal ZLinkAcceptedWorkAdmission QueueAccepted(
+        int acceptedJournalLength,
+        Func<ReadOnlyMemory<byte>> acceptedJournalFactory,
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action relocationRelease,
+        bool previousOwnerMessageFollow,
+        out Task completion)
+    {
+        ArgumentNullException.ThrowIfNull(acceptedJournalFactory);
+        return QueueAcceptedCore(
+            acceptedJournalLength,
+            acceptedJournalFactory,
+            default,
+            operation,
+            relocationRelease,
+            previousOwnerMessageFollow,
+            out completion);
+    }
+
+    private ZLinkAcceptedWorkAdmission QueueAcceptedCore(
+        int acceptedJournalLength,
+        Func<ReadOnlyMemory<byte>>? acceptedJournalFactory,
+        ReadOnlyMemory<byte> acceptedJournalRecord,
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action relocationRelease,
+        bool previousOwnerMessageFollow,
+        out Task completion)
     {
         lock (_barrierGate)
         {
@@ -457,27 +595,30 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
                 completion = Task.CompletedTask;
                 return ZLinkAcceptedWorkAdmission.Closed;
             }
-            var admission = _queue.TryPostAccepted(
+            var callback = CreateAcceptedOperation(
+                operation,
+                relocationRelease);
+            ZLinkAcceptedWorkAdmission admission;
+            ZLinkSerialWorkItem item;
+            if (acceptedJournalFactory is null)
+            {
+                admission = _queue.TryPostAccepted(
                     acceptedJournalRecord,
-                    async ct =>
-                    {
-                        var claim = AcquireAdmittedApplicationClaim();
-                        try
-                        {
-                            await ExecuteOperationAsync(
-                                    operation,
-                                    relocationRelease,
-                                    ct)
-                                .ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            claim.Release();
-                        }
-                    },
+                    callback,
                     relocationRelease,
                     previousOwnerMessageFollow,
-                    out var item);
+                    out item);
+            }
+            else
+            {
+                admission = _queue.TryPostAccepted(
+                    acceptedJournalLength,
+                    acceptedJournalFactory,
+                    callback,
+                    relocationRelease,
+                    previousOwnerMessageFollow,
+                    out item);
+            }
             if (admission == ZLinkAcceptedWorkAdmission.Accepted)
             {
                 completion = item.Completion;
@@ -487,6 +628,26 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
             return admission;
         }
     }
+
+    private Func<CancellationToken, ValueTask> CreateAcceptedOperation(
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action relocationRelease) =>
+        async ct =>
+        {
+            var claim = AcquireAdmittedApplicationClaim();
+            try
+            {
+                await ExecuteOperationAsync(
+                        operation,
+                        relocationRelease,
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                claim.Release();
+            }
+        };
 
     internal bool TrySealRelocation(out ZLinkSpotExecutionRelocationSeal seal)
     {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ZLinkPacket, type ZLinkMessageContext, type ZLinkSpotPacketHandler, type ZLinkSpotRequestHandler } from '@zlink-systems/framework';
 import { DelayReq } from '../../../Shared/messages';
 import type {
@@ -13,17 +13,22 @@ import type {
 } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
+import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 
 @Injectable()
 @ZLinkPacket('HoldMsg')
 export class HoldCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, HoldMsg> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(spot: AwaitProbeSpot, request: HoldMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
     this.evidence.add(`hold-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}|handler=spot`);
-    await spot.context.outbound
+    await this.route
       .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
         new DelayReq(request.requestId, request.delayMs, 'hold'))
       .timeout(5000)
@@ -36,7 +41,10 @@ export class HoldCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot
 @Injectable()
 @ZLinkPacket('AwaitMsg')
 export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, AwaitMsg> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(spot: AwaitProbeSpot, request: AwaitMsg, context: ZLinkMessageContext): Promise<void> {
     void context;
@@ -45,7 +53,7 @@ export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
       `${terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
-    const call = spot.context.outbound
+    const call = this.route
       .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
         new DelayReq(request.requestId, request.delayMs, 'await'))
       .timeout(5000);
@@ -73,14 +81,17 @@ export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
 @Injectable()
 @ZLinkPacket('AwaitReq')
 export class AwaitRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, AwaitReq, AutomaticTurnDispatchRes> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(
     spot: AwaitProbeSpot,
     request: AwaitReq,
     context: ZLinkMessageContext
   ): Promise<AutomaticTurnDispatchRes> {
-    await new AwaitCommandHandler(this.evidence).handle(spot, request, context);
+    await new AwaitCommandHandler(this.evidence, this.route).handle(spot, request, context);
     return {
       scenarioId: request.correlationId,
       requestId: request.requestId,

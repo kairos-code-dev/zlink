@@ -33,6 +33,17 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
         long authorityOwnerGeneration) {
     }
 
+    default void rememberSpotAuthority(
+        RoutingId targetNodeRid,
+        String spotId,
+        long objectGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
+        rememberSpotAuthority(
+            targetNodeRid, spotId, objectGeneration,
+            authorityOwnerGeneration);
+    }
+
     boolean publish(
         String channelName,
         String topic,

@@ -489,9 +489,9 @@ test('stream session node runtime serializes dispatch and disconnect callbacks p
   assert.deepEqual(events, [
     ['dispatch:start', 'First', 'one'],
     ['dispatch:end', 'First'],
+    ['disconnected', 'session-serial'],
     ['dispatch:start', 'Second', 'two'],
-    ['dispatch:end', 'Second'],
-    ['disconnected', 'session-serial']
+    ['dispatch:end', 'Second']
   ]);
 });
 
@@ -1655,6 +1655,42 @@ test('stream session runtime encodes Framework error kinds as string error codes
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
     code: 'NotFound',
     message: 'spot route is not ready'
+  });
+});
+
+test('stream session runtime replies with the admission error when a new request is sealed', async () => {
+  const socket = new FakeStreamSocket();
+  const runtime = createStreamRuntime({
+    socket,
+    headerDecoder: (header) => JSON.parse(header.getString(), streamHeaderReviver),
+    claimApplicationWork() {
+      throw new framework.ZLinkFrameworkException(
+        framework.ZLinkFrameworkErrorKind.ShuttingDown,
+        'STREAM dispatch was rejected because the framework is draining.'
+      );
+    },
+    sessionFactory(context) {
+      return { context };
+    }
+  });
+
+  runtime.start();
+  socket.emitPacket('session-sealed', fakeHeader({
+    kind: connector.ZlinkStreamMessageKind.Request,
+    requestSeq: 10n,
+    name: 'Probe'
+  }), fakeMessage('p'));
+  await waitForReceive(socket);
+  await runtime.dispose();
+
+  assert.equal(socket.sent.length, 1);
+  const frame = protocolCodecs.ZlinkStreamFrameCodec.decode(socket.sent[0].payload.data());
+  const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
+  assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
+  assert.equal(header.requestSeq, 10n);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
+    code: 'ShuttingDown',
+    message: 'STREAM dispatch was rejected because the framework is draining.'
   });
 });
 

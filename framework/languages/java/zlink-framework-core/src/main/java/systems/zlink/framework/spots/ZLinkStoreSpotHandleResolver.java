@@ -68,7 +68,9 @@ public final class ZLinkStoreSpotHandleResolver
                         row.nodeRid(),
                         row.spotId(),
                         row.spotGeneration(),
+                        row.targetNodeGeneration(),
                         row.authorityOwnerGeneration(),
+                        row.ownerLeaseGeneration(),
                         row.spotKind())));
     }
 

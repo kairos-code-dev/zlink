@@ -14,15 +14,13 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
     public ZLinkStreamSessionSerialExecutor(
         object executionOwner,
         IZLinkRuntimeFailureReporter errorSink,
-        int capacity = 4096,
-        int reservedControlSlots = 16)
+        int capacity = 4096)
     {
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token, executionOwner),
             errorSink,
             _stopSource.Token,
-            capacity,
-            reservedControlSlots);
+            capacity);
     }
 
     public ValueTask DisposeAsync()

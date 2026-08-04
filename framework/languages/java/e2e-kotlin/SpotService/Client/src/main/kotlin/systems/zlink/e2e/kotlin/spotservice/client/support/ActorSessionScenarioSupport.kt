@@ -14,8 +14,8 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 
 internal class ActorSessionScenarioContext {
-    private val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
-    private val unbound = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+    private val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
+    private val unbound = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
     private val inboundNames = CopyOnWriteArrayList<String>()
     private val inboundObserver = connector.observeInbound { observation ->
         inboundNames.add(observation.packetName())
@@ -147,7 +147,7 @@ internal object ActorSessionScenarioSupport {
 
     private fun waitForSessionEvidence() {
         postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+            Env.get("e2e.http.session.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(
                 listOf(

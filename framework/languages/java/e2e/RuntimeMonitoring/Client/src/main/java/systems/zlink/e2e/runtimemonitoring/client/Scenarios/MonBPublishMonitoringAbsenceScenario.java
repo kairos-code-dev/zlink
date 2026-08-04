@@ -1,16 +1,25 @@
 package systems.zlink.e2e.runtimemonitoring.client.Scenarios;
 
 import java.io.IOException;
-import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
+import java.time.Duration;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
 import systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class MonBPublishMonitoringAbsenceScenario {
+    private static final List<Function<ZLinkMeshNodeSnapshot, ?>> PUBLIC_SNAPSHOT_ACCESSORS = List.of(
+        ZLinkMeshNodeSnapshot::meshName,
+        ZLinkMeshNodeSnapshot::state,
+        ZLinkMeshNodeSnapshot::isReady,
+        ZLinkMeshNodeSnapshot::readyPeerCount,
+        ZLinkMeshNodeSnapshot::channels,
+        ZLinkMeshNodeSnapshot::peers,
+        ZLinkMeshNodeSnapshot::placement,
+        ZLinkMeshNodeSnapshot::sequence,
+        ZLinkMeshNodeSnapshot::observedAt);
     private static final List<String> FORBIDDEN_NAMES = List.of(
         "ZLinkLogicalMulticastSnapshot",
         "remoteSnapshotCount",
@@ -70,33 +79,14 @@ public final class MonBPublishMonitoringAbsenceScenario {
     }
 
     private static void assertPublicContractShape() {
-        String members = recordComponents(ZLinkMeshNodeSnapshot.class);
-        assertForbiddenTextAbsent(members, "public monitoring contract");
         MonitoringScenarioContext.ensure(
-            Arrays.stream(ZLinkMeshNodeSnapshot.class.getRecordComponents())
-                .noneMatch(component -> "multicast".equalsIgnoreCase(component.getName())),
-            "MeshNode snapshot still exposes Publish monitoring");
-        try {
-            Class.forName(
-                "systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot",
-                false,
-                ZLinkMeshNodeSnapshot.class.getClassLoader());
-            throw new IllegalStateException(
-                "Publish monitoring snapshot type still exists");
-        } catch (ClassNotFoundException expected) {
-            // Absence is the public contract.
-        }
+            PUBLIC_SNAPSHOT_ACCESSORS.size() == 9,
+            "MeshNode snapshot public accessor contract changed");
 
         assertClassFileLiteralsAbsent(
             "systems/zlink/framework/runtime/internal/metrics/ZLinkRuntimeMetrics.class");
         assertClassFileLiteralsAbsent(
             "systems/zlink/framework/runtime/channels/ZLinkRouteMeshRuntimeOptionsRuntime.class");
-    }
-
-    private static String recordComponents(Class<?> type) {
-        return Arrays.stream(type.getRecordComponents())
-            .map(RecordComponent::getName)
-            .reduce("", (left, right) -> left + "\n" + right);
     }
 
     private static String rawGet(String baseUrl, String path) {

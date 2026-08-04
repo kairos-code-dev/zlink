@@ -5,6 +5,8 @@
 
 #include <zlink/Contracts/Eventing/poller.hpp>
 
+#include <memory>
+
 namespace zlink
 {
 class dealer_socket_t;
@@ -18,7 +20,9 @@ class raw_dealer_port_t
   public:
     explicit raw_dealer_port_t (
       zlink::dealer_socket_t &socket,
-      std::mutex *shared_socket_mutex = nullptr);
+      std::mutex *shared_socket_mutex = nullptr,
+      zlink::poller_t *shared_poller = nullptr,
+      std::uintptr_t poller_slot = 1);
 
     bool send (const raw_message_t &parts);
     bool request (const raw_message_t &parts,
@@ -28,7 +32,9 @@ class raw_dealer_port_t
     void close () noexcept;
 
   private:
-    zlink::poller_t _poller;
+    std::unique_ptr<zlink::poller_t> _owned_poller;
+    zlink::poller_t *_poller;
+    std::uintptr_t _poller_slot;
     zlink::dealer_socket_t *_socket;
     std::mutex _owned_socket_mutex;
     std::mutex *_socket_mutex;

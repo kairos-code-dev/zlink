@@ -236,6 +236,34 @@ void verify_spot_id_contract ()
     assert (rejected);
 }
 
+void verify_spot_route_fence_admission_precedes_body_decode ()
+{
+    auto state = std::make_shared<spots::spot_context_state_t> ();
+    state->spot_id = "room";
+    state->object_generation = 7;
+    state->authority_owner_generation = 11;
+    const zlink::framework::location_owner_token_t owner{"node-owner", 31};
+    const protocol::spot_route_fence_t valid{
+      "room", 7, {}, 3, 11, 31};
+
+    assert (state->accepts_route_fence (valid, owner));
+
+    auto stale = valid;
+    stale.object_generation++;
+    assert (!state->accepts_route_fence (stale, owner));
+    stale = valid;
+    stale.authority_owner_generation++;
+    assert (!state->accepts_route_fence (stale, owner));
+    stale = valid;
+    stale.owner_lease_generation++;
+    assert (!state->accepts_route_fence (stale, owner));
+    stale = valid;
+    stale.spot_id = "other";
+    assert (!state->accepts_route_fence (stale, owner));
+    assert (!state->accepts_route_fence (valid,
+                                         std::optional<zlink::framework::location_owner_token_t>{}));
+}
+
 void verify_entry_spot_identity_claim_is_global_and_fenced ()
 {
     using namespace zlink::framework;
@@ -1007,6 +1035,59 @@ void verify_bounded_message_follow ()
         coordinator.release_message_follow ("player:actor-message-follow", 7, 1);
 }
 
+void verify_bounded_actor_handoff_backlog ()
+{
+    using namespace zlink::framework;
+    using detail::actor_handoff_backlog_max_bytes;
+    using detail::actor_handoff_backlog_max_messages;
+    using detail::handoff_append_result_t;
+    using detail::handoff_packet_t;
+
+    const std::string actor_key = "player:actor-handoff-backlog";
+    spots::actor_transfer_coordinator_t coordinator;
+    assert (coordinator.try_begin_source_remote (actor_key, "transfer-1"));
+
+    const auto packet_with_payload = [] (std::size_t bytes) {
+        handoff_packet_t packet;
+        packet.payload.resize (bytes);
+        return packet;
+    };
+    for (std::size_t index = 0; index != actor_handoff_backlog_max_messages; ++index) {
+        assert (coordinator.try_append_backlog (actor_key, packet_with_payload (1))
+                == handoff_append_result_t::appended);
+    }
+    assert (coordinator.try_append_backlog (actor_key, packet_with_payload (1))
+            == handoff_append_result_t::capacity_exceeded);
+    assert (coordinator.take_backlog (actor_key).size ()
+            == actor_handoff_backlog_max_messages);
+
+    assert (coordinator.try_append_backlog (
+              actor_key, packet_with_payload (actor_handoff_backlog_max_bytes + 1))
+            == handoff_append_result_t::capacity_exceeded);
+    assert (coordinator.try_append_backlog (
+              actor_key, packet_with_payload (actor_handoff_backlog_max_bytes / 2))
+            == handoff_append_result_t::appended);
+    assert (coordinator.try_append_backlog (
+              actor_key, packet_with_payload (actor_handoff_backlog_max_bytes / 2))
+            == handoff_append_result_t::appended);
+    assert (coordinator.try_append_backlog (actor_key, packet_with_payload (1))
+            == handoff_append_result_t::capacity_exceeded);
+    assert (coordinator.take_backlog (actor_key).size () == 2);
+    assert (coordinator.complete_move (actor_key).has_value ());
+
+    const std::string replay_key = "player:actor-handoff-replay";
+    assert (coordinator.try_begin_local (replay_key));
+    assert (coordinator.try_append_backlog (replay_key, packet_with_payload (1))
+            == handoff_append_result_t::appended);
+    auto first_replay = coordinator.finish_move_replay (replay_key);
+    assert (!first_replay.completed && first_replay.backlog.size () == 1);
+    assert (coordinator.try_append_backlog (replay_key, packet_with_payload (2))
+            == handoff_append_result_t::appended);
+    auto late_replay = coordinator.finish_move_replay (replay_key);
+    assert (!late_replay.completed && late_replay.backlog.size () == 1);
+    assert (coordinator.finish_move_replay (replay_key).completed);
+}
+
 void verify_public_host_dispatches_one_application_record_per_turn ()
 {
     auto source = std::make_shared<host::public_host_runtime_t> (
@@ -1627,6 +1708,52 @@ void verify_raw_spot_and_actor_routing ()
     assert (source.topology ().peer (target_descriptor.node_routing_id));
     assert (target.topology ().peer (source_descriptor.node_routing_id));
 
+    const protocol::spot_route_fence_t follow_source{
+      "follow-spot", 1, source_descriptor.node_routing_id,
+      source_descriptor.lifecycle_generation, 2, 3};
+    const protocol::spot_route_fence_t follow_target{
+      "follow-spot", 1, target_descriptor.node_routing_id,
+      target_descriptor.lifecycle_generation, 2, 3};
+    const protocol::message_follow_notice_t follow_notice{
+      follow_source, follow_target, 1, 1, 16, {1, 1}, 0};
+    assert (source.send_message_follow (
+      target_descriptor.node_routing_id, follow_notice));
+    bool follow_received = false;
+    while (!follow_received
+           && mesh::service_liveness_registry_t::clock_t::now () < deadline) {
+        const auto pumped = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+        assert (pumped != mesh::raw_mesh_pump_result_t::protocol_error);
+        auto claim = target.mailbox ().try_claim (
+          mesh::service_mailbox_domain_t::infrastructure, 16, 64 * 1024);
+        if (!claim)
+            continue;
+        for (const auto &record : claim->records) {
+            if (protocol::decode_header (record.parts.front ()).kind
+                == protocol::command::messageFollow) {
+                assert (protocol::decode_message_follow (
+                          record.parts.front ())
+                         == follow_notice);
+                follow_received = true;
+            }
+        }
+        assert (target.mailbox ().release (*claim));
+    }
+    assert (follow_received);
+
+    auto stale_follow = follow_notice;
+    std::get<protocol::spot_route_fence_t> (stale_follow.target)
+      .target_node_generation++;
+    assert (source.send_message_follow (
+      target_descriptor.node_routing_id, stale_follow));
+    mesh::raw_mesh_pump_result_t stale_follow_pump =
+      mesh::raw_mesh_pump_result_t::no_data;
+    while (stale_follow_pump != mesh::raw_mesh_pump_result_t::protocol_error
+           && mesh::service_liveness_registry_t::clock_t::now () < deadline)
+        stale_follow_pump = target.pump_one (
+          mesh::service_liveness_registry_t::clock_t::now ());
+    assert (stale_follow_pump == mesh::raw_mesh_pump_result_t::protocol_error);
+
     stateful::stateful_object_runtime_t objects;
     objects.replace_placement_candidates (
       {{"m6b-mesh", "raw-target", {"room", "player"},
@@ -1672,7 +1799,8 @@ void verify_raw_spot_and_actor_routing ()
       spot.object_generation,
       target_descriptor.node_routing_id,
       target_descriptor.lifecycle_generation,
-      spot.authority_owner_generation};
+      spot.authority_owner_generation,
+      31};
     assert (source.send_to_spot (
       target_descriptor.node_routing_id, "source-spot",
       spot_fence, {"SpotPacket", "application/json", bytes ("spot")}));
@@ -1710,7 +1838,8 @@ void verify_raw_spot_and_actor_routing ()
       actor.object_generation,
       target_descriptor.node_routing_id,
       target_descriptor.lifecycle_generation,
-      actor.authority_owner_generation};
+      actor.authority_owner_generation,
+      37};
     using request_result_t =
       std::pair<foundation::operation_terminal_t,
                 std::vector<std::uint8_t>>;
@@ -3468,6 +3597,7 @@ int main ()
 {
     verify_mesh_node_role_is_available_before_local_descriptor_publish ();
     verify_spot_id_contract ();
+    verify_spot_route_fence_admission_precedes_body_decode ();
     verify_entry_spot_identity_claim_is_global_and_fenced ();
     verify_user_spot_execution_mode_registration ();
     verify_self_actor_request_rejected_before_submission ();
@@ -3479,6 +3609,7 @@ int main ()
     verify_instance_cold_activation_only_from_intent ();
     verify_session_binding_and_terminal_once ();
     verify_bounded_message_follow ();
+    verify_bounded_actor_handoff_backlog ();
     verify_public_host_dispatches_one_application_record_per_turn ();
     verify_remote_session_route_ack_and_atomic_switch ();
     verify_location_store_accepted_record_authority ();

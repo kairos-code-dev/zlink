@@ -48,6 +48,7 @@ actor_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t 
                                                                      : "actor ref update failed");
         }
         return runtime.dispatch_bound_session_send (actor_ref, request.packet_name_value,
+                                                    request.codec,
                                                     zlink::message_t::from (request.payload));
     }
     catch (const framework_exception_t &error) {
@@ -82,7 +83,8 @@ result_t<zlink::message_t> actor_route_internal_dispatcher_t::dispatch_request (
             return detail::propagate_failure<zlink::message_t> (updated, "actor ref update failed");
         }
         auto dispatched = runtime.dispatch_bound_session_send (
-          actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
+          actor_ref, request.packet_name_value, request.codec,
+          zlink::message_t::from (request.payload));
         if (!dispatched) {
             return result_t<zlink::message_t>::failure (
               dispatched.error_kind (), dispatched.error ()

@@ -17,6 +17,8 @@ internal sealed class ZLinkLocationStoreHealth
     private DateTimeOffset? _lastFailureAt;
     private long _recoveryGeneration;
 
+    internal event Action? Changed;
+
     //  The container resolves this type, so the parameterless constructor has
     //  to stay; the clock overload is for callers that already own one.
     public ZLinkLocationStoreHealth()
@@ -37,6 +39,7 @@ internal sealed class ZLinkLocationStoreHealth
                 _recoveryGeneration++;
             _lastSuccessAt = _time.GetUtcNow();
         }
+        Changed?.Invoke();
     }
 
     internal void ReportFailure(string source, Exception error)
@@ -46,6 +49,7 @@ internal sealed class ZLinkLocationStoreHealth
             _failures[source] = error.Message;
             _lastFailureAt = _time.GetUtcNow();
         }
+        Changed?.Invoke();
     }
 
     internal Snapshot GetSnapshot()

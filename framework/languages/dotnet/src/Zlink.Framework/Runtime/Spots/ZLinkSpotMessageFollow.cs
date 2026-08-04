@@ -22,6 +22,7 @@ internal sealed class ZLinkSpotMessageFollow(
 {
     private readonly ZLinkBoundedIngressAdmission _admission =
         admission ?? new ZLinkBoundedIngressAdmission();
+    private int _messageFollowNoticeClaimed;
 
     internal RoutingId TargetNodeRid { get; } = targetNodeRid;
     internal ulong ObjectGeneration { get; } = objectGeneration;
@@ -78,6 +79,15 @@ internal sealed class ZLinkSpotMessageFollow(
 
     internal (int Records, long Bytes) AdmissionSnapshot() =>
         _admission.Snapshot();
+
+    internal bool TryClaimMessageFollowNotice() =>
+        Interlocked.CompareExchange(
+            ref _messageFollowNoticeClaimed,
+            1,
+            0) == 0;
+
+    internal void ReleaseMessageFollowNoticeClaim() =>
+        Volatile.Write(ref _messageFollowNoticeClaimed, 0);
 
     internal async ValueTask WaitForExpiryAndDrainAsync(
         CancellationToken cancellationToken)

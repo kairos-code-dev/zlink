@@ -90,6 +90,54 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task Accepted_journal_factory_materializes_only_after_relocation_seal()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var started = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var materialized = 0;
+
+        Assert.Equal(
+            ZLinkAcceptedWorkAdmission.Accepted,
+            queue.TryPostAccepted(
+                new byte[] { 1 },
+                callback: async _ =>
+                {
+                    started.TrySetResult();
+                    await release.Task.ConfigureAwait(false);
+                },
+                relocationRelease: static () => { },
+                out _));
+
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            ZLinkAcceptedWorkAdmission.Accepted,
+            queue.TryPostAccepted(
+                payloadLength: 3,
+                payloadFactory: () =>
+                {
+                    Interlocked.Increment(ref materialized);
+                    return new byte[] { 7, 8, 9 };
+                },
+                callback: static _ => ValueTask.CompletedTask,
+                relocationRelease: static () => { },
+                previousOwnerMessageFollow: false,
+                out _));
+        Assert.Equal(0, Volatile.Read(ref materialized));
+
+        var sealTask = queue.SealRelocationAsync(CancellationToken.None).AsTask();
+        release.TrySetResult();
+        var seal = await sealTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, Volatile.Read(ref materialized));
+        Assert.Equal(new byte[] { 7, 8, 9 }, Assert.Single(seal.Captured).Payload.ToArray());
+        Assert.True(queue.TryAbortRelocation(seal));
+    }
+
+    [Fact]
     public async Task Cancelled_async_relocation_seal_does_not_orphan_a_later_seal()
     {
         await using var queue = CreateQueue(CancellationToken.None);
@@ -535,6 +583,28 @@ public sealed class SerialExecutorTests
     }
 
     [Fact]
+    public async Task SpotSerialExecutor_Queue_Reports_Skipped_Work_When_Stopped()
+    {
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        await using var executor = new ZLinkSpotSerialExecutor(
+            null!,
+            static () => false,
+            CancellationToken.None,
+            errorSink);
+        var skipped = 0;
+
+        executor.RequestStop();
+
+        Assert.False(executor.Queue(
+            static (_, _) => ValueTask.CompletedTask,
+            () => skipped++));
+        Assert.False(executor.QueueNext(
+            static (_, _) => ValueTask.CompletedTask,
+            () => skipped++));
+        Assert.Equal(2, skipped);
+    }
+
+    [Fact]
     public async Task SpotSerialExecutor_ExecuteAsync_Propagates_Work_Exception()
     {
         var exceptions = new ConcurrentQueue<Exception>();
@@ -572,6 +642,8 @@ public sealed class SerialExecutorTests
             errorSink);
         var applicationRan = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var beforeApplicationCallback = executor.LastApplicationWorkCompletedAt;
+        await Task.Delay(10);
 
         var lifecycle = executor.ExecuteLifecycleAsync(
             async (_, cancellationToken) =>
@@ -595,6 +667,8 @@ public sealed class SerialExecutorTests
 
         await applicationRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await lifecycle.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(
+            executor.LastApplicationWorkCompletedAt > beforeApplicationCallback);
     }
 
     [Fact]
@@ -686,8 +760,7 @@ public sealed class SerialExecutorTests
                 CancellationToken.None),
             new ZLinkRuntimeErrorSink(),
             CancellationToken.None,
-            capacity: 2,
-            reservedPrioritySlots: 1);
+            capacity: 1);
         var releaseFirst = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -869,9 +942,12 @@ public sealed class SerialExecutorTests
             async _ => await releaseFirst.Task.ConfigureAwait(false),
             out _));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => queue.PostAsync(
+        var exception = await Assert.ThrowsAsync<ZLinkFrameworkException>(() => queue.PostAsync(
             _ => ValueTask.CompletedTask,
             CancellationToken.None).AsTask());
+        Assert.Equal(
+            ZLinkFrameworkErrorKind.CapacityExceeded,
+            exception.Kind);
 
         releaseFirst.SetResult();
     }

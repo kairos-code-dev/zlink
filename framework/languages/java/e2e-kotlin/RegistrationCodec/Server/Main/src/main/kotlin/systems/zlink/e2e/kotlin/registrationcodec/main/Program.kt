@@ -11,6 +11,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Scope
 import systems.zlink.e2e.kotlin.registrationcodec.Contracts
+import systems.zlink.e2e.kotlin.registrationcodec.Env
 import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleRes
 import systems.zlink.e2e.kotlin.registrationcodec.DiLifecycleReq
 import systems.zlink.e2e.kotlin.registrationcodec.EchoManualMsg
@@ -122,9 +123,10 @@ class ServerApplication {
 }
 
 fun runServerApplication(vararg args: String): AutoCloseable {
+    Env.configure(args)
     val builder = SpringApplicationBuilder(ServerApplication::class.java)
         .web(WebApplicationType.NONE)
     builder.application().setKeepAlive(true)
-    val context = builder.run(*args)
+    val context = builder.run(*Env.applicationArgs(args))
     return AutoCloseable { context.close() }
 }

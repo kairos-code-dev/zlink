@@ -12,6 +12,7 @@ const {
   ZLinkSubmitStatus
 } = require('../../packages/framework/dist/runtime/messaging/submission-result');
 const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
+const { isPollerInterruptedError } = require('../../packages/framework/dist/runtime/backend/node/node-backend-adapter-support');
 
 const removedSpotAdapterContracts = new Set([
   'backend adapter unwraps SpotNode when attaching stream SessionRelay',
@@ -77,6 +78,17 @@ test('backend adapter factory exposes the supported backend adapters', () => {
   assert.equal(typeof factory.createStreamAdapter, 'function');
   assert.equal(typeof factory.createMonitoringAdapter, 'function');
   assert.equal(factory.createRegistryAdapter, undefined);
+});
+
+test('poller interruption is treated as an empty progress turn', () => {
+  assert.equal(
+    isPollerInterruptedError(new zlink.RecvError(zlink.RecvResult.NoData, 4)),
+    true
+  );
+  assert.equal(
+    isPollerInterruptedError(new zlink.RecvError(zlink.RecvResult.NoData, 11)),
+    false
+  );
 });
 
 test('RouteMesh runtime weight changes reject invalid values as configuration errors', () => {

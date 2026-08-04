@@ -15,7 +15,8 @@ import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkLocationRuntime, ZLinkLocationRuntimeStores } from '../locations';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 import type { ZLinkBackendDealerSocket } from '../backend/contracts';
-import { Message as BindingMessage, type Message } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
+import type { Message } from '../../contracts/Common/Message';
 import {
   decodeClientServerControl,
   encodeClientServerHello,
@@ -458,7 +459,7 @@ function requestAdmission(
   descriptor: ZLinkClientServerServerDescriptor,
   timeoutMs: number
 ): Promise<ZLinkClientServerAdmission> {
-  const message = BindingMessage.from(encodeClientServerHello({
+  const message = RuntimeMessage.from(encodeClientServerHello({
     channelName: descriptor.channelName,
     securityIdentity: descriptor.securityIdentity,
     normalizedEffectiveMaxMessageBytes: normalizedMessageLimit(dealer.maxMessageSize)

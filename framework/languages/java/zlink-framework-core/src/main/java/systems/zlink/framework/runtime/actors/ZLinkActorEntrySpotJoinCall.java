@@ -145,30 +145,36 @@ final class ZLinkActorEntrySpotJoinCall implements ZLinkActorJoinCall {
         }
         ZLinkActorEntrySpotJoinCall bounded =
             (ZLinkActorEntrySpotJoinCall) timeout(remaining);
-        return bounded.execute().handle((result, error) -> {
-                if (error != null) {
-                    Throwable cause = error instanceof java.util.concurrent.CompletionException
-                        && error.getCause() != null ? error.getCause() : error;
-                    ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
-                        ? framework.kind()
-                        : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
-                    return (ZLinkActorJoinCompletion) new ZLinkActorJoinCompletion.Failed(
+        // Deferred Entry Spot Join is also an infrastructure/lifecycle
+        // operation. Do not carry the application execution context from the
+        // handler into its same-Actor wait guard.
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(null)) {
+            return bounded.execute().handle((result, error) -> {
+                    if (error != null) {
+                        Throwable cause = error instanceof java.util.concurrent.CompletionException
+                            && error.getCause() != null ? error.getCause() : error;
+                        ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
+                            ? framework.kind()
+                            : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
+                        return (ZLinkActorJoinCompletion) new ZLinkActorJoinCompletion.Failed(
+                            operationId,
+                            kind);
+                    }
+                    if (result instanceof ZLinkActorJoinOutcome.Accepted accepted) {
+                        return new ZLinkActorJoinCompletion.Accepted(
+                            operationId,
+                            accepted.actor(),
+                            accepted.reply());
+                    }
+                    ZLinkActorJoinOutcome.Rejected rejected =
+                        (ZLinkActorJoinOutcome.Rejected) result;
+                    return new ZLinkActorJoinCompletion.Rejected(
                         operationId,
-                        kind);
-                }
-                if (result instanceof ZLinkActorJoinOutcome.Accepted accepted) {
-                    return new ZLinkActorJoinCompletion.Accepted(
-                        operationId,
-                        accepted.actor(),
-                        accepted.reply());
-                }
-                ZLinkActorJoinOutcome.Rejected rejected =
-                    (ZLinkActorJoinOutcome.Rejected) result;
-                return new ZLinkActorJoinCompletion.Rejected(
-                    operationId,
-                    rejected.reply());
-            })
-            .thenCompose(this::notifyCompletion);
+                        rejected.reply());
+                })
+                .thenCompose(this::notifyCompletion);
+        }
     }
 
     private CompletionStage<Void> notifyCompletion(

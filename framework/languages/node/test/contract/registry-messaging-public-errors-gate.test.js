@@ -14,7 +14,7 @@ test('RM-C5 and RM-C8 classify failures by public error kind', () => {
   const missing = source('e2e/RegistryMessaging/Client/Scenarios/rm-c5-missing-packet-scenario.ts');
   const payload = source('e2e/RegistryMessaging/Client/Scenarios/rm-c8-payload-round-trip-scenario.ts');
 
-  assert.match(endpoints, /error instanceof ZLinkFrameworkException \? error\.kind/);
+  assert.match(endpoints, /error instanceof ZLinkFrameworkException \? String\(error\.kind\)/);
   assert.match(missing, /failureType === '0'/);
   assert.match(missing, /reason=handlerMissing.*action=replyError/s);
   assert.match(missing, /reason=handlerMissing.*action=drop/s);

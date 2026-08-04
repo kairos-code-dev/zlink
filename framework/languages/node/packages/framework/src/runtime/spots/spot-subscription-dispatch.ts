@@ -6,19 +6,15 @@ import type {
   ZLinkSpotSubscriptionHandler
 } from '../../contracts';
 import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProviderResolver';
-import { zlinkMessageMetadata } from '../../contracts';
+import { ZLinkFrameworkException, zlinkMessageMetadata } from '../../contracts';
 import {
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
   ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
-import {
-  TopicMessage as BindingTopicMessage,
-  type Message,
-  type RoutingId as BindingRoutingId
-} from '@zlink-systems/zlink';
-import type { ZLinkBackendSpot } from '../backend/contracts';
+import type { Message } from '../../contracts/Common/Message';
+import type { ZLinkBackendSpot, ZLinkBackendTopicMessage } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import {
   decodeChannelEnvelope,
@@ -32,9 +28,14 @@ import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import { ZLINK_RECV_DONT_WAIT } from './spot-native-flags';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { zlinkMetadataByteLength, zlinkSerialWorkOptions } from '../execution/serial-work-size';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  internalFrameworkErrorKind
+} from '../framework-errors-internal';
 
 interface ZLinkSpotSubscriptionDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
+  readonly createTopicMessage: () => ZLinkBackendTopicMessage;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly getTarget: () => ZLinkSpot;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -65,6 +66,9 @@ export class ZLinkSpotSubscriptionDispatch {
       }
       const key = subscriptionKey(registration.channelName, registration.topic);
       const existing = this.handlers.get(key) ?? [];
+      if (existing.some((entry) => entry.handlerType === registration.handlerType)) {
+        continue;
+      }
       existing.push(registration);
       this.handlers.set(key, existing);
       this.options.nativeSpot.setSubscription(registration.channelName, registration.topic);
@@ -91,7 +95,7 @@ export class ZLinkSpotSubscriptionDispatch {
   async dispatchRecord(
     topic: string,
     parts: readonly Message[],
-    sourceRid: RoutingId | BindingRoutingId | null
+    sourceRid: RoutingId | null
   ): Promise<void> {
     await this.dispatch({
       topic,
@@ -101,7 +105,7 @@ export class ZLinkSpotSubscriptionDispatch {
   }
 
   private async drainAvailable(): Promise<void> {
-    let message = new BindingTopicMessage();
+    let message = this.options.createTopicMessage();
     try {
       for (;;) {
         if (!this.options.nativeSpot.subscribe(message, ZLINK_RECV_DONT_WAIT)) {
@@ -114,7 +118,7 @@ export class ZLinkSpotSubscriptionDispatch {
         } finally {
           message.close();
         }
-        message = new BindingTopicMessage();
+        message = this.options.createTopicMessage();
       }
     } finally {
       message.close();
@@ -124,7 +128,7 @@ export class ZLinkSpotSubscriptionDispatch {
   private async dispatch(message: {
     readonly topic: string;
     readonly parts: readonly Message[];
-    readonly routingId: RoutingId | BindingRoutingId | null;
+    readonly routingId: RoutingId | unknown | null;
   }): Promise<void> {
     if (message.parts.length === 0) {
       this.options.dispatchErrors?.report({
@@ -167,7 +171,6 @@ export class ZLinkSpotSubscriptionDispatch {
       });
       return;
     }
-    const event = decodeChannelPayload(envelope, this.channelCodecs());
     const spot = this.options.getTarget();
     const subSource = message.routingId === null ? undefined : String(message.routingId);
     const inboundFlow = createInboundFlow(
@@ -175,43 +178,65 @@ export class ZLinkSpotSubscriptionDispatch {
       envelope.header.flowOrigin,
       this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
     );
-    await this.options.serial.execute(() => runWithFlow(inboundFlow, async () => {
-      for (const registration of registrations) {
-        const handler = await resolveLifecycleHandler(
-          spot,
-          registration.handlerType as Type<ZLinkSpotSubscriptionHandler<ZLinkSpot, unknown>>,
-          this.options.providerResolver
-        );
-        try {
-          await handler.handle(spot, event, {
-            channelName: envelope.header.channelName,
-            contentType: envelope.header.contentType,
-            packetName: envelope.packetName!,
-            topic: message.topic,
-            source: subSource,
-            metadata: zlinkMessageMetadata(envelope.header.metadata),
-            correlationId: envelope.header.correlationId ?? undefined
-          });
-        } catch (error) {
-          this.options.dispatchErrors?.report({
-            surface: ZLinkDispatchErrorSurface.SpotSubscription,
-            messageKind: ZLinkDispatchMessageKind.Publish,
-            reason: ZLinkDispatchErrorReason.HandlerException,
-            action: ZLinkDispatchErrorAction.Drop,
-            packetName: envelope.packetName,
-            channelName: envelope.header.channelName,
-            topic: message.topic,
-            sourceRid: message.routingId === null ? undefined : String(message.routingId),
-            correlationId: envelope.header.correlationId ?? undefined,
-            error
-          });
-          throw error;
+    try {
+      await this.options.serial.execute(() => runWithFlow(inboundFlow, async () => {
+        // Payload deserialization belongs to the Spot serial turn. Queue
+        // admission and execution authority therefore precede this work.
+        const event = decodeChannelPayload(envelope, this.channelCodecs());
+        for (const registration of registrations) {
+          const handler = await resolveLifecycleHandler(
+            spot,
+            registration.handlerType as Type<ZLinkSpotSubscriptionHandler<ZLinkSpot, unknown>>,
+            this.options.providerResolver
+          );
+          try {
+            await handler.handle(spot, event, {
+              channelName: envelope.header.channelName,
+              contentType: envelope.header.contentType,
+              packetName: envelope.packetName!,
+              topic: message.topic,
+              source: subSource,
+              metadata: zlinkMessageMetadata(envelope.header.metadata),
+              correlationId: envelope.header.correlationId ?? undefined
+            });
+          } catch (error) {
+            this.options.dispatchErrors?.report({
+              surface: ZLinkDispatchErrorSurface.SpotSubscription,
+              messageKind: ZLinkDispatchMessageKind.Publish,
+              reason: ZLinkDispatchErrorReason.HandlerException,
+              action: ZLinkDispatchErrorAction.Drop,
+              packetName: envelope.packetName,
+              channelName: envelope.header.channelName,
+              topic: message.topic,
+              sourceRid: message.routingId === null ? undefined : String(message.routingId),
+              correlationId: envelope.header.correlationId ?? undefined,
+              error
+            });
+            throw error;
+          }
         }
+      }), zlinkSerialWorkOptions(
+        envelope.payload.byteLength,
+        zlinkMetadataByteLength(envelope.header.metadata)
+      ));
+    } catch (error) {
+      if (error instanceof ZLinkFrameworkException
+        && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.PayloadDecodeFailed) {
+        this.options.dispatchErrors?.report({
+          surface: ZLinkDispatchErrorSurface.SpotSubscription,
+          messageKind: ZLinkDispatchMessageKind.Publish,
+          reason: ZLinkDispatchErrorReason.PayloadDecodeFailed,
+          action: ZLinkDispatchErrorAction.Drop,
+          packetName: envelope.packetName,
+          channelName: envelope.header.channelName,
+          topic: message.topic,
+          sourceRid: message.routingId === null ? undefined : String(message.routingId),
+          correlationId: envelope.header.correlationId ?? undefined,
+          error
+        });
       }
-    }), zlinkSerialWorkOptions(
-      envelope.payload.byteLength,
-      zlinkMetadataByteLength(envelope.header.metadata)
-    ));
+      throw error;
+    }
   }
 }
 

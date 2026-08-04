@@ -59,6 +59,7 @@ struct spot_route_fence_t
     std::vector<std::uint8_t> target_node_routing_id;
     std::uint64_t target_node_generation = 0;
     std::uint64_t authority_owner_generation = 0;
+    std::uint64_t owner_lease_generation = 0;
 
     friend bool operator== (const spot_route_fence_t &,
                             const spot_route_fence_t &) = default;
@@ -78,6 +79,23 @@ struct actor_route_fence_t
 };
 
 using wire_operation_id_t = operation_id_t;
+
+using message_follow_route_t =
+  std::variant<actor_route_fence_t, spot_route_fence_t>;
+
+struct message_follow_notice_t
+{
+    message_follow_route_t source;
+    message_follow_route_t target;
+    std::uint8_t hop_count = 0;
+    std::uint32_t queued_messages = 0;
+    std::uint32_t queued_bytes = 0;
+    wire_operation_id_t original_operation;
+    std::uint64_t original_reply_route_id = 0;
+
+    friend bool operator== (const message_follow_notice_t &,
+                            const message_follow_notice_t &) = default;
+};
 
 struct spot_message_header_t
 {
@@ -816,6 +834,10 @@ std::vector<std::uint8_t> encode_actor_message_header (
 actor_message_header_t decode_actor_message_header (
   std::span<const std::uint8_t> bytes,
   command expected_kind);
+std::vector<std::uint8_t>
+encode_message_follow (const message_follow_notice_t &notice);
+message_follow_notice_t
+decode_message_follow (std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> encode_session_relocation_route (
   const session_relocation_route_t &record);
 session_relocation_route_t decode_session_relocation_route (

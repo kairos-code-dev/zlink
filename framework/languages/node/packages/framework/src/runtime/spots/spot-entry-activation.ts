@@ -24,7 +24,7 @@ import type {
   ZLinkEntrySpotTimerHandlerRegistration
 } from '../../contracts/Configuration/RegistrationTypes';
 import type { Message } from '../../contracts/Common/Message';
-import type { Message as BindingMessage } from '@zlink-systems/zlink';
+import type { ZLinkMessageFollowOrigin } from '../foundation/service-runtime-contracts';
 import { throwIfAborted } from '../abort';
 import { routingIdsEqual } from '../routing-id';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
@@ -34,8 +34,10 @@ import {
 } from '../actors';
 import type {
   ZLinkBackendActorRecvInfo,
+  ZLinkBackendReceived,
   ZLinkBackendSpot,
-  ZLinkBackendSpotNode
+  ZLinkBackendSpotNode,
+  ZLinkBackendTopicMessage
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
 import { ZLinkConfigurationException } from '../configuration';
@@ -63,7 +65,7 @@ import {
 } from './spot-timer';
 import { createEntrySpotContext } from './spot-context';
 import { ZLinkRoutedSpotPacketDispatch } from './spot-routed-spot-packet-dispatch';
-import type { RequestResult } from '@zlink-systems/zlink';
+import type { RequestResult } from '../backend/runtime-values';
 import {
   replayActorHandoffBacklog,
   type ZLinkActorHandoffPacket,
@@ -86,6 +88,8 @@ interface ZLinkEntrySpotActivationOptions {
   readonly actorRequestHandlers?: readonly ZLinkEntrySpotActorRequestHandlerRegistration[];
   readonly nativeSpot: ZLinkBackendSpot;
   readonly nativeNode: ZLinkBackendSpotNode;
+  readonly createReceived: () => ZLinkBackendReceived;
+  readonly createTopicMessage: () => ZLinkBackendTopicMessage;
   readonly nodeRid: RoutingId;
   readonly spotNodeName: string;
   readonly channelClient?: ZLinkChannelClient;
@@ -208,7 +212,7 @@ export class ZLinkEntrySpotActivation {
 
   dispatchSubscriptionRecord(
     topic: string,
-    parts: readonly BindingMessage[],
+    parts: readonly Message[],
     sourceRid: RoutingId | null
   ): Promise<void> {
     if (this.actorDispatch === undefined) {
@@ -228,6 +232,17 @@ export class ZLinkEntrySpotActivation {
     return returnResponse
       ? this.packetDispatch.request(this.spotId, packetName, payload, context)
       : this.packetDispatch.send(this.spotId, packetName, payload, context);
+  }
+
+  dispatchPacketEncoded(
+    packetName: string | undefined,
+    decodePayload: () => unknown,
+    context: { readonly channelName: string; readonly contentType?: string },
+    returnResponse: boolean
+  ): Promise<unknown> {
+    return returnResponse
+      ? this.packetDispatch.requestEncoded(this.spotId, packetName, decodePayload, context)
+      : this.packetDispatch.sendEncoded(this.spotId, packetName, decodePayload, context);
   }
 
   async create(): Promise<void> {
@@ -338,6 +353,8 @@ export class ZLinkEntrySpotActivation {
   private attachActorJoinDispatch(): void {
     const dispatch = new ZLinkSpotActorJoinDispatch({
       nativeSpot: this.options.nativeSpot,
+      createReceived: this.options.createReceived,
+      createTopicMessage: this.options.createTopicMessage,
       serial: this.serial,
       actors: {
         resolveActor: (actorId) => this.options.entryActorRuntime?.resolveActor(actorId),
@@ -417,14 +434,17 @@ export class ZLinkEntrySpotActivation {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    requestTerminal?: (response: unknown) => Promise<void> | void
+    requestTerminal?: (response: unknown) => Promise<void> | void,
+    messageFollowOrigin?: ZLinkMessageFollowOrigin
   ): Promise<unknown> {
     const handoff = this.options.actorHandoffRuntime?.capture(
       actorId,
       parts,
       returnResponse,
       remoteBoundSessionTarget,
-      fallbackActorRef
+      fallbackActorRef,
+      undefined,
+      messageFollowOrigin
     );
     if (handoff !== undefined) return await handoff;
     return this.actorPacketMailboxes.submit(actorId, () =>

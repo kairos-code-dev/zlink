@@ -38,12 +38,16 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     private static final Duration FALLBACK_ROUTE_RETRY_TIMEOUT = Duration.ofSeconds(5);
+    private static final int MAX_RUNTIME_READY_WAITERS = 4096;
 
     private final java.util.function.Supplier<ZLinkInternalSpotNode> spotNode;
     private final ZLinkStoreLocationResolvers locations;
     private final ZLinkMessageSerializer serializer;
     private final Duration defaultTimeout;
     private final ZLinkOneWayCalls oneWayCalls;
+    private final CompletionStage<Void> runtimeReady;
+    private final java.util.concurrent.atomic.AtomicInteger
+        runtimeReadyWaiters = new java.util.concurrent.atomic.AtomicInteger();
 
     public ZLinkActorClientRuntime(
         java.util.function.Supplier<ZLinkInternalSpotNode> spotNode,
@@ -57,7 +61,8 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             defaultTimeout,
             (ignoredBackend, ignoredKey) -> (ignoredSubmission, ignoredCleanup) ->
                 CompletableFuture.failedFuture(new IllegalStateException(
-                    "one-way admission factory is required")));
+                    "one-way admission factory is required")),
+            CompletableFuture.completedFuture(null));
     }
 
     public ZLinkActorClientRuntime(
@@ -72,11 +77,36 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                 java.util.function.Supplier<Boolean>,
                 Runnable,
                 CompletionStage<Void>>> admission) {
+        this(
+            spotNode,
+            locations,
+            serializer,
+            defaultTimeout,
+            admission,
+            CompletableFuture.completedFuture(null));
+    }
+
+    public ZLinkActorClientRuntime(
+        java.util.function.Supplier<ZLinkInternalSpotNode> spotNode,
+        ZLinkStoreLocationResolvers locations,
+        ZLinkMessageSerializer serializer,
+        Duration defaultTimeout,
+        java.util.function.BiFunction<
+            systems.zlink.framework.runtime.internal.backend.ZLinkBackendObject,
+            ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission,
+        CompletionStage<Void> runtimeReady) {
         this.spotNode = java.util.Objects.requireNonNull(spotNode, "spotNode");
         this.locations = java.util.Objects.requireNonNull(locations, "locations");
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.defaultTimeout = defaultTimeout == null ? Duration.ZERO : defaultTimeout;
         this.oneWayCalls = new ZLinkOneWayCalls(admission);
+        this.runtimeReady = java.util.Objects.requireNonNull(
+            runtimeReady,
+            "runtimeReady");
     }
 
     @Override
@@ -96,7 +126,7 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         Map<String, String> metadata,
         Duration timeout,
         Class<TReply> replyType) {
-        return resolveActorAddress(actorId)
+        return resolveActorAddress(actorId, timeout)
             .thenCompose(actor -> submitRequestWithRouteRetry(
                 actor, packetName, request, metadata, timeout, replyType))
             .whenComplete((ignored, error) -> {
@@ -122,8 +152,11 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
             .exceptionallyCompose(error -> failed(unwrap(error)));
     }
 
-    private CompletionStage<ZLinkBackendActorRef> resolveActorAddress(String actorId) {
-        return locations.resolveActor(actorId)
+    private CompletionStage<ZLinkBackendActorRef> resolveActorAddress(
+        String actorId,
+        Duration readinessTimeout) {
+        return awaitRuntimeReady(readinessTimeout)
+            .thenCompose(ignored -> locations.resolveActor(actorId))
             .thenApply(row -> {
                 if (row == null || row.actorRef() == null) {
                     throw new ZLinkFrameworkException(
@@ -138,17 +171,19 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         ActorRoute row) {
         ZLinkBackendActorRef actor = toBackendActorRef(row);
         spotNode.get().rememberActorAuthority(
-            actor, row.authorityOwnerGeneration());
+            actor,
+            row.authorityOwnerGeneration(),
+            row.ownerLeaseGeneration());
         return actor;
     }
 
     private CompletionStage<Void>
-    submitSendResult(
+        submitSendResult(
         String actorId,
         String packetName,
         Object message,
         Map<String, String> metadata) {
-        return resolveActorAddress(actorId).thenCompose(actor -> {
+        return resolveActorAddress(actorId, defaultTimeout).thenCompose(actor -> {
             List<Message> parts = createPacketParts(
                 ZLinkStreamMessageKind.SEND,
                 Optional.empty(),
@@ -169,6 +204,50 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     }
                 });
         });
+    }
+
+    private CompletionStage<Void> awaitRuntimeReady(Duration timeout) {
+        CompletableFuture<Void> readyFuture = runtimeReady.toCompletableFuture();
+        if (readyFuture.isDone()) {
+            return runtimeReady;
+        }
+        int waiters = runtimeReadyWaiters.incrementAndGet();
+        if (waiters > MAX_RUNTIME_READY_WAITERS) {
+            runtimeReadyWaiters.decrementAndGet();
+            return failed(new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.CAPACITY_EXCEEDED,
+                "framework startup admission capacity is exhausted"));
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        java.util.concurrent.atomic.AtomicBoolean released =
+            new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable release = () -> {
+            if (released.compareAndSet(false, true)) {
+                runtimeReadyWaiters.decrementAndGet();
+            }
+        };
+        runtimeReady.whenComplete((ignored, failure) -> {
+            release.run();
+            if (failure == null) {
+                result.complete(null);
+            } else {
+                result.completeExceptionally(unwrap(failure));
+            }
+        });
+        Duration effectiveTimeout = timeout == null ? defaultTimeout : timeout;
+        if (effectiveTimeout != null
+            && !effectiveTimeout.isZero()
+            && !effectiveTimeout.isNegative()) {
+            CompletableFuture.delayedExecutor(
+                effectiveTimeout.toNanos(),
+                java.util.concurrent.TimeUnit.NANOSECONDS).execute(() -> {
+                    release.run();
+                    result.completeExceptionally(new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
+                        "framework runtime did not become ready before the actor operation deadline"));
+                });
+        }
+        return result;
     }
 
     private <TReply> CompletionStage<TReply> submitRequest(

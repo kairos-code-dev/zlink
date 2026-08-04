@@ -2449,7 +2449,8 @@
         { "name": "queuedBytes", "$ref": "u32", "minimum": 0,
           "maximum": { "$bound": "messageFollowBytes" } },
         { "name": "originalOperation", "$ref": "operation-id" },
-        { "name": "originalReplyRouteId", "$ref": "nonzero-u64" }
+        { "name": "originalReplyRouteId", "$ref": "u64",
+          "description": "nonzero for a request and zero for a one-way message" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -4677,6 +4678,17 @@
         { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
       ],
       "payload": "forbidden"
+    },
+    {
+      "id": 50,
+      "name": "messageFollow",
+      "domain": "infrastructure",
+      "allowedFlags": [],
+      "requiredFlags": [],
+      "body": [
+        { "name": "route", "$ref": "message-follow-route-v1" }
+      ],
+      "payload": "forbidden"
     }
   ],
   "relocationStateMachine": {
@@ -4854,6 +4866,6 @@
   },
   "reservedCommandRanges": [
     { "first": 7, "last": 15 },
-    { "first": 50, "last": 255 }
+    { "first": 51, "last": 255 }
   ]
 }

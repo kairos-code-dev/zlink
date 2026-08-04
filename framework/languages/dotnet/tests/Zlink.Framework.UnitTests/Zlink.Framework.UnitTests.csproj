@@ -105,6 +105,7 @@
         <Compile Include="Runtime/SerialExecutorTests.cs"/>
         <Compile Include="Runtime/ServiceRuntimeFoundationTests.cs"/>
         <Compile Include="Runtime/ZLinkObservationQueueTests.cs"/>
+        <Compile Include="Runtime/ZLinkMeshPeerAdmissionTests.cs"/>
         <Compile Include="Runtime/ServiceWireRelocationCodecTests.cs"/>
         <Compile Include="Runtime/StatefulServiceRuntimeTests.cs"/>
         <Compile Include="Runtime/SessionActorCoordinatorTests.cs"/>

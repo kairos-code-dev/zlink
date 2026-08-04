@@ -5,43 +5,19 @@ import type {
 } from './service-stateful-registry';
 import { operationRequiresReply } from './service-runtime-contracts';
 import { ServiceWireProtocolError } from './service-wire-m6a-codec';
+import {
+  SERVICE_WIRE_MAGIC,
+  SERVICE_WIRE_MAJOR,
+  ServiceWireCommand,
+  ServiceWireFlag
+} from './service-wire-constants.generated';
 
 const PREFIX_SIZE = 5;
-const MAGIC_0 = 0x5a;
-const MAGIC_1 = 0x4d;
-const MAJOR = 1;
+const MAGIC_0 = SERVICE_WIRE_MAGIC[0];
+const MAGIC_1 = SERVICE_WIRE_MAGIC[1];
+const MAJOR = SERVICE_WIRE_MAJOR;
 
-export const M6bServiceWireCommand = Object.freeze({
-  spotSend: 21,
-  spotRequest: 22,
-  logicalMulticast: 23,
-  actorSend: 24,
-  actorRequest: 25,
-  actorLookup: 26,
-  actorDestroy: 27,
-  actorJoin: 28,
-  actorLeft: 29,
-  relocationReady: 30,
-  relocationData: 31,
-  relocationAck: 32,
-  replyRelay: 33,
-  relocationSeal: 34,
-  relocationComplete: 35,
-  boundSessionSend: 36,
-  actorJoined: 37,
-  boundSessionBind: 38,
-  instanceSpot: 39,
-  relocationPrepare: 40,
-  relocationReserved: 41,
-  sessionRelocationSeal: 42,
-  sessionRelocationSealed: 43,
-  sessionRelocationRoute: 44,
-  sessionRelocationRouted: 45,
-  replyRelayAck: 46,
-  userSpotCreate: 47,
-  userSpotClose: 48,
-  actorCreate: 49
-});
+export const M6bServiceWireCommand = ServiceWireCommand;
 
 export interface ServiceWireOperationId {
   readonly high: bigint;
@@ -259,11 +235,7 @@ export type ServiceMaintenanceRelocationControl =
   | ServiceMaintenanceRelocationSeal
   | ServiceMaintenanceRelocationComplete;
 
-export const M6bServiceWireFlag = Object.freeze({
-  metadata: 1,
-  boundSession: 2,
-  sourceSpotId: 4
-});
+export const M6bServiceWireFlag = ServiceWireFlag;
 
 export interface ServiceSpotRouteFence {
   readonly spot: ServiceSpotRef;
@@ -361,6 +333,35 @@ export interface ServiceUserSpotCloseRecord {
   readonly deadlineUnixMs: bigint;
 }
 
+export type ServiceMessageFollowRoute =
+  | {
+      readonly kind: 'actor';
+      readonly actor: ServiceActorRef;
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly authorityOwnerGeneration: bigint;
+      readonly ownerLeaseGeneration: bigint;
+    }
+  | {
+      readonly kind: 'spot';
+      readonly spot: ServiceSpotRef;
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly authorityOwnerGeneration: bigint;
+      readonly ownerLeaseGeneration: bigint;
+    };
+
+export interface ServiceMessageFollowRecord {
+  readonly kind: 'messageFollow';
+  readonly source: ServiceMessageFollowRoute;
+  readonly target: ServiceMessageFollowRoute;
+  readonly hopCount: number;
+  readonly queuedMessages: number;
+  readonly queuedBytes: number;
+  readonly originalOperation: ServiceWireOperationId;
+  readonly originalReplyRouteId: bigint;
+}
+
 export type ServiceBoundSessionTransition =
   | { readonly state: 'active'; readonly generation: bigint }
   | { readonly state: 'tombstone'; readonly retiredGeneration: bigint };
@@ -439,7 +440,8 @@ export type ServiceStatefulWireRecord =
     }
   | ServiceUserSpotCreateRecord
   | ServiceUserSpotCloseRecord
-  | ServiceActorCreateRecord;
+  | ServiceActorCreateRecord
+  | ServiceMessageFollowRecord;
 
 export type ServiceStatefulReplyTail =
   | {
@@ -786,6 +788,31 @@ export function encodeUserSpotCloseHeader(record: Omit<ServiceUserSpotCloseRecor
   );
 }
 
+export function encodeMessageFollowHeader(
+  record: Omit<ServiceMessageFollowRecord, 'kind'>
+): Buffer {
+  validateMessageFollowRecord(record);
+  const body = concat(
+    messageFollowRoute(record.source),
+    messageFollowRoute(record.target),
+    Buffer.of(record.hopCount),
+    u32(record.queuedMessages, 'queuedMessages'),
+    u32(record.queuedBytes, 'queuedBytes'),
+    u64Any(record.originalOperation.high),
+    u64Any(record.originalOperation.low),
+    u64Any(record.originalReplyRouteId)
+  );
+  if (body.byteLength > 16 * 1024 * 1024) {
+    throw new RangeError('Message Follow body exceeds 16 MiB.');
+  }
+  return concat(
+    prefix(M6bServiceWireCommand.messageFollow),
+    Buffer.of(1),
+    u32(body.byteLength, 'messageFollow.length'),
+    body
+  );
+}
+
 export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireRecord {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -1087,6 +1114,31 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         target,
         deadlineUnixMs
       };
+    }
+    case M6bServiceWireCommand.messageFollow: {
+      requireFlags(command.flags, 0);
+      if (reader.u8('messageFollow.version') !== 1) {
+        fail('Unsupported Message Follow version.');
+      }
+      const length = reader.u32('messageFollow.length');
+      const end = reader.offset + length;
+      if (length > 16 * 1024 * 1024 || end > reader.bytes.byteLength) {
+        fail('Invalid Message Follow body length.');
+      }
+      const record: ServiceMessageFollowRecord = {
+        kind: 'messageFollow',
+        source: reader.messageFollowRoute('source'),
+        target: reader.messageFollowRoute('target'),
+        hopCount: reader.u8('hopCount'),
+        queuedMessages: reader.u32('queuedMessages'),
+        queuedBytes: reader.u32('queuedBytes'),
+        originalOperation: reader.operationId('originalOperation'),
+        originalReplyRouteId: reader.u64('originalReplyRouteId')
+      };
+      if (reader.offset !== end) fail('Invalid Message Follow body length.');
+      reader.end();
+      validateMessageFollowRecord(record, fail);
+      return record;
     }
     default:
       fail(`Command '${command.command}' is not owned by the M6B codec.`);
@@ -1865,6 +1917,62 @@ function directSpotFence(value: ServiceDirectSpotRouteFence): Buffer {
   );
 }
 
+function messageFollowRoute(value: ServiceMessageFollowRoute): Buffer {
+  const body = value.kind === 'actor'
+    ? concat(
+        actorRef(value.actor),
+        rid(value.targetNodeRid, 'targetNodeRid'),
+        u64(value.targetNodeGeneration),
+        u64(value.authorityOwnerGeneration),
+        u64(value.ownerLeaseGeneration)
+      )
+    : concat(
+        spotRef(value.spot),
+        rid(value.targetNodeRid, 'targetNodeRid'),
+        u64(value.targetNodeGeneration),
+        u64(value.authorityOwnerGeneration),
+        u64(value.ownerLeaseGeneration)
+      );
+  return concat(Buffer.of(value.kind === 'actor' ? 1 : 2), u16(body.byteLength), body);
+}
+
+function validateMessageFollowRecord(
+  value: Omit<ServiceMessageFollowRecord, 'kind'>,
+  invalid: (message: string) => never = (message) => { throw new RangeError(message); }
+): void {
+  if (value.source.kind !== value.target.kind) {
+    invalid('Message Follow source and target object kinds differ.');
+  }
+  const sameObject = value.source.kind === 'actor' && value.target.kind === 'actor'
+    ? value.source.actor.actorId === value.target.actor.actorId
+      && value.source.actor.generation === value.target.actor.generation
+    : value.source.kind === 'spot' && value.target.kind === 'spot'
+      ? value.source.spot.spotId === value.target.spot.spotId
+        && value.source.spot.generation === value.target.spot.generation
+      : false;
+  if (!sameObject) invalid('Message Follow source and target object identities differ.');
+  if (!Number.isInteger(value.hopCount) || value.hopCount < 1 || value.hopCount > 8) {
+    invalid('Message Follow hopCount must be in 1..8.');
+  }
+  if (!Number.isInteger(value.queuedMessages)
+      || value.queuedMessages < 0
+      || value.queuedMessages > 1024) {
+    invalid('Message Follow queuedMessages must be in 0..1024.');
+  }
+  if (!Number.isInteger(value.queuedBytes)
+      || value.queuedBytes < 0
+      || value.queuedBytes > 16 * 1024 * 1024) {
+    invalid('Message Follow queuedBytes must be in 0..16 MiB.');
+  }
+  if (value.originalOperation.high === 0n && value.originalOperation.low === 0n) {
+    invalid('Message Follow originalOperation must not be zero.');
+  }
+  if (value.originalReplyRouteId < 0n
+      || value.originalReplyRouteId > 0xffff_ffff_ffff_ffffn) {
+    invalid('Message Follow originalReplyRouteId must be a u64.');
+  }
+}
+
 function actorRef(value: ServiceActorRef): Buffer {
   return concat(text8(value.actorId, 'actorId'), u64(value.generation));
 }
@@ -2408,6 +2516,38 @@ class Reader {
       ownerLeaseGeneration: this.nonZeroU64('ownerLeaseGeneration'),
       storeVersion: this.text16('storeVersion')
     };
+  }
+
+  messageFollowRoute(name: string): ServiceMessageFollowRoute {
+    const kind = this.u8(`${name}.objectKind`);
+    const length = this.u16(`${name}.length`);
+    const end = this.offset + length;
+    if (end > this.bytes.byteLength) fail(`Truncated Message Follow ${name} route.`);
+    let value: ServiceMessageFollowRoute;
+    if (kind === 1) {
+      const actor = this.actorRef(`${name}.actor`);
+      value = {
+        kind: 'actor',
+        actor,
+        targetNodeRid: this.rid(`${name}.targetNodeRid`),
+        targetNodeGeneration: this.nonZeroU64(`${name}.targetNodeGeneration`),
+        authorityOwnerGeneration: this.nonZeroU64(`${name}.authorityOwnerGeneration`),
+        ownerLeaseGeneration: this.nonZeroU64(`${name}.ownerLeaseGeneration`)
+      };
+    } else if (kind === 2) {
+      value = {
+        kind: 'spot',
+        spot: this.spotRef(),
+        targetNodeRid: this.rid(`${name}.targetNodeRid`),
+        targetNodeGeneration: this.nonZeroU64(`${name}.targetNodeGeneration`),
+        authorityOwnerGeneration: this.nonZeroU64(`${name}.authorityOwnerGeneration`),
+        ownerLeaseGeneration: this.nonZeroU64(`${name}.ownerLeaseGeneration`)
+      };
+    } else {
+      fail(`Unknown Message Follow ${name} object kind.`);
+    }
+    if (this.offset !== end) fail(`Invalid Message Follow ${name} route length.`);
+    return value;
   }
 
   end(): void {

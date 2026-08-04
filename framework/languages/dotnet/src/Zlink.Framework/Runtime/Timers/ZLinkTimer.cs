@@ -15,9 +15,9 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private readonly ZLinkTimerCallbacks _callbacks;
     private readonly object _lifecycleGate = new();
     private readonly object _scheduleGate = new();
+    private readonly ZLinkTimerScheduler _scheduler;
     private readonly string _name;
     private readonly TimeSpan _period;
-    private readonly Task _pump;
     private readonly CancellationTokenSource _stopSource;
     private DateTimeOffset _startedAt;
     private ulong _deliveryIndex;
@@ -26,7 +26,9 @@ internal sealed class ZLinkTimer : IZLinkTimer
     private ZLinkTimerTick? _pendingTick;
     private TaskCompletionSource? _resume;
     private TaskCompletionSource? _activeDispatch;
+    private Exception? _dispatchFailure;
     private Task? _finalization;
+    private long _scheduleVersion;
     private int _disposed;
 
     public ZLinkTimer(
@@ -36,7 +38,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
         CancellationToken spotStopToken,
         Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
         Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
-        Func<IDisposable>? enterTickScope = null)
+        Func<IDisposable>? enterTickScope = null,
+        ZLinkTimerScheduler? scheduler = null)
         : this(
             new ZLinkTimerLogicalSnapshot(
                 name,
@@ -54,7 +57,9 @@ internal sealed class ZLinkTimer : IZLinkTimer
                 return true;
             },
             onUnhandledExceptionAsync,
-            enterTickScope)
+            enterTickScope,
+            false,
+            scheduler)
     {
     }
 
@@ -64,9 +69,12 @@ internal sealed class ZLinkTimer : IZLinkTimer
         Func<ZLinkTimerTick, CancellationToken, ValueTask<bool>> onTickAsync,
         Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
         Func<IDisposable>? enterTickScope = null,
-        bool startFrozen = false)
+        bool startFrozen = false,
+        ZLinkTimerScheduler? scheduler = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        _scheduler = scheduler
+            ?? throw new ArgumentNullException(nameof(scheduler));
         _name = snapshot.Name;
         _period = snapshot.Period;
         _callbacks = new ZLinkTimerCallbacks(
@@ -83,7 +91,26 @@ internal sealed class ZLinkTimer : IZLinkTimer
             _resume = new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously);
         _stopSource = CancellationTokenSource.CreateLinkedTokenSource(spotStopToken);
-        _pump = RunAsync(_stopSource.Token);
+        _scheduler.Register(this);
+
+        SchedulerSchedule? schedule = null;
+        var startDispatch = false;
+        lock (_scheduleGate)
+        {
+            if (!startFrozen && _pendingTick is null)
+            {
+                schedule = PrepareScheduleUnderLock(
+                    _nextScheduledAt ?? ComputeNextScheduledAtUnderLock());
+            }
+            else if (!startFrozen && _pendingTick is not null)
+            {
+                _activeDispatch = NewDispatchSource();
+                startDispatch = true;
+            }
+        }
+        PublishSchedule(schedule);
+        if (startDispatch)
+            StartPendingDispatch();
     }
 
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
@@ -93,8 +120,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
         lock (_scheduleGate)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
-            _resume ??= new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
+            _resume ??= NewResumeSource();
             return SnapshotUnderLock();
         }
     }
@@ -139,26 +165,78 @@ internal sealed class ZLinkTimer : IZLinkTimer
         }
     }
 
+    internal bool IsScheduleCurrent(long version)
+    {
+        lock (_scheduleGate)
+            return !IsDisposed && _scheduleVersion == version;
+    }
+
+    internal void NotifyDue(long version)
+    {
+        var startDispatch = false;
+        lock (_scheduleGate)
+        {
+            if (IsDisposed
+                || _scheduleVersion != version
+                || _resume is not null)
+                return;
+
+            _nextScheduledAt = null;
+            _pendingTick ??= CreateNextTickUnderLock(DateTimeOffset.UtcNow);
+            if (_activeDispatch is null)
+            {
+                _activeDispatch = NewDispatchSource();
+                startDispatch = true;
+            }
+        }
+
+        if (startDispatch)
+            StartPendingDispatch();
+    }
+
     internal void Resume()
     {
         TaskCompletionSource? resume;
+        SchedulerSchedule? schedule = null;
+        var startDispatch = false;
         lock (_scheduleGate)
         {
             resume = _resume;
             _resume = null;
+            if (resume is not null && !IsDisposed)
+            {
+                if (_pendingTick is not null)
+                {
+                    if (_activeDispatch is null)
+                    {
+                        _activeDispatch = NewDispatchSource();
+                        startDispatch = true;
+                    }
+                }
+                else
+                {
+                    schedule = PrepareScheduleUnderLock(
+                        _nextScheduledAt ?? ComputeNextScheduledAtUnderLock());
+                }
+            }
         }
+
         resume?.TrySetResult();
+        PublishSchedule(schedule);
+        if (startDispatch)
+            StartPendingDispatch();
     }
 
-    public ValueTask CancelAsync()
-    {
-        return new ValueTask(GetOrStartFinalization());
-    }
+    public ValueTask CancelAsync() =>
+        new(GetOrStartFinalization());
 
-    public ValueTask DisposeAsync()
-    {
-        return CancelAsync();
-    }
+    public ValueTask DisposeAsync() => CancelAsync();
+
+    private static TaskCompletionSource NewResumeSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static TaskCompletionSource NewDispatchSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private ZLinkTimerLogicalSnapshot SnapshotUnderLock()
     {
@@ -178,7 +256,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
         TaskCompletionSource completion;
         lock (_lifecycleGate)
         {
-            if (_finalization is not null) return _finalization;
+            if (_finalization is not null)
+                return _finalization;
 
             Volatile.Write(ref _disposed, 1);
             completion = new TaskCompletionSource(
@@ -209,6 +288,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
         try
         {
             _stopSource.Cancel();
+            _scheduler.Unregister(this);
             Resume();
         }
         catch (Exception exception)
@@ -218,10 +298,11 @@ internal sealed class ZLinkTimer : IZLinkTimer
 
         try
         {
-            await _pump.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (_stopSource.IsCancellationRequested)
-        {
+            Task? activeDispatch;
+            lock (_scheduleGate)
+                activeDispatch = _activeDispatch?.Task;
+            if (activeDispatch is not null)
+                await activeDispatch.ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -237,123 +318,104 @@ internal sealed class ZLinkTimer : IZLinkTimer
             (failures ??= []).Add(exception);
         }
 
+        var dispatchFailure = Volatile.Read(ref _dispatchFailure);
+        if (dispatchFailure is not null)
+            (failures ??= []).Add(dispatchFailure);
+
         if (failures is [var failure])
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        if (failures is { Count: > 1 }) throw new AggregateException(failures);
+        if (failures is { Count: > 1 })
+            throw new AggregateException(failures);
     }
 
-    private async Task RunAsync(CancellationToken cancellationToken)
+    private void StartPendingDispatch()
     {
-        await Task.Yield();
-        while (true)
+        _ = Task.Run(DispatchPendingAsync);
+    }
+
+    private async Task DispatchPendingAsync()
+    {
+        TaskCompletionSource? dispatch;
+        ZLinkTimerTick tick;
+        lock (_scheduleGate)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            await WaitUntilResumedAsync(cancellationToken).ConfigureAwait(false);
-
-            ZLinkTimerTick tick;
-            if (TryGetPendingTick(out tick))
-            {
-                if (!await DispatchAsync(tick, cancellationToken).ConfigureAwait(false))
-                    return;
-                continue;
-            }
-
-            DateTimeOffset due;
-            lock (_scheduleGate)
-            {
-                due = _nextScheduledAt ?? ComputeNextScheduledAtUnderLock();
-                _nextScheduledAt = due;
-            }
-            var delay = due - DateTimeOffset.UtcNow;
-            if (delay > TimeSpan.Zero)
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-
-            await WaitUntilResumedAsync(cancellationToken).ConfigureAwait(false);
-            lock (_scheduleGate)
-            {
-                if (_resume is not null)
-                    continue;
-                if (_pendingTick is { } existing)
-                {
-                    tick = existing;
-                }
-                else
-                {
-                    tick = CreateNextTickUnderLock(DateTimeOffset.UtcNow);
-                    _pendingTick = tick;
-                    _nextScheduledAt = null;
-                }
-            }
-            if (!await DispatchAsync(tick, cancellationToken).ConfigureAwait(false))
+            dispatch = _activeDispatch;
+            if (dispatch is null)
                 return;
-        }
-    }
-
-    private bool TryGetPendingTick(out ZLinkTimerTick tick)
-    {
-        lock (_scheduleGate)
-        {
-            if (_pendingTick is { } pending)
+            if (IsDisposed
+                || _resume is not null
+                || _pendingTick is not { } pending)
             {
-                tick = pending;
-                return true;
+                _activeDispatch = null;
+                dispatch.TrySetResult();
+                return;
             }
+            tick = pending;
         }
-        tick = default;
-        return false;
-    }
 
-    private async ValueTask<bool> DispatchAsync(
-        ZLinkTimerTick tick,
-        CancellationToken cancellationToken)
-    {
-        TaskCompletionSource dispatch;
-        lock (_scheduleGate)
-        {
-            dispatch = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _activeDispatch = dispatch;
-        }
+        ZLinkTimerDispatchOutcome outcome = default;
+        Exception? failure = null;
         try
         {
-            var outcome = await _callbacks
-                .DispatchTickAsync(tick, cancellationToken)
+            outcome = await _callbacks
+                .DispatchTickAsync(tick, _stopSource.Token)
                 .ConfigureAwait(false);
-            lock (_scheduleGate)
-            {
-                if (_pendingTick != tick) return outcome.KeepRunning;
-                if (!outcome.Delivered) return outcome.KeepRunning;
-                if (outcome.KeepRunning)
-                {
-                    _deliveryIndex = tick.DeliveryIndex;
-                    _lastScheduledIndex = tick.ScheduledIndex;
-                }
-                _pendingTick = null;
-            }
-            return outcome.KeepRunning;
         }
-        finally
+        catch (OperationCanceledException)
+            when (_stopSource.IsCancellationRequested)
         {
-            lock (_scheduleGate)
-            {
-                if (ReferenceEquals(_activeDispatch, dispatch))
-                    _activeDispatch = null;
-            }
-            dispatch.TrySetResult();
         }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+
+        SchedulerSchedule? nextSchedule = null;
+        lock (_scheduleGate)
+        {
+            if (failure is not null)
+            {
+                _dispatchFailure ??= failure;
+            }
+            else if (_pendingTick == tick)
+            {
+                if (outcome.Delivered)
+                {
+                    if (outcome.KeepRunning)
+                    {
+                        _deliveryIndex = tick.DeliveryIndex;
+                        _lastScheduledIndex = tick.ScheduledIndex;
+                    }
+                    _pendingTick = null;
+                }
+
+                if (!IsDisposed && _resume is null && outcome.KeepRunning)
+                {
+                    var due = outcome.Delivered
+                        ? ComputeNextScheduledAtUnderLock()
+                        : DateTimeOffset.UtcNow + _period;
+                    nextSchedule = PrepareScheduleUnderLock(due);
+                }
+            }
+
+            if (ReferenceEquals(_activeDispatch, dispatch))
+                _activeDispatch = null;
+        }
+        dispatch.TrySetResult();
+        PublishSchedule(nextSchedule);
     }
 
-    private async ValueTask WaitUntilResumedAsync(
-        CancellationToken cancellationToken)
+    private SchedulerSchedule PrepareScheduleUnderLock(DateTimeOffset dueAt)
     {
-        while (true)
-        {
-            Task? wait;
-            lock (_scheduleGate)
-                wait = _resume?.Task;
-            if (wait is null) return;
-            await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
+        var version = checked(++_scheduleVersion);
+        _nextScheduledAt = dueAt;
+        return new SchedulerSchedule(dueAt, version);
+    }
+
+    private void PublishSchedule(SchedulerSchedule? schedule)
+    {
+        if (schedule is { } value)
+            _scheduler.Schedule(this, value.DueAt, value.Version);
     }
 
     private DateTimeOffset ComputeNextScheduledAtUnderLock()
@@ -468,6 +530,10 @@ internal sealed class ZLinkTimer : IZLinkTimer
             }
         }
     }
+
+    private readonly record struct SchedulerSchedule(
+        DateTimeOffset DueAt,
+        long Version);
 
     private readonly record struct ZLinkTimerDispatchOutcome(
         bool KeepRunning,

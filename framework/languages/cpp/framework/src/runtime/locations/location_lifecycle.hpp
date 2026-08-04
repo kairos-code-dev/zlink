@@ -35,8 +35,8 @@ class location_lifecycle_t
         std::chrono::system_clock::time_point updated_at{};
     };
 
-    explicit location_lifecycle_t (location_runtime_t &) :
-        _state (std::make_shared<state_t> ())
+    explicit location_lifecycle_t (location_runtime_t &runtime) :
+        _location_runtime (&runtime), _state (std::make_shared<state_t> ())
     {
     }
 
@@ -98,6 +98,13 @@ class location_lifecycle_t
     {
         std::lock_guard lock (_state->gate);
         return _state->actors.contains (actor_key (key));
+    }
+
+    std::optional<location_owner_token_t> current_owner_token () const
+    {
+        return _location_runtime != nullptr
+                 ? _location_runtime->current_owner_token ()
+                 : std::nullopt;
     }
 
     spot_claim_result_t claim_spot (spot_location_t spot)
@@ -249,6 +256,7 @@ class location_lifecycle_t
         }
     }
 
+    location_runtime_t *_location_runtime = nullptr;
     std::shared_ptr<state_t> _state;
 };
 

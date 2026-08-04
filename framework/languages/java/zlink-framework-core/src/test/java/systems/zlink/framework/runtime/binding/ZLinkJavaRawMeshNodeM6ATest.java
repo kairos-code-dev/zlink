@@ -30,6 +30,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResul
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
@@ -121,7 +122,7 @@ final class ZLinkJavaRawMeshNodeM6ATest {
     }
 
     @Test
-    void bilateralManualConnectKeepsOneReadyPeerAfterDuplicateDisconnect()
+    void bilateralManualConnectKeepsOneReadyPeer()
         throws Exception {
         RoutingId lowerRid = RoutingId.from("a");
         RoutingId higherRid = RoutingId.from("z");
@@ -144,7 +145,6 @@ final class ZLinkJavaRawMeshNodeM6ATest {
 
             awaitAdmitted(lower);
             awaitAdmitted(higher);
-            Thread.sleep(200);
 
             assertEquals(1, lower.peers().size());
             assertEquals(1, higher.peers().size());
@@ -430,6 +430,62 @@ final class ZLinkJavaRawMeshNodeM6ATest {
                 controlReceived.get(2, TimeUnit.SECONDS));
         } finally {
             releaseApplication.countDown();
+        }
+    }
+
+    @Test
+    void messageFollowIsDeliveredAsInfrastructureWithoutApplicationDispatch()
+        throws Exception {
+        String endpoint =
+            "inproc://jvm-message-follow-target-" + System.nanoTime();
+        RoutingId sourceRid = RoutingId.from("jvm-message-follow-source");
+        RoutingId targetRid = RoutingId.from("jvm-message-follow-target");
+        var route = new ZLinkServiceMessageFollowWireCodec.SpotRoute(
+            "spot",
+            7,
+            targetRid,
+            9,
+            11,
+            13);
+        var notice = new ZLinkServiceMessageFollowWireCodec.Notice(
+            route,
+            route,
+            1,
+            2,
+            1024,
+            17,
+            19,
+            0);
+        try (var context = Zlink.createContext();
+             var source = new ZLinkJavaRawMeshNode(context, "mesh");
+             var target = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            source.setRoutingId(sourceRid);
+            source.setBind(
+                "inproc://jvm-message-follow-source-" + System.nanoTime());
+            target.setRoutingId(targetRid);
+            target.setBind(endpoint);
+            AtomicInteger applicationDispatches = new AtomicInteger();
+            target.startDispatch(record -> {
+                applicationDispatches.incrementAndGet();
+                record.close();
+            });
+            CompletableFuture<ZLinkServiceMessageFollowWireCodec.Notice>
+                received = new CompletableFuture<>();
+            target.setMessageFollowHandler((actualSource, actualNotice) -> {
+                assertEquals(sourceRid, actualSource);
+                received.complete(actualNotice);
+            });
+            source.start();
+            target.start();
+            source.connectPeer(endpoint, targetRid);
+            awaitAdmitted(source);
+
+            source.sendMessageFollow(targetRid, notice)
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+
+            assertEquals(notice, received.get(2, TimeUnit.SECONDS));
+            assertEquals(0, applicationDispatches.get());
         }
     }
 

@@ -8,8 +8,8 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmG2Scenario {
     suspend fun run() {
-        val playA = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT")
-        val playB = Env.get("ZLINK_KOTLIN_E2E_HTTP_B_ENDPOINT")
+        val playA = Env.get("e2e.http.a.endpoint")
+        val playB = Env.get("e2e.http.b.endpoint")
         val key = "key-sm-g2-${UUID.randomUUID().toString().replace("-", "")}"
         val firstSpot = "spot-$key-a"
         val secondSpot = "spot-$key-b"

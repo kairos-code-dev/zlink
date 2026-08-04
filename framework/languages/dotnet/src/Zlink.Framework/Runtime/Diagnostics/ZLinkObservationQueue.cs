@@ -18,6 +18,7 @@ internal sealed class ZLinkObservationQueue<TStatus>
     private readonly SemaphoreSlim _available = new(0, 1);
     private readonly int _terminalCapacity;
     private readonly Func<TStatus, ulong> _sequenceSelector;
+    private readonly string _eventName;
     private TStatus? _latestStatus;
     private bool _hasLatestStatus;
     private bool _completed;
@@ -26,13 +27,17 @@ internal sealed class ZLinkObservationQueue<TStatus>
 
     internal ZLinkObservationQueue(
         int terminalCapacity,
-        Func<TStatus, ulong> sequenceSelector)
+        Func<TStatus, ulong> sequenceSelector,
+        string eventName = "unknown")
     {
         if (terminalCapacity <= 0)
             throw new ArgumentOutOfRangeException(nameof(terminalCapacity));
         ArgumentNullException.ThrowIfNull(sequenceSelector);
+        if (string.IsNullOrWhiteSpace(eventName))
+            throw new ArgumentException("An event name is required.", nameof(eventName));
         _terminalCapacity = terminalCapacity;
         _sequenceSelector = sequenceSelector;
+        _eventName = eventName;
     }
 
     internal void Publish(TStatus status, bool terminal)
@@ -57,6 +62,7 @@ internal sealed class ZLinkObservationQueue<TStatus>
                     _terminalStatuses.Dequeue();
                     _discardedTerminalCount =
                         Increment(_discardedTerminalCount);
+                    ZLinkRuntimeMetrics.RecordObserverOverflow(_eventName);
                 }
                 _terminalStatuses.Enqueue(status);
             }

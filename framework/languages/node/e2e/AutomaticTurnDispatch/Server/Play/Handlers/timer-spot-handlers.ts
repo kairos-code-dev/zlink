@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ZLinkPacket, ZLinkTimerOverrunPolicy, type ZLinkMessageContext, type ZLinkSpotPacketHandler, type ZLinkSpotTimerHandler, type ZLinkTimerTick } from '@zlink-systems/framework';
 import { DelayReq, type DelayRes, type TimerStartMsg, type TimerStopMsg } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
 import type { AwaitProbeSpot } from '../Spots/await-probe-spot';
 import { AwaitTimerState } from '../Spots/await-timer-state';
+import { ZLINK_ROUTE_CLIENT } from '@zlink-systems/nestjs';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 
 @Injectable()
 @ZLinkPacket('TimerStartMsg')
@@ -46,7 +48,10 @@ export class TimerStopCommandHandler implements ZLinkSpotPacketHandler<AwaitProb
 
 @Injectable()
 export class AwaitTimerHandler implements ZLinkSpotTimerHandler<AwaitProbeSpot> {
-  constructor(private readonly evidence: EvidenceStore) {}
+  constructor(
+    private readonly evidence: EvidenceStore,
+    @Inject(ZLINK_ROUTE_CLIENT) private readonly route: ZLinkRouteClient
+  ) {}
 
   async handle(spot: AwaitProbeSpot, tick: ZLinkTimerTick): Promise<void> {
     const state = spot.findTimerState(tick.name);
@@ -71,7 +76,7 @@ export class AwaitTimerHandler implements ZLinkSpotTimerHandler<AwaitProbeSpot> 
         `timer-yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotId}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
-      const call = spot.context.outbound
+      const call = this.route
         .requestToChannel(AutomaticTurnDispatchNames.delayChannel,
           new DelayReq(state.requestId, state.delayMs, state.timerName))
         .timeout(5000);

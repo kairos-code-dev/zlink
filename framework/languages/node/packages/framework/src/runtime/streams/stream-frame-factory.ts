@@ -3,7 +3,7 @@ import type {
   ZLinkStreamCompressionOptions
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as ZLinkBindingMessage } from '../backend/runtime-message';
 import { currentOrCreateFlow } from '../diagnostics/flow-context';
 import {
   createStreamReplyHeader,

@@ -915,7 +915,11 @@ export class ZLinkInMemoryLocationStore implements
     return 'released';
   }
 
-  async removeAllByOwner(owner: ZLinkLocationOwnerToken): Promise<bigint> {
+  async removeAllByOwner(
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    signal?.throwIfAborted();
     const lease = this.leases.get(owner.ownerId);
     if (lease === undefined
       || lease.token.leaseGeneration !== owner.leaseGeneration
@@ -923,7 +927,7 @@ export class ZLinkInMemoryLocationStore implements
       return 0n;
     }
     const ownerId = owner.ownerId;
-    let removed = 0;
+    let removed = Number(await this.authority.removeAllByOwner(owner, signal));
     for (const [key, row] of [...this.meshNodes.rows]) {
       if (row.ownerId !== owner.ownerId) continue;
       this.meshNodes.rows.delete(key);

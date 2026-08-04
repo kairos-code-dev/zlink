@@ -1,5 +1,23 @@
-import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type { RoutingId } from '../contracts';
+
+class ZLinkOpaqueRoutingId {
+  constructor(
+    private readonly text: string,
+    private readonly hex: string
+  ) {}
+
+  toHex(): string {
+    return this.hex;
+  }
+
+  toBytes(): Uint8Array {
+    return Buffer.from(this.hex, 'hex');
+  }
+
+  toString(): string {
+    return this.text;
+  }
+}
 
 export function normalizeRoutingId(value: RoutingId | string): RoutingId {
   return String(value);
@@ -11,7 +29,9 @@ export function normalizeOpaqueRoutingId(value: unknown): RoutingId {
     const candidate = value as { toHex?: () => unknown; toString?: () => unknown };
     if (typeof candidate.toHex === 'function') {
       const hex = candidate.toHex.call(value);
-      if (typeof hex === 'string') return hex;
+      if (typeof hex === 'string') {
+        return normalizeRoutingIdHex(hex);
+      }
     }
     if (typeof candidate.toString === 'function') {
       const text = candidate.toString.call(value);
@@ -25,11 +45,16 @@ export function decodeRoutingId(text: string, hex: unknown): RoutingId {
   if (typeof hex !== 'string') {
     return normalizeRoutingId(text);
   }
-  const decoded = BindingRoutingId.fromHex(hex);
-  if (BindingRoutingId.from(text).toHex() === decoded.toHex()) {
-    return normalizeRoutingId(text);
+  const normalizedHex = normalizeRoutingIdHex(hex);
+  const bytes = Buffer.from(normalizedHex, 'hex');
+  const decoded = bytes.toString('utf8');
+  if (
+    Buffer.from(decoded, 'utf8').toString('hex') === normalizedHex
+    && !/[\u0000-\u001f\u007f-\u009f]/u.test(decoded)
+  ) {
+    return normalizeRoutingId(decoded);
   }
-  return decoded as unknown as RoutingId;
+  return new ZLinkOpaqueRoutingId(text, normalizedHex) as unknown as RoutingId;
 }
 
 export function routingIdWireHex(routingId: RoutingId): string | undefined {
@@ -52,13 +77,9 @@ export function encodeRoutingIdStorageHex(routingId: RoutingId): string {
   return Buffer.from(routingId, 'utf8').toString('hex');
 }
 
-export function toBindingRoutingId(routingId: unknown): BindingRoutingId {
-  if (routingId instanceof BindingRoutingId) {
-    return routingId;
-  }
-
+export function toBackendRoutingId(routingId: unknown): RoutingId {
   if (typeof routingId === 'string') {
-    return BindingRoutingId.from(routingId);
+    return routingId;
   }
 
   const value = routingId as unknown as {
@@ -66,13 +87,25 @@ export function toBindingRoutingId(routingId: unknown): BindingRoutingId {
     toHex?: () => string;
   };
   if (typeof value.toBytes === 'function') {
-    return BindingRoutingId.from(value.toBytes.call(routingId));
+    const bytes = value.toBytes.call(routingId);
+    return new ZLinkOpaqueRoutingId(String(routingId), Buffer.from(bytes).toString('hex')) as unknown as RoutingId;
   }
   if (typeof value.toHex === 'function') {
-    return BindingRoutingId.fromHex(value.toHex.call(routingId));
+    return new ZLinkOpaqueRoutingId(
+      String(routingId),
+      normalizeRoutingIdHex(value.toHex.call(routingId))
+    ) as unknown as RoutingId;
   }
 
   throw new TypeError('RoutingId must be a string or expose toBytes() or toHex().');
+}
+
+function normalizeRoutingIdHex(value: string): string {
+  const hex = value.toLowerCase();
+  if (hex.length === 0 || hex.length % 2 !== 0 || !/^[0-9a-f]+$/.test(hex)) {
+    throw new TypeError('RoutingId hex must contain a non-empty, even number of hexadecimal digits.');
+  }
+  return hex;
 }
 
 export function routingIdsEqual(

@@ -87,6 +87,65 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
+    public async Task MessageFollow_InvalidatesOnlyTheMatchingCachedRouteFence()
+    {
+        var fixture = await FixtureAsync();
+        await AuthorityLocationTestFixture.PublishActorAsync(
+            fixture.Store,
+            InMemoryLocationStoreTests.Actor(OwnerA));
+        var row = await fixture.Resolvers.ResolveActorRowAsync(ActorKey);
+        Assert.NotNull(row);
+
+        var source = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowActorKind,
+            row.ActorId,
+            row.ActorRef.ObjectGeneration,
+            row.OwnerNodeRid,
+            row.OwnerNodeGeneration,
+            row.AuthorityOwnerGeneration,
+            checked((ulong)row.LeaseGeneration));
+        var target = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowActorKind,
+            row.ActorId,
+            row.ActorRef.ObjectGeneration,
+            RoutingId.From("node-2"),
+            row.OwnerNodeGeneration + 1,
+            row.AuthorityOwnerGeneration + 1,
+            checked((ulong)row.LeaseGeneration + 1));
+        var record = new ZLinkServiceWireCodec.MessageFollowRecord(
+            source,
+            target,
+            1,
+            1,
+            32,
+            new MeshOperationId(4, 5),
+            6);
+        var staleSource = new ZLinkServiceWireCodec.MessageFollowRoute(
+            ZLinkServiceWireCodec.MessageFollowActorKind,
+            row.ActorId,
+            row.ActorRef.ObjectGeneration,
+            row.OwnerNodeRid,
+            row.OwnerNodeGeneration,
+            row.AuthorityOwnerGeneration,
+            checked((ulong)row.LeaseGeneration + 1));
+        var staleRecord = new ZLinkServiceWireCodec.MessageFollowRecord(
+            staleSource,
+            target,
+            1,
+            1,
+            32,
+            new MeshOperationId(4, 5),
+            6);
+
+        Assert.False(
+            fixture.Resolvers.InvalidateMessageFollowRoute(
+                staleRecord));
+        Assert.True(fixture.Resolvers.HasCachedActorRoute(ActorKey));
+        Assert.True(fixture.Resolvers.InvalidateMessageFollowRoute(record));
+        Assert.False(fixture.Resolvers.HasCachedActorRoute(ActorKey));
+    }
+
+    [Fact]
     public async Task NotFound_Then_Claim_Is_Visible_Immediately()
     {
         var fixture = await FixtureAsync();
@@ -268,6 +327,48 @@ public sealed class LocationResolverTests
         Assert.True(observed.AcceptDescriptor(predecessor));
         Assert.True(observed.AcceptDescriptor(successor));
         Assert.False(observed.AcceptDescriptor(predecessor));
+    }
+
+    [Fact]
+    public async Task MeshNode_List_Rereads_When_A_Local_Revision_Update_Races_The_Snapshot()
+    {
+        var time = new ManualTimeProvider();
+        var inner = new ZLinkInMemoryLocationStore(time);
+        var owner = await inner.ClaimLiveOwnerAsync(OwnerA, LeaseTtl);
+        var initial = InMemoryLocationStoreTests.MeshNode(
+            OwnerA,
+            leaseGeneration: owner.LeaseGeneration);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await inner.UpdateMeshNodeAsync(
+                initial,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        var current = initial with { DescriptorRevision = 2 };
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await inner.UpdateMeshNodeAsync(
+                current,
+                ZLinkLocationWriteIntent.Renew)).Status);
+
+        var store = new StaleFirstMeshNodeListStore(inner, initial);
+        var options = new ZLinkLocationOptions
+        {
+            PollingInterval = TimeSpan.Zero
+        };
+        var observed = new ZLinkObservedLocationGenerations();
+        observed.ObserveDescriptor(current);
+        var resolvers = new ZLinkStoreLocationResolvers(
+            store,
+            new ZLinkOwnerLeaseTracker(store, options, time),
+            observed,
+            options: options,
+            timeProvider: time);
+
+        var live = await resolvers.ListLiveMeshNodesAsync("play");
+
+        var row = Assert.Single(live);
+        Assert.Equal(2UL, row.DescriptorRevision);
+        Assert.Equal(2, store.ListCalls);
     }
 
     [Fact]
@@ -984,4 +1085,34 @@ public sealed class LocationResolverTests
         ManualTimeProvider Time,
         ZLinkLocationOwnerToken OwnerA,
         ZLinkLocationOwnerToken OwnerB);
+
+    private sealed class StaleFirstMeshNodeListStore(
+        ZLinkInMemoryLocationStore inner,
+        ZLinkMeshNodeDescriptor staleRow) : ZLinkLocationStoreTestDouble
+    {
+        internal int ListCalls { get; private set; }
+
+        public override ValueTask<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+            ListMeshNodesAsync(
+                string meshName,
+                ZLinkPageRequest page,
+                CancellationToken cancellationToken = default)
+        {
+            ListCalls++;
+            if (ListCalls == 1)
+            {
+                return ValueTask.FromResult(
+                    new ZLinkLocationPage<ZLinkMeshNodeDescriptor>(
+                        [staleRow],
+                        null));
+            }
+
+            return inner.ListMeshNodesAsync(meshName, page, cancellationToken);
+        }
+
+        public override ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
+            string ownerId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOwnerLeaseAsync(ownerId, cancellationToken);
+    }
 }

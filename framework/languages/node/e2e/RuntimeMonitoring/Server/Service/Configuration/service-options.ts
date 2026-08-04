@@ -5,7 +5,11 @@ export interface ServiceOptions {
   readonly channelEndpoint: string; readonly spotRouterEndpoint: string; readonly spotPubEndpoint: string;
   readonly socketFilter: boolean; readonly throwMonitor: boolean; readonly evidenceFile?: string; readonly logDir: string;
 }
-export interface ServiceRoleOptions { readonly socketFilter?: boolean; readonly throwMonitor?: boolean; }
+export interface ServiceRoleOptions {
+  readonly socketFilter?: boolean;
+  readonly throwMonitor?: boolean;
+  readonly profileServer?: boolean;
+}
 export function validateServiceOptions(value: unknown, role: ServiceRoleOptions = {}): ServiceOptions {
   const values = objectValues(value); const evidenceFile = values.evidenceFile;
   return {

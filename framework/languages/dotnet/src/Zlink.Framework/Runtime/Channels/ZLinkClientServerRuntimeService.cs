@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 
 using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Locations;
@@ -10,8 +11,6 @@ internal sealed class ZLinkClientServerRuntimeService(
     ZLinkFrameworkHostLifecycleState hostLifecycle,
     ZLinkLocationStoreHealth? storeHealth) : IZLinkClientServerRuntime
 {
-    private static readonly TimeSpan PollInterval =
-        TimeSpan.FromMilliseconds(10);
     private readonly object _gate = new();
     private readonly Dictionary<string, SequenceState> _sequences =
         new(StringComparer.Ordinal);
@@ -142,10 +141,20 @@ internal sealed class ZLinkClientServerRuntimeService(
         _ = SnapshotInternal(channelName);
         var observer = new ZLinkObservationQueue<ZLinkClientServerRuntimeEvent>(
             capacity,
-            static item => item.Sequence);
+            static item => item.Sequence,
+            "client_server");
         using var stop =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var producer = ProduceAsync(channelName, observer, stop.Token);
+        using var signal = new StateChangeSignal();
+        var client = runtime.ClientServerMonitoringState(channelName).Client;
+        Action signalClient = signal.Signal;
+        Action<ZLinkFrameworkRuntimeState> signalHost = _ => signal.Signal();
+        if (client is not null)
+            client.StateChanged += signalClient;
+        hostLifecycle.Changed += signalHost;
+        if (storeHealth is not null)
+            storeHealth.Changed += signalClient;
+        var producer = ProduceAsync(channelName, observer, signal, stop.Token);
         try
         {
             await foreach (var item in observer.ReadAllAsync(cancellationToken)
@@ -157,6 +166,12 @@ internal sealed class ZLinkClientServerRuntimeService(
         finally
         {
             stop.Cancel();
+            if (client is not null)
+                client.StateChanged -= signalClient;
+            hostLifecycle.Changed -= signalHost;
+            if (storeHealth is not null)
+                storeHealth.Changed -= signalClient;
+            signal.Complete();
             try
             {
                 await producer.ConfigureAwait(false);
@@ -172,28 +187,49 @@ internal sealed class ZLinkClientServerRuntimeService(
     private async Task ProduceAsync(
         string channelName,
         ZLinkObservationQueue<ZLinkClientServerRuntimeEvent> observer,
+        StateChangeSignal signal,
         CancellationToken cancellationToken)
     {
         var previous = SnapshotInternal(channelName);
-        try
+        while (await signal.WaitToReadAsync(cancellationToken)
+                   .ConfigureAwait(false))
         {
-            using var timer = new PeriodicTimer(PollInterval);
-            while (await timer.WaitForNextTickAsync(cancellationToken)
-                       .ConfigureAwait(false))
+            while (signal.TryRead())
             {
-                var current = SnapshotInternal(channelName);
-                if (current.Sequence == previous.Sequence) continue;
-                foreach (var change in Changes(previous, current))
-                    observer.Publish(
-                        change,
-                        hostLifecycle.State is ZLinkFrameworkRuntimeState.Stopped
-                            or ZLinkFrameworkRuntimeState.Error);
-                previous = current;
             }
+            var current = SnapshotInternal(channelName);
+            if (current.Sequence == previous.Sequence) continue;
+            foreach (var change in Changes(previous, current))
+                observer.Publish(
+                    change,
+                    hostLifecycle.State is ZLinkFrameworkRuntimeState.Stopped
+                        or ZLinkFrameworkRuntimeState.Error);
+            previous = current;
         }
-        finally
+    }
+
+    private sealed class StateChangeSignal : IDisposable
+    {
+        private readonly Channel<bool> _channel =
+            Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+            {
+                SingleReader = true,
+                SingleWriter = false,
+                FullMode = BoundedChannelFullMode.DropWrite
+            });
+
+        internal void Signal() => _channel.Writer.TryWrite(true);
+
+        internal ValueTask<bool> WaitToReadAsync(CancellationToken cancellationToken) =>
+            _channel.Reader.WaitToReadAsync(cancellationToken);
+
+        internal bool TryRead() => _channel.Reader.TryRead(out _);
+
+        internal void Complete() => _channel.Writer.TryComplete();
+
+        public void Dispose()
         {
-            observer.Complete();
+            Complete();
         }
     }
 

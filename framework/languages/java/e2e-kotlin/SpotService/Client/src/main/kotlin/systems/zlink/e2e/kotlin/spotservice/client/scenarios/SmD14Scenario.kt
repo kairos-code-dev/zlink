@@ -14,7 +14,7 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
 internal object SmD14Scenario {
     suspend fun run() {
-        val endpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_A_ENDPOINT")
+        val endpoint = Env.get("e2e.tls.stream.a.endpoint")
         val strict = createStreamConnector(
             endpoint,
             ZLinkStreamDispatchMode.IMMEDIATE,

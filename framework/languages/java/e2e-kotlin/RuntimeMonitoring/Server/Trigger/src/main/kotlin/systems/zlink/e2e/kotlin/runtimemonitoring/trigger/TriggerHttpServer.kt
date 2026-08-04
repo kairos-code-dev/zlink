@@ -43,7 +43,7 @@ class TriggerHttpServer(
                 write(
                     exchange,
                     requestTransient(
-                        Env.get("ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT"),
+                        Env.get("e2e.filtered.api.endpoint"),
                         exchange.query("value") ?: "mon-d1-request",
                     ),
                     "application/json",
@@ -53,7 +53,7 @@ class TriggerHttpServer(
                 write(
                     exchange,
                     requestTransient(
-                        Env.get("ZLINK_KOTLIN_E2E_THROWING_API_ENDPOINT"),
+                        Env.get("e2e.throwing.api.endpoint"),
                         exchange.query("value") ?: "mon-c1-request",
                     ),
                     "application/json",
@@ -78,11 +78,11 @@ class TriggerHttpServer(
     }
 
     private fun requestServiceB(): String {
-        return requestTransient(Env.get("ZLINK_KOTLIN_E2E_FILTERED_API_ENDPOINT"), "mon-d1-request")
+        return requestTransient(Env.get("e2e.filtered.api.endpoint"), "mon-d1-request")
     }
 
     private fun requestTransientService(value: String): String {
-        return requestTransient(Env.get("ZLINK_KOTLIN_E2E_SERVICE_API_ENDPOINT"), value)
+        return requestTransient(Env.get("e2e.service.api.endpoint"), value)
     }
 
     private fun requestTransient(endpoint: String, value: String): String {

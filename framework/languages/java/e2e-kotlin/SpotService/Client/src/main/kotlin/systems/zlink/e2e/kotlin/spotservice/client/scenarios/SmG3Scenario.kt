@@ -25,7 +25,7 @@ internal object SmG3Scenario {
 
             repeat(2) { index ->
                 val actorId = "actor-sm-g3-$key-$index"
-                val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+                val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
                 connectors += connector
                 actorIds += actorId
                 connector.connect().await()
@@ -91,7 +91,7 @@ internal object SmG3Scenario {
 
     private fun createSpot(spotRid: String): Contracts.CreateSpotRes =
         postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
+            Env.get("e2e.http.a.endpoint"),
             "/spot/create",
             Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes::class.java
@@ -99,7 +99,7 @@ internal object SmG3Scenario {
 
     private fun waitEvidence(expected: List<String>): Contracts.EvidenceSnapshot =
         postJson(
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT"),
+            Env.get("e2e.http.a.endpoint"),
             "/evidence/wait",
             Contracts.EvidenceWaitReq(expected, 10_000),
             Contracts.EvidenceSnapshot::class.java

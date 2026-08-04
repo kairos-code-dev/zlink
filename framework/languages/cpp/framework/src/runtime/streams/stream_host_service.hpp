@@ -6,6 +6,7 @@
 #include <zlink/framework/contracts/streams/stream.hpp>
 
 #include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/host/hosted_service_lifecycle.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <atomic>
@@ -27,7 +28,8 @@ class mesh_node_runtime_t;
 namespace zlink::framework::runtime
 {
 
-class stream_host_service_t final : public hosted_service_t
+class stream_host_service_t final : public hosted_service_t,
+                                     public hosted_service_lifecycle_t
 {
   public:
     stream_host_service_t (
@@ -41,6 +43,7 @@ class stream_host_service_t final : public hosted_service_t
     void start (service_provider_t &services) override;
     void request_stop () noexcept override;
     void stop () noexcept override;
+    int shutdown_request_priority () const noexcept override { return 100; }
 
     /* graceful-drain-handoff §5: a draining node closes brand-new STREAM
      * connections with session-closing(server_drain); existing sessions
@@ -68,8 +71,14 @@ class stream_host_service_t final : public hosted_service_t
     void force_close_sessions (stream_close_reason_t reason,
                                std::string_view diagnostic) noexcept;
 
+    int shutdown_stop_priority () const noexcept override { return 90; }
     bool drain_sessions_until (
-      std::chrono::steady_clock::time_point deadline) noexcept;
+      std::chrono::steady_clock::time_point deadline) noexcept override;
+    void force_close_sessions () noexcept override
+    {
+        force_close_sessions (stream_close_reason_t::server_drain,
+                              "drain force stop");
+    }
 
   private:
     class listener_t;

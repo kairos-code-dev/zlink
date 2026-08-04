@@ -3,11 +3,11 @@ import {
   RoutingId as BindingRoutingId,
   RequestResult,
   SubmitResult,
-  type MessageLike,
   type RequestResult as RequestResultValue,
   type StreamSocket,
   type SubmitResult as SubmitResultValue
 } from '@zlink-systems/zlink';
+import type { ZLinkBackendMessageLike as MessageLike } from '../runtime-values';
 import type {
   MeshOperationId,
   MeshPeerEntry,
@@ -29,6 +29,10 @@ import {
   RawServiceMeshRuntime,
   type RawServiceRequestResult
 } from '../../foundation/raw-service-mesh-runtime';
+import {
+  decodeApplicationPayloadView,
+  ServiceWireProtocolError
+} from '../../foundation/service-wire-m6a-codec';
 import {
   ServiceStatefulRuntime,
   statefulMailboxData,
@@ -114,6 +118,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     messageKind: 'send',
     reason: 'backpressure'
   ) => void;
+  private messageFollowHandler?: (
+    record: import('../../foundation/service-stateful-wire-codec').ServiceMessageFollowRecord
+  ) => void;
 
   constructor(
     private readonly meshName: string,
@@ -159,7 +166,13 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }
 
   selectObjectPlacement(stableType: string) {
-    const descriptor = this.requireRuntime().topology.selectObjectPlacement(stableType);
+    const runtime = this.requireRuntime();
+    const localNodeRid = runtime.topology.localDescriptor().nodeRoutingId;
+    const descriptor = runtime.topology.selectObjectPlacement(
+      stableType,
+      candidate => candidate.nodeRoutingId === localNodeRid
+        || runtime.isPeerRouteReady(candidate.nodeRoutingId)
+    );
     return descriptor === undefined
       ? undefined
       : {
@@ -250,8 +263,25 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       descriptor.nodeRoutingId,
       descriptor.lifecycleGeneration
     );
+    this.stateful.setMessageFollowHandler((record) => this.messageFollowHandler?.(record));
     this.runtime = runtime;
     this.schedulePoll();
+  }
+
+  setMessageFollowHandler(handler: (
+    record: import('../../foundation/service-stateful-wire-codec').ServiceMessageFollowRecord
+  ) => void): void {
+    this.messageFollowHandler = handler;
+  }
+
+  sendMessageFollowNotification(
+    targetNodeRid: string,
+    record: Omit<
+      import('../../foundation/service-stateful-wire-codec').ServiceMessageFollowRecord,
+      'kind'
+    >
+  ): void {
+    this.requireStateful().sendMessageFollowNotification(targetNodeRid, record);
   }
 
   shutdown(_timeoutMs: number): RequestResultValue {
@@ -400,6 +430,10 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   isObjectClientNodeDirectTarget(targetRid: unknown): boolean {
     return this.requireRuntime().isObjectClientNodeDirectTarget(String(targetRid));
+  }
+
+  isPeerRouteReady(targetRid: unknown, lifecycleGeneration?: bigint): boolean {
+    return this.requireRuntime().isPeerRouteReady(String(targetRid), lifecycleGeneration);
   }
 
   sendToNode(
@@ -868,11 +902,27 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.requireStateful().forgetSpotRoute(spot, authorityOwnerGeneration, storeVersion);
   }
 
+  sendToInstanceSpot(
+    route: ServiceInstanceRouteFence,
+    parts: MessageLike | readonly MessageLike[],
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): SubmitResult {
+    const result = this.requireStateful().sendToInstanceSpot(
+      route,
+      encodeMultipart(parts),
+      sourceSpotId,
+      metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
+    );
+    return result as SubmitResult;
+  }
+
   requestInstanceSpot(
     route: ServiceInstanceRouteFence,
     parts: MessageLike | readonly MessageLike[],
     timeoutMs = 30_000,
-    sourceSpotId?: string
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
   ): MeshOperationId {
     return this.observeStateful(
       OperationKind.InstanceSpotRequest,
@@ -880,7 +930,8 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         route,
         encodeMultipart(parts),
         timeoutMs,
-        sourceSpotId
+        sourceSpotId,
+        metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
       )
     );
   }
@@ -1591,7 +1642,7 @@ class RawStreamSessionService implements StreamSessionService {
         sessionKey,
         actor,
         timeoutMs,
-        (targetSessionRid, payload) => this.deliver(targetSessionRid, payload.payload)
+        (targetSessionRid, payloadFrame) => this.deliver(targetSessionRid, payloadFrame)
       )
     );
   }
@@ -1636,7 +1687,7 @@ class RawStreamSessionService implements StreamSessionService {
     if (target === undefined) return false;
     try {
       const operation = this.stream.send(target as unknown as BindingRoutingId);
-      const parts = decodeMultipartBuffers(payload);
+      const parts = decodeMultipartBuffers(decodeApplicationPayloadView(payload).payload);
       if (parts.length === 0) return false;
       let submit = operation.message(parts[0]!);
       for (const part of parts.slice(1)) submit = submit.message(part);
@@ -1733,7 +1784,13 @@ class MailboxClaim implements RawClaim {
     let bytes = 0;
     for (let index = 0; index < this.claim.records.length; index += 1) {
       const record = this.claim.records[index]!;
-      const decoded = decodeMultipartRecord(this.runtime, record);
+      let decoded: ReceiveRecord;
+      try {
+        decoded = decodeMultipartRecord(this.runtime, record);
+      } catch (error) {
+        if (error instanceof ServiceWireProtocolError) continue;
+        throw error;
+      }
       const nextParts = decoded.parts.length;
       const nextBytes = decoded.parts.reduce((sum, part) => sum + part.size(), 0);
       if (
@@ -1886,6 +1943,9 @@ function decodeStatefulRecord(
     terminalResult: 0,
     failureErrno: 0,
     parts: application === undefined ? [] : decodeMultipart(application.payload),
+    ...(stateful.messageFollowOrigin === undefined
+      ? {}
+      : { messageFollowOrigin: stateful.messageFollowOrigin }),
     ...(stateful.onTerminalCompletion === undefined
       ? {}
       : { onTerminalCompletion: stateful.onTerminalCompletion }),
@@ -1985,10 +2045,14 @@ function encodeMultipart(parts: MessageLike | readonly MessageLike[]) {
 }
 
 function decodeApplicationEnvelope(frame: Uint8Array) {
-  const bytes = Buffer.from(frame);
-  if (bytes.length < 5 || bytes[0] !== 1) throw new Error('Invalid application envelope.');
+  const bytes = Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength);
+  if (bytes.length < 5 || bytes[0] !== 1) {
+    throw new ServiceWireProtocolError('Invalid application envelope.');
+  }
   const bodyLength = bytes.readUInt32BE(1);
-  if (bodyLength !== bytes.length - 5) throw new Error('Invalid application envelope length.');
+  if (bodyLength !== bytes.length - 5) {
+    throw new ServiceWireProtocolError('Invalid application envelope length.');
+  }
   let offset = 5;
   const packetLength = bytes[offset++]!;
   const packetName = bytes.subarray(offset, offset + packetLength).toString();
@@ -2003,7 +2067,7 @@ function decodeApplicationEnvelope(frame: Uint8Array) {
     || contentType !== MULTIPART_CONTENT_TYPE
     || payloadLength !== bytes.length - offset
   ) {
-    throw new Error('Unexpected M6A application payload.');
+    throw new ServiceWireProtocolError('Unexpected M6A application payload.');
   }
   return { packetName, contentType, payload: bytes.subarray(offset) };
 }
@@ -2014,25 +2078,33 @@ function decodeMultipart(payload: Uint8Array): Message[] {
 }
 
 function decodeMultipartBuffers(payload: Uint8Array): Buffer[] {
-  const bytes = Buffer.from(payload);
-  if (bytes.length < 4) throw new Error('Truncated multipart payload.');
+  const bytes = Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+  if (bytes.length < 4) throw new ServiceWireProtocolError('Truncated multipart payload.');
   const count = bytes.readUInt32BE(0);
   const result: Buffer[] = [];
   let offset = 4;
   for (let index = 0; index < count; index++) {
-    if (bytes.length - offset < 4) throw new Error('Truncated multipart part length.');
+    if (bytes.length - offset < 4) {
+      throw new ServiceWireProtocolError('Truncated multipart part length.');
+    }
     const length = bytes.readUInt32BE(offset);
     offset += 4;
-    if (bytes.length - offset < length) throw new Error('Truncated multipart part.');
-    result.push(Buffer.from(bytes.subarray(offset, offset + length)));
+    if (bytes.length - offset < length) {
+      throw new ServiceWireProtocolError('Truncated multipart part.');
+    }
+    result.push(bytes.subarray(offset, offset + length));
     offset += length;
   }
-  if (offset !== bytes.length) throw new Error('Multipart payload has trailing bytes.');
+  if (offset !== bytes.length) {
+    throw new ServiceWireProtocolError('Multipart payload has trailing bytes.');
+  }
   return result;
 }
 
 function messageBytes(value: MessageLike): Buffer {
-  if (value instanceof Message) return value.toBytes();
+  if (typeof value === 'object' && 'data' in value) {
+    return Buffer.from(value.data());
+  }
   return Buffer.from(value);
 }
 

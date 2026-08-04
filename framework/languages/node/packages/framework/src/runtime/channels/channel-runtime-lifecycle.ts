@@ -16,7 +16,7 @@ import {
   type ZLinkLocationEventSink,
   type ZLinkLocationRuntimeStores
 } from '../locations';
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import type { RoutingId } from '../../contracts';
 import {
@@ -34,6 +34,7 @@ import {
 } from './channel-dispatchers';
 import {
   ZLinkChannelReceiveLoop,
+  ZLinkReceiveRoundRobinCoordinator,
   ZLinkRouteReceiveLoop,
   ZLinkSubscriberReceiveLoop
 } from './channel-receive-loops';
@@ -61,6 +62,7 @@ export interface ZLinkChannelRuntimeLifecycleOptions {
 }
 
 export class ZLinkChannelRuntimeLifecycle {
+  private readonly receiveRoundRobin = new ZLinkReceiveRoundRobinCoordinator();
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: Array<{ stop(): Promise<void> }> = [];
@@ -376,7 +378,8 @@ export class ZLinkChannelRuntimeLifecycle {
         error => taskRunner.errorSink.reportRuntimeTaskException(
           `channel:${channelName}:dispatch`,
           error
-        )
+        ),
+        this.receiveRoundRobin
       );
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
@@ -471,7 +474,8 @@ export class ZLinkChannelRuntimeLifecycle {
         message,
         subscriber
       ),
-      this.options.inboundDispatchBudget
+      this.options.inboundDispatchBudget,
+      this.receiveRoundRobin
     );
     this.subscriberReceiveLoops.push(loop);
     return taskRunner.run(
@@ -570,7 +574,8 @@ export class ZLinkChannelRuntimeLifecycle {
         router,
         dispatcher,
         this.options.inboundDispatchBudget,
-        this.options.adapter.createReadablePoller(router)
+        this.options.adapter.createReadablePoller(router),
+        this.receiveRoundRobin
       );
       this.routeReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`route:${routeChannel.routerChannelId}`, (signal) => loop.run(signal)));

@@ -1,4 +1,4 @@
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import type { RoutingId, ZLinkRouteMessageContext } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendActorRef } from '../backend';
@@ -52,7 +52,7 @@ export class ZLinkRemoteActorJoinReceiver {
       state.boundSessionTransferTarget
     ));
     state.setRemoteBoundSessionTarget(refreshedTarget);
-    const request = BindingMessage.from(Buffer.from(join.request, 'base64'));
+    const request = RuntimeMessage.from(Buffer.from(join.request, 'base64'));
     try {
       const response = await this.requireSpotManager().admitActorJoin(
         join.spotId as RoutingId,

@@ -8,9 +8,9 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.context.annotation.Bean
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
-import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.monitoring.ZLinkClientServerRuntime
 import systems.zlink.framework.spring.internal.runtime.ZLinkFrameworkLifecycle
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -24,47 +24,48 @@ open class ConsumerApplication {
     @Bean
     open fun consumerFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/consumer-flow.log")
                 .traceLabel("kotlin-rl-consumer")
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3))
-            options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500))
+            options.configureLocations().setOwnerLeaseRenewInterval(Duration.ofMillis(500))
             options.configureLocations().setPollingInterval(Duration.ofMillis(200))
-            options.addClientServerChannel(Contracts.CHANNEL).enableClient()
+            options.addClientServerChannel(Contracts.CHANNEL).client()
         }
 
     @Bean
     open fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")),
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix")),
         )
 
     @Bean
     open fun consumerHttpServer(
         client: ZLinkClient,
         lifecycle: ZLinkFrameworkLifecycle,
-        locations: ZLinkLocationStore,
+        clientServerRuntime: ZLinkClientServerRuntime,
         json: ObjectMapper,
     ): ConsumerHttpServer =
         ConsumerHttpServer(
             client,
             lifecycle,
-            locations,
+            clientServerRuntime,
             json,
-            Env.get("ZLINK_KOTLIN_E2E_CONSUMER_HTTP_ENDPOINT"),
+            Env.get("e2e.consumer.http.endpoint"),
         )
 
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(ConsumerApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

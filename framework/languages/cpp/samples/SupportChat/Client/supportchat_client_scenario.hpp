@@ -41,13 +41,6 @@ class supportchat_client_scenario_t
   private:
     using connector_t = zlink::stream_e2e_client::coroutine_connector_t;
 
-    static std::int64_t now_unix_ms ()
-    {
-        return std::chrono::duration_cast<std::chrono::milliseconds> (
-                 std::chrono::system_clock::now ().time_since_epoch ())
-          .count ();
-    }
-
     static zlink::stream_connector::connector_t make_connector (const std::string &endpoint)
     {
         zlink::stream_connector::connector_options_t options;
@@ -108,15 +101,15 @@ class supportchat_client_scenario_t
                 "scheduled agent join must return the pre-commit state");
         expect (joined.get ().actor_id == "agent-1", "participant join notification mismatch");
 
-        const auto send_started_at = now_unix_ms ();
         auto sent = request_in_conversation<send_chat_message_res_t> (
           customer, opened.conversation_id, send_chat_message_req_t{"Payment keeps failing."},
           "customer message failed");
-        const auto send_completed_at = now_unix_ms ();
         expect (sent.message.message_seq == 1, "first message sequence mismatch");
-        expect (sent.message.sent_at_unix_ms >= send_started_at
-                  && sent.message.sent_at_unix_ms <= send_completed_at,
-                "message timestamp is not the request wall-clock time");
+        /* sentAtUnixMs is a wall-clock value and the system clock may be adjusted while
+         * a request is in flight. MessageSeq, rather than wall-clock ordering, defines
+         * message order; the wire timestamp must still be populated. */
+        expect (sent.message.sent_at_unix_ms > 0,
+                "message timestamp must contain a positive Unix time");
         expect (agent_message.get ().message.text == "Payment keeps failing.",
                 "agent did not receive customer message");
 
@@ -203,6 +196,18 @@ class supportchat_client_scenario_t
           reconnected_agent, set_agent_available_req_t{true}, "agent re-availability failed");
         expect (reconnected_available.is_available, "reconnected agent was not made available");
 
+        /* immediate dispatch mode does not retain an unmatched push packet. Register the
+         * reconnect observations before the join requests so the timer-owned idle/closed
+         * notifications cannot arrive between rejoin completion and wait registration. */
+        auto agent_idle = wait_idle (reconnected_agent, opened.conversation_id,
+                                     "reconnected agent idle notification wait failed");
+        auto customer_idle = wait_idle (customer, opened.conversation_id,
+                                        "customer idle notification wait failed");
+        auto agent_closed = wait_closed (reconnected_agent, opened.conversation_id,
+                                         "reconnected agent closed notification wait failed");
+        auto customer_closed = wait_closed (customer, opened.conversation_id,
+                                            "customer closed notification wait failed");
+
         auto rejoined_first = request_in_conversation<join_conversation_res_t> (
           reconnected_agent, opened.conversation_id, join_conversation_req_t{},
           "reconnected agent could not re-join the first conversation");
@@ -220,13 +225,10 @@ class supportchat_client_scenario_t
         expect (rejoined_second.state.last_message_seq == 1,
                 "second conversation history must survive the reconnect");
 
-        auto agent_idle = wait_idle (reconnected_agent, opened.conversation_id);
-        auto customer_idle = wait_idle (customer, opened.conversation_id);
-        auto agent_closed = wait_closed (reconnected_agent, opened.conversation_id);
-        auto customer_closed = wait_closed (customer, opened.conversation_id);
-
         /* 명시적 close와 closed 대화 오류(§17-22, 명시적 close 시나리오). */
-        auto second_closed_notify = wait_closed (reconnected_agent, second_opened.conversation_id);
+        auto second_closed_notify = wait_closed (
+          reconnected_agent, second_opened.conversation_id,
+          "reconnected agent second conversation closed notification wait failed");
         auto closed = request_in_conversation<close_conversation_res_t> (
           second_customer, second_opened.conversation_id, close_conversation_req_t{"resolved"},
           "explicit close failed");
@@ -261,27 +263,23 @@ class supportchat_client_scenario_t
     }
 
     static std::future<conversation_idle_notify_t> wait_idle (connector_t &connector,
-                                                              std::string conversation_id)
+                                                              std::string conversation_id,
+                                                              const char *failure_message)
     {
-        return std::async (std::launch::async, [&connector, conversation_id] {
-            return connector.wait_for<conversation_idle_notify_t> ()
-              .where (&conversation_idle_notify_t::conversation_id, conversation_id)
-              .timeout (std::chrono::seconds (12))
-              .to_future ("idle notification wait failed")
-              .get ();
-        });
+        return connector.wait_for<conversation_idle_notify_t> ()
+          .where (&conversation_idle_notify_t::conversation_id, std::move (conversation_id))
+          .timeout (std::chrono::seconds (12))
+          .to_future (failure_message);
     }
 
     static std::future<conversation_closed_notify_t> wait_closed (connector_t &connector,
-                                                                  std::string conversation_id)
+                                                                  std::string conversation_id,
+                                                                  const char *failure_message)
     {
-        return std::async (std::launch::async, [&connector, conversation_id] {
-            return connector.wait_for<conversation_closed_notify_t> ()
-              .where (&conversation_closed_notify_t::conversation_id, conversation_id)
-              .timeout (std::chrono::seconds (12))
-              .to_future ("closed notification wait failed")
-              .get ();
-        });
+        return connector.wait_for<conversation_closed_notify_t> ()
+          .where (&conversation_closed_notify_t::conversation_id, std::move (conversation_id))
+          .timeout (std::chrono::seconds (12))
+          .to_future (failure_message);
     }
 
     template <typename TReply, typename TRequest>

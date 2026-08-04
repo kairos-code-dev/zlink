@@ -2,10 +2,38 @@
 
 #include "actor_transfer_coordinator.hpp"
 
+#include <service_wire_constants.hpp>
+
 #include <algorithm>
 
 namespace zlink::framework::detail
 {
+
+namespace
+{
+
+std::size_t handoff_packet_bytes (const handoff_packet_t &packet) noexcept
+{
+    std::size_t bytes = 0;
+    const auto add = [&bytes] (std::size_t value) {
+        if (bytes >= actor_handoff_backlog_max_bytes
+            || value > actor_handoff_backlog_max_bytes - bytes) {
+            bytes = actor_handoff_backlog_max_bytes + 1;
+        } else {
+            bytes += value;
+        }
+    };
+    add (packet.packet_name.size ());
+    add (packet.payload.size ());
+    add (packet.content_type.size ());
+    for (const auto &[key, value] : packet.metadata) {
+        add (key.size ());
+        add (value.size ());
+    }
+    return bytes;
+}
+
+} // namespace
 
 bool actor_transfer_coordinator_t::try_begin_local (const std::string &actor_key)
 {
@@ -57,38 +85,99 @@ actor_transfer_coordinator_t::complete_move (const std::string &actor_key)
     return elapsed;
 }
 
-bool actor_transfer_coordinator_t::try_append_backlog (const std::string &actor_key,
-                                                       handoff_packet_t packet)
+actor_move_completion_t actor_transfer_coordinator_t::complete_move_and_take_backlog (
+  const std::string &actor_key)
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _moves.find (actor_key);
+    if (found == _moves.end ())
+        return actor_move_completion_t{std::nullopt, {}, true};
+    std::optional<std::chrono::steady_clock::duration> elapsed;
+    if (found->second.transfer_started_at) {
+        elapsed = std::chrono::steady_clock::now () - *found->second.transfer_started_at;
+    }
+    std::vector<handoff_packet_t> backlog;
+    if (const auto queued = _backlogs.find (actor_key); queued != _backlogs.end ()) {
+        backlog = std::move (queued->second);
+        _backlogs.erase (queued);
+        _backlog_bytes.erase (actor_key);
+    }
+    _moves.erase (found);
+    return actor_move_completion_t{std::move (elapsed), std::move (backlog), true};
+}
+
+actor_move_completion_t actor_transfer_coordinator_t::finish_move_replay (
+  const std::string &actor_key)
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _moves.find (actor_key);
+    if (found == _moves.end ())
+        return actor_move_completion_t{std::nullopt, {}, true};
+    std::vector<handoff_packet_t> backlog;
+    if (const auto queued = _backlogs.find (actor_key); queued != _backlogs.end ()) {
+        backlog = std::move (queued->second);
+        _backlogs.erase (queued);
+        _backlog_bytes.erase (actor_key);
+    }
+    if (!backlog.empty ())
+        return actor_move_completion_t{std::nullopt, std::move (backlog), false};
+    std::optional<std::chrono::steady_clock::duration> elapsed;
+    if (found->second.transfer_started_at) {
+        elapsed = std::chrono::steady_clock::now () - *found->second.transfer_started_at;
+    }
+    _moves.erase (found);
+    return actor_move_completion_t{std::move (elapsed), {}, true};
+}
+
+handoff_append_result_t actor_transfer_coordinator_t::try_append_backlog (
+  const std::string &actor_key,
+  handoff_packet_t packet)
 {
     std::lock_guard lock (_mutex);
     const auto moving = _moves.find (actor_key);
     if (moving == _moves.end ()) {
-        return false;
+        return handoff_append_result_t::not_moving;
     }
     // Only the source side of a move preserves packets; the target side keeps
     // rejecting until the commit installs the actor (§3.4).
     if (moving->second.phase != actor_move_phase_t::local
         && moving->second.phase != actor_move_phase_t::source_remote
         && moving->second.phase != actor_move_phase_t::reconcile) {
-        return false;
+        return handoff_append_result_t::not_moving;
     }
-    auto &backlog = _backlogs[actor_key];
+    const auto backlog_found = _backlogs.find (actor_key);
+    const auto backlog_size = backlog_found == _backlogs.end ()
+                                 ? std::size_t{0}
+                                 : backlog_found->second.size ();
     if (packet.is_request) {
         const auto request_id = packet.metadata.find ("__zlink.actorRequestId");
-        if (request_id != packet.metadata.end () && !request_id->second.empty ()) {
+        if (request_id != packet.metadata.end () && !request_id->second.empty ()
+            && backlog_found != _backlogs.end ()) {
             const auto duplicate = std::find_if (
-              backlog.begin (), backlog.end (), [&request_id] (const handoff_packet_t &queued) {
+              backlog_found->second.begin (), backlog_found->second.end (),
+              [&request_id] (const handoff_packet_t &queued) {
                   const auto queued_id = queued.metadata.find ("__zlink.actorRequestId");
                   return queued.is_request && queued_id != queued.metadata.end ()
                          && queued_id->second == request_id->second;
               });
-            if (duplicate != backlog.end ()) {
-                return false;
+            if (duplicate != backlog_found->second.end ()) {
+                return handoff_append_result_t::duplicate_request;
             }
         }
     }
+    const auto packet_bytes = handoff_packet_bytes (packet);
+    const auto current_bytes = _backlog_bytes.contains (actor_key)
+                                  ? _backlog_bytes.at (actor_key)
+                                  : std::size_t{0};
+    if (backlog_size >= actor_handoff_backlog_max_messages
+        || packet_bytes > actor_handoff_backlog_max_bytes
+        || current_bytes > actor_handoff_backlog_max_bytes - packet_bytes) {
+        return handoff_append_result_t::capacity_exceeded;
+    }
+    auto &backlog = _backlogs[actor_key];
     backlog.push_back (std::move (packet));
-    return true;
+    _backlog_bytes[actor_key] = current_bytes + packet_bytes;
+    return handoff_append_result_t::appended;
 }
 
 std::vector<handoff_packet_t>
@@ -101,6 +190,7 @@ actor_transfer_coordinator_t::take_backlog (const std::string &actor_key)
     }
     auto backlog = std::move (found->second);
     _backlogs.erase (found);
+    _backlog_bytes.erase (actor_key);
     return backlog;
 }
 
@@ -117,7 +207,7 @@ void actor_transfer_coordinator_t::activate_message_follow (
     // target and restarts the bounded Message Follow duration.
     _message_follow_routes[actor_key] = message_follow_route_t{
       old_generation, std::move (target_actor), std::move (target_route), remove_at,
-      std::move (transfer_id), 0, 0};
+      std::move (transfer_id), 0, 0, {}};
 }
 
 bool actor_transfer_coordinator_t::can_follow_stale_generation (
@@ -152,9 +242,12 @@ actor_transfer_coordinator_t::try_acquire_message_follow (
   std::size_t payload_bytes,
   std::size_t hop_count)
 {
-    constexpr std::size_t max_messages = 1024;
-    constexpr std::size_t max_bytes = 16u * 1024u * 1024u;
-    constexpr std::size_t max_hops = 8;
+    constexpr std::size_t max_messages =
+      zlink::framework::runtime::protocol::messageFollowMessages;
+    constexpr std::size_t max_bytes =
+      zlink::framework::runtime::protocol::messageFollowBytes;
+    constexpr std::size_t max_hops =
+      zlink::framework::runtime::protocol::messageFollowHopCount;
     std::lock_guard lock (_mutex);
     const auto found = _message_follow_routes.find (actor_key);
     if (found == _message_follow_routes.end ()
@@ -188,6 +281,24 @@ void actor_transfer_coordinator_t::release_message_follow (
       payload_bytes >= found->second.in_flight_bytes
         ? 0
         : found->second.in_flight_bytes - payload_bytes;
+}
+
+bool actor_transfer_coordinator_t::mark_message_follow_notified (
+  const std::string &actor_key,
+  std::uint64_t generation,
+  std::vector<std::uint8_t> source_node_routing_id)
+{
+    if (source_node_routing_id.empty ())
+        return false;
+    std::lock_guard lock (_mutex);
+    const auto found = _message_follow_routes.find (actor_key);
+    if (found == _message_follow_routes.end ()
+        || found->second.old_generation != generation
+        || found->second.remove_at <= std::chrono::steady_clock::now ())
+        return false;
+    return found->second.notified_sources.insert (
+             std::move (source_node_routing_id))
+           .second;
 }
 
 std::vector<removed_actor_message_follow_t>

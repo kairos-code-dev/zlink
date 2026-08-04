@@ -260,9 +260,11 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
     private val eventIdsByIdempotency = mutableMapOf<String, String>()
     private val events = mutableListOf<StoredQuestEvent>()
     private val rehydrates = mutableMapOf<String, Int>()
+    private val loadedPlayers = mutableSetOf<String>()
 
     @Synchronized
     fun apply(event: GameplayMsg): QuestProcessingRes {
+        restorePlayer(event.playerId)
         val key = "${event.playerId}:${event.decodePayload().idempotencyKey}"
         eventIdsByIdempotency[key]?.let {
             return QuestProcessingRes(
@@ -292,6 +294,7 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
 
     @Synchronized
     fun sync(playerId: String, firstHuntCount: Int): SyncQuestProgressRes {
+        restorePlayer(playerId)
         val projection = copyProjection(playerId).toMutableList()
         val firstHunt = projection.firstOrNull { it.questId == QuestIds.FirstHunt }
         if (firstHunt == null || firstHunt.currentCount < firstHuntCount) {
@@ -329,6 +332,7 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
 
     @Synchronized
     fun deleteProjection(playerId: String, questId: String): DeleteQuestProjectionRes {
+        restorePlayer(playerId)
         val projection = projections.getOrPut(playerId) { mutableListOf() }
         projection.removeIf { it.questId == questId }
         shared.writeProjection(playerId, projection)
@@ -337,6 +341,7 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
 
     @Synchronized
     fun rebuildProjection(playerId: String, questId: String): QuestProgress {
+        restorePlayer(playerId)
         val stream = events.filter { it.playerId == playerId && it.questId == questId }.sortedBy { it.version }
         require(stream.isNotEmpty()) { "Quest stream was not found for $playerId/$questId" }
         val last = stream.last()
@@ -358,12 +363,16 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
 
     @Synchronized
     fun markRehydrated(playerId: String) {
+        restorePlayer(playerId)
         rehydrates.merge(playerId, 1, Int::plus)
         shared.recordRehydrated(playerId)
     }
 
     @Synchronized
-    fun projection(playerId: String): List<QuestProgress> = copyProjection(playerId)
+    fun projection(playerId: String): List<QuestProgress> {
+        restorePlayer(playerId)
+        return copyProjection(playerId)
+    }
 
     @Synchronized
     fun events(): List<StoredQuestEvent> = events.toList()
@@ -377,6 +386,61 @@ class QuestStore(topology: SampleTopology) : AutoCloseable {
 
     private fun copyProjection(playerId: String): List<QuestProgress> =
         projections[playerId]?.toList() ?: emptyList()
+
+    private fun restorePlayer(playerId: String) {
+        if (!loadedPlayers.add(playerId)) {
+            return
+        }
+        val stored = shared.readQuestEvents().filter { it.playerId == playerId }
+        events += stored
+        stored.forEach { event ->
+            val sourceEventId = event.sourceEventId ?: return@forEach
+            val prefix = "$playerId-"
+            if (sourceEventId.startsWith(prefix)) {
+                val idempotencyKey = sourceEventId.removePrefix(prefix)
+                eventIdsByIdempotency["$playerId:$idempotencyKey"] = sourceEventId
+            }
+        }
+        projections[playerId] = stored
+            .groupBy { it.questId }
+            .map { (questId, stream) -> fold(playerId, questId, stream) }
+            .toMutableList()
+    }
+
+    private fun fold(
+        playerId: String,
+        questId: String,
+        stream: List<StoredQuestEvent>,
+    ): QuestProgress {
+        var current = 0
+        var required = 1
+        var status = QuestStatuses.InProgress
+        var lastEventId: String? = null
+        var updatedAt = 0L
+        stream.sortedBy { it.version }.forEach { event ->
+            required = event.requiredCount
+            when (event.eventType) {
+                QuestProgressedEvent::class.java.simpleName -> current = event.currentCount
+                QuestProgressReconciledEvent::class.java.simpleName -> {
+                    current = event.currentCount
+                    status = event.status
+                }
+                QuestCompletedEvent::class.java.simpleName -> current = maxOf(current, required)
+                QuestRewardGrantedEvent::class.java.simpleName -> status = QuestStatuses.RewardGranted
+            }
+            lastEventId = event.sourceEventId
+            updatedAt = maxOf(updatedAt, event.createdAtUnixMs)
+        }
+        return QuestProgress(
+            playerId,
+            questId,
+            status,
+            current,
+            required,
+            lastEventId,
+            updatedAt,
+        )
+    }
 }
 
 private class QuestDomain {

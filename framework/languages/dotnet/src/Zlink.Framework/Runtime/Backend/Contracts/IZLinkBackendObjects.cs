@@ -134,6 +134,16 @@ internal interface IZLinkBackendActorMessageFollowIngress
         Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler);
 }
 
+internal interface IZLinkBackendMessageFollowNotifications
+{
+    void SetMessageFollowNotificationHandler(
+        Action<RoutingId, ZLinkServiceWireCodec.MessageFollowRecord> handler);
+
+    bool TrySendMessageFollowNotification(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.MessageFollowRecord record);
+}
+
 internal class ZLinkBackendActorJoinRequest(
     ZLinkBackendActorRef sourceActor,
     ZLinkBackendActorRef targetActor,

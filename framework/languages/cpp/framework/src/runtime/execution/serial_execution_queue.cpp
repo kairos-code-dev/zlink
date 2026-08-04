@@ -170,18 +170,34 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
                 // The continuation must not resume on the producer's stack when
                 // the owner queue is full. The executor fallback lets await_resume
                 // observe CapacityExceeded on a separate scheduling turn.
-                self->_queue._executor.submit (
-                  [work = std::move (continuation)] () mutable {
+                auto continuation_state =
+                  std::make_shared<std::function<void ()>> (
+                    std::move (continuation));
+                if (!self->_queue._executor.try_submit_internal (
+                  [work = continuation_state] () mutable {
                       detail::set_serial_resume_failure (
                         framework_error_kind_t::capacity_exceeded,
                         "serial execution queue could not reserve the continuation turn");
                       try {
-                          work ();
+                          (*work) ();
                       }
                       catch (...) {
                       }
                       (void) detail::take_serial_resume_failure ();
-                  });
+                  })) {
+                    // The executor is stopping. The queue is terminal as
+                    // well, so resume only to deliver the terminal error;
+                    // this is not an inline fallback for a full queue.
+                    detail::set_serial_resume_failure (
+                      framework_error_kind_t::shutting_down,
+                      "serial execution queue executor is stopping");
+                    try {
+                        (*continuation_state) ();
+                    }
+                    catch (...) {
+                    }
+                    (void) detail::take_serial_resume_failure ();
+                }
             }
         };
     }
@@ -378,8 +394,7 @@ bool serial_execution_queue_t::try_post_async (std::string name,
     if (_closed || !can_enqueue_locked (options)) {
         return false;
     }
-    enqueue_locked (std::move (name), std::move (work), std::move (options));
-    return true;
+    return enqueue_locked (std::move (name), std::move (work), std::move (options));
 }
 
 bool serial_execution_queue_t::post_async_wait (std::string name,
@@ -407,8 +422,7 @@ bool serial_execution_queue_t::post_async_wait (
     if (_closed || (stop_requested && stop_requested ())) {
         return false;
     }
-    enqueue_locked (std::move (name), std::move (work), std::move (options));
-    return true;
+    return enqueue_locked (std::move (name), std::move (work), std::move (options));
 }
 
 bool serial_execution_queue_t::try_post_deferred (
@@ -568,15 +582,20 @@ bool serial_execution_queue_t::closed () const
     return _closed;
 }
 
-void serial_execution_queue_t::schedule_drain_locked ()
+bool serial_execution_queue_t::schedule_drain_locked ()
 {
     if (_drain_scheduled || _draining || !has_ready_locked ()) {
-        return;
+        return true;
     }
     if (!_claim_started_at)
         _claim_started_at = std::chrono::steady_clock::now ();
     _drain_scheduled = true;
-    _executor.submit ([this] { drain_loop (); });
+    if (!_executor.try_submit_internal ([this] { drain_loop (); })) {
+        _drain_scheduled = false;
+        _claim_started_at.reset ();
+        return false;
+    }
+    return true;
 }
 
 serial_execution_queue_t::lane_state_t &
@@ -601,9 +620,9 @@ bool serial_execution_queue_t::can_enqueue_locked (
            && bytes <= lane.byte_capacity - lane.bytes;
 }
 
-void serial_execution_queue_t::enqueue_locked (std::string name,
-                                                async_work_t work,
-                                                serial_work_options_t options)
+bool serial_execution_queue_t::enqueue_locked (std::string name,
+                                               async_work_t work,
+                                               serial_work_options_t options)
 {
     const auto bytes = normalized_byte_cost (options);
     auto &lane = lane_locked (options.lane);
@@ -611,7 +630,12 @@ void serial_execution_queue_t::enqueue_locked (std::string name,
       work_item_t{std::move (name), std::move (work), options.lane, bytes});
     ++lane.messages;
     lane.bytes += bytes;
-    schedule_drain_locked ();
+    if (schedule_drain_locked ())
+        return true;
+    lane.queue.pop_back ();
+    --lane.messages;
+    lane.bytes -= bytes;
+    return false;
 }
 
 bool serial_execution_queue_t::has_ready_locked () const noexcept
@@ -693,6 +717,11 @@ void serial_execution_queue_t::drain_loop ()
         _active_bytes = item.byte_cost;
     }
 
+    execute_item (std::move (item));
+}
+
+void serial_execution_queue_t::execute_item (work_item_t item)
+{
     auto name = item.name;
     try {
         auto turn = std::make_shared<serial_turn_handle_impl_t> (
@@ -704,13 +733,20 @@ void serial_execution_queue_t::drain_loop ()
                   queue_closed = _closed;
               }
               if (queue_closed) {
-                  complete_one (std::move (name), std::move (completion));
+                  complete_one (std::move (name), std::move (completion), false);
                   return;
               }
-              _executor.submit ([this, name = std::move (name),
-                                 completion = std::move (completion)] () mutable {
-                  complete_one (std::move (name), std::move (completion));
-              });
+              auto completion_state =
+                std::make_shared<std::pair<std::string, std::function<void ()>>> (
+                  std::move (name), std::move (completion));
+              if (!_executor.try_submit_internal (
+                    [this, completion_state] () mutable {
+                        complete_one (std::move (completion_state->first),
+                                      std::move (completion_state->second), true);
+                    })) {
+                  complete_one (std::move (completion_state->first),
+                                std::move (completion_state->second), false);
+              }
           });
         {
             std::lock_guard<std::mutex> lock (_mutex);
@@ -723,14 +759,23 @@ void serial_execution_queue_t::drain_loop ()
     }
     catch (...) {
         const auto error = std::current_exception ();
-        _executor.submit ([this, name = std::move (name), error] () mutable {
-            report_deferred_error (name, error);
-            complete_one (std::move (name), [] {});
-        });
+        auto error_state =
+          std::make_shared<std::pair<std::string, std::exception_ptr>> (
+            std::move (name), error);
+        if (!_executor.try_submit_internal (
+              [this, error_state] () mutable {
+                  report_deferred_error (error_state->first, error_state->second);
+                  complete_one (std::move (error_state->first), [] {}, true);
+              })) {
+            report_deferred_error (error_state->first, error_state->second);
+            complete_one (std::move (error_state->first), [] {}, false);
+        }
     }
 }
 
-void serial_execution_queue_t::complete_one (std::string name, std::function<void ()> completion)
+void serial_execution_queue_t::complete_one (std::string name,
+                                             std::function<void ()> completion,
+                                             bool allow_inline_claim)
 {
     try {
         if (completion) {
@@ -742,6 +787,8 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
     }
 
     std::vector<deferred_work_t> deferred_after_active;
+    work_item_t next_item;
+    bool execute_next = false;
     {
         std::lock_guard<std::mutex> lock (_mutex);
         deferred_after_active = std::move (_deferred_after_active);
@@ -808,22 +855,34 @@ void serial_execution_queue_t::complete_one (std::string name, std::function<voi
         _active_lane.reset ();
         _active_bytes = 0;
         --_active;
-        _draining = false;
         const bool claim_expired =
           _options.owner_time_budget.count () != 0 && _claim_started_at
           && std::chrono::steady_clock::now () - *_claim_started_at
                >= _options.owner_time_budget;
-        if (claim_expired)
-            _claim_started_at.reset ();
         if (has_ready_locked ()) {
-            schedule_drain_locked ();
+            if (allow_inline_claim && !claim_expired) {
+                _draining = true;
+                next_item = take_next_locked ();
+                ++_active;
+                _active_lane = next_item.lane;
+                _active_bytes = next_item.byte_cost;
+                execute_next = true;
+            } else {
+                _draining = false;
+                if (claim_expired)
+                    _claim_started_at.reset ();
+                schedule_drain_locked ();
+            }
         } else {
+            _draining = false;
             _claim_started_at.reset ();
             if (_active == 0)
                 _empty.notify_all ();
         }
         _capacity_changed.notify_all ();
     }
+    if (execute_next)
+        execute_item (std::move (next_item));
 }
 
 } // namespace zlink::framework::runtime

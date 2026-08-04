@@ -297,6 +297,7 @@ export class RuntimeEventQueue<T>
   private discardedTerminalCount = 0n;
   private sealed = false;
   private closed = false;
+  private completeAfterTerminal = false;
 
   constructor(capacity: number, signal?: AbortSignal) {
     if (!Number.isInteger(capacity) || capacity <= 0) throw new RangeError('Observer capacity must be positive.');
@@ -314,8 +315,9 @@ export class RuntimeEventQueue<T>
     if (this.terminal !== undefined) {
       const value = this.terminal;
       this.terminal = undefined;
-      this.close();
-      return Promise.resolve({ done: false, value: this.observed(value) });
+      const result = Promise.resolve({ done: false, value: this.observed(value) });
+      if (this.completeAfterTerminal) this.finishAfterTerminal();
+      return result;
     }
     if (this.closed) return Promise.resolve({ done: true, value: undefined });
     return new Promise(resolve => {
@@ -351,10 +353,29 @@ export class RuntimeEventQueue<T>
       return;
     }
     this.sealed = true;
+    this.detachSource();
     const waiter = this.takeWaiter();
     if (waiter !== undefined) {
       waiter({ done: false, value: this.observed(value) });
-      this.close();
+    }
+    else {
+      this.terminal = value;
+    }
+  }
+
+  complete(value: T): void {
+    if (this.closed) return;
+    if (this.sealed) {
+      this.discardedTerminalCount = saturatingIncrement(this.discardedTerminalCount);
+      return;
+    }
+    this.sealed = true;
+    this.completeAfterTerminal = true;
+    this.detachSource();
+    const waiter = this.takeWaiter();
+    if (waiter !== undefined) {
+      waiter({ done: false, value: this.observed(value) });
+      this.finishAfterTerminal();
     }
     else {
       this.terminal = value;
@@ -366,12 +387,28 @@ export class RuntimeEventQueue<T>
     this.closed = true;
     this.pending = undefined;
     this.terminal = undefined;
-    this.cleanup?.();
-    this.cleanup = undefined;
+    this.detachSource();
     let waiter: ((result: IteratorResult<ZLinkObservedStatus<T>>) => void) | undefined;
     while ((waiter = this.takeWaiter()) !== undefined) {
       waiter({ done: true, value: undefined });
     }
+  }
+
+  private finishAfterTerminal(): void {
+    this.completeAfterTerminal = false;
+    this.closed = true;
+    this.pending = undefined;
+    this.terminal = undefined;
+    this.detachSource();
+    let waiter: ((result: IteratorResult<ZLinkObservedStatus<T>>) => void) | undefined;
+    while ((waiter = this.takeWaiter()) !== undefined) {
+      waiter({ done: true, value: undefined });
+    }
+  }
+
+  private detachSource(): void {
+    this.cleanup?.();
+    this.cleanup = undefined;
   }
 
   private observed(status: T): ZLinkObservedStatus<T> {

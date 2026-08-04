@@ -57,6 +57,19 @@ test('RouteMesh weighted selection uses smooth cumulative credit with RID tiebre
   ]);
 });
 
+test('weighted selection keeps its cumulative state across descriptor updates', () => {
+  const topology = new ServiceTopologyRegistry(serviceNode('node-a', 1));
+  assert.equal(topology.admit(serviceNode('node-b', 1), 'connection-b'), 'admitted');
+
+  assert.equal(topology.selectChannel('orders').descriptor.nodeRoutingId, 'node-a');
+  topology.publishLocal({
+    ...topology.localDescriptor(),
+    descriptorRevision: 2n,
+    activeCapacityUsed: 1
+  });
+  assert.equal(topology.selectChannel('orders').descriptor.nodeRoutingId, 'node-b');
+});
+
 test('ClientServer selection invalidates its cached eligible set on disconnect', () => {
   const discovery = new ServiceDiscoveryRegistry();
   assert.equal(discovery.admitClientServer(clientServer('server-a', 1), 'connection-a'), true);

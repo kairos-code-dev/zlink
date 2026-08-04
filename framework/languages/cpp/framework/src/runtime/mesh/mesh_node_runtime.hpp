@@ -5,6 +5,7 @@
 #include <runtime/locations/location_repository.hpp>
 
 #include "runtime/channels/route_handler_registry.hpp"
+#include "runtime/locations/spot_address_resolvers.hpp"
 #include "runtime/operations/exactly_once_table.hpp"
 #include "runtime/spots/spot_runtime.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
@@ -96,6 +97,14 @@ class mesh_node_runtime_t
     void configure_user_spot_operations (
       std::shared_ptr<location_repository_t> store,
       host::user_spot_materializer_t materializer);
+    void configure_spot_route_fence_resolver (
+      host::spot_route_fence_resolver_t resolver,
+      std::chrono::milliseconds route_cache_max_age);
+    void configure_actor_route_resolver (
+      std::function<std::optional<runtime::spot_address_t> (
+        const actor_ref_t &)> resolver,
+      std::function<void (const runtime::protocol::actor_route_fence_t &)>
+        invalidator = {});
     void configure_actor_create_operations (
       host::actor_create_operation_target_t target);
     void configure_instance_spot_operations (
@@ -128,6 +137,9 @@ class mesh_node_runtime_t
         owner_resolver);
     void configure_stateful_dispatch (
       runtime::stateful::accepted_record_authority_resolver_t resolver);
+    void set_message_follow_invalidation_handler (
+      std::function<void (const runtime::protocol::message_follow_notice_t &)>
+        handler);
     bool activate_instance_spot_remote (
       const zlink::routing_id_t &target_node,
       zlink::framework::runtime::protocol::instance_spot_activation_header_t request,
@@ -219,14 +231,16 @@ class mesh_node_runtime_t
       const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
       std::vector<std::uint8_t> metadata = {},
-      std::uint64_t authority_owner_generation = 0);
+      std::uint64_t authority_owner_generation = 0,
+      std::uint64_t owner_lease_generation = 0);
     zlink::submit_result_t request_to_actor (
       const actor_ref_t &target,
       const std::vector<zlink::message_t> &parts,
       host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
       std::vector<std::uint8_t> metadata = {},
-      std::uint64_t authority_owner_generation = 0);
+      std::uint64_t authority_owner_generation = 0,
+      std::uint64_t owner_lease_generation = 0);
     zlink::submit_result_t send_actor_bound_session (
       const actor_ref_t &actor,
       std::uint64_t expected_binding_generation,
@@ -285,6 +299,16 @@ class mesh_node_runtime_t
       const runtime::messaging::envelope_header_t &header,
       const zlink::message_t &payload,
       std::chrono::milliseconds timeout);
+    result_t<std::optional<zlink::message_t>> relay_application_actor (
+      const actor_ref_t &actor,
+      const runtime::messaging::envelope_header_t &header,
+      const zlink::message_t &payload,
+      std::chrono::milliseconds timeout,
+      const zlink::routing_id_t &source_node,
+      const runtime::protocol::actor_route_fence_t &stale_route,
+      std::uint8_t hop_count,
+      const runtime::protocol::wire_operation_id_t &operation,
+      std::uint64_t reply_route_id);
     result_t<void> bind_application_actor_session (
       const actor_ref_t &actor,
       const node_rid_t &session_node,
@@ -303,6 +327,8 @@ class mesh_node_runtime_t
                                 std::vector<zlink::message_t>)> &dispatch,
       bool accept_application_receive = true);
     host::node_status_t status () const;
+    void dispatch_message_follow (
+      const runtime::protocol::message_follow_notice_t &notice);
     /* Admitted RouteMesh membership size. Vertical and E2E checks wait on this
      * instead of reaching into the transport topology. */
     std::size_t admitted_peer_count () const;
@@ -350,6 +376,12 @@ class mesh_node_runtime_t
     serializer_registry_t *_serializers = nullptr;
     std::shared_ptr<location_repository_t> _user_spot_store;
     host::user_spot_materializer_t _user_spot_materializer;
+    host::spot_route_fence_resolver_t _spot_route_fence_resolver;
+    std::function<std::optional<runtime::spot_address_t> (
+      const actor_ref_t &)> _actor_route_resolver;
+    std::function<void (const runtime::protocol::actor_route_fence_t &)>
+      _actor_route_invalidator;
+    std::chrono::milliseconds _route_cache_max_age{15'000};
     host::actor_create_operation_target_t _actor_create_target;
     host::instance_spot_activation_materializer_t
       _instance_spot_materializer;
@@ -370,6 +402,9 @@ class mesh_node_runtime_t
                         int,
                         std::uint64_t)> _descriptor_publisher;
     std::shared_ptr<host::public_host_runtime_t> _node;
+    std::mutex _message_follow_mutex;
+    std::function<void (const runtime::protocol::message_follow_notice_t &)>
+      _message_follow_handler;
     std::map<std::string, host::spot_handle_t> _spots;
     std::map<std::string, host::actor_handle_t> _actors;
     std::mutex _peer_mutex;

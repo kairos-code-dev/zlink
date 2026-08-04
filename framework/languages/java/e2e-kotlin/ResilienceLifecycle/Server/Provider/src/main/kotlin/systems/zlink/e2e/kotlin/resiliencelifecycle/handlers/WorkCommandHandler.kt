@@ -2,7 +2,7 @@ package systems.zlink.e2e.kotlin.resiliencelifecycle.handlers
 
 import systems.zlink.e2e.kotlin.resiliencelifecycle.Contracts
 import systems.zlink.e2e.kotlin.resiliencelifecycle.ScenarioState
-import systems.zlink.framework.channels.ZLinkSendContext
+import systems.zlink.framework.ZLinkMessageContext
 import systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler
 import systems.zlink.framework.handlers.ZLinkHandlerGroup
 
@@ -12,7 +12,7 @@ class WorkCommandHandler(
 ) : ZLinkSuspendingSendHandler<Contracts.WorkMsg> {
     override suspend fun handle(
         message: Contracts.WorkMsg,
-        context: ZLinkSendContext,
+        context: ZLinkMessageContext,
     ) {
         state.record("WorkMsg", message.value())
     }

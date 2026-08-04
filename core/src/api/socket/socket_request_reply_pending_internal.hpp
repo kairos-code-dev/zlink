@@ -13,7 +13,7 @@ int lookup_socket_pending_request_by_seq (
   const std::shared_ptr<socket_request_reply_state_t> &state_,
   uint64_t request_seq_,
   pending_key_t *key_out_);
-void erase_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
+bool erase_socket_pending_request (const std::shared_ptr<socket_request_reply_state_t> &state_,
                                    const pending_key_t &key_);
 void record_socket_pending_transport_pair (
   const std::shared_ptr<socket_request_reply_state_t> &state_,

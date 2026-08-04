@@ -144,6 +144,30 @@ final class ZLinkActorClientRuntimeTest {
     }
 
     @Test
+    void actorSendWaitsForFrameworkStartupBeforeTransportAdmission() {
+        java.util.concurrent.CompletableFuture<Void> runtimeReady =
+            new java.util.concurrent.CompletableFuture<>();
+        RecordingSpotNode node = new RecordingSpotNode();
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> node,
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(storeWithActor("actor-1")),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofSeconds(5),
+            systems.zlink.framework.runtime.host.ZLinkTestAdmissionFactory.create(),
+            runtimeReady);
+
+        CompletionStage<Void> result = client.sendToActor(
+            "actor-1", new Ping("hello")).submit();
+
+        assertEquals(0, node.sendAttempts);
+        runtimeReady.complete(null);
+        result.toCompletableFuture().join();
+        assertEquals(1, node.sendAttempts);
+    }
+
+    @Test
     void explicitActorSendPreservesTargetNotFoundAndShutdownResults() {
         for (var expected : List.of(
             java.util.Map.entry(SubmitResult.NOT_FOUND, 4),

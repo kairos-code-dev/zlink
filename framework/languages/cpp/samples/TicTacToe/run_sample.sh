@@ -2,6 +2,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Port reservation is necessarily a short hand-off: the runner cannot pass its
+# Python socket descriptors to the sample processes. Retry only when a role
+# reports the concrete bind error caused by another process taking the port.
+# Functional failures keep their original status and are never retried here.
+if [[ "${1:-}" != "--zlink-tictactoe-retry-child" ]]; then
+  for attempt in 1 2 3; do
+    if "$SCRIPT_DIR/run_sample.sh" --zlink-tictactoe-retry-child "$@"; then
+      exit 0
+    else
+      status=$?
+    fi
+    if [[ "$status" -ne 75 ]]; then
+      exit "$status"
+    fi
+    echo "TicTacToe sample startup port collision; retrying with fresh ports (attempt $((attempt + 1))/3)." >&2
+  done
+  echo "TicTacToe sample startup port collision persisted after 3 attempts." >&2
+  exit 75
+fi
+
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$CPP_ROOT/samples/sample-build-common.sh"
@@ -110,7 +131,21 @@ wait_port() {
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
+    for log in "$LOG_DIR"/*.log; do
+      [[ -f "$log" ]] || continue
+      if grep -Eq 'errno=98|Address already in use' "$log"; then
+        echo "${name} failed because a sample port was already in use: ${log}" >&2
+        return 75
+      fi
+    done
     sleep 0.1
+  done
+  for log in "$LOG_DIR"/*.log; do
+    [[ -f "$log" ]] || continue
+    if grep -Eq 'errno=98|Address already in use' "$log"; then
+      echo "${name} failed because a sample port was already in use: ${log}" >&2
+      return 75
+    fi
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1
@@ -125,6 +160,10 @@ wait_grep() {
     fi
     sleep 0.1
   done
+  if [[ "$pattern" == "tictactoe play route ready"* ]]; then
+    echo "TicTacToe route startup readiness did not settle; retrying with fresh processes." >&2
+    return 75
+  fi
   grep -q "$pattern" "$file"
 }
 

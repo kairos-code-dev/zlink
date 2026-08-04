@@ -124,6 +124,21 @@ final class ZLinkJavaRawSpot
     }
 
     @Override
+    public void rememberSpotAuthority(
+        RoutingId targetNodeRid,
+        String spotId,
+        long objectGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration) {
+        owner.rememberSpotAuthority(
+            targetNodeRid,
+            spotId,
+            objectGeneration,
+            authorityOwnerGeneration,
+            ownerLeaseGeneration);
+    }
+
+    @Override
     public boolean publish(
         String channelName,
         String topic,

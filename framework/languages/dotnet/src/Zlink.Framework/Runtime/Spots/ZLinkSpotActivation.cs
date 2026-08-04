@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Handlers;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -60,12 +61,14 @@ internal sealed partial class ZLinkSpotActivation :
         ZLinkSpotRelocationReadinessMode relocationReadiness =
             ZLinkSpotRelocationReadinessMode.AnyTurnBoundary,
         bool restoreLogicalTimers = false,
-        ZLinkCompletionAdmissionOwner? completionAdmission = null)
+        ZLinkCompletionAdmissionOwner? completionAdmission = null,
+        ZLinkTimerScheduler? timerScheduler = null)
     {
         _runtime = runtime;
         _timers = new ZLinkSpotTimerRegistry(
             () => runtime.Flow.CaptureEnabled,
-            restoreLogicalTimers);
+            restoreLogicalTimers,
+            timerScheduler);
         _scope = scope;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         NativeSpot = nativeSpot;

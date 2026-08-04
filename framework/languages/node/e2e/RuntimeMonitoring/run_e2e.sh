@@ -206,40 +206,53 @@ start_configured_server svc-a "$SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_URL" svc-a
 
-start_configured_server svc-b "$FILTERED_SERVICE_MAIN" \
-  --rid svc-b \
-  --http-url "$SVC_B_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$CHANNEL_B_ENDPOINT" \
-  --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
-  --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
-  --evidence-file "$LOG_DIR/svc-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$SVC_B_URL" svc-b
+if [[ "$SCENARIO" != "MON-B2" ]]; then
+  start_configured_server svc-b "$FILTERED_SERVICE_MAIN" \
+    --rid svc-b \
+    --http-url "$SVC_B_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "$CHANNEL_B_ENDPOINT" \
+    --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
+    --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/svc-b.evidence.log" \
+    --log-dir "$LOG_DIR"
+  wait_health "$SVC_B_URL" svc-b
 
-node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/svc-b-replacement.config.json" \
-  --rid svc-b \
-  --http-url "$SVC_B_REPLACEMENT_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
-  --spot-router-endpoint "$SPOT_B_REPLACEMENT_ROUTER_ENDPOINT" \
-  --spot-pub-endpoint "$SPOT_B_REPLACEMENT_PUB_ENDPOINT" \
-  --evidence-file "$LOG_DIR/svc-b-replacement.evidence.log" \
-  --log-dir "$LOG_DIR"
+  node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/svc-b-replacement.config.json" \
+    --rid svc-b \
+    --http-url "$SVC_B_REPLACEMENT_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
+    --spot-router-endpoint "$SPOT_B_REPLACEMENT_ROUTER_ENDPOINT" \
+    --spot-pub-endpoint "$SPOT_B_REPLACEMENT_PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/svc-b-replacement.evidence.log" \
+    --log-dir "$LOG_DIR"
 
-start_configured_server svc-throw "$THROWING_SERVICE_MAIN" \
-  --rid svc-throw \
-  --http-url "$THROW_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
-  --spot-router-endpoint "$THROW_SPOT_ROUTER_ENDPOINT" \
-  --spot-pub-endpoint "$THROW_SPOT_PUB_ENDPOINT" \
-  --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "$THROW_URL" svc-throw
+  start_configured_server svc-throw "$THROWING_SERVICE_MAIN" \
+    --rid svc-throw \
+    --http-url "$THROW_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
+    --spot-router-endpoint "$THROW_SPOT_ROUTER_ENDPOINT" \
+    --spot-pub-endpoint "$THROW_SPOT_PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
+    --log-dir "$LOG_DIR"
+  wait_health "$THROW_URL" svc-throw
+else
+  node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/svc-b-replacement.config.json" \
+    --rid svc-b \
+    --http-url "$SVC_B_REPLACEMENT_URL" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
+    --spot-router-endpoint "$SPOT_B_REPLACEMENT_ROUTER_ENDPOINT" \
+    --spot-pub-endpoint "$SPOT_B_REPLACEMENT_PUB_ENDPOINT" \
+    --evidence-file "$LOG_DIR/svc-b-replacement.evidence.log" \
+    --log-dir "$LOG_DIR"
+fi
 
 start_configured_server trigger "$TRIGGER_MAIN" \
   --http-url "$TRIGGER_URL" \
@@ -258,6 +271,7 @@ node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --throw-service-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --redis-container "$REDIS_CONTAINER_ID" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \

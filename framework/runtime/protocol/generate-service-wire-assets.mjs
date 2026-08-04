@@ -101,6 +101,10 @@ const outputs = new Map([
   [path.join(root, "generated/node/service_wire_constants.ts"), node],
   [path.join(root, "generated/node/service_wire_constants.js"), nodeJs],
   [path.join(root, "generated/node/service_wire_constants.d.ts"), nodeDeclarations],
+  [path.join(
+    root,
+    "../../languages/node/packages/framework/src/runtime/foundation/service-wire-constants.generated.ts",
+  ), node],
   [path.join(root, "golden/service-decoder-fixtures-v1.json"), `${JSON.stringify(fixtures, null, 2)}\n`],
 ]);
 

@@ -69,4 +69,27 @@ final class ZLinkJavaRawMeshNodeApplicationPayloadTest {
             assertArrayEquals(new byte[] {1, 2, 3}, wirePayload.payload());
         }
     }
+
+    @Test
+    void applicationMessagesPreserveTheSelectedStreamCodec() {
+        var payload = new systems.zlink.framework.runtime.internal.service
+            .ZLinkServiceM6AWireCodec.ApplicationPayload(
+                "CustomReq",
+                "application/x-protobuf",
+                new byte[] {4, 5, 6});
+
+        List<Message> restored = ZLinkJavaRawMeshNode.applicationMessages(
+            payload,
+            true,
+            11L,
+            ZLinkStreamCodec.PROTOBUF);
+        try {
+            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(
+                restored.getFirst().toByteArray());
+            assertEquals(ZLinkStreamCodec.PROTOBUF, header.codec());
+            assertEquals(Optional.of(11L), header.requestSequence());
+        } finally {
+            restored.forEach(Message::close);
+        }
+    }
 }

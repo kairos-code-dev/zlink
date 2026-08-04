@@ -104,6 +104,44 @@ test('topology snapshots fence reconnect and exclude retiring placement targets'
   assert.equal(topology.selectPlacement(), undefined);
 });
 
+test('channel selection excludes admitted peers until the caller confirms readiness', () => {
+  const topology = new ServiceTopologyRegistry({
+    ...descriptor('local'),
+    state: 'serving',
+    channels: [{ name: 'alpha', weight: 0 }]
+  });
+  const peer = { ...descriptor('peer'), state: 'serving' as const };
+  assert.equal(topology.admit(peer, 'connection-a'), 'admitted');
+
+  assert.equal(topology.selectChannel('alpha', () => false), undefined);
+  assert.equal(
+    topology.selectChannel('alpha', candidate => candidate.descriptor.nodeRoutingId === 'peer')
+      ?.descriptor.nodeRoutingId,
+    'peer'
+  );
+});
+
+test('object placement excludes admitted peers until the caller confirms readiness', () => {
+  const topology = new ServiceTopologyRegistry({
+    ...descriptor('local'),
+    state: 'serving',
+    objectRole: 'client',
+    channels: [{ name: 'alpha', weight: 0 }]
+  });
+  const peer = {
+    ...descriptor('peer'),
+    state: 'serving' as const,
+    protocolCapabilities: ['framework-service-v11', 'object-type:quest']
+  };
+  assert.equal(topology.admit(peer, 'connection-a'), 'admitted');
+  assert.equal(topology.selectObjectPlacement('quest', () => false), undefined);
+  assert.equal(
+    topology.selectObjectPlacement('quest', candidate => candidate.nodeRoutingId === 'peer')
+      ?.nodeRoutingId,
+    'peer'
+  );
+});
+
 test('topology admission fences expected identity, immutable revisions, duplicate pipes, and late disconnect', () => {
   const topology = new ServiceTopologyRegistry(descriptor('local'));
   const peer = { ...descriptor('peer'), state: 'serving' as const };
@@ -344,6 +382,27 @@ test('raw disconnect fences a late lifecycle generation after peer replacement',
       runtime.topology.peer(current.nodeRoutingId)?.connectionId,
       'current-connection'
     );
+  } finally {
+    runtime.close();
+  }
+});
+
+test('raw disconnect tolerates a late native route removal after the peer is already gone', () => {
+  const endpoint = `ipc:///tmp/zlink-m6a-late-disconnect-${process.pid}-${Date.now()}.sock`;
+  const runtime = new RawServiceMeshRuntime({
+    descriptor: descriptor('local-late-disconnect', endpoint)
+  });
+  runtime.start();
+  try {
+    const peer = {
+      ...descriptor('peer-late-disconnect', 'tcp://peer-late-disconnect:7001'),
+      state: 'serving' as const
+    };
+    assert.equal(runtime.topology.admit(peer, 'late-connection'), 'admitted');
+    assert.doesNotThrow(() => {
+      runtime.disconnectPeer(peer.advertisedEndpoint, peer.nodeRoutingId, peer.lifecycleGeneration);
+    });
+    assert.equal(runtime.topology.peer(peer.nodeRoutingId), undefined);
   } finally {
     runtime.close();
   }
@@ -766,9 +825,15 @@ test('raw runtime admits peers and completes node/channel requests once', async 
       left.announceExpectedPeers();
       right.pumpOne();
       left.pumpOne();
+      left.tickLiveness();
+      right.tickLiveness();
       return left.topology.peer('m6a-right') !== undefined
-        && right.topology.peer('m6a-left') !== undefined;
+        && right.topology.peer('m6a-left') !== undefined
+        && left.isPeerRouteReady('m6a-right')
+        && right.isPeerRouteReady('m6a-left');
     });
+    assert.equal(left.isPeerRouteReady('m6a-right', rightDescriptor.lifecycleGeneration), true);
+    assert.equal(left.isPeerRouteReady('m6a-right', rightDescriptor.lifecycleGeneration + 1n), false);
 
     assert.equal(left.sendToChannel('alpha', {
       packetName: 'ChannelNotice',

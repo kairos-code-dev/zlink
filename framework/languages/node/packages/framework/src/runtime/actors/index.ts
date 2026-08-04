@@ -13,7 +13,7 @@ import {
   ZLinkEncodedPayload,
   ZLinkFrameworkException
 } from '../../contracts';
-import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import { ZLinkMessage } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { throwIfAborted } from '../abort';
@@ -730,7 +730,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
   private createRequestMessage(request: unknown): ZLinkActorCreateRequest {
     if (request === undefined) {
-      const empty = BindingMessage.from(Buffer.alloc(0));
+      const empty = RuntimeMessage.from(Buffer.alloc(0));
       return {
         nativeRequest: empty,
         callbackRequest: ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(empty.data()))
@@ -769,7 +769,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       objectGeneration: 1n,
       meshName: state.meshName ?? '',
       nodeRid: this.options.actorCreatedNodeRidProvider?.()
-        ?? BindingRoutingId.from('local') as unknown as RoutingId
+        ?? 'local'
     };
   }
 

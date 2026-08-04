@@ -11,6 +11,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityConflict;
@@ -430,6 +431,79 @@ class ZLinkInMemoryLocationStoreTest {
                     new ZLinkAuthorityDelete(),
                     () -> false)
                 .toCompletableFuture().get());
+    }
+
+    @Test
+    void concurrentCrossNodeSealCasHasOneWinnerAndLoserCannotDeleteIt()
+        throws Exception {
+        ZLinkInMemoryAuthorityStore store = newAuthorityStore();
+        var owner = new ZLinkLocationOwnerToken("source", 1);
+        String key = "zla1:a:4:mesh:12:idle-race";
+        var ready = createActive(store, key, owner);
+        var expected = new ZLinkAuthorityExpectFound(ready.storeVersion());
+
+        CompletableFuture<systems.zlink.framework.runtime.internal.locations
+            .ZLinkAuthorityWriteResult> first = CompletableFuture.supplyAsync(
+                () -> store.compareExchange(
+                        key,
+                        expected,
+                        new ZLinkAuthorityPut(
+                            new byte[] {2},
+                            ZLinkAuthorityGenerationTransition.PRESERVE,
+                            Optional.empty(),
+                            Optional.empty()),
+                        () -> false)
+                    .toCompletableFuture()
+                    .join());
+        CompletableFuture<systems.zlink.framework.runtime.internal.locations
+            .ZLinkAuthorityWriteResult> second = CompletableFuture.supplyAsync(
+                () -> store.compareExchange(
+                        key,
+                        expected,
+                        new ZLinkAuthorityPut(
+                            new byte[] {3},
+                            ZLinkAuthorityGenerationTransition.PRESERVE,
+                            Optional.empty(),
+                            Optional.empty()),
+                        () -> false)
+                    .toCompletableFuture()
+                    .join());
+
+        var results = List.of(first.get(), second.get());
+        assertEquals(
+            1,
+            results.stream()
+                .filter(ZLinkAuthorityStored.class::isInstance)
+                .count());
+        assertEquals(
+            1,
+            results.stream()
+                .filter(systems.zlink.framework.runtime.internal.locations
+                    .ZLinkAuthorityConflict.class::isInstance)
+                .count());
+        var winner = results.stream()
+            .filter(ZLinkAuthorityStored.class::isInstance)
+            .map(ZLinkAuthorityStored.class::cast)
+            .findFirst()
+            .orElseThrow();
+
+        // A losing idle-eviction worker still holds the READY version. It
+        // must not remove the CLOSING row installed by the winner.
+        assertInstanceOf(
+            systems.zlink.framework.runtime.internal.locations
+                .ZLinkAuthorityConflict.class,
+            store.compareExchange(
+                    key,
+                    expected,
+                    new ZLinkAuthorityDelete(),
+                    () -> false)
+                .toCompletableFuture().get());
+        var current = assertInstanceOf(
+            ZLinkAuthoritySnapshot.class,
+            store.read(key, () -> false).toCompletableFuture().get());
+        assertEquals(winner.storeVersion(), current.storeVersion());
+        assertEquals(owner.ownerId(), current.ownerId());
+        assertEquals(owner.leaseGeneration(), current.ownerLeaseGeneration());
     }
 
     @Test

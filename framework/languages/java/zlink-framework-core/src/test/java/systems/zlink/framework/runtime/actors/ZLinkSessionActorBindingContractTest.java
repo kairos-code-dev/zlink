@@ -61,7 +61,23 @@ final class ZLinkSessionActorBindingContractTest {
         }
 
         assertEquals(List.of("actor-1"), stream.binds);
-        assertEquals(2, stream.relays.size());
+        assertEquals(1, stream.relays.size());
+    }
+
+    @Test
+    void nativeBindWaitsForTheTargetSessionContextAcknowledgement() {
+        FakeStream stream = new FakeStream();
+        CompletableFuture<List<Message>> acknowledgement =
+            new CompletableFuture<>();
+        stream.pendingBoundRequest = acknowledgement;
+        ZLinkSessionActorsRuntime runtime = runtime(stream);
+
+        var binding = runtime.bind(
+            new ActorRef("actor-1", 7, MESH, NODE_A));
+
+        assertFalse(binding.toCompletableFuture().isDone());
+        acknowledgement.complete(List.of(Message.from(new byte[0])));
+        binding.toCompletableFuture().join();
     }
 
     @Test
@@ -281,6 +297,7 @@ final class ZLinkSessionActorBindingContractTest {
             new java.util.concurrent.ConcurrentHashMap<>();
         private boolean deferUnbind;
         private SubmitResult relayFailure;
+        private CompletableFuture<List<Message>> pendingBoundRequest;
         private boolean closed;
 
         @Override public String name() { return "session-contract"; }
@@ -347,6 +364,19 @@ final class ZLinkSessionActorBindingContractTest {
                 throw new ZlinkSubmitException(relayFailure);
             }
             return true;
+        }
+        @Override public java.util.concurrent.CompletionStage<List<Message>>
+            requestBoundActor(
+                RoutingId sessionRid,
+                String actorId,
+                ZLinkStreamHeader header,
+                List<Message> parts,
+                Duration timeout) {
+            if (pendingBoundRequest != null) {
+                return pendingBoundRequest;
+            }
+            return CompletableFuture.completedFuture(
+                List.of(Message.from(new byte[0])));
         }
     }
 }

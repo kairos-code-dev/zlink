@@ -26,7 +26,7 @@ final class ZLinkServiceFrozenRecordCodecTest {
             0,
             "source-spot",
             new ZLinkServiceM6BWireCodec.SpotRouteFence(
-                "target-spot", 83, targetRid, 89, 97));
+                "target-spot", 83, targetRid, 89, 97, 101));
         byte[] metadata = new byte[] {
             1, 1, 3, 'k', 'e', 'y', 0, 5,
             'v', 'a', 'l', 'u', 'e'};
@@ -65,7 +65,8 @@ final class ZLinkServiceFrozenRecordCodecTest {
             new ZLinkServiceM6BWireCodec.ActorRouteFence(
                 new ZLinkBackendActorRef(targetRid, "actor-1", 109),
                 113,
-                127),
+                127,
+                131),
             new ZLinkServiceM6BWireCodec.BoundSessionTail(
                 sessionRid, 131, 137));
         byte[] encoded = ZLinkServiceFrozenRecordCodec.encodeActor(

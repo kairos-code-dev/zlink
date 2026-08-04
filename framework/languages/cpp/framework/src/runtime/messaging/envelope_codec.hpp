@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <typeindex>
+#include <utility>
 #include <vector>
 
 namespace zlink::framework::runtime::messaging
@@ -54,6 +55,10 @@ class message_parts_t
     std::size_t size () const noexcept { return _parts.size (); }
     const zlink::message_t &operator[] (std::size_t index) const;
     const std::vector<zlink::message_t> &items () const noexcept { return _parts; }
+    std::vector<zlink::message_t> take_items () && noexcept
+    {
+        return std::move (_parts);
+    }
 
   private:
     std::vector<zlink::message_t> _parts;

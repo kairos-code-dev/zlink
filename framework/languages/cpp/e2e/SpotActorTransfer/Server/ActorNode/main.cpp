@@ -813,12 +813,12 @@ class transfer_session_t final : public fw::packet_stream_session_t
             const auto request = payload.parse_json<e2e::bind_actor_session_req_t> ();
             auto actor_ref = co_await _directory.find (request.actor_id);
             fw::actor_ref_t resolved;
-            if (actor_ref) {
-                resolved = *actor_ref;
-            } else if (!request.node_rid.empty () && request.generation) {
+            if (!request.node_rid.empty () && request.generation) {
                 resolved = fw::actor_ref_t (fw::node_rid_t::from_string (request.node_rid),
                                             e2e::actor_type_stateful, request.actor_id,
                                             static_cast<std::uint64_t> (*request.generation));
+            } else if (actor_ref) {
+                resolved = *actor_ref;
             } else {
                 throw fw::framework_exception_t (
                   fw::framework_error_kind_t::not_found,
@@ -846,11 +846,13 @@ class transfer_session_t final : public fw::packet_stream_session_t
                                              "bound actor was not found");
         }
         if (dispatch.can_reply) {
-            auto reply = co_await actor->relay_request (payload).submit ();
+            auto reply = co_await actor
+                           ->relay_request (std::string (dispatch.packet_name), payload)
+                           .submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }
-        co_await actor->relay (payload);
+        co_await actor->relay (std::string (dispatch.packet_name), payload);
     }
 
   private:
@@ -1015,7 +1017,7 @@ class create_actor_handler_t
         fw::actor_create_result_t created;
         try {
             created = co_await _actor_manager
-              .get_or_create (request.actor_id, request.actor_type)
+              .get_or_create (fw::actor_id_t (request.actor_id), request.actor_type)
               .creation_request (request)
               .submit ();
         }

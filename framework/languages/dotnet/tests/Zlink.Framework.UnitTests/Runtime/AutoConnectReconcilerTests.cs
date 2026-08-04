@@ -135,6 +135,26 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
+    public async Task RuntimeActivationConcurrencyPublishesTheCurrentActiveCount()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Reconciler.TickAsync();
+        var initial = Assert.Single(
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
+            row => row.Rid.Equals(RoutingId.From("local")));
+
+        fixture.Reconciler.SetLocalActivationConcurrency(7);
+        await fixture.Reconciler.TickAsync();
+
+        var updated = Assert.Single(
+            (await fixture.Store.ListMeshNodesAsync("play", default)).Items,
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.Equal(7, updated.ActivationConcurrency.Active);
+        Assert.Equal(128, updated.ActivationConcurrency.Limit);
+        Assert.True(updated.DescriptorRevision > initial.DescriptorRevision);
+    }
+
+    [Fact]
     public async Task RouteMeshChannelWeightMutation_UpdatesTheNamedMembershipOnly()
     {
         var fixture = await FixtureAsync(
@@ -566,17 +586,10 @@ public sealed class AutoConnectReconcilerTests
         await fixture.PublishPeerAsync("new-rid", "tcp://r:1");
         await fixture.Reconciler.TickAsync();
 
-        Assert.Equal(["old-rid"], fixture.Executor.Connected.Select(target => target.NodeRid.ToString()));
-        Assert.Equal("old-rid", Assert.Single(fixture.Executor.Disconnected).NodeRid.ToString());
-        Assert.Empty(fixture.Reconciler.ActiveTargets);
-
-        // The next reconcile submits the replacement after Core has completed
-        // the endpoint-scoped disconnect from the previous tick.
-        await fixture.Reconciler.TickAsync();
-
         Assert.Equal(
             ["old-rid", "new-rid"],
             fixture.Executor.Connected.Select(target => target.NodeRid.ToString()));
+        Assert.Equal("old-rid", Assert.Single(fixture.Executor.Disconnected).NodeRid.ToString());
         var active = Assert.Single(fixture.Reconciler.ActiveTargets);
         Assert.Equal("new-rid", active.NodeRid.ToString());
         Assert.Equal("tcp://r:1", active.Endpoint);

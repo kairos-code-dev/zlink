@@ -16,7 +16,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     IZLinkBackendAuthorityObserver,
     IZLinkBackendRequestSourceFenceObserver,
     IZLinkBackendLocalActorAuthorityReader,
-    IZLinkBackendActorMessageFollowIngress
+    IZLinkBackendActorMessageFollowIngress,
+    IZLinkBackendMessageFollowNotifications
 {
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions = new();
@@ -40,6 +41,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public ZLinkBackendSpotNodeWrapper(IMeshNode node)
     {
         _node = node;
+        _completions = new ZLinkMeshCompletionTable(
+            meshName: (node as ZLinkManagedMeshNode)?.MeshName);
         _pump = new ZLinkMeshDispatchPump(node, _completions);
         _messageFollowIngress = new ActorMessageFollowIngressAdapter(_pump);
         _node.SetActorMessageFollowIngressTarget(_messageFollowIngress);
@@ -67,6 +70,17 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void SetActorMessageFollowIngressHandler(
         Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler) =>
         _messageFollowIngress.SetHandler(handler);
+
+    public void SetMessageFollowNotificationHandler(
+        Action<RoutingId, ZLinkServiceWireCodec.MessageFollowRecord> handler) =>
+        RequireManagedNode().SetMessageFollowNotificationHandler(handler);
+
+    public bool TrySendMessageFollowNotification(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.MessageFollowRecord record) =>
+        RequireManagedNode().TrySendMessageFollowNotification(
+            targetNodeRid,
+            record);
 
     public void ObserveActorAuthority(
         ZLinkBackendActorRef actor,

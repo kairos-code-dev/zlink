@@ -14,7 +14,7 @@ test('RM-B2 keeps consumer traffic active while provider B exits', () => {
   assert.match(scenario, /cluster\.startConsumer/);
   assert.match(scenario, /const firstDuring = postJson<ProfileRes>\(consumer\.httpUrl/);
   assert.match(scenario, /const draining = cluster\.drain\(providerB\)/);
-  assert.match(scenario, /drainResult\.kind === 'drained'/);
+  assert.match(scenario, /drainResult\.outcome === 0[\s\S]*drainResult\.reason === 0/);
   assert.match(scenario, /during\.every\(\(reply\) => reply\.providerRid === 'api-a' \|\| reply\.providerRid === 'api-b'\)/);
   assert.match(scenario, /rid: 'api-b', present: false/);
   assert.match(scenario, /cluster\.waitForSingleProvider\('api-a', providerA\.channelEndpoint\)/);

@@ -218,11 +218,27 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal IZLinkBackendSpotNode? GetActorSpotNode()
     {
+        return GetActorSpotNodeRuntime()?.Node;
+    }
+
+    internal void SetActivationConcurrency(string meshName, int active)
+    {
+        _autoConnect?.SetLocalActivationConcurrency(meshName, active);
+    }
+
+    internal ZLinkSpotNodeRuntime? GetActorSpotNodeRuntime(
+        string? actorType = null)
+    {
+        if (actorType is not null)
+            return _state?.SpotNodes.Values
+                .SingleOrDefault(node =>
+                    node.Registration.Router is not null
+                    && node.Registration.ActorFactories.ContainsKey(actorType));
+
         return _state?.SpotNodes.Values
             .SingleOrDefault(static node =>
                 node.Registration.Router is not null
-                && node.Registration.ActorFactories.Count > 0)
-            ?.Node;
+                && node.Registration.ActorFactories.Count > 0);
     }
 
     internal IZLinkBackendSpotNode GetActorClientSpotNode()

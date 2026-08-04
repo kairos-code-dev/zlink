@@ -154,10 +154,21 @@ class spot_node_builder_state_t
                                                              spot_inbound_message_t)>
       actor_packet_relay;
     std::function<result_t<std::optional<zlink::message_t>> (
-      const actor_ref_t &, const runtime::messaging::envelope_header_t &,
-      const zlink::message_t &,
-      std::chrono::milliseconds)>
+        const actor_ref_t &, const runtime::messaging::envelope_header_t &,
+        const zlink::message_t &,
+        std::chrono::milliseconds,
+        const zlink::routing_id_t &,
+        const runtime::protocol::actor_route_fence_t &,
+        std::uint8_t,
+        const runtime::protocol::wire_operation_id_t &,
+        std::uint64_t)>
       actor_message_follow_relay;
+    /* Network Actor messages are admitted against the complete route fence
+     * before their typed body is decoded. The host supplies the cached
+     * authority/owner check; the local transfer coordinator may allow a
+     * committed source route to enter Message Follow first. */
+    std::function<bool (const runtime::protocol::actor_route_fence_t &)>
+      actor_route_admission;
     std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
                                                 node_rid_t,
                                                 const zlink::message_t &,
@@ -435,6 +446,19 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
         return kind == detail::spot_runtime_kind_t::instance;
     }
 
+    bool accepts_route_fence (
+      const runtime::protocol::spot_route_fence_t &target,
+      const std::optional<location_owner_token_t> &owner_token) const noexcept
+    {
+        return target.spot_id == spot_id
+               && target.object_generation == object_generation
+               && target.authority_owner_generation
+                    == authority_owner_generation
+               && owner_token
+               && owner_token->lease_generation
+                    == target.owner_lease_generation;
+    }
+
     bool try_close_idle ()
     {
         auto owner = node;
@@ -594,6 +618,9 @@ class spot_node_runtime_t
     void release_actor_message_follow (
       const actor_ref_t &actor_ref,
       std::size_t payload_bytes) noexcept;
+    bool mark_actor_message_follow_notified (
+      const actor_ref_t &actor_ref,
+      const zlink::routing_id_t &source_node);
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
     std::optional<std::string> actor_route_transport_name () const;
     void request_stop () noexcept;
@@ -667,15 +694,9 @@ class spot_node_runtime_t
       const std::vector<zlink::message_t> &parts,
       service_provider_t &services,
       serializer_registry_t &serializers) const;
-    std::size_t drain_routed_packets (service_provider_t &services,
-                                      serializer_registry_t &serializers) const;
-    std::size_t drain_actor_packets (service_provider_t &services,
-                                     serializer_registry_t &serializers);
-    std::size_t drain_subscriptions (service_provider_t &services,
-                                     serializer_registry_t &serializers) const;
     bool dispatch_mesh_record (const service::ready_record_t &owner,
                                const service::receive_record_t &record,
-                               const std::vector<zlink::message_t> &parts,
+                               std::vector<zlink::message_t> &parts,
                                service_provider_t &services,
                                serializer_registry_t &serializers);
     void set_route_client (route_client_t route_client);
@@ -700,7 +721,14 @@ class spot_node_runtime_t
       std::function<result_t<std::optional<zlink::message_t>> (
         const actor_ref_t &, const runtime::messaging::envelope_header_t &,
         const zlink::message_t &,
-        std::chrono::milliseconds)> relay);
+        std::chrono::milliseconds,
+        const zlink::routing_id_t &,
+        const runtime::protocol::actor_route_fence_t &,
+        std::uint8_t,
+        const runtime::protocol::wire_operation_id_t &,
+        std::uint64_t)> relay);
+    void invalidate_message_follow_route (
+      const runtime::protocol::message_follow_notice_t &notice);
     spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
       const actor_ref_t &actor_ref,
@@ -1336,6 +1364,15 @@ class spot_node_runtime_t
                                               const zlink::message_t &create_request,
                                               std::string operation_id,
                                               bool &authority_committed);
+    void enqueue_actor_handoff_replay (const actor_ref_t &actor_ref,
+                                       std::vector<handoff_packet_t> backlog,
+                                       service_provider_t &services,
+                                       std::string transfer_id);
+    // Drains a source-side handoff after a pre-commit failure while the move
+    // gate remains closed. Replay is posted before the gate is removed, so a
+    // new dispatch cannot overtake the preserved packets.
+    void replay_actor_handoff_until_move_closed (const actor_ref_t &actor_ref,
+                                                 std::string transfer_id);
 
     std::shared_ptr<spot_node_builder_state_t> _state;
 };

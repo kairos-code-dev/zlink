@@ -14,8 +14,6 @@ internal sealed class ZLinkOwnerLeaseTracker
     private readonly object _cacheGate = new();
     private readonly Dictionary<string, Snapshot> _cache =
         new(StringComparer.Ordinal);
-    private long _liveSetVersion;
-
     internal TimeProvider TimeProvider => _time;
 
     internal ZLinkOwnerLeaseTracker(
@@ -81,23 +79,6 @@ internal sealed class ZLinkOwnerLeaseTracker
                         - _time.GetElapsedTime(snapshot.FetchedAt)
                         - _options.OwnerLeaseFencingMargin;
         return remaining > TimeSpan.Zero ? remaining : null;
-    }
-
-    /// <summary>
-    /// Version of the set of currently live owners. The desired target set
-    /// is a join of rows and leases, so a reconcile tick must not be
-    /// skipped just because no row changed: an owner appearing (its rows
-    /// become visible) or expiring (its rows must drop) changes the join
-    /// without any row write. The version bumps only on membership changes,
-    /// never on plain renewals, so a healthy steady state keeps the change
-    /// stamp skip effective.
-    /// </summary>
-    internal async ValueTask<long> GetLiveOwnerSetVersionAsync(
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await Task.CompletedTask.ConfigureAwait(false);
-        return Interlocked.Increment(ref _liveSetVersion);
     }
 
     private async ValueTask<(Snapshot Snapshot, bool FromCache)> GetSnapshotAsync(

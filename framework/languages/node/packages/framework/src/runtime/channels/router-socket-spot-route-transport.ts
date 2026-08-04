@@ -1,4 +1,4 @@
-import type { Message } from '@zlink-systems/zlink';
+import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSendFlags } from '../backend/contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';

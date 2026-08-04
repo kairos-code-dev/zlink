@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/fanout/fanout_location_runtime.hpp"
+#include "runtime/eventing/runtime_wake_pipe.hpp"
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/configuration/service_scope.hpp"
@@ -8,6 +9,7 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <limits>
 #include <random>
@@ -21,7 +23,6 @@ namespace
 {
 
 constexpr std::string_view default_security_identity = "default";
-constexpr auto pump_interval = std::chrono::milliseconds (2);
 
 framework_runtime_state_t current_state (
   const location_runtime_t &locations)
@@ -115,6 +116,13 @@ void fanout_location_runtime_t::start ()
           "fanout discovery requires an active owner lease");
     _stop.store (false, std::memory_order_release);
     try {
+        _subscriber_poller = std::make_unique<zlink::poller_t> ();
+        if (!_wake_pipe.open ())
+            throw std::runtime_error ("fanout runtime wake pipe creation failed");
+        _subscriber_poller->add_fd (
+          _wake_pipe.read_fd (),
+          zlink::poll_event_flag_t::pollin,
+          std::numeric_limits<std::uintptr_t>::max ());
         for (const auto &channel : _channels) {
             if (channel.publisher.enabled
                 && channel.publisher.discovery)
@@ -195,7 +203,7 @@ void fanout_location_runtime_t::start_subscriber (
     auto entry = std::make_unique<subscriber_entry_t> ();
     entry->channel_name = channel.name;
     entry->owner =
-      std::make_unique<raw_fanout_subscriber_t> ();
+      std::make_unique<raw_fanout_subscriber_t> (_subscriber_poller.get ());
     _subscribers.emplace (
       channel.name, std::move (entry));
 }
@@ -218,7 +226,34 @@ void fanout_location_runtime_t::run ()
               now + _locations->options ().polling_interval;
         }
         pump ();
-        std::this_thread::sleep_for (pump_interval);
+        if (_stop.load (std::memory_order_acquire))
+            break;
+        auto wake_at = next_reconcile;
+        for (const auto &[_, publisher] : _publishers)
+            wake_at = std::min (wake_at, publisher->owner->next_activity ());
+        const auto after_pump = std::chrono::steady_clock::now ();
+        if (wake_at <= after_pump)
+            continue;
+        wait_for_activity (std::chrono::duration_cast<std::chrono::milliseconds> (
+          wake_at - after_pump));
+    }
+}
+
+void fanout_location_runtime_t::wait_for_activity (
+  std::chrono::milliseconds timeout) noexcept
+{
+    if (!_subscriber_poller || timeout <= std::chrono::milliseconds::zero ())
+        return;
+        try {
+            zlink::poll_event_t readiness;
+            const auto count =
+              _subscriber_poller->wait (&readiness, 1, timeout);
+            if (count == 1
+                && readiness.source_kind == zlink::poll_source_kind_t::fd
+                && readiness.fd == _wake_pipe.read_fd ())
+                _wake_pipe.drain ();
+    }
+    catch (...) {
     }
 }
 
@@ -413,6 +448,7 @@ void fanout_location_runtime_t::stop () noexcept
     for (const auto &[channel_name, _] : _publishers)
         _channel_runtime.unbind_fanout_transport (
           channel_name);
+    _wake_pipe.signal ();
     if (_thread.joinable ())
         _thread.join ();
     if (!was_stopped || !_publishers.empty ()
@@ -420,6 +456,22 @@ void fanout_location_runtime_t::stop () noexcept
         stop_subscribers ();
         stop_publishers ();
     }
+    if (_subscriber_poller && _wake_pipe.read_fd () >= 0) {
+        try {
+            _subscriber_poller->remove_fd (_wake_pipe.read_fd ());
+        }
+        catch (...) {
+        }
+    }
+    _wake_pipe.close ();
+    if (_subscriber_poller) {
+        try {
+            _subscriber_poller->close ();
+        }
+        catch (...) {
+        }
+    }
+    _subscriber_poller.reset ();
 }
 
 void fanout_location_runtime_t::stop_subscribers () noexcept

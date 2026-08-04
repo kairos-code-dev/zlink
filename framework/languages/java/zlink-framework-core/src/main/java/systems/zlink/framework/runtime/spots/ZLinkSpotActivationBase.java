@@ -49,6 +49,13 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         CompletionStage<Void> tail,
         Supplier<CompletionStage<Void>> operation);
 
+    CompletionStage<Void> appendSpotHandler(
+        CompletionStage<Void> tail,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return appendSpotHandler(tail, operation);
+    }
+
     abstract CompletionStage<Void> appendActorLifecycle(
         CompletionStage<Void> tail,
         ZLinkBackendActorLifecycleEvent event,
@@ -219,6 +226,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                     : host.inboundDispatchBudget().track(payloadCopy.size());
             return appendSpotHandler(
                 java.util.concurrent.CompletableFuture.completedFuture(null),
+                payloadCopy.size(),
                 () -> host.inboundDispatchBudget().acquireCompletionPermit()
                     .thenCompose(permit -> {
                         try {
@@ -280,6 +288,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         releaseRouteParts(received);
         return appendSpotHandler(
             java.util.concurrent.CompletableFuture.completedFuture(null),
+            payloadCopy.size(),
             () ->
             startSpotHandler(lease, () ->
                 host.runWithOutbound(context.dispatchOutbound(), () ->
@@ -443,6 +452,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                         : host.inboundDispatchBudget().track(payloadCopy.size());
                 tail = appendSpotHandler(
                     tail,
+                    payloadCopy.size(),
                     () -> startSpotHandler(lease, () ->
                         host.runWithOutbound(context.dispatchOutbound(), () ->
                             handlerInvoker.invokeSubscription(

@@ -2,6 +2,26 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Port reservation is a short hand-off because the runner cannot pass its
+# Python socket descriptors to the sample processes. Retry only a role startup
+# that reports EADDRINUSE; functional sample failures keep their status.
+if [[ "${1:-}" != "--zlink-bingo-retry-child" ]]; then
+  for attempt in 1 2 3; do
+    if "$SCRIPT_DIR/run_sample.sh" --zlink-bingo-retry-child "$@"; then
+      exit 0
+    else
+      status=$?
+    fi
+    if [[ "$status" -ne 75 ]]; then
+      exit "$status"
+    fi
+    echo "Bingo sample startup port collision; retrying with fresh ports (attempt $((attempt + 1))/3)." >&2
+  done
+  echo "Bingo sample startup port collision persisted after 3 attempts." >&2
+  exit 75
+fi
+
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$CPP_ROOT/samples/sample-build-common.sh"
@@ -130,7 +150,21 @@ wait_port() {
     if (echo >"/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
       return 0
     fi
+    for log in "$LOG_DIR"/*.log; do
+      [[ -f "$log" ]] || continue
+      if grep -Eq 'errno=98|Address already in use' "$log"; then
+        echo "${name} failed because a sample port was already in use: ${log}" >&2
+        return 75
+      fi
+    done
     sleep 0.1
+  done
+  for log in "$LOG_DIR"/*.log; do
+    [[ -f "$log" ]] || continue
+    if grep -Eq 'errno=98|Address already in use' "$log"; then
+      echo "${name} failed because a sample port was already in use: ${log}" >&2
+      return 75
+    fi
   done
   echo "Timed out waiting for ${name} at ${endpoint}" >&2
   return 1

@@ -8,9 +8,28 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwn
 interface SpotDispatchLine {
     CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation);
 
+    /** Runtime control work is independent from the application dispatch lane. */
+    default CompletionStage<Void> enqueueInfrastructureDispatch(
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueueDispatch(operation);
+    }
+
+    default CompletionStage<Void> enqueueDispatch(
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueueDispatch(operation);
+    }
+
     CompletionStage<Void> enqueueActorDispatch(
         String actorId,
         Supplier<CompletionStage<Void>> operation);
+
+    default CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return enqueueActorDispatch(actorId, operation);
+    }
 
     String spotId();
 

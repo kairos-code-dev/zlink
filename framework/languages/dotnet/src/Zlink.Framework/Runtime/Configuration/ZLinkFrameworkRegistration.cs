@@ -60,6 +60,37 @@ internal sealed class ZLinkFrameworkRegistration
             : DefaultRequestTimeout;
     }
 
+    internal ulong ResolveMaximumApplicationMessageBytes()
+    {
+        long maximum = 0;
+        foreach (var channel in Channels.Values)
+        {
+            if (channel.Server is not null)
+                maximum = Math.Max(
+                    maximum,
+                    channel.Server.SocketConfig.MaxMessageSize);
+            if (channel.Subscriber is not null)
+                maximum = Math.Max(
+                    maximum,
+                    channel.Subscriber.SocketConfig.MaxMessageSize);
+        }
+
+        foreach (var node in SpotNodes.Values)
+            if (node.Router is not null)
+                maximum = Math.Max(
+                    maximum,
+                    node.Router.SocketConfig.MaxMessageSize);
+
+        foreach (var streamNode in StreamNodes.Values)
+            maximum = Math.Max(
+                maximum,
+                streamNode.SocketConfig.MaxMessageSize);
+
+        return maximum > 0
+            ? checked((ulong)maximum)
+            : 16UL * 1024 * 1024;
+    }
+
     public IEnumerable<Assembly> EnumerateHandlerScanAssemblies()
     {
         var assemblies = new HashSet<Assembly>(HandlerAssemblies);

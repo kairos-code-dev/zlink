@@ -8,6 +8,7 @@
 #include "runtime/fanout/fanout_location_runtime.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
+#include "runtime/host/hosted_service_lifecycle.hpp"
 #include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/mesh/route_mesh_connection_policy.hpp"
 
@@ -34,7 +35,8 @@ namespace zlink::framework::runtime
 
 /* Automatic RouteMesh discovery is a projection of the MeshNode descriptor.
  * It deliberately does not publish or consume a second peer-row model. */
-class location_auto_connect_host_service_t final : public hosted_service_t
+class location_auto_connect_host_service_t final : public hosted_service_t,
+                                                   public hosted_service_lifecycle_t
 {
   public:
     location_auto_connect_host_service_t (
@@ -60,6 +62,11 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     }
 
     ~location_auto_connect_host_service_t () override { stop (); }
+
+    bool participates_in_drain_propagation () const noexcept override
+    {
+        return true;
+    }
 
     void start (service_provider_t &services) override
     {

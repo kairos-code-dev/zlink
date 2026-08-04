@@ -1,3 +1,4 @@
+using System.Diagnostics.Metrics;
 using Zlink.Framework.Runtime.Diagnostics;
 
 namespace Zlink.Framework.UnitTests;
@@ -59,6 +60,45 @@ public sealed class ZLinkObservationQueueTests
         Assert.Equal(5UL, reader.Current.Status.Sequence);
         Assert.Equal(reader.Current.Loss, new ZLinkObservationLoss(2, 1));
         Assert.False(await reader.MoveNextAsync());
+    }
+
+    [Fact]
+    public void Terminal_overflow_records_the_observer_event_source()
+    {
+        var samples = new List<string?>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, owner) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.observability.events.overflow")
+                    owner.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+        {
+            if (instrument.Name != "zlink.observability.events.overflow") return;
+            samples.Add(Tag(tags, "source"));
+        });
+        listener.Start();
+
+        var queue = new ZLinkObservationQueue<TestStatus>(
+            terminalCapacity: 1,
+            static status => status.Sequence,
+            eventName: "unit-test");
+        queue.Publish(new TestStatus(1), terminal: true);
+        queue.Publish(new TestStatus(2), terminal: true);
+
+        Assert.Equal(["unit-test"], samples);
+    }
+
+    private static string? Tag(
+        ReadOnlySpan<KeyValuePair<string, object?>> tags,
+        string name)
+    {
+        foreach (var tag in tags)
+            if (tag.Key == name) return tag.Value as string;
+        return null;
     }
 
     private sealed record TestStatus(ulong Sequence);

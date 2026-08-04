@@ -6,7 +6,7 @@ const internal = require('../../packages/framework/dist/internal');
 const routingIdRuntime = require('../../packages/framework/dist/runtime/routing-id');
 const spotNodeAutoConnect = require('../../packages/framework/dist/runtime/spots/spot-node-autoconnect');
 
-test('binding routing-id conversion preserves opaque ids from another package instance', () => {
+test('backend routing-id conversion preserves opaque ids from another package instance', () => {
   const expected = zlink.RoutingId.from('node-remote');
   const foreignRoutingId = {
     toBytes() {
@@ -21,7 +21,7 @@ test('binding routing-id conversion preserves opaque ids from another package in
   };
 
   assert.equal(
-    routingIdRuntime.toBindingRoutingId(foreignRoutingId).toHex(),
+    routingIdRuntime.toBackendRoutingId(foreignRoutingId).toHex(),
     expected.toHex()
   );
 });

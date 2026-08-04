@@ -5,6 +5,9 @@ const internal = require('../../packages/framework/dist/internal');
 const {
   ZLinkSubmitStatus
 } = require('../../packages/framework/dist/runtime/messaging/submission-result');
+const {
+  ZLinkFrameworkInternalErrorKind
+} = require('../../packages/framework/dist/runtime/framework-errors-internal');
 
 function actorRow(actorId, nodeRid = 'node-a') {
   return {
@@ -192,6 +195,80 @@ test('authority Actor route carries every fence and a changed StoreVersion inval
   assert.equal(reads, 2);
 });
 
+test('Message Follow invalidation deletes only the exact cached Actor route fence', async () => {
+  let nodeRid = 'node-a';
+  let nodeGeneration = 11n;
+  let authorityOwnerGeneration = 17n;
+  let ownerLeaseGeneration = 13n;
+  const authority = {
+    async readAuthority() {
+      return {
+        kind: 'snapshot',
+        storeVersion: { value: `v-${authorityOwnerGeneration}` },
+        payload: internal.encodeActorAuthorityIdentity({
+          actorType: 'Player',
+          actor: { actorId: 'actor-follow', nodeRid, objectGeneration: 7n },
+          meshName: 'play',
+          ownerNodeGeneration: nodeGeneration,
+          owner: { ownerId: 'owner-a', leaseGeneration: ownerLeaseGeneration }
+        }),
+        objectGeneration: 7n,
+        authorityOwnerGeneration,
+        ownerId: 'owner-a',
+        ownerLeaseGeneration,
+        allocation: {
+          state: 'active',
+          objectKind: 'actor',
+          stableType: 'Player',
+          descriptor: { meshName: 'play', rid: nodeRid },
+          descriptorLifecycleGeneration: nodeGeneration,
+          capacity: { actors: 1, spots: 0 }
+        },
+        storeNow: new Date()
+      };
+    }
+  };
+  const unused = () => { throw new Error('unexpected legacy store access'); };
+  const resolver = new internal.ZLinkStoreLocationResolvers({
+    stores: {
+      authorityStore: authority,
+      locationStore: { listMeshNodes: unused },
+      peerStore: { listPeers: unused },
+      spotStore: { resolveSpot: unused },
+      actorStore: { resolveActor: unused },
+      routeStore: { resolveRoute: unused }
+    },
+    leaseTracker: { remainingOwnerTokenLeaseMs: async () => 60_000 },
+    routeCacheMaxAgeMs: 15_000,
+    monotonicNowMs: () => 0
+  });
+  await resolver.resolveDirectActorRoute('actor-follow');
+
+  nodeRid = 'node-b';
+  nodeGeneration = 19n;
+  authorityOwnerGeneration = 23n;
+  ownerLeaseGeneration = 29n;
+  assert.equal(resolver.invalidateActorRouteIfMatches({
+    actorId: 'actor-follow',
+    objectGeneration: 7n,
+    targetNodeRid: 'node-stale-not-current',
+    targetNodeGeneration: 11n,
+    authorityOwnerGeneration: 17n,
+    ownerLeaseGeneration: 13n
+  }), false);
+  assert.equal((await resolver.resolveDirectActorRoute('actor-follow')).actorRef.nodeRid, 'node-a');
+
+  assert.equal(resolver.invalidateActorRouteIfMatches({
+    actorId: 'actor-follow',
+    objectGeneration: 7n,
+    targetNodeRid: 'node-a',
+    targetNodeGeneration: 11n,
+    authorityOwnerGeneration: 17n,
+    ownerLeaseGeneration: 13n
+  }), true);
+  assert.equal((await resolver.resolveDirectActorRoute('actor-follow')).actorRef.nodeRid, 'node-b');
+});
+
 test('Session Actor relay route is the stored binding route rather than a per-message Store lookup', () => {
   const bindings = new internal.ZLinkActorSessionBindingRegistry();
   const localBindings = [];
@@ -315,4 +392,87 @@ test('a failed direct Spot operation does not refresh and resubmit to a fresh ow
   assert.equal(result.status, ZLinkSubmitStatus.TargetNotFound);
   assert.equal(submitCount, 1);
   assert.equal(refreshCount, 0);
+});
+
+test('a direct Spot request maps a confirmed draining target to ShuttingDown without retrying', async () => {
+  class Lookup {}
+  let refreshCount = 0;
+  let requestCount = 0;
+  const handle = internal.createSpotHandle('spot-1', {
+    meshName: 'play',
+    nodeRid: 'node-a',
+    spotId: 'spot-1',
+    spotKind: framework.ZLinkSpotKind.User,
+    targetNodeState: framework.ZLinkFrameworkRuntimeState.Serving
+  }, async () => {
+    refreshCount += 1;
+    return {
+      meshName: 'play',
+      nodeRid: 'node-a',
+      spotId: 'spot-1',
+      spotKind: framework.ZLinkSpotKind.User,
+      targetNodeState: framework.ZLinkFrameworkRuntimeState.Draining
+    };
+  });
+
+  await assert.rejects(
+    () => internal.requestToSpotHandle({
+      async sendToSpot() {},
+      async requestToSpot() {
+        requestCount += 1;
+        throw internal.createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
+          'SpotNode router request failed with result 109.'
+        );
+      }
+    }, handle, new Lookup()),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ShuttingDown
+  );
+  assert.equal(requestCount, 1);
+  assert.equal(refreshCount, 1);
+});
+
+test('Spot address requests preserve ShuttingDown when Core rejects a published draining target', async () => {
+  class Lookup {}
+  let targetState = framework.ZLinkFrameworkRuntimeState.Serving;
+  let invalidated = 0;
+  const resolver = {
+    async resolve() {
+      return {
+        routerChannelId: 'play',
+        targetNodeRid: 'node-a',
+        spotId: 'spot-1',
+        spotKind: framework.ZLinkSpotKind.User,
+        targetNodeState: targetState
+      };
+    },
+    invalidate() {
+      invalidated += 1;
+      targetState = framework.ZLinkFrameworkRuntimeState.Draining;
+    }
+  };
+  const addressTransport = new internal.ZLinkHostSpotAddressTransport({
+    resolver: () => resolver,
+    routed: {
+      async sendToSpot() {},
+      async requestToSpot() {
+        throw internal.createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RouteNotConnected,
+          'MeshNode request failed with result 109.'
+        );
+      }
+    },
+    meshNames: () => [],
+    meshNode: () => undefined,
+    completions: () => undefined,
+    defaultRequestTimeoutMs: 1_000
+  });
+
+  await assert.rejects(
+    () => addressTransport.requestToSpotAddress('spot-1', new Lookup(), {
+      instanceSpot: false
+    }),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ShuttingDown
+  );
+  assert.equal(invalidated, 1);
 });

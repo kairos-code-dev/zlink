@@ -340,13 +340,10 @@ class MailboxQueue<T> {
 }
 
 function retainRecord(record: ServiceMailboxRecord): ServiceMailboxRecord {
-  return {
-    ...record,
-    ...(record.sourceRoute === undefined
-      ? {}
-      : { sourceRoute: Buffer.from(record.sourceRoute) }),
-    parts: record.parts.map(part => Buffer.from(part))
-  };
+  // Raw binding ingress already transfers owned Buffer values to the
+  // framework. Moving the record between mailbox queues must not create a
+  // second representation of the same payload.
+  return record;
 }
 
 function retainedBytes(record: ServiceMailboxRecord): number {

@@ -1672,6 +1672,7 @@ internal readonly record struct ZLinkActorMessageFollowRoute(
 internal sealed class ZLinkActorMessageFollowLease(TimeProvider timeProvider)
 {
     private readonly object _gate = new();
+    private int _messageFollowNoticeClaimed;
     private ZLinkActorMessageFollowLeasePhase _phase;
     private long _committedAt;
     private TimeSpan _duration;
@@ -1719,6 +1720,15 @@ internal sealed class ZLinkActorMessageFollowLease(TimeProvider timeProvider)
     {
         lock (_gate) _phase = ZLinkActorMessageFollowLeasePhase.Cancelled;
     }
+
+    internal bool TryClaimMessageFollowNotice() =>
+        Interlocked.CompareExchange(
+            ref _messageFollowNoticeClaimed,
+            1,
+            0) == 0;
+
+    internal void ReleaseMessageFollowNoticeClaim() =>
+        Volatile.Write(ref _messageFollowNoticeClaimed, 0);
 }
 
 internal enum ZLinkActorMessageFollowLeasePhase

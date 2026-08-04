@@ -48,7 +48,6 @@ namespace zlink::framework::detail
 namespace
 {
 
-constexpr auto channel_wait_poll_interval = std::chrono::milliseconds (50);
 constexpr auto default_send_wait_timeout = std::chrono::milliseconds (1000);
 
 const channel_capability_snapshot_t *client_capability (const channel_runtime_state_t &state,
@@ -272,18 +271,6 @@ bool is_channel_readiness_errno (int error) noexcept
            || error == ENOTCONN || error == EAGAIN;
 }
 
-void sleep_until_next_readiness_poll (std::chrono::steady_clock::time_point deadline)
-{
-    if (deadline == std::chrono::steady_clock::time_point::max ()) {
-        std::this_thread::sleep_for (channel_wait_poll_interval);
-        return;
-    }
-    const auto remaining = remaining_submit_timeout (deadline);
-    if (remaining > std::chrono::milliseconds::zero ()) {
-        std::this_thread::sleep_for (std::min (channel_wait_poll_interval, remaining));
-    }
-}
-
 std::chrono::milliseconds
 resolve_channel_wait_timeout (const std::shared_ptr<channel_runtime_state_t> &state,
                               const std::string &channel_name,
@@ -354,7 +341,7 @@ class channel_native_client_t
                 }
                 const auto current = endpoints ();
                 if (current.endpoints.empty ()) {
-                    sleep_until_next_readiness_poll (deadline);
+                    wait_for_readiness (deadline);
                     continue;
                 }
                 auto completion = std::make_shared<request_completion_t> ();
@@ -388,16 +375,11 @@ class channel_native_client_t
                           "channel native request submit failed");
                     }
                 }
-                while (!completion->is_completed ()) {
+                if (!wait_for_completion (completion, deadline)) {
                     if (_closed.load (std::memory_order_acquire)) {
                         return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::shutdown, "channel native client is closed");
                     }
-                    if (submit_deadline_expired (deadline)) {
-                        return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, "channel request timed out");
-                    }
-                    pump_request_progress (completion->transport);
-                    completion->wait_for (
-                      std::min (channel_wait_poll_interval, remaining_submit_timeout (deadline)));
+                    return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, "channel request timed out");
                 }
                 if (completion->result != zlink::request_result_t::ok) {
                     if (completion->result == zlink::request_result_t::timed_out) {
@@ -414,7 +396,7 @@ class channel_native_client_t
                     if (submit_deadline_expired (deadline)) {
                         return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, "channel request timed out");
                     }
-                    sleep_until_next_readiness_poll (deadline);
+                    wait_for_readiness (deadline);
                     continue;
                 }
                 const auto mapped = map_native_request_exception (error);
@@ -492,6 +474,7 @@ class channel_native_client_t
     {
         runtime::messaging::shutdown_submit_owner (this);
         const bool was_closed = _closed.exchange (true, std::memory_order_acq_rel);
+        notify_readiness_changed ();
         if (was_closed) {
             return;
         }
@@ -518,7 +501,7 @@ class channel_native_client_t
                                             | zlink::monitor_event::connection_ready
                                             | zlink::monitor_event::disconnected);
             poller.add (*socket, zlink::poll_event_flag_t::pollcompletion, 1);
-            poller.add (monitor, zlink::poll_event_flag_t::pollin, 2);
+            monitor_poller.add (monitor, zlink::poll_event_flag_t::pollin, 1);
         }
 
         ~transport_t () { close_noexcept (); }
@@ -528,6 +511,11 @@ class channel_native_client_t
             if (socket) {
                 try {
                     poller.close ();
+                }
+                catch (...) {
+                }
+                try {
+                    monitor_poller.close ();
                 }
                 catch (...) {
                 }
@@ -557,6 +545,7 @@ class channel_native_client_t
         std::unique_ptr<zlink::dealer_socket_t> socket;
         zlink::socket_monitor_t monitor;
         zlink::poller_t poller;
+        zlink::poller_t monitor_poller;
         std::set<std::string> connected;
         std::uint64_t connection_version = 0;
         std::mutex mutex;
@@ -571,20 +560,104 @@ class channel_native_client_t
         std::vector<zlink::message_t> reply;
         std::shared_ptr<transport_t> transport;
 
-        bool is_completed ()
-        {
-            std::lock_guard lock (mutex);
-            return completed;
-        }
+    };
 
-        void wait_for (std::chrono::milliseconds timeout)
-        {
-            std::unique_lock lock (mutex);
-            if (!completed) {
-                cv.wait_for (lock, timeout);
+    static std::chrono::milliseconds poll_timeout (
+      std::chrono::steady_clock::time_point deadline)
+    {
+        if (deadline == std::chrono::steady_clock::time_point::max ()) {
+            return std::chrono::milliseconds::max ();
+        }
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline) {
+            return std::chrono::milliseconds::zero ();
+        }
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+        return remaining > std::chrono::milliseconds::zero ()
+                 ? remaining
+                 : std::chrono::milliseconds (1);
+    }
+
+    bool wait_for_completion (const std::shared_ptr<request_completion_t> &completion,
+                              std::chrono::steady_clock::time_point deadline)
+    {
+        for (;;) {
+            {
+                std::lock_guard completion_lock (completion->mutex);
+                if (completion->completed) {
+                    return true;
+                }
+            }
+            if (_closed.load (std::memory_order_acquire)
+                || submit_deadline_expired (deadline)) {
+                return false;
+            }
+            const auto transport = completion->transport;
+            if (!transport || !transport->poller.valid ()) {
+                return false;
+            }
+            zlink::poll_event_t readiness;
+            std::size_t ready = 0;
+            try {
+                std::lock_guard transport_lock (transport->mutex);
+                ready = transport->poller.wait (&readiness, 1, poll_timeout (deadline));
+            }
+            catch (...) {
+                return false;
+            }
+            if (ready == 0) {
+                return false;
             }
         }
-    };
+    }
+
+    void wait_for_readiness (std::chrono::steady_clock::time_point deadline)
+    {
+        std::shared_ptr<transport_t> transport;
+        {
+            std::lock_guard lock (_mutex);
+            transport = _transport;
+        }
+        if (transport && transport->monitor_poller.valid ()) {
+            zlink::poll_event_t readiness;
+            try {
+                std::lock_guard transport_lock (transport->mutex);
+                if (transport->monitor_poller.wait (
+                      &readiness, 1, poll_timeout (deadline)) == 1
+                    && readiness.slot == 1
+                    && (static_cast<short> (readiness.revents)
+                        & static_cast<short> (zlink::poll_event_flag_t::pollin))
+                         != 0) {
+                    drain_monitor_events_locked (*transport, true);
+                }
+            }
+            catch (...) {
+            }
+            return;
+        }
+        std::unique_lock lock (_readiness_mutex);
+        const auto generation = _readiness_generation;
+        const auto closed = [this] {
+            return _closed.load (std::memory_order_acquire);
+        };
+        const auto changed = [this, generation, &closed] {
+            return closed () || _readiness_generation != generation;
+        };
+        if (deadline == std::chrono::steady_clock::time_point::max ()) {
+            _readiness_changed.wait (lock, changed);
+        } else {
+            _readiness_changed.wait_until (lock, deadline, changed);
+        }
+    }
+
+    void notify_readiness_changed ()
+    {
+        {
+            std::lock_guard lock (_readiness_mutex);
+            ++_readiness_generation;
+        }
+        _readiness_changed.notify_all ();
+    }
 
     std::shared_ptr<transport_t> sync_connections (const channel_endpoint_snapshot_t &snapshot)
     {
@@ -637,10 +710,10 @@ class channel_native_client_t
             if (!monitor_ready) {
                 zlink::poll_event_t readiness;
                 try {
-                    if (transport.poller.wait (
+                    if (transport.monitor_poller.wait (
                           &readiness, 1, std::chrono::milliseconds::zero ())
                           != 1
-                        || readiness.slot != 2
+                        || readiness.slot != 1
                         || (static_cast<short> (readiness.revents)
                             & static_cast<short> (zlink::poll_event_flag_t::pollin))
                              == 0) {
@@ -667,31 +740,7 @@ class channel_native_client_t
                 _runtime.publish_socket_event (
                   _channel_name, *kind, event->local_addr, event->remote_addr);
             }
-        }
-    }
-
-    void pump_request_progress (const std::shared_ptr<transport_t> &transport)
-    {
-        if (!transport || !transport->socket) {
-            return;
-        }
-        std::lock_guard transport_lock (transport->mutex);
-        zlink::poll_event_t event;
-        try {
-            if (transport->poller.wait (
-                  &event, 1, std::chrono::milliseconds::zero ())
-                != 1) {
-                return;
-            }
-        }
-        catch (...) {
-            return;
-        }
-        if (event.slot == 2
-            && (static_cast<short> (event.revents)
-                & static_cast<short> (zlink::poll_event_flag_t::pollin))
-                 != 0) {
-            drain_monitor_events_locked (*transport, true);
+            notify_readiness_changed ();
         }
     }
 
@@ -704,6 +753,7 @@ class channel_native_client_t
     {
         auto transport = std::make_shared<transport_t> (_client);
         transport->socket->set_send_ready_handler ([this] {
+            notify_readiness_changed ();
             runtime::messaging::notify_submit_ready ("channel:" + _channel_name, this);
         });
         return transport;
@@ -715,6 +765,9 @@ class channel_native_client_t
     std::shared_ptr<transport_t> _transport;
     std::mutex _operation_mutex;
     std::mutex _mutex;
+    std::mutex _readiness_mutex;
+    std::condition_variable _readiness_changed;
+    std::uint64_t _readiness_generation = 0;
     std::atomic_bool _closed{false};
 };
 
@@ -827,11 +880,18 @@ void close_native_channel_transports (
 {
     std::vector<std::shared_ptr<channel_native_client_t>> clients;
     std::vector<std::shared_ptr<channel_native_publisher_t>> publishers;
+    std::set<channel_native_client_t *> seen_clients;
     {
         std::lock_guard lock (state->mutex);
         for (auto &[_, client] : state->native_clients) {
-            if (client) {
+            if (client && seen_clients.insert (client.get ()).second) {
                 clients.push_back (client);
+            }
+        }
+        for (const auto &weak_client : state->native_request_clients) {
+            if (auto client = weak_client.lock ()
+                ; client && seen_clients.insert (client.get ()).second) {
+                clients.push_back (std::move (client));
             }
         }
         for (auto &[_, publisher] : state->native_publishers) {
@@ -840,6 +900,7 @@ void close_native_channel_transports (
             }
         }
         state->native_clients.clear ();
+        state->native_request_clients.clear ();
         state->native_publishers.clear ();
     }
     for (auto &client : clients) {
@@ -1027,12 +1088,26 @@ channel_outbound_exchange_t::submit_request (std::string channel_name,
             std::shared_ptr<channel_native_client_t> native_client;
             {
                 std::lock_guard lock (_state->mutex);
-                auto &slot = _state->native_clients[channel_name];
-                if (!slot) {
-                    slot = std::make_shared<channel_native_client_t> (channel_name, *client,
-                                                                      runtime);
+                if (!channel_runtime_accepts_outbound_locked (*_state)) {
+                    (void) runtime.cancel_outbound_request (reservation.value ());
+                    return message_bus_t::erased_request_result_t (
+                      detail::make_boundary_exception (
+                        channel_runtime_outbound_error_state_locked (*_state),
+                        channel_runtime_outbound_error_message_locked (*_state)));
                 }
-                native_client = slot;
+                _state->native_request_clients.erase (
+                  std::remove_if (
+                    _state->native_request_clients.begin (),
+                    _state->native_request_clients.end (),
+                    [] (const auto &weak_client) { return weak_client.expired (); }),
+                  _state->native_request_clients.end ());
+                native_client = std::make_shared<channel_native_client_t> (
+                  channel_name, *client, runtime);
+                _state->native_request_clients.emplace_back (native_client);
+                auto &send_client = _state->native_clients[channel_name];
+                if (!send_client) {
+                    send_client = native_client;
+                }
             }
             auto endpoints = make_client_endpoint_provider (_state, channel_name);
 

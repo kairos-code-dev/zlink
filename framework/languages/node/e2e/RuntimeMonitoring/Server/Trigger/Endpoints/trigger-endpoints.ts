@@ -1,23 +1,17 @@
 import net from 'node:net';
 import fs from 'node:fs';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { ProfileReq, type EvidenceWaitReq, type ProfileRes } from '../../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../../Shared/messages';
 import type { TriggerOptions } from '../Configuration/trigger-options';
 import type { HttpRoute } from '../Support/http-server';
 import type { EvidenceStore } from '../../Service/Infrastructure/evidence-store';
-import {
-  verifyDuplicateSocketSource,
-  verifyMissingSocketSource,
-  verifyMissingLocationStore,
-  verifyPollingInterval
-} from '../Support/trigger-validation';
 
 export function createTriggerEndpoints(
   options: TriggerOptions,
-  channel: ZLinkChannelClient,
+  channel: ZLinkRouteClient,
   evidence: EvidenceStore,
-  requestWithTransientHost: (request: ProfileReq, endpoint?: string) => Promise<ProfileRes>,
+  requestWithTransientHost: (request: ProfileReq, endpoint?: string, channelName?: string) => Promise<ProfileRes>,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -50,16 +44,12 @@ export function createTriggerEndpoints(
     {
       method: 'POST',
       path: '/profile/request/throw',
-      handle: (body) => requestWithTransientHost(toProfileReq(body), options.throwChannelEndpoint)
+      handle: (body) => requestWithTransientHost(toProfileReq(body), options.throwChannelEndpoint, RuntimeMonitoringNames.throwChannel)
     },
     { method: 'POST', path: '/socket/handshake-failure', handle: async () => {
       await sendInvalidHandshake(options.serviceChannelEndpoint);
       return { triggered: true };
     } },
-    { method: 'POST', path: '/validation/registration/duplicate-source', handle: () => verifyDuplicateSocketSource() },
-    { method: 'POST', path: '/validation/registration/interval', handle: () => verifyPollingInterval() },
-    { method: 'POST', path: '/validation/registration/missing-location-store', handle: () => verifyMissingLocationStore() },
-    { method: 'POST', path: '/validation/registration/missing-socket', handle: () => verifyMissingSocketSource() },
     { method: 'GET', path: '/logs/throw-stderr', handle: () => readLines(`${options.logDir}/svc-throw.stderr.log`) },
     {
       method: 'POST',
@@ -75,9 +65,13 @@ function toProfileReq(body: unknown): ProfileReq {
   return new ProfileReq(request.value, request.marker);
 }
 
-export async function requestProfile(channel: ZLinkChannelClient, request: ProfileReq): Promise<ProfileRes> {
+export async function requestProfile(
+  channel: ZLinkRouteClient,
+  request: ProfileReq,
+  channelName: string = RuntimeMonitoringNames.channel
+): Promise<ProfileRes> {
   return await channel
-    .requestToChannel(RuntimeMonitoringNames.channel, request)
+    .requestToChannel(channelName, request)
     .timeout(10000)
     .submit<ProfileRes>();
 }

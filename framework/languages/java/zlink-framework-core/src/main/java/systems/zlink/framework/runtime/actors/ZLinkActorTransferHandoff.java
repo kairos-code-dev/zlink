@@ -13,9 +13,11 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.internal.spots.SpotTransportAddress;
 
@@ -130,9 +132,31 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         SpotTransportAddress targetAddress,
         Duration duration,
         Consumer<MessageFollowSource> removal) {
+        retain(
+            actorId,
+            sourceActorRef,
+            targetActorRef,
+            targetAddress,
+            null,
+            duration,
+            removal);
+    }
+
+    synchronized void retain(
+        String actorId,
+        ZLinkBackendActorRef sourceActorRef,
+        ZLinkBackendActorRef targetActorRef,
+        SpotTransportAddress targetAddress,
+        ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute,
+        Duration duration,
+        Consumer<MessageFollowSource> removal) {
         requireOpen();
+        if (targetAddress != null && targetRoute == null) {
+            throw new IllegalArgumentException(
+                "targetRoute is required when a Message Follow target address is set");
+        }
         MessageFollowSource source = new MessageFollowSource(
-            sourceActorRef, targetActorRef, targetAddress,
+            sourceActorRef, targetActorRef, targetAddress, targetRoute,
             messageFollowToken.incrementAndGet());
         messageFollowSources.put(actorId, source);
         Retention retained = new Retention(actorId, source, removal);
@@ -176,6 +200,16 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         long objectGeneration,
         long payloadBytes,
         java.util.function.Supplier<CompletionStage<T>> submission) {
+        return followWithQueueSnapshot(
+                actorId, objectGeneration, payloadBytes, submission)
+            .thenApply(FollowResult::value);
+    }
+
+    <T> CompletionStage<FollowResult<T>> followWithQueueSnapshot(
+        String actorId,
+        long objectGeneration,
+        long payloadBytes,
+        java.util.function.Supplier<CompletionStage<T>> submission) {
         MessageFollowSource source = messageFollowSources.get(actorId);
         if (source == null
             || source.sourceActorRef().generation() != objectGeneration
@@ -189,6 +223,7 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
                 new IllegalStateException(
                     "committed Message Follow route queue exceeds 1024 messages or 16 MiB"));
         }
+        MessageFollowQueueSnapshot queueSnapshot = source.queueSnapshot();
         CompletionStage<T> submitted;
         try {
             submitted = java.util.Objects.requireNonNull(
@@ -197,8 +232,9 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
             source.release(payloadBytes);
             return java.util.concurrent.CompletableFuture.failedFuture(failure);
         }
-        return submitted.whenComplete(
-            (ignored, failure) -> source.release(payloadBytes));
+        return submitted
+            .thenApply(value -> new FollowResult<>(value, queueSnapshot))
+            .whenComplete((ignored, failure) -> source.release(payloadBytes));
     }
 
     @Override
@@ -277,7 +313,10 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
         private final ZLinkBackendActorRef sourceActorRef;
         private final ZLinkBackendActorRef targetActorRef;
         private final SpotTransportAddress targetAddress;
+        private final ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute;
         private final long token;
+        private final AtomicBoolean messageFollowNoticeClaimed =
+            new AtomicBoolean();
         private int pendingMessages;
         private long pendingBytes;
 
@@ -285,19 +324,36 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
             ZLinkBackendActorRef sourceActorRef,
             ZLinkBackendActorRef targetActorRef,
             SpotTransportAddress targetAddress,
+            ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute,
             long token) {
             this.sourceActorRef = java.util.Objects.requireNonNull(
                 sourceActorRef, "sourceActorRef");
             this.targetActorRef = java.util.Objects.requireNonNull(
                 targetActorRef, "targetActorRef");
             this.targetAddress = targetAddress;
+            this.targetRoute = targetRoute;
             this.token = token;
         }
 
         ZLinkBackendActorRef sourceActorRef() { return sourceActorRef; }
         ZLinkBackendActorRef targetActorRef() { return targetActorRef; }
         SpotTransportAddress targetAddress() { return targetAddress; }
+        ZLinkServiceMessageFollowWireCodec.ActorRoute targetRoute() {
+            return targetRoute;
+        }
         long token() { return token; }
+
+        boolean tryClaimMessageFollowNotice() {
+            return messageFollowNoticeClaimed.compareAndSet(false, true);
+        }
+
+        boolean messageFollowNoticeClaimed() {
+            return messageFollowNoticeClaimed.get();
+        }
+
+        void releaseMessageFollowNoticeClaim() {
+            messageFollowNoticeClaimed.set(false);
+        }
 
         private synchronized boolean tryAcquire(long bytes) {
             if (bytes < 0 || bytes > MAX_MESSAGE_FOLLOW_BYTES
@@ -317,5 +373,15 @@ final class ZLinkActorTransferHandoff implements AutoCloseable {
 
         synchronized int pendingMessages() { return pendingMessages; }
         synchronized long pendingBytes() { return pendingBytes; }
+
+        synchronized MessageFollowQueueSnapshot queueSnapshot() {
+            return new MessageFollowQueueSnapshot(pendingMessages, pendingBytes);
+        }
+    }
+
+    record MessageFollowQueueSnapshot(int messages, long bytes) {
+    }
+
+    record FollowResult<T>(T value, MessageFollowQueueSnapshot queue) {
     }
 }

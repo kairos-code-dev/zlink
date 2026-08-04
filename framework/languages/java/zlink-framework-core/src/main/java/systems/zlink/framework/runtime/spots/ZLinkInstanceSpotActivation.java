@@ -53,7 +53,11 @@ final class ZLinkInstanceSpotActivation
             || info.event() != ZLinkBackendSpotDispatchEvent.ROUTED_READABLE) {
             return CompletableFuture.completedFuture(null);
         }
-        CompletionStage<Void> dispatch = context.enqueueDispatch(this::drainRoutes);
+        // The route drain only reads frames and submits each payload after its
+        // header has been admitted. Wrapping the whole drain in the same
+        // queue would make the payload admission wait behind its own active
+        // turn.
+        CompletionStage<Void> dispatch = drainRoutes();
         return dispatch.whenComplete((ignored, failure) -> {
             if (failure == null) {
                 lastActivityNanos = System.nanoTime();
@@ -205,6 +209,14 @@ final class ZLinkInstanceSpotActivation
         CompletionStage<Void> tail,
         Supplier<CompletionStage<Void>> operation) {
         return tail.thenCompose(ignored -> operation.get());
+    }
+
+    @Override
+    CompletionStage<Void> appendSpotHandler(
+        CompletionStage<Void> tail,
+        long payloadBytes,
+        Supplier<CompletionStage<Void>> operation) {
+        return tail.thenCompose(ignored -> context.enqueueDispatch(payloadBytes, operation));
     }
 
     @Override

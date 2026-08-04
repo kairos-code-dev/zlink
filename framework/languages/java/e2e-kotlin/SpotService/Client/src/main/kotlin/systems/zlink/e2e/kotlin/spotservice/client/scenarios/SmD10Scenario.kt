@@ -16,11 +16,11 @@ internal object SmD10Scenario {
         val congestedActorId = "actor-sm-d10-congested"
         val isolatedActorId = "actor-sm-d10-isolated"
         val congested = createStreamConnector(
-            Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"),
+            Env.get("e2e.stream.a.endpoint"),
             ZLinkStreamDispatchMode.MANUAL,
             1,
         )
-        val isolated = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_B_ENDPOINT"))
+        val isolated = createStreamConnector(Env.get("e2e.stream.b.endpoint"))
         try {
             val congestedProfile = Contracts.ActorProfile("Backpressure", 10, listOf("congested"))
             val isolatedProfile = Contracts.ActorProfile("Backpressure Peer", 10, listOf("isolated"))

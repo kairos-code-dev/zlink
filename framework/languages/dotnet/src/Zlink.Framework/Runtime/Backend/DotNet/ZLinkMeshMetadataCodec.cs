@@ -81,6 +81,34 @@ internal static class ZLinkMeshMetadataCodec
         return buffer;
     }
 
+    internal static int MeasureEncodedLength(ZLinkMessageMetadata? metadata)
+    {
+        var values = metadata?.Values;
+        if (values is null || values.Count == 0)
+            return 0;
+        if (values.Count > MaxEntries)
+            throw new ArgumentException(
+                $"Application metadata may carry at most {MaxEntries} entries, but {values.Count} were provided.",
+                nameof(metadata));
+
+        var totalSize = 2;
+        foreach (var (key, value) in values)
+        {
+            ValidateKey(key);
+            ValidateValue(key, value);
+            totalSize = checked(totalSize
+                + 1
+                + Encoding.UTF8.GetByteCount(key)
+                + 2
+                + Encoding.UTF8.GetByteCount(value));
+            if (totalSize > MaxEncodedSize)
+                throw new ArgumentException(
+                    $"Encoded application metadata exceeds the {MaxEncodedSize}-byte limit.",
+                    nameof(metadata));
+        }
+        return totalSize;
+    }
+
     // Decodes a received metadata frame into an immutable handler-facing view.
     // Returns true and the decoded snapshot for a well-formed frame (including
     // the empty/absent frame, which yields ZLinkMessageMetadata.Empty). Returns

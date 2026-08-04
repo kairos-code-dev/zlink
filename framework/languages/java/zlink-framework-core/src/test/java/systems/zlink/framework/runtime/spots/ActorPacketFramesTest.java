@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,6 +61,33 @@ final class ActorPacketFramesTest {
             assertEquals(Map.of(), decoded.header().metadata());
             assertFalse(decoded.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
             assertEquals("reply", new String(decoded.body(), StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void streamActorErrorUsesTheCommonJsonEnvelope() {
+        ZLinkStreamHeader request = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "ActorReq",
+            Map.of());
+        try (Message headerPart = Message.from(ZLinkStreamHeaderCodec.encode(request));
+             Message frame = ActorPacketFrames.encodeError(
+                 ActorPacketFrames.decode(actorReceived(headerPart)),
+                 new IllegalStateException("handler failed"))) {
+            DecodedFrame decoded = decodeFrame(frame);
+
+            assertEquals(ZLinkStreamMessageKind.ERROR, decoded.header().kind());
+            assertEquals(ZLinkStreamCodec.JSON, decoded.header().codec());
+            try {
+                var json = new ObjectMapper().readTree(decoded.body());
+                assertEquals("IllegalStateException", json.get("code").asText());
+                assertEquals("handler failed", json.get("message").asText());
+            } catch (java.io.IOException failure) {
+                throw new AssertionError("error payload is not JSON", failure);
+            }
         }
     }
 

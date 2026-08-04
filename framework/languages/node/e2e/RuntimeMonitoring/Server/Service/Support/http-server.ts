@@ -18,10 +18,10 @@ export async function startHttpServer(endpoint: string, routes: readonly HttpRou
     try {
       const body = request.method === 'GET' ? undefined : await readJson(request);
       const payload = JSON.stringify(await route.handle(body));
-      response.writeHead(200, { 'content-type': 'application/json' });
+      response.writeHead(200, { 'content-type': 'application/json', connection: 'close' });
       response.end(payload);
     } catch (error) {
-      response.writeHead(500, { 'content-type': 'application/json' });
+      response.writeHead(500, { 'content-type': 'application/json', connection: 'close' });
       response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
     }
   });

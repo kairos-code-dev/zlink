@@ -20,10 +20,20 @@ internal sealed class ZLinkObservedLocationGenerations
     private readonly Observed<ZLinkActorLocationKey> _actors = new();
 
     internal bool AcceptDescriptor(ZLinkMeshNodeDescriptor row) =>
-        _meshNodes.Accept(
+        AcceptDescriptor(row, out _);
+
+    internal bool AcceptDescriptor(
+        ZLinkMeshNodeDescriptor row,
+        out bool rejectedByOlderRevision)
+    {
+        var result = _meshNodes.Accept(
             new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid),
             row.OwnerId,
             new ObservedVersion(row.LifecycleGeneration, row.DescriptorRevision));
+        rejectedByOlderRevision =
+            result == DescriptorAcceptance.RejectedByOlderRevision;
+        return result == DescriptorAcceptance.Accepted;
+    }
 
     internal void ObserveDescriptor(ZLinkMeshNodeDescriptor row) =>
         _meshNodes.Observe(
@@ -94,6 +104,13 @@ internal sealed class ZLinkObservedLocationGenerations
         }
     }
 
+    private enum DescriptorAcceptance
+    {
+        Accepted,
+        RejectedByOlderRevision,
+        RejectedRetiredOwner
+    }
+
     /// <summary>
     /// MeshNode generation is monotonic only inside one descriptor owner
     /// incarnation. A successful store takeover replaces OwnerId atomically
@@ -106,7 +123,7 @@ internal sealed class ZLinkObservedLocationGenerations
         private readonly object _gate = new();
         private readonly Dictionary<ZLinkMeshNodeDescriptorKey, DescriptorObservation> _observed = [];
 
-        internal bool Accept(
+        internal DescriptorAcceptance Accept(
             ZLinkMeshNodeDescriptorKey key,
             string ownerId,
             ObservedVersion version)
@@ -116,22 +133,24 @@ internal sealed class ZLinkObservedLocationGenerations
                 if (!_observed.TryGetValue(key, out var observed))
                 {
                     _observed[key] = new DescriptorObservation(ownerId, version, []);
-                    return true;
+                    return DescriptorAcceptance.Accepted;
                 }
 
                 if (string.Equals(observed.OwnerId, ownerId, StringComparison.Ordinal))
                 {
-                    if (version.CompareTo(observed.Version) < 0) return false;
+                    if (version.CompareTo(observed.Version) < 0)
+                        return DescriptorAcceptance.RejectedByOlderRevision;
                     _observed[key] = observed with { Version = version };
-                    return true;
+                    return DescriptorAcceptance.Accepted;
                 }
 
-                if (observed.RetiredOwners.Contains(ownerId)) return false;
+                if (observed.RetiredOwners.Contains(ownerId))
+                    return DescriptorAcceptance.RejectedRetiredOwner;
 
                 observed.RetiredOwners.Add(observed.OwnerId);
                 _observed[key] = new DescriptorObservation(
                     ownerId, version, observed.RetiredOwners);
-                return true;
+                return DescriptorAcceptance.Accepted;
             }
         }
 

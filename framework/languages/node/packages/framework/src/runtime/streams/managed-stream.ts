@@ -1,4 +1,8 @@
-import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException,
+  internalFrameworkErrorKind
+} from '../framework-errors-internal';
 import type {
   ActorRef,
   RoutingId,
@@ -6,6 +10,7 @@ import type {
   ZLinkMessageSerializer,
   ZLinkStream
 } from '../../contracts';
+import { ZLinkFrameworkException } from '../../contracts';
 import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
@@ -18,7 +23,7 @@ import type {
   ZLinkBackendSendFlags,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
-import { Message as NativeMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as NativeMessage } from '../backend/runtime-message';
 import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
   closeMeshCompletion,
@@ -132,14 +137,16 @@ export class ZLinkManagedStream implements ZLinkStream {
       await this.submitter.submitCommand(attempt, signal);
       return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
-      if (error instanceof Error && /timed out/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.TimedOut };
-      }
-      if (error instanceof Error && /queue is full/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.Backpressured };
-      }
-      if (error instanceof Error && /disposed|shutdown|terminated/i.test(error.message)) {
-        return { status: ZLinkSubmitStatus.Shutdown };
+      if (error instanceof ZLinkFrameworkException) {
+        switch (internalFrameworkErrorKind(error)) {
+          case ZLinkFrameworkInternalErrorKind.DeadlineExceeded:
+          case ZLinkFrameworkInternalErrorKind.WorkerTimedOut:
+            return { status: ZLinkSubmitStatus.TimedOut };
+          case ZLinkFrameworkInternalErrorKind.WorkerQueueFull:
+            return { status: ZLinkSubmitStatus.Backpressured };
+          case ZLinkFrameworkInternalErrorKind.RuntimeShutdown:
+            return { status: ZLinkSubmitStatus.Shutdown };
+        }
       }
       throw error;
     }

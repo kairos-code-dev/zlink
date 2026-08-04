@@ -1,6 +1,4 @@
-import {
-  Message
-} from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as Message } from './runtime-message';
 import type {
   MeshOperationId,
   ReceiveKindData,

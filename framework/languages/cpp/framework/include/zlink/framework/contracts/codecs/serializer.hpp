@@ -129,14 +129,15 @@ template <typename T> class serializer_t
     using deserialize_fn_t = std::function<T (const encoded_payload_t &)>;
 
     serializer_t (serialize_fn_t serialize, deserialize_fn_t deserialize) :
-        _serialize (std::move (serialize)), _deserialize (std::move (deserialize))
+        _state (std::make_shared<const state_t> (
+          state_t{std::move (serialize), std::move (deserialize)}))
     {
     }
 
     encoded_payload_t serialize (const T &value) const
     {
         try {
-            return _serialize (value);
+            return _state->serialize (value);
         }
         catch (const framework_exception_t &) {
             throw;
@@ -152,7 +153,7 @@ template <typename T> class serializer_t
     T deserialize (const encoded_payload_t &payload) const
     {
         try {
-            return _deserialize (payload);
+            return _state->deserialize (payload);
         }
         catch (const framework_exception_t &) {
             throw;
@@ -166,8 +167,13 @@ template <typename T> class serializer_t
     }
 
   private:
-    serialize_fn_t _serialize;
-    deserialize_fn_t _deserialize;
+    struct state_t
+    {
+        serialize_fn_t serialize;
+        deserialize_fn_t deserialize;
+    };
+
+    std::shared_ptr<const state_t> _state;
 };
 
 class serializer_registry_t
@@ -206,7 +212,13 @@ class serializer_registry_t
     /// with nlohmann to_json/from_json, the framework uses the default JSON serializer.
     template <typename T> serializer_t<T> get () const
     {
-        if (!contains (std::type_index (typeid (T)))) {
+        const auto type = std::type_index (typeid (T));
+        if (const auto cached = cached_serializer (type)) {
+            return *std::static_pointer_cast<const serializer_t<T>> (cached);
+        }
+
+        serializer_t<T> selected = [&] {
+            if (!contains (type)) {
             if constexpr (detail::is_json_serializer_compatible_v<T>) {
                 return serializer_t<T> (
                   [] (const T &value) {
@@ -225,17 +237,22 @@ class serializer_registry_t
                   [] (const encoded_payload_t &) -> T {
                       throw framework_exception_t (
                         framework_error_kind_t::protocol_error,
-                        "No serializer is registered for this payload type");
+                      "No serializer is registered for this payload type");
                   });
             }
-        }
-        return serializer_t<T> (
-          [this] (const T &value) { return serialize (std::type_index (typeid (T)), &value); },
-          [this] (const encoded_payload_t &payload) {
-              T value{};
-              deserialize (std::type_index (typeid (T)), payload, &value);
-              return value;
-          });
+            }
+            return serializer_t<T> (
+              [this, type] (const T &value) { return serialize (type, &value); },
+              [this, type] (const encoded_payload_t &payload) {
+                  T value{};
+                  deserialize (type, payload, &value);
+                  return value;
+              });
+        } ();
+        auto candidate = std::make_shared<const serializer_t<T>> (
+          std::move (selected));
+        const auto resolved = cache_serializer (type, candidate);
+        return *std::static_pointer_cast<const serializer_t<T>> (resolved);
     }
 
     encoded_payload_t serialize (std::type_index type, const void *value) const;
@@ -244,6 +261,13 @@ class serializer_registry_t
     std::string content_type (std::type_index type) const;
 
   private:
+    std::shared_ptr<const void>
+    cached_serializer (std::type_index type) const noexcept;
+    std::shared_ptr<const void>
+    cache_serializer (std::type_index type,
+                      std::shared_ptr<const void> serializer) const;
+    void invalidate_cached_serializer (std::type_index type) noexcept;
+
     serializer_registry_t &add_erased (std::type_index type,
                                        serialize_any_fn_t serialize,
                                        deserialize_any_fn_t deserialize,

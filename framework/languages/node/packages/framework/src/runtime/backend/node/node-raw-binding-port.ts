@@ -22,6 +22,8 @@ import {
   type SendSubmitOperation,
   type Socket
 } from '@zlink-systems/zlink';
+import { isPollerInterruptedError } from './node-backend-adapter-support';
+import { isEndpointCloseIgnorableError } from './node-socket-backend-adapter';
 
 export interface ZLinkRawReceivedRecord {
   readonly sourceRid: string;
@@ -232,6 +234,7 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
         if (kind === 'bind') this.socket.unbind(endpoint);
         else connectable(this.socket).disconnect(endpoint);
       } catch (error) {
+        if (isEndpointCloseIgnorableError(error)) continue;
         failures.push(error);
       }
     }
@@ -258,6 +261,7 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
     }
     this.closed = true;
     if (failures.length > 0) {
+      console.error('Raw socket cleanup causes:', failures);
       throw new AggregateError(failures, 'Raw socket cleanup failed.');
     }
   }
@@ -268,11 +272,16 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
 
   protected receiveRecord(dontWait: boolean): ZLinkRawReceivedRecord | undefined {
     const timeoutMs = dontWait ? 0 : -1;
-    if (
-      this.readablePoller.wait(this.readableEvents, timeoutMs) <= 0
-      || !this.readableEvents.hasEvent(0, PollEventFlag.PollIn)
-    ) {
-      return undefined;
+    try {
+      if (
+        this.readablePoller.wait(this.readableEvents, timeoutMs) <= 0
+        || !this.readableEvents.hasEvent(0, PollEventFlag.PollIn)
+      ) {
+        return undefined;
+      }
+    } catch (error) {
+      if (isPollerInterruptedError(error)) return undefined;
+      throw error;
     }
     return receiveRecord(this.socket as never, true);
   }
@@ -376,7 +385,12 @@ class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLink
 
   progressCompletion(): number {
     this.requireOpen();
-    return this.completionPoller.wait(this.completionEvents, 0);
+    try {
+      return this.completionPoller.wait(this.completionEvents, 0);
+    } catch (error) {
+      if (isPollerInterruptedError(error)) return 0;
+      throw error;
+    }
   }
 
   override close(): void {

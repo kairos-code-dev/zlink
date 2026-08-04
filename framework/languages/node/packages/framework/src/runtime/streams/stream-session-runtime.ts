@@ -300,12 +300,20 @@ export class ZLinkStreamSessionRuntime {
             }
           }
         },
-        () => {
+        (error?: unknown) => {
           payload.close();
           this.options.inboundDispatchBudget?.cancelQueued(payloadBytes);
           dispatchClaim?.close();
+          if (error !== undefined) {
+            void this.replyDispatchError(decodedHeader, error).catch((replyError) => {
+              this.options.onError?.(replyError);
+            });
+          }
         },
-        dispatchClaim
+        dispatchClaim,
+        Number(payloadBytes > BigInt(Number.MAX_SAFE_INTEGER)
+          ? BigInt(Number.MAX_SAFE_INTEGER)
+          : payloadBytes)
       );
     } catch (error) {
       if (budgetEnqueued) {
@@ -637,35 +645,40 @@ export class ZLinkStreamSessionRuntime {
   }
 
   private enqueue(work: () => Promise<void>, onRejected?: () => void): void {
-    if (!this.serial.enqueue(work)) {
+    if (!this.serial.enqueue(work, 'lifecycle', {}, onRejected)) {
       onRejected?.();
     }
   }
 
   private enqueueApplication(
     work: () => Promise<void>,
-    onRejected?: () => void,
-    dispatchClaim?: ZLinkApplicationWorkClaim
+    onRejected?: (error?: unknown) => void,
+    dispatchClaim?: ZLinkApplicationWorkClaim,
+    payloadBytes = 0
   ): void {
     let claim: ZLinkApplicationWorkClaim | undefined;
     try {
       claim = this.options.claimApplicationWork?.();
-    } catch {
-      onRejected?.();
+    } catch (error) {
+      onRejected?.(error);
       return;
     }
-    this.enqueue(async () => {
+    if (!this.serial.enqueue(async () => {
       try {
         await work();
       } finally {
         claim?.close();
         dispatchClaim?.close();
       }
-    }, () => {
+    }, 'application', { payloadBytes }, () => {
       claim?.close();
       dispatchClaim?.close();
       onRejected?.();
-    });
+    })) {
+      claim?.close();
+      dispatchClaim?.close();
+      onRejected?.();
+    }
   }
 
   private pauseLiveness(): void {

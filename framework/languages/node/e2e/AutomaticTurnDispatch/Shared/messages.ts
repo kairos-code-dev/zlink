@@ -2,6 +2,7 @@ export const AutomaticTurnDispatchNames = {
   controlChannel: 'await.control',
   delayChannel: 'await.delay',
   spotChannel: 'await.spot',
+  perActorSpotType: 'AwaitProbeSpotPerActor',
   spotRouteChannel: 'await.spot.route',
   streamNode: 'await.stream',
   actorType: 'await.actor',
@@ -173,6 +174,7 @@ export interface ProbeReq extends ProbeMsg {}
 
 export interface EnsureSpotReq {
   readonly spotId: string;
+  readonly executionMode?: 'spot_wide' | 'per_actor';
 }
 
 export interface EnsureSpotRes {
@@ -230,6 +232,15 @@ export interface ActorFastMsg {
 export interface ActorJoinAwaitReq {
   readonly requestId: string;
   readonly targetSpotId: string;
+}
+
+export interface DeferredJoinFailureMsg {
+  readonly requestId: string;
+  readonly firstActorId: string;
+  readonly secondActorId: string;
+  readonly firstTargetSpotId: string;
+  readonly secondTargetSpotId: string;
+  readonly failureMode: 'exception' | 'cancel';
 }
 
 export interface ActorPushAwaitReq {
@@ -296,4 +307,5 @@ export class ActorAwaitReq {}
 export class ActorFastReq {}
 export class ActorFastMsg {}
 export class ActorJoinAwaitReq {}
+export class DeferredJoinFailureMsg {}
 export class ActorPushAwaitReq {}

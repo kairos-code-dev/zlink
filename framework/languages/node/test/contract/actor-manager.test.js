@@ -7,6 +7,9 @@ const {
   ZLinkSpotNativeActorJoinAdmission
 } = require('../../packages/framework/dist/runtime/spots/spot-native-actor-join-admission');
 const {
+  ZLinkBufferMessage
+} = require('../../packages/framework/dist/runtime/backend/runtime-message');
+const {
   ZLinkActorTransferRuntime
 } = require('../../packages/framework/dist/runtime/host/actor-transfer-runtime');
 const {
@@ -3286,10 +3289,10 @@ const ENTRY_ACTOR_JOIN_READABLE = 6;
 
 test('native actor join admission closes caller-owned reply when submit fails', async () => {
   const requestMessage = zlink.Message.from(Buffer.from('join-request'));
-  const originalClose = zlink.Message.prototype.close;
+  const originalClose = ZLinkBufferMessage.prototype.close;
   let replyMessage;
   let replyCloseCount = 0;
-  zlink.Message.prototype.close = function closeTrackedMessage() {
+  ZLinkBufferMessage.prototype.close = function closeTrackedMessage() {
     if (this === replyMessage) {
       replyCloseCount += 1;
     }
@@ -3338,7 +3341,7 @@ test('native actor join admission closes caller-owned reply when submit fails', 
     assert.notEqual(replyMessage, undefined);
     assert.equal(replyCloseCount, 1);
   } finally {
-    zlink.Message.prototype.close = originalClose;
+    ZLinkBufferMessage.prototype.close = originalClose;
     requestMessage.close();
   }
 });
@@ -3788,7 +3791,7 @@ test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before i
     handlerType: BrokenPayloadHandler
   });
   const dispatch = new ZLinkSpotActorPacketDispatch({
-    spot: {},
+    spot: { context: { meshName: 'play' } },
     spotId: () => 'room-1',
     registry,
     resolveActor: () => actor,
@@ -3820,6 +3823,49 @@ test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before i
   assert.equal(errors.length, 1);
   assert.equal(errors[0].reason, 'decode_error');
   assert.equal(errors[0].action, 'drop');
+});
+
+test('spot actor dispatch rejects a missing handler before payload deserialization', async () => {
+  let deserializeCalls = 0;
+  class PlayerActor {
+    constructor(actorId) {
+      this.actorId = actorId;
+    }
+  }
+  const actor = new PlayerActor('alice');
+  const dispatch = new ZLinkSpotActorPacketDispatch({
+    spot: { context: { meshName: 'play' } },
+    spotId: () => 'room-1',
+    registry: new framework.ZLinkSpotActorHandlerRegistryRuntime(),
+    resolveActor: () => actor,
+    onDisconnectActor: async () => {},
+    messageSerializers: new Map([['application/x-test', {
+      serialize() {
+        throw new Error('serialize must not be called');
+      },
+      deserialize() {
+        deserializeCalls += 1;
+        return { decoded: true };
+      }
+    }]])
+  });
+  const header = zlink.Message.from(Buffer.from(framework.encodeStreamHeader({
+    kind: framework.ZLinkStreamMessageKind.Send,
+    codec: framework.ZLinkStreamCodec.Json,
+    flags: framework.ZLinkStreamHeaderFlags.None,
+    name: 'MissingPacket',
+    metadata: new Map()
+  })));
+  const payload = zlink.Message.from(Buffer.from('{not-json'));
+
+  await assert.rejects(
+    () => dispatch.dispatch('alice', [header, payload]),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.NotFound
+  );
+  assert.equal(deserializeCalls, 0);
+  header.close();
+  payload.close();
 });
 
 test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered without actor type', async () => {

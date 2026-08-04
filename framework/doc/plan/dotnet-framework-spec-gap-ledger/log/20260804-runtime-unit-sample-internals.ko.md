@@ -2,16 +2,18 @@
 
 ## 현재 판정
 
-이번 checkpoint는 session route seal에서 application frame이 거절되던 runtime gap을
-수정하고, 그 변경을 owner layer unit test와 실제 `.NET` sample process로 확인한 결과를
-기록한다. `ZW-B1`과 일반 ZoneWorld client batch는 수정 후 통과했고, 독립 sample runner의
-TicTacToe·Bingo·SupportChat·ShoppingMall·DeliveryDispatch·GameQuest도 exit `0`으로
-완료했다.
+이번 checkpoint는 session route seal에서 application frame이 거절되던 runtime gap과,
+같은 Core endpoint를 새 RID가 재사용할 때 이전 auto-connect target이 다음 tick까지
+endpoint를 점유하던 runtime gap을 owner layer에서 수정한 결과를 기록한다. route seal은
+frame admission wait로, endpoint replacement는 같은 reconcile tick 안의 disconnect 후
+replacement connect로 처리한다.
 
-다만 ZoneWorld 전체 runner는 아직 완료가 아니다. 최신 전체 실행에서는 `ZW-B4`와 `ZW-C2`까지
-통과한 뒤 `ZW-C2`가 재시작한 `zone-node-2`의 bootstrap이 `bot-se-y` remote Actor create
-응답을 받지 못하고 `TaskCanceledException`으로 중단됐다. 따라서 정상 sample process 증거와
-전체 disruption/replacement gate를 분리한다.
+현재 source 기준 `AutoConnectReconcilerTests`는 `38/38`, 관련 runtime focused 묶음은
+`157/157`, Redis location repository focused 묶음은 `2/2`로 통과했다. 최신 전체 ZoneWorld
+sample process도 exit `0`으로 종료했으며, 구현된 scenario와 후속 replacement·observation·
+maintenance process evidence를 확인했다. 다만 `ZW-B6`는 이전 owner route를 주입하는
+지원된 operational harness가 없어 runner가 의도적으로 withheld하므로, ZoneWorld aggregate를
+전체 완료로 표시하지 않는다.
 
 ## 1. route seal 실패와 원인
 
@@ -58,15 +60,19 @@ accounting parity는 열린 항목으로 남긴다.
 |---|---:|
 | `SessionActorCoordinatorTests.Sealed_Route_Holds_Frame_Admission_Until_Unseal` 및 completed fence test | `2/2` |
 | 전체 `SessionActorCoordinatorTests` | `38/38` |
+| `AutoConnectReconcilerTests` | `38/38` |
+| `AutoConnectReconcilerTests`, `AutoConnectLoopTests`, `ServiceRuntimeFoundationTests`, `ActorHandoffTests` focused 묶음 | `157/157` |
+| Redis provider repository authority·opaque snapshot focused 묶음 | `2/2` |
 | `SerialExecutorTests`, `WeightContractTests`, `ZLinkObservationQueueTests`, `RequestFailureMappingTests`, `ChannelsTests`, `SessionActorCoordinatorTests` | `122/122` |
 | `EntrySpotActorDispatchTests`, `StatefulServiceRuntimeTests` | `167/167` |
 | [`Zlink.Framework.SampleRegressionTests`](../../../../languages/dotnet/tests/Zlink.Framework.SampleRegressionTests/Zlink.Framework.SampleRegressionTests.csproj) | `145/145` |
 | HWM·serial executor·Entry Spot rekey focused filter | `35/35` |
 
-전체 `Zlink.Framework.UnitTests`를 현재 변경으로 다시 green이라고 표시하지 않는다. 이전
-광범위한 filter 실행은 200번째 이후 native testhost가
-`core/src/runtime/utils/fast_mutex.hpp:61`의 `Invalid argument`로 중단된 evidence가
-있으므로, 위 focused 분모와 broad suite 결과를 분리한다.
+전체 `Zlink.Framework.UnitTests`를 현재 변경으로 다시 green이라고 표시하지 않는다. 최신
+broad 실행은 `135`개 통과 뒤 `filter.request` handler rejection으로 active test run이
+aborted 되었고, 이전 broad 실행에서도 native testhost가
+`core/src/runtime/utils/fast_mutex.hpp:61`의 `Invalid argument`로 중단된 evidence가 있다.
+따라서 위 focused 분모와 broad suite 결과를 분리한다.
 
 ## 4. 실제 sample process evidence
 
@@ -103,21 +109,29 @@ bash framework/languages/dotnet/samples/ZoneWorld/run_sample.sh \
 zoneworld-batch=passed scenarios=ZW-A1,ZW-A2,ZW-A3,ZW-A4,ZW-A5,ZW-B1
 ```
 
-최신 전체 실행에서는 G4/G1/G2/G5, 일반 client batch
-`ZW-A1,A2,A3,A4,A5,B1,B2,B3,B5,C1,C4,D1,E1,E2,E3,E4,E6,F1,F3,F4`,
-`ZW-B4`, `ZW-C2`가 통과했다. `ZW-C2` 뒤 replacement process는
-`ZLinkActorManagerService.SubmitAsync`의 remote `ActorCreate`가 peer admission 수렴 중
-응답을 받지 못한 채 deadline cancellation을 받아 `topology=ready`를 기록하지 못했다.
-보존 evidence는 다음 디렉터리에 있다.
+최신 전체 실행은 다음 명령으로 수행했고 exit `0`으로 종료했다.
 
 ```text
-/tmp/zlink-dotnet-zoneworld-evidence.5Oma1w/ZoneWorld/
+ZLINK_SAMPLE_EVIDENCE_DIR=/tmp/zoneworld-full-run.UQKcSm \
+  bash framework/languages/dotnet/samples/ZoneWorld/run_sample.sh
 ```
 
-따라서 ZoneWorld 전체 runner, replacement 이후의 후속 `C3`/`E5`/browser 및 최종
-aggregate gate는 미완료다. standalone `ZW-B4`와 latest full-run `ZW-B4`가 통과한 사실은
-이전 B4 timeout을 수정 완료로 단정하는 근거가 아니라, 전체 실행 순서와 replacement
-startup을 별도 재현해야 한다는 evidence다.
+보존 evidence는 [`/tmp/zoneworld-full-run.UQKcSm/ZoneWorld`](/tmp/zoneworld-full-run.UQKcSm/ZoneWorld)이며,
+`runner.log`에서 G4/G1/G2-rid/G2/G5, 일반 client batch의
+`ZW-A1,A2,A3,A4,A5,B1,B2,B3,B5,C1,C4,D1,E1,E2,E3,E4,E6,F1,F3,F4`,
+`ZW-B4`, `ZW-C2`, `ZW-C3`, `ZW-E5-arm`, `ZW-E5`, D1 subscriber·spot,
+F1 population, F3 no-push, D2를 모두 확인했다. 최종 운영 phase marker인
+`zoneworld-border-sync=completed`, `zoneworld-ops-observe=completed`,
+`zoneworld-ops-announce=completed`, `zoneworld-ops-maintenance=completed`도 출력됐다.
+
+`zoneworld-relocation=completed withheld: ZW-B6 did not pass`와
+`zoneworld=completed withheld: ZW-B6 did not pass`는 실행 실패가 아니라 현재 공개
+scenario surface에 B6가 없기 때문에 발생하는 의도된 판정이다. `run_sample.sh`는
+이유를 이전 owner route를 주입할 지원된 operational harness 부재로 명시하고 있으며,
+`Client/Scenarios.cs`에도 B6 handler가 없다. Global Actor API는 current owner를
+resolve하므로 bounded Message Follow를 검증할 수 없다. 따라서 sample에 raw route 주입,
+내부 helper, retry를 추가하지 않고, 이 항목은 public contract와 operational harness 설계
+결정이 필요한 별도 gap으로 남긴다.
 
 ## 5. common internals 대조
 
@@ -162,15 +176,154 @@ startup을 별도 재현해야 한다는 evidence다.
 2. `ZLinkManagedMeshNode.SnapshotChannelTargets`와 ClientServer `SelectReady`는 selection
    호출마다 candidate snapshot/filter/sort 배열을 만든다. 기능 결과는 맞지만 internals의
    steady-state allocation 목표와 다르다.
-3. timer마다 `Task.Delay`와 개별 timer lane을 사용하는 경로가 남아 있어 `07-dispatch-loop`의
-   shared scheduler 목표와 구조적으로 다르다.
+3. logical Spot timer는 `ZLinkTimerScheduler`의 하나의 deadline pump을 사용한다. Spot-node
+   idle maintenance에는 node catalog별 `PeriodicTimer`가 남아 있어 해당 maintenance 경로의
+   process·churn 측정은 별도 조건이다.
 4. .NET Spot 구현은 semantic kind를 enum과 하나의 activation에 담고 있어
    `08-object-lifecycle`의 개념적 Spot kind 분리와 완전히 같지 않다.
 5. observation stop 경로 중 `observer.Complete()`로 stream을 닫는 경로가 있어,
    application cancellation 외에는 observation stream을 닫지 않는 `10-liveness-and-state`
    규칙과 재검토가 필요하다.
-6. broad current UnitTests, current-source package-only process, Config 14 Instance Spot,
+6. owner lease가 target set에 포함된 AutoConnect loop는 repository가 global live-owner
+   membership stamp를 제공하지 않으므로 row change stamp만으로 skip하면 안 된다. loop는
+   lease tracker가 있는 경우 매 polling tick에서 full reconcile을 수행하고, lease가 없는
+   경우에만 row stamp skip을 사용하도록 owner layer를 수정했다. 이에 따라 만료·재등장 owner를
+   row write 없이도 다음 polling tick에서 다시 판정한다.
+7. broad current UnitTests, current-source package-only process, Config 14 Instance Spot,
    independent final audit은 아직 별도 gate다.
 
 이 log는 route-seal runtime gap과 그 owner-layer regression, 독립 sample process 결과를
 기록하지만 Phase A/Phase B 전체 완료 판정을 내리지 않는다.
+
+## 6. W1 HWM bounded reservation 재검증
+
+`common/spec/06-framework-api`와 `common/internals/03-progress-isolation`에 .NET binding이
+`Recv` 전에 complete message 길이를 제공하지 않는 multiplexed receive path의 정책을 명시했다.
+`MaxMessageSize = M`, 동시 raw receive reservation `R`에 대해 application pending byte 상한은
+`HWM + R * M`이며, control은 application pending에 넣지 않고 reservation을 반환하고,
+application은 terminal 상태까지 lease를 유지한다. STREAM에서 HWM마다 raw `RecvPart`를 먼저
+막던 precheck를 제거했고, session queue가 가득 차면 `ZLinkStreamInboundFrame`이 dispatch lease를
+보유한 채 재시도한다. RouteMesh도 raw receive permit을 stateful/application mailbox까지 전달한다.
+
+다음 targeted 명령은 source build를 포함해 exit `0`, `70/70`이었다.
+
+```text
+dotnet test framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Zlink.Framework.UnitTests.csproj \
+  --no-restore \
+  --filter 'FullyQualifiedName~SerialExecutorTests|FullyQualifiedName~InboundDispatchBudgetTests|FullyQualifiedName~StreamSession'
+Passed: 70, Failed: 0, Skipped: 0, Total: 70
+```
+
+이 결과는 W1의 HWM·serial queue targeted gate만 닫는다. Mesh의 mixed control/application
+process evidence, broad current UnitTests, package/clean consumer와 전체 `common/internals`
+requirement-by-requirement audit은 아직 남아 있으므로 W1과 전체 구현 계획을 완료로 표시하지 않는다.
+
+## 7. 2026-08-04 최신 gate와 internals 재검토
+
+앞선 절의 broad test 중단 기록과 observation·message-follow 미구현 서술은 이번 절의 현재
+source 결과로 대체한다. 과거 실행이 실패했다는 사실은 이력으로 보존하지만, 현재 판정에는
+사용하지 않는다.
+
+### 현재 source와 package 검증
+
+| 검증 | 결과 |
+|---|---:|
+| UnitTests build (`--no-restore --no-incremental --maxcpucount:1`) | 성공, warning 0 / error 0 |
+| 전체 `Zlink.Framework.UnitTests` | `1499/1499` 통과, failed 0 / skipped 0 |
+| `Zlink.Framework.ContractTests` | `76/76` 통과 |
+| `Zlink.Framework.SampleRegressionTests` | `145/145` 통과 |
+| `verify_packaged_contract.sh` | exit 0, 9개 package manifest·hash·clean consumer·standalone HTTP consumer 통과 |
+| public API snapshot | `81942c6b3c47374bab5979a4c655592956a9a2d2de0b1333b828f20e1e0b656b` |
+
+### 실제 sample process
+
+다음 aggregate runner가 exit `0`으로 끝났다.
+
+```text
+bash framework/languages/dotnet/samples/run_samples.sh \
+  TicTacToe Bingo SupportChat ShoppingMall DeliveryDispatch GameQuest
+```
+
+TicTacToe는 두 Play server의 `LeaveGameMsg`와 Entry Spot destroy completion을 확인했고,
+나머지 sample은 `bingo-placement`, `supportchat-server-evidence`,
+`shoppingmall-server-evidence`, `deliverydispatch-runner-evidence`, `gamequest-server-evidence`
+marker를 확인했다. 이 과정에서 sample application에 delay, retry, raw frame 처리나 새
+codec을 추가하지 않았다.
+
+### `common/internals` 현재 대조
+
+- `02-serialization`과 `03-progress-isolation`: application·lifecycle FIFO lane을 count와
+  byte로 함께 제한하고, lifecycle 우선 실행의 연속 상한과 yield debt를 적용했다. callback이
+  application 작업을 기다리면 application lane으로 양보하며, queue가 찬 상태에서 public
+  callback을 inline으로 실행하지 않는다.
+- `04-completion`과 `05-relocation-continuity`: one-winner completion, tombstone와 accepted
+  record 경계를 유지한다. route seal은 현재 stream frame을 버리지 않고 route availability를
+  기다린 뒤 admission을 재확인한다.
+- `06-routing-and-cache`: RouteMesh는 Node RID, ClientServer는 Server RID를 기준으로 후보를
+  정렬한다. 후보 배열·필터·정렬은 topology revision이 바뀔 때만 만들고 send 경로는 준비된
+  selection plan의 cursor를 읽는다. command 50 `messageFollow`의 source·target fence,
+  hop·queue bound와 조건부 cache invalidation도 현재 source에 연결되어 있다.
+- `07-dispatch-loop`와 `08-object-lifecycle`: ready-owner claim generation, count·byte·time
+  수신 batch, activation admission과 Instance Spot idle candidate 검사를 적용했다. logical
+  Spot timer는 runtime generation당 하나의 `ZLinkTimerScheduler`가 deadline priority queue를
+  관리한다. 별도로 Spot-node idle maintenance에는 node catalog당 `PeriodicTimer`가 남아
+  있으며, 이 경로의 process·churn 측정은 별도 조건이다.
+- `09-session-binding`과 `11-message-ownership`: session binding gate와 actor execution gate를
+  분리하고, admitted payload의 소유권을 queue로 넘긴 뒤 typed handler 경계에서 deserialize한다.
+  route hold에 caller raw bytes나 sample codec을 사용하지 않는다.
+- `10-liveness-and-state`: observer는 source별 최신 상태와 bounded terminal FIFO를 유지하며,
+  terminal overflow를 observer별 loss envelope와 runtime metric으로 기록한다. runtime stop이나
+  queue 포화만으로 stream을 닫지 않고, consumer cancellation 또는 consumer disposal에서만
+  observer를 complete한다. 이로써 이전 log의 반대 서술을 정정한다.
+
+### 아직 완료로 합산하지 않는 조건
+
+다음은 현재 .NET local runtime의 focused source 결함이 아니라 별도 증거 또는 공통 설계가
+필요한 조건이다.
+
+1. command 50의 mixed-language process와 언어×topology 전체 process matrix를 아직 실행하지
+   않았다.
+2. Config 14 Instance Spot cold activation과 이전 owner route를 주입하는 `ZW-B6` operational
+   harness가 없어 해당 process 항목은 withheld다. 지원되지 않은 raw route 주입이나 sample
+   retry를 추가하지 않는다.
+3. `D2` lock/contention, `D4` copy·parse 회계, `D6` 공통 상한 값은 측정과 독립 audit가 남아
+   있다. focused unit PASS만으로 이 성능·측정 항목을 완료로 판정하지 않는다.
+
+공개 문서 게이트도 같은 시점에 확인했다. `scripts/verify-framework-doc-contracts.sh`가
+`FRAMEWORK DOC CONTRACTS CLEAN`을 출력했고, 공개 문서 트리의 `plan/` 링크와 금지된 압축
+표현 검색은 모두 결과 0건이었다.
+
+## 8. 사이트 strict build 결과
+
+```text
+mkdocs build --strict -f doc/site/mkdocs.yml
+exit 1
+Aborted with 140 warnings in strict mode.
+```
+
+실패 원인은 public `plan/` 링크가 아니다. `bindings/`, `common/spec/`, 기존 영어 문서와
+`spec/` 아래에서 site에 포함되지 않는 상대 경로와 누락된 번역 파일을 여러 경고로 보고했다.
+이 checkpoint에서는 다른 workstream의 공개 문서 구조를
+임의로 고치지 않았으며, 사용자가 지정한 public `plan/` 링크 검색은 별도로 결과 0건을
+확인했다. 따라서 package·runtime gate와 사이트 전체 strict gate를 하나의 PASS로 합산하지
+않는다.
+
+## 9. 후속 재검증에 따른 현재 판정
+
+이 log의 7절에 기록한 `1499/1499`와 전체 six-sample runner exit `0`은 그 절을 작성한
+시점의 evidence다. 이후 current source에서 전체 UnitTests는 `1503/1503`으로 다시 통과했고,
+전체 sample runner는 TicTacToe leave completion marker에서 두 번 연속 실패했다. 단독
+TicTacToe runner는 다시 통과했지만 전체 runner의 process gate를 대신하지 않는다.
+
+현재 Config 14 runner의 명시적 결과는 다음과 같다.
+
+```text
+InstanceSpot 'all' is not executable yet.
+The .NET process fixture currently covers only IS-E2E-01 through IS-E2E-03.
+The aggregate runner keeps Config 14 incomplete until the remaining scenarios
+have their own process evidence.
+exit=2
+```
+
+현재 판정과 최신 evidence의 기준은
+[`dotnet-plan-runtime-process-recheck`](20260804-dotnet-plan-runtime-process-recheck.ko.md)다.

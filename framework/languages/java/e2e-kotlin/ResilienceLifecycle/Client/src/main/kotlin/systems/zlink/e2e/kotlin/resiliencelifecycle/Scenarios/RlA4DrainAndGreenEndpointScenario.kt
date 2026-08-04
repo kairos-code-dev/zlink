@@ -2,9 +2,9 @@ package systems.zlink.e2e.kotlin.resiliencelifecycle
 
 fun ClientScenarioContext.runDrainAndGreenEndpointScenario() {
     val greenApi = options.apiBGreenEndpoint
-        ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_API_B_GREEN_ENDPOINT is required")
+        ?: throw IllegalStateException("e2e.api.b.green.endpoint is required")
     val greenHttp = options.httpBGreenEndpoint
-        ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_HTTP_B_GREEN_ENDPOINT is required")
+        ?: throw IllegalStateException("e2e.http.b.green.endpoint is required")
 
     waitForTopology(2)
     post("${adminB()}/admin/drain")
@@ -24,7 +24,7 @@ fun ClientScenarioContext.runDrainAndGreenEndpointScenario() {
     waitForSignal("a4-restored")
     waitForTopologyEndpoint(
         "api-b",
-        options.apiBEndpoint ?: throw IllegalStateException("ZLINK_KOTLIN_E2E_API_B_ENDPOINT is required"),
+        options.apiBEndpoint ?: throw IllegalStateException("e2e.api.b.endpoint is required"),
     )
     driveProviderTraffic("a4-restored", adminB())
     println("scenario RL-A4 passed")

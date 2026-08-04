@@ -11,7 +11,7 @@ internal object SmD13Scenario {
     suspend fun run() {
         val actorId = "actor-sm-d13-heartbeat"
         val profile = Contracts.ActorProfile("Heartbeat", 13, listOf("heartbeat"))
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             connector.connect().await()
             val auth = connector

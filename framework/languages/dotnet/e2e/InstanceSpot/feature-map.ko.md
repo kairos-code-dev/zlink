@@ -2,20 +2,22 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-14-instance-spot.ko.md`
 
-이 파일은 Config 14의 inventory를 고정하는 초기 feature map이다. 현재 디렉토리에는
-실제 process runner가 없으므로 모든 항목을 `미구현`으로 기록한다. 이 표의 존재는
-actual-process 검증 완료를 의미하지 않는다.
+이 파일은 Config 14의 전체 시나리오 분모를 고정하는 feature map이다. 현재
+`SpotService` process fixture는 Track A의 세 시나리오와 idle eviction 재활성화 시나리오를
+실행한다. 이 표에서
+`검증 완료`는 해당 시나리오를 새 process로 실행하고 로그와 assertion을 확인했다는
+뜻이며, 나머지 항목의 `미구현` 상태를 줄여서 해석하지 않는다.
 
 | 시나리오 | 상태 | 근거 또는 blocker |
 |----------|------|-------------------|
-| IS-E2E-01 | 미구현 | cold request를 실제 process와 public evidence로 검증하는 runner가 없다. |
-| IS-E2E-02 | 미구현 | cold send의 submit terminal과 handler evidence를 검증하는 runner가 없다. |
-| IS-E2E-03 | 미구현 | concurrent first call의 단일 activation 수렴을 검증하는 runner가 없다. |
+| IS-E2E-01 | 검증 완료 | `framework/languages/dotnet/e2e/SpotService/logs/20260804-145911-582473/`에 cold request와 `instance-initialize` 1회가 기록됐다. Client assertion은 응답의 Spot ID·operation ID도 확인했다. |
+| IS-E2E-02 | 검증 완료 | `framework/languages/dotnet/e2e/SpotService/logs/20260804-150030-587658/`에 cold send와 `instance-initialize` 1회가 기록됐다. Client assertion은 send 수락 결과를 확인했다. |
+| IS-E2E-03 | 검증 완료 | `framework/languages/dotnet/e2e/SpotService/logs/20260804-150104-591087/`에 동일 Spot의 `instance-initialize` 1회와 서로 다른 두 operation의 `instance-request`가 기록됐다. Client assertion은 두 응답이 같은 owner를 가리키는지 확인했다. |
 | IS-E2E-04 | 미구현 | 서로 다른 Instance Spot의 execution queue 독립성을 검증하는 runner가 없다. |
 | IS-E2E-05 | 미구현 | Ready owner crash 뒤 자동 takeover가 없는지 검증하는 runner가 없다. |
 | IS-E2E-06 | 미구현 | creating owner crash의 recovery 경계를 검증하는 runner가 없다. |
 | IS-E2E-07 | 미구현 | 정상 relocation 뒤 identity와 state 보존을 검증하는 runner가 없다. |
-| IS-E2E-08 | 미구현 | close 뒤 새 instance 재활성화를 검증하는 runner가 없다. |
+| IS-E2E-08 | 검증 완료 | `framework/languages/dotnet/e2e/SpotService/logs/20260804-165721-1053531/`에 `IdleEvicted` 종료 뒤 같은 Spot ID의 두 번째 cold request와 `instance-initialize` 2회가 기록됐다. `instance-idle` process runner가 두 request의 성공과 새 instance 생성을 확인했다. |
 | IS-E2E-09 | 미구현 | owner crash 뒤 concurrent request의 bounded failure를 검증하는 runner가 없다. |
 | IS-E2E-10 | 미구현 | stale owner resume 뒤 자동 owner 생성이 없는지 검증하는 runner가 없다. |
 | IS-E2E-11 | 미구현 | confirmed not admitted terminal을 검증하는 runner가 없다. |
@@ -45,6 +47,6 @@ actual-process 검증 완료를 의미하지 않는다.
 | IS-E2E-35 | 미구현 | Ready owner crash 뒤 queue 자동 복구 금지를 검증하는 runner가 없다. |
 | IS-E2E-36 | 미구현 | first handler terminal recovery를 검증하는 runner가 없다. |
 
-Config 14 actual-process fixture와 `run_e2e_all.sh` 등록은 별도 E2E implementation card에서
-진행한다. 이 feature map은 그 카드가 시작되기 전에 공통 문서의 전체 scenario 분모를
-누락하지 않도록 유지한다.
+Track A와 IS-E2E-08의 실행 진입점은 `framework/languages/dotnet/e2e/InstanceSpot/run_e2e.sh`에
+등록되어 있다. `run_e2e_all.sh`에서 Config 14 전체를 성공으로 보고하지 않는 이유는
+나머지 32개 시나리오에 아직 독립적인 process 검증 경로가 없기 때문이다.

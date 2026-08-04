@@ -77,6 +77,8 @@ public final class ZLinkFrameworkRuntime
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean ready =
         new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.CompletableFuture<Void> startupReady =
+        new java.util.concurrent.CompletableFuture<>();
     private final java.util.concurrent.atomic.AtomicReference<
         ZLinkFrameworkRuntimeState> runtimeState =
         new java.util.concurrent.atomic.AtomicReference<>(
@@ -354,7 +356,8 @@ public final class ZLinkFrameworkRuntime
                         .ZLinkLocationRepository store
                 ? store
                 : null,
-            this.meshNodes.nodesByName());
+            this.meshNodes.nodesByName(),
+            this.startupReady);
         this.actors = actorSubsystem.actors();
         this.actorDirectory = actorSubsystem.actorDirectory();
         this.actorClient = actorSubsystem.actorClient();
@@ -450,14 +453,21 @@ public final class ZLinkFrameworkRuntime
             .whenComplete((ignored, failure) -> {
                 if (failure == null && !drainStarted.get()) {
                     ready.set(true);
+                    startupReady.complete(null);
                     publishRuntimeState(ZLinkFrameworkRuntimeState.SERVING);
                 } else if (failure != null) {
+                    startupReady.completeExceptionally(
+                        unwrapCompletionFailure(failure));
                     publishRuntimeState(ZLinkFrameworkRuntimeState.ERROR);
                     java.util.logging.Logger.getLogger(
                         ZLinkFrameworkRuntime.class.getName())
                         .warning(
-                            "Framework startup failed: "
-                                + failure.getMessage());
+                        "Framework startup failed: "
+                            + failure.getMessage());
+                } else {
+                    startupReady.completeExceptionally(
+                        new IllegalStateException(
+                            "Framework startup was interrupted by shutdown"));
                 }
             });
     }
@@ -1582,6 +1592,8 @@ public final class ZLinkFrameworkRuntime
 
     private java.util.concurrent.CompletionStage<Void> closeCoreAsync() {
         ready.set(false);
+        startupReady.completeExceptionally(
+            new IllegalStateException("Framework runtime is shutting down"));
         if (spots != null && !spotRuntimeStopped.get()) {
             spots.beginClose();
         }

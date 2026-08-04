@@ -162,6 +162,7 @@ struct actor_bound_session_route_request_t
     std::string actor_id;
     std::uint64_t actor_generation = 0;
     std::string packet_name_value;
+    stream_codec_t codec = stream_codec_t::raw;
     std::vector<std::uint8_t> payload;
 };
 
@@ -216,7 +217,10 @@ make_spot_actor_disconnect_route_request (const actor_ref_t &actor_ref);
 actor_ref_t actor_ref_from_spot_route (const spot_actor_disconnect_route_request_t &request);
 
 actor_bound_session_route_request_t make_actor_bound_session_route_request (
-  const actor_ref_t &actor_ref, std::string_view packet_name, const zlink::message_t &payload);
+  const actor_ref_t &actor_ref,
+  std::string_view packet_name,
+  stream_codec_t codec,
+  const zlink::message_t &payload);
 
 actor_ref_t actor_ref_from_bound_session_route (const actor_bound_session_route_request_t &request);
 actor_ref_t

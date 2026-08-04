@@ -40,6 +40,8 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         new ConcurrentHashMap<>();
     private final AtomicLong nextBoundSessionSequence =
         new AtomicLong(1);
+    private final AtomicLong nextBoundSessionRequestSequence =
+        new AtomicLong(1);
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Received receiveStorage = new Received();
     private final ZLinkJavaSocketReceivePoller receivePoller;
@@ -228,6 +230,44 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
             header.close();
         }
     }
+
+    @Override public CompletionStage<List<Message>> requestBoundActor(
+        RoutingId sessionRid,
+        String actorId,
+        ZLinkStreamHeader header,
+        List<Message> parts,
+        Duration timeout) {
+        Message encodedHeader = null;
+        try {
+            SessionBinding binding = requireBinding(sessionRid, actorId);
+            long requestSequence = allocateBoundSessionRequestSequence();
+            ZLinkStreamHeader requestHeader = new ZLinkStreamHeader(
+                systems.zlink.framework.streams.ZLinkStreamMessageKind.REQUEST,
+                header.codec(),
+                header.flags(),
+                java.util.Optional.of(requestSequence),
+                header.name(),
+                header.metadata(),
+                header.correlationId(),
+                header.flowId(),
+                header.flowOrigin());
+            encodedHeader = Message.from(
+                ZLinkStreamHeaderCodec.encode(requestHeader));
+            return rawSpotNode().requestBoundStreamSession(
+                binding.actor(),
+                sessionRid,
+                binding.generation(),
+                allocateBoundSessionSequence(),
+                this,
+                requestHeader,
+                prepend(encodedHeader, parts),
+                timeout);
+        } finally {
+            if (encodedHeader != null) {
+                encodedHeader.close();
+            }
+        }
+    }
     @Override public synchronized void close() {
         if (!closed.compareAndSet(false, true)) {
             return;
@@ -332,6 +372,11 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
 
     private long allocateBoundSessionSequence() {
         return nextBoundSessionSequence.getAndUpdate(
+            current -> current == Long.MAX_VALUE ? 1 : current + 1);
+    }
+
+    private long allocateBoundSessionRequestSequence() {
+        return nextBoundSessionRequestSequence.getAndUpdate(
             current -> current == Long.MAX_VALUE ? 1 : current + 1);
     }
 

@@ -459,7 +459,6 @@ class route_ready_http_handler_t
         const auto snapshot = _runtime.snapshot ("gamequest");
         for (const auto &peer : snapshot.peers) {
             if (peer.node_rid.to_string () == found->second
-                && snapshot.is_ready
                 && snapshot.placement.is_available
                 && peer.state == peer_state_t::ready) {
                 return {.body = nlohmann::json{{"ready", true},

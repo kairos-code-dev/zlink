@@ -265,6 +265,8 @@ class test_location_repository_t : public zlink::framework::location_repository_
     read_authority (zlink::framework::authority_key_t key,
                     std::stop_token cancellation = {}) override
     {
+        if (key.value.starts_with ("zla1:a:"))
+            resolve_actor_count.fetch_add (1, std::memory_order_relaxed);
         if (const auto found = authorities.find (key.value); found != authorities.end ()) {
             auto snapshot = found->second;
             snapshot.store_now = std::chrono::system_clock::now ();
@@ -1745,6 +1747,36 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
     const auto address = resolvers.resolve_actor_address ("actor-b").result ().value ();
     ASSERT_TRUE (address.has_value ());
     EXPECT_EQ ("spot-b", address->spot_id);
+
+    const auto cached = resolvers.resolve_actor_address ("actor-b").result ().value ();
+    ASSERT_TRUE (cached.has_value ());
+    EXPECT_EQ (1u, store.resolve_actor_count.load ());
+    EXPECT_FALSE (resolvers.invalidate_actor_address_if_matches (
+      "actor-b",
+      zlink::framework::runtime::spot_address_t{
+        cached->mesh_name,
+        cached->node_rid,
+        cached->spot_id,
+        cached->spot_generation,
+        cached->store_version,
+        cached->object_generation,
+        cached->authority_owner_generation,
+        cached->owner,
+        cached->node_generation + 1}));
+    EXPECT_TRUE (resolvers.invalidate_actor_address_if_matches (
+      "actor-b", *cached));
+    const auto reloaded = resolvers.resolve_actor_address ("actor-b").result ().value ();
+    ASSERT_TRUE (reloaded.has_value ());
+    EXPECT_EQ (cached->object_generation, reloaded->object_generation);
+    EXPECT_EQ (2u, store.resolve_actor_count.load ());
+
+    /* Destroy removes the authority, so a cached route must be discarded even
+     * when the replacement incarnation can reuse the same generation. */
+    resolvers.invalidate_actor_address ("actor-b");
+    const auto after_destroy =
+      resolvers.resolve_actor_address ("actor-b").result ().value ();
+    ASSERT_TRUE (after_destroy.has_value ());
+    EXPECT_EQ (3u, store.resolve_actor_count.load ());
 
     const auto missing = resolvers.resolve_actor_address ("nobody").result ().value ();
     EXPECT_FALSE (missing.has_value ());

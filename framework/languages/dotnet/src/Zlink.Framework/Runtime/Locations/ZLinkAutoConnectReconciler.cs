@@ -52,6 +52,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private long _discoveredPeerCount;
     private long _pendingLocalWeight = -1;
     private long _pendingPlacementWeight = -1;
+    private long _pendingActivationConcurrency = -1;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int>
         _pendingChannelWeights = new(StringComparer.Ordinal);
 
@@ -125,6 +126,9 @@ internal sealed class ZLinkAutoConnectReconciler
     internal void SetLocalPlacementWeight(int weight) =>
         Volatile.Write(ref _pendingPlacementWeight, weight);
 
+    internal void SetLocalActivationConcurrency(int active) =>
+        Volatile.Write(ref _pendingActivationConcurrency, active);
+
     internal ValueTask<bool> SetLocalWeightAsync(
         uint weight,
         CancellationToken cancellationToken = default) =>
@@ -153,6 +157,13 @@ internal sealed class ZLinkAutoConnectReconciler
             if (_localRow is { } placementRow
                 && pendingPlacementWeight >= 0
                 && placementRow.PlacementWeight != pendingPlacementWeight)
+                return true;
+            var pendingActivationConcurrency =
+                Volatile.Read(ref _pendingActivationConcurrency);
+            if (_localRow is { } activationRow
+                && pendingActivationConcurrency >= 0
+                && activationRow.ActivationConcurrency.Active
+                    != pendingActivationConcurrency)
                 return true;
             if (_localRow is { } channelRow
                 && _pendingChannelWeights.Any(entry =>
@@ -314,6 +325,23 @@ internal sealed class ZLinkAutoConnectReconciler
             };
             _localPublished = false;
         }
+        var pendingActivationConcurrency =
+            Volatile.Read(ref _pendingActivationConcurrency);
+        if (_localRow is { } activationRow
+            && pendingActivationConcurrency >= 0
+            && activationRow.ActivationConcurrency.Active
+                != pendingActivationConcurrency)
+        {
+            _localRow = activationRow with
+            {
+                ActivationConcurrency = activationRow.ActivationConcurrency with
+                {
+                    Active = checked((int)pendingActivationConcurrency)
+                },
+                DescriptorRevision = ++_localRevision
+            };
+            _localPublished = false;
+        }
         // Publish (or re-publish after recovery) the local descriptor before
         // reading the list, so peers observing the store during our
         // recovery window can already see us.
@@ -381,7 +409,13 @@ internal sealed class ZLinkAutoConnectReconciler
         Volatile.Write(
             ref _discoveredPeerCount,
             ZLinkAutoConnectPlanner.CountDiscoveredPeers(_local, rows));
-        _lastDesired = new Dictionary<string, ZLinkAutoConnectTarget>(desired, StringComparer.Ordinal);
+        // A rolling RID replacement can leave both descriptors visible for one
+        // snapshot. One Core endpoint is still one transport candidate, so
+        // keep only the newest deterministic owner before diffing. Without
+        // this projection the old descriptor can reclaim the endpoint on the
+        // tick after a deferred handover and oscillate with its replacement.
+        var connectableDesired = SelectEndpointWinners(desired);
+        _lastDesired = connectableDesired;
         // Membership snapshot for fail-fast target classification on the
         // send path (known peer vs unknown node). This is the full mesh
         // view, NOT the desired dial set: the pairwise initiator keeps
@@ -424,27 +458,14 @@ internal sealed class ZLinkAutoConnectReconciler
             _retainedMemberRids = retained;
         }
 
-        var endpointsReleasedThisTick = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (key, target) in desired)
+        foreach (var (key, target) in connectableDesired)
         {
             if (!_active.TryGetValue(key, out var current))
             {
                 // A draining descriptor is not selected for new connections.
                 if (target.Draining) continue;
-                // Do not let a stale target re-claim an endpoint after a
-                // newer target released it earlier in this same snapshot.
-                if (endpointsReleasedThisTick.Contains(target.Endpoint))
+                if (!ReleaseEndpointConflicts(target, out _))
                     continue;
-                if (!ReleaseEndpointConflicts(target, out var endpointReleased))
-                    continue;
-                // Core closes the old endpoint-scoped transport synchronously
-                // from the framework's perspective, but its reconnect state
-                // is asynchronous. Submit the replacement on the next tick.
-                if (endpointReleased)
-                {
-                    endpointsReleasedThisTick.Add(target.Endpoint);
-                    continue;
-                }
                 var accepted = _executor.Connect(target);
                 ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"autoconnect_add local={_local.NodeRid?.ToString() ?? "<unknown>"} "
@@ -488,7 +509,9 @@ internal sealed class ZLinkAutoConnectReconciler
 
         if (_time.GetTimestamp() >= _recoveryDeferUntil)
         {
-            var toRemove = _active.Keys.Where(key => !desired.ContainsKey(key)).ToArray();
+            var toRemove = _active.Keys
+                .Where(key => !connectableDesired.ContainsKey(key))
+                .ToArray();
             foreach (var key in toRemove)
             {
                 var target = _active[key];
@@ -540,6 +563,36 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         return true;
+    }
+
+    private static Dictionary<string, ZLinkAutoConnectTarget> SelectEndpointWinners(
+        IReadOnlyDictionary<string, ZLinkAutoConnectTarget> desired)
+    {
+        var winners = new Dictionary<string, ZLinkAutoConnectTarget>(
+            StringComparer.Ordinal);
+        foreach (var endpointGroup in desired.Values.GroupBy(
+                     static target => target.Endpoint,
+                     StringComparer.Ordinal))
+        {
+            // Keep a draining target only when no serving target currently
+            // owns the endpoint. This preserves an already-active draining
+            // connection while preventing it from blocking a replacement
+            // that is eligible for a new connection.
+            var candidates = endpointGroup.Any(static target => !target.Draining)
+                ? endpointGroup.Where(static target => !target.Draining)
+                : endpointGroup;
+            var winner = candidates.Aggregate(
+                static (current, candidate) =>
+                    SupersedesEndpointTarget(candidate, current)
+                        ? candidate
+                        : current);
+            winners[endpointGroup.Key] = winner;
+        }
+
+        return winners.Values.ToDictionary(
+            static target => target.TargetKey,
+            static target => target,
+            StringComparer.Ordinal);
     }
 
     private static bool SupersedesEndpointTarget(

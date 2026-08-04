@@ -32,6 +32,9 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly System.Collections.Concurrent.ConcurrentDictionary<
         (ZLinkLocationAutoConnectType Type, string MeshName, ZLinkLocationRole Role),
         ZLinkAutoConnectReconciler> _localReconcilers = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<
+        (ZLinkLocationAutoConnectType Type, string MeshName, ZLinkLocationRole Role),
+        ZLinkAutoConnectLoop> _localLoops = new();
     private readonly object _disposeGate = new();
     private ZLinkClientServerDiscovery? _clientServerDiscovery;
     private ZLinkFanoutDiscovery? _fanoutDiscovery;
@@ -372,6 +375,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         _loops.Clear();
         _reconcilers.Clear();
         _routeMeshReconcilers.Clear();
+        _localLoops.Clear();
         List<Exception>? failures = null;
         if (clientServerDiscovery is not null)
         {
@@ -492,8 +496,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         if (type is ZLinkLocationAutoConnectType.RouteMesh
             or ZLinkLocationAutoConnectType.SpotMesh)
             _routeMeshReconcilers[meshName] = reconciler;
-        _loops.Add(new ZLinkAutoConnectLoop(
-            reconciler, local, _options, _store, _watchStore, _time, _leaseTracker));
+        var loop = new ZLinkAutoConnectLoop(
+            reconciler, local, _options, _store, _watchStore, _time, _leaseTracker);
+        _loops.Add(loop);
+        _localLoops[(type, meshName, role)] = loop;
     }
 
     public ZLinkRouteMeshTargetClassification ClassifyRouteMeshTarget(
@@ -529,6 +535,20 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 (ZLinkLocationAutoConnectType.SpotMesh, meshName, ZLinkLocationRole.Spot),
                 out var reconciler))
             reconciler.SetLocalPlacementWeight(weight);
+    }
+
+    internal void SetLocalActivationConcurrency(string meshName, int active)
+    {
+        if (!_localReconcilers.TryGetValue(
+                (ZLinkLocationAutoConnectType.SpotMesh, meshName, ZLinkLocationRole.Spot),
+                out var reconciler))
+            return;
+
+        reconciler.SetLocalActivationConcurrency(active);
+        if (_localLoops.TryGetValue(
+                (ZLinkLocationAutoConnectType.SpotMesh, meshName, ZLinkLocationRole.Spot),
+                out var loop))
+            loop.Wake();
     }
 
     internal void SetLocalChannelWeight(

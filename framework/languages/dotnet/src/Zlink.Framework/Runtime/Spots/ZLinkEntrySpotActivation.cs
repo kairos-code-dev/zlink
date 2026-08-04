@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Handlers;
+using Zlink.Framework.Runtime.Timers;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -48,10 +49,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
         string spotNodeName,
         string channelName,
         TimeSpan defaultRequestTimeout,
-        ZLinkSpotOutboundTransport outbound)
+        ZLinkSpotOutboundTransport outbound,
+        ZLinkTimerScheduler? timerScheduler = null)
     {
         _runtime = runtime;
-        _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
+        _timers = new ZLinkSpotTimerRegistry(
+            () => runtime.Flow.CaptureEnabled,
+            scheduler: timerScheduler);
         _nativeSpot = nativeSpot;
         SpotId = ZLinkSpotId.Require(spotId, nameof(spotId));
         NodeRid = nodeRid;

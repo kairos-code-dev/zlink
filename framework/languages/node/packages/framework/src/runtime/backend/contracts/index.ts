@@ -1,14 +1,22 @@
 import type {
-  Received,
-  RecvFlagsValue,
-  RequestCallback,
   RequestResult,
-  SendFlagsValue,
   SubmitResult,
-  TopicMessage,
-  MonitorEventType,
-  MessageLike
-} from '@zlink-systems/zlink';
+  ZLinkBackendMessageLike,
+  ZLinkBackendMonitorEventType,
+  ZLinkBackendReceived,
+  ZLinkBackendRequestCallback,
+  ZLinkBackendTopicMessage
+} from '../runtime-values';
+import {
+  type ZLinkBackendRecvFlags,
+  type ZLinkBackendSendFlags
+} from '../runtime-values';
+export * from '../runtime-values';
+type MessageLike = ZLinkBackendMessageLike;
+type Received = ZLinkBackendReceived;
+type RequestCallback = ZLinkBackendRequestCallback;
+type TopicMessage = ZLinkBackendTopicMessage;
+type MonitorEventType = ZLinkBackendMonitorEventType;
 import type {
   MeshNodeStatus,
   MeshOperationId,
@@ -33,12 +41,11 @@ import type {
 import type {
   ServiceActorCreateRecord,
   ServiceDirectSpotRouteFence,
+  ServiceInstanceRouteFence,
   ServiceUserSpotCloseRecord,
   ServiceUserSpotCreateRecord
 } from '../../foundation/service-stateful-wire-codec';
 
-export type ZLinkBackendSendFlags = SendFlagsValue;
-export type ZLinkBackendRecvFlags = RecvFlagsValue;
 export type ZLinkBackendSpotNodeMode = number;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_PUBSUB = 1 as ZLinkBackendSpotNodeMode;
 export const ZLINK_BACKEND_SPOT_NODE_MODE_ROUTED = 2 as ZLinkBackendSpotNodeMode;
@@ -60,6 +67,16 @@ export interface ZLinkBackendMeshNode {
     messageKind: 'send',
     reason: 'backpressure'
   ) => void): void;
+  setMessageFollowHandler?(handler: (
+    record: import('../../foundation/service-stateful-wire-codec').ServiceMessageFollowRecord
+  ) => void): void;
+  sendMessageFollowNotification?(
+    targetNodeRid: string,
+    record: Omit<
+      import('../../foundation/service-stateful-wire-codec').ServiceMessageFollowRecord,
+      'kind'
+    >
+  ): void;
   shutdown(timeoutMs: number): RequestResult;
   close(): void;
   addChannelName(name: string): void;
@@ -86,7 +103,7 @@ export interface ZLinkBackendMeshNode {
       readonly stableType: string;
       readonly descriptorVersion: string;
     },
-    parts: MessageLike | readonly MessageLike[],
+    parts: ZLinkBackendMessageLike | readonly ZLinkBackendMessageLike[],
     deadlineUnixMs: bigint,
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
@@ -99,8 +116,21 @@ export interface ZLinkBackendMeshNode {
       readonly stableType: string;
       readonly descriptorVersion: string;
     },
-    parts: MessageLike | readonly MessageLike[],
+    parts: ZLinkBackendMessageLike | readonly ZLinkBackendMessageLike[],
     timeoutMs: number,
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): MeshOperationId;
+  sendToInstanceSpot(
+    route: ServiceInstanceRouteFence,
+    parts: MessageLike | readonly MessageLike[],
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): SubmitResult;
+  requestInstanceSpot(
+    route: ServiceInstanceRouteFence,
+    parts: MessageLike | readonly MessageLike[],
+    timeoutMs?: number,
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId;
@@ -135,6 +165,7 @@ export interface ZLinkBackendMeshNode {
     readonly endpoint: string;
   }[]): void;
   isObjectClientNodeDirectTarget?(targetRid: unknown): boolean;
+  isPeerRouteReady?(targetRid: unknown, lifecycleGeneration?: bigint): boolean;
   sendToNode(
     targetRid: unknown,
     parts: MessageLike | readonly MessageLike[],
@@ -726,6 +757,8 @@ export interface ZLinkMonitoringBackendAdapter {
 }
 
 export interface ZLinkBackendAdapterFactory {
+  createReceived(): Received;
+  createTopicMessage(): TopicMessage;
   createChannelAdapter(): ZLinkChannelBackendAdapter;
   createMeshAdapter(): ZLinkMeshBackendAdapter;
   createStreamAdapter(): ZLinkStreamBackendAdapter;

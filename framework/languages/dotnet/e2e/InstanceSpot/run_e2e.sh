@@ -3,23 +3,29 @@ set -euo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-scenario="${*:-all}"
+CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-CONFIG_DIR="$(mktemp -d)"
+trap 'rm -rf "$CONFIG_DIR"' EXIT
 
-cleanup() {
-  rm -rf "$CONFIG_DIR"
-}
-trap cleanup EXIT
+# The delegated SpotService runner creates role files with write_role_config.py
+# and owns the actual process readiness checks for this selector-only entry point.
+scenario="${*:-all}"
 
-python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/instance-spot.json" -- \
-  --scenario "$scenario"
-
-cat >&2 <<EOF
+case "$scenario" in
+  IS-E2E-01|IS-E2E-02|IS-E2E-03|track-a)
+    "$SCRIPT_DIR/../SpotService/run_e2e.sh" instance-track-a
+    ;;
+  IS-E2E-08|idle)
+    "$SCRIPT_DIR/../SpotService/run_e2e.sh" instance-idle
+    ;;
+  *)
+    cat >&2 <<EOF
 InstanceSpot '${scenario}' is not executable yet.
-Config 14 has a feature-map inventory but no process fixture, role server, or
-client evidence. The aggregate runner refuses to count this configuration as
-passed until those artifacts exist.
+The .NET process fixture currently covers IS-E2E-01 through IS-E2E-03 and IS-E2E-08.
+The aggregate runner keeps Config 14 incomplete until the remaining scenarios
+have their own process evidence.
 EOF
-exit 2
+    exit 2
+    ;;
+esac

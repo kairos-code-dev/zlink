@@ -260,6 +260,17 @@ final class ZLinkUserSpotOperationHandler
                     throw stale("User Spot Ready commit lost its reservation");
                 }
                 lifecycle.publishReserved(prepared);
+                node.rememberSpotAuthority(
+                    new ZLinkInternalMeshNode.SpotAuthorityRoute(
+                        request.intent().spotId(),
+                        snapshot.objectGeneration(),
+                        node.status().routingId(),
+                        node.status().lifecycleGeneration(),
+                        snapshot.authorityOwnerGeneration(),
+                        snapshot.ownerLeaseGeneration(),
+                        snapshot.ownerId(),
+                        meshName,
+                        snapshot.storeVersion()));
                 return response(
                     ZLinkServiceM6BWireCodec.UserSpotCreateResult.CREATED,
                     request, snapshot.objectGeneration(), reply);

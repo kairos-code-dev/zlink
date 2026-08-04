@@ -146,6 +146,42 @@ final class ZLinkDeferredJoinAcceptedRecovery {
             manifest.aggregateGeneration());
     }
 
+    CompletionStage<Void> awaitTargetCommit(
+        Manifest manifest,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        if (authorityJournal == null || !manifest.hasAggregateFence()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "direct Actor Join relocation fence is missing"));
+        }
+        return authorityJournal.awaitTargetCommit(
+            new UUID(
+                manifest.aggregateIdHigh(),
+                manifest.aggregateIdLow()),
+            manifest.aggregateGeneration(),
+            actor,
+            timeout);
+    }
+
+    CompletionStage<Void> awaitSourceCleanup(
+        Manifest manifest,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        if (authorityJournal == null || !manifest.hasAggregateFence()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "direct Actor Join relocation fence is missing"));
+        }
+        return authorityJournal.awaitSourceCleanup(
+            new UUID(
+                manifest.aggregateIdHigh(),
+                manifest.aggregateIdLow()),
+            manifest.aggregateGeneration(),
+            actor,
+            timeout);
+    }
+
     CompletionStage<PreparedRoot> loadPrepared(
         Manifest manifest,
         ZLinkBackendActorRef actor,
@@ -388,6 +424,19 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                 authorityJournal.completeSourceCleanupAndRelease(
                     delivered,
                     currentActor));
+    }
+
+    CompletionStage<Void> markSourceCleanup(
+        Manifest manifest,
+        ZLinkBackendActorRef currentActor) {
+        if (authorityJournal == null || manifest.actorId().isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return authorityJournal.markSourceCleanup(
+            new ZLinkActorJoinOperationId(
+                manifest.operationIdHigh(),
+                manifest.operationIdLow()),
+            currentActor);
     }
 
     private static byte[] encode(

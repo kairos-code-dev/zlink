@@ -2,6 +2,7 @@
 
 #include "runtime/dispatch/offload_executor.hpp"
 #include "runtime/dispatch/inbound_dispatch_budget.hpp"
+#include "runtime/dispatch/receive_batch_budget.hpp"
 #include "runtime/diagnostics/runtime_observation.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/actors/actor_gateway_runtime.hpp"
@@ -356,9 +357,9 @@ bool wait_until (const std::function<bool ()> &predicate)
 }
 
 zlink::framework::task_t<void> run_request_turn_probe (
-  const std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>> &reply,
-  const std::shared_ptr<std::vector<int>> &order,
-  const std::shared_ptr<std::mutex> &order_gate,
+  std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>> reply,
+  std::shared_ptr<std::vector<int>> order,
+  std::shared_ptr<std::mutex> order_gate,
   bool release_turn)
 {
     {
@@ -624,6 +625,50 @@ bool verify_serial_queue_lanes_and_byte_budget ()
            && queue.pending_bytes () == 0;
 }
 
+bool verify_serial_queue_owner_time_budget ()
+{
+    using namespace zlink::framework::runtime;
+
+    offload_executor_t executor (1);
+    serial_execution_queue_options_t options;
+    options.application_message_capacity = 8;
+    options.application_byte_capacity = 8 * serial_execution_queue_t::fixed_work_byte_cost;
+    options.lifecycle_message_capacity = 8;
+    options.lifecycle_byte_capacity = 8 * serial_execution_queue_t::fixed_work_byte_cost;
+    options.owner_time_budget = std::chrono::milliseconds (100);
+    serial_execution_queue_t batched_queue (executor, options);
+
+    std::vector<int> batched_order;
+    for (int value = 1; value <= 4; ++value) {
+        if (!batched_queue.try_post ("budget-batch", [&batched_order, value] {
+                batched_order.push_back (value);
+            })) {
+            return false;
+        }
+    }
+    batched_queue.drain ();
+    if (batched_order != std::vector<int>{1, 2, 3, 4}
+        || batched_queue.pending_count () != 0) {
+        return false;
+    }
+
+    options.owner_time_budget = std::chrono::milliseconds (1);
+    serial_execution_queue_t expiring_queue (executor, options);
+    std::vector<int> expiring_order;
+    if (!expiring_queue.try_post ("budget-expired", [&expiring_order] {
+            std::this_thread::sleep_for (std::chrono::milliseconds (3));
+            expiring_order.push_back (1);
+        })
+        || !expiring_queue.try_post ("budget-after-expiry", [&expiring_order] {
+               expiring_order.push_back (2);
+           })) {
+        return false;
+    }
+    expiring_queue.drain ();
+    return expiring_order == std::vector<int>{1, 2}
+           && expiring_queue.pending_count () == 0;
+}
+
 bool verify_inbound_budget_atomic_pending_and_observations ()
 {
     zlink::framework::runtime::inbound_dispatch_budget_t budget (100);
@@ -665,6 +710,33 @@ bool verify_inbound_budget_atomic_pending_and_observations ()
     return snapshot.pending_payload_bytes == 0
            && snapshot.queued_payload_bytes == 0
            && snapshot.active_payload_bytes == 0;
+}
+
+bool verify_common_dispatch_limits ()
+{
+    using namespace zlink::framework::runtime;
+    const serial_execution_queue_options_t queue_options;
+    const receive_batch_budget_t receive_options;
+    return queue_options.application_message_capacity
+             == dispatch_limits::application_mailbox_messages
+           && queue_options.application_byte_capacity
+                == dispatch_limits::application_mailbox_bytes
+           && queue_options.lifecycle_message_capacity
+                == dispatch_limits::control_mailbox_messages
+           && queue_options.lifecycle_byte_capacity
+                == dispatch_limits::control_mailbox_bytes
+           && queue_options.owner_time_budget
+                == dispatch_limits::owner_time_budget
+           && queue_options.lifecycle_burst_limit
+                == dispatch_limits::lifecycle_burst_limit
+           && serial_execution_queue_t::fixed_work_byte_cost
+                == dispatch_limits::fixed_work_byte_cost
+           && receive_options.max_messages
+                == dispatch_limits::receive_batch_messages
+           && receive_options.max_bytes
+                == dispatch_limits::receive_batch_bytes
+           && receive_options.max_elapsed
+                == dispatch_limits::receive_batch_time;
 }
 
 bool verify_runtime_observation_loss_and_terminal_retention ()
@@ -912,8 +984,14 @@ int main ()
     if (!verify_serial_queue_lanes_and_byte_budget ()) {
         return 50;
     }
+    if (!verify_serial_queue_owner_time_budget ()) {
+        return 56;
+    }
     if (!verify_inbound_budget_atomic_pending_and_observations ()) {
         return 51;
+    }
+    if (!verify_common_dispatch_limits ()) {
+        return 55;
     }
     if (!verify_runtime_observation_loss_and_terminal_retention ()) {
         return 52;

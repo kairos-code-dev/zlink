@@ -34,7 +34,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 )
 class PlayApplication {
     @Bean
-    fun scenarioState(): ScenarioState = ScenarioState(Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a"))
+    fun scenarioState(): ScenarioState = ScenarioState(Env.get("e2e.node.rid", "play-a"))
 
     @Bean
     fun objectMapper(): ObjectMapper = ObjectMapper()
@@ -50,7 +50,7 @@ class PlayApplication {
         EvidenceHttpServer(
             state,
             json,
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT"),
+            Env.get("e2e.http.endpoint"),
             spots,
             routes,
             handles,
@@ -60,7 +60,7 @@ class PlayApplication {
     fun playFramework(state: ScenarioState): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -80,19 +80,19 @@ class PlayApplication {
                     CompletableFuture.completedFuture(null)
                 }
             val node: ZLinkMeshNodeBuilder = options.addRouteMesh(Contracts.SPOT_MESH)
-                .listen(Env.get("ZLINK_KOTLIN_E2E_ROUTE_ENDPOINT"))
+                .listen(Env.get("e2e.route.endpoint"))
                 .setRoutingId(RoutingId.from(nodeRid))
             node.channelName(Contracts.ROUTE_CHANNEL)
             if (nodeRid != "play-a") {
                 node.peerConnections().connect(
                     RoutingId.from("play-a"),
-                    Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT"),
+                    Env.get("e2e.route.a.endpoint"),
                 )
             }
             if (nodeRid != "play-b") {
                 node.peerConnections().connect(
                     RoutingId.from("play-b"),
-                    Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT"),
+                    Env.get("e2e.route.b.endpoint"),
                 )
             }
             node.addRouteRequestHandler(
@@ -106,12 +106,12 @@ class PlayApplication {
                 Contracts.EnsureActorRes::class.java
             )
             val peerIngress = if (nodeRid == "play-a") {
-                Env.get("ZLINK_KOTLIN_E2E_INGRESS_B_ENDPOINT")
+                Env.get("e2e.ingress.b.endpoint")
             } else {
-                Env.get("ZLINK_KOTLIN_E2E_INGRESS_A_ENDPOINT")
+                Env.get("e2e.ingress.a.endpoint")
             }
             val ingress: ClientServerChannelBuilder = options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_INGRESS_ENDPOINT"))
+                .enableServer(Env.get("e2e.ingress.endpoint"))
                 .enableClient(peerIngress)
                 .setRoutingId(RoutingId.from(nodeRid))
             ingress.addSendHandler(
@@ -138,8 +138,8 @@ class PlayApplication {
                     ScenarioActor::class.java,
                     ScenarioActorFactory::class.java,
                 ) { factory -> factory.recreateOnRelocation() }
-            val streamEndpoint = Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT")
-            val tlsStreamEndpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_ENDPOINT", "")
+            val streamEndpoint = Env.get("e2e.stream.endpoint")
+            val tlsStreamEndpoint = Env.get("e2e.tls.stream.endpoint", "")
             if (streamEndpoint.isNotBlank() || tlsStreamEndpoint.isNotBlank()) {
                 val stream = options.addStreamNode("gateway")
                 if (streamEndpoint.isNotBlank()) {
@@ -148,8 +148,8 @@ class PlayApplication {
                 if (tlsStreamEndpoint.isNotBlank()) {
                     stream.bind(tlsStreamEndpoint)
                         .setTlsServer(
-                            Env.get("ZLINK_KOTLIN_E2E_TLS_CERTIFICATE_PATH"),
-                            Env.get("ZLINK_KOTLIN_E2E_TLS_KEY_PATH")
+                            Env.get("e2e.tls.certificate.path"),
+                            Env.get("e2e.tls.key.path")
                         )
                 }
                 stream.enableActorDispatch()
@@ -162,8 +162,8 @@ class PlayApplication {
     fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
         )
 
     @Bean
@@ -181,10 +181,11 @@ class PlayApplication {
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(PlayApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

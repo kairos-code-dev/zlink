@@ -2267,7 +2267,7 @@ public sealed class StandaloneActorRelocationRuntimeTests
             1,
             $"tcp://127.0.0.1:{FindFreeTcpPort()}",
             new Dictionary<string, int>(StringComparer.Ordinal),
-            string.Empty,
+        ZLinkTransportSecurityIdentity.Plaintext,
             owner.OwnerId,
             owner.LeaseGeneration,
             DateTimeOffset.UtcNow)

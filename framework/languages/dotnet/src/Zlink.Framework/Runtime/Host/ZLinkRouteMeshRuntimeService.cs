@@ -81,10 +81,9 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
             PlacementWeight = placement?.PlacementWeight
                 ?? nodeRuntime.Registration.PlacementWeight,
             PopulationCapacity = placement?.Capacity ?? fallbackCapacity,
-            ActivationConcurrency = placement?.ActivationConcurrency
-                ?? new ZLinkActivationConcurrency(
-                    0,
-                    nodeRuntime.Registration.ActivationConcurrencyLimit),
+            ActivationConcurrency = new ZLinkActivationConcurrency(
+                nodeRuntime.ActivationAdmission.Active,
+                nodeRuntime.ActivationAdmission.Limit),
             ObjectCapabilities = placement?.ObjectCapabilities
                 ?? Array.Empty<ZLinkObjectCapability>(),
             InstanceSpots = nodeRuntime.GetInstanceSpotMonitoringSnapshots()
@@ -739,7 +738,8 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
         {
             var observer = new ZLinkObservationQueue<ZLinkRouteMeshStatus>(
                 capacity,
-                static status => status.Sequence);
+                static status => status.Sequence,
+                "route_mesh");
             var status = _owner.GetStatus(_meshName);
             lock (_gate)
             {
@@ -788,10 +788,7 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
                     ObservedAt = DateTimeOffset.UtcNow
                 };
                 foreach (var observer in observers)
-                {
                     observer.Publish(terminalStatus, terminal: true);
-                    observer.Complete();
-                }
             }
             _stop.Cancel();
             _pump?.GetAwaiter().GetResult();
@@ -854,14 +851,8 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
             }
             catch (Exception)
             {
-                ZLinkObservationQueue<ZLinkRouteMeshStatus>[] observers;
                 lock (_gate)
-                {
-                    observers = [.. _observers];
                     _observers.Clear();
-                }
-                foreach (var observer in observers)
-                    observer.Complete();
             }
             finally
             {

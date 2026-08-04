@@ -7,7 +7,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.waitForEvidence
 
 internal object SmA7Scenario {
     suspend fun run() {
-        val endpoint = Env.get("ZLINK_KOTLIN_E2E_HTTP_A_ENDPOINT")
+        val endpoint = Env.get("e2e.http.a.endpoint")
         val body = postAdmin(endpoint, "/admin/type-mismatch?rid=room-a")
         ensure(body.contains("\"mismatch\":true"), "SM-A7 spot type mismatch did not report mismatch=true")
         waitForEvidence(endpoint, "SpotTypeMismatch")

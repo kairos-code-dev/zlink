@@ -1,4 +1,4 @@
-import { SubmitResult } from '@zlink-systems/zlink';
+import { SubmitResult } from './runtime-values';
 import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import type {
   ZLinkBackendActorSessionNode,
@@ -28,6 +28,7 @@ export function meshActorSessionNodeAdapter(
         case SubmitResult.NotAdmitted:
           return { status: ZLinkSubmitStatus.Backpressured };
         case SubmitResult.NotFound:
+        case SubmitResult.InvalidState:
           return { status: ZLinkSubmitStatus.TargetNotFound };
         case SubmitResult.NotConnected:
           return { status: ZLinkSubmitStatus.RouteNotConnected };

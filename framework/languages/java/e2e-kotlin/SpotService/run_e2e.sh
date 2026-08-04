@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-kotlin-config.sh"
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -378,7 +379,7 @@ start_play() {
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(role_bin play)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+    zlink_kotlin_e2e_run "$(role_bin play)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
   wait_port "${rid}-route" "${route}"
   if [[ -n "${stream}" ]]; then
@@ -402,7 +403,7 @@ start_session() {
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(role_bin session)" >"${log_dir}/session-a.stdout.log" 2>"${log_dir}/session-a.stderr.log" &
+    zlink_kotlin_e2e_run "$(role_bin session)" >"${log_dir}/session-a.stdout.log" 2>"${log_dir}/session-a.stderr.log" &
   SESSION_A_PID="$!"
   pids+=("$!")
   ZLINK_KOTLIN_E2E_NODE_RID="session-b" \
@@ -414,7 +415,7 @@ start_session() {
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
   ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(role_bin session)" >"${log_dir}/session-b.stdout.log" 2>"${log_dir}/session-b.stderr.log" &
+    zlink_kotlin_e2e_run "$(role_bin session)" >"${log_dir}/session-b.stdout.log" 2>"${log_dir}/session-b.stderr.log" &
   SESSION_B_PID="$!"
   pids+=("$!")
   wait_port session-a-spot "${SPOT_SESSION_A}"
@@ -452,7 +453,7 @@ start_gateway() {
   read -r GATEWAY_SPOT_PUB GATEWAY_HTTP <<<"$(reserve_gateway_endpoints)"
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-    "$(role_bin gateway)" \
+    zlink_kotlin_e2e_run "$(role_bin gateway)" \
     --rid gateway \
     --http-url "${GATEWAY_HTTP}" \
     --log-dir "${log_dir}" \
@@ -488,7 +489,7 @@ start_multi_nodes() {
   fi
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-    "$(role_bin multi-node)" \
+    zlink_kotlin_e2e_run "$(role_bin multi-node)" \
     --rid multi-node-a \
     --http-url "${MULTI_HTTP_A}" \
     --log-dir "${log_dir}" \
@@ -508,7 +509,7 @@ start_multi_nodes() {
 
   ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
   ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-    "$(role_bin multi-node)" \
+    zlink_kotlin_e2e_run "$(role_bin multi-node)" \
     --rid multi-node-b \
     --http-url "${MULTI_HTTP_B}" \
     --log-dir "${log_dir}" \
@@ -605,7 +606,7 @@ run_sm_g1() {
     ZLINK_KOTLIN_E2E_SM_G1_FAILED_FILE="${failed_file}" \
     ZLINK_KOTLIN_E2E_SM_G1_RESTARTED_FILE="${restarted_file}" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-      timeout -k 5s 180s "$(role_bin client)" >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
+      timeout -k 5s 180s zlink_kotlin_e2e_run "$(role_bin client)" >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
   client_pid="$!"
   pids+=("${client_pid}")
 
@@ -725,7 +726,7 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT="${MULTI_HTTP_A:-}" \
       ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT="${MULTI_HTTP_B:-}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s 75s "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        timeout -k 5s 75s zlink_kotlin_e2e_run "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
     if [[ "${status}" == "0" ]] && grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then

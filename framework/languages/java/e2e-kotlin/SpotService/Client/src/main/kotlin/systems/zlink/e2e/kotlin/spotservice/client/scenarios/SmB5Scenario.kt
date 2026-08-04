@@ -12,7 +12,7 @@ import systems.zlink.e2e.kotlin.spotservice.client.support.postJson
 
 internal object SmB5Scenario {
     suspend fun run() {
-        val connector = createStreamConnector(Env.get("ZLINK_KOTLIN_E2E_STREAM_A_ENDPOINT"))
+        val connector = createStreamConnector(Env.get("e2e.stream.a.endpoint"))
         try {
             val actorId = "actor-sm-b5-missing"
             val profile = Contracts.ActorProfile("Missing Handler", 5, listOf("missing"))
@@ -31,7 +31,7 @@ internal object SmB5Scenario {
             }
 
             postJson(
-                Env.get("ZLINK_KOTLIN_E2E_HTTP_SESSION_ENDPOINT"),
+                Env.get("e2e.http.session.endpoint"),
                 "/evidence/wait",
                 Contracts.EvidenceWaitReq(
                     listOf("SPOT_ACTOR|HANDLER_MISSING/REPLY_ERROR/MissingActorReq"),

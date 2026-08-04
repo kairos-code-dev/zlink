@@ -157,6 +157,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                     channelAdapter,
                     node,
                     state.CompletionAdmission,
+                    state.TimerScheduler,
                     meshName,
                     locationLifecycle,
                     startupState,

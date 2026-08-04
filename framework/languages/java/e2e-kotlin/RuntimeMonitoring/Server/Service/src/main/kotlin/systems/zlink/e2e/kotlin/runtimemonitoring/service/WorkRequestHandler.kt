@@ -14,7 +14,7 @@ class WorkRequestHandler : ZLinkSuspendingRequestHandler<Contracts.WorkReq, Cont
     ): Contracts.WorkRes {
         return Contracts.WorkRes(
             "work:${request.value}",
-            Env.get("ZLINK_KOTLIN_E2E_RID", "svc-a"),
+            Env.get("e2e.rid", "svc-a"),
         )
     }
 }

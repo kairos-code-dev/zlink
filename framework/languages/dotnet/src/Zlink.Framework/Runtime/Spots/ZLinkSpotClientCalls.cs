@@ -268,6 +268,21 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
                     .ConfigureAwait(false);
             }
             catch (ZLinkFrameworkException error)
+                when (_instanceIntent
+                      && ZLinkSpotHandleRequestExecution.IsStaleRoute(error))
+            {
+                // Idle eviction can remove the native activation while its
+                // location row is still being released. The durable Instance
+                // Spot operation must refresh the route before deciding
+                // whether to cold-activate a replacement.
+                handle.InvalidateRoute();
+                handle = await runtime.WaitForInstanceSpotRouteOrMissingAsync(
+                        target,
+                        deadline,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ZLinkFrameworkException error)
                 when (!_instanceIntent
                       && ZLinkSpotHandleRequestExecution.IsStaleRoute(error))
             {

@@ -1,5 +1,5 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException  } from '../framework-errors-internal';
-import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as ZLinkBindingMessage } from '../backend/runtime-message';
 import type { ActorRef } from '../../contracts';
 import {
   ZLinkSubmitStatus,

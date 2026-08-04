@@ -3308,7 +3308,8 @@ int main ()
     bound_header.message_name =
       zlink::framework::detail::actor_bound_session_route_request_t::packet_name;
     auto bound_request = zlink::framework::detail::make_actor_bound_session_route_request (
-      actor_ref, "BingoRewardAnnouncedNotify", zlink::message_t::from ("reward"));
+      actor_ref, "BingoRewardAnnouncedNotify", zlink::framework::stream_codec_t::json,
+      zlink::message_t::from ("reward"));
     auto bound_parts = envelope_codec.encode_parts (
       bound_header,
       std::type_index (typeid (zlink::framework::detail::actor_bound_session_route_request_t)),
@@ -3348,6 +3349,7 @@ int main ()
       provider);
     const auto routed_send_headers = stream_runtime.written_headers (stream);
     if (!bound_send || routed_send_headers.size () != 2
+        || routed_send_headers[1].codec () != zlink::framework::stream_codec_t::json
         || routed_send_headers[1].packet_name () != "BingoRewardAnnouncedNotify") {
         return 73;
     }

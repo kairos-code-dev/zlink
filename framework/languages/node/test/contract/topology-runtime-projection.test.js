@@ -162,6 +162,52 @@ test('Framework runtime shutdown surface emits status and Nest exports topology 
   assert.equal(typeof nestjs.ZLINK_FANOUT_RUNTIME, 'symbol');
 });
 
+test('Manual RouteMesh without a Location Store reports ready when the host serves', async () => {
+  const meshName = `manual-ready.${process.pid}`;
+  const registration = internal.createFrameworkRegistrationWithBuilder((builder) => {
+    const mesh = builder.addRouteMesh(meshName)
+      .listen(`inproc://${meshName}`)
+      .routingId(`manual-ready-node-${process.pid}`);
+    mesh.channel(meshName).server();
+  });
+  const host = new internal.ZLinkFrameworkRuntimeHost({ registration });
+
+  try {
+    await host.start();
+    const status = host.routeMeshRuntime.snapshot(meshName);
+    assert.equal(status.state, framework.ZLinkTopologyState.Ready);
+    assert.equal(status.isReady, true);
+    assert.equal(status.channels[0].isReady, true);
+  } finally {
+    await host.stop();
+  }
+});
+
+test('Framework shutdown disposes the registered Location Store after runtime cleanup', async () => {
+  let disposed = 0;
+  const store = {
+    async read() { return { kind: 'missing', storeNow: new Date(0) }; },
+    async write() { return { kind: 'conflict', storeNow: new Date(0) }; },
+    async scan() { return { kind: 'expired' }; },
+    dispose() { disposed += 1; }
+  };
+  const host = new internal.ZLinkFrameworkRuntimeHost({
+    registration: internal.createFrameworkRegistration({
+      locations: { storeInstance: store }
+    })
+  });
+  host.executionState = {
+    abortController: new AbortController(),
+    listenerTasks: [],
+    async dispose() {}
+  };
+
+  const result = await host.shutdown({ deadlineMs: 1000 });
+
+  assert.equal(result.outcome, framework.ZLinkFrameworkTerminationOutcome.Stopped);
+  assert.equal(disposed, 1);
+});
+
 test('Shutdown seals active RouteMesh ClientServer and Fanout observers with terminal status', async () => {
   let nativeSnapshotsAvailable = true;
   const manager = {
@@ -239,7 +285,15 @@ test('Shutdown seals active RouteMesh ClientServer and Fanout observers with ter
     assert.equal(terminal.done, false);
     assert.equal(terminal.value.status.state, framework.ZLinkTopologyState.Stopped);
     assert.equal(terminal.value.status.isReady, false);
-    assert.equal((await events.next()).done, true);
+    let settled = false;
+    const pending = events.next().then(value => {
+      settled = true;
+      return value;
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false);
+    assert.equal((await events.return()).done, true);
+    assert.equal((await pending).done, true);
   }
 });
 

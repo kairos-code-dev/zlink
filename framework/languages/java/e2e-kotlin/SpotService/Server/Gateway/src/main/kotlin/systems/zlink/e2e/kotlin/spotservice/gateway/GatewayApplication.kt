@@ -72,19 +72,20 @@ class GatewayApplication {
     fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
         )
 
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val options = GatewayOptions.parse(args)
             val builder = SpringApplicationBuilder(GatewayApplication::class.java)
                 .web(WebApplicationType.NONE)
                 .properties(options.toProperties())
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
 
@@ -249,11 +250,11 @@ data class GatewayOptions(
                 index += 2
             }
             return GatewayOptions(
-                rid = values["rid"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_RID", "gateway"),
-                httpUrl = values["http-url"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_HTTP_URL"),
-                logDir = values["log-dir"] ?: Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs"),
-                evidenceFile = values["evidence-file"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_EVIDENCE_FILE"),
-                spotPubEndpoint = values["spot-pub-endpoint"] ?: Env.get("ZLINK_KOTLIN_E2E_GATEWAY_SPOT_PUB_ENDPOINT")
+                rid = values["rid"] ?: Env.get("e2e.gateway.rid", "gateway"),
+                httpUrl = values["http-url"] ?: Env.get("e2e.gateway.http.url"),
+                logDir = values["log-dir"] ?: Env.get("e2e.log.dir", "logs"),
+                evidenceFile = values["evidence-file"] ?: Env.get("e2e.gateway.evidence.file"),
+                spotPubEndpoint = values["spot-pub-endpoint"] ?: Env.get("e2e.gateway.spot.pub.endpoint")
             )
         }
 

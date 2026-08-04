@@ -23,7 +23,8 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
         Func<ZLinkFrameworkComponentState> getOrStartState,
-        Func<IZLinkBackendSpotNode?> getActorSpotNode)
+        Func<IZLinkBackendSpotNode?> getActorSpotNode,
+        Func<string, ZLinkActivationConcurrencyAdmission?>? getActivationAdmission = null)
     {
         var loggerFactory = services.GetService<ILoggerFactory>();
         var channelLogger = loggerFactory?.CreateLogger("Zlink.Framework.ClientServer")
@@ -87,7 +88,8 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             services,
             getActorSpotNode,
             locationLifecycle,
-            new ZLinkBoundSessionService(runtime));
+            new ZLinkBoundSessionService(runtime),
+            getActivationAdmission);
         var actors = new ZLinkFrameworkActorFacade(
             runtime,
             registration,

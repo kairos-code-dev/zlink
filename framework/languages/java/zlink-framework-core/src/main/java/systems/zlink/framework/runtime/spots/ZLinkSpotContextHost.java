@@ -12,6 +12,9 @@ import systems.zlink.framework.spots.ZLinkSpot;
 abstract class ZLinkSpotContextHost {
     abstract Executor serialExecutor();
 
+    /** Executor for runtime control work that must progress during relocation. */
+    abstract Executor infrastructureExecutor();
+
     abstract DefaultSpotOutbound createContextOutbound(
         ZLinkBackendSpot backendSpot,
         RoutingId nodeRid);
@@ -58,5 +61,10 @@ abstract class ZLinkSpotContextHost {
 
     abstract CompletionStage<Void> runActorTimerDispatch(
         String actorId,
+        Supplier<CompletionStage<Void>> operation);
+
+    abstract CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        long payloadBytes,
         Supplier<CompletionStage<Void>> operation);
 }

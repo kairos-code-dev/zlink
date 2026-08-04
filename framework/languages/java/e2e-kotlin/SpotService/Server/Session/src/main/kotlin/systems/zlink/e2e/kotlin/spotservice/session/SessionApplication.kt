@@ -36,7 +36,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 )
 class SessionApplication {
     @Bean
-    fun scenarioState(): ScenarioState = ScenarioState(Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "session-a"))
+    fun scenarioState(): ScenarioState = ScenarioState(Env.get("e2e.node.rid", "session-a"))
 
     @Bean
     fun objectMapper(): ObjectMapper = ObjectMapper()
@@ -49,14 +49,14 @@ class SessionApplication {
         SessionEvidenceHttpServer(
             state,
             json,
-            Env.get("ZLINK_KOTLIN_E2E_HTTP_ENDPOINT")
+            Env.get("e2e.http.endpoint")
         )
 
     @Bean
     fun sessionFramework(state: ScenarioState): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
-            val logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs")
+            val logDir = Env.get("e2e.log.dir", "logs")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -76,11 +76,11 @@ class SessionApplication {
                     CompletableFuture.completedFuture(null)
                 }
             val mesh = options.addRouteMesh(Contracts.SPOT_MESH)
-                .listen(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
+                .listen(Env.get("e2e.spot.endpoint"))
                 .setRoutingId(RoutingId.from(nodeRid))
             mesh.channelName(Contracts.ROUTE_CHANNEL)
-            mesh.peerConnections().connect(Env.get("ZLINK_KOTLIN_E2E_ROUTE_A_ENDPOINT", ""))
-            mesh.peerConnections().connect(Env.get("ZLINK_KOTLIN_E2E_ROUTE_B_ENDPOINT", ""))
+            mesh.peerConnections().connect(Env.get("e2e.route.a.endpoint", ""))
+            mesh.peerConnections().connect(Env.get("e2e.route.b.endpoint", ""))
             mesh.objects().server()
                 .addEntrySpot(ScenarioEntrySpot::class.java)
                 .addSpotFactory(
@@ -93,7 +93,7 @@ class SessionApplication {
                     ScenarioActorFactory::class.java,
                 ) { factory -> factory.recreateOnRelocation() }
             options.addStreamNode("gateway")
-                .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
+                .bind(Env.get("e2e.stream.endpoint"))
                 .enableActorDispatch()
                 .registerSession(ScenarioSession::class.java)
                 .addSessionPacketHandler(ActorAuthHandler::class.java)
@@ -106,8 +106,8 @@ class SessionApplication {
     fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX"))
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
         )
 
     @Bean
@@ -125,10 +125,11 @@ class SessionApplication {
     companion object {
         @JvmStatic
         fun run(vararg args: String): AutoCloseable {
+            Env.configure(args)
             val builder = SpringApplicationBuilder(SessionApplication::class.java)
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run(*Env.applicationArgs(args))
             return AutoCloseable { context.close() }
         }
     }

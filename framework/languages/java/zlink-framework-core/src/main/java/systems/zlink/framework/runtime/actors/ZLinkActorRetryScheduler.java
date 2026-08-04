@@ -61,7 +61,11 @@ final class ZLinkActorRetryScheduler {
                         scheduleRoute(this);
                     });
                 } catch (RuntimeException ex) {
-                    result.completeExceptionally(ex);
+                    if (!retryable.test(ex) || System.nanoTime() >= deadline) {
+                        result.completeExceptionally(ex);
+                    } else {
+                        scheduleRoute(this);
+                    }
                 }
             }
         }

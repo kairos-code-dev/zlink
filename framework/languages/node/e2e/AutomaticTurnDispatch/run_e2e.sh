@@ -156,6 +156,31 @@ terminate_gracefully() {
   return 1
 }
 
+request_shutdown() {
+  local name="$1"
+  local pid="$2"
+  local shutdown_url="$3"
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "$name exited before shutdown request" >&2
+    return 1
+  fi
+  curl -fsS -X POST "$shutdown_url/shutdown" >/dev/null
+}
+
+wait_host_draining() {
+  local status_url="$1"
+  local name="$2"
+  local attempts="${3:-100}"
+  for _ in $(seq 1 "$attempts"); do
+    if curl -fsS "$status_url/status" 2>/dev/null | grep -F '"acceptingWork":false' >/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "$name did not publish a non-accepting status after shutdown request" >&2
+  return 1
+}
+
 pids=()
 REDIS_CONTAINER_ID=""
 cleanup() {
@@ -389,13 +414,18 @@ node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 cat "$LOG_DIR/client.stdout.log"
 
-if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "TD-F5" ]]; then
-  SHUTDOWN_ID="TD-F5-$(date +%s)-$$"
+if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "TD-F5" || "$CLIENT_SCENARIO" == "TD-F5A" ]]; then
+  SHUTDOWN_SCENARIO_ID="TD-F5"
+  if [[ "$CLIENT_SCENARIO" == "TD-F5A" ]]; then
+    SHUTDOWN_SCENARIO_ID="TD-F5A"
+  fi
+  SHUTDOWN_ID="$SHUTDOWN_SCENARIO_ID-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
   SHUTDOWN_WAIT_CONFIG="$CONFIG_DIR/client-shutdown-wait.config.json"
   node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_WAIT_CONFIG" \
     --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario shutdown-wait --request-id "$SHUTDOWN_ID" --spot-rid "$SHUTDOWN_SPOT"
+    --scenario shutdown-wait --request-id "$SHUTDOWN_ID" --spot-rid "$SHUTDOWN_SPOT" \
+    --shutdown-scenario-id "$SHUTDOWN_SCENARIO_ID"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
     --config "$SHUTDOWN_WAIT_CONFIG" \
     >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
@@ -403,22 +433,40 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "TD-F5" ]]; then
   wait_file_contains \
     "$LOG_DIR/play-a.evidence.log" \
     "async-held|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
-    "TD-F5 pending await marker was not observed before shutdown." \
+    "$SHUTDOWN_SCENARIO_ID pending await marker was not observed before shutdown." \
     "$SHUTDOWN_CLIENT_PID"
-  terminate_gracefully play-a "$PLAY_A_PID"
+  if [[ "$CLIENT_SCENARIO" == "TD-F5A" ]]; then
+    request_shutdown play-a "$PLAY_A_PID" "$PLAY_URL"
+    wait_host_draining "$PLAY_URL" play-a
+    SHUTDOWN_ADMISSION_CONFIG="$CONFIG_DIR/client-shutdown-admission.config.json"
+    node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_ADMISSION_CONFIG" \
+      --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+      --scenario shutdown-admission --request-id "${SHUTDOWN_ID}-admission" --spot-rid "$SHUTDOWN_SPOT" \
+      --shutdown-scenario-id "$SHUTDOWN_SCENARIO_ID"
+    node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
+      --config "$SHUTDOWN_ADMISSION_CONFIG" \
+      >"$LOG_DIR/client-shutdown-admission.stdout.log" 2>"$LOG_DIR/client-shutdown-admission.stderr.log"
+    cat "$LOG_DIR/client-shutdown-admission.stdout.log"
+  else
+    terminate_gracefully play-a "$PLAY_A_PID" "$PLAY_URL"
+  fi
   wait_file_contains \
     "$LOG_DIR/client-shutdown-wait.stdout.log" \
-    "execution-turn shutdown wait result=passed" \
-    "TD-F5 shutdown client did not observe the public closed/cancelled error." \
-    "$SHUTDOWN_CLIENT_PID" \
+    "execution-turn $SHUTDOWN_SCENARIO_ID shutdown wait result=passed" \
+    "$SHUTDOWN_SCENARIO_ID shutdown client did not observe the public closed/cancelled error." \
+    "" \
     900
-  wait "$SHUTDOWN_CLIENT_PID"
-  cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 
+  # The pending request has already reached its terminal client marker. Close
+  # the Session host before waiting for the probe process so a connector close
+  # cannot wait on the same Session transport that delivered the terminal
+  # error.
   terminate_gracefully session-a "$SESSION_A_PID" "$SESSION_URL"
   if [[ -n "$SESSION_B_PID" ]]; then
     terminate_gracefully session-b "$SESSION_B_PID" "$SESSION_B_URL"
   fi
+  wait "$SHUTDOWN_CLIENT_PID"
+  cat "$LOG_DIR/client-shutdown-wait.stdout.log"
 
   start_configured_server play-a "$PLAY_MAIN" \
     --rid "$PRIMARY_PLAY_RID" \
@@ -477,12 +525,13 @@ if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "TD-F5" ]]; then
   SHUTDOWN_RECOVERY_CONFIG="$CONFIG_DIR/client-shutdown-recovery.config.json"
   node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_RECOVERY_CONFIG" \
     --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario shutdown-recovery --request-id "${SHUTDOWN_ID}-recovery" --spot-rid "$SHUTDOWN_SPOT"
+    --scenario shutdown-recovery --request-id "${SHUTDOWN_ID}-recovery" --spot-rid "$SHUTDOWN_SPOT" \
+    --shutdown-scenario-id "$SHUTDOWN_SCENARIO_ID"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
     --config "$SHUTDOWN_RECOVERY_CONFIG" \
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
-  echo "TD-F5 shutdown-recovery result=passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
+  echo "$SHUTDOWN_SCENARIO_ID result=passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
 fi
 
 echo "automatic-turn-dispatch e2e result=passed"

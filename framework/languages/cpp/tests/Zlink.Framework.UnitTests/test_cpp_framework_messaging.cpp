@@ -10,6 +10,8 @@
 #include "runtime/messaging/submit_queue.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
+#include <service_wire_constants.hpp>
+
 #include <zlink/framework/contracts/detail/call_facade.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
@@ -91,6 +93,42 @@ int main ()
             || commit_root.completion_root_checksum
                  != 0x12345678) {
             return 151;
+        }
+        auto oversized_count =
+          zlink::framework::detail::spot_actor_commit_route_request_t{};
+        oversized_count.handoff_backlog.resize (
+          zlink::framework::runtime::protocol::messageFollowMessages + 1);
+        for (auto &packet : oversized_count.handoff_backlog)
+            packet.packet_name_value = "handoff";
+        try {
+            (void) serializers
+              .get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+              .deserialize (
+                serializers
+                  .get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+                  .serialize (oversized_count));
+            return 152;
+        }
+        catch (const std::exception &) {
+        }
+
+        auto oversized_bytes =
+          zlink::framework::detail::spot_actor_commit_route_request_t{};
+        oversized_bytes.handoff_backlog.push_back (
+          zlink::framework::detail::spot_actor_handoff_packet_t{
+            .packet_name_value = "handoff",
+            .payload = std::vector<std::uint8_t> (
+              zlink::framework::runtime::protocol::messageFollowBytes + 1)});
+        try {
+            (void) serializers
+              .get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+              .deserialize (
+                serializers
+                  .get<zlink::framework::detail::spot_actor_commit_route_request_t> ()
+                  .serialize (oversized_bytes));
+            return 153;
+        }
+        catch (const std::exception &) {
         }
     }
     {

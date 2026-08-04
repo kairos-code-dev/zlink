@@ -74,7 +74,29 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
     }
 
     public Optional<ZLinkStreamCodec> streamCodec(String contentType) {
-        return Optional.ofNullable(streamCodecsByContentType.get(contentType));
+        if (contentType == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(
+            streamCodecsByContentType.get(contentType.trim()));
+    }
+
+    /**
+     * Resolves the stream marker carried by an incoming application envelope.
+     * JSON is the only built-in content type; every other type must have an
+     * explicit immutable registration.
+     */
+    public Optional<ZLinkStreamCodec> streamCodecForReceivedContentType(
+        String contentType) {
+        if (contentType == null) {
+            return Optional.empty();
+        }
+        String normalized = contentType.trim();
+        if (DEFAULT_JSON_CONTENT_TYPE.equalsIgnoreCase(normalized)
+            || LEGACY_JSON_CONTENT_TYPE.equalsIgnoreCase(normalized)) {
+            return Optional.of(ZLinkStreamCodec.JSON);
+        }
+        return streamCodec(normalized);
     }
 
     public Optional<String> streamContentType(ZLinkStreamCodec codec) {

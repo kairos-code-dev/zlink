@@ -20,7 +20,7 @@ export interface ServiceReadySpotAuthority {
 
 export interface ServiceDecodedInstanceAuthority extends ServiceReadySpotAuthority {
   readonly kind: 'instance_spot';
-  readonly state: 'coldActivating' | 'ready';
+  readonly state: 'coldActivating' | 'ready' | 'closing';
 }
 
 
@@ -33,7 +33,7 @@ export interface ServiceActivationRecoveryState {
 }
 
 export interface ServiceInstanceAuthorityPayload {
-  readonly state: 'coldActivating' | 'ready';
+  readonly state: 'coldActivating' | 'ready' | 'closing';
   readonly stableType: string;
   readonly spotId: string;
   readonly ownerId: string;
@@ -142,7 +142,7 @@ export function encodeServiceInstanceAuthorityPayload(
     rid(value.spotId, 'spotId')
   );
   const instance = conditional(
-    value.state === 'coldActivating' ? 1 : 2,
+    value.state === 'coldActivating' ? 1 : value.state === 'closing' ? 3 : 2,
     instanceBody
   );
   const spot = conditional(3, instance);
@@ -163,7 +163,7 @@ export function encodeServiceInstanceAuthorityPayload(
     throw new RangeError('activationRecovery.replayCursor must not exceed inboxSequence.');
   }
   const body = concat(
-    Buffer.of(value.state === 'coldActivating' ? 1 : 0),
+    Buffer.of(value.state === 'coldActivating' ? 1 : value.state === 'closing' ? 3 : 0),
     object,
     text8(value.ownerId, 'ownerId'),
     u64(value.ownerLeaseGeneration, 'ownerLeaseGeneration'),
@@ -201,6 +201,7 @@ export function decodeServiceInstanceAuthorityPayload(
     || !(
       decoded.state === 'coldActivating' && decoded.operationKind === 1
       || decoded.state === 'ready' && decoded.operationKind === 0
+      || decoded.state === 'closing' && decoded.operationKind === 3
     )
   ) {
     return undefined;
@@ -235,7 +236,7 @@ export function rewriteServiceAuthorityOwner(
 function decodeSpotAuthority(
   payload: Uint8Array
 ): (ServiceReadySpotAuthority & {
-  readonly state: 'coldActivating' | 'ready' | 'other';
+  readonly state: 'coldActivating' | 'ready' | 'closing' | 'other';
   readonly operationKind: number;
 }) | undefined {
   try {
@@ -320,7 +321,13 @@ function decodeSpotAuthority(
     return {
       kind,
       state: kind === 'instance_spot'
-        ? state === 1 ? 'coldActivating' : state === 2 ? 'ready' : 'other'
+        ? state === 1
+          ? 'coldActivating'
+          : state === 2
+            ? 'ready'
+            : state === 3
+              ? 'closing'
+              : 'other'
         : state === 1 ? 'ready' : 'other',
       operationKind,
       stableType,

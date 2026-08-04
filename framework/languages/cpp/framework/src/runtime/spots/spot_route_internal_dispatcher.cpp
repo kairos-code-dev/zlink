@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -135,7 +136,7 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                                                                      : "actor ref update failed");
         }
         auto dispatched = actor_gateway.dispatch_bound_session_send (
-          actor_ref, request.packet_name_value,
+          actor_ref, request.packet_name_value, request.codec,
           zlink::message_t::from (request.payload));
         return dispatched;
     }
@@ -307,13 +308,19 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                               framework_error_kind_t::not_found,
                               "target Spot authority is unavailable");
                         }
+                        if (request.actor_authority_owner_generation
+                            == std::numeric_limits<std::uint64_t>::max ()) {
+                            return result_t<zlink::message_t>::failure (
+                              framework_error_kind_t::protocol_error,
+                              "Actor authority owner generation is exhausted");
+                        }
                         (void) native->create_reserved_actor (
                           request.actor_type,
                           runtime::stateful::object_ref_t{
                             runtime::stateful::object_kind_t::actor,
                             request.actor_id,
                             request.actor_generation,
-                            request.actor_authority_owner_generation,
+                            request.actor_authority_owner_generation + 1,
                             target_spot_object->mesh_name,
                             native->status ().routing_id ().to_string ()});
                     } else {
@@ -443,7 +450,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 return detail::propagate_failure<zlink::message_t> (updated, "actor ref update failed");
             }
             auto dispatched = actor_gateway.dispatch_bound_session_send (
-              actor_ref, request.packet_name_value, zlink::message_t::from (request.payload));
+              actor_ref, request.packet_name_value, request.codec,
+              zlink::message_t::from (request.payload));
             if (!dispatched) {
                 return result_t<zlink::message_t>::failure (
                   dispatched.error_kind (), dispatched.error ()

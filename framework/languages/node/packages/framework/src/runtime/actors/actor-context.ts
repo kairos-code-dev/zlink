@@ -15,7 +15,7 @@ import {
   ZLinkMessage
 } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import { type ZLinkMessageSerializer } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import {
@@ -348,7 +348,7 @@ function encodeJoinRequest(
   serializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
 ): Message {
   return request === undefined
-    ? BindingMessage.from(Buffer.alloc(0))
+    ? RuntimeMessage.from(Buffer.alloc(0))
     : encodeFrameworkPayloadMessage(request, serializers);
 }
 

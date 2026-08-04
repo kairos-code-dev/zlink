@@ -1,5 +1,5 @@
 import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
-import { Message as BindingMessage } from '@zlink-systems/zlink';
+import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import type {
   ActorRef,
   RoutingId,
@@ -43,6 +43,7 @@ import { streamMetadataMap } from '../actors/bound-session-wire';
 import { normalizeRoutingId, routingIdsEqual } from '../routing-id';
 import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import type { DefaultZLinkSpotManager, ZLinkSpotNodeRuntimeManager } from '../spots';
+import type { ZLinkDetachedTaskRunner } from '../spots/spot-actor-join-dispatch';
 import type { ZLinkBoundSessionResponseTarget } from '../streams';
 import type {
   ZLinkBoundSessionResponsePort,
@@ -69,6 +70,7 @@ export interface ZLinkActorPacketRelayOptions {
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly spotManager: () => DefaultZLinkSpotManager | undefined;
   readonly spotNodeRuntime: () => ZLinkSpotNodeRuntimeManager | undefined;
+  readonly detachedTaskRunner: ZLinkDetachedTaskRunner;
   readonly errorSink: () => { reportRuntimeTaskException(taskName: string, error: unknown): void };
   readonly actorLocationResolver?: () => ZLinkStoreLocationResolvers | undefined;
 }
@@ -200,8 +202,8 @@ export class ZLinkActorPacketRelay {
             targetNodeRid: normalizeRoutingId(relay.boundSessionTargetNodeRid),
             spotId: normalizeRoutingId(relay.boundSessionSpotId)
           };
-    const header = BindingMessage.from(Buffer.from(relay.header, 'base64'));
-    const body = BindingMessage.from(Buffer.from(relay.payload, 'base64'));
+    const header = RuntimeMessage.from(Buffer.from(relay.header, 'base64'));
+    const body = RuntimeMessage.from(Buffer.from(relay.payload, 'base64'));
     let closeFrameMessages = true;
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
@@ -452,9 +454,11 @@ export class ZLinkActorPacketRelay {
     if (remoteTarget === undefined) {
       return false;
     }
-    const returnResponse = frameHeader.kind === ZLinkStreamMessageKind.Request
-      && frameHeader.requestSeq !== undefined;
-    const header = BindingMessage.from(Buffer.from(encodeStreamHeader(frameHeader)));
+    // Session Actor relay is a one-way submit. The target sends a response or
+    // error through the bound-session route after its handler reaches a
+    // terminal state; the source stream must not wait for that handler.
+    const returnResponse = false;
+    const header = RuntimeMessage.from(Buffer.from(encodeStreamHeader(frameHeader)));
     let request: Record<string, unknown>;
     try {
       const messageFollowContext = resolvedRoute === undefined
@@ -700,16 +704,22 @@ export class ZLinkActorPacketRelay {
       return false;
     }
     const responseTarget = this.options.streamBindingRuntime().captureBoundSessionResponseTarget(actor);
-    const header = BindingMessage.from(Buffer.from(encodeStreamHeader(frameHeader)));
+    const header = RuntimeMessage.from(Buffer.from(encodeStreamHeader(frameHeader)));
+    const body = RuntimeMessage.from(Buffer.from(messageToBytes(payload)));
+    const returnResponse = frameHeader.kind === ZLinkStreamMessageKind.Request
+      && frameHeader.requestSeq !== undefined;
     try {
-      if (frameHeader.kind === ZLinkStreamMessageKind.Request && frameHeader.requestSeq !== undefined) {
+      this.options.detachedTaskRunner.runDetached('local actor packet relay', async () => {
         try {
           const response = await this.requireSpotManager().dispatchRoutedActorPacket(
             spotId,
             actor.actorId,
-            [header, payload],
-            true
+            [header, body],
+            returnResponse
           );
+          if (!returnResponse) {
+            return;
+          }
           const sent = this.sendCapturedOrCurrentBoundSessionResponse(
             responseTarget,
             actor.actorId,
@@ -722,6 +732,9 @@ export class ZLinkActorPacketRelay {
             throw new Error(`Actor '${actor.actorId}' local bound session response route is not ready.`);
           }
         } catch (error) {
+          if (!returnResponse) {
+            throw error;
+          }
           const sent = this.sendCapturedOrCurrentBoundSessionError(
             responseTarget,
             actor.actorId,
@@ -733,18 +746,16 @@ export class ZLinkActorPacketRelay {
           if (!sent) {
             throw error;
           }
+        } finally {
+          header.close();
+          body.close();
         }
-        return true;
-      }
-      await this.requireSpotManager().dispatchRoutedActorPacket(
-        spotId,
-        actor.actorId,
-        [header, payload],
-        false
-      );
+      });
       return true;
-    } finally {
+    } catch (error) {
       header.close();
+      body.close();
+      throw error;
     }
   }
 

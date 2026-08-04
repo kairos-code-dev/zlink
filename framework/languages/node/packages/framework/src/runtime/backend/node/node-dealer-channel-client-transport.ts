@@ -3,23 +3,24 @@ import type {
   Message,
   PubSocket
 } from '@zlink-systems/zlink';
-import { ZLinkConfigurationException } from '../configuration';
+import { ZLinkConfigurationException } from '../../configuration';
 import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
-} from '../messaging/submission-result';
+} from '../../messaging/submission-result';
 import {
   decodeChannelReply,
   encodeChannelEnvelopeParts,
   ZLinkChannelMessageKind
-} from './channel-envelope';
-import { throwIfAborted } from '../abort';
+} from '../../channels/channel-envelope';
+import { throwIfAborted } from '../../abort';
 import {
   appendParts,
   submitRequestOperation
-} from './channel-multipart';
-import type { ZLinkChannelClientTransport } from './channel-transports';
+} from '../../channels/channel-multipart';
+import type { ZLinkChannelClientTransport } from '../../channels/channel-transports';
 
+/** Adapter used by direct binding-socket integration and its contract tests. */
 export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTransport {
   constructor(
     private readonly dealer: DealerSocket,
@@ -87,9 +88,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
         metadata
       )
     );
-    if (timeoutMs !== undefined) {
-      operation.timeout(timeoutMs);
-    }
+    if (timeoutMs !== undefined) operation.timeout(timeoutMs);
     const reply = await submitRequestOperation(operation, 'channel request');
     try {
       return decodeChannelReply<TReply>(reply);
@@ -123,9 +122,9 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
         metadata
       )
     ).submit();
-    return emptyPublishResult(
-      accepted === false ? ZLinkSubmitStatus.Backpressured : ZLinkSubmitStatus.Submitted
-    );
+    return {
+      status: accepted === false ? ZLinkSubmitStatus.Backpressured : ZLinkSubmitStatus.Submitted
+    };
   }
 
   async publish(
@@ -139,8 +138,4 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     throwIfAborted(signal);
     return this.tryPublish(channelName, topic, packetName, event, metadata);
   }
-}
-
-function emptyPublishResult(status: ZLinkSubmitStatus): ZLinkSubmitResult {
-  return { status };
 }

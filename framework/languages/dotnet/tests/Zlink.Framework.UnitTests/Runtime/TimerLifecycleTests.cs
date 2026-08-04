@@ -8,6 +8,7 @@ public sealed class TimerLifecycleTests
     [Fact]
     public async Task Timer_freeze_preserves_logical_cursor_and_resume_dispatches_due_tick()
     {
+        await using var scheduler = new ZLinkTimerScheduler();
         var tick = new TaskCompletionSource<ZLinkTimerTick>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var timer = new ZLinkTimer(
@@ -20,7 +21,8 @@ public sealed class TimerLifecycleTests
                 tick.TrySetResult(value);
                 return ValueTask.CompletedTask;
             },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            static (_, _, _, _) => ValueTask.CompletedTask,
+            scheduler: scheduler);
 
         var frozen = timer.Freeze();
         Assert.Equal("relocatable", frozen.Name);
@@ -40,6 +42,7 @@ public sealed class TimerLifecycleTests
     [Fact]
     public async Task Timer_freeze_commits_tick_that_started_before_freeze()
     {
+        await using var scheduler = new ZLinkTimerScheduler();
         var tickStarted = new TaskCompletionSource<ZLinkTimerTick>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseTick = new TaskCompletionSource(
@@ -54,7 +57,8 @@ public sealed class TimerLifecycleTests
                 tickStarted.TrySetResult(value);
                 await releaseTick.Task.ConfigureAwait(false);
             },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            static (_, _, _, _) => ValueTask.CompletedTask,
+            scheduler: scheduler);
 
         var started = await tickStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var frozen = timer.Freeze();
@@ -120,6 +124,7 @@ public sealed class TimerLifecycleTests
     [Fact]
     public async Task Timer_freeze_keeps_tick_pending_when_dispatch_is_suppressed_after_freeze()
     {
+        await using var scheduler = new ZLinkTimerScheduler();
         var tickStarted = new TaskCompletionSource<ZLinkTimerTick>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseDispatch = new TaskCompletionSource(
@@ -144,7 +149,8 @@ public sealed class TimerLifecycleTests
                 dispatchReturned.TrySetResult();
                 return false;
             },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            static (_, _, _, _) => ValueTask.CompletedTask,
+            scheduler: scheduler);
 
         var started = await tickStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var frozen = timer.Freeze();
@@ -162,6 +168,7 @@ public sealed class TimerLifecycleTests
     [Fact]
     public async Task Concurrent_cancel_and_dispose_wait_for_the_same_blocked_timer_pump()
     {
+        await using var scheduler = new ZLinkTimerScheduler();
         var tickStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseTick = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var timer = new ZLinkTimer(
@@ -174,7 +181,8 @@ public sealed class TimerLifecycleTests
                 tickStarted.TrySetResult();
                 await releaseTick.Task.ConfigureAwait(false);
             },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            static (_, _, _, _) => ValueTask.CompletedTask,
+            scheduler: scheduler);
 
         await tickStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -194,6 +202,7 @@ public sealed class TimerLifecycleTests
     [Fact]
     public async Task Concurrent_cancel_callers_observe_the_same_cleanup_failure_after_pump_completion()
     {
+        await using var scheduler = new ZLinkTimerScheduler();
         var tickStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseTick = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var timer = new ZLinkTimer(
@@ -208,7 +217,8 @@ public sealed class TimerLifecycleTests
                 tickStarted.TrySetResult();
                 await releaseTick.Task.ConfigureAwait(false);
             },
-            static (_, _, _, _) => ValueTask.CompletedTask);
+            static (_, _, _, _) => ValueTask.CompletedTask,
+            scheduler: scheduler);
         await tickStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var first = timer.CancelAsync().AsTask();
@@ -240,6 +250,23 @@ public sealed class TimerLifecycleTests
         Assert.All(admitted, static timer => Assert.True(timer.IsDisposed));
         await Assert.ThrowsAsync<ObjectDisposedException>(
             async () => await AddTimerAsync(registry, "after-close"));
+    }
+
+    [Fact]
+    public async Task One_scheduler_owns_deadlines_for_all_registered_timers()
+    {
+        await using var scheduler = new ZLinkTimerScheduler();
+        var registry = new ZLinkSpotTimerRegistry(
+            static () => false,
+            scheduler: scheduler);
+        for (var index = 0; index < 32; index++)
+            await AddTimerAsync(registry, $"shared-{index}");
+
+        Assert.Equal(32, scheduler.TimerCount);
+        Assert.Equal(32, scheduler.ScheduledEntryCount);
+
+        await registry.DisposeAsync();
+        Assert.Equal(0, scheduler.TimerCount);
     }
 
     [Fact]

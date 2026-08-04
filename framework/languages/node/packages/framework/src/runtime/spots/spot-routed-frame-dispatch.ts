@@ -9,12 +9,12 @@ import type { ZLinkProviderResolver } from '../../contracts/Common/ZLinkProvider
 import type { RoutingId } from '../../contracts';
 import type { ActorRef } from '../../contracts/Common/ActorRef';
 import type { Message } from '../../contracts/Common/Message';
-import { Received as BindingReceived } from '@zlink-systems/zlink';
 import type {
   ZLinkRemoteActorPacketTarget,
   ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type {
+  ZLinkBackendReceived,
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
@@ -28,6 +28,7 @@ import { ZLinkSpotRoutedActorAdmission } from './spot-routed-actor-admission';
 import { ZLinkSpotRoutedBoundSessionDispatch } from './spot-routed-bound-session-dispatch';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
+import type { ZLinkApplicationWorkClaim } from '../admission';
 import type { ZLinkRoutedActorTransferProvider } from './spot-remote-codec';
 import type { ZLinkActorHandoffPacket, ZLinkActorHandoffResult } from '../actors/actor-handoff';
 
@@ -37,6 +38,7 @@ interface ZLinkRoutedFrameAdmissionTarget {
 
 interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
+  readonly createReceived: () => ZLinkBackendReceived;
   readonly nativeSpotId: string;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
@@ -105,6 +107,7 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  readonly claimApplicationWork?: () => ZLinkApplicationWorkClaim;
   readonly waitIdle: () => Promise<void>;
 }
 
@@ -138,7 +141,8 @@ export class ZLinkSpotRoutedFrameDispatch {
       getTarget: options.getTarget,
       providerResolver: options.providerResolver,
       messageSerializers: options.messageSerializers,
-      dispatchErrors: options.dispatchErrors
+      dispatchErrors: options.dispatchErrors,
+      claimApplicationWork: options.claimApplicationWork
     });
     this.routedActorAdmission = new ZLinkSpotRoutedActorAdmission({
       serial: options.serial,
@@ -162,7 +166,7 @@ export class ZLinkSpotRoutedFrameDispatch {
     }
   }
 
-  async drain(received: BindingReceived | undefined = undefined, retryDeadlineMs = Date.now()): Promise<void> {
+  async drain(received: ZLinkBackendReceived | undefined = undefined, retryDeadlineMs = Date.now()): Promise<void> {
     if (this.routeDraining) {
       if (received !== undefined) {
         try {
@@ -184,7 +188,7 @@ export class ZLinkSpotRoutedFrameDispatch {
         received = undefined;
       }
       for (;;) {
-        received ??= new BindingReceived();
+        received ??= this.options.createReceived();
         try {
           if (!this.options.nativeSpot.recvRoute(received, ZLINK_RECV_DONT_WAIT)) {
             received.close();
@@ -207,14 +211,14 @@ export class ZLinkSpotRoutedFrameDispatch {
         } finally {
           received.close();
         }
-        received = new BindingReceived();
+        received = this.options.createReceived();
       }
     } finally {
       this.routeDraining = false;
     }
   }
 
-  async dispatchFromEvent(received: BindingReceived): Promise<void> {
+  async dispatchFromEvent(received: ZLinkBackendReceived): Promise<void> {
     try {
       await this.dispatch(received);
     } finally {
@@ -228,7 +232,7 @@ export class ZLinkSpotRoutedFrameDispatch {
       : { serializers: this.options.messageSerializers };
   }
 
-  private async dispatch(received: BindingReceived): Promise<void> {
+  private async dispatch(received: ZLinkBackendReceived): Promise<void> {
     if (received.parts.length < 1) {
       return;
     }
@@ -249,11 +253,10 @@ export class ZLinkSpotRoutedFrameDispatch {
 function isRouteRecvRetryable(error: unknown): boolean {
   return typeof error === 'object' &&
     error !== null &&
-    ([201, 202, 204].includes(Number((error as { result?: unknown }).result)) ||
-      /Device or resource busy|Resource temporarily unavailable|Bad address/i.test(String((error as { message?: unknown }).message ?? '')));
+    [201, 202, 204].includes(Number((error as { result?: unknown }).result));
 }
 
-function closeReceivedQuietly(received: BindingReceived): void {
+function closeReceivedQuietly(received: ZLinkBackendReceived): void {
   try {
     received.close();
   } catch {

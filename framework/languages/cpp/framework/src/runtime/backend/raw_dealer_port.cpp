@@ -64,19 +64,25 @@ raw_request_result_t map_request_result (
 
 raw_dealer_port_t::raw_dealer_port_t (
   zlink::dealer_socket_t &socket,
-  std::mutex *shared_socket_mutex) :
-    _poller (),
+  std::mutex *shared_socket_mutex,
+  zlink::poller_t *shared_poller,
+  std::uintptr_t poller_slot) :
+    _owned_poller (shared_poller == nullptr
+                     ? std::make_unique<zlink::poller_t> ()
+                     : nullptr),
+    _poller (shared_poller != nullptr ? shared_poller : _owned_poller.get ()),
+    _poller_slot (poller_slot == 0 ? 1 : poller_slot),
     _socket (&socket),
     _socket_mutex (shared_socket_mutex != nullptr ? shared_socket_mutex
                                                   : &_owned_socket_mutex)
 {
     // The same poller owns both raw receive readiness and asynchronous
     // request-reply completion callbacks for this DEALER socket.
-    _poller.add (
+    _poller->add (
       socket,
       zlink::poll_event_flag_t::pollin
         | zlink::poll_event_flag_t::pollcompletion,
-      1);
+      _poller_slot);
 }
 
 bool raw_dealer_port_t::send (const raw_message_t &parts)
@@ -141,8 +147,8 @@ std::optional<raw_message_t> raw_dealer_port_t::try_receive ()
         return std::nullopt;
     }
     zlink::poll_event_t event;
-    if (_poller.wait (&event, 1, std::chrono::milliseconds::zero ()) != 1
-        || event.slot != 1
+    if (_poller->wait (&event, 1, std::chrono::milliseconds::zero ()) != 1
+        || event.slot != _poller_slot
         || (static_cast<short> (event.revents)
             & static_cast<short> (zlink::poll_event_flag_t::pollin))
              == 0) {
@@ -166,9 +172,14 @@ std::optional<raw_message_t> raw_dealer_port_t::try_receive ()
 void raw_dealer_port_t::close () noexcept
 {
     std::lock_guard lock (*_socket_mutex);
+    auto *socket = _socket;
     _socket = nullptr;
     try {
-        _poller.close ();
+        if (_owned_poller) {
+            _owned_poller->close ();
+        } else if (socket != nullptr) {
+            _poller->remove (*socket);
+        }
     }
     catch (...) {
     }

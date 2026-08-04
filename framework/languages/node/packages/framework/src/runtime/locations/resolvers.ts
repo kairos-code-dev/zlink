@@ -97,6 +97,15 @@ export interface ZLinkResolvedActorRoute {
   readonly enclosingSpotRoute?: ZLinkSpotRouteTarget;
 }
 
+export interface ZLinkActorRouteInvalidationFence {
+  readonly actorId: string;
+  readonly objectGeneration: bigint;
+  readonly targetNodeRid: string;
+  readonly targetNodeGeneration: bigint;
+  readonly authorityOwnerGeneration: bigint;
+  readonly ownerLeaseGeneration: bigint;
+}
+
 export class ZLinkStoreLocationResolvers implements
   ZLinkPeerLocationResolver,
   ZLinkSpotHandleResolver,
@@ -243,7 +252,13 @@ export class ZLinkStoreLocationResolvers implements
         nodeRid: String(row.ownerNodeRid),
         spotId: String(row.spotId),
         spotKind: row.spotKind,
-        spotGeneration: row.spotGeneration
+        spotGeneration: row.spotGeneration,
+        targetNodeState: await this.resolveMeshNodeState(
+          row.meshName,
+          row.ownerNodeRid,
+          row.ownerNodeGeneration,
+          signal
+        )
       };
     }
     const entrySpot = await resolveEntrySpotPeerInMeshes(this, spotId, [meshName], signal);
@@ -252,7 +267,8 @@ export class ZLinkStoreLocationResolvers implements
         meshName: entrySpot.meshName,
         nodeRid: String(entrySpot.nodeRid),
         spotId: entrySpot.spotId,
-        spotKind: ZLinkSpotKind.Entry
+        spotKind: ZLinkSpotKind.Entry,
+        targetNodeState: ZLinkFrameworkRuntimeState.Serving
       };
     }
     return undefined;
@@ -456,6 +472,26 @@ export class ZLinkStoreLocationResolvers implements
     return undefined;
   }
 
+  async resolveMeshNodeState(
+    meshName: string,
+    nodeRid: RoutingId,
+    expectedLifecycleGeneration?: bigint,
+    signal?: AbortSignal
+  ): Promise<ZLinkFrameworkRuntimeState | undefined> {
+    const descriptor = (await this.options.stores.locationStore.listMeshNodes(
+      meshName,
+      undefined,
+      signal
+    )).items.find((candidate) =>
+      routingIdsEqual(candidate.rid, nodeRid)
+      && (
+        expectedLifecycleGeneration === undefined
+        || candidate.lifecycleGeneration === expectedLifecycleGeneration
+      )
+    );
+    return descriptor?.state;
+  }
+
   async resolveActorRow(
     key: ZLinkActorLocationKey,
     signal?: AbortSignal
@@ -529,6 +565,16 @@ export class ZLinkStoreLocationResolvers implements
     }
   }
 
+  invalidateActorRouteIfMatches(fence: ZLinkActorRouteInvalidationFence): boolean {
+    let invalidated = false;
+    const direct = this.directActorRoutes.get(fence.actorId);
+    if (direct !== undefined && directActorRouteMatchesFence(direct.row, fence)) {
+      this.directActorRoutes.delete(fence.actorId);
+      invalidated = true;
+    }
+    return invalidated;
+  }
+
   invalidateSpotRoute(spotId: SpotId, meshName?: string): void {
     if (meshName !== undefined) {
       this.spotRoutes.delete(`${meshName}\u0000${spotId}`);
@@ -580,6 +626,18 @@ export class ZLinkStoreLocationResolvers implements
   }
 }
 
+function directActorRouteMatchesFence(
+  route: ZLinkResolvedActorRoute,
+  fence: ZLinkActorRouteInvalidationFence
+): boolean {
+  return route.actorRef.actorId === fence.actorId
+    && route.actorRef.objectGeneration === fence.objectGeneration
+    && routingIdsEqual(route.actorRef.nodeRid, fence.targetNodeRid)
+    && route.ownerNodeGeneration === fence.targetNodeGeneration
+    && route.authorityOwnerGeneration === fence.authorityOwnerGeneration
+    && route.ownerLeaseGeneration === fence.ownerLeaseGeneration;
+}
+
 export class DefaultZLinkLocationReadiness implements ZLinkLocationReadiness {
   constructor(private readonly query: ZLinkLocationRuntimeQuery) {}
 
@@ -626,7 +684,13 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         spotId: row.spotId,
         spotKind: row.spotKind,
         targetSpotGeneration: row.spotGeneration,
-        ownerLeaseGeneration: row.leaseGeneration
+        ownerLeaseGeneration: row.leaseGeneration,
+        targetNodeState: await this.rows.resolveMeshNodeState(
+          row.meshName,
+          row.ownerNodeRid,
+          row.ownerNodeGeneration,
+          signal
+        )
       };
     }
     const local = this.resolveLocalSpot?.(spotId);
@@ -642,7 +706,8 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
         spotKind: ZLinkSpotKind.Entry,
         targetNodeGeneration: entrySpot.targetNodeGeneration,
         targetOwnerId: entrySpot.targetOwnerId,
-        ownerLeaseGeneration: entrySpot.ownerLeaseGeneration
+        ownerLeaseGeneration: entrySpot.ownerLeaseGeneration,
+        targetNodeState: ZLinkFrameworkRuntimeState.Serving
       };
     }
     throw createInternalFrameworkException(
@@ -665,7 +730,13 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
     private readonly fallback?: ZLinkSpotRouteResolver,
     private readonly leaseTracker?: ZLinkOwnerLeaseTracker,
     private readonly routeCacheMaxAgeMs = 15000,
-    private readonly monotonicNowMs: () => number = () => performance.now()
+    private readonly monotonicNowMs: () => number = () => performance.now(),
+    private readonly targetNodeStateResolver?: (
+      meshName: string,
+      nodeRid: RoutingId,
+      expectedLifecycleGeneration: bigint,
+      signal?: AbortSignal
+    ) => Promise<ZLinkFrameworkRuntimeState | undefined>
   ) {}
 
   async resolve(spotId: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget> {
@@ -702,7 +773,13 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
           authorityOwnerGeneration: current.authorityOwnerGeneration,
           targetOwnerId: current.ownerId,
           ownerLeaseGeneration: current.ownerLeaseGeneration,
-          authorityStoreVersion: current.storeVersion.value
+          authorityStoreVersion: current.storeVersion.value,
+          targetNodeState: await this.targetNodeStateResolver?.(
+            decoded.ownerMeshName,
+            decoded.ownerNodeRid,
+            current.allocation.descriptorLifecycleGeneration,
+            signal
+          )
         };
         if (this.routeCacheMaxAgeMs > 0) {
           const remainingLeaseMs = this.leaseTracker === undefined

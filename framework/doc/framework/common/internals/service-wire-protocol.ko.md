@@ -22,8 +22,11 @@ node framework/runtime/protocol/validate-service-wire-schema.mjs \
 Wire major는 `1`이고 required capability는 `framework-service-v11`이다. Schema와 golden fixture가 다르거나
 validator가 undefined type, 중복 ID, 잘못된 enum·bound·conditional field를 발견하면 build를 중단한다.
 
-Location Store canonical authority key도 같은 schema와 golden fixture가 고정한다. Actor key는
-`zla1:a:<byte-length>:<encoded-ActorId>`, Spot key는 `zla1:s:<byte-length>:<encoded-SpotRid>` 형식이다.
+객체가 지금 어느 node에 있는지 기록하는 저장소를
+[Location Store](../spec/01-glossary.ko.md#location-store)라고 한다. 그 authority key를 만드는 규칙도 같은
+schema와 golden fixture가 고정한다. Actor key는
+`zla1:a:<byte-length>:<encoded-ActorId>`, Actor와 handler를 담는 실행 단위인
+[Spot](../spec/01-glossary.ko.md#spot)의 key는 `zla1:s:<byte-length>:<encoded-SpotRid>` 형식이다.
 MeshName은 key에 포함하지 않으며 authority payload의 current placement attribute로만 저장한다. Percent encoding은
 RFC 3986 unreserved byte만 그대로 두고 나머지는 uppercase hex로 표현한다.
 
@@ -67,7 +70,7 @@ Wire v1은 다음 41개 command를 사용한다. `7..15`와 `51..255`는 reserve
 
 | ID | Command | 역할 |
 |---:|---|---|
-| 1 | `hello` | local admission descriptor 제안 |
+| 1 | `hello` | 이 연결을 받아 달라고 자기 descriptor를 제안한다 |
 | 2 | `admit` | selected connection 승인 |
 | 3 | `reject` | admission 거부 |
 | 4 | `update` | admitted descriptor revision 갱신 |
@@ -97,16 +100,16 @@ Wire v1은 다음 41개 command를 사용한다. `7..15`와 `51..255`는 reserve
 | 37 | `actorJoined` | Actor join commit |
 | 38 | `boundSessionBind` | session binding commit |
 | 39 | `instanceSpot` | logical Instance Spot operation |
-| 40 | `relocationPrepare` | exact sealed inventory 제안 |
+| 40 | `relocationPrepare` | 옮길 대상 목록을 봉인해 제안하고, 필요한 건수·byte를 함께 알린다 |
 | 41 | `relocationReserved` | target reservation ACK |
 | 42 | `sessionRelocationSeal` | session ingress seal 요청 |
 | 43 | `sessionRelocationSealed` | session high-water 응답 |
 | 44 | `sessionRelocationRoute` | session route 교체 요청 |
 | 45 | `sessionRelocationRouted` | session route 교체 ACK |
 | 46 | `replyRelayAck` | relayed terminal result ACK |
-| 47 | `userSpotCreate` | provider reservation에 고정한 remote User Spot create |
-| 48 | `userSpotClose` | exact generation에 고정한 remote User Spot close |
-| 49 | `actorCreate` | provider reservation에 고정한 remote Actor create |
+| 47 | `userSpotCreate` | 미리 확보한 자리에 remote User Spot을 만든다 |
+| 48 | `userSpotClose` | 지정한 세대의 remote User Spot만 닫는다 |
+| 49 | `actorCreate` | 미리 확보한 자리에 remote Actor를 만든다 |
 | 50 | `messageFollow` | relay 성공 뒤 source runtime에 보내는 위치 cache 무효화 통지 |
 
 Command별 body, metadata·payload 허용 여부와 direction은 schema의 closed definition을 따른다. 알 수 없는 command,
@@ -133,16 +136,18 @@ route가 cache에 있으면 지우지 않는다. 이 조건은 command body와 �
 
 RouteMesh와 ClientServer는 `hello → admit|reject`로 current physical connection을 service route로 승인한다. Manual
 구성의 lifecycle token은 CSPRNG로 만든 non-zero opaque equality token이다. 숫자 크기로 새 값을 판단하지 않으며
-current physical connection의 handover와 liveness로 이전 token을 차단한다. Store-backed peer는 exact host owner
-lease도 함께 검사한다.
+current physical connection의 handover와 liveness로 이전 token을 차단한다. 저장소에 owner가 기록되는 peer는
+그 host가 지금도 owner인지, lease가 유효한지까지 함께 검사한다.
 
 `DescriptorRevision`만 같은 lifecycle에서 strictly increasing ordering을 가진다. 같은 revision의 같은 bytes는
 idempotent하고, 같은 revision의 다른 bytes나 낮은 revision은 protocol error다. `update`가 바꿀 수 있는 값은
 기존 channel weight, runtime state, placement capacity와 maintenance wave뿐이다. RID, topology, security identity,
 capability, application version과 normalized message 상한은 connection을 다시 admit해야 바뀐다.
 
-ClientServer connection은 ChannelName 하나와 client-to-server 방향을 고정한다. Client는 send·request와 liveness
-command만 보내고 server는 reply, liveness, update와 reject만 보낸다. RouteMesh record를 ClientServer connection에
+ClientServer connection은 application이 붙인 채널 이름인
+[ChannelName](../spec/01-glossary.ko.md#channelname) 하나와 client-to-server 방향을 고정한다. Client는 send·request와 liveness
+command만 보내고 server는 reply, liveness, update와 reject만 보낸다. node 여럿이 이름으로 서로를 찾는
+[RouteMesh](../spec/01-glossary.ko.md#routemesh)의 record를 ClientServer connection에
 재사용하거나 반대로 재사용하면 protocol error다.
 
 ## 5. Service liveness
@@ -157,7 +162,9 @@ outstanding ID를 지운다. 이전 ID, 중복 ACK, 다른 connection의 ACK와 
 즉시 not-ready로 전환한다. Probe, ACK와 timer는 infrastructure reserve에서 처리하며 application queue나 handler에
 전달하지 않는다.
 
-Classic fanout publisher는 ACK를 받을 수 없으므로 별도 beacon을 5초마다 보낸다. Beacon은 application publish
+받는 쪽이 응답하지 않는 단방향 배포 방식을
+[Classic fanout](../spec/01-glossary.ko.md#classic-fanout)이라고 한다. 이 publisher는 ACK를 받을 수 없으므로
+별도 beacon을 5초마다 보낸다. Beacon은 application publish
 traffic과 관계없이 주기적으로 전송한다.
 
 ```text
@@ -165,9 +172,9 @@ Topic:   01 5A 4C 46 31
 Payload: 5A 46 01 01
 ```
 
-Subscriber는 publisher마다 전용 SUB socket을 사용한다. 첫 valid application record 또는 exact beacon에서 Ready가
+Subscriber는 publisher마다 전용 SUB socket을 사용한다. 첫 유효한 application record 또는 그 publisher가 보낸 beacon에서 Ready가
 되고, 마지막 valid receive 뒤 15초가 지나면 해당 publisher만 not-ready로 바꾼다. Reserved topic의 frame 수나
-payload가 정확하지 않으면 즉시 protocol error다. Public topic derivation 결과가 exact reserved topic이면 transport
+payload가 정확하지 않으면 즉시 protocol error다. 공개 topic을 유도한 결과가 예약된 topic과 그대로 일치하면 transport
 전 application argument 또는 configuration error로 거부한다.
 
 ## 6. Typed application message JSON
@@ -178,7 +185,7 @@ Framework의 기본 typed application message는 `framework-json-v1` profile을 
 - UTF-8 BOM은 허용하지 않는다. Property name과 enum name은 대소문자를 구분한다.
 - Property 순서와 의미 없는 whitespace는 의미가 없다. 중복 property와 누락된 required property는 거부한다.
 - Reader는 알 수 없는 property를 무시한다. `null`은 contract가 nullable로 선언한 값에만 허용한다.
-- Signed·unsigned 64-bit integer는 범위를 확인한 canonical decimal string이다. 32-bit 이하 integer는 fraction이
+- Signed·unsigned 64-bit integer는 범위를 확인한 뒤 앞자리 0 없이 한 가지 형태로만 적는 10진 문자열이다. 32-bit 이하 integer는 fraction이
   없는 JSON number다.
 - Floating-point 값은 finite JSON number만 허용한다. Byte sequence는 padding을 포함한 RFC 4648 base64다.
 - Date, decimal, UUID와 언어별 custom type은 암묵적으로 변환하지 않고 contract가 정한 string 또는 DTO로 표현한다.
@@ -190,22 +197,25 @@ state를 opaque bytes로 저장하며 JSON parsing, state contract ID와 applica
 ## 7. Durable authority와 explicit creation
 
 Store-backed authority는 provider가 발급한 `StoreVersion`, `ObjectGeneration`, `AuthorityOwnerGeneration`과 current
-host의 `OwnerId`, `OwnerLeaseGeneration`을 분리해 보존한다. Object generation은 delete 뒤 같은 canonical key로
-새 object를 만들 때만 바뀐다. Authority owner generation은 같은 object의 owner 변경을 fence한다. Host owner
+host의 `OwnerId`, `OwnerLeaseGeneration`을 분리해 보존한다. Object generation은 delete 뒤 같은 key로
+새 object를 만들 때만 바뀐다. 저장소가 기록한 현재 owner와 그 자격을
+[Authority](../spec/01-glossary.ko.md#authority)라고 하며, authority owner generation은 같은 object의 owner가
+바뀔 때마다 올라가 낡은 owner의 변경을 막는다. Host owner
 lease token은 process 전체가 공유한다.
 
 Actor와 User Spot manager create와 target-owned Instance activation은 generic reservation으로 final object·owner generation과
 `Creating` row를 만든다. Creation record는 object kind, global key, stable type, target descriptor, capacity delta,
 provider-issued fence와 최대 1 MiB complete request envelope의 content reference·hash를 보존한다. Pending current
-row에 보존된 이 값을 stored creation intent라고 하며, recovery projection으로 exact fence와 receipt를 scan 뒤
-복원할 수 있다. Factory, initialize와 initial
+row에 보존된 이 값을 생성 의도 기록이라고 한다. 복구할 때는 이 기록을 훑어 fence 값과 receipt가 그대로 일치하는지 확인한 뒤
+복원할 수 있다. 객체를 실제로 만드는 application 코드를
+[Factory](../spec/01-glossary.ko.md#factory)라고 한다. Factory, initialize와 initial
 membership이 끝나면 같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Target-owned Instance cold
 activation만 commit 전에 durable activation inbox first record도 확정한다. Manager `Find`와 ID-only messaging은
 `Ready`만 사용한다.
 Entry Spot은 startup initialization 뒤 host가 `Serving`이 되기 전에 publish하며 caller가 생성하지 않는다.
 
 Factory 실패는 local barrier를 failed 상태로 seal하고 waiting request를 한 번만 terminal 처리한다. One-way
-operation은 drop event를 기록한다. Runtime은 exact Store version, object·owner generation과 owner lease로 row를
+operation은 drop event를 기록한다. Runtime은 읽어 둔 Store version, object·owner generation과 owner lease가 모두 그대로일 때만 row를
 삭제하고 ambiguous 결과를 read로 reconcile한다. Local registry는 `Missing`을 확인할 때까지 failed 상태를
 유지하며, 그 다음 caller만 새 `NewObject`를 시작할 수 있다.
 
@@ -218,7 +228,8 @@ Normal Instance send·request는 global SpotRid만 포함하며 create command�
 command 39의 optional metadata presence·frame까지 보존한 complete `instance-activation-recovery-v1` envelope를
 Relocation Store에 저장하고 receipt를 Reserve에 연결한다. 이 format과 durable activation inbox는 target-owned
 Instance cold activation에만 사용하며 Actor·User Spot generic create에는 사용하지 않는다. Target host는 startup
-Command 39 route는 첫 byte와 `u16` body length로 닫힌 union을 이룬다. Kind `1`은 기존 Ready authority의
+Command 39 route는 첫 byte와 `u16` body length로 닫힌 union을 이룬다. Kind `1`은 새 작업을 받을 수 있는
+상태인 기존 [Ready](../spec/01-glossary.ko.md#ready) authority의
 object·owner·lease generation과 StoreVersion을 포함하므로 이전 wire와 byte-compatible하다. Kind `2`는 Missing
 cold activation 전용이며 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version,
 deadline을 포함하고 authority fence를 금지한다. Kind `2` route와 ZLIA의 target Mesh·stable type·descriptor
@@ -226,7 +237,7 @@ version·deadline, operation identity와 metadata presence·bytes가 다르면 r
 거부한다.
 
 Target host는 startup
-initial scan과 bounded background scan에서 자신이 소유한 Pending projection 또는 Ready Instance activation
+첫 scan과 한 번에 도는 양을 제한한 background scan에서 자신이 소유한 Pending 기록 또는 Ready Instance activation
 recovery root를 재개한다. Scan과 late control record는 object key, object·owner generation과 owner lease로 key를
 정한 local barrier 하나로 수렴한다. Ready 전 durable inbox first record를 확정하고 handler는 barrier로 막으며,
 startup은 queue head를 복원하기 전에 Serving을 게시하지 않는다. 첫 handler terminal completion을 durable하게
@@ -234,24 +245,25 @@ startup은 queue head를 복원하기 전에 Serving을 게시하지 않는다. 
 admission만으로 pointer를 제거하지 않는다.
 
 Reactivation 실패는 local barrier를 seal하고 request를 한 번만 terminal 처리한 뒤 one-way drop event를 기록한다.
-그 다음 exact fenced delete와 read reconcile을 수행한다. Delete 전 process가 종료되면 target scan은 retry-safe
+그 다음 fence 값이 일치할 때만 지우고, 지운 결과를 다시 읽어 맞추는 순서로 진행한다. Delete 전 process가 종료되면 target scan은 retry-safe
 factory를 다시 실행할 수 있다. `Missing`이 확인되기 전에는 새 activation을 시작하지 않는다.
 
 ### 8.1 User Spot terminal service operation
 
 User Spot remote create는 command 47을 사용한다. Source는 generic Reserve 이후 correlation·operation ID와 source
-node lifecycle, global Spot RID·stable type, provider-issued reservation fence와 deadline을 exact target으로
+node lifecycle, global Spot RID·stable type, provider가 발급한 reservation fence와 deadline을 지정한 대상 하나로
 보낸다. Reservation fence가 expected StoreVersion, object·owner generation, target node lifecycle·owner lease와
 pending capacity를 함께 보존한다. Target은 Pending creation projection의 immutable content를 Location Store에서
 읽으므로 command 47에는 application payload나 metadata가 없다.
 
-User Spot remote close는 command 48을 사용한다. Source node lifecycle과 operation identity 외에 exact SpotRef,
+User Spot remote close는 command 48을 사용한다. Source node lifecycle과 operation identity 외에 닫을 대상을 정확히 가리키는 `SpotRef`,
 target node lifecycle, AuthorityOwnerGeneration과 StoreVersion을 보낸다. Target은 current authority와 active
-Actor membership·relocation state를 admission 전에 검사한다. 두 command는 RouteMesh infrastructure command이며
+Actor가 어느 Spot에 속하는지를 나타내는
+[Actor membership](../spec/01-glossary.ko.md#actor-membership)과 relocation state를 수용 판단 전에 검사한다. 두 command는 RouteMesh infrastructure command이며
 flags와 payload를 허용하지 않는다.
 
 두 operation은 기존 command 20 reply envelope를 그대로 사용한다. Create 성공 tail은
-`Existing`·`Created`·`Rejected` discriminator와 exact SpotRef이고, Close 성공 tail은 `closed` bool 하나다.
+`Existing`·`Created`·`Rejected` discriminator와 그 대상을 가리키는 `SpotRef`이고, Close 성공 tail은 `closed` bool 하나다.
 Create의 application reply는 `Existing`에서 금지하고 `Created` 또는 `Rejected`에서만 선택적으로 허용한다.
 Source operation table은 source RID·lifecycle과 operation ID로 terminal-once를 보장한다. Location row polling과
 application packet으로 만든 control message는 reply를 대신하지 않는다.
@@ -269,26 +281,27 @@ gate 안에서만 admit한다.
 
 Source lifetime이 `connectionBound`인 accepted send·request와 모든
 bound-session request는 `Captured` 전에 terminal state까지 drain한다. 이 work는 frozen journal에 기록하지 않는다.
-Deadline 안에 끝나지 않으면 relocation을 pre-Captured에서 abort하고 `Blocked/DeadlineExceeded`로 끝낸 뒤 source
+호출이 끝나야 하는 시각을 [Deadline](../spec/01-glossary.ko.md#deadline)이라고 한다. 그 안에 끝나지 않으면
+relocation을 pre-Captured에서 abort하고 `Blocked/DeadlineExceeded`로 끝낸 뒤 source
 admission을 복원한다.
 
-Durable frozen record는 `leaseBacked` source만 허용한다. 각 record는 exact source node lifecycle과
+Durable frozen record는 `leaseBacked` source만 허용한다. 각 record는 그 record를 만든 source node의 lifecycle과
 `OwnerId`·`OwnerLeaseGeneration`을 포함하며 replay 전 current authority와 비교한다. Connection lifetime에만 묶인
 record를 relocation envelope에 넣는 것은 protocol error다.
 
 Framework는 seal 시점에 실행하지 않은 message queue, accepted journal, timer logical registration·pending tick,
 optional application state, manifest와 metadata를 deterministic `relocation-envelope-v1` stream으로 encode한다.
-Native timer handle과 callback continuation은 encode하지 않는다. 모든 immutable chunk를 쓰고 root manifest를 쓴
+Native timer handle과 callback continuation은 encode하지 않는다. 바뀌지 않는 chunk를 모두 쓰고, 그 chunk 목록을 담은 최상위 record를 쓴
 다음 authority의 `Captured` CAS로 root를 연결한다.
 이 CAS가 durability boundary다. `Captured` 전에 source가 종료되면 relocation을 abort하며 continuity replay를
 보장하지 않는다. CAS에 연결되지 않은 chunk와 manifest는 orphan이다.
 
-Location Store authority는 phase, `RelocationId`, source·target fence, root reference·checksum, bounded canonical
+Location Store authority는 phase, `RelocationId`, source·target fence, 최상위 record를 가리키는 값과 checksum, 크기를 제한한
 participant set·mutation·aggregate generation·inventory digest와 replay·completion count를 원자적으로 CAS한다.
 Relocation Store manifest는 participant별 payload를 찾기 위한 같은 inventory digest의 projection이며 owner와
 membership authority가 아니다. 두 Store는 distributed transaction이나 2PC를 사용하지 않는다.
 
-Relocation root retention은 24시간이고 renew threshold는 12시간이다. `Captured`와 `Prepared` CAS 직전에 complete
+최상위 record는 24시간 보관하고 12시간이 지나면 갱신한다. `Captured`와 `Prepared` CAS 직전에 complete
 tree가 threshold보다 오래 유지되는지 확인하거나 renew한다. Reader는 current authority가 가리키는 root만 읽고
 chunk checksum과 전체 checksum을 streaming으로 검증한다.
 
@@ -313,7 +326,7 @@ target attempt·reservation을 함께 보존한다. `Committed`부터 `Completed
 각 transition은 expected `StoreVersion` CAS다. Target replacement는 target attempt, target owner lease와 reservation만
 바꾸며 stable identity와 relocation root를 바꾸지 않는다.
 
-User Spot과 member Actor relocation은 non-zero 128-bit aggregate ID와 exact participant inventory를 사용한다.
+User Spot과 member Actor relocation은 0이 아닌 128-bit 묶음 ID를 쓰고, 참여 대상 목록이 그대로 일치해야 한다.
 Participant 총수에는 1,024개 상한을 두지 않는다. Location Store에는 최대 1,024개·
 encoded 1 MiB의 immutable leaf chunk와 필요한 index chunk로 inventory tree를
 저장한다. Target offer는 tree root·전체 count·digest와 Spot·member Actor의 capacity
@@ -331,9 +344,9 @@ ingress hold는 precommit abort에서 source queue로 돌아가고 commit 뒤에
 route ACK와 steady authority normalization이 모두 끝날 때까지 닫혀 있다. Abort도 source route ACK와 steady source
 normalization이 끝난 뒤 admission을 복원한다.
 
-Session owner는 Bind 때 Actor별 exact route와 lease fence를 저장한다. Relay·request relay와 disconnect는
+Session owner는 Bind 때 Actor마다 그 시점의 route와 lease fence를 그대로 저장한다. Relay·request relay와 disconnect는
 message마다 Location Store를 조회하지 않는다. Physical disconnect는 current binding snapshot 전체에
-all-settled 통지하며 exact binding identity마다 callback을 최대 한 번 실행한다. Route update는 같은
+모두 확정된 뒤에 통지하며, binding 하나마다 callback을 최대 한 번 실행한다. Route update는 같은
 ObjectGeneration에만 적용한다. Command 44·45는 `Completed` 이후 route switch·ACK에만 사용하며 이 계약을
 위해 새 command를 추가하지 않는다.
 
@@ -341,10 +354,10 @@ ObjectGeneration에만 적용한다. Command 44·45는 `Completed` 이후 route 
 
 `OperationId`와 `ReplyRouteId`는 source owner lifecycle 안에서 각각 unique한 non-zero 값이다. Wrap과 reuse는 terminal
 runtime error다. Operation ID는 deduplication identity이고 reply route를 대신하지 않는다. Durable terminal
-identity는 stable `RelocationId`, exact request-source fence와 `OperationId` 조합이다.
+identity는 바뀌지 않는 `RelocationId`, 요청을 시작한 쪽의 fence와 `OperationId` 조합이다.
 
 Target은 terminal completion과 delivery state를 새 immutable relocation root에 쓴 뒤 authority CAS로
-`TerminalCompletionCount`와 `PendingRelayCount`를 함께 갱신한다. `replyRelay`는 original reply route와 exact request
+`TerminalCompletionCount`와 `PendingRelayCount`를 함께 갱신한다. `replyRelay`는 원래 reply route와 그 요청을 가리키는
 source lease fence를 사용한다. Source는 terminal result를 수락하거나 이미 terminal임을 확인한 뒤 authenticated
 `replyRelayAck`을 보낸다. Physical connection close는 terminal delivery의 증거가 아니다.
 
@@ -365,8 +378,8 @@ non-retriable `RelocationDataLost`이며 commit된 owner·membership을 source�
 - Application traffic이 probe round-trip deadline을 연장하지 않는다.
 - Connection-bound accepted work가 relocation envelope에 들어가지 않는다.
 - `Captured` CAS 전 crash를 durable replay로 처리하지 않는다.
-- Relocation root write·verify가 authority CAS보다 먼저이고 authority reference release가 root delete보다 먼저다.
-- Location participant digest와 Relocation manifest digest mismatch가 `RelocationDataLost`로 끝난다.
+- 최상위 record를 쓰고 검증하는 일이 authority CAS보다 먼저이고, authority가 그 참조를 놓는 일이 record 삭제보다 먼저다.
+- 저장소가 아는 참여 대상 목록과 relocation이 기록한 목록의 digest가 다르면 `RelocationDataLost`로 끝난다.
 - Actor relocation commit이 owner와 target Entry Spot membership을 atomic하게 바꾼다.
 - `Activated`에서 Ready를 publish하지 않는다.
 - Typed application message의 `framework-json-v1` golden fixture가 네 runtime에서 같은 value와 failure를 만든다.

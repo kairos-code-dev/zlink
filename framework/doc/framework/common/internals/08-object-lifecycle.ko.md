@@ -2,7 +2,8 @@
 
 [내부 구조 목차](README.ko.md)
 
-Spot 세 종류를 코드에서 어떻게 구분하고, 없는 객체를 언제 만들며, 낡은 owner에게 보낸
+Actor와 handler를 담는 실행 단위인 [Spot](../spec/01-glossary.ko.md#spot) 세 종류를 코드에서
+어떻게 구분하고, 없는 객체를 언제 만들며, 낡은 owner에게 보낸
 message를 어떻게 걸러내는지를 다룬다.
 
 ## 1. 종류를 참·거짓 표시로 구분하지 않는다

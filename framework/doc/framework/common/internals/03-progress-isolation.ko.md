@@ -79,7 +79,7 @@ message 처리를 늦추지도 않는다.
 | infrastructure에 자원 하나만 | 완료 처리·peer 관리·이동이 전부 그 하나를 통과한다. peer가 늘면 이것이 병목이 된다 |
 | infrastructure에도 넉넉히 | [2. 직렬 실행](02-serialization.ko.md)의 자원 제약과 충돌한다. 두 배분을 합치면 코어 수를 넘는다 |
 
-**결정 — 자원은 process 하나를 기준으로 배분하고, topology나 Spot 수에 따라 늘리지
+**결정 — 자원은 process 하나를 기준으로 배분하고, topology나 [Spot](../spec/01-glossary.ko.md#spot) 수에 따라 늘리지
 않는다.** infrastructure 작업은 대부분 짧고 대기가 없으므로 application보다 적은 자원으로
 충분하다.
 

@@ -54,7 +54,7 @@ Actor의 남은 작업만 골라내야 하기 때문이다. `SpotWide`라는 이
 ## 3. ④ 구간 — 옛 주소로 온 message
 
 이동이 끝나도 보낸 쪽은 한동안 옛 위치를 알고 있다. 그 message를 새 owner에게 넘겨
-주는 것이 **Message Follow**이며, 기본 동작 기간은 **30초**다
+주는 것이 **[Message Follow](../spec/01-glossary.ko.md#message-follow)**이며, 기본 동작 기간은 **30초**다
 ([Location runtime §691-701](../spec/21-location-runtime.ko.md)).
 
 | 제한 | 값과 적용 범위 |

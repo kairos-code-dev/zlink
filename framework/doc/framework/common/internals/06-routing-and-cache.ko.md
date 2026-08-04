@@ -151,7 +151,7 @@ ClientServer가 그렇다. server 후보는 같은 ChannelName을 처리하므�
 
 | 필요한 조건 | 어디서 정하는가 |
 |---|---|
-| ready·drain 상태 | framework admission record |
+| ready·drain 상태 | framework가 연결을 승인할 때 남긴 기록 |
 | descriptor와 실제 연결의 identity·세대 일치 | framework 검증 |
 | 수동 연결의 ChannelName·RID·세대·weight·drain·보안 검증 | framework 검증 |
 | Server RID tiebreak | framework가 아는 값 |
@@ -338,7 +338,7 @@ flowchart LR
 
 ## 8. 확인할 결과
 
-- 같은 객체로 연속 호출할 때 Location Store 조회가 호출마다 발생하지 않는다.
+- 같은 객체로 연속 호출할 때 [Location Store](../spec/01-glossary.ko.md#location-store) 조회가 호출마다 발생하지 않는다.
 - 객체 없음·만드는 중·저장소 실패가 캐시에 남지 않는다.
 - 캐시 수명이 Message Follow 기간을 넘지 않는다.
 - 이동 후 우회 경로로 넘어간 호출 뒤에는 보낸 쪽 캐시가 갱신되어, 다음 호출이 새

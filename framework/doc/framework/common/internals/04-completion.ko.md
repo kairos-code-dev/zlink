@@ -103,7 +103,7 @@ flowchart LR
 
 - 보관 자리는 **한도를 둔다.**
 - 한도를 넘으면 **관찰 가능한 실패로 끝낸다.** 보관 자리는 source runtime이 소유한
-  bounded resource이므로 오류 kind는 `CapacityExceeded`다
+  **한도 있는 자원**이므로 오류 kind는 `CapacityExceeded`다
   ([Framework 오류 모델 §73](../spec/32-framework-error-model.ko.md)). 한 구현은 여기서
   응답을 조용히 버려서, 기다리던 caller가 timeout으로만 알게 된다.
 - 보관 자리와 대기 표 두 곳이 있으므로 **양쪽을 다 관찰한 경로가 전달을 책임진다.**

@@ -25,22 +25,26 @@ spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 
 각 장은 아래 그림의 한 자리를 깊게 판다. 어느 장을 읽어야 할지 모를 때 여기서 찾는다.
 
+**이 그림은 계층도가 아니라 장 찾기용 지도다.** 왼쪽 묶음과 오른쪽 묶음은 **서로 다른
+process**이며, 한 host가 두 역할을 모두 하더라도 그림의 두 자리는 각각 다른 호출에서
+동작한다.
+
 ```mermaid
 flowchart TB
-    subgraph SEND["보내는 쪽"]
+    subgraph SEND["보내는 node의 process"]
         direction TB
         SEL["대상 선택기<br/>「6」"]
         RC["위치 캐시<br/>「6」"]
         SEL --- RC
     end
 
-    subgraph WIRE["전송 경계"]
+    subgraph WIRE["두 process 사이"]
         direction TB
         TR["peer 연결 · liveness<br/>「10」"]
         REC["service wire record<br/>「wire」"]
     end
 
-    subgraph RECVSIDE["받는 쪽 runtime"]
+    subgraph RECVSIDE["받는 node의 process — 이 객체의 owner"]
         direction TB
         RL["수신 루프<br/>「7」"]
         AD["확인 · 넣기 구간<br/>「7」"]
@@ -50,7 +54,7 @@ flowchart TB
         FIN["완료 확정<br/>「4」"]
     end
 
-    subgraph STATE["runtime이 들고 있는 상태"]
+    subgraph STATE["받는 node가 들고 있는 상태"]
         direction TB
         OBJ["Spot · Actor 객체<br/>생성 · 정리 · 회계 「8」"]
         SB["session binding<br/>「9」"]
@@ -83,6 +87,10 @@ flowchart TB
 **실선이 message가 실제로 지나는 축이고 점선은 참조·조회·통지다.** 「1. 계층 경계와
 식별자」는 이 그림 전체에 걸친다 — 어느 부품이 binding type을 알아도 되는가를 정하므로
 한 자리에 놓이지 않는다.
+
+`codec`과 `Location Store`를 묶음 밖에 둔 이유는 두 process가 모두 쓰기 때문이다. codec은
+보내는 쪽에서 직렬화하고 받는 쪽에서 소유권을 옮긴 뒤 역직렬화하며, Location Store는 두
+process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 process만 쓰는 것으로 읽힌다.
 
 점선 둘은 장을 따로 읽으면 놓치기 쉬운 연결이라 특히 표시했다.
 

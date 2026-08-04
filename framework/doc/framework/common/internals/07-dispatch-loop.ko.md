@@ -176,7 +176,8 @@ owner가 바뀌어, 더 이상 owner가 아닌 node의 대기열에 message가 �
 **결정 — 다음 회전은 이번에 멈춘 연결의 다음부터 시작한다.** 항상 처음부터 순회하면
 앞쪽 연결이 계속 먼저 처리되어, 상한을 두어도 뒤쪽 연결이 밀린다.
 
-이 규칙은 **모든 multi-connection 수신 경로**에 적용한다 — fanout뿐 아니라 RouteMesh,
+이 규칙은 **모든 multi-connection 수신 경로**에 적용한다 — fanout뿐 아니라
+node 여럿이 이름으로 서로를 찾는 [RouteMesh](../spec/01-glossary.ko.md#routemesh),
 ClientServer, service connection, STREAM이 모두 대상이다
 ([Transport liveness](../spec/29-transport-liveness.ko.md)).
 
@@ -249,7 +250,7 @@ timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았�
 ## 8. 수신 처리와 상태 변경을 분리한다
 
 수신 콜백은 받은 데이터의 소유권을 runtime 쪽 값으로 옮기고 **바로 반환한다.** 그
-안에서 handler를 부르거나 Spot 상태를 바꾸지 않는다.
+안에서 handler를 부르거나 [Spot](../spec/01-glossary.ko.md#spot) 상태를 바꾸지 않는다.
 
 이유는 둘이다. 첫째, 수신 문맥은 대개 전송 계층이 소유하므로 여기서 오래 머물면 그
 연결의 다른 수신이 밀린다. 둘째, [2. 직렬 실행](02-serialization.ko.md)의 실행 권한을

@@ -11,7 +11,8 @@ Application handler에 동기화 코드가 없어도 되는 이유를 만드는 
 
 - Actor 앞으로 온 payload는 **실행 모드와 무관하게 항상 그 Actor의 queue에 제출한다**
   ([Actor 모델 §76-79](../spec/14-actor-model.ko.md)).
-- `SpotWide`에서는 그 Spot의 Actor handler·Spot handler·timer·lifecycle callback이
+- `SpotWide`에서는 Actor 여럿을 담는 실행 단위인 그 [Spot](../spec/01-glossary.ko.md#spot)의
+  Actor handler·Spot handler·timer·lifecycle callback이
   **전체에서 한 번에 하나만** 실행된다
   ([Actor 모델 §84-86](../spec/14-actor-model.ko.md)).
 

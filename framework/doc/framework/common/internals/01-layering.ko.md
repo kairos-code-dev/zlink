@@ -82,7 +82,8 @@ binding이 강제한 것인지** 읽어낼 수 없게 된다.
 
 ## 2. 종료를 topology마다 두지 않는다
 
-**결정.** process에 host runtime 하나를 두고, RouteMesh·ClientServer·fanout·STREAM 같은
+**결정.** process에 host runtime 하나를 두고, node 여럿이 이름으로 서로를 찾는
+[RouteMesh](../spec/01-glossary.ko.md#routemesh)·ClientServer·fanout·STREAM 같은
 topology별 runtime은 그 아래에 둔다. **종료 순서는 host가 소유하고, 각 resource를 닫는
 방법은 그것을 만든 topology가 소유한다.**
 
@@ -93,7 +94,8 @@ close`)를 정해진 순서로 부르고, 각 topology는 그 부름에 자기 r
 불러도 결과가 같아야 한다.
 
 **왜.** topology가 각자 닫으면 닫는 순서가 실행할 때마다 달라진다. STREAM session이 아직
-Actor를 붙들고 있는데 Spot 쪽이 먼저 닫히면, 그 상황을 재현할 수도 없고 어느 쪽이
+Actor를 붙들고 있는데 Actor가 속한 실행 단위인 [Spot](../spec/01-glossary.ko.md#spot) 쪽이
+먼저 닫히면, 그 상황을 재현할 수도 없고 어느 쪽이
 잘못인지 판정할 수도 없다.
 
 한 구현에서는 종료 순서를 맞추려고 **구체 타입을 검사해 분기하는** 코드가 종료 경로에

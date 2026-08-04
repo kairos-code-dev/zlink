@@ -13,7 +13,8 @@ session callback을 실행하는 문맥이 Actor handler를 실행하지 않는�
 ([Session Actor dispatch §65](../spec/20-session-actor-dispatch.ko.md)).
 
 나누지 않으면 두 방향으로 문제가 생긴다. 한 client가 보낸 packet 처리가 그 Actor가
-속한 Spot 전체를 잡거나, 반대로 Spot이 바쁠 때 그 연결의 keepalive 처리까지 밀린다.
+속한 실행 단위인 [Spot](../spec/01-glossary.ko.md#spot) 전체를 잡거나, 반대로 Spot이 바쁠 때
+그 연결의 keepalive 처리까지 밀린다.
 연결 수명 관리와 업무 처리는 빈도도 지연 요구도 다르다.
 
 **결정 — runtime이 쓰는 제어 record는 application queue에 넣지 않는다**

@@ -1,6 +1,13 @@
+---
+title: "ClientServer Channel"
+---
+
 # ClientServer Channel
 
 [스펙 목차](README.ko.md) · [이전: Channel 메시징](08-channel-messaging.ko.md) · [다음: Network listener identity](10-network-listener-identity.ko.md)
+
+> **이 장이 정의하는 것** — Client가 send·request를 시작하고 Server가 handler를 실행해
+> reply하는 단방향 service 경계.
 
 
 ## 1. 범위

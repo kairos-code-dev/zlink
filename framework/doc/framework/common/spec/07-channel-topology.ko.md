@@ -1,6 +1,13 @@
+---
+title: "RouteMesh topology"
+---
+
 # RouteMesh topology
 
 [스펙 목차](README.ko.md) · [이전: ZLink Framework API](06-framework-api.ko.md) · [다음: Channel 메시징](08-channel-messaging.ko.md)
+
+> **이 장이 정의하는 것** — RouteMesh의 물리 연결과 ChannelName 논리 membership을
+> 구성하는 방법.
 
 
 ## 1. 범위

@@ -1,6 +1,13 @@
+---
+title: "Runtime 상태 조회와 운영 진단"
+---
+
 # Runtime 상태 조회와 운영 진단
 
 [스펙 목차](README.ko.md) · [이전: Relocation Store provider SPI와 공식 Redis 구현](23-relocation-store-redis.ko.md) · [다음: Runtime metric과 집계 규칙](25-runtime-metrics.ko.md)
+
+> **이 장이 정의하는 것** — 운영자가 Framework runtime의 현재 상태를 조회하고 변화를
+> 관찰하며 원인을 log에서 찾는 방법.
 
 
 ## 1. 이 문서가 정의하는 계약

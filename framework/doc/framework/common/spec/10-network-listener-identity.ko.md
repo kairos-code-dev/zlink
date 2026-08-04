@@ -1,6 +1,12 @@
+---
+title: "Network listener identity"
+---
+
 # Network listener identity
 
 [스펙 목차](README.ko.md) · [이전: ClientServer Channel](09-client-server-channel.ko.md) · [다음: Spot 모델 — Entry, User, Instance](11-spot-model.ko.md)
+
+> **이 장이 정의하는 것** — network listener가 목적별로 서로 다른 주소 두 개를 가질 때의 계약.
 
 
 ## 1. 범위

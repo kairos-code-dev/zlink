@@ -1,6 +1,13 @@
+---
+title: "비동기 실행과 handler turn"
+---
+
 # 비동기 실행과 handler turn
 
 [스펙 목차](README.ko.md) · [이전: Framework 메시지 계약](04-message-model.ko.md) · [다음: ZLink Framework API](06-framework-api.ko.md)
+
+> **이 장이 정의하는 것** — submit, request completion, handler 직렬 실행, timeout,
+> cancellation과 timer의 공개 계약.
 
 
 이 문서는 ZLink Framework의 submit, request completion, handler 직렬 실행, timeout,

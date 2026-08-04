@@ -1,6 +1,13 @@
+---
+title: "Channel 메시징"
+---
+
 # Channel 메시징
 
 [스펙 목차](README.ko.md) · [이전: RouteMesh topology](07-channel-topology.ko.md) · [다음: ClientServer Channel](09-client-server-channel.ko.md)
+
+> **이 장이 정의하는 것** — 특정 MeshNode로 보내는 Node direct와 ChannelName으로
+> Server 하나를 선택하는 Channel 메시징의 공통 계약.
 
 
 ## 1. 범위

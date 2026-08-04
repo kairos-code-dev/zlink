@@ -1,10 +1,12 @@
+---
+title: "Framework 메시징 용어집"
+---
+
 # Framework 메시징 용어집
 
 [스펙 목차](README.ko.md) · [이전: Framework 공개 계약 관리](00-public-contract-governance.ko.md) · [다음: ZLink Framework 개요](02-overview.ko.md)
 
-
-> 이 문서는 `framework/doc/framework/common/spec/`의 공개 계약을 이해하는 데 필요한
-> 공통 domain term, 상태와 결과 이름을 설명한다.
+> **이 장이 정의하는 것** — 이 스펙 전체에서 쓰는 공통 domain term, 상태와 결과 이름.
 
 [스펙 문서 작성 가이드](../../../../../doc/principal/documentation/spec-writing-guide.ko.md) ·
 [Spot 메시징](12-spot-messaging.ko.md)

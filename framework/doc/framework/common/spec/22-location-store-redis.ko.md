@@ -1,6 +1,13 @@
+---
+title: "Location Store provider SPI와 공식 Redis 구현"
+---
+
 # Location Store provider SPI와 공식 Redis 구현
 
 [스펙 목차](README.ko.md) · [이전: Location runtime](21-location-runtime.ko.md) · [다음: Relocation Store provider SPI와 공식 Redis 구현](23-relocation-store-redis.ko.md)
+
+> **이 장이 정의하는 것** — Location Store provider가 지켜야 하는 공개 SPI(조건부
+> commit, 페이지 제한 snapshot).
 
 
 ## 1. 범위와 독자

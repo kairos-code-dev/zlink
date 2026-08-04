@@ -1,6 +1,13 @@
+---
+title: "Runtime metric과 집계 규칙"
+---
+
 # Runtime metric과 집계 규칙
 
 [스펙 목차](README.ko.md) · [이전: Runtime 상태 조회와 운영 진단](24-runtime-monitoring.ko.md) · [다음: Message flow tracing](26-message-flow-tracing.ko.md)
+
+> **이 장이 정의하는 것** — 처리량·대기·실패·현재 개수를 집계하는 metric의 이름,
+> 종류, 단위와 label.
 
 
 ## 1. 이 문서가 정의하는 계약

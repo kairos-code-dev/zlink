@@ -1,6 +1,13 @@
+---
+title: "Relocation Store provider SPI와 공식 Redis 구현"
+---
+
 # Relocation Store provider SPI와 공식 Redis 구현
 
 [스펙 목차](README.ko.md) · [이전: Location Store provider SPI와 공식 Redis 구현](22-location-store-redis.ko.md) · [다음: Runtime 상태 조회와 운영 진단](24-runtime-monitoring.ko.md)
+
+> **이 장이 정의하는 것** — relocation과 복구에 필요한 byte payload를 보관하는
+> Relocation Store의 공개 provider interface(SPI).
 
 
 ## 1. 이 문서가 정하는 계약

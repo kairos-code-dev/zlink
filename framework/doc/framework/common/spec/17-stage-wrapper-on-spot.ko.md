@@ -1,6 +1,13 @@
+---
+title: "Stage wrapper on Spot"
+---
+
 # Stage wrapper on Spot
 
 [스펙 목차](README.ko.md) · [이전: Spot 주소 메시징](16-spot-address-messaging.ko.md) · [다음: Spot·Actor routing](18-object-routing.ko.md)
+
+> **이 장이 정의하는 것** — public Spot 계약 위에 room·stage·zone 같은 상위 실행
+> 모델을 만드는 공통 계약.
 
 
 ## 1. 이 문서가 정의하는 범위

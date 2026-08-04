@@ -1,6 +1,12 @@
+---
+title: "ZLink Framework 상호작용 모델"
+---
+
 # ZLink Framework 상호작용 모델
 
 [스펙 목차](README.ko.md) · [이전: ZLink Framework 개요](02-overview.ko.md) · [다음: Framework 메시지 계약](04-message-model.ko.md)
+
+> **이 장이 정의하는 것** — Framework operation의 대상, 완료 의미와 실행 owner.
 
 
 ## 1. 목적

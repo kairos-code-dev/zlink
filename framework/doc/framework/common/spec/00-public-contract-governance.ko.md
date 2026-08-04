@@ -1,6 +1,12 @@
+---
+title: "Framework 공개 계약 관리"
+---
+
 # Framework 공개 계약 관리
 
 [스펙 목차](README.ko.md) · [다음: Framework 메시징 용어집](01-glossary.ko.md)
+
+> **이 장이 정의하는 것** — Framework 공개 계약의 소유권과 검증 규칙.
 
 
 ## 1. 목적

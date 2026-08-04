@@ -1,6 +1,12 @@
+---
+title: "ZLink Framework API"
+---
+
 # ZLink Framework API
 
 [스펙 목차](README.ko.md) · [이전: 비동기 실행과 handler turn](05-async-execution-policy.ko.md) · [다음: RouteMesh topology](07-channel-topology.ko.md)
+
+> **이 장이 정의하는 것** — 언어 중립 public API family와 등록 규칙.
 
 
 ## 1. 목적

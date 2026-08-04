@@ -1,6 +1,13 @@
+---
+title: "Spot·Actor routing"
+---
+
 # Spot·Actor routing
 
 [스펙 목차](README.ko.md) · [이전: Stage wrapper on Spot](17-stage-wrapper-on-spot.ko.md) · [다음: STREAM 서버 session](19-stream-session.ko.md)
+
+> **이 장이 정의하는 것** — Spot·Actor로 가는 message가 Location Store를 조회하는
+> 경로와 조회하지 않는 경로를 가르는 기준.
 
 
 ## 1. 어떤 message가 어느 route를 사용하는가

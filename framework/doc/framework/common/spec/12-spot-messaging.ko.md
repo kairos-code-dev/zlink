@@ -1,6 +1,12 @@
+---
+title: "SPOT 메시징"
+---
+
 # SPOT 메시징
 
 [스펙 목차](README.ko.md) · [이전: Spot 모델 — Entry, User, Instance](11-spot-model.ko.md) · [다음: MeshNode](13-mesh-node.ko.md)
+
+> **이 장이 정의하는 것** — Spot에 메시지를 전달하는 공통 공개 계약.
 
 
 ## 1. 범위

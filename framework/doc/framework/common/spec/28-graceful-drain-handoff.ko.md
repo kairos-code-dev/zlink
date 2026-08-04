@@ -1,6 +1,13 @@
+---
+title: "Host Relocate와 Shutdown"
+---
+
 # Host Relocate와 Shutdown
 
 [스펙 목차](README.ko.md) · [이전: Request 연결과 업무 흐름 식별](27-flow-correlation.ko.md) · [다음: Transport 연결 상태 확인](29-transport-liveness.ko.md)
+
+> **이 장이 정의하는 것** — host의 stateful workload를 다른 node로 이전하거나 host를
+> 종료할 때의 호출 순서와 결과.
 
 
 ## 1. 이 문서가 답하는 질문

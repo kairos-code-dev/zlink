@@ -1,6 +1,13 @@
+---
+title: "STREAM 서버 session"
+---
+
 # STREAM 서버 session
 
 [스펙 목차](README.ko.md) · [이전: Spot·Actor routing](18-object-routing.ko.md) · [다음: Session Actor dispatch](20-session-actor-dispatch.ko.md)
+
+> **이 장이 정의하는 것** — 서버 쪽 STREAM session(연결 하나를 수락한 때부터 닫을
+> 때까지 packet 처리와 request correlation을 유지하는 실행 단위)의 공개 계약.
 
 
 이 문서는 ZLink Framework의 서버 쪽 STREAM session(연결 하나를 수락한 때부터

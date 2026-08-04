@@ -1,6 +1,13 @@
+---
+title: "장애 대응과 failover 범위"
+---
+
 # 장애 대응과 failover 범위
 
 [스펙 목차](README.ko.md) · [이전: Transport 연결 상태 확인](29-transport-liveness.ko.md) · [다음: Framework 오류 모델](32-framework-error-model.ko.md)
+
+> **이 장이 정의하는 것** — connection·message operation·object 생성과 relocation
+> 도중 장애가 났을 때 Framework가 같은 작업을 자동으로 계속하는 범위.
 
 
 ## 1. 이 문서가 답하는 질문
@@ -89,9 +96,10 @@ operation을 수락했는지 알 수 없으면 그 operation은 다른 peer에 �
 [Spot·Actor routing §2.5](18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)가
 정한다. Operation별 적용 표와 owner가 사라졌을 때의 결과가 그곳에 있다.
 
-장애 대응에서 이 구분이 만드는 차이는 하나다. **일반 Actor·Spot message는 generation이 아니라
-logical ID의 current Ready object를 대상으로 하므로, object가 같은 ID로 다시 만들어진 것과
-owner를 잃은 것이 서로 다른 결과로 끝난다.** 전자는 새 incarnation이 처리하고 후자는
+장애 대응에서 이 구분이 만드는 차이는 하나다. **일반 Actor·Spot message는 global logical ID만 target으로 사용한다.**
+generation이 아니라 logical ID의 current Ready object를 대상으로 하므로,
+object가 같은 ID로 다시 만들어진 것과 owner를 잃은 것이 서로 다른 결과로 끝난다. `ObjectGeneration`은
+일반 message의 **Target 일치 조건에서 제외한다.** 전자는 새 incarnation이 처리하고 후자는
 `Unavailable`이다. 아래 절들은 후자만 다룬다.
 
 ### 4.2 기존 Actor와 Spot

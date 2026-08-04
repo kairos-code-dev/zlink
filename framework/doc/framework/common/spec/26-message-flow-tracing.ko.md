@@ -1,6 +1,13 @@
+---
+title: "Message flow tracing"
+---
+
 # Message flow tracing
 
 [스펙 목차](README.ko.md) · [이전: Runtime metric과 집계 규칙](25-runtime-metrics.ko.md) · [다음: Request 연결과 업무 흐름 식별](27-flow-correlation.ko.md)
+
+> **이 장이 정의하는 것** — message 한 건이 어느 처리 단계에 도달했고 어디서
+> 실패했는지를 trace·structured log로 확인하는 계약.
 
 
 ## 1. 무엇을 확인할 수 있는가

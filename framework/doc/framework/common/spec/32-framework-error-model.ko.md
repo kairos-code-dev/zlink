@@ -1,6 +1,13 @@
+---
+title: "Framework 오류 모델"
+---
+
 # Framework 오류 모델
 
 [스펙 목차](README.ko.md) · [이전: 장애 대응과 failover 범위](31-failure-failover-policy.ko.md)
+
+> **이 장이 정의하는 것** — `Send`, `Request`, lifecycle operation이 실패했을 때
+> Application에 전달하는 공통 오류.
 
 ## 1. 범위
 

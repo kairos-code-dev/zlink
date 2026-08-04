@@ -1,6 +1,13 @@
+---
+title: "Spot과 Actor membership"
+---
+
 # Spot과 Actor membership
 
 [스펙 목차](README.ko.md) · [이전: Actor 모델](14-actor-model.ko.md) · [다음: Spot 주소 메시징](16-spot-address-messaging.ko.md)
+
+> **이 장이 정의하는 것** — Actor 생성, Spot membership, relocation과 aggregate
+> relocation. 자동 failover는 범위 밖이다.
 
 
 이 문서는 ZLink Framework에서 Actor 생성, Spot membership, relocation과

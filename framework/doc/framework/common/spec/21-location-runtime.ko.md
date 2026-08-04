@@ -1,6 +1,13 @@
+---
+title: "Location runtime"
+---
+
 # Location runtime
 
 [스펙 목차](README.ko.md) · [이전: Session Actor dispatch](20-session-actor-dispatch.ko.md) · [다음: Location Store provider SPI와 공식 Redis 구현](22-location-store-redis.ko.md)
+
+> **이 장이 정의하는 것** — Framework가 application object의 현재 위치를 찾고 다른
+> node로 옮기는 방법.
 
 
 ## 1. 범위와 책임

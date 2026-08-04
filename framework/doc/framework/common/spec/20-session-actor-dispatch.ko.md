@@ -1,6 +1,13 @@
+---
+title: "Session Actor dispatch"
+---
+
 # Session Actor dispatch
 
 [스펙 목차](README.ko.md) · [이전: STREAM 서버 session](19-stream-session.ko.md) · [다음: Location runtime](21-location-runtime.ko.md)
+
+> **이 장이 정의하는 것** — STREAM session과 Actor runtime을 연결하는 typed dispatch,
+> binding, owner handoff와 실행 순서.
 
 
 ## 1. 이 문서가 정의하는 범위

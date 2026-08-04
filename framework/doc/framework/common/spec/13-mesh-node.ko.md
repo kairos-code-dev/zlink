@@ -1,6 +1,13 @@
+---
+title: "MeshNode"
+---
+
 # MeshNode
 
 [스펙 목차](README.ko.md) · [이전: SPOT 메시징](12-spot-messaging.ko.md) · [다음: Actor 모델](14-actor-model.ko.md)
+
+> **이 장이 정의하는 것** — RouteMesh에 참여하는 MeshNode의 identity, object role,
+> object 배치 조건과 startup 순서.
 
 
 ## 1. 이 문서가 정의하는 범위

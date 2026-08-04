@@ -1,6 +1,12 @@
+---
+title: "Spot 모델 — Entry, User, Instance"
+---
+
 # Spot 모델 — Entry, User, Instance
 
 [스펙 목차](README.ko.md) · [이전: Network listener identity](10-network-listener-identity.ko.md) · [다음: SPOT 메시징](12-spot-messaging.ko.md)
+
+> **이 장이 정의하는 것** — Entry Spot, User Spot, Instance Spot의 공통점과 차이점.
 
 
 ## 1. 범위

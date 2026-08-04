@@ -1,6 +1,13 @@
+---
+title: "ZLink Framework 개요"
+---
+
 # ZLink Framework 개요
 
 [스펙 목차](README.ko.md) · [이전: Framework 메시징 용어집](01-glossary.ko.md) · [다음: ZLink Framework 상호작용 모델](03-interaction-model.ko.md)
+
+> **이 장이 정의하는 것** — Framework가 언어별 service runtime에게 공유시키는 것(공개
+> 계약·wire schema·fixture)과 각 언어가 독립적으로 구현하는 것의 경계.
 
 
 ## 1. 한 줄 정의

@@ -1,6 +1,13 @@
+---
+title: "Actor 모델"
+---
+
 # Actor 모델
 
 [스펙 목차](README.ko.md) · [이전: MeshNode](13-mesh-node.ko.md) · [다음: Spot과 Actor membership](15-spot-actor.ko.md)
+
+> **이 장이 정의하는 것** — Actor의 identity, 위치, message queue, lifecycle과
+> session binding.
 
 
 ## 1. 이 문서가 정의하는 범위

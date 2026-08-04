@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "C 바인딩 구현 청사진"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: Async & Coroutine Policy](../async-coroutine-policy.ko.md) | [다음: .NET](../dotnet/README.ko.md)
+<!-- bindings-nav:end -->
 
 # C 바인딩 구현 청사진
+
+> **이 장이 정의하는 것** — C 바인딩이 `core/include/zlink.h` ABI 위에서
+> 갖춰야 할 형태와 리뷰 규칙.
 
 이 문서는 C 바인딩이 갖춰야 할 형태를 정의한다. 모든 공개 함수 시그니처를
 다시 복제하지 않는다. 구체적인 공개 API 계약은 `core/include/zlink.h`이다.
@@ -20,6 +27,21 @@ sockets, eventing, service, errors는 리뷰어가 C 헤더를 읽을 때 사용
 공유 파일 입도 정책은 C 헤더 섹션과 헬퍼 파일에 대한 리뷰 어휘일 뿐이다.
 `core/include/zlink.h`가 ABI 기준선으로 남아 있기 때문에 래퍼 형태의
 `contracts/`나 `runtime/` 폴더를 요구하지 않는다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [공개 계약 소스](#공개-계약-소스) | 공개 ABI·내부 구현·문서 역할 경계 |
+| [저장소 구조](#저장소-구조) | C 바인딩 변경 시 사용하는 경로 |
+| [API 변경 절차](#api-변경-절차) | 기능 추가·변경 순서 |
+| [라이브러리 형태](#라이브러리-형태) | 네이티브 ABI 함수 네이밍·플래그·멀티파트 규칙 |
+| [인터페이스 형태 예외](#인터페이스-형태-예외) | 상위 바인딩 래퍼 규칙이 C에 적용되지 않는 부분 |
+| [필수 기능 커버리지](#필수-기능-커버리지) | 리뷰가 점검하는 헤더 기능 그룹 |
+| [Spot Get-Or-New](#spot-get-or-new) | `zlink_spot_node_spot_get_or_new` 계약 |
+| [Ownership과 생명주기](#ownership과-생명주기) | 핸들·메시지 소유권 이동 규칙 |
+| [Error와 Result 정책](#error와-result-정책) | C result 도메인과 예외 미사용 |
+| [성능 정책](#성능-정책) | C가 다른 바인딩의 성능 기준선인 이유 |
+| [구현 체크리스트](#구현-체크리스트) | 정렬 선언 전 확인 항목 |
+| [Actor와 Spot Route 결과](#actor와-spot-route-결과) | route 결과 struct와 라우팅 헬퍼 정책 |
 
 ## 공개 계약 소스
 

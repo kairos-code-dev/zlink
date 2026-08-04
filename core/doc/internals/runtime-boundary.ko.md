@@ -1,6 +1,18 @@
+---
+title: "Core raw runtime 내부 경계"
+---
+
 [English](runtime-boundary.en.md) | 한국어
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Multipart atomicity](multipart-atomicity.ko.md) | [다음: ZMP 프로토콜 상세](protocol-zmp.ko.md)
+<!-- zlink-nav:end -->
+
 # Core raw runtime 내부 경계
+
+> **이 장의 계약 소유 문서** — Core가 유지하는 공개 경계는
+> [Core runtime 경계](../spec/core/09-runtime-boundary.ko.md)가 다룬다. 이 장은 그 경계를
+> 내부 계층이 실제로 어떻게 나눠 지키는지 설명한다.
 
 Core 11은 raw socket과 transport만 구현한다. Public API facade는 argument·handle·ownership을 검증하고,
 socket semantic 계층은 PAIR·PUB/SUB·DEALER/ROUTER·STREAM의 routing을 결정한다. Runtime core는

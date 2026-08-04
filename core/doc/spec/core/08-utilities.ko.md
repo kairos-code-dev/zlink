@@ -1,8 +1,17 @@
+---
+title: "유틸리티"
+---
+
 [English](08-utilities.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Monitoring](07-monitoring.ko.md) | [다음: Runtime Boundary](09-runtime-boundary.ko.md)
+<!-- zlink-nav:end -->
 
 # 유틸리티
+
+> **이 장이 정의하는 것** — version 조회, 기능 감지 등 개별 카테고리에 속하지 않는
+> 유틸리티 API의 공개 계약.
 
 이 문서는 ZLink Core의 atomic counter, timer, 고해상도 clock과 thread helper 공개 계약을
 정의한다. 대상 독자는 이러한 utility의 lifecycle, thread-safety와 callback ownership을 C API와

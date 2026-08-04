@@ -1,8 +1,17 @@
+---
+title: "소켓 — 공통 명세"
+---
+
 [English](README.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](../README.ko.md) | [이전: Runtime Boundary](../09-runtime-boundary.ko.md) | [다음: PAIR](01-pair.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 -- 공통 명세
+
+> **이 장이 정의하는 것** — 모든 소켓 타입에 적용되는 공통 기반(옵션·API 형태).
+> 타입별 세부사항은 각 소켓 명세가 정의한다.
 
 이 문서는 모든 소켓 타입에 적용되는 공통 기반을 다룹니다.
 타입별 명세(타입 전용 옵션, data plane API, 동작 세부사항)는

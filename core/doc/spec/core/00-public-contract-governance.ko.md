@@ -1,8 +1,16 @@
+---
+title: "Core 공개 계약 관리"
+---
+
 [English](00-public-contract-governance.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: 개요](README.ko.md) | [다음: Context](01-context.ko.md)
+<!-- zlink-nav:end -->
 
 # Core 공개 계약 관리
+
+> **이 장이 정의하는 것** — spec·header·test·package가 서로 어긋나지 않도록 지키는 절차.
 
 이 문서는 ZLink Core 공개 계약의 원본, 문서 책임과 변경 절차를 정의한다. 대상 독자는 Core 공개
 C ABI를 설계·구현·검토하는 개발자다.

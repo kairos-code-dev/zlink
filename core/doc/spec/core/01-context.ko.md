@@ -1,8 +1,16 @@
+---
+title: "Context"
+---
+
 [English](01-context.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: 공개 계약 관리](00-public-contract-governance.ko.md) | [다음: Message](02-message.ko.md)
+<!-- zlink-nav:end -->
 
 # Context
+
+> **이 장이 정의하는 것** — Context 생성·종료와 옵션 설정의 공개 계약.
 
 이 문서는 ZLink Core의 Context lifecycle과 option 공개 계약을 정의한다. 대상 독자는 Context
 생성, 설정과 종료를 C API와 bindings에 투영하는 개발자다. 이 문서는 “I/O thread와 socket의 최상위

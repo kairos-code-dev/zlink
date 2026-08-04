@@ -1,8 +1,16 @@
+---
+title: "Result와 errno 대응"
+---
+
 [English](04-errno-map.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [오류와 result enum](03-errors.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Errors](03-errors.ko.md) | [다음: Events](05-events.ko.md)
+<!-- zlink-nav:end -->
 
 # Result와 errno 대응
+
+> **이 장이 정의하는 것** — 작업별 result enum 값과 native errno의 대응표.
 
 이 문서는 ZLink Core raw public API의 result enum과 thread-local errno 대응을 정의한다. Result는
 제어 흐름의 기준이고 errno는 같은 실패를 더 세밀하게 설명한다.

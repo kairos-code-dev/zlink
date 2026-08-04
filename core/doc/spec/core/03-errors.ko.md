@@ -1,8 +1,17 @@
+---
+title: "오류, 결과 enum과 버전"
+---
+
 [English](03-errors.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [errno map](04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Message](02-message.ko.md) | [다음: Result Enums](04-errno-map.ko.md)
+<!-- zlink-nav:end -->
 
 # 오류, 결과 enum과 버전
+
+> **이 장이 정의하는 것** — 공개 result enum, errno와 version 조회의 공개 계약. 자세한
+> result-errno 대응표는 [Result와 errno 대응](04-errno-map.ko.md)이 다룬다.
 
 이 문서는 ZLink Core의 오류 ABI 계약을 정의한다. 대상 독자는 C API와
 bindings 개발자다. 이 문서는 “공개 함수의 typed result와 thread-local errno가 어떤 값으로 대응하며

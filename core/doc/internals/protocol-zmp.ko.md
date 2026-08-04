@@ -1,9 +1,17 @@
-[English](protocol-zmp.en.md) | [한국어](protocol-zmp.ko.md)
+---
+title: "ZMP v1.0 프로토콜 상세"
+---
+
+[English](protocol-zmp.en.md)
+
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Core raw runtime 내부 경계](runtime-boundary.ko.md) | [다음: RAW 프로토콜 상세](protocol-raw.ko.md)
+<!-- zlink-nav:end -->
 
 # ZMP v1.0 프로토콜 상세
 
-> 이 문서는 ZMP 와이어 프로토콜과 request-reply envelope의
-> 내부 구조를 설명한다.
+> **이 장이 답하는 것** — ZMP 와이어 프로토콜과 request-reply envelope의 바이트 단위
+> 내부 구조. 소개는 [ZMP protocol 가이드](../guide/zmp-protocol.ko.md)가 다룬다.
 
 ### 용어
 

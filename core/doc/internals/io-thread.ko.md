@@ -1,6 +1,17 @@
+---
+title: "I/O Thread 내부 구조"
+---
+
 [English](io-thread.en.md) | 한국어
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Thread safety](thread-safety.ko.md) | [다음: Design decisions](design-decisions.ko.md)
+<!-- zlink-nav:end -->
+
 # I/O Thread 내부 구조
+
+> **이 장이 답하는 것** — I/O thread가 무엇을 하고, 어떻게 생성되며, 작업이 어떻게
+> 분배되는가. 고수준 thread 종류는 [Threading model](threading-model.ko.md)이 다룬다.
 
 이 문서는 zlink context 내부에서 I/O 스레드가 어떤 일을 하는지,
 어떻게 생성되고, 작업이 어떻게 분배되는지 설명한다.

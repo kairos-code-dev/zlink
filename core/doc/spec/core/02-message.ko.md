@@ -1,8 +1,16 @@
+---
+title: "메시지 API 레퍼런스"
+---
+
 [English](02-message.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Context](01-context.ko.md) | [다음: Errors](03-errors.ko.md)
+<!-- zlink-nav:end -->
 
 # 메시지 API 레퍼런스
+
+> **이 장이 정의하는 것** — message lifecycle, routing ID와 ownership의 공개 계약.
 
 이 문서는 ZLink Core의 message 생성, payload 접근, ownership과 multipart 공개 계약을 정의한다.
 대상 독자는 message lifecycle과 zero-copy buffer ownership을 C API와 bindings에 투영하는 개발자다. 이

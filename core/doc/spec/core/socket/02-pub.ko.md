@@ -1,8 +1,16 @@
+---
+title: "소켓 — PUB"
+---
+
 [English](02-pub.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: PAIR](01-pair.ko.md) | [다음: SUB](03-sub.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 -- PUB
+
+> **이 장이 정의하는 것** — PUB 소켓의 발행 동작과 공개 계약.
 
 발행 전용 소켓, 토픽 기반 fan-out. PUB는 송신 전용이며 수신 함수는
 적용되지 않습니다.

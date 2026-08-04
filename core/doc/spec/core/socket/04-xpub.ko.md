@@ -1,8 +1,16 @@
+---
+title: "소켓 — XPUB"
+---
+
 [English](04-xpub.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: SUB](03-sub.ko.md) | [다음: XSUB](05-xsub.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 -- XPUB
+
+> **이 장이 정의하는 것** — XPUB 소켓(구독 이벤트를 메시지로 노출하는 PUB)의 공개 계약.
 
 구독 전달과 수동 제어를 지원하는 확장 발행자. XPUB는 구독자로부터 구독
 이벤트를 수신하고 수동 구독 관리를 지원합니다.

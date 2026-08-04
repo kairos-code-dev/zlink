@@ -1,6 +1,18 @@
+---
+title: "Core thread safety 구현"
+---
+
 [English](thread-safety.en.md) | 한국어
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Threading model](threading-model.ko.md) | [다음: I/O thread](io-thread.ko.md)
+<!-- zlink-nav:end -->
+
 # Core thread safety 구현
+
+> **이 장이 답하는 것** — 어느 API를 여러 thread에서 동시에 불러도 되고, 어느 API는
+> 직렬화해야 하는지를 내부적으로 어떻게 지키는가. 사용자 규칙은
+> [Thread safety 가이드](../guide/11-thread-safety.ko.md)가 다룬다.
 
 ## 1. 세 등급
 

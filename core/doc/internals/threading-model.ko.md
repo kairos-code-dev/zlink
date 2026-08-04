@@ -1,6 +1,18 @@
+---
+title: "Core threading model"
+---
+
 [English](threading-model.en.md) | 한국어
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Architecture](architecture.ko.md) | [다음: Thread safety](thread-safety.ko.md)
+<!-- zlink-nav:end -->
+
 # Core threading model
+
+> **이 장의 계약 소유 문서** — thread 사이의 공개 경계는
+> [Core runtime 경계](../spec/core/09-runtime-boundary.ko.md)가 다룬다. 이 장은 Core가 실제로
+> 만드는 thread 종류와 각각의 책임을 설명한다.
 
 ## 1. Thread 종류
 

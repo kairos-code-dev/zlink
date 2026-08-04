@@ -1,6 +1,16 @@
+---
+title: "Core 설계 결정"
+---
+
 [English](design-decisions.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: I/O thread](io-thread.ko.md) | [다음: POSD module 구조](posd-module-structure.ko.md)
+<!-- zlink-nav:end -->
+
 # Core 설계 결정
+
+> **이 장이 답하는 것** — 비동기 I/O, socket API 형태 등 Core의 주요 설계 결정과 그 이유.
 
 ## 비동기 I/O
 

@@ -1,6 +1,18 @@
+---
+title: "Socket option 기본값"
+---
+
 [English](socket-option-defaults.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: STREAM 소켓 최적화](stream-socket.ko.md) | [다음: Connection별 memory](connection-memory.ko.md)
+<!-- zlink-nav:end -->
+
 # Socket option 기본값
+
+> **이 장의 계약 소유 문서** — option별 공개 계약은 [소켓 공통 명세](../spec/core/socket/README.ko.md)와
+> [소켓 옵션 가이드](../guide/12-socket-options.ko.md)가 다룬다. 이 장은 내부 기본값과
+> 저장 구조를 설명한다.
 
 `options_t`는 공통 raw-socket과 transport 기본값을 저장한다. Typed socket 구현은 pattern별 option을
 검증한 뒤 적용한다.

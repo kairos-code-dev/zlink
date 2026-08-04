@@ -1,8 +1,16 @@
+---
+title: "ZLink Core 스펙"
+---
+
 [English](README.en.md) | 한국어
 
-[스펙 목차](../README.ko.md)
+<!-- zlink-nav:start -->
+[스펙 목차](../README.ko.md) | [다음: Public Contract Governance](00-public-contract-governance.ko.md)
+<!-- zlink-nav:end -->
 
 # ZLink Core 스펙
+
+> **이 장이 정의하는 것** — Core C API 스펙 전체의 목차와 각 장이 다루는 범위.
 
 이 목차는 `zlink.h`가 제공하는 Core 공개 C ABI 계약을 연결한다. 정식 API 문서는 공개 계약만
 설명하며 source directory, socket 배선과 queue 구조는 설명하지 않는다.

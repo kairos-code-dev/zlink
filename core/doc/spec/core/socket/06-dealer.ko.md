@@ -1,8 +1,17 @@
+---
+title: "소켓 — DEALER"
+---
+
 [English](06-dealer.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [errno map](../04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: XSUB](05-xsub.ko.md) | [다음: ROUTER](07-router.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 — DEALER
+
+> **이 장이 정의하는 것** — DEALER 소켓의 request 라우팅과 [result/errno](../04-errno-map.ko.md)
+> 공개 계약.
 
 DEALER는 여러 peer에서 공정 큐잉으로 수신하고, 연결된 peer에 순환 또는 가중치 기반으로 송신하는
 비동기 raw socket이다. 일반 raw message와 request/reply record를 같은 socket에서 처리할 수 있다.

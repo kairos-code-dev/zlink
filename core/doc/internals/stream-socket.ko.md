@@ -1,6 +1,18 @@
-[English](stream-socket.en.md) | [한국어](stream-socket.ko.md)
+---
+title: "STREAM 소켓 WS/WSS 최적화"
+---
+
+[English](stream-socket.en.md)
+
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Source layout](core-source-layout.ko.md) | [다음: Socket option 기본값](socket-option-defaults.ko.md)
+<!-- zlink-nav:end -->
 
 # STREAM 소켓 WS/WSS 최적화
+
+> **이 장의 계약 소유 문서** — STREAM 소켓의 공개 계약은
+> [소켓 — STREAM](../spec/core/socket/08-stream.ko.md)이 다룬다. 이 장은 그 중 WS/WSS
+> 경로의 내부 최적화 구조를 설명한다.
 
 ## 1. 개요
 

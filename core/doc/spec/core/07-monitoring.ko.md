@@ -1,8 +1,17 @@
+---
+title: "Monitoring"
+---
+
 [English](07-monitoring.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Events](05-events.ko.md) · [errno map](04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Polling](06-polling.ko.md) | [다음: Utilities](08-utilities.ko.md)
+<!-- zlink-nav:end -->
 
 # Monitoring
+
+> **이 장이 정의하는 것** — `zlink_socket_monitor_*` API로 socket [event](05-events.ko.md)를
+> 별도 채널로 구독하는 공개 계약.
 
 이 문서는 ZLink Core raw socket monitor 공개 계약을 정의한다. 대상 독자는 connection, transport,
 protocol과 socket lifecycle을 관측하는 C API와 bindings 개발자다. Monitor는 상태를 관측할 뿐 routing과

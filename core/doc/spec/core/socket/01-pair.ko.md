@@ -1,8 +1,16 @@
+---
+title: "소켓 — PAIR"
+---
+
 [English](01-pair.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: 소켓 공통](README.ko.md) | [다음: PUB](02-pub.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 — PAIR
+
+> **이 장이 정의하는 것** — PAIR 소켓의 1:1 독점 연결 동작과 공개 계약.
 
 1:1 양방향 소켓입니다. 양쪽 모두 메시지를 송수신할 수 있으며 타입 전용
 옵션은 없습니다.

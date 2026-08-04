@@ -1,6 +1,18 @@
-[English](protocol-raw.en.md) | [한국어](protocol-raw.ko.md)
+---
+title: "RAW (STREAM) 프로토콜 상세"
+---
+
+[English](protocol-raw.en.md)
+
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: ZMP 프로토콜 상세](protocol-zmp.ko.md)
+<!-- zlink-nav:end -->
 
 # RAW (STREAM) 프로토콜 상세
+
+> **이 장의 계약 소유 문서** — STREAM 소켓의 공개 계약은
+> [소켓 — STREAM](../spec/core/socket/08-stream.ko.md)이 다룬다. 이 장은 ZMP 프레이밍 없이
+> 연결하는 RAW 프로토콜의 바이트 단위 wire format을 설명한다.
 
 RAW 프로토콜은 외부 클라이언트가 ZMP(zlink Message Protocol) 프레이밍 없이 연결할 때 사용된다. STREAM 소켓은 이 프로토콜로 지원되는 모든 transport(tcp, ipc, tls, ws, wss)에서 임의의 연결을 수락한다.
 

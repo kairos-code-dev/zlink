@@ -1,4 +1,15 @@
+---
+title: "Core source layout"
+---
+
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: POSD module 구조](posd-module-structure.ko.md) | [다음: STREAM 소켓 최적화](stream-socket.ko.md)
+<!-- zlink-nav:end -->
+
 # Core source layout
+
+> **이 장이 답하는 것** — Core 11에 남는 raw runtime source가 어떻게 디렉터리와
+> include 방향으로 나뉘는가.
 
 이 문서는 Core 11에 남는 raw runtime source의 책임과 include 방향을 설명한다.
 

@@ -1,4 +1,16 @@
+---
+title: "Multipart atomicity"
+---
+
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Connection별 memory](connection-memory.ko.md) | [다음: Core raw runtime 내부 경계](runtime-boundary.ko.md)
+<!-- zlink-nav:end -->
+
 # Multipart atomicity
+
+> **이 장의 계약 소유 문서** — multipart 프레이밍의 공개 계약은
+> [메시지 API 레퍼런스](../spec/core/02-message.ko.md)가 다룬다. 이 장은 다른 sender의 part가
+> 섞이지 않도록 내부에서 어떻게 보호하는지 설명한다.
 
 Core는 `ZLINK_PART_MORE`부터 `ZLINK_PART_FINAL`까지의 part를 하나의 논리적 multipart sequence로
 처리한다. 다른 sender의 message part가 이 sequence 사이에 삽입되지 않도록 socket별 transaction state가

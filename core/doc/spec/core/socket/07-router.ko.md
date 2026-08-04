@@ -1,8 +1,17 @@
+---
+title: "소켓 — ROUTER"
+---
+
 [English](07-router.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [errno map](../04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: DEALER](06-dealer.ko.md) | [다음: STREAM](08-stream.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 — ROUTER
+
+> **이 장이 정의하는 것** — ROUTER 소켓의 routing id 기반 응답 라우팅과
+> [result/errno](../04-errno-map.ko.md) 공개 계약.
 
 ROUTER는 하나의 socket에서 여러 peer pipe를 관리하고 routing ID로 송신 대상을 선택하는 비동기 raw
 socket이다. 일반 directed message와 request/reply record를 처리한다.

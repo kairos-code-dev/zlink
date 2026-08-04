@@ -1,6 +1,16 @@
+---
+title: "Core POSD module 구조"
+---
+
 [English](posd-module-structure.en.md) | 한국어
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: 설계 결정](design-decisions.ko.md) | [다음: Source layout](core-source-layout.ko.md)
+<!-- zlink-nav:end -->
+
 # Core POSD module 구조
+
+> **이 장이 답하는 것** — Core 소스를 POSD 원칙에 따라 계층·모듈로 어떻게 나누는가.
 
 ## 1. 목표
 

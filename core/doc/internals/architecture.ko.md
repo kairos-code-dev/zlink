@@ -1,6 +1,17 @@
+---
+title: "Core runtime architecture"
+---
+
 [English](architecture.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [다음: Threading model](threading-model.ko.md)
+<!-- zlink-nav:end -->
+
 # Core runtime architecture
+
+> **이 장이 답하는 것** — Public C API에서 I/O thread까지 메시지가 지나가는
+> 내부 구성요소와 그 경계.
 
 Core는 raw socket runtime이다. Public C API는 socket 구현으로 진입하고, socket 구현은 mailbox와
 pipe를 통해 I/O thread object와 command 및 message를 교환한다.

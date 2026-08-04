@@ -1,8 +1,16 @@
+---
+title: "Poll과 poller"
+---
+
 [English](06-polling.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [errno map](04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Events](05-events.ko.md) | [다음: Monitoring](07-monitoring.ko.md)
+<!-- zlink-nav:end -->
 
 # Poll과 poller
+
+> **이 장이 정의하는 것** — `zlink_poller_*` API로 여러 소켓의 readiness를 기다리는 공개 계약.
 
 이 문서는 ZLink Core의 readiness 공개 계약을 정의한다. 대상 독자는 raw socket, file descriptor와 generic timer를
 하나의 event loop에서 기다리는 C API와 bindings 개발자다. 이 문서는 “각 source의 `POLLIN`과 `POLLOUT`,

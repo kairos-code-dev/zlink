@@ -1,8 +1,17 @@
+---
+title: "소켓 — STREAM"
+---
+
 [English](08-stream.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md) · [errno map](../04-errno-map.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: ROUTER](07-router.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 — STREAM
+
+> **이 장이 정의하는 것** — STREAM 소켓의 raw TCP 연결 노출과
+> [result/errno](../04-errno-map.ko.md) 공개 계약.
 
 이 문서는 ZLink Core의 범용 raw STREAM 공개 계약을 정의합니다.
 TCP/WS 연결의 byte record 또는 고정 framing packet을 routing ID로 송수신하는

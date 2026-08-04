@@ -1,8 +1,16 @@
+---
+title: "소켓 — SUB"
+---
+
 [English](03-sub.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: PUB](02-pub.ko.md) | [다음: XPUB](04-xpub.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 -- SUB
+
+> **이 장이 정의하는 것** — SUB 소켓의 구독 동작과 공개 계약.
 
 토픽 필터링을 사용하는 구독 소켓. SUB는 데이터 수신 전용이며,
 구독 관리는 control plane에 해당합니다.

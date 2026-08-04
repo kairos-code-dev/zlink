@@ -1,8 +1,16 @@
+---
+title: "소켓 — XSUB"
+---
+
 [English](05-xsub.en.md) | 한국어
 
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md) · [소켓 공통](README.ko.md)
+<!-- zlink-nav:start -->
+[소켓 목차](README.ko.md) | [이전: XPUB](04-xpub.ko.md) | [다음: DEALER](06-dealer.ko.md)
+<!-- zlink-nav:end -->
 
 # 소켓 -- XSUB
+
+> **이 장이 정의하는 것** — XSUB 소켓(구독을 메시지로 보내는 SUB)의 공개 계약.
 
 구독 전달을 지원하는 확장 구독자. XSUB는 SUB와 동일한
 subscribe/unsubscribe 및 토픽 수신 API를 지원하며, 구독 메시지가 업스트림으로

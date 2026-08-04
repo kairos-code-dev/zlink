@@ -1,8 +1,17 @@
+---
+title: "Core runtime 경계"
+---
+
 [English](09-runtime-boundary.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Utilities](08-utilities.ko.md) | [다음: 소켓 개요](socket/README.ko.md)
+<!-- zlink-nav:end -->
 
 # Core runtime 경계
+
+> **이 장이 정의하는 것** — Core가 raw socket·transport로만 유지하는 범위와, 그 위 계층이
+> 넘지 않아야 할 경계.
 
 이 문서는 ZLink Core 공개 C ABI가 제공하는 runtime 경계를 정의한다. Core는 message transport와
 운영체제 I/O를 캡슐화한 raw socket runtime이다. Application service topology와 stateful object runtime은

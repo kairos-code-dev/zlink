@@ -1,6 +1,17 @@
+---
+title: "Connection별 memory"
+---
+
 [English](connection-memory.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목차](../guide/README.ko.md) | [이전: Socket option 기본값](socket-option-defaults.ko.md) | [다음: Multipart atomicity](multipart-atomicity.ko.md)
+<!-- zlink-nav:end -->
+
 # Connection별 memory
+
+> **이 장이 답하는 것** — connection 하나가 실제로 어떤 메모리를 얼마나 할당하는가
+> (고정 비용과 HWM에 비례하는 비용).
 
 각 transport connection은 session, engine state, pipe endpoint, handshake buffer와 kernel
 socket buffer를 할당한다. Queued message storage는 고정된 connection 비용이 아니라 effective message

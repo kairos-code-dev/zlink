@@ -1,8 +1,17 @@
+---
+title: "Event와 readiness 카탈로그"
+---
+
 [English](05-events.en.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Monitoring](07-monitoring.ko.md) · [Polling](06-polling.ko.md)
+<!-- zlink-nav:start -->
+[Core 스펙 목차](README.ko.md) | [이전: Result Enums](04-errno-map.ko.md) | [다음: Polling](06-polling.ko.md)
+<!-- zlink-nav:end -->
 
 # Event와 readiness 카탈로그
+
+> **이 장이 정의하는 것** — socket event와 readiness 값의 카탈로그. 소비 경로는
+> [Polling](06-polling.ko.md)과 [Monitoring](07-monitoring.ko.md)이 다룬다.
 
 이 문서는 ZLink Core raw event family와 readiness 의미의 경계를 정의한다.
 

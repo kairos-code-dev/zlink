@@ -54,11 +54,11 @@ coroutine 또는 다른 실행 모델을 제공할 수 있지만, bindings publi
 |---|---|---|---|---|
 | C | 해당 없음 | 해당 없음 | C callback 함수와 flags | C ABI는 builder 정책을 적용하지 않는다. `core/include/zlink.h`의 함수형 계약을 따른다. |
 | C++ | `async()` 또는 `submit(callback)` | `async()`는 `async_result_t<T>`를 반환한다. `async_result_t<T>`는 `wait()`, `wait_for(...)`, `wait_until(...)`, `get()`을 지원한다. | `submit(callback)` | bindings 라이브러리 기준은 C++20이다. `async_result_t<T>`는 `co_await`를 지원하지 않는다. |
-| Java | `submit()` / `await()` / `submit(callback)` | `submit()`은 `CompletionStage<T>`, `await()`는 현재 thread에서 완료를 기다린 뒤 `T` 또는 `void` 반환 | `submit(callback)` | `await()`는 새 network 의미가 아니라 `submit()` 결과를 기다리는 blocking adapter다. |
-| .NET | `Async(...)` | `Task<T>`, `ValueTask<T>`, `Task`, 또는 `ValueTask` | callback이 필요한 builder에서 별도 submit 단계 | .NET 관례에 맞춰 마지막 실행 메서드 이름만 `Async`를 쓴다. 시작점 이름은 `RequestAsync`처럼 늘리지 않는다. |
+| Java | `submit()` / `submit(callback)` | `submit()`은 `CompletionStage<T>` | `submit(callback)` | bindings는 blocking adapter를 제공하지 않는다. thread를 막고 기다리는 코드는 `submit()`이 반환한 `CompletionStage`를 호출부에서 직접 기다린다. |
+| .NET | `Async(...)` | `Task<T>` (request만 제공) | callback이 필요한 builder에서 별도 submit 단계 | .NET 관례에 맞춰 마지막 실행 메서드 이름만 `Async`를 쓴다. 시작점 이름은 `RequestAsync`처럼 늘리지 않는다. Send/Reply submit은 동기 `bool`/`void`를 반환하며 `Async` 변형이 없다. |
 | Node | `submit(...)` | `Promise<T>` 또는 `Promise<void>` | callback이 필요한 builder에서 별도 submit 단계 | JavaScript 사용자는 `await op.submit()`으로 기다릴 수 있지만, bindings가 별도 coroutine scheduler를 만들지 않는다. |
 | Python | `submit(callback)` | callback 완료 | `submit(callback)` | bindings는 `submit_async()`나 coroutine object 반환 메서드를 제공하지 않는다. |
-| Go | `Submit(ctx)` 또는 `Submit(ctx, callback)` | send 계열은 `(bool, error)` 또는 `error`, request 계열은 callback 완료 | `Submit(ctx, callback)` | `context.Context`는 operation 시작점이 아니라 실행 시점에 전달한다. |
+| Go | `Submit(ctx)`, `Submit(ctx, callback)`, 또는 `SubmitAsync(ctx)` | send 계열은 `(bool, error)`, reply 계열은 `error`, request 계열은 callback 완료 또는 `SubmitAsync(ctx)`가 반환하는 `<-chan RequestReplyCompletion` | `Submit(ctx, callback)` | `context.Context`는 operation 시작점이 아니라 실행 시점에 전달한다. request builder는 callback 경로(`Submit`)와 channel 경로(`SubmitAsync`)를 모두 제공한다. |
 | Rust | `submit(callback)` 또는 즉시 submit | callback 완료 또는 `Result<_, SubmitError>` | `submit(callback)` | typestate builder로 payload 필수 조건과 중복 submit을 가능한 한 타입으로 막는다. bindings는 `async fn submit_async`를 제공하지 않는다. |
 
 ## Framework에서 coroutine을 붙이는 방법
@@ -72,13 +72,12 @@ framework나 framework 언어 wrapper가 소유한다.
   thread, timeout 정책에 연결한다.
 - virtual thread를 쓰는 경우에도 bindings에 virtual thread 전용 recv나 submit API를
   추가하지 않는다.
-- `await()`는 sample이나 virtual thread 안에서 시나리오를 읽기 쉽게 만들 때 사용할 수
-  있는 blocking adapter다. framework 내부의 기본 비동기 경로는 `submit()`을 기준으로
-  한다.
+- bindings는 blocking adapter를 제공하지 않는다. sample이나 virtual thread 안에서
+  결과를 동기적으로 기다려야 하면 `submit()`이 반환한 `CompletionStage`를 호출부에서
+  직접 기다린다(예: `toCompletableFuture().join()`).
 
 ### Kotlin framework
 
-- Kotlin wrapper는 Java `await()`를 호출하지 않는다.
 - Kotlin wrapper는 Java builder의 `submit()`으로 `CompletionStage`를 얻고,
   `kotlinx-coroutines-jdk8`의 `await()`로 coroutine suspension에 연결한다.
 - Kotlin 사용자 코드와 Kotlin sample은 Java `submit()`을 직접 호출하지 않고
@@ -101,7 +100,7 @@ framework나 framework 언어 wrapper가 소유한다.
 
 ### 다른 언어 framework
 
-- .NET framework는 bindings의 `Task` / `ValueTask` 반환을 그대로 `await`한다.
+- .NET framework는 bindings의 `Task` 반환을 그대로 `await`한다.
 - Node framework는 bindings의 `Promise` 반환을 event loop 정책에 맞게 `await`한다.
 - Python framework는 bindings의 callback 완료를 `asyncio.Future`나 framework task로
   변환한다.

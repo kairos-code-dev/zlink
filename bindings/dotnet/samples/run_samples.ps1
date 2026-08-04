@@ -17,11 +17,6 @@ $samples = @(
     "DealerRouterRecv/DealerRouterRecv.csproj"
     "StreamRecv/StreamRecv.csproj"
     "StreamPacketCallback/StreamPacketCallback.csproj"
-    "SpotRecv/SpotRecv.csproj"
-    "SpotRequestAsync/SpotRequestAsync.csproj"
-    "ActorRoomServer/ActorRoomServer.csproj"
-    "ActorGatewayRelay/ActorGatewayRelay.csproj"
-    "ActorSinglePlayerQueue/ActorSinglePlayerQueue.csproj"
 )
 
 $passed = 0

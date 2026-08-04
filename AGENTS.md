@@ -157,7 +157,35 @@ draft/spec/guide 갱신이 필요한 설계 후보로 분리하고, 계약으로
   - 한국어 문서에서는 `호출자가 넘긴 Received 객체에 수신 결과를 채운다.`처럼 쓴다.
 - `canonical`, `storage`, `surface`, `path`, `shape` 같은 단어는 의미가 꼭 필요할 때만 쓰고, 가능하면 무엇을 보장하는지 구체적으로 설명한다.
 
-### 5. 구현 전 spec 작성 규칙
+### 5. 임시 작업 문서를 공개 문서에서 참조하지 않는다
+
+`framework/doc/plan/`, `bindings/doc/plan/`, `core/doc/plan/`은 작업이 끝나면 사라지는 임시
+문서다. 공개 문서 트리는 이 문서들을 **링크로 가리키지 않는다.**
+
+공개 문서 트리는 `framework/doc/framework/`(spec · internals · guide · perf),
+`core/doc/`(spec · internals · guide), `bindings/doc/`(spec · guide)이다.
+
+왜 금지하는지:
+
+- plan 문서가 지워지면 공개 문서에 **죽은 링크**가 남는다.
+- 계약을 확인하려는 독자가 **곧 사라질 문서**를 보게 된다. 계약의 출처는 정식 spec뿐이다.
+- 사이트 배포 게이트가 `mkdocs build --strict`이고 plan은 사이트에 올리지 않으므로,
+  링크 하나가 **배포를 막는다.**
+
+갭이나 진행 상태를 알려야 하면 **사실만 본문에 문장으로 남기고 링크는 걸지 않는다.**
+갭 목록의 항목 ID(`A1`, `D5` 같은 것)도 공개 문서에서 쓰지 않는다 — 그 체계는 plan 문서에만
+있어서 독자가 해석할 수 없다.
+
+커밋 전에 확인한다.
+
+```bash
+grep -rn "](.*plan/" --include='*.md' framework/doc/framework core/doc bindings/doc \
+  | grep -v '/plan/'
+```
+
+출력이 있으면 그 링크를 걷어낸 뒤 커밋한다.
+
+### 6. 구현 전 spec 작성 규칙
 
 `framework/doc/framework/common/spec/`의 framework public contract는 모든 언어가
 도달해야 하는 목표 계약을 먼저 정식 spec에 고정한다. 각 언어의 정확한 public
@@ -188,7 +216,7 @@ Core 11에 남는 raw runtime 구조만 기록한다.
 - 구현이 끝난 뒤에는 `core/include/zlink.h`, 관련 테스트, errno 문서, 바인딩 문서와 맞춘 다음 draft 내용을 적절한 정식 spec 문서들로 나누어 반영한다.
 - 구현 전 단계에서 정식 spec 문서에서 draft 내용을 섞어 쓰지 않는다. 필요하면 정식 문서에서 별도 draft 문서를 짧게 링크만 한다.
 
-### 6. 산문 설명 + 코드 주석으로 API 매칭
+### 7. 산문 설명 + 코드 주석으로 API 매칭
 
 - 어떤 API·함수가 각각 무엇을 하는지 알려줄 때, 산문 안에 함수 이름을 여러 개 나열하지 않는다. 나열은 문장 가독성을 떨어뜨린다.
 - 산문에서는 원칙·의도·언제 쓰는지를 풀어서 설명한다. "어떤 API가 무엇을 등록/수행하는지" 같은 일대일 매칭은 바로 아래 코드 예제의 **해당 호출 옆 주석**으로 옮긴다.

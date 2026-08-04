@@ -388,6 +388,7 @@ mkdocs serve
 ## 구현 순서
 
 ### Phase 1: 사이트 기반 구축
+
 1. `mkdocs.yml`, `requirements.txt` 생성
 2. `docs/index.md`, `docs/index.ko.md` 랜딩 페이지 생성
 3. `docs/assets/stylesheets/extra.css` 생성
@@ -406,6 +407,7 @@ mkdocs serve
 | 6 | 08-routing-id, 09-message-api, 10-perf, 11-thread | 54 | 나머지 |
 
 변환 절차 (파일당):
+
 1. C 코드 블록 식별 (` ```c ` 태그)
 2. 분류 A/B/C/D 판별
 3. A/B → 7개 언어 탭으로 변환 (self-contained 스니펫)
@@ -415,8 +417,9 @@ mkdocs serve
 7. 링크 수정
 
 ### Phase 3: 배포
-8. `.github/workflows/docs.yml` 생성
-9. GitHub Pages 설정 (Settings > Pages > Source: GitHub Actions)
+
+1. `.github/workflows/docs.yml` 생성
+2. GitHub Pages 설정 (Settings > Pages > Source: GitHub Actions)
 
 ## 검증 체크리스트
 

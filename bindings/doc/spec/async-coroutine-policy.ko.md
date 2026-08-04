@@ -81,9 +81,12 @@ framework나 framework 언어 wrapper가 소유한다.
   thread, timeout 정책에 연결한다.
 - virtual thread를 쓰는 경우에도 bindings에 virtual thread 전용 recv나 submit API를
   추가하지 않는다.
-- `await()`는 sample이나 virtual thread 안에서 시나리오를 읽기 쉽게 만들 때 사용할 수
-  있는 blocking adapter다. framework 내부의 기본 비동기 경로는 `submit()`을 기준으로
-  한다.
+- `await()`는 virtual thread 위에서 호출하도록 만든 blocking adapter다. Virtual
+  thread가 block되면 JVM이 그 thread를 park하고 carrier(platform) thread를 다른
+  작업에 돌려주므로, platform thread를 막을 때와 달리 thread 하나를 낭비하지 않는다.
+  이 성질 덕분에 sample이나 virtual thread 안의 코드는 `submit()`의 `CompletionStage`
+  대신 `await()`로 순차적인 흐름을 안전하게 쓸 수 있다. framework 내부의 기본 비동기
+  경로는 `submit()`을 기준으로 한다.
 
 ### Kotlin framework
 

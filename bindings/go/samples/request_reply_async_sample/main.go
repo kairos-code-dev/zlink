@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"time"
 	zlink "zlink.systems/zlink/v11"
@@ -60,14 +61,14 @@ func main() {
 			requestDone <- fmt.Errorf("missing request sequence")
 			return
 		}
-		replyErr := routerSocket.Reply(received.RoutingID(), requestSeq).Message(samplecommon.Message("pong")).Submit(nil)
+		replyErr := routerSocket.Reply(received.RoutingID(), requestSeq).Message(samplecommon.Message("pong")).Submit(context.Background())
 		requestDone <- replyErr
 	}()
 
 	replyCh := make(chan []*zlink.Message, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		completions, err := dealerSocket.Request().Message(samplecommon.Message("ping")).Timeout(2 * time.Second).SubmitAsync(nil)
+		completions, err := dealerSocket.Request().Message(samplecommon.Message("ping")).Timeout(2 * time.Second).SubmitAsync(context.Background())
 		if err != nil {
 			errCh <- err
 			return

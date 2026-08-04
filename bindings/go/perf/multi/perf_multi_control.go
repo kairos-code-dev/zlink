@@ -52,10 +52,6 @@ func waitForStopAsync() <-chan struct{} {
 	return done
 }
 
-func newStdinReader() *os.File {
-	return os.Stdin
-}
-
 func activeDeadline(duration time.Duration) perfcommon.BenchmarkWindow {
 	return perfcommon.NewBenchmarkWindow(duration)
 }

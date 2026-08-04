@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
@@ -35,7 +37,7 @@ func startMultiStreamEchoServer(server *zlink.StreamSocket) {
 		packet := perfcommon.FrameStreamPacketMessage(header, body)
 		_ = header.Close()
 		_ = body.Close()
-		_, sendErr := server.SendTo(source).Message(packet).Submit(nil)
+		_, sendErr := server.SendTo(source).Message(packet).Submit(context.Background())
 		perfcommon.Must(sendErr)
 	}))
 }

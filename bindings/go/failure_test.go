@@ -93,11 +93,11 @@ func TestRequestCallbackDeliveryUsesSocketDispatcher(t *testing.T) {
 			return
 		}
 		defer reply.Close()
-		serverDone <- request.Reply().Message(reply).Submit(nil)
+		serverDone <- request.Reply().Message(reply).Submit(context.Background())
 	}()
 
 	callbackDone := make(chan error, 1)
-	ok, err := dealer.Request().Bytes([]byte("callback-request")).Timeout(2*time.Second).Submit(nil, func(result zlink.RequestResult, parts []*zlink.Message) {
+	ok, err := dealer.Request().Bytes([]byte("callback-request")).Timeout(2*time.Second).Submit(context.Background(), func(result zlink.RequestResult, parts []*zlink.Message) {
 		defer zlink.MultipartClose(parts)
 		if result != zlink.RequestOK {
 			callbackDone <- fmt.Errorf("request result = %v, want RequestOK", result)
@@ -181,10 +181,10 @@ func TestPollerModifyCompletionDoesNotDisableRequestProgress(t *testing.T) {
 			return
 		}
 		defer request.Close()
-		serverDone <- request.Reply().Message(reply).Submit(nil)
+		serverDone <- request.Reply().Message(reply).Submit(context.Background())
 	}()
 
-	completion, err := dealer.Request().Bytes([]byte("ping")).Timeout(time.Second).SubmitAsync(nil)
+	completion, err := dealer.Request().Bytes([]byte("ping")).Timeout(time.Second).SubmitAsync(context.Background())
 	if err != nil {
 		t.Fatalf("SubmitAsync() error = %v", err)
 	}
@@ -267,7 +267,7 @@ func TestPollerCompletionOwnsAndReleasesRequestProgress(t *testing.T) {
 				return
 			}
 			defer reply.Close()
-			submitErr := request.Reply().Message(reply).Submit(nil)
+			submitErr := request.Reply().Message(reply).Submit(context.Background())
 			if submitErr == nil && reply.Data() != nil {
 				result <- fmt.Errorf("successful reply did not consume message")
 				return
@@ -278,7 +278,7 @@ func TestPollerCompletionOwnsAndReleasesRequestProgress(t *testing.T) {
 	}
 
 	serverDone := serveRequest("poller-reply")
-	completion, err := dealer.Request().Bytes([]byte("poller-request")).Timeout(2 * time.Second).SubmitAsync(nil)
+	completion, err := dealer.Request().Bytes([]byte("poller-request")).Timeout(2 * time.Second).SubmitAsync(context.Background())
 	if err != nil {
 		t.Fatalf("SubmitAsync() error = %v", err)
 	}
@@ -325,7 +325,7 @@ firstComplete:
 	registered = false
 
 	serverDone = serveRequest("internal-reply")
-	second, err := dealer.Request().Bytes([]byte("internal-request")).Timeout(2 * time.Second).SubmitAsync(nil)
+	second, err := dealer.Request().Bytes([]byte("internal-request")).Timeout(2 * time.Second).SubmitAsync(context.Background())
 	if err != nil {
 		t.Fatalf("second SubmitAsync() error = %v", err)
 	}
@@ -354,7 +354,7 @@ func TestSendDontWaitDoesNotTreatTemporaryBackpressureAsError(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("try-send"))
 
-	ok, err := socket.Send().Message(newMessage(t, "data")).Flags(zlink.SendFlagsDontWait).Submit(nil)
+	ok, err := socket.Send().Message(newMessage(t, "data")).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 	if err != nil {
 		t.Fatalf("Send() with DontWait should not error for backpressure, got: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestPublishDontWaitReturnsErrorWhenUnroutable(t *testing.T) {
 	defer socket.Close()
 	_ = socket.Bind(inprocEndpoint("try-publish"))
 
-	if _, err := socket.Publish("topic").Message(newMessage(t, "data")).Flags(zlink.SendFlagsDontWait).Submit(nil); err != nil {
+	if _, err := socket.Publish("topic").Message(newMessage(t, "data")).Flags(zlink.SendFlagsDontWait).Submit(context.Background()); err != nil {
 		t.Fatalf("Publish() with DontWait on idle socket should succeed: %v", err)
 	}
 }
@@ -389,7 +389,7 @@ func TestBlockingSendFailureSurfacesError(t *testing.T) {
 	}
 
 	rid := zlink.NewRoutingID([]byte("missing-peer"))
-	if _, err := router.SendTo(rid).Message(newMessage(t, "data")).Submit(nil); err == nil {
+	if _, err := router.SendTo(rid).Message(newMessage(t, "data")).Submit(context.Background()); err == nil {
 		t.Fatalf("SendTo() should surface an error when no peer exists")
 	}
 }
@@ -413,7 +413,7 @@ func TestBlockingSendFailurePreservesMessagePayload(t *testing.T) {
 	msg := newMessage(t, "preserve-me")
 	defer msg.Close()
 
-	if _, err := router.SendTo(rid).Message(msg).Submit(nil); err == nil {
+	if _, err := router.SendTo(rid).Message(msg).Submit(context.Background()); err == nil {
 		t.Fatalf("SendTo() should surface an error when no peer exists")
 	}
 	if got := string(msg.Data()); got != "preserve-me" {
@@ -438,7 +438,7 @@ func TestBlockingSendFailurePreservesBytesPayload(t *testing.T) {
 	rid := zlink.NewRoutingID([]byte("missing-peer"))
 	payload := []byte("preserve-bytes")
 
-	if _, err := router.SendTo(rid).Bytes(payload).Submit(nil); err == nil {
+	if _, err := router.SendTo(rid).Bytes(payload).Submit(context.Background()); err == nil {
 		t.Fatalf("SendTo().Bytes() should surface an error when no peer exists")
 	}
 	if got := string(payload); got != "preserve-bytes" {
@@ -465,7 +465,7 @@ func TestMoveMessageFailureConsumesMessagePayload(t *testing.T) {
 	msg := newMessage(t, "consume-me")
 	defer msg.Close()
 
-	if _, err := router.SendTo(rid).MoveMessage(msg).Submit(nil); err == nil {
+	if _, err := router.SendTo(rid).MoveMessage(msg).Submit(context.Background()); err == nil {
 		t.Fatalf("MoveMessage SendTo() should surface an error when no peer exists")
 	}
 	if got := msg.Data(); got != nil {
@@ -482,7 +482,7 @@ func TestSendDoesNotSwallowClosedSocketErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.Send().Message(newMessage(t, "data")).Submit(nil); err == nil {
+	if _, err := socket.Send().Message(newMessage(t, "data")).Submit(context.Background()); err == nil {
 		t.Fatalf("Send() on closed socket should surface an error")
 	}
 }
@@ -496,7 +496,7 @@ func TestPublishDoesNotSwallowClosedSocketErrors(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 
-	if _, err := socket.Publish("topic").Message(newMessage(t, "data")).Submit(nil); err == nil {
+	if _, err := socket.Publish("topic").Message(newMessage(t, "data")).Submit(context.Background()); err == nil {
 		t.Fatalf("Publish() on closed socket should surface an error")
 	}
 }
@@ -512,7 +512,7 @@ func TestPublishFailurePreservesMessagePayload(t *testing.T) {
 	if err := socket.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
-	if _, err := socket.Publish("topic").Message(msg).Submit(nil); err == nil {
+	if _, err := socket.Publish("topic").Message(msg).Submit(context.Background()); err == nil {
 		t.Fatalf("Publish() on closed socket should surface an error")
 	}
 	if got := string(msg.Data()); got != "preserve-me" {
@@ -629,7 +629,7 @@ func TestReceiveCallbackCanUseBlockingSend(t *testing.T) {
 		packet := frameStreamPacketMessage(t, header, body)
 		_ = header.Close()
 		_ = body.Close()
-		if _, err := server.SendTo(source).Message(packet).Submit(nil); err != nil {
+		if _, err := server.SendTo(source).Message(packet).Submit(context.Background()); err != nil {
 			_ = packet.Close()
 			sendErrs <- err
 			return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/samples/internal/samplecommon"
@@ -31,7 +32,7 @@ func main() {
 	samplecommon.WaitConnected(serverMon, clientMon)
 
 	sent := "hello-pair"
-	_, err = client.Send().Message(samplecommon.Message(sent)).Submit(nil)
+	_, err = client.Send().Message(samplecommon.Message(sent)).Submit(context.Background())
 	samplecommon.Must(err)
 
 	var received zlink.Received

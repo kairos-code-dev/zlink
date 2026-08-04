@@ -1,6 +1,7 @@
 package native
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -217,7 +218,7 @@ func TestReceivedReplyHelpersCarryCanonicalMetadata(t *testing.T) {
 	if !received.IsSinglePart() {
 		t.Fatalf("IsSinglePart() = false, want true")
 	}
-	if err := received.Reply().Message(replyPart).Submit(nil); err != nil {
+	if err := received.Reply().Message(replyPart).Submit(context.Background()); err != nil {
 		t.Fatalf("Reply() error = %v", err)
 	}
 	if gotFlags != SendFlagsNone {
@@ -248,7 +249,7 @@ func TestReceivedReplyBuilderRejectsUnsupportedFlags(t *testing.T) {
 		},
 	}
 
-	err = received.Reply().Message(replyPart).Flags(SendFlagsDontWait).Submit(nil)
+	err = received.Reply().Message(replyPart).Flags(SendFlagsDontWait).Submit(context.Background())
 	if err == nil {
 		t.Fatalf("Reply() should reject unsupported flags")
 	}
@@ -271,7 +272,7 @@ func TestReceivedReplyRequiresValidContext(t *testing.T) {
 		t.Fatalf("NewMessage() error = %v", err)
 	}
 	defer msg.Close()
-	err = received.Reply().Message(msg).Submit(nil)
+	err = received.Reply().Message(msg).Submit(context.Background())
 	if err == nil {
 		t.Fatalf("Reply() should fail without a request context")
 	}

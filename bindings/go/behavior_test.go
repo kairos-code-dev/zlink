@@ -2,6 +2,7 @@ package zlink_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestPairSendRecvRoundTrip(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	if _, err := client.Send().Message(newMessage(t, "hello-pair")).Submit(nil); err != nil {
+	if _, err := client.Send().Message(newMessage(t, "hello-pair")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -63,7 +64,7 @@ func TestPairSendBytesRoundTrip(t *testing.T) {
 	}
 
 	payload := []byte("hello-bytes")
-	if _, err := client.Send().Bytes(payload).Submit(nil); err != nil {
+	if _, err := client.Send().Bytes(payload).Submit(context.Background()); err != nil {
 		t.Fatalf("Send().Bytes() error = %v", err)
 	}
 	if string(payload) != "hello-bytes" {
@@ -108,7 +109,7 @@ func TestPairMultipartBytesRoundTrip(t *testing.T) {
 		Bytes([]byte("first-bytes")).
 		Message(message).
 		Bytes([]byte("last-bytes")).
-		Submit(nil); err != nil {
+		Submit(context.Background()); err != nil {
 		t.Fatalf("multipart Send() error = %v", err)
 	}
 
@@ -155,7 +156,7 @@ func TestPollerWaitWritesCallerOwnedEvents(t *testing.T) {
 	if err := poller.AddSocket(server, zlink.PollIn, 7); err != nil {
 		t.Fatalf("AddSocket() error = %v", err)
 	}
-	if _, err := client.Send().Message(newMessage(t, "poller")).Submit(nil); err != nil {
+	if _, err := client.Send().Message(newMessage(t, "poller")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -243,13 +244,13 @@ func TestRouterCompletionControlUsesCompletionPoller(t *testing.T) {
 		t.Fatalf("AddSocket(PollCompletion) error = %v", err)
 	}
 
-	if _, err := client.SendTo(serverRID).Bytes([]byte("application-unread")).Submit(nil); err != nil {
+	if _, err := client.SendTo(serverRID).Bytes([]byte("application-unread")).Submit(context.Background()); err != nil {
 		t.Fatalf("application SendTo() error = %v", err)
 	}
 	if _, err := client.CompletionControl(serverRID).
 		Bytes([]byte("admission")).
 		Bytes([]byte("generation-7")).
-		Submit(nil); err != nil {
+		Submit(context.Background()); err != nil {
 		t.Fatalf("CompletionControl() error = %v", err)
 	}
 
@@ -378,10 +379,10 @@ func TestPollerCapacityLeavesRemainingReadySource(t *testing.T) {
 	if err := poller.AddSocket(receiver2, zlink.PollIn, 102); err != nil {
 		t.Fatalf("AddSocket(receiver2) error = %v", err)
 	}
-	if _, err := sender1.Send().Message(newMessage(t, "a")).Submit(nil); err != nil {
+	if _, err := sender1.Send().Message(newMessage(t, "a")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send(a) error = %v", err)
 	}
-	if _, err := sender2.Send().Message(newMessage(t, "b")).Submit(nil); err != nil {
+	if _, err := sender2.Send().Message(newMessage(t, "b")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send(b) error = %v", err)
 	}
 
@@ -444,7 +445,7 @@ func TestPollerModifyRemoveAndTimeout(t *testing.T) {
 	if err := poller.ModifySocket(receiver, 0); err != nil {
 		t.Fatalf("ModifySocket(none) error = %v", err)
 	}
-	if _, err := sender.Send().Message(newMessage(t, "hidden")).Submit(nil); err != nil {
+	if _, err := sender.Send().Message(newMessage(t, "hidden")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send(hidden) error = %v", err)
 	}
 	events := make([]zlink.PollEvent, 1)
@@ -471,7 +472,7 @@ func TestPollerModifyRemoveAndTimeout(t *testing.T) {
 	if err := poller.RemoveSocket(receiver); err != nil {
 		t.Fatalf("RemoveSocket() error = %v", err)
 	}
-	if _, err := sender.Send().Message(newMessage(t, "removed")).Submit(nil); err != nil {
+	if _, err := sender.Send().Message(newMessage(t, "removed")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send(removed) error = %v", err)
 	}
 	n, err = poller.Wait(events, 0)
@@ -513,7 +514,7 @@ func TestPollerDistinguishesTimerAndSocketInSameBuffer(t *testing.T) {
 	if err := poller.AddTimer(timer, 42); err != nil {
 		t.Fatalf("AddTimer() error = %v", err)
 	}
-	if _, err := sender.Send().Message(newMessage(t, "socket")).Submit(nil); err != nil {
+	if _, err := sender.Send().Message(newMessage(t, "socket")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send(socket) error = %v", err)
 	}
 	if err := timer.Start(uint64(5*time.Millisecond), 1); err != nil {
@@ -588,7 +589,7 @@ func TestPairMultipartRoundTrip(t *testing.T) {
 	_ = server.Bind(endpoint)
 	_ = client.Connect(endpoint)
 
-	if _, err := client.Send().Message(newMessage(t, "frame-1")).Message(newMessage(t, "frame-2")).Submit(nil); err != nil {
+	if _, err := client.Send().Message(newMessage(t, "frame-1")).Message(newMessage(t, "frame-2")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -616,7 +617,7 @@ func TestPairRecvReusesResultStorage(t *testing.T) {
 	_ = client.Connect(endpoint)
 
 	for _, payload := range []string{"first", "second"} {
-		if _, err := client.Send().Message(newMessage(t, payload)).Submit(nil); err != nil {
+		if _, err := client.Send().Message(newMessage(t, payload)).Submit(context.Background()); err != nil {
 			t.Fatalf("Send(%q) error = %v", payload, err)
 		}
 	}
@@ -670,7 +671,7 @@ func TestPairRecvAggregateRoundTrip(t *testing.T) {
 	_ = client.Connect(endpoint)
 	_ = server.SetReceiveTimeout(5 * time.Second)
 
-	if _, err := client.Send().Message(newMessage(t, "hello-part")).Submit(nil); err != nil {
+	if _, err := client.Send().Message(newMessage(t, "hello-part")).Submit(context.Background()); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 
@@ -726,7 +727,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	_ = dealer.Connect(endpoint)
 	_ = dealer.SetReceiveTimeout(5 * time.Second)
 
-	if _, err := dealer.Send().Message(newMessage(t, "request")).Submit(nil); err != nil {
+	if _, err := dealer.Send().Message(newMessage(t, "request")).Submit(context.Background()); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
 	}
 
@@ -736,7 +737,7 @@ func TestDealerRouterRoundTrip(t *testing.T) {
 	}
 	defer request.Close()
 
-	if _, err := router.SendTo(request.RoutingID()).Message(newMessage(t, "response")).Submit(nil); err != nil {
+	if _, err := router.SendTo(request.RoutingID()).Message(newMessage(t, "response")).Submit(context.Background()); err != nil {
 		t.Fatalf("router SendTo() error = %v", err)
 	}
 
@@ -782,10 +783,10 @@ func TestDealerRecvRequestUsesReceivedReplyContext(t *testing.T) {
 			return
 		}
 		reply := newMessage(t, "dealer-reply")
-		serverDone <- request.Reply().Message(reply).Submit(nil)
+		serverDone <- request.Reply().Message(reply).Submit(context.Background())
 	}()
 
-	completion, err := router.Request(dealerRID).Bytes([]byte("dealer-request")).Timeout(5 * time.Second).SubmitAsync(nil)
+	completion, err := router.Request(dealerRID).Bytes([]byte("dealer-request")).Timeout(5 * time.Second).SubmitAsync(context.Background())
 	if err != nil {
 		t.Fatalf("Router request submit error = %v", err)
 	}
@@ -824,7 +825,7 @@ func TestRouterRecvAggregateRoundTrip(t *testing.T) {
 	_ = dealer.Connect(endpoint)
 	_ = router.SetReceiveTimeout(5 * time.Second)
 
-	if _, err := dealer.Send().Message(newMessage(t, "routed-part")).Submit(nil); err != nil {
+	if _, err := dealer.Send().Message(newMessage(t, "routed-part")).Submit(context.Background()); err != nil {
 		t.Fatalf("dealer Send() error = %v", err)
 	}
 
@@ -864,7 +865,7 @@ func TestPubSubRoundTrip(t *testing.T) {
 	_ = subSocket.SetSubscription("market.")
 	_ = subSocket.SetReceiveTimeout(5 * time.Second)
 
-	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
+	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(context.Background()); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 
@@ -898,7 +899,7 @@ func TestSubSubscribeAggregateRoundTrip(t *testing.T) {
 	_ = subSocket.SetSubscription("market.")
 	_ = subSocket.SetReceiveTimeout(5 * time.Second)
 
-	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(nil); err != nil {
+	if _, err := pubSocket.Publish("market.price").Message(newMessage(t, "42.5")).Submit(context.Background()); err != nil {
 		t.Fatalf("Publish() error = %v", err)
 	}
 

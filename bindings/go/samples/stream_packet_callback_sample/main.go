@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/samples/internal/samplecommon"
@@ -30,7 +31,7 @@ func main() {
 		packet := samplecommon.FrameStreamPacketMessage(header, body)
 		_ = header.Close()
 		_ = body.Close()
-		if _, err := server.SendTo(source).Message(packet).Submit(nil); err != nil {
+		if _, err := server.SendTo(source).Message(packet).Submit(context.Background()); err != nil {
 			_ = packet.Close()
 			done <- err
 			return

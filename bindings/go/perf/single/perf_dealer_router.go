@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/perf/internal/perfcommon"
 )
@@ -36,15 +38,15 @@ func runDealerRouter(cfg benchmarkConfig) perfcommon.Result {
 	perfcommon.WaitConnectedWithTimeout(perfcommon.SingleReadyTimeout(), routerMon, dealerMon)
 	waitSingleRouteReady("dealer/router perf endpoint", func(payload []byte) error {
 		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(payload), func(message *zlink.Message) (bool, error) {
-			return dealer.Send().MoveMessage(message).Submit(nil)
+			return dealer.Send().MoveMessage(message).Submit(context.Background())
 		})
 		return err
 	}, router)
 
 	result := runSingleRoutedOneWay(cfg, router, func(message *zlink.Message) (bool, error) {
-		return dealer.Send().MoveMessage(message).Submit(nil)
+		return dealer.Send().MoveMessage(message).Submit(context.Background())
 	}, func(message *zlink.Message) error {
-		_, err := dealer.Send().MoveMessage(message).Submit(nil)
+		_, err := dealer.Send().MoveMessage(message).Submit(context.Background())
 		return err
 	})
 	perfcommon.PrintSingleAutoHWMDetail(routerMon, cfg.pattern, cfg.transport, "router", zlink.SocketTypeRouter, cfg.msgSize)

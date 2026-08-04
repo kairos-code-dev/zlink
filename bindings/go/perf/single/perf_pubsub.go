@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -64,17 +65,14 @@ func runPubSub(cfg benchmarkConfig) perfcommon.Result {
 	}()
 
 	for time.Now().Before(window.StopAt) {
-		sent, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
-			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err := perfcommon.SubmitMessage(perfcommon.NewWindowMessage(cfg.msgSize, window.ActiveAt), func(message *zlink.Message) (bool, error) {
+			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 		})
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
 			}
 			perfcommon.Must(err)
-		}
-		if !sent {
-			continue
 		}
 	}
 	// PERF_SINGLE_TEST_POLICY § 1.4: signal phase end via wire-level
@@ -171,7 +169,7 @@ func recvSinglePubSubOnce(
 func sendPubSubStopToken(publisher *zlink.PubSocket) bool {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		_, err := perfcommon.SubmitMessage(perfcommon.NewMessage(perfcommon.StopToken), func(message *zlink.Message) (bool, error) {
-			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Submit(nil)
+			return publisher.Publish(singlePubSubTopic).MoveMessage(message).Submit(context.Background())
 		})
 		if err == nil {
 			return true

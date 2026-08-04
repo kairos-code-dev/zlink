@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -260,9 +261,9 @@ func runMultiDealerDealerSendWindow(clients []dealerDealerClient, cfg multiConfi
 			}
 			sent, sendErr := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
 				if !useMultiDealerDealerMoveMessage(cfg.transport, cfg.msgSize) {
-					return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+					return client.socket.Send().Message(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 				}
-				return client.socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				return client.socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 			})
 			if sendErr == nil && sent {
 				if pending[i] {
@@ -343,7 +344,7 @@ func useMultiDealerDealerMoveMessage(transport string, msgSize int) bool {
 func sendMultiDealerStopToken(socket *zlink.DealerSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
-			return socket.Send().MoveMessage(message).Submit(nil)
+			return socket.Send().MoveMessage(message).Submit(context.Background())
 		})
 		if err == nil && sent {
 			return

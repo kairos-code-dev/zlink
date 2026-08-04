@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/samples/internal/samplecommon"
@@ -32,14 +33,14 @@ func main() {
 	samplecommon.Must(dealer.Connect(endpoint))
 	samplecommon.WaitConnected(routerMon, dealerMon)
 
-	_, err = dealer.Send().Message(samplecommon.Message("ping")).Submit(nil)
+	_, err = dealer.Send().Message(samplecommon.Message("ping")).Submit(context.Background())
 	samplecommon.Must(err)
 
 	var request zlink.Received
 	_, err = router.Recv(&request, zlink.RecvFlagsNone)
 	samplecommon.Must(err)
 	defer request.Close()
-	_, err = request.Send().Message(samplecommon.Message("pong")).Submit(nil)
+	_, err = request.Send().Message(samplecommon.Message("pong")).Submit(context.Background())
 	samplecommon.Must(err)
 
 	var reply zlink.Received

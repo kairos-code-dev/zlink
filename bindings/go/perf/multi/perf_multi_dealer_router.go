@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -156,7 +157,7 @@ func sendMultiDealerRouterRequest(
 ) bool {
 	perfcommon.StampWindowPayload(payload, window.ActiveAt)
 	sent, err := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
-		return socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		return socket.Send().MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 	})
 	if err != nil {
 		if perfcommon.IsTransient(err) {

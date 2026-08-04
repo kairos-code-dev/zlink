@@ -1,6 +1,7 @@
 package zlink_test
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -97,7 +98,7 @@ func TestNilInputValidation(t *testing.T) {
 			t.Fatalf("Recv(nil) error = %v, want *RecvError/EFAULT", err)
 		}
 	}
-	if _, err := socket.Send().Message(nil).Submit(nil); err == nil {
+	if _, err := socket.Send().Message(nil).Submit(context.Background()); err == nil {
 		t.Fatalf("Send(nil) should fail")
 	}
 	stream, _ := ctx.StreamSocket()

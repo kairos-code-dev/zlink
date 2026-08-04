@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -192,7 +193,7 @@ func validateMultiRouterRoutes(serverID zlink.RoutingID, clients []multiRouterCl
 		payload := perfcommon.PreparePayload(msgSize)
 		perfcommon.StampProbePayload(payload)
 		_, sendErr := perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
-			return client.socket.SendTo(serverID).MoveMessage(message).Submit(nil)
+			return client.socket.SendTo(serverID).MoveMessage(message).Submit(context.Background())
 		})
 		perfcommon.Must(sendErr)
 
@@ -325,28 +326,13 @@ func startMultiRouterRouterEchoServer(server *zlink.RouterSocket, done chan<- st
 	}
 }
 
-// startMultiRouterEchoServer returns a `done` channel closed when the
-// echo loop exits after observing a wire-level stop token. The previous
-// callers expected a (stop, done) pair where `stop` was closed by the
-// caller to request shutdown; PERF_MULTI_TEST_POLICY § 1.3.1 routes
-// shutdown over the wire instead, so the returned `stop` channel is now
-// a no-op handle that never causes the loop to exit on its own — the
-// caller still receives ownership of the channel and may close it for
-// API symmetry.
-func startMultiRouterEchoServer(server *zlink.RouterSocket) (chan struct{}, chan struct{}) {
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go startMultiRouterRouterEchoServer(server, done)
-	return stop, done
-}
-
 // sendMultiRouterStopToken pushes the wire-level stop token through the
 // supplied router socket addressed to the server. Bounded attempts through
 // transient backpressure.
 func sendMultiRouterStopToken(socket *zlink.RouterSocket, serverID zlink.RoutingID) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
-			return socket.SendTo(serverID).MoveMessage(message).Submit(nil)
+			return socket.SendTo(serverID).MoveMessage(message).Submit(context.Background())
 		})
 		if err == nil && sent {
 			return
@@ -389,6 +375,6 @@ func drainRouterReplies(
 
 func tryRouterSend(socket *zlink.RouterSocket, target zlink.RoutingID, payload []byte) (bool, error) {
 	return perfcommon.SubmitPayload(payload, func(message *zlink.Message) (bool, error) {
-		return socket.SendTo(target).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		return socket.SendTo(target).MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 	})
 }

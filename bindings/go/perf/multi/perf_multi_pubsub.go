@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -33,7 +34,7 @@ func runMultiPubSubServer(cfg multiConfig) {
 	for time.Now().Before(window.StopAt) {
 		if useMultiPubSubWindowMessage(cfg.transport, cfg.msgSize) {
 			_, err := perfcommon.SubmitWindowPayload(cfg.msgSize, window.ActiveAt, func(message *zlink.Message) (bool, error) {
-				return publisher.Publish("bench").MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(nil)
+				return publisher.Publish("bench").MoveMessage(message).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 			})
 			if err != nil {
 				if perfcommon.IsTransient(err) {
@@ -46,7 +47,7 @@ func runMultiPubSubServer(cfg multiConfig) {
 		}
 		perfcommon.StampWindowPayload(payload, window.ActiveAt)
 		msg := perfcommon.NewMessage(payload)
-		_, err = publisher.Publish("bench").MoveMessage(msg).Flags(zlink.SendFlagsDontWait).Submit(nil)
+		_, err = publisher.Publish("bench").MoveMessage(msg).Flags(zlink.SendFlagsDontWait).Submit(context.Background())
 		if err != nil {
 			if perfcommon.IsTransient(err) {
 				continue
@@ -237,7 +238,7 @@ func shouldSampleMultiPubSubLatency(index, stride uint64) bool {
 func sendMultiPubSubStopToken(publisher *zlink.PubSocket) {
 	for attempt := 0; attempt < perfcommon.StopTokenSendAttempts; attempt++ {
 		sent, err := perfcommon.SubmitPayload(perfcommon.StopToken, func(message *zlink.Message) (bool, error) {
-			return publisher.Publish("bench").MoveMessage(message).Submit(nil)
+			return publisher.Publish("bench").MoveMessage(message).Submit(context.Background())
 		})
 		if err == nil && sent {
 			return

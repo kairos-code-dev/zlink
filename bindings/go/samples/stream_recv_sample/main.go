@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	zlink "zlink.systems/zlink/v11"
@@ -38,7 +39,7 @@ func main() {
 		samplecommon.Must(fmt.Errorf("unexpected payload %q", string(part.Data())))
 	}
 
-	_, err = received.Send().Message(samplecommon.Message(sent)).Submit(nil)
+	_, err = received.Send().Message(samplecommon.Message(sent)).Submit(context.Background())
 	samplecommon.Must(err)
 
 	buffer := make([]byte, len(sent))

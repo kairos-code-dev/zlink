@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	zlink "zlink.systems/zlink/v11"
 	"zlink.systems/zlink/v11/samples/internal/samplecommon"
@@ -40,7 +41,7 @@ func main() {
 	}
 
 	payload := "101.25"
-	_, err = publisher.Publish(topic).Message(samplecommon.Message(payload)).Submit(nil)
+	_, err = publisher.Publish(topic).Message(samplecommon.Message(payload)).Submit(context.Background())
 	samplecommon.Must(err)
 
 	var message zlink.TopicMessage

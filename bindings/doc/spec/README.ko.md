@@ -1,8 +1,16 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "바인딩 API 정책"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/)
+<!-- bindings-nav:start -->
+[스펙 목록](README.ko.md)
+<!-- bindings-nav:end -->
 
 # 바인딩 API 정책
+
+> **이 장이 정의하는 것** — `bindings/` 전체에 적용되는 공개 API 정책. 언어별
+> 문서(`c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/`)가
+> 이 정책을 기준으로 정렬한다.
 
 > request-reply, SPOT routed, Actor dispatch 구현 기준은
 > `core/include/zlink.h` 의 현재 공개 계약을 따른다.
@@ -10,6 +18,55 @@
 > 언어별 문서에 적힌 공개 표면도 이 공통 계약을 기준으로 정렬한다.
 > 언어별 인터페이스 시그니처와 사용 예는
 > `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [목적](#목적) | 이 문서의 범위와 Required/Target 표기 의미 |
+| [바인딩 계약 범주 정책](#바인딩-계약-범주-정책) | contract 카테고리 분류 |
+| [바인딩 런타임 범주 정책](#바인딩-런타임-범주-정책) | runtime 카테고리 분류 |
+| [Actor/Spot Route 표면](#actorspot-route-표면) | route 조회 결과 타입과 Actor 대상 send/request |
+| [고성능 바인딩 정책](#고성능-바인딩-정책) | hot path 제약 |
+| [Substrate 와 공개 바인딩 표면](#substrate-와-공개-바인딩-표면) | part substrate와 aggregate 공개 표면의 경계 |
+| [`*_part` Substrate 사용 의무 (Required)](#_part-substrate-사용-의무-required) | aggregate 구현이 `*_part` API를 써야 하는 이유 |
+| [Spot Get-Or-Create 매핑](#spot-get-or-create-매핑) | `zlink_spot_node_spot_get_or_new` 매핑 규칙 |
+| [공개 vs 내부 API 경계](#공개-vs-내부-api-경계) | contract/runtime 분리 원칙과 판정 기준 |
+| [코어 정렬 규칙](#코어-정렬-규칙) | 코어 계약과의 정렬 규칙 |
+| [Actor Dispatch 바인딩 계약](#actor-dispatch-바인딩-계약) | Actor dispatch 공개 표면 |
+| [문서 해석 규칙](#문서-해석-규칙) | Required/Target 표기 해석법 |
+| [핵심 원칙](#핵심-원칙) | 전체 정책을 관통하는 핵심 원칙 |
+| [Monitor Ready 계약](#monitor-ready-계약) | monitor readiness 의미 |
+| [POSD 구조 정책](#posd-구조-정책) | 깊은 모듈·낮은 변경 파급 구조 기준 |
+| [공개 표면 규칙](#공개-표면-규칙) | operation 이름·builder·terminator 규칙 |
+| [도메인 객체 정책](#도메인-객체-정책) | 값 타입 vs 인터페이스 판정 기준 |
+| [소켓 타입 능력 정책](#소켓-타입-능력-정책) | socket family별 노출 능력 |
+| [언어별 스펙 파일 준수 규칙](#언어별-스펙-파일-준수-규칙) | 언어별 문서와 이 문서의 관계 |
+| [서비스 계층 정책](#서비스-계층-정책) | SPOT/Actor 서비스 계층 공개 계약 |
+| [코어 API 추가 사항](#코어-api-추가-사항) | 최근 추가된 코어 기능의 바인딩 반영 |
+| [옵션 정책](#옵션-정책) | socket/context 옵션 노출 규칙 |
+| [성능 정책](#성능-정책) | 전체 바인딩 공통 성능 기준 |
+| [경계 비용 정책](#경계-비용-정책) | FFI/marshalling 경계 비용 기준 |
+| [Peer 가중치 정책](#peer-가중치-정책) | peer weight 계약 |
+| [Monitor 정책](#monitor-정책) | monitor 이벤트·snapshot 계약 |
+| [오류 정책](#오류-정책) | 오류 표현과 도메인 매핑 |
+| [길이와 범위 경계 정책](#길이와-범위-경계-정책) | 값 검증과 경계 상한 |
+| [소유권 정책](#소유권-정책) | 메시지·핸들 소유권 규칙 |
+| [네이밍 정책](#네이밍-정책) | 언어 간 공통 네이밍 규칙 |
+| [호환성 정책](#호환성-정책) | 호환 shim·deprecated wrapper 금지 |
+| [언어 간 정렬](#언어-간-정렬) | 언어 간 일관성 검증 방법 |
+| [테스트 정책](#테스트-정책) | 테스트 범위와 기준 |
+| [Test Matrix](#test-matrix) | 언어 × 기능 커버리지 표 |
+| [샘플 정책](#샘플-정책) | 샘플 코드 기준 |
+| [Perf 정책](#perf-정책) | perf 러너 기준 |
+| [스크립트 위치 정책](#스크립트-위치-정책) | 테스트/샘플/perf 스크립트 위치 |
+| [리뷰 체크리스트](#리뷰-체크리스트) | PR 리뷰 시 확인 항목 |
+| [POSD 기반 구현 완성 정책](#posd-기반-구현-완성-정책) | 구현 완성 판정 기준 |
+| [구현 리뷰 체크리스트](#구현-리뷰-체크리스트) | 구현 완료 선언 전 확인 항목 |
+| [바인딩 요구사항](#바인딩-요구사항) | 바인딩이 반드시 만족해야 할 요구사항 |
+| [API 레퍼런스](#api-레퍼런스) | API 레퍼런스 문서 생성 기준 |
+| [Routing ID로 Peer 끊기](#routing-id로-peer-끊기) | routing id 기반 peer disconnect 계약 |
+| [관련 문서](#관련-문서) | 관련 문서 링크 |
+| [Core API Surface 6.0.0 정렬](#core-api-surface-600-정렬) | 6.0.0 코어 API 표면 정렬 현황 |
+| [Spot Route Bridge API](#spot-route-bridge-api) | route bridge API 계약 |
 
 ## 목적
 이 문서는 `bindings/` 전체의 public API 정책을 정의한다.

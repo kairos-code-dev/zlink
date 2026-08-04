@@ -43,6 +43,14 @@ Actor·Spot create·get-or-create call에만 제공한다. Create·get-or-create
 handler와 owner turn 밖에서는 operation submission과 queue 변경 전에 `InvalidOperation`으로 끝난다.
 Actor join, send, publish, timer 등록, close와 destroy에는 제공하지 않는다.
 
+| Call 종류 | `SpotWide` User Spot·Instance Spot | Entry Spot·`PerActor`·Entry Actor·Node·Channel handler |
+|---|---|---|
+| Channel·Spot·Actor request | 일반 비동기 terminal 또는 `Yield` | 일반 비동기 terminal만 (`Yield` 없음) |
+| CPU·I/O worker | 일반 비동기 terminal 또는 `Yield` | 일반 비동기 terminal만 |
+| Actor·Spot create·get-or-create | 일반 비동기 terminal 또는 `Yield` (특례) | 일반 비동기 terminal만 |
+| Actor join, send, publish, timer 등록, close, destroy | `Yield` 미제공 | `Yield` 미제공 |
+| owner turn 밖 | 해당 없음 | submission·queue 변경 전 `InvalidOperation` |
+
 `SpotWide` member Actor가 `Yield`하면 Actor FIFO claim은 유지하고 shared Spot gate만 반납한다. 따라서 같은
 Actor의 다음 record는 실행하지 않지만 다른 member Actor·Spot handler·timer는 진행할 수 있다. Continuation은
 같은 gate를 다시 얻은 뒤 현재 Actor record를 끝내고 Actor claim을 해제한다. 대기 전에 읽은 mutable state는
@@ -140,6 +148,21 @@ Request는 reply, remote 오류, timeout, cancellation 또는 shutdown 가운데
 rollback하지 않는다. 늦게 도착한 reply는 application handler에 다시 전달하지 않고 correlation state를
 정리한다.
 
+```mermaid
+flowchart LR
+    R["Request 시작"] --> W{"먼저 확정되는 결과는?"}
+    W -->|reply| C1["정상 완료"]
+    W -->|remote 오류| C2["예외로 완료"]
+    W -->|timeout| C3["예외로 완료<br/>(원격 handler는 rollback 안 함)"]
+    W -->|cancellation| C4["예외로 완료"]
+    W -->|shutdown| C5["예외로 완료"]
+    C1 -.->|늦게 도착한 나머지 결과| D["폐기, correlation state만 정리"]
+    C2 -.-> D
+    C3 -.-> D
+    C4 -.-> D
+    C5 -.-> D
+```
+
 Global object request timeout은 current Ready authority resolve, outbound admission, handler와 reply 전체를
 포함한다. Source는 앞 단계에서 사용한 시간을 뺀 잔여 시간만 다음 단계에 전달한다. Remote target의
 미수락을 증명하는 receipt가 없으므로 timeout이나 연결 실패 뒤 다른 owner에게 request를 자동 재제출하지
@@ -175,6 +198,23 @@ head를 실행할 권한인 Actor queue claim은 continuation이 끝날 때까�
 handler·timer는 실행할 수 있지만 같은 Actor queue의 다음 job은 먼저 실행할 수 없다. Continuation은 User
 Spot gate를 다시 얻어 현재 job을 끝낸 뒤 Actor queue claim을 해제한다. 같은 Actor 자신에게 보낸 request도
 재진입 호출로 바꾸거나 inline으로 실행하지 않는다.
+
+```mermaid
+sequenceDiagram
+    participant AQ as Actor A queue
+    participant SG as User Spot gate
+    participant Other as 다른 Actor·Spot handler·timer
+
+    AQ->>SG: gate 획득, Actor A job 시작
+    Note over AQ: Actor A queue claim 획득
+    AQ->>SG: Yield 호출 — gate만 반납
+    Note over AQ: Actor A queue claim은 계속 보유
+    SG->>Other: gate 재분배
+    Note over Other: 실행 가능 — 단 같은 Actor A의<br/>다음 job은 먼저 실행 못 함
+    AQ->>SG: completion 도착 — gate 재획득
+    AQ->>AQ: Actor A job 종료
+    Note over AQ: Actor A queue claim 해제
+```
 
 각 언어 service runtime은 application domain과 infrastructure domain을 독립적으로 진행한다. Payload decoding,
 user callback과 exception mapping은 application turn에서 처리한다. Request completion과 bounded
@@ -243,6 +283,14 @@ Java `cancel(false)`나 그 stage를 기다리는 Kotlin coroutine cancellation�
 pending 상태이면 이 cancellation이 이후 admission과 경쟁하고 send-ready waiter, queue reservation과 payload
 reservation을 정리한다. 따라서 JVM 경로는 pre-cancellation에 따른 transport attempt 0을 보장하지 않는다.
 
+| 언어 | cancellation 입력 | 첫 admission 시도 취소 가능 여부 |
+|---|---|---|
+| .NET | `CancellationToken` | pre-cancelled token은 runtime admission을 시작하지 않는다 |
+| Node.js | `AbortSignal` | 이미 abort된 signal은 cancelled awaitable로 즉시 완료한다 |
+| Java | `CompletionStage.toCompletableFuture().cancel(false)` | 없음 — stage는 첫 non-blocking 시도 뒤에만 반환되므로 그 시도는 취소 불가 |
+| Kotlin | 연결된 stage의 coroutine cancellation | 없음 — Java와 같은 이유 |
+| C++ | 별도 public cancellation 입력 없음 | 해당 없음 — task 미사용만으로 취소를 보장하지 않는다 |
+
 Cancellation은 exceptional completion이다. Admission을 시작한 뒤 cancellation, timeout, shutdown과
 수락이 경쟁하면 원자 terminal state를 먼저 확정한 하나만 call을 완료한다. 취소된 pending admission은 나중에
 수락되면 안 된다. Logical Multicast cancellation은 아래의 direct handoff와 commit 경계를 따른다.
@@ -278,6 +326,13 @@ platform timer의 만료를 Spot queue record로 바꾸며, backend와 관계없
 callback을 실행하지 않는다. cancel은 해당 generation 이후 callback의 시작을 막는다. 이미 시작한 callback은
 강제로 중단하지 않는다. 반복 timer가 handler 실행보다 빠르게 만료되어도 같은 key의 callback을 동시에
 실행하지 않으며, 중복 만료를 한 번의 pending record로 합칠 수 있다.
+
+| 상황 | 동작 |
+|---|---|
+| 같은 key 재등록 | generation 증가 |
+| 이전 generation의 queue record | callback 실행 안 함 |
+| cancel | 해당 generation 이후 callback 시작 차단 (이미 시작한 callback은 중단하지 않음) |
+| 반복 timer가 handler보다 빠르게 만료 | 같은 key의 callback을 동시 실행하지 않음, 중복 만료를 pending record 1개로 병합 가능 |
 
 Spot timer는 service runtime이 current [owner lease](01-glossary.ko.md#owner-lease)와 admission deadline을 확인한 뒤에만 admission할 수
 있다. Lease 갱신이 멈추어 monotonic deadline을 넘으면 Framework process가 일시 정지된 상태였더라도 재개 후

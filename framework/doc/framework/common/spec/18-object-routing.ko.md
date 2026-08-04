@@ -68,7 +68,8 @@ Source runtime은 다음 순서로 처리한다.
 4. 선택한 owner route로 message를 제출한다.
 5. Target은 자신이 같은 logical ID의 current owner인지, current Ready object가 있는지,
    local admission이 가능한지 확인한 뒤 application queue에 넣는다. Object generation은
-   application handler의 target 일치 조건으로 검사하지 않는다.
+   application handler의 target 일치 조건으로 검사하지 않는다
+   ([§2.5](#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)).
 
 Location Store가 global object마다 기록한 current owner, incarnation, owner
 generation과 lease 정보를 authority라 한다. Framework는 current Ready
@@ -104,15 +105,11 @@ Relay 통지는 Framework가 소유하는 infrastructure record이며 applicatio
 결과에 도달한다. 통지는 [Message Follow duration](01-glossary.ko.md#message-follow-duration)
 동안 우회 경로로 흐르는 구간을 줄이기 위한 것이다.
 
-Resolve한 뒤 같은 owner에서 object가 close·destroy되고 같은 ID로 새 incarnation이
-만들어졌다면 target queue가 수락하는 시점의 current Ready object가 message를 처리한다.
-이 동작은 Actor와 Instance Spot을 포함한 모든 Spot direct message에 동일하게 적용한다.
-`ObjectGeneration`은 일반 message의 target 조건이 아니기 때문이다.
+Resolve한 owner가 여전히 그 object를 소유하는지, 같은 ID로 새 incarnation이 만들어졌다면
+어느 쪽이 message를 처리하는지는
+[§2.5](#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)가 정한다.
 
-Resolve한 owner가 더 이상 같은 logical ID를 소유하지 않으면 current operation은 stale
-route 오류로 끝낸다. Framework는 Location Store에서 fresh owner를 찾아 같은 operation을
-자동으로 다시 보내지 않는다. Local owner와 remote owner에는 같은 handler, metadata와
-completion 계약을 적용한다.
+Local owner와 remote owner에는 같은 handler, metadata와 completion 계약을 적용한다.
 
 ### 2.3 Object가 없을 때
 
@@ -149,8 +146,8 @@ Relay는 original operation ID, `ObjectGeneration`, payload와 reply route를
 `InvalidOperation`, bound 초과는 `CapacityExceeded`로 끝난다.
 
 이 generation 검사는 relocation이 설치한 Message Follow route가 같은 incarnation의 이동에
-속하는지 확인한다. 일반 Actor·Spot message의 target을 generation으로 제한하는 검사가 아니다.
-Application이 새로 시작한 direct call은 logical ID의 current Ready object를 대상으로 한다.
+속하는지 확인하는 것이며, 일반 message의 target을 제한하는 검사가 아니다
+([§2.5](#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)).
 
 `PerActor` User Spot relocation 중 `ToActor`는 Spot authority가 아니라 Actor별
 current owner route를 사용한다. Spot authority가 target으로 바뀌어도 아직 source에
@@ -181,6 +178,39 @@ Framework는 실패한 현재 operation을 Location Store에서 찾은 새 owner
 다시 제출하지 않는다. 다음 call만 cache 또는 Location Store에서 current owner를
 다시 찾는다. 이 규칙은 이미 실행됐는지 알 수 없는 operation이 두 owner에서
 중복으로 실행되는 것을 막는다.
+
+### 2.5 ObjectGeneration을 어디에 쓰고 어디에 쓰지 않는가
+
+일반 Actor·Spot message는 global logical ID만 target으로 사용한다. Actor send/request는
+`ActorId`, Instance Spot을 포함한 Spot send/request는 `SpotId`가 가리키는 current Ready
+object로 전달한다. `ActorRef`·`SpotRef`와 그 안의
+[ObjectGeneration](01-glossary.ko.md#objectgeneration)은 application message target이 아니다.
+
+`ObjectGeneration`은 같은 ID로 object를 제거한 뒤 다시 만들었는지를 구분한다. Framework는
+이 값을 다음과 같이 사용한다.
+
+| Operation | `ObjectGeneration` 적용 방법 |
+|---|---|
+| Actor·Spot direct send/request | Target 일치 조건에서 **제외한다.** 같은 owner에서 같은 ID의 object가 다시 만들어졌다면 target queue가 수락하는 시점의 current Ready object가 message를 처리한다. |
+| `Destroy`·`Close`와 membership 변경 | Caller가 지정한 incarnation과 current authority가 같은지 확인한다. 이전 incarnation의 작업은 새 object의 상태를 바꾸지 않는다. |
+| 생성 recovery | 같은 생성 attempt와 incarnation만 계속한다. 다른 generation의 factory나 생성 결과를 함께 사용하지 않는다. |
+| Relocation과 Message Follow | 같은 relocation에 속한 state·queue·relay route인지 확인한다([§2.4](#24-이전-owner-route에-도착한-message)). 이전 generation의 relocation control을 새 object에 적용하지 않는다. |
+| Session bind와 relay | Bind는 exact `ActorRef`로 시작하고 binding token을 발급한다. Actor를 제거하면 기존 binding을 종료하므로 새 incarnation에는 explicit bind가 필요하다. 늦은 relay는 종료된 binding token으로 거부한다([§3](#3-session에-bind된-actor로-relay하는-방법)). |
+
+Resolve한 뒤 owner에게 무슨 일이 일어났느냐에 따라 결과가 갈린다.
+
+| Resolve 뒤 일어난 일 | 결과 |
+|---|---|
+| 같은 owner에서 object가 close·destroy되고 같은 ID로 새 incarnation이 만들어졌다 | Target queue가 수락하는 시점의 current Ready object가 처리한다. Actor와 Instance Spot을 포함한 모든 Spot direct message에 동일하게 적용한다. |
+| Owner process가 종료되었거나 owner가 다른 node로 바뀌어 resolve한 route를 쓸 수 없다 | Current operation을 [`Unavailable`](32-framework-error-model.ko.md)로 끝낸다. |
+
+두 경우 모두 Framework는 실패한 operation을 새 owner에게 **자동으로 다시 보내지 않는다.**
+Application이 새 call을 시작하면 그때 logical ID의 current Ready owner를 다시 확인한다. 이
+규칙은 이미 실행됐는지 알 수 없는 operation이 두 owner에서 중복 실행되는 것을 막는다.
+
+이 구분을 적용하면 Actor와 Instance Spot이 같은 메시징 규칙을 사용한다. **Logical ID는
+application message의 대상을 정하고, `ObjectGeneration`은 특정 incarnation의 상태를 바꾸는
+control을 제한한다.**
 
 ## 3. Session에 bind된 Actor로 relay하는 방법
 

@@ -68,7 +68,7 @@ owner 정보는 캐시되므로, 보내는 쪽이 아는 owner가 이미 바뀌�
 **결정 — 걸러내는 기준은 owner 신원과 유효 기간이다. 객체 세대가 아니다.**
 
 [ObjectGeneration](../spec/01-glossary.ko.md#objectgeneration)은 일반 message의 대상
-조건이 **아니다**([Spot·Actor routing §70-71,104](../spec/18-object-routing.ko.md)).
+조건이 **아니다**([Spot·Actor routing §2.5](../spec/18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)).
 객체 세대까지 일반 message의 조건으로 검사하면, 객체가 다시 만들어진 직후 정상
 message가 전부 거절된다. 객체 세대는 lifecycle 변경과 이동 중계를 걸러낼 때 쓴다.
 

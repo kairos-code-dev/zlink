@@ -85,31 +85,14 @@ operation을 수락했는지 알 수 없으면 그 operation은 다른 peer에 �
 
 ### 4.1 Logical ID 메시징과 ObjectGeneration
 
-일반 Actor·Spot message는 global logical ID만 target으로 사용한다. Actor send/request는
-`ActorId`, Instance Spot을 포함한 Spot send/request는 `SpotId`가 가리키는 current Ready
-object로 전달한다. `ActorRef`·`SpotRef`와 그 안의
-[ObjectGeneration](01-glossary.ko.md#objectgeneration)은 application message target이 아니다.
+`ObjectGeneration`을 어디에 쓰고 어디에 쓰지 않는지는
+[Spot·Actor routing §2.5](18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)가
+정한다. Operation별 적용 표와 owner가 사라졌을 때의 결과가 그곳에 있다.
 
-`ObjectGeneration`은 같은 ID로 object를 제거한 뒤 다시 만들었는지를 구분한다. Framework는
-이 값을 다음과 같이 사용한다.
-
-| Operation | `ObjectGeneration` 적용 방법 |
-|---|---|
-| Actor·Spot direct send/request | Target 일치 조건에서 제외한다. 같은 owner에서 같은 ID의 object가 다시 만들어졌다면 target queue가 수락하는 시점의 current Ready object가 message를 처리한다. |
-| `Destroy`·`Close`와 membership 변경 | Caller가 지정한 incarnation과 current authority가 같은지 확인한다. 이전 incarnation의 작업은 새 object의 상태를 바꾸지 않는다. |
-| 생성 recovery | 같은 생성 attempt와 incarnation만 계속한다. 다른 generation의 factory나 생성 결과를 함께 사용하지 않는다. |
-| Relocation과 Message Follow | 같은 relocation에 속한 state·queue·relay route인지 확인한다. 이전 generation의 relocation control을 새 object에 적용하지 않는다. |
-| Session bind와 relay | Bind는 exact `ActorRef`로 시작하고 binding token을 발급한다. Actor를 제거하면 기존 binding을 종료하므로 새 incarnation에는 explicit bind가 필요하다. 늦은 relay는 종료된 binding token으로 거부한다. |
-
-Source가 resolve한 owner가 message를 수락하기 전에 같은 process에서 object가 다시 만들어졌다면
-새 generation의 current object가 message를 처리한다. 반면 owner process가 종료되었거나
-owner가 다른 node로 바뀌어 resolve한 route를 사용할 수 없으면 current operation은
-`Unavailable`로 끝난다. Framework는 실패한 operation을 새 owner에게
-자동으로 다시 보내지 않는다. Application이 새 call을 시작하면 Framework가 logical ID의 current
-Ready owner를 다시 확인한다.
-
-이 구분을 적용하면 Actor와 Instance Spot이 같은 메시징 규칙을 사용한다. Logical ID는 application
-message의 대상을 정하고, `ObjectGeneration`은 특정 incarnation의 상태를 바꾸는 control을 제한한다.
+장애 대응에서 이 구분이 만드는 차이는 하나다. **일반 Actor·Spot message는 generation이 아니라
+logical ID의 current Ready object를 대상으로 하므로, object가 같은 ID로 다시 만들어진 것과
+owner를 잃은 것이 서로 다른 결과로 끝난다.** 전자는 새 incarnation이 처리하고 후자는
+`Unavailable`이다. 아래 절들은 후자만 다룬다.
 
 ### 4.2 기존 Actor와 Spot
 

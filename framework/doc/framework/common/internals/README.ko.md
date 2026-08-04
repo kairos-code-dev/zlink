@@ -1,3 +1,7 @@
+---
+title: "내부 구조 개요"
+---
+
 # Framework 공통 내부 구조
 
 [Framework 공통 문서](../README.ko.md) · [정식 spec](../spec/README.ko.md)

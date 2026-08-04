@@ -1,6 +1,16 @@
+---
+title: "8. 객체 종류와 활성화"
+---
+
 # 8. 객체 종류와 활성화
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 7. 수신과 dispatch 루프](07-dispatch-loop.ko.md) · [다음: 9. Session과 Actor 연결](09-session-binding.ko.md)
+
+> **이 장이 답하는 것** — Spot 세 종류를 어떻게 구분하고, 없는 객체를 언제 만들며, 낡은 owner로 온 message를 어떻게 거르는가.
+>
+> **계약 소유** — Spot 종류와 종료 사유는 [Spot 모델](../spec/11-spot-model.ko.md)이,
+> generation을 쓰는 자리는 [Spot·Actor routing](../spec/18-object-routing.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 Actor와 handler를 담는 실행 단위인 [Spot](../spec/01-glossary.ko.md#spot) 세 종류를 코드에서
 어떻게 구분하고, 없는 객체를 언제 만들며, 낡은 owner에게 보낸

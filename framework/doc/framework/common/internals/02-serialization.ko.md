@@ -1,6 +1,16 @@
+---
+title: "2. Spot·Actor 실행 직렬화 — queue와 execution gate를 나눈다"
+---
+
 # 2. Spot·Actor 실행 직렬화 — queue와 execution gate를 나눈다
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 1. 계층 경계와 식별자](01-layering.ko.md) · [다음: 3. application과 infrastructure 실행 분리](03-progress-isolation.ko.md)
+
+> **이 장이 답하는 것** — application handler에 동기화 코드가 없어도 되는 이유를 만드는 구조.
+>
+> **계약 소유** — queue와 실행 단위의 공개 계약은 [Actor 모델](../spec/14-actor-model.ko.md)과
+> [Spot 위의 Stage wrapper](../spec/17-stage-wrapper-on-spot.ko.md)가 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 Application handler에 동기화 코드가 없어도 되는 이유를 만드는 구조다. 네 구현 중 실제로
 가장 많이 어긋난 자리이기도 하다.

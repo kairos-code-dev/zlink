@@ -1,6 +1,16 @@
+---
+title: "4. operation 완료 확정 — 한 번만 확정한다"
+---
+
 # 4. operation 완료 확정 — 한 번만 확정한다
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 3. application과 infrastructure 실행 분리](03-progress-isolation.ko.md) · [다음: 5. 이동 중 message 연속성](05-relocation-continuity.ko.md)
+
+> **이 장이 답하는 것** — 응답·timeout·취소·종료·연결 끊김이 동시에 도착할 때 무엇이 caller를 완료시키는가.
+>
+> **계약 소유** — 오류 kind는 [Framework 오류 모델](../spec/32-framework-error-model.ko.md)이,
+> 수락 이후 재전송 금지는 [Transport liveness](../spec/29-transport-liveness.ko.md)가 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 응답을 기다리는 호출 하나에 대해 응답·timeout·취소·종료·연결 끊김이 **동시에** 도착할
 수 있다. 이 문서는 그중 하나만 caller를 완료시키도록 만드는 구조와, 그 과정에서 응답을

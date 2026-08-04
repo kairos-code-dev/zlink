@@ -1,6 +1,16 @@
+---
+title: "11. Payload 소유권과 복사"
+---
+
 # 11. Payload 소유권과 복사
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md) · [다음: Service wire protocol](service-wire-protocol.ko.md)
+
+> **이 장이 답하는 것** — message 하나가 socket에서 handler까지 가는 동안 byte를 몇 번 복사하는가.
+>
+> **계약 소유** — payload 크기 회계는 [Framework API](../spec/06-framework-api.ko.md)가,
+> 전달 형식은 [Channel 메시징](../spec/08-channel-messaging.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 message 하나가 socket에서 handler까지 가는 동안 **byte를 몇 번 복사하는가**를 정한다.
 처리량에 가장 직접적으로 영향을 주는 결정이고, 네 구현이 가장 크게 갈린 자리이기도

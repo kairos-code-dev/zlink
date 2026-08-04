@@ -1,6 +1,16 @@
+---
+title: "3. application과 infrastructure 실행 분리"
+---
+
 # 3. application과 infrastructure 실행 분리
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 2. Spot·Actor 실행 직렬화 — queue와 execution gate를 나눈다](02-serialization.ko.md) · [다음: 4. operation 완료 확정 — 한 번만 확정한다](04-completion.ko.md)
+
+> **이 장이 답하는 것** — handler가 멈춰 있는 동안 무엇이 계속 진행해야 하는가.
+>
+> **계약 소유** — 수신 한도와 backpressure 계약은 [Framework API](../spec/06-framework-api.ko.md)가,
+> 비동기 완료 의미는 [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 Application handler가 원격 응답을 기다리는 동안, 그 호출의 timeout은 누가 재는가?
 handler가 멈춰 있는데 timeout도 handler와 같은 줄에서 기다린다면 그 호출은 영원히

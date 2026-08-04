@@ -1,9 +1,21 @@
+---
+title: "Service wire protocol"
+---
+
 # Service wire protocol
 
-[내부 구조 목차](README.ko.md) · [계층 경계와 식별자](01-layering.ko.md) ·
-[Location runtime](../spec/21-location-runtime.ko.md) ·
-[Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
-[Transport liveness](../spec/29-transport-liveness.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 11. Payload 소유권과 복사](11-message-ownership.ko.md)
+
+> **이 장이 답하는 것** — node 사이에 오가는 byte 형식과 command 목록.
+>
+> **계약 소유** — `framework/runtime/protocol/service-wire-v1.schema.json`이 정본이다.
+> 이 장은 schema가 정한 field 관계와 검증 순서를 설명하며, 다른 장과 달리
+> 결정·재량·확인할 결과 구분을 적용하지 않는다.
+>
+> **함께 보는 계약** — [계층 경계와 식별자](01-layering.ko.md) ·
+> [Location runtime](../spec/21-location-runtime.ko.md) ·
+> [Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
+> [Transport liveness](../spec/29-transport-liveness.ko.md)
 
 ## 1. Schema와 생성 경계
 

@@ -1,6 +1,16 @@
+---
+title: "1. 계층 경계와 식별자"
+---
+
 # 1. 계층 경계와 식별자
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [다음: 2. Spot·Actor 실행 직렬화 — queue와 execution gate를 나눈다](02-serialization.ko.md)
+
+> **이 장이 답하는 것** — runtime을 어떤 덩어리로 나누고, 어떤 값을 하나로 합치면 안 되는가.
+>
+> **계약 소유** — 종료 절차와 순서는 [Host Relocate와 Shutdown](../spec/28-graceful-drain-handoff.ko.md)이,
+> 식별자의 형식과 수명은 [용어집](../spec/01-glossary.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 runtime을 어떤 덩어리로 나눌지, 그리고 어떤 값을 하나로 합치면 안 되는지를 다룬다.
 이 두 결정은 나중에 바꾸기가 가장 어렵다 — 경계를 잘못 그으면 코드 전체에 퍼지고,

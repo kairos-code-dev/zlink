@@ -1,6 +1,16 @@
+---
+title: "10. Liveness와 상태 공개"
+---
+
 # 10. Liveness와 상태 공개
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 9. Session과 Actor 연결](09-session-binding.ko.md) · [다음: 11. Payload 소유권과 복사](11-message-ownership.ko.md)
+
+> **이 장이 답하는 것** — 상대가 살아 있는지 판단하는 방법과, 이 runtime의 상태를 밖에 알리는 방법.
+>
+> **계약 소유** — 확인 주기와 판정 기한은 [Transport liveness](../spec/29-transport-liveness.ko.md)가,
+> 상태 값과 관찰자 계약은 [Runtime 상태와 운영 진단](../spec/24-runtime-monitoring.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 상대가 살아 있는지 판단하는 방법과, 이 runtime이 지금 어떤 상태인지 밖에 알리는
 방법이다. 두 결정 모두 "언제부터 호출을 받는가"에 직결된다.

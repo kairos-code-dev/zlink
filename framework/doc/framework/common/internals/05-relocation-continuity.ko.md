@@ -1,6 +1,16 @@
+---
+title: "5. 이동 중 message 연속성"
+---
+
 # 5. 이동 중 message 연속성
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 4. operation 완료 확정 — 한 번만 확정한다](04-completion.ko.md) · [다음: 6. target 선택과 route cache](06-routing-and-cache.ko.md)
+
+> **이 장이 답하는 것** — 객체가 다른 node로 옮겨 가는 동안 그 객체로 향하던 message는 어디로 가는가.
+>
+> **계약 소유** — 이동 절차의 단계와 저장소 계약은 [Host Relocate와 Shutdown](../spec/28-graceful-drain-handoff.ko.md)과
+> [Location runtime](../spec/21-location-runtime.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 실행 중인 객체를 다른 node로 옮기는 동안, 그 객체로 향하던 message는 어디로 가는가.
 이 문서는 이동 절차 자체보다 **경계마다 message가 어떻게 처리되는지**를 다룬다. 절차의

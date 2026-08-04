@@ -1,6 +1,16 @@
+---
+title: "7. 수신과 dispatch 루프"
+---
+
 # 7. 수신과 dispatch 루프
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 6. target 선택과 route cache](06-routing-and-cache.ko.md) · [다음: 8. 객체 종류와 활성화](08-object-lifecycle.ko.md)
+
+> **이 장이 답하는 것** — 수신한 message를 execution gate까지 나르는 구간.
+>
+> **계약 소유** — 수신 공정성은 [Transport liveness](../spec/29-transport-liveness.ko.md)가,
+> 대기열 한도는 [Framework API](../spec/06-framework-api.ko.md)가 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 수신한 message를 실행 gate까지 나르는 구간이다. message 하나마다 깨우느냐 모아서
 처리하느냐가 처리량을 결정하고, 무엇으로 깨우느냐가 지연 하한을 결정한다.

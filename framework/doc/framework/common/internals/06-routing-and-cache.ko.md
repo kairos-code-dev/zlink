@@ -1,6 +1,16 @@
+---
+title: "6. target 선택과 route cache"
+---
+
 # 6. target 선택과 route cache
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 5. 이동 중 message 연속성](05-relocation-continuity.ko.md) · [다음: 7. 수신과 dispatch 루프](07-dispatch-loop.ko.md)
+
+> **이 장이 답하는 것** — 이름 하나로 대상을 고르는 절차와, 그 위치 조회를 얼마나 자주 하는가.
+>
+> **계약 소유** — 선택 순서와 tiebreak는 [Channel 메시징](../spec/08-channel-messaging.ko.md)이,
+> cache 수명과 무효화 조건은 [Spot·Actor routing](../spec/18-object-routing.ko.md)이 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 이름 하나로 대상을 고르는 구조와, 그 조회를 얼마나 자주 하느냐를 다룬다. **위치 투명
 메시징의 성능은 사실상 이 문서의 캐시 하나로 결정된다.**

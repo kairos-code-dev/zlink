@@ -1,6 +1,15 @@
+---
+title: "9. Session과 Actor 연결"
+---
+
 # 9. Session과 Actor 연결
 
-[내부 구조 목차](README.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 8. 객체 종류와 활성화](08-object-lifecycle.ko.md) · [다음: 10. Liveness와 상태 공개](10-liveness-and-state.ko.md)
+
+> **이 장이 답하는 것** — 외부 client 연결 하나를 Actor에 잇고, 연결을 교체하는 구간을 어떻게 막는가.
+>
+> **계약 소유** — binding 계약은 [Session Actor dispatch](../spec/20-session-actor-dispatch.ko.md)가 소유한다.
+> 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 외부 client 연결 하나를 Actor에 잇는 구조다. 연결을 교체하는 구간에서 두 곳이 동시에
 같은 Actor를 가리키지 않게 만드는 것이 핵심이다.

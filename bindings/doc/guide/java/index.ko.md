@@ -15,7 +15,7 @@ Gradle 또는 Maven으로 추가합니다. 네이티브 코어가 플랫폼별�
 
 ```groovy
 dependencies {
-    implementation 'systems.zlink:zlink-java:7.0.0'
+    implementation 'systems.zlink:zlink:11.2.0'
 }
 ```
 
@@ -24,12 +24,12 @@ dependencies {
 ```xml
 <dependency>
     <groupId>systems.zlink</groupId>
-    <artifactId>zlink-java</artifactId>
-    <version>7.0.0</version>
+    <artifactId>zlink</artifactId>
+    <version>11.2.0</version>
 </dependency>
 ```
 
-- **Java 17** 이상.
+- **Java 22** 이상.
 - 네이티브 별도 설치 불필요 — RID별 공유 라이브러리를 자동 로드합니다.
 
 ```java
@@ -276,9 +276,6 @@ try (Message msg = Message.from("data")) {
 | `zlink_socket_monitor_open(...)` | `socket.monitorOpen(...)` |
 | `zlink_poller_new()` | `Zlink.createPoller()` |
 | `zlink_timer_new()` | `Zlink.createTimer()` |
-| `zlink_spot_node_new(ctx, opts)` | `ctx.createSpotNode()` |
-| `zlink_spot_new(node)` | `node.createSpot()` |
-| `zlink_spot_node_actor_new(...)` | `node.createActor("id")` |
 
 ---
 
@@ -322,11 +319,9 @@ if (Zlink.has("draft")) {
 | `StreamRecvSample` | STREAM 원시 TCP |
 | `StreamPacketCallbackSample` | STREAM 패킷 콜백 |
 | `MonitorRecvSample` | 모니터 이벤트 수신 |
-| `SpotRecvSample` | SpotNode/Spot PUB/SUB |
-| `SpotRequestAsyncSample` | SpotNode 비동기 요청 |
-| `ActorSinglePlayerQueueSample` | 액터 조인/이동/메시지 큐 |
-| `ActorRoomServerSample` | 방 서버 액터 패턴 |
-| `ActorGatewayRelaySample` | 게이트웨이 릴레이 |
+
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다 — 아래
+> [더 보기](#더-보기)의 Spot·Actor 링크를 본다.
 
 샘플 빌드 및 실행:
 
@@ -344,7 +339,7 @@ Kotlin은 **별도 네이티브 바인딩 없이 Java 바인딩(`systems.zlink.*
 사용합니다. 위의 설치·핵심 타입·소유권·에러·대응표가 모두 동일하게 적용되고,
 Kotlin 관용만 다릅니다.
 
-- **의존성**: `systems.zlink:zlink-java`(위와 동일). Kotlin 플러그인은 **2.1.0**
+- **의존성**: `systems.zlink:zlink`(위와 동일). Kotlin 플러그인은 **2.1.0**
   이상을 씁니다.
 - **소유권**: `AutoCloseable`이므로 `try`/`finally` 대신 `use { }`로 정리합니다.
 
@@ -363,7 +358,7 @@ Zlink.createContext().use { ctx ->
 
 ```bash
 cd bindings/java
-./gradlew :kotlin-samples:runSpotPubSubExample --no-daemon
+./gradlew :kotlin-samples:runPairRecvSample --no-daemon
 ```
 
 코어 가이드의 언어 탭에는 **Kotlin** 칸이 따로 있어 메시징·서비스 사용법을

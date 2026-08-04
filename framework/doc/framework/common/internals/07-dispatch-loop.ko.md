@@ -238,7 +238,7 @@ internals가 이 중 하나를 골라 고정하지 않는다. 특히 **"다음 �
 
 **결정 — 기본 동작은 밀린 tick을 하나로 합치는 것이다.** spec이 "중복 만료를 한 번의
 pending record로 합칠 수 있다"고 허용한다
-([비동기 실행 정책 「5. Spot timer」](../spec/05-async-execution-policy.ko.md#5-spot-timer)). 다만 application이
+([비동기 실행 정책 「5. Spot timer」](../spec/05-async-execution-policy.md#5-spot-timer)). 다만 application이
 따라잡기를 골랐다면 **그 option이 정한 개수까지가 상한**이며, internals가 하나로 줄이지
 않는다.
 

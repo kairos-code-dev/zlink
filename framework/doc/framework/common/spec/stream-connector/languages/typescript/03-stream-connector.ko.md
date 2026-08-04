@@ -317,7 +317,7 @@ interface RequiredZlinkStreamConnectorOptions {
 connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한다.
 
 - **취소는 optional `AbortSignal`로 전달한다.** 다른 언어의 cancellation token 모양을 복제하지
-  않는다([비동기 실행과 coroutine 정책](../../../05-async-execution-policy.ko.md)).
+  않는다([비동기 실행과 coroutine 정책](../../../05-async-execution-policy.md)).
 - **event 구독은 `Disposable`을 반환한다.** 해제는 그 `Disposable`로 한다.
 - `send`·`request`·`waitFor`는 즉시 실행하지 않고 **call builder를 반환한다.** builder에
   `packetName(...)`·`metadata(...)`·`timeout(...)`·`compress()`를 붙인 뒤 `submit()`으로 제출한다.

@@ -400,7 +400,7 @@ Actor handler가 `Yield`한 continuation도 같은 Actor turn의 일부다. Relo
 - 시작 조건: Handler가 state를 변경하고 Yield한 뒤 두 번째 변경을 수행한다.
 - 절차: Yield evidence 뒤 relocation과 follow-up request를 시작한다.
 - 검증: Final state가 정해진 두 변경과 follow-up을 모두 포함하고 handler active count는 전체 node에서 1이다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.md)
 
 #### ST-G2 User Spot aggregate capacity
 
@@ -547,7 +547,7 @@ Deferred Join의 timeout과 accept가 경합해도 completion은 operation마다
 - 검증: 모든 operation이 Accepted, Rejected 또는 failure 하나로 끝난다. Completion count는 operation당
   1이고 timeout이 확정된 뒤 새 target callback이 실행되지 않는다. Timeout 전에 시작한 callback이 끝나는
   시점은 별도 성공 조건으로 사용하지 않는다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)과
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.md)과
   [Spot actor](../spec/15-spot-actor.ko.md)
 
 #### ST-H4B Yield and reply terminal
@@ -562,7 +562,7 @@ Handler가 Yield하거나 비동기 작업을 기다려도 Join completion과 �
 - 시작 조건: Handler가 Yield 뒤 deferred Join을 등록하고 typed reply를 반환한다.
 - 절차: 고유 request와 Join operation ID로 호출한다.
 - 검증: Caller reply와 Join completion은 각각 한 번이며 두 ID가 정확히 대응한다. Handler와 callback의 동시 active count는 계약된 execution lane을 넘지 않는다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.md)
 
 #### ST-H5 MessageContext parity
 

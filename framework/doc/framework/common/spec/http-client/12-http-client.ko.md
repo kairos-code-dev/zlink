@@ -66,7 +66,7 @@ HTTP client의 완료 표면은 one-way submission, response completion과 callb
 typed response와 callback에 `async`, one-way에 `submit`을 사용한다. TypeScript 상속 signature
 제약은 언어별 exact interface가 소유한다. Shared Spot gate를 반납하는
 `Yield`는 서버 request와 Worker call에만 제공하며 HTTP request builder에는 포함하지 않는다
-([04 §1.1](../05-async-execution-policy.ko.md)).
+([04 §1.1](../05-async-execution-policy.md)).
 
 | 실행 방식 | 무엇을 기다리나 | Spot 실행 줄 |
 |---|---|---|
@@ -113,7 +113,7 @@ C++ HTTP client는 같은 scheduler seam을 `coroutines(resume_scheduler)`와
 
 ### 3.3 blocking terminator를 두지 않는다
 
-**완료 값을 동기로 언래핑하는 public terminator를 만들지 않는다**([04 §2](../05-async-execution-policy.ko.md)).
+**완료 값을 동기로 언래핑하는 public terminator를 만들지 않는다**([04 §2](../05-async-execution-policy.md)).
 같은 의미의 blocking 대안 terminator는 계약 위반이다. 테스트나 CLI에서 동기로 기다려야 하면
 호출자가 언어 관용(`GetAwaiter().GetResult()`, `runBlocking`, `.join()`)으로 직접 감싼다.
 

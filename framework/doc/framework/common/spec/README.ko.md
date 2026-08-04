@@ -15,7 +15,7 @@ contract test에 필요한 입력, 상태, 정상 흐름, 실패와 완료 조�
 - [02 Framework 개요](02-overview.ko.md)
 - [03 상호작용 모델](03-interaction-model.ko.md)
 - [04 메시지 모델](04-message-model.ko.md)
-- [05 비동기 실행 정책](05-async-execution-policy.ko.md)
+- [05 비동기 실행 정책](05-async-execution-policy.md)
 - [06 Framework API](06-framework-api.ko.md)
 
 ## Channel과 network

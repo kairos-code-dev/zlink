@@ -240,7 +240,7 @@ nav:
               - "Framework 개요": common/spec/02-overview.ko.md
               - "상호작용 모델": common/spec/03-interaction-model.ko.md
               - "메시지 모델": common/spec/04-message-model.ko.md
-              - "비동기 실행 정책": common/spec/05-async-execution-policy.ko.md
+              - "비동기 실행 정책": common/spec/05-async-execution-policy.md
               - "Framework API": common/spec/06-framework-api.ko.md
           - Channel과 network:
               - "RouteMesh topology": common/spec/07-channel-topology.ko.md

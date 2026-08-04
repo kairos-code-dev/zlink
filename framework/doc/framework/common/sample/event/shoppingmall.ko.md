@@ -206,7 +206,7 @@ projection을 직접 변경하지 않으며, `GetOrderStateReq`도 조회 외의
 | 없는 주문 workflow를 첫 command에서 만들 수 있다. | Instance intent | Missing Instance Spot에서만 cold activation을 시작한다. [상호작용 모델 §7](../../spec/03-interaction-model.ko.md#7-spot과-actor) |
 | API와 Workflow를 logical mesh로 연결한다. | RouteMesh | Caller가 MeshName이나 owner endpoint를 application route로 조립하지 않는다. [RouteMesh topology](../../spec/07-channel-topology.ko.md) |
 | 요청 완료를 확인한다. | Spot request/reply | Request는 typed reply, timeout 또는 terminal error로 완료된다. [상호작용 모델 §4](../../spec/03-interaction-model.ko.md#4-send와-request) |
-| 한 주문의 전이를 순서대로 처리한다. | Spot handler turn | Application state 변경을 하나의 owner 흐름에 두고 handler 밖의 경쟁 writer를 만들지 않는다. [Async execution policy](../../spec/05-async-execution-policy.ko.md) |
+| 한 주문의 전이를 순서대로 처리한다. | Spot handler turn | Application state 변경을 하나의 owner 흐름에 두고 handler 밖의 경쟁 writer를 만들지 않는다. [Async execution policy](../../spec/05-async-execution-policy.md) |
 | JSON message를 언어별로 같은 wire 의미로 사용한다. | Framework typed JSON codec | JSON 기본 codec은 message별 등록 없이 선택된다. [Framework API §9](../../spec/06-framework-api.ko.md#9-codec) |
 | owner와 generation을 공유한다. | Location Store | Object location과 authority를 Framework가 관리한다. [Location runtime](../../spec/21-location-runtime.ko.md) |
 | Ready owner 장애의 범위를 정한다. | failure/failover policy | Ready owner 장애는 다른 node의 자동 cold activation으로 바뀌지 않는다. [Failure and failover §4.4](../../spec/31-failure-failover-policy.ko.md#44-instance-spot-cold-activation과-owner-장애를-구분한다) |

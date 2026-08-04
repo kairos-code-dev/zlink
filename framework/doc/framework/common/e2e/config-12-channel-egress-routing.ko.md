@@ -106,7 +106,7 @@ Spot callback이 request를 기다리거나 timer가 같은 Spot 상태를 변�
 - 검증: Application evidence는 `handler-start, workflow-reply, handler-end, timer-start,
   workflow-reply, timer-end` 순서이며 sequence는 단계마다 한 번 증가한다. Timer 결과를 고정 sleep으로
   추정하지 않는다.
-- 세부 동작: [비동기 실행 정책 §2](../spec/05-async-execution-policy.ko.md)과
+- 세부 동작: [비동기 실행 정책 §2](../spec/05-async-execution-policy.md)과
   [ClientServer Channel §6.2](../spec/09-client-server-channel.ko.md)를
   검증한다.
 

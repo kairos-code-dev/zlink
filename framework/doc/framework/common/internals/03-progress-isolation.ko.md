@@ -9,7 +9,7 @@ title: "3. application과 infrastructure 실행 분리"
 > **이 장이 답하는 것** — handler가 멈춰 있는 동안 무엇이 계속 진행해야 하는가.
 >
 > **계약 소유** — 수신 한도와 backpressure 계약은 [Framework API](../spec/06-framework-api.ko.md)가,
-> 비동기 완료 의미는 [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)이 소유한다.
+> 비동기 완료 의미는 [비동기 실행 정책](../spec/05-async-execution-policy.md)이 소유한다.
 > 이 장은 그 계약을 만족시키는 **구조**와, 네 구현에서 관찰된 어긋남을 다룬다.
 
 Application handler가 원격 응답을 기다리는 동안, 그 호출의 timeout은 누가 재는가?
@@ -129,7 +129,7 @@ Node는 event loop가 하나이므로 물리적으로 전용 자원을 만들 �
 
 1. 첫 제출이 거절되면 **정해진 시간까지 보낼 공간이 생기기를 기다린다.**
 2. 시간 안에 공간이 생기면 **한 번** 제출한다.
-3. 시간이 먼저 끝나면 `DeadlineExceeded`로 끝낸다([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.ko.md#13-one-way-submit)).
+3. 시간이 먼저 끝나면 `DeadlineExceeded`로 끝낸다([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.md#13-one-way-submit)).
 
 **Request 계열은 기다리지 않는다.** 같은 runtime의 Spot·Actor 대기열이 가득 차면 즉시
 `CapacityExceeded`, 다른 node의 대기열이면 `Unavailable`로 끝낸다
@@ -179,7 +179,7 @@ raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있�
 
 **결정 — 처리하지 못하는 작업은 caller가 관찰할 수 있는 결과로 끝낸다.** 무한정 쌓아
 두지도, 조용히 버리지도, 나중에 몰래 다시 제출하지도 않는다
-([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.ko.md#13-one-way-submit)).
+([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.md#13-one-way-submit)).
 
 한 구현에서 실제로 관찰된 반례가 있다. 응답을 잠시 보관하는 자리가 가득 차면 **응답을
 버리고 정리해 버린다.** 기다리던 caller는 아무 통보도 받지 못하고 timeout이 날 때까지

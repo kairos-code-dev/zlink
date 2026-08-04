@@ -883,7 +883,7 @@ status나 result 값을 반환하지 않으며 target handler 실행이나 remot
 보관하는 byte로 센다. 한도는 remote가 보내는 신호가 아니라 **자기 process 안의 값**이다. 다만 remote가 느리면 connection의 흐름 제어가 전송 속도를 낮추고 그만큼 송신
 queue도 비워지지 않으므로, remote의 지연은 별도 신호가 아니라 송신 대기로 전달된다.
 
-[One-way submit](05-async-execution-policy.ko.md#13-one-way-submit)이 비동기인 이유가 이
+[One-way submit](05-async-execution-policy.md#13-one-way-submit)이 비동기인 이유가 이
 대기다. Capacity가 부족하면 Framework는 family별 send timeout까지 기다렸다가 정확히 한 번
 제출하고, 그 안에 자리가 나지 않으면 [DeadlineExceeded](#deadlineexceeded)로 완료한다. 이때의
 내부 상태를 [Backpressured](#backpressured)라 하며 public terminal result로 노출하지 않는다.

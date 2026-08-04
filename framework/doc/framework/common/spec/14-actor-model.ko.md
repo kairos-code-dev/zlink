@@ -27,7 +27,7 @@ payload는 Actor 자신의 queue에 제출한다. Queue에 들어온 handler를 
 | [Spot](01-glossary.ko.md#spot) [membership](01-glossary.ko.md#membership) transaction과 relocation | [Spot Actor](15-spot-actor.ko.md) |
 | STREAM session 연동 | [Session Actor Dispatch](20-session-actor-dispatch.ko.md) |
 | Payload와 metadata | [메시지 모델](04-message-model.ko.md) |
-| Callback 실행과 completion | [비동기 실행 정책](05-async-execution-policy.ko.md) |
+| Callback 실행과 completion | [비동기 실행 정책](05-async-execution-policy.md) |
 
 ## 2. Actor identity와 서로 독립적인 상태
 
@@ -101,7 +101,7 @@ Actor가 Entry Spot이나 user Spot에 있거나 remote MeshNode에 있어도 �
 - Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.
 
 User Spot execution mode와 `Yield` continuation의 실행 규칙은
-[비동기 실행 정책](05-async-execution-policy.ko.md#11-submit-async와-yield)이
+[비동기 실행 정책](05-async-execution-policy.md#11-submit-async와-yield)이
 정의한다.
 
 ### 3.1 Deferred Join barrier
@@ -641,7 +641,7 @@ Bind, rebind, disconnect와 request correlation은
 | Exact-ref operation에서 mapping이 없다. | `Unavailable`로 끝난다. |
 | Exact-ref의 generation이 current generation과 다르다. | `InvalidOperation`으로 끝난다. |
 | Actor가 commit 전 seal 상태다. | `Unavailable`로 끝난다. |
-| Bound session이 필요한 작업에 유효한 binding이 없다. | `NotFound`로 끝난다. |
+| Bound session이 필요한 작업에 유효한 binding이 없다. | `InvalidOperation`으로 끝난다. Binding을 먼저 만들어야 하는 순서 문제다. |
 
 Handler가 없거나 decode가 실패하거나 application handler가 예외를 반환하면 request는
 복원 가능한 reply route로 오류를 반환한다. One-way message는 runtime 관측 경로에

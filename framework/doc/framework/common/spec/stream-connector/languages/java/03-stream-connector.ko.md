@@ -118,12 +118,12 @@ Java API에서 `submit(...)`은 비동기 작업을 시작한다. **one-way send
 `CompletionStage<Void>`를 반환한다.** 이 stage는 완료와 실패만 전달하며 전송 결과나 admission
 status를 포함하지 않는다. request·wait·lifecycle의 `submit()`은 각 작업의 결과를 담은
 `CompletionStage`를 반환한다
-([04 §1](../../../05-async-execution-policy.ko.md)).
+([04 §1](../../../05-async-execution-policy.md)).
 Java connector는 같은 작업을 현재 thread에서 기다리는 별도 blocking terminator를 제공하지 않는다.
 lifecycle도 `connect().submit()`, `dispatch().submit()`처럼 같은 call builder 규칙을 따른다.
 Kotlin wrapper는 `submit()`으로 얻은
 `CompletionStage`를 coroutine suspension으로 기다린다. 이 실행 의미는
-[framework 공통 정책](../../../05-async-execution-policy.ko.md)을 따른다.
+[framework 공통 정책](../../../05-async-execution-policy.md)을 따른다.
 
 ## 4. Options
 

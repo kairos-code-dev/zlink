@@ -1,6 +1,6 @@
 # 4. Backpressure — 처리보다 도착이 빠를 때
 
-> **이 장의 계약 소유 문서** — [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)과
+> **이 장의 계약 소유 문서** — [비동기 실행 정책](../../../common/spec/05-async-execution-policy.md)과
 > [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)이
 > 다룬다. 이 챕터는 그 동작을 개념과 원리로 설명하고 어떤 옵션이 영향을 주는지 다룬다.
 > 옵션의 기본값과 변경 시점은 `16. Options` 장이 소유한다. 이 챕터가 쓰는
@@ -702,7 +702,7 @@ message flow 기록에 `backpressured`가 남았다면 보낼 자리를 기다�
 
 - 옵션 기본값과 변경 시점: `16. Options` 장 §3
 - one-way submit과 완료 경계의 정식 계약:
-  [비동기 실행 정책](../../../common/spec/05-async-execution-policy.ko.md)
+  [비동기 실행 정책](../../../common/spec/05-async-execution-policy.md)
 - 소켓 설정 표면: [언어별 topology 공개 계약](../../../common/spec/server/languages/README.ko.md)
 - socket option의 byte 단위 계약: [core guide의 socket option](https://kairos-code-dev.github.io/zlink/guide/12-socket-options/)
 - 다음 축: [05-channel-messaging](05-channel-messaging.ko.md)

@@ -105,7 +105,7 @@ Stage는 Application이 Spot·Actor·timer API를 묶어 쓰는 wrapper이며 �
 - 절차: Spot request, member Actor request와 timer를 application wrapper를 통해 실행한다.
 - 검증: SpotWide는 shared gate 순서를, PerActor는 Actor별·timer별 lane 순서를 유지한다. Public replies와
   state는 wrapper를 쓰지 않은 대조 flow와 같다.
-- 세부 동작: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)을 검증한다.
+- 세부 동작: [비동기 실행 정책](../spec/05-async-execution-policy.md)을 검증한다.
 
 #### SM-A6 User Spot initialize와 close lifecycle을 실행한다
 
@@ -146,7 +146,7 @@ CPU 계산은 bounded worker pool에서 실행하고 continuation은 Spot execut
 - 시작 조건: Worker completion을 application signal로 보류할 수 있는 Spot이 ready다.
 - 절차: CPU worker call을 Yield로 기다리고 같은 Spot에 probe request를 보낸 뒤 worker를 해제한다.
 - 검증: Probe가 continuation 전에 완료되고 final state는 worker result를 정확히 한 번 반영한다.
-- 세부 동작: [비동기 실행 정책 §6](../spec/05-async-execution-policy.ko.md)을 검증한다.
+- 세부 동작: [비동기 실행 정책 §6](../spec/05-async-execution-policy.md)을 검증한다.
 
 #### SM-A9 User Spot은 initialize 완료 뒤 Ready로 공개한다
 

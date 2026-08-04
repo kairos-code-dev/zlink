@@ -72,7 +72,7 @@ One-way send의 성공은 Framework가 message를 전송 경로에 수락했다�
 - 시작 조건: 대상 Spot은 Missing이고 owner factory의 진행을 Application gate로 지연할 수 있다.
 - 절차: Gate를 닫고 Instance intent send를 호출한 뒤 send result를 확인하고 gate를 연다.
 - 검증: Send는 handler 완료 전 성공할 수 있으며, gate 해제 뒤 handler evidence가 한 건 생긴다. Activation 실패를 주입한 별도 입력은 이미 반환한 send result를 바꾸지 않는다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md), [Spot messaging](../spec/12-spot-messaging.ko.md)
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.md), [Spot messaging](../spec/12-spot-messaging.ko.md)
 
 #### IS-E2E-03 Concurrent first call
 
@@ -238,7 +238,7 @@ Send 성공 뒤 target이 종료되어도 Framework가 다른 owner에서 같은
 - 시작 조건: Send operation ID를 handler evidence로 확인할 수 있다.
 - 절차: Send 성공 직후 target을 종료하고 대체 owner를 준비한다.
 - 검증: 전체 owner에서 operation ID 처리 수는 0 또는 1이며 2가 되지 않는다.
-- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+- 계약 근거: [비동기 실행 정책](../spec/05-async-execution-policy.md)
 
 #### IS-E2E-14 Store outage
 
@@ -297,7 +297,7 @@ bounded terminal을 가지는가.
 - 검증: 동시에 실행 중인 factory·initialize는 application evidence에서 항상 1개 이하이며 각 request는
   reply 또는 정식 failure 하나로 끝난다. Requests의 admission 순서나 내부 waiter 수는 판정하지 않는다.
 - 계약 근거: [Framework API §5](../spec/06-framework-api.ko.md)와
-  [비동기 실행 정책](../spec/05-async-execution-policy.ko.md)
+  [비동기 실행 정책](../spec/05-async-execution-policy.md)
 
 #### IS-E2E-18 Cross-language
 

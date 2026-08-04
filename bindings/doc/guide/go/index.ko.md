@@ -1,6 +1,15 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: "Go 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: Python](../python/index.ko.md) | [다음: Rust](../rust/index.ko.md)
+<!-- bindings-nav:end -->
 
 # Go 바인딩 가이드 (`zlink.systems/zlink/v11`)
+
+> **이 장의 계약 소유 문서** — [Go bindings 스펙](../../spec/go/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
 
 Go에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념의 깊은 설명은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)가 다루며,

@@ -1,6 +1,15 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: "Java 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: C++](../cpp/index.ko.md) | [다음: Node.js](../node/index.ko.md)
+<!-- bindings-nav:end -->
 
 # Java 바인딩 가이드 (`systems.zlink`)
+
+> **이 장의 계약 소유 문서** — [Java bindings 스펙](../../spec/java/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
 
 Java에서 zlink를 사용하는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념의 깊은 설명은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)가 소유하며, 이 가이드는 Java API 사용에 집중합니다.

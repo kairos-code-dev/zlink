@@ -1,6 +1,16 @@
-[코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: "언어별 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[다음: .NET](dotnet/index.ko.md)
+<!-- bindings-nav:end -->
 
 # 언어별 바인딩 가이드
+
+> **이 장의 계약 소유 문서** — 각 언어의
+> [바인딩 스펙](../spec/README.ko.md)이 공개 계약을 다룬다. 이 장은 언어를
+> 고르고 자기 가이드로 넘어가는 진입점이다.
 
 zlink는 C 코어 위에 여러 언어 바인딩을 제공합니다. 각 가이드는 **그 언어에서
 zlink를 쓰는 방법**(설치, 관용 예제, 타입 매핑, 언어 고유 규칙)을 다룹니다.

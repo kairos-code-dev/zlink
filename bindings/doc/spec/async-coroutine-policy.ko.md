@@ -1,6 +1,15 @@
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) | [바인딩 API 정책](README.ko.md)
+---
+title: "바인딩 비동기 완료 표면 정책"
+---
+
+<!-- bindings-nav:start -->
+[스펙 목록](README.ko.md) | [이전: 개요](README.ko.md) | [다음: C](c/README.ko.md)
+<!-- bindings-nav:end -->
 
 # 바인딩 비동기 완료 표면 정책
+
+> **이 장이 정의하는 것** — C를 제외한 언어별 바인딩이 비동기 완료를 노출할 때
+> 지켜야 할 이름·반환 타입 정책.
 
 이 문서는 C를 제외한 언어별 바인딩이 비동기 완료를 어떤 이름과 반환 타입으로
 노출해야 하는지 정의한다. bindings 라이브러리는 core C API 위에 언어별 완료 경계를

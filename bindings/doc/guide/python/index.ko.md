@@ -1,4 +1,15 @@
+---
+title: "Python 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: Node.js](../node/index.ko.md) | [다음: Go](../go/index.ko.md)
+<!-- bindings-nav:end -->
+
 # Python 바인딩 사용 안내
+
+> **이 장의 계약 소유 문서** — [Python bindings 스펙](../../spec/python/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
 
 이 문서는 `zlink` Python package로 Core raw messaging을 사용하는 방법을 설명한다. Python 3.9
 이상을 지원하며, 현재 Core 11 wheel의 native runtime target은 Linux x86_64이다. 다른 운영체제나

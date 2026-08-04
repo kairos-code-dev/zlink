@@ -1,6 +1,15 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: ".NET 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: 개요](../README.ko.md) | [다음: C++](../cpp/index.ko.md)
+<!-- bindings-nav:end -->
 
 # .NET 바인딩 가이드 (`Systems.Zlink`)
+
+> **이 장의 계약 소유 문서** — [.NET bindings 스펙](../../spec/dotnet/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
 
 **.NET(`Systems.Zlink`)에서 zlink를 사용하는 방법**을 설치·핵심 타입·소유권·에러 처리·배포까지 한 챕터로 정리합니다. 메시징 개념(소켓 패턴, 서비스, 운영)의 깊은 설명은 [더 보기](#더-보기)의 코어 가이드를 참고하세요.
 

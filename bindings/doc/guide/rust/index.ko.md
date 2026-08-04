@@ -1,6 +1,15 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: "Rust 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: Go](../go/index.ko.md)
+<!-- bindings-nav:end -->
 
 # Rust 바인딩 가이드 (`zlink`)
+
+> **이 장의 계약 소유 문서** — [Rust bindings 스펙](../../spec/rust/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
 
 Rust에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
 메시징 개념은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)를 참고하세요.

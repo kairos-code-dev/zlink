@@ -1,8 +1,18 @@
-[바인딩 가이드](../README.ko.md) · [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)
+---
+title: "C++ 바인딩 가이드"
+---
+
+<!-- bindings-nav:start -->
+[가이드 목록](../README.ko.md) | [이전: .NET](../dotnet/index.ko.md) | [다음: Java](../java/index.ko.md)
+<!-- bindings-nav:end -->
 
 # C++ 바인딩 가이드 (`zlink::`)
 
+> **이 장의 계약 소유 문서** — [C++ bindings 스펙](../../spec/cpp/README.ko.md)이
+> 다룬다. 이 장은 그 계약을 실제 샘플 코드로 보여준다.
+
 C 코어를 RAII 래퍼로 감싼 바인딩입니다(header-only는 아니며 컴파일 후 링크). C++에서 zlink를 쓰는 방법을 실제 샘플 코드 중심으로 설명합니다.
+자세한 메시징 개념은 [코어 가이드](https://kairos-code-dev.github.io/zlink/guide/01-overview/)가 다룹니다.
 
 ---
 

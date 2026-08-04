@@ -1,9 +1,31 @@
+---
+title: "Python 바인딩 공개 계약"
+---
+
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: Node.js](../node/README.ko.md) | [다음: Go](../go/README.ko.md)
+<!-- bindings-nav:end -->
+
 # Python binding Core 11 공개 계약
 
-이 문서는 `zlink` Python package가 제공하는 Core 11 raw messaging 계약을 정의한다. 현재 구현과
-공개 header에 없는 기능은 이 문서의 계약이 아니다. Python 3.9 이상을 지원하며, 현재 candidate
-package version은 `11.2.0`이다. 현재 native package target은 Linux x86_64이며, 다른 target은 별도
-candidate payload와 clean consumer 검증 전까지 이 계약의 지원 범위가 아니다.
+> **이 장이 정의하는 것** — `zlink` Python package가 Core 11 raw messaging 위에 제공하는
+> 공개 타입·소유권·오류 계약.
+
+- 이 문서는 `zlink` Python package가 제공하는 Core 11 raw messaging 계약을 정의한다.
+- 현재 구현과 공개 header에 없는 기능은 이 문서의 계약이 아니다.
+- Python 3.9 이상을 지원하며, 현재 candidate package version은 `11.2.0`이다.
+- 현재 native package target은 Linux x86_64이며, 다른 target은 별도 candidate payload와 clean consumer 검증 전까지 이 계약의 지원 범위가 아니다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [범위](#범위) | Core 자원을 표현하는 Python 공개 type 목록 |
+| [Package 표면](#package-표면) | public factory와 private 영역 경계 |
+| [소유권과 수명](#소유권과-수명) | native handle·message·Received의 소유·해제 규칙 |
+| [Callback 표면](#callback-표면) | 공개 callback 경로와 노출하지 않는 primitive |
+| [송수신과 no-data](#송수신과-no-data) | submit·no-data 표현과 native failure 전달 |
+| [Error](#error) | `ZlinkError` 계열과 result 필드 |
+| [Python version과 type package](#python-version과-type-package) | 지원 Python 버전과 type check 대상 |
+| [관련 문서](#관련-문서) | guide·Core spec·internals 링크 |
 
 ## 범위
 
@@ -56,10 +78,10 @@ completion-control handler를 등록하는 별도 public method는 제공하지 
 
 ## 송수신과 no-data
 
-송신 builder는 message part를 추가한 뒤 `submit()`한다. blocking send는 socket option과 Core의
-timeout 계약을 따른다. `RecvFlags.DONT_WAIT`를 사용한 caller-provided receive는 message가 없을 때
-`False`를 반환한다. timer, monitor와 같은 직접 반환 control API는 pending value가 없을 때 `None`을
-반환한다. 실제 native failure는 해당 error type으로 전달하며 no-data로 숨기지 않는다.
+- 송신 builder는 message part를 추가한 뒤 `submit()`한다. blocking send는 socket option과 Core의 timeout 계약을 따른다.
+- `RecvFlags.DONT_WAIT`를 사용한 caller-provided receive는 message가 없을 때 `False`를 반환한다.
+- timer, monitor와 같은 직접 반환 control API는 pending value가 없을 때 `None`을 반환한다.
+- 실제 native failure는 해당 error type으로 전달하며 no-data로 숨기지 않는다.
 
 DEALER와 ROUTER request/reply는 Core routing metadata와 request sequence를 보존한다. ROUTER receive의
 `Received.routing_id`는 raw routing id이며 다른 identity type으로 변환되지 않는다.

@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: ".NET 바인딩 구현 청사진"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: C](../c/README.ko.md) | [다음: C++](../cpp/README.ko.md)
+<!-- bindings-nav:end -->
 
 # .NET 바인딩 구현 청사진
+
+> **이 장이 정의하는 것** — .NET 라이브러리가 갖춰야 할 `Contracts`/`Runtime`
+> 형태와, 다른 래퍼 바인딩이 참조하는 기준 아키텍처 맵.
 
 이 문서는 .NET 라이브러리가 갖춰야 할 형태를 정의한다. 모든 인터페이스 멤버를
 빠짐없이 나열한 목록은 아니다. 실제 공개 계약의 소스는
@@ -26,6 +33,26 @@ contract/runtime 소유, 공개 계약 카테고리, 파일 분할 기준, 검�
 리뷰어가 처음 읽는 코드는 `Contracts/` 아래의 공개 계약이어야 한다. 런타임
 파일은 그 계약을 구현해야 하며, 사용자에게 노출되는 새 동작이 런타임 파일에서
 처음 발견되어서는 안 된다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [공개 계약 소스](#공개-계약-소스) | 네임스페이스, 계약/런타임 소스 위치, API reference 링크 |
+| [저장소 레이아웃](#저장소-레이아웃) | 정렬된 디렉터리 트리와 폴더 소유 경계 |
+| [API 변경 워크플로](#api-변경-워크플로) | 신규 매핑·리팩터 절차, 제거해야 할 단축 경로 |
+| [라이브러리 형태](#라이브러리-형태) | 인터페이스/구체 타입 분류, builder, `IDisposable`, RoutingId 헬퍼 |
+| [Contract / Runtime 배치 규칙](#contract--runtime-배치-규칙) | 공개 선언과 런타임 구현의 경계 |
+| [표준 인터페이스 규칙](#표준-인터페이스-규칙) | recv 시그니처, builder 시작 메서드, 이름 제약 |
+| [Contract 폴더 레이아웃](#contract-폴더-레이아웃) | `Contracts/` 하위 카테고리별 소유 범위 |
+| [Runtime 폴더 레이아웃](#runtime-폴더-레이아웃) | `Runtime/` 하위 카테고리별 구현 범위 |
+| [생성 진입점](#생성-진입점) | 공개 팩토리 메서드 목록 |
+| [필수 기능 커버리지](#필수-기능-커버리지) | 정렬 시 보장해야 할 사용자 노출 기능 |
+| [Receive 및 Subscribe 형태](#receive-및-subscribe-형태) | 호출자 제공 저장소와 no-data 구분 |
+| [Service 및 SPOT 형태](#service-및-spot-형태) | `ISpotNode`/`ISpot` 책임 분리 |
+| [Byte HWM 및 monitoring ABI v2](#byte-hwm-및-monitoring-abi-v2) | `ulong` byte HWM과 monitor snapshot field |
+| [에러 및 검증 정책](#에러-및-검증-정책) | 검증 시점과 예외 매핑 |
+| [성능 정책](#성능-정책) | hot path 제약 |
+| [구현 체크리스트](#구현-체크리스트) | 정렬 선언 전 확인 항목과 필수 검증 명령 |
+| [Actor 및 Spot Route 결과](#actor-및-spot-route-결과) | route 결과 record와 Actor 대상 send/request |
 
 ## 공개 계약 소스
 
@@ -59,21 +86,18 @@ contract/runtime 소유, 공개 계약 카테고리, 파일 분할 기준, 검�
 - 샘플: `bindings/dotnet/samples/`.
 - Perf: `bindings/dotnet/perf/`.
 
-`Contracts/`의 공개 시그니처에는 P/Invoke 선언, `SafeHandle` 세부사항,
-마샬링 전용으로 쓰이는 네이티브 struct mirror, request 펌프 타입이 들어가지
-않는다. 구체 값 타입은 ownership을 위해 내부적으로 네이티브 기반 저장소를 쓸
-수 있지만, .NET은 VM이 관리하는 버퍼를 빌려 쓰는 zero-copy send 경로를
-공개 또는 기본 동작으로 노출하거나 사용하지 않는다. 네이티브 브리지 선언과
-마샬링 전용 mirror는 여전히 `Runtime/Native/`에 둔다.
-`Contracts/`와 `Runtime/`은 저장소상 고정 폴더다. `Systems.Zlink` 네임스페이스와
-NuGet 패키지 표면은 그 계약을 .NET으로 투영한 결과다.
-`Contracts`나 `Runtime`이라는 이름의 네임스페이스 세그먼트를 사용자 표면용
-주 네임스페이스로 노출하지 않는다.
+- `Contracts/`의 공개 시그니처에는 P/Invoke 선언, `SafeHandle` 세부사항, 마샬링 전용으로 쓰이는 네이티브 struct mirror, request 펌프 타입이 들어가지 않는다.
+- 구체 값 타입은 ownership을 위해 내부적으로 네이티브 기반 저장소를 쓸 수 있지만, .NET은 VM이 관리하는 버퍼를 빌려 쓰는 zero-copy send 경로를 공개 또는 기본 동작으로 노출하거나 사용하지 않는다.
+- 네이티브 브리지 선언과 마샬링 전용 mirror는 여전히 `Runtime/Native/`에 둔다.
+- `Contracts/`와 `Runtime/`은 저장소상 고정 폴더다.
+- `Systems.Zlink` 네임스페이스와 NuGet 패키지 표면은 그 계약을 .NET으로 투영한 결과다.
+- `Contracts`나 `Runtime`이라는 이름의 네임스페이스 세그먼트를 사용자 표면용 주 네임스페이스로 노출하지 않는다.
+
 아래 트리는 소유 권한에 대해 규범적이며 대표 파일들을 보여 준다. 전체 파일
-목록은 아니다. 공개 동작을 정의하는 파일은 `Contracts/` 아래에 둔다.
-네이티브 코드를 호출하거나 핸들을 소유하거나 struct를 마샬링하거나
-콜백/request 진행 로직을 실행하는 파일은 `Runtime/` 아래에 두며, 네이티브
-브리지 코드는 `Runtime/Native/` 아래에 둔다.
+목록은 아니다.
+
+- 공개 동작을 정의하는 파일은 `Contracts/` 아래에 둔다.
+- 네이티브 코드를 호출하거나 핸들을 소유하거나 struct를 마샬링하거나 콜백/request 진행 로직을 실행하는 파일은 `Runtime/` 아래에 두며, 네이티브 브리지 코드는 `Runtime/Native/` 아래에 둔다.
 
 ```text
 bindings/dotnet/
@@ -129,12 +153,9 @@ bindings/dotnet/
 +-- runtimes/
 ```
 
-`Contracts`와 `Runtime` 폴더 이름은 저장소상의 소유 경계다. `Systems.Zlink.Contracts`나
-`Systems.Zlink.Runtime`을 사용자 노출 네임스페이스로 공개해도 된다는 허가가 아니다.
-공개 생성은 공개 계약이 명시적으로 구체 값 타입을 요구하지 않는 한 `IContext`,
-socket 인터페이스, `ISpotNode`, `IPoller`, `IZlinkTimer` 같은 공개 계약을
-반환한다. `Context`, socket 클래스, `SpotNode`, `Poller`, `Timer` 같은 런타임
-클래스는 구현 소유자이며 소비자 표면으로 선호되는 대상이 아니다.
+- `Contracts`와 `Runtime` 폴더 이름은 저장소상의 소유 경계다. `Systems.Zlink.Contracts`나 `Systems.Zlink.Runtime`을 사용자 노출 네임스페이스로 공개해도 된다는 허가가 아니다.
+- 공개 생성은 공개 계약이 명시적으로 구체 값 타입을 요구하지 않는 한 `IContext`, socket 인터페이스, `ISpotNode`, `IPoller`, `IZlinkTimer` 같은 공개 계약을 반환한다.
+- `Context`, socket 클래스, `SpotNode`, `Poller`, `Timer` 같은 런타임 클래스는 구현 소유자이며 소비자 표면으로 선호되는 대상이 아니다.
 
 `Runtime/Buffers`, `Runtime/Handles`, `Runtime/Options`는 구현 지원 카테고리다.
 .NET 바인딩에는 숨겨야 할 실제 네이티브 ownership, routing-id 인코딩,
@@ -316,25 +337,21 @@ receive-path 값을 캐시할 수 있지만, equality와 공개 동작은 오직
 - `Errors/`: 예외 계층과 에러 도메인 매핑.
 
 각 카테고리 안의 파일은 구현 순서가 아니라 사용자 노출 개념에 따라 나뉜다.
-공통 messaging 연산은 send, request, reply로 나뉘고, service topology 모델은
-SPOT node 모델과 공유 topology enum으로 나뉜다. Request result와
-콜백 타입은 socket enum 파일이 아니라 messaging request 계약에 속한다. 수신
-메시지 종류는 받은 메시지 metadata와 함께 둔다. SPOT node 모드, socket
-snapshot, Spot snapshot, actor snapshot은 SPOT node 모델에 속한다.
+
+- 공통 messaging 연산은 send, request, reply로 나뉘고, service topology 모델은 SPOT node 모델과 공유 topology enum으로 나뉜다.
+- Request result와 콜백 타입은 socket enum 파일이 아니라 messaging request 계약에 속한다.
+- 수신 메시지 종류는 받은 메시지 metadata와 함께 둔다.
+- SPOT node 모드, socket snapshot, Spot snapshot, actor snapshot은 SPOT node 모델에 속한다.
 
 SPOT은 `ISpot`이라는 단일 핸들 계약으로 유지한다. 호출자가 실제로 그 역할들을
 개별로 받아야 하는 경우가 아니라면 역할별 인터페이스로 쪼개지 않는다.
-`ISpotNode`는 node 설정, peer 연결, Spot 생성, Actor 작업, topology 조회 역할을
-별도 인터페이스로 나누어 조합할 수 있다. 그래도 기본 생성 경로와 사용자-facing
-반환 타입은 `ISpotNode`이며, 역할 인터페이스가 런타임 구현 타입을 노출하면 안 된다.
-SPOT 콜백 등록에는 명명된 콜백 delegate를 사용해 공개 시그니처가 래퍼 context
-객체를 추가하지 않고도 콜백의 의미를 기술하도록 한다. 등록 메서드는 현재
-핸들러가 저장되거나 교체되기 때문에 `Set...Handler` 이름을 쓴다. `On...`
-이름은 이벤트가 발생할 때 호출되는 메서드 전용이다. 이 delegate들은 SPOT
-핸들 계약에서만 사용되므로 `ISpot` 옆에 선언한다. Lifecycle data type은
-actor 모델과 함께 둔다. 메시지 part를 소유하는 lifecycle event envelope는
-복제 가능한 record가 아니라 sealed class로 둔다. Actor operation 계약은 join, management, session
-binding으로 나눈다.
+
+- `ISpotNode`는 node 설정, peer 연결, Spot 생성, Actor 작업, topology 조회 역할을 별도 인터페이스로 나누어 조합할 수 있다. 그래도 기본 생성 경로와 사용자-facing 반환 타입은 `ISpotNode`이며, 역할 인터페이스가 런타임 구현 타입을 노출하면 안 된다.
+- SPOT 콜백 등록에는 명명된 콜백 delegate를 사용해 공개 시그니처가 래퍼 context 객체를 추가하지 않고도 콜백의 의미를 기술하도록 한다.
+- 등록 메서드는 현재 핸들러가 저장되거나 교체되기 때문에 `Set...Handler` 이름을 쓴다. `On...` 이름은 이벤트가 발생할 때 호출되는 메서드 전용이다.
+- 이 delegate들은 SPOT 핸들 계약에서만 사용되므로 `ISpot` 옆에 선언한다.
+- Lifecycle data type은 actor 모델과 함께 둔다. 메시지 part를 소유하는 lifecycle event envelope는 복제 가능한 record가 아니라 sealed class로 둔다.
+- Actor operation 계약은 join, management, session binding으로 나눈다.
 
 사용자 또는 프레임워크 어댑터가 공개 API를 필요로 한다면, 그 API는
 P/Invoke나 런타임 브리지 코드를 읽지 않고도 이 폴더에서 발견 가능해야 한다.
@@ -462,10 +479,11 @@ SPOT은 서비스 계층 API이며, raw socket의 누출이 아니다.
 
 ## Byte HWM 및 monitoring ABI v2
 
-HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다. 공개 타입은 Core의
-`uint64_t` 범위를 줄이지 않는 `ulong`이다. `0`은 무제한이고 수동 기본값은
-`4_096_000 bytes`다. Binding은 정확히 8-byte 값으로 Core를 호출한다. 이전 `int` overload,
-alias 또는 count 단위 adapter는 제공하지 않는다.
+- HWM은 queue의 message 수가 아니라 Core가 계산한 accounted byte의 상한이다.
+- 공개 타입은 Core의 `uint64_t` 범위를 줄이지 않는 `ulong`이다.
+- `0`은 무제한이고 수동 기본값은 `4_096_000 bytes`다.
+- Binding은 정확히 8-byte 값으로 Core를 호출한다.
+- 이전 `int` overload, alias 또는 count 단위 adapter는 제공하지 않는다.
 
 ```csharp
 public interface IContextOptions
@@ -480,13 +498,11 @@ public partial class CommonSocketOptions
 }
 ```
 
-`MonitorStatus`는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
-Planned, applied, deferred HWM과 in-flight 사용량은 모두 `ulong` byte 값이다. Deferred 값은
-대응하는 `AutoHwmDeferredSendHighWaterMarkValid` 또는
-`AutoHwmDeferredReceiveHighWaterMarkValid`가 `true`일 때만 유효하다. Pending message 값은
-`SndPendingMsgs`와 `RcvPendingMsgs`라는 count 진단값으로 유지하며 byte field와 이름을 공유하지
-않는다. Snapshot의 `AbiVersion`이 `2`가 아니거나 `StructSize`가 binding layout과 다르면
-`NotSupportedException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
+- `MonitorStatus`는 native `zlink_monitor_status_t` ABI version 2와 같은 field를 제공한다.
+- Planned, applied, deferred HWM과 in-flight 사용량은 모두 `ulong` byte 값이다.
+- Deferred 값은 대응하는 `AutoHwmDeferredSendHighWaterMarkValid` 또는 `AutoHwmDeferredReceiveHighWaterMarkValid`가 `true`일 때만 유효하다.
+- Pending message 값은 `SndPendingMsgs`와 `RcvPendingMsgs`라는 count 진단값으로 유지하며 byte field와 이름을 공유하지 않는다.
+- Snapshot의 `AbiVersion`이 `2`가 아니거나 `StructSize`가 binding layout과 다르면 `NotSupportedException`을 발생시킨다. 이전 32-bit monitoring layout은 받지 않는다.
 
 Request/reply API는 HWM 값을 인자로 받지 않는다. Backpressure와 completion 처리는 Core가 소유하며
 binding은 기존 request/reply lifetime과 ownership 계약을 그대로 전달한다.
@@ -566,10 +582,7 @@ binding은 기존 request/reply lifetime과 ownership 계약을 그대로 전달
 - `SpotNodeSpotEntry`와 `SpotNodeActorEntry`는 코어 snapshot과 동일한 Spot
   kind/현재 Spot 필드를 노출한다.
 
-바인딩은 resolve된 Actor ref를 인자로 받는 `ISpotNode.SendToActor(ActorRef)`와
-`ISpotNode.RequestToActor(ActorRef)`를 노출한다. `SendToActor`는 submit이
-성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
-완료된다. `RequestToActor`는 submit이 성공하면 요청 part의 소유권을 넘기고,
-Actor handler가 만든 reply part를 task 또는 callback으로 전달한다. 바인딩은
-제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면
-안 된다.
+- 바인딩은 resolve된 Actor ref를 인자로 받는 `ISpotNode.SendToActor(ActorRef)`와 `ISpotNode.RequestToActor(ActorRef)`를 노출한다.
+- `SendToActor`는 submit이 성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면 완료된다.
+- `RequestToActor`는 submit이 성공하면 요청 part의 소유권을 넘기고, Actor handler가 만든 reply part를 task 또는 callback으로 전달한다.
+- 바인딩은 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면 안 된다.

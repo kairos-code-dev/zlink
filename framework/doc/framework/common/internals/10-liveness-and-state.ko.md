@@ -82,12 +82,9 @@ host가 `serving`이어도 특정 channel에 준비된 대상이 없으면 **그
 5. **그 뒤에** `serving`과 신규 대상 선택을 공개한다.
 
 ```mermaid
-flowchart TB
-    S1["1 · 등록 선언 검증"] --> S2["2 · bind하고<br/>실제 주소를 확정한다"]
-    S2 --> S3["3 · 이 node 정보를<br/>위치 저장소에 게시"]
-    S3 --> S4["4 · peer 수락 · handler ·<br/>객체 runtime 준비"]
-    S4 --> S5["5 · serving 공개<br/>신규 대상 선택 허용"]
-    S5 -. "어기고 3보다 먼저 하면" .-> BAD["다른 node가 연결할 곳을<br/>모른 채 후보로 삼는다"]
+flowchart LR
+    S3["3 · 위치 저장소에<br/>주소를 게시"] --> S5["5 · serving 공개"]
+    S5 -. "3보다 먼저 하면" .-> BAD["다른 node가 연결할 곳을<br/>모른 채 후보로 삼는다"]
 ```
 
 3번과 5번의 순서가 핵심이다. 자기 주소를 알리기 전에 `serving`을 공개하면 다른 node가

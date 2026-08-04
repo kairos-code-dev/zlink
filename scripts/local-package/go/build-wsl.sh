@@ -305,7 +305,7 @@ GOCACHE_DIR="${CONSUMER_ROOT}/gocache"
 cat > "${CONSUMER_ROOT}/go.mod" <<EOF
 module zlink-go-clean-consumer
 
-go 1.22
+go 1.25.12
 
 require ${MODULE_PATH} ${PACKAGE_VERSION}
 EOF

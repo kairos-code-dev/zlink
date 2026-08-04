@@ -365,7 +365,7 @@ PY
     cat >"$consumer/go.mod" <<EOF
 module zlink-candidate-consumer
 
-go 1.22
+go 1.25.12
 
 require zlink.systems/zlink v0.0.0
 replace zlink.systems/zlink => ./pkg/go

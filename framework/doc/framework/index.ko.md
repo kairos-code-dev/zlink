@@ -303,10 +303,10 @@ sticky LB · WebSocket 서버 · pub/sub 경유 · 분산 락 · service discove
 | | 무엇인가 | 해결하는 것 |
 | --- | --- | --- |
 | **channel** | 서버 간 호출의 논리 주소. request/reply · send · pub/sub | 대상 서버의 주소를 코드가 알 필요가 없다 |
-| **Spot** | room · stage · zone처럼 상태를 쥐고 **직렬로** 실행되는 단위 | in-memory 상태의 lock과 경합 |
-| **Actor** | 연결·사용자 하나를 대표하는 상태 객체. Spot 안에 산다 | 재접속한 유저를 원래 자리로 잇는 일 |
+| **Spot** | room · stage · zone처럼 상태를 쥐고 **직렬로** 실행되는 단위 | 여러 source에서 동시에 온 요청을 한곳에서 순서대로 처리해, handler 코드에 lock이 없어도 되게 한다 |
+| **Actor** | 연결·사용자 하나를 대표하는 상태 객체. Spot 안에 둔다 | 사용자 단위 message 요청을 처리하고 그 상태를 관리한다 |
 | **STREAM** | 외부 client가 붙는 장기 연결(TCP · TLS · WS · WSS) | 소켓 framing과 세션 수명 관리 |
-| **relocation** | 살아 있는 Spot·Actor를 다른 노드로 옮기는 절차 | 배포·축소 때 유저가 튕기는 일 |
+| **relocation** | Spot·Actor를 다른 노드로 옮기는 절차 | state가 특정 물리 머신에 고정되는 stateful 시스템의 약점을 보완해, 위치 투명성을 유지한 채 무중단 배포를 가능하게 한다 |
 
 ## 적용 분야
 

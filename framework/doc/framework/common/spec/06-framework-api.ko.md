@@ -103,6 +103,25 @@ HWM이 `MaxMessageSize`보다 작아도 유효하다. Pending byte가 HWM보다 
 끝까지 받고, 그 결과 HWM을 넘으면 다음 수신을 멈춘다. 따라서 비어 있는 host는 HWM보다 크고
 `MaxMessageSize` 이하인 message 한 건을 처리할 수 있다.
 
+Binding이 complete message의 길이를 `Recv` 전에 제공하지 않는 multiplexed receive path에서는
+transport `Recv` 자체를 HWM 경계에서 즉시 멈출 수 없다. 이 경우 Framework는 raw receive마다 bounded
+reservation을 먼저 얻고, 받은 뒤 application과 control을 분류한다. control로 분류된 message는
+application pending에 넣지 않고 reservation을 즉시 반환하며, application message는 측정한 payload
+byte와 함께 terminal 상태까지 reservation을 유지한다. HWM에 도달한 뒤에는 이 reservation 범위를
+넘는 raw receive를 시작하지 않는다.
+
+유효한 `MaxMessageSize`를 `M`, 동시에 보유할 수 있는 raw receive reservation 수를 `R`이라고 하면,
+이 경로에서 HWM을 넘겨 받는 양은 최대 `R * M`이다. 위 문단의 "한 건"이 여기서는 최대 `R`건이 된다.
+
+`R`은 configuration 시점에 정해지는 유한한 양수이며 **부하에 따라 늘어나지 않는다.** Connection 수,
+대기 중인 message 수, peer 수에 비례해 `R`을 늘리지 않는다. `R`은 host가 동시에 실행하는 수신
+loop 수를 넘지 않는다. 각 언어는 자신의 `R` 값과 그 근거를 exact interface 문서에 적는다.
+
+`R`을 부하에 비례시키면 압력을 만들어야 할 때 오히려 더 많이 받아들여 backpressure가 약해진다.
+이 조항이 요구하는 것은 정확한 회계가 아니라 **초과분이 부하와 무관한 고정 여유로 남는 것**이다.
+Binding이 길이를 미리 확인할 수 있는 경로에서는 이 여유 없이 HWM에서 새 application `Recv`를 바로
+멈출 수 있다.
+
 Pending byte에는 complete message의 application payload part만 포함한다. Envelope, route, Framework
 metadata와 allocator overhead는 포함하지 않는다. Queue 대기와 handler 실행 중인 job은 포함하고,
 terminal 상태가 된 job과 Core·OS buffer에 아직 남아 있는 message는 포함하지 않는다. Framework는

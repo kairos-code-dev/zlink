@@ -145,6 +145,26 @@ Node는 event loop가 하나이므로 물리적으로 전용 자원을 만들 �
 ([Framework API §112-113](../spec/06-framework-api.ko.md)). 수신을 통째로 멈추면 그
 안에 섞여 있던 응답까지 막혀 교착이 된다.
 
+다만 binding이 complete message 길이를 `Recv` 전에 알려 주지 않는 multiplexed receive path는
+raw `Recv` 직전에 application인지 control인지 판별할 수 없다. 이 경로는 `MaxMessageSize`를 `M`,
+동시 raw receive reservation 수를 `R`로 두고 `HWM + R * M` 범위에서만 분류를 위한 raw receive를
+허용한다. control은 application pending byte에 넣지 않고 즉시 reservation을 반환하며,
+application은 payload byte를 기록한 뒤 terminal 상태까지 reservation을 유지한다. 따라서 HWM 정책의
+의미는 **새 application 작업의 무제한 admission을 막는 것**이고, control progress를 위해 필요한
+raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있는 binding은 이 분류 구간 없이 HWM에서
+새 application `Recv`를 바로 멈출 수 있다.
+
+**결정 — `R`은 부하에 따라 늘리지 않는다.** HWM은 정확한 차단선이 아니라 **압력이 올라왔다는
+신호**이고, 받기를 멈추는 것이 그 압력을 보내는 쪽까지 되돌리는 유일한 수단이다
+([Framework API §2.1](../spec/06-framework-api.ko.md)). `R`을 connection 수나 대기 message
+수에 비례시키면 **세게 밀릴수록 더 많이 삼켜서, 정작 압력이 필요한 순간에 신호가 약해진다.**
+`R`은 configuration으로 정해지는 고정 여유여야 하며, 이 조항이 요구하는 것은 정확한 회계가
+아니라 초과분이 부하와 무관하게 남는 것이다.
+
+`R`은 [7. 수신과 dispatch 루프 §6](07-dispatch-loop.ko.md)의 건수·byte·경과 시간 한도와 다른
+축이다. 그 셋은 **한 번 깨어났을 때 한 연결에서 얼마나 읽을지**를 정하고, `R`은 **분류를 마치지
+않은 raw receive가 동시에 몇 개나 떠 있을 수 있는지**를 정한다. 같은 값으로 합치지 않는다.
+
 ## 6. 한도를 넘었을 때 조용히 버리지 않는다
 
 **결정 — 처리하지 못하는 작업은 caller가 관찰할 수 있는 결과로 끝낸다.** 무한정 쌓아

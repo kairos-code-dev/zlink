@@ -256,9 +256,9 @@ timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았�
 수신 콜백은 받은 데이터의 소유권을 runtime 쪽 값으로 옮기고 **바로 반환한다.** 그
 안에서 handler를 부르거나 [Spot](../spec/01-glossary.ko.md#spot) 상태를 바꾸지 않는다.
 
-이유는 둘이다. 첫째, 수신 문맥은 대개 전송 계층이 소유하므로 여기서 오래 머물면 그
-연결의 다른 수신이 밀린다. 둘째, [2. Spot·Actor 실행 직렬화](02-serialization.ko.md)의 실행 권한을
-거치지 않고 상태를 바꾸는 경로가 생긴다.
+수신 문맥은 대개 전송 계층이 소유하므로 여기서 오래 머물면 그 연결의 다른 수신이
+밀린다. 또한 [2. Spot·Actor 실행 직렬화](02-serialization.ko.md)의 실행 권한을 거치지
+않고 상태를 바꾸는 경로가 생긴다.
 
 형식 검사는 handler를 부르기 전에 끝낸다. 형식이 맞지 않는 입력은 handler에 도달하지
 않고, 응답을 기다리는 호출은 `ProtocolError`로([Framework 오류 모델 「5. `Request` 완료와 실패」](../spec/32-framework-error-model.ko.md#5-request-완료와-실패)),

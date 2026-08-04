@@ -94,8 +94,8 @@ thread 고정을 전제로 thread-local에 문맥을 넣어 두었다면, 옮긴
 
 가득 찼을 때 무엇을 할지는 대기열 종류마다 다르다.
 
-**결과를 정하는 축은 셋이다** — 제출 계열, 대기열이 어느 runtime에 있는가, 그리고
-호출의 public 결과가 이미 확정됐는가. 정본은
+**결과는 제출 계열, 대기열이 어느 runtime에 있는가, 호출의 public 결과가 이미
+확정됐는가로 갈린다.** 정본은
 [Spot 메시징 「5.3 Spot application queue에 들어가는 작업」](../spec/12-spot-messaging.ko.md#53-spot-application-queue에-들어가는-작업)이며 요지는 다음과 같다.
 
 | 계열 | 대기열 위치 | 결과 |

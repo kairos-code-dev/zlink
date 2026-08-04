@@ -108,7 +108,7 @@ process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 pro
 | [9. Session과 Actor 연결](09-session-binding.ko.md) | 연결을 교체하는 동안 두 곳이 같은 Actor를 가리키지 않게 하는 법 |
 | [10. Liveness와 상태 공개](10-liveness-and-state.ko.md) | 상대가 살아 있는지 어떻게 판단하는가. 언제부터 호출을 받는가 |
 | [11. Payload 소유권과 복사](11-message-ownership.ko.md) | socket에서 handler까지 byte를 몇 번 복사하는가. 역직렬화는 언제 하는가 |
-| [12. Service wire protocol](12-service-wire-protocol.ko.md) | node 사이에 오가는 byte 형식과 command |
+| [12. Service wire protocol](12-service-wire-protocol.md) | node 사이에 오가는 byte 형식과 command |
 
 성능에 직결되는 결정은 [11](11-message-ownership.ko.md)의 복사 횟수, [6](06-routing-and-cache.ko.md)의
 위치 캐시, [7](07-dispatch-loop.ko.md)의 모아서 처리하기·깨우는 방식·timer 자원,

@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "Rust 바인딩 구현 청사진"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: Go](../go/README.ko.md)
+<!-- bindings-nav:end -->
 
 # Rust 바인딩 구현 청사진
+
+> **이 장이 정의하는 것** — 기대되는 Rust crate 형태와 `contracts`/`runtime`
+> 소스 배치 규칙.
 
 이 문서는 기대되는 Rust crate 형태를 정의한다. 모든 공개 아이템을 빠짐없이 나열한
 목록은 아니다. 구체적인 공개 계약 소스는 `bindings/rust/src/contracts/`이다.
@@ -25,6 +32,27 @@ Rust 리팩터는 호환을 깨는 정리 작업이다. 리팩터 이전의 공�
 이 바인딩은 공통 바인딩 아키텍처 맵을 Rust 명명 규칙으로 따른다. `contracts`와
 private `runtime` 모듈이 소스 소유권을 조직화하고, `lib.rs`가 어떤 모듈 경로를
 공개 crate API로 만들지 결정한다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [공개 계약 소스](#공개-계약-소스) | contracts/runtime/native 소스 위치와 문서 역할 |
+| [저장소 레이아웃](#저장소-레이아웃) | 파일 단위 정책과 정렬된 디렉터리 트리 |
+| [API 변경 워크플로](#api-변경-워크플로) | 신규 매핑·리팩터 절차, 제거해야 할 단축 경로 |
+| [라이브러리 형태](#라이브러리-형태) | RAII 소유권, `Result`, Builder, `unsafe` 경계 |
+| [계약 / 런타임 배치 규칙](#계약--런타임-배치-규칙) | 공개 선언과 private 헬퍼의 경계 |
+| [계약 파일 레이아웃](#계약-파일-레이아웃) | `contracts/` 하위 카테고리별 파일 |
+| [런타임 파일 레이아웃](#런타임-파일-레이아웃) | `runtime/` 하위 카테고리별 파일 |
+| [생성 진입점](#생성-진입점) | crate root 생성자와 계약 메서드 목록 |
+| [계약 카테고리 맵](#계약-카테고리-맵) | 카테고리 → 모듈 매핑 |
+| [표준 인터페이스 규칙](#표준-인터페이스-규칙) | recv 시그니처, builder 시작 메서드, 이름 제약 |
+| [Crate 레이아웃](#crate-레이아웃) | 공개 모듈 분류 |
+| [필수 능력 커버리지](#필수-능력-커버리지) | 정렬 완료 시 보장해야 할 사용자 대상 능력 |
+| [Spot Get-Or-Create](#spot-get-or-create) | `get_or_create_spot` 계약 |
+| [Receive와 Subscribe 형태](#receive와-subscribe-형태) | 저장소 재사용, no-data 구분 |
+| [에러 및 검증 정책](#에러-및-검증-정책) | FFI 경계 검증과 타입 기반 에러 |
+| [성능 정책](#성능-정책) | hot path 제약 |
+| [구현 체크리스트](#구현-체크리스트) | 정렬 선언 전 확인 항목과 필수 검증 명령 |
+| [Actor와 Spot Route 결과](#actor와-spot-route-결과) | route 결과 값 타입과 Actor 대상 send/request |
 
 ## 공개 계약 소스
 
@@ -487,9 +515,7 @@ Rust는 Actor와 Spot route 조회 결과를 공개 값 타입으로 노출한�
 - SpotNode snapshot 항목은 core snapshot과 동일한 Spot kind/현재 Spot 필드를
   노출한다.
 
-Rust는 resolve된 Actor ref를 인자로 받는 `SpotNode::send_to_actor(&ActorRef)`와
-`SpotNode::request_to_actor(&ActorRef)`를 노출한다. send operation은 submit이
-성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
-완료된다. request operation은 submit이 성공하면 요청 part의 소유권을 넘기고,
-Actor handler가 만든 reply part를 전달한다. Rust는 제거된 Discovery route
-table이나 resolver API를 compatibility helper로 되살리면 안 된다.
+- Rust는 resolve된 Actor ref를 인자로 받는 `SpotNode::send_to_actor(&ActorRef)`와 `SpotNode::request_to_actor(&ActorRef)`를 노출한다.
+- send operation은 submit이 성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면 완료된다.
+- request operation은 submit이 성공하면 요청 part의 소유권을 넘기고, Actor handler가 만든 reply part를 전달한다.
+- Rust는 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면 안 된다.

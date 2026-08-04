@@ -54,6 +54,27 @@ owner로 기록하고 만든다. 나머지는 만들어진 객체를 대상으�
 [6. 대상 선택과 위치 캐시](06-routing-and-cache.ko.md)의 캐시에 넣지 않는다. 넣으면
 만들기가 끝난 뒤에도 캐시 수명만큼 "만드는 중"으로 보인다.
 
+```mermaid
+sequenceDiagram
+    participant A as caller A
+    participant B as caller B
+    participant S as Location Store
+    participant F as factory
+
+    A->>S: 만들 권한을 잡는다
+    B->>S: 만들 권한을 잡는다
+    S-->>A: 확보
+    S-->>B: 이미 누가 잡았다
+    A->>F: 실행
+    Note over B: 기다린다. 캐시에 넣지 않는다
+    F-->>A: 객체
+    A->>S: 자신을 owner로 기록 · Ready
+    S-->>B: Ready인 객체
+    Note over A,B: factory는 한 번만 실행된다<br/>진 쪽은 만들어진 객체를 대상으로 삼는다
+```
+
+진 쪽이 **"만드는 중"을 캐시하면** 이 그림의 마지막 두 줄이 캐시 수명만큼 늦어진다.
+
 ### 만들다 실패하면
 
 만들기가 중간에 실패하면 남은 기록을 정리해야 한다. 한 구현은 만들기 진행 상태를
@@ -77,6 +98,21 @@ message가 전부 거절된다. 객체 세대는 lifecycle 변경과 이동 중�
 | owner 신원 | 이 node가 더 이상 owner가 아닌 경우 |
 | owner 유효 기간 | owner이긴 하나 기한이 지난 경우 |
 | 객체 세대 | lifecycle 변경과 이동 중계에만 적용 |
+
+```mermaid
+flowchart TB
+    M["낡은 route로 도착한 message"] --> O{"이 node가<br/>아직 owner인가"}
+    O -- "아니오" --> X["낡은 경로 오류<br/>자동 재시도 없음"]
+    O -- "예" --> L{"owner 유효 기간이<br/>남았는가"}
+    L -- "아니오" --> X
+    L -- "예" --> G["객체 세대는 보지 않는다"]
+    G --> Q["대기열에 넣는다"]
+    G -. "세대까지 검사하면" .-> W["재생성 직후 정상 message가<br/>전부 거절된다"]
+    K["lifecycle 변경<br/>이동 중계"] --> GEN["여기서만 객체 세대를 본다"]
+```
+
+왼쪽 축이 일반 message가 지나는 길이다. **`G`에서 세대 검사를 넣고 싶어지는 자리가
+함정이고**, 오른쪽 `K`가 세대를 보는 유일한 경로다.
 
 **결정 — 걸러낸 message는 낡은 경로 오류로 끝낸다. runtime이 자동으로 다시 시도하지
 않는다.** 다시 시도하면 보내는 쪽은 성공으로 보지만 실제로는 두 번 실행됐을 수 있다.

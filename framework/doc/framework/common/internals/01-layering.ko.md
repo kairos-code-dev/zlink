@@ -13,12 +13,29 @@ runtime을 어떤 덩어리로 나눌지, 그리고 어떤 값을 하나로 합�
 binding type 이름은 adapter 층에만 나타난다.
 
 ```text
-runtime 본체        ← binding type 이름이 여기 없어야 한다
-    ↓ (runtime의 말로 선언한 계약)
-adapter             ← binding type이 나타나는 유일한 자리
-    ↓
-설치된 binding package
++-------------------------------------------------------------+
+| application handler                                         |
+|   Framework 공개 계약만 본다                                |
++-------------------------------------------------------------+
+| runtime 본체                                                |
+|   선택기 · dispatch · 실행 권한 · 객체 · 관측               |
+|   binding type 이름이 여기 없어야 한다                      |
++-------------------------------------------------------------+
+        | runtime의 말로 선언한 계약 (socket · context · message)
+        v
++-------------------------------------------------------------+
+| adapter                                                     |
+|   binding type이 나타나는 유일한 자리                       |
++-------------------------------------------------------------+
+| 설치된 binding package                                      |
++-------------------------------------------------------------+
+| Core                                                        |
++-------------------------------------------------------------+
 ```
+
+위 두 층과 아래 세 층 사이의 화살표가 이 문서가 지키려는 경계다. **화살표는 한 방향으로만
+간다** — binding type이 위로 올라오면 안 되고, adapter가 runtime의 결정을 대신 내려도 안
+된다(아래 「경계가 새는 두 경로」와 「반대 방향의 함정」).
 
 **왜.** binding은 Framework와 별개 주기로 바뀐다. 경계가 흩어져 있으면 binding의 사소한
 변경이 runtime 전역 수정이 되고, 더 나쁘게는 **어디까지가 runtime의 결정이고 어디부터가
@@ -145,6 +162,28 @@ relocation을 기다리던 쪽이 `Blocked/ShutdownRequested`로 끝난다
 **결정 — 관측 구독자는 종료 절차의 진행을 붙잡지 못한다.** 구독자가 응답하지 않아도
 종료는 진행한다.
 
+```mermaid
+flowchart TB
+    REQ["종료 요청"] --> K{"어느 의도인가"}
+    K -- "이전 후 종료" --> PRE["host 전체를 한 번에 검사<br/>상태를 바꾸기 전에"]
+    K -- "즉시 종료" --> CLEAN
+    PRE --> OK{"받을 node가 있나"}
+    OK -- "없다, 대기 시간 초과" --> BT["Blocked/TargetUnavailable<br/>결과를 저장하지 않는다"]
+    OK -- "옮길 대상이 없다" --> CLEAN
+    OK -- "있다" --> MOVE["객체를 옮긴다"]
+    MOVE --> FAIL{"실패했나"}
+    FAIL -- "확정 전" --> BACK["원래 상태로 복귀"]
+    FAIL -- "확정 뒤" --> KEEP["옮긴 것은 두고 Serving으로<br/>종료는 별도 요청"]
+    FAIL -- "아니오" --> CLEAN["§4의 정리 순서"]
+
+    DUP["같은 종류가 겹친다"] -. "조건이 같다" .-> JOIN["진행 중 절차에 합류"]
+    DUP -. "조건이 다르다" .-> BLK["Blocked/OperationInProgress"]
+    SD["Shutdown이 Relocate와 겹친다"] -. "shutdown이 이긴다" .-> BS["Blocked/ShutdownRequested"]
+```
+
+**두 실패 분기 어느 쪽도 host를 종료시키지 않는다.** 종료는 caller가 별도로 요청해야
+일어난다. 아래 §4는 이 그림의 `CLEAN`에서 시작한다.
+
 ## 4. 정리 순서를 고정한다
 
 **결정 — resource는 만든 쪽이 닫는다.** 자식이 부모의 resource를 쓰는 동안에는 그 부모가
@@ -163,6 +202,34 @@ relocation을 기다리던 쪽이 `Blocked/ShutdownRequested`로 끝난다
 7. 실행 대기열을 비우거나 정해진 시간 안에 취소한다.
 8. provider와 전송 계층 자원을 닫는다.
 9. 마지막 상태와 종료 통보를 게시하고, 관측 구독자와 대기자를 완료시킨다.
+
+```mermaid
+flowchart TB
+    subgraph P1["수용을 막는다"]
+        direction TB
+        C1["1 · 새 작업 · 새 공개 호출 차단"]
+        C2["2 · 종료 중임을 위치 저장소에 게시"]
+        C1 --> C2
+    end
+    subgraph P2["받은 것을 끝낸다"]
+        direction TB
+        C3["3 · 수락한 작업 · 진행 중 호출 마무리"]
+        C4["4 · 객체에 종료 사유 callback"]
+        C3 --> C4
+    end
+    subgraph P3["자원을 반납한다"]
+        direction TB
+        C5["5 · 객체 timer · session · 일반 관측 정지"]
+        C6["6 · peer 연결 · 수신 endpoint · 전송 콜백 정지"]
+        C7["7 · 실행 대기열 비우기 또는 취소"]
+        C8["8 · provider · 전송 자원 close"]
+        C9["9 · 최종 상태 게시 · 구독자와 대기자 완료"]
+        C5 --> C6 --> C7 --> C8 --> C9
+    end
+    P1 --> P2 --> P3
+    C4 -. "5보다 먼저여야 한다" .-> C5
+    C5 -. "먼저 멈추면" .-> BAD["callback이 쓸 것이<br/>이미 사라진 뒤다"]
+```
 
 **4번이 5번보다 앞서는 것이 핵심이다.** 종료 사유를 받는 callback은 그 객체의 소속과
 지역 인스턴스가 아직 유효한 상태에서 실행되어야 한다

@@ -17,6 +17,77 @@ C++·.NET·JVM·Node.js service runtime이 **서로 다른 언어로 구현되�
 
 spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 
+## 부품과 담당 장
+
+각 장은 아래 그림의 한 자리를 깊게 판다. 어느 장을 읽어야 할지 모를 때 여기서 찾는다.
+
+```mermaid
+flowchart TB
+    subgraph SEND["보내는 쪽"]
+        direction TB
+        SEL["대상 선택기<br/>「6」"]
+        RC["위치 캐시<br/>「6」"]
+        SEL --- RC
+    end
+
+    subgraph WIRE["전송 경계"]
+        direction TB
+        TR["peer 연결 · liveness<br/>「10」"]
+        REC["service wire record<br/>「wire」"]
+    end
+
+    subgraph RECVSIDE["받는 쪽 runtime"]
+        direction TB
+        RL["수신 루프<br/>「7」"]
+        AD["확인 · 넣기 구간<br/>「7」"]
+        RS["준비된 owner 집합<br/>「7」"]
+        GATE["실행 권한<br/>「2」 「3」"]
+        H["application handler"]
+        FIN["완료 확정<br/>「4」"]
+    end
+
+    subgraph STATE["runtime이 들고 있는 상태"]
+        direction TB
+        OBJ["Spot · Actor 객체<br/>생성 · 정리 · 회계 「8」"]
+        SB["session binding<br/>「9」"]
+        MV["이동 · Message Follow<br/>「5」"]
+    end
+
+    COD["codec · payload 소유권<br/>「11」"]
+    LS[("Location Store")]
+    OBS["상태 게시 · metric<br/>「10」"]
+
+    SEL --> TR --> REC --> RL
+    RL --> AD --> RS --> GATE --> H --> FIN
+    FIN -. "응답" .-> TR
+
+    SEL -. "직렬화" .-> COD
+    RL -. "소유권 이전" .-> COD
+    COD -. "역직렬화" .-> H
+
+    SEL -. "조회" .-> LS
+    RC -. "무효화" .-> SEL
+    AD -. "owner 확인" .-> OBJ
+    GATE -. "직렬 대상" .-> OBJ
+    OBJ -. "owner 기록" .-> LS
+    OBJ --- SB
+    OBJ --- MV
+    MV -. "relay 통지" .-> RC
+    GATE -. "점유하지 않는다" .-> OBS
+```
+
+**실선이 message가 실제로 지나는 축이고 점선은 참조·조회·통지다.** 「1. 계층 경계와
+식별자」는 이 그림 전체에 걸친다 — 어느 부품이 binding type을 알아도 되는가를 정하므로
+한 자리에 놓이지 않는다.
+
+점선 둘은 장을 따로 읽으면 놓치기 쉬운 연결이라 특히 표시했다.
+
+- `실행 권한 → 상태 게시`의 **"점유하지 않는다"** — 관측이 실행 권한을 비켜 가야 한다는
+  [10](10-liveness-and-state.ko.md)의 결정이다. 관측을 켰다는 이유로 처리가 느려지면 안 된다.
+- `이동 → 위치 캐시`의 **relay 통지** — [5](05-relocation-continuity.ko.md)와
+  [6](06-routing-and-cache.ko.md)이 만나는 지점이다. 이 선이 없으면 이동 뒤 캐시 수명이
+  끝날 때까지 모든 트래픽이 우회한다.
+
 ## 문서
 
 | 문서 | 다루는 결정 |

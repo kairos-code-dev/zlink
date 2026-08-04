@@ -1,13 +1,37 @@
+---
+title: "Python Bindings Public Contract"
+---
+
+<!-- bindings-nav:start -->
+[Spec index](../README.md) | [Previous: Node.js](../node/README.md) | [Next: Go](../go/README.md)
+<!-- bindings-nav:end -->
+
 # Python binding Core 11 public contract
 
-This document defines the Core 11 raw messaging contract exposed by the
-`zlink` Python package. A behavior not present in the current implementation
-and public header is not part of this contract. Python 3.9 and later are
-supported, and the current candidate package version is `11.2.0`.
+> **What this chapter defines** — the public type, ownership, and error
+> contract the `zlink` Python package provides on top of Core 11 raw
+> messaging.
+
+- This document defines the Core 11 raw messaging contract the `zlink` Python package provides.
+- A feature not in the current implementation and public header is not part of this contract.
+- It supports Python 3.9 and later; the current candidate package version is `11.2.0`.
+- The current native package target is Linux x86_64; other targets are outside this contract's supported scope until a separate candidate payload and clean-consumer verification exist.
+
+| Section | Covers |
+|---|---|
+| [Scope](#scope) | The list of public Python types that represent Core resources |
+| [Package surface](#package-surface) | The boundary between the public factories and the private area |
+| [Ownership and lifetime](#ownership-and-lifetime) | Ownership/release rules for native handles, messages, and Received |
+| [Callback surface](#callback-surface) | The public callback paths, and the primitives that stay unexposed |
+| [Send/receive and no-data](#sendreceive-and-no-data) | How submit and no-data are represented, and how native failures are delivered |
+| [Error](#error) | The `ZlinkError` family and its result fields |
+| [Python version and the type package](#python-version-and-the-type-package) | The supported Python version and the type-check target |
+| [Related documents](#related-documents) | Links to the guide, the Core spec, and internals |
 
 ## Scope
 
-The binding projects these Core resources into Python objects and Protocols:
+The Python binding represents the following Core resources as Python
+objects and Protocols.
 
 | Area | Public concepts |
 |---|---|
@@ -15,81 +39,78 @@ The binding projects these Core resources into Python objects and Protocols:
 | Socket | PAIR, DEALER, ROUTER, STREAM, PUB, SUB, XPUB, XSUB |
 | Eventing | `MonitorSocket`, `MonitorEvent`, `MonitorStatus`, `Poller`, `PollEvents`, `Timer` |
 | Utility | `AtomicCounter`, `Stopwatch`, `Thread`, `proxy`, `sleep` |
-| Results | `SubmitResult`, `RequestResult`, `RecvResult`, `ConfigResult`, and matching errors |
+| Result | `SubmitResult`, `RequestResult`, `RecvResult`, `ConfigResult`, and their matching errors |
 
-Sockets preserve Core raw endpoint and message-routing semantics. Native
-handles, FFI symbols, and native structs are not public Python types.
+A socket preserves Core's raw endpoint and message-routing semantics
+as-is. The Python binding does not expose Core's internal handles, FFI
+symbols, or native structs as public types.
 
 ## Package surface
 
-Callers use factories and contract types from the `zlink` package root. The
-implementation modules are private; callers do not import `_native` or
-`_runtime`. The package root does not provide a compatibility alias for a
-concept outside the Core raw contract.
+Users work with the factories and contract types at the `zlink` package
+root. They do not import implementation modules directly, and `_native`
+and `_runtime` are private areas. The package root has no separate domain
+type or compatibility alias outside the Core raw contract.
 
-The primary factories are `create_context()`, the raw socket factories,
-`create_poller()`, `create_timer()`, `create_received()`, and the message
-factories. Exact Python signatures are owned by the contract modules and are
-interpreted against the public Core header.
+The main factories are `create_context()`, `create_pair_socket()`,
+`create_dealer_socket()`, `create_router_socket()`,
+`create_stream_socket()`, `create_pub_socket()`, `create_sub_socket()`,
+`create_poller()`, `create_timer()`, `create_received()`, and the
+`create_message` family. The exact Python signatures are governed jointly
+by the contract module in the same directory and the public header.
 
 ## Ownership and lifetime
 
-- `Context` owns the native context and releases it through `close()` or a
-  context-manager exit.
-- Each socket, monitor, poller, and timer owns the native handle it creates.
-  Calls after a successful `close()` are invalid.
-- `Message.from_(value)` creates an independent native message from the
-  caller's value. After a successful send submit, native message-part
-  ownership moves into the Core send path.
-- `Received` is caller-provided receive storage. A successful `recv_into`
-  fills its parts and routing metadata; closing it releases those native parts.
-- Native views exposed by `Received.parts` are valid only while their owner is
-  open. Use `to_bytes()` or `to_bytes_list()` when a value must outlive it.
-- Callback references remain retained until the native callback registration
-  no longer needs them. Callback failures follow the binding callback policy.
+- `Context` owns the native context and releases it via `close()` or context-manager exit.
+- A socket, monitor, poller, or timer owns the native handle it creates. A call that uses the handle after a successful `close()` is not allowed.
+- `Message.from_(value)` creates a native message independent of the caller's value. After a successful send submit, native ownership of the message part moves to the Core send path.
+- `Received` is a receive storage the caller creates. On a successful `recv_into(received)`, the parts and routing metadata are recorded into `Received`; native parts are released on `close()` or context-manager exit.
+- The native view `Received`'s `parts` provides is valid only while its owner stays open. If it must outlive that, copy the value with `to_bytes()` or `to_bytes_list()`.
+- Once a callback is registered, the callback and any Python references it needs are not released before the native callback registration is. A callback exception is delivered per the binding's callback error policy.
 
 ## Callback surface
 
-The Core FFI declarations `zlink_recv_handler()` and
+Core FFI's `zlink_recv_handler()` and
 `zlink_router_completion_control_handler()` are private implementation
-primitives and are not exposed directly by the Python package. Python's public
-callback surface is fixed to `on_packet` for STREAM packets, `on_send_ready`
-for send readiness, `on_event` for monitor events, and the `request(...)`
-callback path for ROUTER request completion. There is no separate public
-method for registering a raw receive callback or a completion-control handler.
+primitives the Python package does not expose directly. Python's public
+callback surface is fixed to `on_packet` for a STREAM packet,
+`on_send_ready` for send readiness, `on_event` for a monitor event, and the
+`request(...)` callback path that delivers ROUTER request completion. It
+provides no separate public method to register a raw receive callback or a
+completion-control handler.
 
-## Send, receive, and no-data
+## Send/receive and no-data
 
-Send builders add message parts and then call `submit()`. Blocking send follows
-the socket timeout options and the Core contract. A caller-provided receive
-using `RecvFlags.DONT_WAIT` returns `False` when no message is available.
-Control APIs that return a pending value, such as timers and monitors, return
-`None` when no value is available. Native failures are reported through the
-corresponding error type rather than being hidden as no-data.
+- A send builder adds message parts, then calls `submit()`. A blocking send follows the socket option and Core's timeout contract.
+- A caller-provided receive using `RecvFlags.DONT_WAIT` returns `False` when there is no message.
+- A direct-return control API such as a timer or monitor returns `None` when there is no pending value.
+- An actual native failure is delivered as its matching error type, never hidden as no-data.
 
-DEALER and ROUTER request/reply preserve Core routing metadata and request
-sequence values. `Received.routing_id` is a raw routing id and is not converted
-to another identity type. The current single-part accessor is
-`single_part_or_throw()`, matching the implementation and contract tests. A
-rename requires approval of its separate draft first.
+DEALER and ROUTER request/reply preserve Core's routing metadata and
+request sequence. A ROUTER receive's `Received.routing_id` is the raw
+routing id and is never converted to a different identity type. The
+current single-part accessor name matches the implementation and contract
+tests: `single_part_or_throw()`. A name change happens only after a
+separate draft is approved.
 
-## Errors
+## Error
 
-Calls that represent Core results expose `result`, `code`, and `native_errno`
-on the matching Python error. Input-shape checks may fail before a native call,
-but a native operation failure is not rewritten as a generic `ValueError`.
-`SubmitError`, `RequestError`, `RecvError`, `BindError`, `ConnectError`,
-`ConfigError`, `CloseError`, and `HandlerError` derive from `ZlinkError`.
+A call that returns a Core result gives its matching Python error `result`,
+`code`, and `native_errno`. An input-format error can be checked before the
+call, but a native operation failure is never turned into a plain
+`ValueError`. `SubmitError`, `RequestError`, `RecvError`, `BindError`,
+`ConnectError`, `ConfigError`, `CloseError`, and `HandlerError` are all in
+the `ZlinkError` family.
 
-## Python version and type package
+## Python version and the type package
 
-Public annotations use expressions that Python 3.9 can parse and evaluate. The
-package contains `py.typed`. The public contract type gate targets Python 3.9
-and the `src/zlink/contracts` tree specified by `pyrightconfig.json`.
+Public annotations use a form the Python 3.9 parser and runtime can
+resolve. The package root includes `py.typed`. Public contract type
+checking targets the Python 3.9 target `pyrightconfig.json` specifies, and
+`src/zlink/contracts`.
 
 ## Related documents
 
-- Usage patterns are described in the [Python guide](../../guide/python/index.ko.md).
-- `core/include/zlink.h` and the Core spec own Core function and layout meaning.
-- Native lifetime and callback implementation details belong in internals
-  documentation, not in this public contract.
+- Usage follows the [Python guide](../../guide/python/index.ko.md).
+- The reference for Core functions and layout is the repository's `core/include/zlink.h` and the Core spec.
+- Implementation detail and callback/native lifetime explanations belong to the internals documents, not this one.

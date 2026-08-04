@@ -244,7 +244,7 @@ timer 수명 동안 계속 누적해서, 오래 도는 timer가 메모리를 계
 ### tick이 실행 권한으로 들어가는 경로
 
 timer callback은 그 Spot의 실행 권한을 거쳐 실행된다. `SpotWide`에서는 공유 권한을,
-`PerActor`에서는 **timer 이름별 권한**을 쓴다([2. 직렬 실행](02-serialization.ko.md)).
+`PerActor`에서는 **timer 이름별 권한**을 쓴다([2. Spot·Actor 실행 직렬화](02-serialization.ko.md)).
 timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았다가 다음에 다시 시도한다.
 
 ## 8. 수신 처리와 상태 변경을 분리한다
@@ -253,7 +253,7 @@ timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았�
 안에서 handler를 부르거나 [Spot](../spec/01-glossary.ko.md#spot) 상태를 바꾸지 않는다.
 
 이유는 둘이다. 첫째, 수신 문맥은 대개 전송 계층이 소유하므로 여기서 오래 머물면 그
-연결의 다른 수신이 밀린다. 둘째, [2. 직렬 실행](02-serialization.ko.md)의 실행 권한을
+연결의 다른 수신이 밀린다. 둘째, [2. Spot·Actor 실행 직렬화](02-serialization.ko.md)의 실행 권한을
 거치지 않고 상태를 바꾸는 경로가 생긴다.
 
 형식 검사는 handler를 부르기 전에 끝낸다. 형식이 맞지 않는 입력은 handler에 도달하지
@@ -286,4 +286,4 @@ timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았�
 
 ---
 
-[내부 구조 목차](README.ko.md) · [이전: 6. 대상 선택과 위치 캐시](06-routing-and-cache.ko.md) · [다음: 8. 객체 종류와 활성화](08-object-lifecycle.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 6. target 선택과 route cache](06-routing-and-cache.ko.md) · [다음: 8. 객체 종류와 활성화](08-object-lifecycle.ko.md)

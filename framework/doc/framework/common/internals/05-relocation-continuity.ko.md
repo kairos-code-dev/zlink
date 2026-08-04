@@ -44,8 +44,9 @@ flowchart LR
 보장 범위는 **대상별 수락 순서**까지다. 서로 다른 경로에서 온 message 사이의 전역
 순서는 보장하지 않는다.
 
-### 여기서 [2. 직렬 실행](02-serialization.ko.md)과 만난다
+### 실행 직렬화와 만나는 지점
 
+[2. Spot·Actor 실행 직렬화](02-serialization.ko.md)의 구조가 여기서 다시 걸린다.
 보관과 복원은 **Actor 단위로 갈라낼 수 있어야** 한다. 이동 단위가 Actor 하나일 때 그
 Actor의 남은 작업만 골라내야 하기 때문이다. `SpotWide`라는 이유로 Actor별 queue를
 하나로 합쳐 두면 이 지점에서 갈라낼 수 없다 — queue는 Actor마다, 실행 권한만 공유해야
@@ -70,7 +71,7 @@ Actor의 남은 작업만 골라내야 하기 때문이다. `SpotWide`라는 이
 | 전달량 한도를 넘겼다 | `CapacityExceeded` |
 
 전달할 때 호출 식별자, 객체 세대, payload와 응답 경로를 그대로 유지한다. 유지하지
-않으면 [4. 완료](04-completion.ko.md)의 완료 자리를 찾지 못해 caller가 timeout까지
+않으면 [4. operation 완료 확정](04-completion.ko.md)의 완료 자리를 찾지 못해 caller가 timeout까지
 매달린다.
 
 ### 이것은 선택 기능이 아니다
@@ -137,4 +138,4 @@ owner 교체는 저장소에 대한 **조건부 변경 한 번**으로 한다. �
 
 ---
 
-[내부 구조 목차](README.ko.md) · [이전: 4. 완료](04-completion.ko.md) · [다음: 6. 대상 선택과 위치 캐시](06-routing-and-cache.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 4. operation 완료 확정](04-completion.ko.md) · [다음: 6. target 선택과 route cache](06-routing-and-cache.ko.md)

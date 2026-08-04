@@ -68,7 +68,7 @@ execution ledger가 소유한다"고 적혀 있었다. 구현이 아니라 목�
 | W1 scheduler | 제출 → 두 축 예약 → lane 선택 → claim → 점유 상한 → handler → 회계 반납 → public 오류 |
 | W2-RM selector | RouteMesh 선택 절차·tiebreak. **선행 과제 없음 — 즉시 진행** |
 | W2-CS selector | ClientServer 선택 절차. per-server 연결 구조는 유지 |
-| W3 relay 통지 | wire command 정의가 선행 |
+| W3 relay 통지 | command 50 schema·codec·fence 정합과 relay/source cache 검증이 선행 |
 | W4 유휴 정리 | exact interface + Location Store CAS + admission seal + timer 구조 |
 | W5 관찰자 | source 모델 + 합치기 + terminal 보관 + 유실 counter + 전달 envelope |
 | W6 수신 공정성 | topology 전 경로 batch 상한과 회전 cursor |
@@ -81,7 +81,7 @@ execution ledger가 소유한다"고 적혀 있었다. 구현이 아니라 목�
 
 | 판정 | 막고 있는 묶음 |
 |---|---|
-| relay 통지 wire command | W3 전체 |
+| relay 통지 wire command의 공통 schema와 fence | W3의 언어별 연결과 mixed-process gate |
 | `IdleEvicted` enum 수치와 timeout 설정을 네 exact interface에 | W4 |
 | 관찰자 전달 envelope를 네 exact interface에 | W5 |
 | 실행 대기열 기본 한도와 작업당 고정 비용 | W1 |

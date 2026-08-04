@@ -163,7 +163,7 @@ descriptor를 `serving`으로 게시한 뒤 `_port`와 completion control을 만
 
 ## 검증
 
-W1·W6은 [2. 직렬 실행](../../framework/common/internals/02-serialization.ko.md)과
+W1·W6은 [2. Spot·Actor 실행 직렬화](../../framework/common/internals/02-serialization.ko.md)과
 [7. 수신과 dispatch 루프](../../framework/common/internals/07-dispatch-loop.ko.md)의
 "확인할 결과"를 그대로 쓴다. W2는 같은 weight와 다른 weight 두 경우에서 실제 server
 process가 받은 순서를 확인하는 process test가 필요하다.

@@ -1,4 +1,4 @@
-# 4. 완료를 한 번만 확정한다
+# 4. operation 완료 확정 — 한 번만 확정한다
 
 [내부 구조 목차](README.ko.md)
 
@@ -169,4 +169,4 @@ Application이 새 호출을 시작할 수는 있으며, 그때 중복 실행 �
 
 ---
 
-[내부 구조 목차](README.ko.md) · [이전: 3. 진행 보장](03-progress-isolation.ko.md) · [다음: 5. 이동 중 message 연속성](05-relocation-continuity.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 3. application과 infrastructure 실행 분리](03-progress-isolation.ko.md) · [다음: 5. 이동 중 message 연속성](05-relocation-continuity.ko.md)

@@ -1,4 +1,4 @@
-# 6. 대상 선택과 위치 캐시
+# 6. target 선택과 route cache
 
 [내부 구조 목차](README.ko.md)
 

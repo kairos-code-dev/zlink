@@ -16,49 +16,43 @@ C++와 달리 W2를 독립적으로 진행할 수 있다.
 실행 자원은 thread pool 위의 직렬 drain이다. 두 실행 영역 분리와 owner 점유 상한을 물리적
 자원으로 구현할 수 있다.
 
-가장 무거운 것은 **관찰자 stream 재작성**이다. 두 자리가 합치기 대신 버리고 있어 구조를
-바꿔야 한다.
+관찰자 stream은 source별 최신 상태와 terminal 보관을 분리하는 구조로 이미 재작성되었다.
+현재 가장 큰 남은 조건은 command 50 relay 통지의 mixed-process 증거와 모든 topology의
+수신 공정성 process matrix이다.
 
 ## 순서
 
 ```
-0. 선행 판정 대기        상한 값 · exact interface
+0. exact interface·상한 확인     command 50과 local default 반영
    │
-1. B4 무음 드롭          가장 작고 위험도 높음. 지금도 응답이 사라진다
+1. B4 completion 보관            tombstone·overflow 계측 구현
    │
-2. W1 scheduler          가장 큼
+2. W1 scheduler                  두 lane·두 축·claim·time cap 구현
    │
-3. W5 관찰자             exact interface 확정 후. 구조 변경 큼
+3. W5 관찰자                     latest slot·terminal 보관·loss 구현
    │
-4. W2 selector           선행 과제 없음
+4. W2 selector                   RouteMesh·ClientServer plan 구현
    │
-5. W6 수신 공정성        채널 loop은 충족. 나머지 topology 감사 필요
+5. W6 수신 공정성                코드 경로 반영, 전체 process matrix 대기
    │
-6. W4 유휴 정리          신규 기능
+6. W4 유휴 정리                  local close 경로 반영, process 증거 대기
    │
-7. W3 relay 통지         wire command 확정 후
+7. W3 relay 통지                 .NET wire·relay·conditional invalidation 구현
    │
-8. C부 구조 부채
+8. C부 구조 부채                 기능 gate와 별도
 ```
 
 ## B4 — completion table 무음 드롭 (먼저)
 
-`Runtime/Backend/DotNet/ZLinkMeshCompletionTable.cs:58-73`이 4096개를 넘으면 parts를
-dispose하고 그냥 반환한다. **기다리던 caller는 timeout으로만 알게 된다.**
+`ZLinkMeshCompletionTable`은 early completion과 tombstone을 각각 건수·byte로 제한한다.
+early 저장 공간이 가득 차면 tombstone을 남겨 늦게 `Register`한 호출이
+`RequestResult.Backpressured`를 받고, request failure mapper가 이를
+`CapacityExceeded`로 변환한다. 두 보관 공간까지 가득 차는 경우에는 parts를 해제하고
+`OverflowCount`와 `zlink.mesh_node.messages.dropped{reason=capacity_exceeded}`를 기록한다.
 
-**"그 operation을 즉시 완료한다"는 실행할 수 없다.** overflow는 `_pending`에 handler가
-아직 없어서 `_early`에 넣으려는 시점에 일어난다. 완료해 줄 caller callback이 그 자리에
-없다.
-
-두 방향 중 하나를 고른다.
-
-| 방향 | 내용 |
-|---|---|
-| tombstone | 버린 operation ID와 `CapacityExceeded`를 한도 있는 표에 남기고, 뒤늦게 `Register`하는 쪽이 그것을 소비해 실패로 끝낸다 |
-| 수명 재설계 | 등록이 수신보다 항상 먼저 일어나도록 completion lifecycle을 바꾼다 |
-
-어느 쪽이든 early completion과 tombstone의 **합산 건수·byte 한도**, parts 해제 소유권,
-register·complete 경쟁을 같은 회귀 test로 고정한다.
+이 경로는 callback이 아직 등록되지 않은 completion의 실패를 원래 caller에게 동기적으로
+전달할 수 없는 경계를 보완한다. early/tombstone 보관 한도, parts 소유권, register·complete
+경쟁과 최종 overflow 계측은 `ServiceRuntimeFoundationTests`에 고정되어 있다.
 
 ## W1 — scheduler (가장 큼)
 
@@ -68,16 +62,16 @@ register·complete 경쟁을 같은 회귀 test로 고정한다.
 
 | 단계 | 지금 | 목표 |
 |---|---|---|
-| 한도 | 건수만 (기본값 `:5`, 검사 `Runtime/Execution/ZLinkSerialExecutionQueue.cs:565-574`) | 건수·byte 두 축을 하나의 예약으로 |
-| lane | 단일 queue. `reservedPrioritySlots`가 있으나 기본값 `0`이고 **0이 아닌 값을 넘기는 호출자가 없다** (`:42,50-52`) | application·lifecycle 두 FIFO lane |
-| 선택 | FIFO (`:666-689`). infrastructure 우선 탐색은 relocation seal 중에만 (`:693-714`) | 상시 lane 선택 + 연속 실행 상한 + 양보 부채 |
-| 점유 | `TryTakeNext`가 빌 때까지 drain (`:605-663`) | ready owner + claim 시작 시각 + 경과 시간 확인 |
-| 포화 | `InvalidOperationException("…closed or full")` (`:110-118`), Spot 호출 `Runtime/Spots/ZLinkSpotSerialExecutor.cs:858-891` | 계열×위치 표에 따른 public kind. closed와 full을 구분 |
-| 반납 | — | handler 종료 후 두 축 동시 반납 |
+| 한도 | application·lifecycle 각각 count와 `WorkItemFixedCostBytes + payloadBytes`를 예약 | 두 축을 하나의 예약으로 유지 |
+| lane | application·lifecycle 두 FIFO lane | lifecycle 우선·32 turn yield debt |
+| 선택 | claim generation을 부여한 뒤 10ms owner slice로 drain | slice 종료 후 ready로 재등록 |
+| 포화 | closed와 full을 `ShuttingDown`·`CapacityExceeded`로 분리 | 같은 runtime의 public error kind 유지 |
+| 반납 | handler terminal completion에서 count·bytes·claim을 함께 반납 | relocation hold는 1024건·16MiB |
 
-**예약 슬롯과 우선 실행은 다른 것이다.** `reservedPrioritySlots`는 자리 확보일 뿐이고
-실행 순서를 바꾸지 않는다. A10은 *실행 순서*를 요구하므로 이 매개변수를 우선 실행으로
-바꾸거나 쓰지 않으면 제거한다.
+**예약 슬롯과 우선 실행은 다른 것이다.** 현재 .NET 구현은 `reservedPrioritySlots`에
+의존하지 않고 application·lifecycle queue를 별도 lane으로 둔다. lifecycle이 ready이면
+먼저 선택하고 32 turn 뒤 application에 yield debt를 적용하므로 A10의 실행 순서를 직접
+표현한다.
 
 **D2 — 수신 회계 lock.** `Runtime/Dispatch/ZLinkInboundDispatchBudget.cs:64,93,99`가 수신·
 handler 시작·완료·snapshot에 같은 `_gate`를 쓴다. HWM 판정용 `pendingBytes`만 process 단위
@@ -87,31 +81,37 @@ atomic으로 두고 관측 누계는 cache-line 분리 shard로 나눈다. `Hand
 > **worker별 permit 덩어리 예약은 쓰지 않는다.** 쓰지 않은 local 잔량을 pending으로 세면
 > HWM보다 일찍 멈추고, 세지 않으면 초과량이 커진다.
 
-**D3 — HWM 초과량.** 수신 loop이 용량을 확인한 뒤 message 전체를 받고 **그 다음에야** 크기를
-잰다(`Runtime/Channels/ZLinkChannelReceiveLoop.cs:38,41,56`). 현재 binding 경계에서는 선예약이
-불가능하므로 두 방향 중 하나를 고른다 — binding에 길이 peek을 추가하거나, 초과량 공식을 spec에
-명시하고 동시 수신 수를 제한한다. **W1 안에서 결정해야 회계 구조가 한 번에 정해진다.**
+**D3 — HWM 초과량 — 결정 완료.** 수신 loop이 용량을 확인한 뒤 message 전체를 받고 **그 다음에야**
+크기를 잰다(`Runtime/Channels/ZLinkChannelReceiveLoop.cs:38,41,56`). 현재 .NET binding에는 complete
+message 길이를 `Recv` 전에 확인하는 API가 없으므로 binding 변경 대신 bounded receive reservation을
+선택한다. `MaxMessageSize = M`, 동시 raw receive 수 `R`에 대해 application pending 상한을
+`HWM + R * M`으로 명시하고, HWM 이후 raw receive도 `R`개 reservation 범위에서만 허용한다.
+control로 분류된 record는 즉시 reservation을 반환하고 application record는 terminal 상태까지
+유지한다. 이 규칙은 common spec과 internals에 반영했으며, W1 회귀 테스트는 `R = 1`과 multipart
+경계에서 overshoot가 더 늘지 않는지를 확인한다.
 
-**D4 — 복사.** `Runtime/Messaging/ZLinkMessageRuntime.cs:82`가 envelope에서 payload를
-복사하고, `Runtime/Execution/ZLinkSerialExecutionQueue.cs:257`이 queue 수락 시 이동 기록용
-배열을 만든다. 이동 기록은 **봉인 이후에만** 만든다.
+**D4 — 복사.** `Runtime/Messaging/ZLinkMessageRuntime.cs:82`의 binding 경계 payload 복사는
+유지한다. relocation accepted record는 queue admission 때 만들지 않고 seal 이후에만
+materialize하며, payload는 accepted work item이 소유한다. 따라서 현재 남은 D4는 공개
+binding 경계와 deserialize 경로의 전체 copy audit이다.
 
 ## W5 — 관찰자 (구조 변경 큼)
 
 항목: **A11 · A12**
 
-두 자리가 합치지 않고 버린다.
+두 자리는 `ZLinkObservationQueue`로 합친다. intermediate status는 source별 latest slot에
+두고, terminal status는 별도 bounded FIFO에 보관한다. terminal이 가득 차면 가장 오래된
+terminal만 버리고 observer별 `ZLinkObservationLoss`와 runtime metric을 함께 갱신한다.
 
-| 위치 | 지금 | 문제 |
+| 위치 | 현재 구현 | 확인 |
 |---|---|---|
-| `Runtime/Locations/ZLinkFanoutRuntimeService.cs:302-312` | `DropOldest` | terminal status가 먼저 사라진다 |
-| `Runtime/Channels/ZLinkClientServerRuntimeService.cs:136-151` | `DropWrite` | 최신 `Sequence`가 전달되지 않는다 |
+| `Runtime/Locations/ZLinkFanoutRuntimeService.cs` | latest slot + terminal FIFO + loss envelope | `ZLinkObservationQueue` |
+| `Runtime/Channels/ZLinkClientServerRuntimeService.cs` | latest slot + terminal FIFO + loss envelope | `ZLinkObservationQueue` |
 
 `BoundedChannel`의 full mode로는 조항을 만족할 수 없다. **source별 최신 slot + terminal
 보관 + 관찰자별 유실 누계** 구조를 새로 만들어야 한다.
 
-전달 형태가 `{status, 유실 누계}` 쌍으로 바뀌므로 **exact interface 확정이 선행**이다.
-`spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md`에 유실 field가 없다.
+전달 형태 `{status, 유실 누계}`는 `ZLinkObservedStatus<T>` exact interface에 반영되어 있다.
 
 관찰자마다 status를 복제하지 말고 불변 snapshot 하나를 공유하고 queue에는 참조와 순번만 넣는다.
 
@@ -119,39 +119,48 @@ atomic으로 두고 관측 누계는 cache-line 분리 shard로 나눈다. `Hand
 
 항목: **A1 · D1**
 
-**per-server DEALER 구조는 유지한다**(A1b 판정 완료). 선택 절차만 바꾼다.
+**per-server DEALER 구조는 유지한다**(A1b 판정 완료). 선택 절차와 topology-change plan만
+바꾼다.
 
 | 경로 | 지금 | 할 일 |
 |---|---|---|
-| RouteMesh 채널 | 서로소 step ring (`Runtime/Service/ZLinkManagedMeshNode.cs:6688-6701`, `Runtime/Channels/ZLinkWeightedSelector.cs:16`). 게다가 **local target을 먼저 넣고 peer만 정렬**해 전체가 NodeRid 순서가 아니다 (`:6739-6759`) | 누적값 3단계로 교체 + 전체 후보를 NodeRid로 정렬 |
-| ClientServer | 누적값 3단계는 맞다 (`Runtime/Channels/ZLinkClientServerClientRuntime.cs:430-451`). 그러나 `OrderByDescending(SelectionCurrent).First()`라 **동점이면 열거 순서가 결정한다** | Server RID 오름차순을 두 번째 키로 추가 |
+| RouteMesh 채널 | 전체 후보를 NodeRid로 정렬하고 smooth weighted selection plan을 topology 변경 때 만든다 | send 경로는 plan cursor만 진행 |
+| ClientServer | smooth weighted selection plan과 Server RID tiebreak를 사용한다 | connection revision 변경 때 plan 갱신 |
 
-.NET은 갭이 둘(절차·정렬)인 RouteMesh가 ClientServer보다 무겁다.
+.NET은 RouteMesh와 ClientServer 모두 selection plan으로 전환했으며, 현재 selector 구현
+갭은 focused unit evidence 기준으로 남아 있지 않다.
 
 ## W6 — 수신 공정성
 
 항목: **A9**
 
-채널 loop은 subscriber별로 한 record씩 처리해 **충족**이다
-(`Runtime/Channels/ZLinkChannelReceiveLoop.cs:227-251`).
+채널 loop은 bounded inbound reservation과 application dispatch queue를 사용하고, RouteMesh
+mesh pump는 ready-owner claim·count/byte/time batch·rotation을 사용한다. STREAM은 peer별
+receive state를 정렬한 뒤 cursor로 회전하며 multipart 경계와 HWM reservation을 유지한다.
+Entry Spot actor lifecycle drain도 같은 batch 상한을 사용한다.
 
-다만 조항 범위가 RouteMesh·ClientServer·service·STREAM까지 넓어졌으므로 채널 loop 판정으로
-전체를 증명할 수 없다. **부분 확인 상태이며 나머지 경로 감사가 필요하다.**
+다만 조항 범위가 topology와 binding까지 넓으므로 코드 반영만으로 전체를 증명할 수 없다.
+언어×topology process matrix는 별도 검증 조건으로 남긴다.
 
 ## W4 — 유휴 정리 (신규 기능)
 
 항목: **A3**
 
-`Contracts/Spots/ZLinkSpot.cs:92-97`에 `IdleEvicted`를 추가하는 것은 시작일 뿐이다.
-Location Store CAS·admission seal·timer 구조가 함께 필요하다.
+`ZLinkSpotNodeCatalog`가 `InstanceSpotIdleTimeout`을 사용해 후보를 검사하고,
+`JoinedActorCount`·relocation 참여·pending application work를 제외한다. 후보는 serial
+quiescence 뒤 `IdleEvicted` callback을 호출하고 local activation을 dispose한 뒤 location
+record를 release한다. 새 call과의 경쟁은 `_closing` transaction과 serial barrier가 조정한다.
+instance Spot process 증거와 cold activation/ordinary message matrix는 별도 검증으로 남긴다.
 
 ## W3 — relay 통지
 
 항목: **A2 · D5**
 
-`Runtime/Spots/ZLinkActorMessageFollower.cs:647-705`가 follow 제출 성공 후 회계만 정리하고
-반환한다. client 캐시는 `TargetNotFound`·stale 오류에만 반응한다
-(`Runtime/Actors/ZLinkActorClient.cs:77,137`). wire command 확정 전에는 시작할 수 없다.
+`ZLinkServiceWireCodec`에 command 50 `messageFollow` version/body/fence 검증을 추가하고,
+Actor·Spot relay 성공 뒤 source node로 한 번만 통지한다. `ZLinkManagedMeshNode`는 inbound
+peer와 source/target generation을 확인한 뒤 `ZLinkStoreLocationResolvers`의 조건부 cache
+invalidation을 호출한다. Actor marker는 lease 수명에, Spot marker는 follow 수명에 둔다.
+현재 남은 조건은 cross-language mixed-process relay와 one-way/request matrix다.
 
 ## C부 구조 부채
 
@@ -164,7 +173,7 @@ application이 관찰할 수 없으므로 우선순위가 가장 낮다.
 
 ## 검증
 
-W1은 [2. 직렬 실행](../../framework/common/internals/02-serialization.ko.md), W5는
+W1은 [2. Spot·Actor 실행 직렬화](../../framework/common/internals/02-serialization.ko.md), W5는
 [10. Liveness와 상태 공개](../../framework/common/internals/10-liveness-and-state.ko.md)의
 "확인할 결과"를 쓴다. W5는 **느린 관찰자를 인위적으로 만들어 두고** message 처리 속도가
 유지되는지, terminal이 보존되는지, 유실 수가 관찰자마다 따로 세어지는지를 함께 본다.

@@ -30,57 +30,46 @@ process**이며, 한 host가 두 역할을 모두 하더라도 그림의 두 자
 동작한다.
 
 ```mermaid
-flowchart TB
-    subgraph SEND["보내는 node의 process"]
-        direction TB
-        SEL["대상 선택기<br/>「6」"]
-        RC["위치 캐시<br/>「6」"]
-        SEL --- RC
+flowchart LR
+    subgraph SEND["sender process"]
+        SEL["selector · route cache<br/>「6」"]
     end
 
-    subgraph WIRE["두 process 사이"]
+    subgraph WIRE["between processes"]
         direction TB
-        TR["peer 연결 · liveness<br/>「10」"]
+        TR["peer connection · liveness<br/>「10」"]
         REC["service wire record<br/>「wire」"]
     end
 
-    subgraph RECVSIDE["받는 node의 process — 이 객체의 owner"]
+    subgraph OWNER["owner process"]
         direction TB
-        RL["수신 루프<br/>「7」"]
-        AD["확인 · 넣기 구간<br/>「7」"]
-        RS["준비된 owner 집합<br/>「7」"]
-        GATE["실행 권한<br/>「2」 「3」"]
+        RL["receive loop<br/>「7」"]
+        AD["admission<br/>「7」"]
+        GATE["execution gate<br/>「2」「3」"]
         H["application handler"]
-        FIN["완료 확정<br/>「4」"]
+        FIN["completion<br/>「4」"]
     end
 
-    subgraph STATE["받는 node가 들고 있는 상태"]
+    subgraph STATE["owner process state"]
         direction TB
-        OBJ["Spot · Actor 객체<br/>생성 · 정리 · 회계 「8」"]
+        OBJ["Spot · Actor<br/>「8」"]
         SB["session binding<br/>「9」"]
-        MV["이동 · Message Follow<br/>「5」"]
+        MV["relocation · Message Follow<br/>「5」"]
     end
 
-    COD["codec · payload 소유권<br/>「11」"]
+    COD["codec · payload ownership<br/>「11」"]
     LS[("Location Store")]
-    OBS["상태 게시 · metric<br/>「10」"]
+    OBS["status · metric<br/>「10」"]
 
-    SEL --> TR --> REC --> RL
-    RL --> AD --> RS --> GATE --> H --> FIN
+    SEL --> TR --> REC --> RL --> AD --> GATE --> H --> FIN
     FIN -. "응답" .-> TR
-
-    SEL -. "직렬화" .-> COD
-    RL -. "소유권 이전" .-> COD
-    COD -. "역직렬화" .-> H
-
     SEL -. "조회" .-> LS
-    RC -. "무효화" .-> SEL
     AD -. "owner 확인" .-> OBJ
-    GATE -. "직렬 대상" .-> OBJ
-    OBJ -. "owner 기록" .-> LS
     OBJ --- SB
     OBJ --- MV
-    MV -. "relay 통지" .-> RC
+    MV -. "cache 무효화" .-> SEL
+    SEL -. "직렬화" .-> COD
+    COD -. "역직렬화" .-> H
     GATE -. "점유하지 않는다" .-> OBS
 ```
 
@@ -94,9 +83,9 @@ process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 pro
 
 점선 둘은 장을 따로 읽으면 놓치기 쉬운 연결이라 특히 표시했다.
 
-- `실행 권한 → 상태 게시`의 **"점유하지 않는다"** — 관측이 실행 권한을 비켜 가야 한다는
+- `execution gate → status · metric`의 **"점유하지 않는다"** — 관측이 실행 권한을 비켜 가야 한다는
   [10](10-liveness-and-state.ko.md)의 결정이다. 관측을 켰다는 이유로 처리가 느려지면 안 된다.
-- `이동 → 위치 캐시`의 **relay 통지** — [5](05-relocation-continuity.ko.md)와
+- `relocation → selector`의 **"cache 무효화"** — [5](05-relocation-continuity.ko.md)와
   [6](06-routing-and-cache.ko.md)이 만나는 지점이다. 이 선이 없으면 이동 뒤 캐시 수명이
   끝날 때까지 모든 트래픽이 우회한다.
 
@@ -105,11 +94,11 @@ process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 pro
 | 문서 | 다루는 결정 |
 |---|---|
 | [1. 계층 경계와 식별자](01-layering.ko.md) | binding 경계를 어디에 긋는가. 어떤 값을 합치면 안 되는가 |
-| [2. 직렬 실행](02-serialization.ko.md) | 줄 서는 곳과 실행 권한을 왜 나누는가. 실행 자원이 Spot 수에 비례하면 왜 안 되는가 |
-| [3. 진행 보장](03-progress-isolation.ko.md) | handler가 멈춰 있어도 무엇이 진행해야 하는가. 왜 예약 구획이 아니라 영역 분리인가 |
-| [4. 완료](04-completion.ko.md) | 여러 경로가 동시에 끝내려 할 때 하나만 이기게 만드는 법. 응답을 잃지 않는 법 |
+| [2. Spot·Actor 실행 직렬화](02-serialization.ko.md) | 줄 서는 곳과 실행 권한을 왜 나누는가. 실행 자원이 Spot 수에 비례하면 왜 안 되는가 |
+| [3. application과 infrastructure 실행 분리](03-progress-isolation.ko.md) | handler가 멈춰 있어도 무엇이 진행해야 하는가. 왜 예약 구획이 아니라 영역 분리인가 |
+| [4. operation 완료 확정](04-completion.ko.md) | 여러 경로가 동시에 끝내려 할 때 하나만 이기게 만드는 법. 응답을 잃지 않는 법 |
 | [5. 이동 중 message 연속성](05-relocation-continuity.ko.md) | 객체가 옮겨 가는 동안 message는 어디로 가는가 |
-| [6. 대상 선택과 위치 캐시](06-routing-and-cache.ko.md) | 위치 조회를 얼마나 자주 하는가. 이동 뒤 캐시가 안 죽으면 무엇이 느려지는가 |
+| [6. target 선택과 route cache](06-routing-and-cache.ko.md) | 위치 조회를 얼마나 자주 하는가. 이동 뒤 캐시가 안 죽으면 무엇이 느려지는가 |
 | [7. 수신과 dispatch 루프](07-dispatch-loop.ko.md) | message마다 깨울 것인가 모아서 처리할 것인가. 무엇으로 깨우는가 |
 | [8. 객체 종류와 활성화](08-object-lifecycle.ko.md) | 세 Spot 종류를 어떻게 구분하는가. 없는 객체를 언제 만드는가 |
 | [9. Session과 Actor 연결](09-session-binding.ko.md) | 연결을 교체하는 동안 두 곳이 같은 Actor를 가리키지 않게 하는 법 |
@@ -127,7 +116,7 @@ process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 pro
 
 | 주제 | 정본 |
 |---|---|
-| 대기열 포화 시 결과 | [2. 직렬 실행 「2. 실행 권한을 만들 때의 함정」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정)의 계열×위치 표 |
+| 대기열 포화 시 결과 | [2. Spot·Actor 실행 직렬화 「2. 실행 권한을 만들 때의 함정」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정)의 계열×위치 표 |
 | owner 점유 상한과 lifecycle 연속 실행 상한 | [Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue) |
 | 대상 선택 절차와 tiebreak | [Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md#선택-순서) |
 | 관찰자 합치기와 유실 | [Runtime 상태와 운영 진단](../spec/24-runtime-monitoring.ko.md) |

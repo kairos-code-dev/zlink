@@ -330,4 +330,4 @@ message를 처리한 뒤다.
 
 ---
 
-[내부 구조 목차](README.ko.md) · [다음: 2. 직렬 실행](02-serialization.ko.md)
+[내부 구조 목차](README.ko.md) · [다음: 2. Spot·Actor 실행 직렬화](02-serialization.ko.md)

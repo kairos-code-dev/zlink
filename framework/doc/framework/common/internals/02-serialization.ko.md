@@ -1,4 +1,4 @@
-# 2. 직렬 실행 — queue와 gate를 나눈다
+# 2. Spot·Actor 실행 직렬화 — queue와 execution gate를 나눈다
 
 [내부 구조 목차](README.ko.md)
 
@@ -316,4 +316,4 @@ sequenceDiagram
 
 ---
 
-[내부 구조 목차](README.ko.md) · [이전: 1. 계층 경계와 식별자](01-layering.ko.md) · [다음: 3. 진행 보장](03-progress-isolation.ko.md)
+[내부 구조 목차](README.ko.md) · [이전: 1. 계층 경계와 식별자](01-layering.ko.md) · [다음: 3. application과 infrastructure 실행 분리](03-progress-isolation.ko.md)

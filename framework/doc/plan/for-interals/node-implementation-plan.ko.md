@@ -17,7 +17,7 @@ W1이 가장 크고, 다른 묶음의 선행 조건이기도 하다.
 **event loop가 하나다.** 두 실행 영역을 물리적으로 분리할 수 없다. 계약이 이 제약에 맞춰
 정의되어 있다 — 보장하는 것은 "application handler가 `await`로 양보한 뒤에는 infrastructure가
 진행한다"까지이고, 양보 없이 CPU를 붙잡는 동안은 보장하지 않는다
-([3. 진행 보장](../../framework/common/internals/03-progress-isolation.ko.md)).
+([3. application과 infrastructure 실행 분리](../../framework/common/internals/03-progress-isolation.ko.md)).
 
 **owner 점유 상한 구현에 macrotask 경계가 필요하다.** 이미 완료된 promise가 계속 이어지면
 microtask만 돌아 timer와 I/O가 진행하지 못한다. 상한에 도달하면 `setImmediate` 같은

@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "Node / TypeScript 바인딩 구현 청사진"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: Java](../java/README.ko.md) | [다음: Python](../python/README.ko.md)
+<!-- bindings-nav:end -->
 
 # Node / TypeScript 바인딩 구현 청사진
+
+> **이 장이 정의하는 것** — Node/TypeScript 라이브러리가 가져야 할
+> `contracts`/`runtime` 형태와 패키지 export 경계.
 
 이 문서는 Node/TypeScript 라이브러리가 가져야 할 형태를 정의한다. 모든 클래스나
 타입 멤버를 빠짐없이 나열하는 문서는 아니다. 구체적인 공개 계약은
@@ -45,6 +52,29 @@ camelCase 메서드, PascalCase 공개 타입, TypeScript에 어울리는 곳에
 표기가 더 명확할 때 C# 인터페이스 접두사, namespace 케이싱, 파일 이름을 그대로
 복사하지 않는다.
 
+| 절 | 다루는 내용 |
+|---|---|
+| [공개 계약 소스](#공개-계약-소스) | export projection, 계약 소스 위치, 패키지 경계 |
+| [저장소 레이아웃](#저장소-레이아웃) | 정렬된 디렉터리 트리와 소문자 폴더 규칙 |
+| [API 변경 절차](#api-변경-절차) | 신규 매핑·리팩터 절차, 제거해야 할 단축 경로 |
+| [라이브러리 형태](#라이브러리-형태) | 인터페이스 우선 정의가 필요한 리소스·역할 목록 |
+| [Contract / Runtime 배치 규칙](#contract--runtime-배치-규칙) | 공개 선언과 런타임 구현의 경계 |
+| [계약 카테고리 맵](#계약-카테고리-맵) | 카테고리 → 폴더 매핑 |
+| [계약 파일 레이아웃](#계약-파일-레이아웃) | `contracts/` 하위 카테고리별 파일 |
+| [런타임 파일 레이아웃](#런타임-파일-레이아웃) | `runtime/` 하위 카테고리별 파일과 정렬 실패 예시 |
+| [생성 엔트리 포인트](#생성-엔트리-포인트) | 패키지 루트 팩토리 함수 목록 |
+| [함수 이름 규칙](#함수-이름-규칙) | camelCase, 정식 액션 이름, handler 등록 규칙 |
+| [정식 인터페이스 규칙](#정식-인터페이스-규칙) | recv 시그니처, builder, `publishAsync` 등 예외 규칙 |
+| [공개 엔트리 형태](#공개-엔트리-형태) | 패키지 entrypoint의 도메인별 그룹화 |
+| [64-bit byte HWM과 monitoring 계약](#64-bit-byte-hwm과-monitoring-계약) | `bigint` HWM 표현과 monitor snapshot field |
+| [필수 기능 범위](#필수-기능-범위) | 정렬 시 보장해야 할 사용자 대면 기능 |
+| [Spot Get-Or-Create](#spot-get-or-create) | `getOrCreateSpot` 계약 |
+| [Receive와 Subscribe 형태](#receive와-subscribe-형태) | 호출자 제공 저장소와 no-data 구분 |
+| [에러와 검증 정책](#에러와-검증-정책) | 검증 시점과 에러 구조화 |
+| [성능 정책](#성능-정책) | hot path 제약 |
+| [구현 체크리스트](#구현-체크리스트) | 정렬 선언 전 확인 항목과 필수 검증 명령 |
+| [Actor 및 Spot Route 결과](#actor-및-spot-route-결과) | route 결과 타입과 Actor 대상 send/request |
+
 ## 공개 계약 소스
 
 - 공개 계약 projection: `bindings/node/src/index.ts`, 생성되는 `.d.ts`,
@@ -77,18 +107,14 @@ Node/TypeScript 바인딩을 변경할 때 다음 경로를 일관되게 사용�
 - 샘플: `bindings/node/samples/`.
 - Perf: `bindings/node/perf/`.
 
-`package.json` exports와 생성되는 `.d.ts` 파일은 공개 entrypoint와 일치해야
-한다. deep 소스 import를 공개 API로 문서화하거나 테스트하지 않는다.
-`index.ts`, 발행된 `.d.ts` 파일, `package.json` exports가 계약의 TypeScript
-패키지 projection이다. `package.json` exports에 의도적으로 나열되지 않는 한 deep
-소스 경로를 공개 API로 노출하지 않는다.
-다음 트리가 정렬된 구현 구조다. 소스 디렉터리 이름은 소문자를 사용한다.
-`src/zlink/Contracts`나 `src/zlink/Runtime`을 만들지 않는다. 이런 이름은 공개
-deep-import 표면으로 오인될 수 있다. `src/zlink/contracts`는 공개 TypeScript
-타입, 클래스, 빌더, enum, 에러, 팩토리 반환 계약을 소유한다. 패키지 entrypoint나
-런타임 팩토리 모듈이 팩토리 구현을 소유한다. `src/zlink/runtime`은 네이티브 기반
-런타임 구현, 네이티브 addon 호출, 핸들 owner, 콜백 트램펄린, 요청 progress 헬퍼,
-마샬링, 플랫폼 로딩을 소유한다.
+- `package.json` exports와 생성되는 `.d.ts` 파일은 공개 entrypoint와 일치해야 한다. deep 소스 import를 공개 API로 문서화하거나 테스트하지 않는다.
+- `index.ts`, 발행된 `.d.ts` 파일, `package.json` exports가 계약의 TypeScript 패키지 projection이다.
+- `package.json` exports에 의도적으로 나열되지 않는 한 deep 소스 경로를 공개 API로 노출하지 않는다.
+- 소스 디렉터리 이름은 소문자를 사용한다. `src/zlink/Contracts`나 `src/zlink/Runtime`을 만들지 않는다. 이런 이름은 공개 deep-import 표면으로 오인될 수 있다.
+- `src/zlink/contracts`는 공개 TypeScript 타입, 클래스, 빌더, enum, 에러, 팩토리 반환 계약을 소유한다. 패키지 entrypoint나 런타임 팩토리 모듈이 팩토리 구현을 소유한다.
+- `src/zlink/runtime`은 네이티브 기반 런타임 구현, 네이티브 addon 호출, 핸들 owner, 콜백 트램펄린, 요청 progress 헬퍼, 마샬링, 플랫폼 로딩을 소유한다.
+
+다음 트리가 정렬된 구현 구조다.
 
 파일 단위는 `../README.md`의 공통 정책을 따른다. 독립적인 공개 개념이나 긴밀한
 operation/모델 그룹마다 파일 하나를 유지한다. 매우 작은 타입 alias, 콜백 타입,
@@ -422,7 +448,7 @@ operation을 따라 짓는다. `router_socket.ts`, `spot_node.ts`, `poller.ts`,
 
 다음 형태들은 명시적인 정렬 실패다.
 
-  `SpotNode`, `Spot`, `Actor` 구현을 한 파일에 담은 경우.
+- `runtime/service/service.ts`가 `SpotNode`, `Spot`, `Actor` 구현을 한 파일에 담은 경우.
 - `runtime/eventing/eventing.ts`가 monitor socket, poll events, poller, timer,
   stopwatch, counter 구현을 한 파일에 담은 경우.
 - `runtime/core/context.ts`가 context, context options, 무관한 런타임 헬퍼 구현을
@@ -688,9 +714,7 @@ Node는 Actor와 Spot route 조회 결과를 공개 JavaScript 객체와 일치�
 - SpotNode 스냅샷 엔트리는 core 스냅샷과 동일한 Spot kind/현재 Spot 필드를
   노출한다.
 
-Node는 resolve된 Actor ref를 인자로 받는 `SpotNode.sendToActor(actorRef)`와
-`SpotNode.requestToActor(actorRef)`를 노출한다. send operation은 submit이
-성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
-완료된다. request operation은 submit이 성공하면 요청 part의 소유권을 넘기고,
-Actor handler가 만든 reply part를 전달한다. Node는 제거된 Discovery route
-table이나 resolver API를 compatibility helper로 되살리면 안 된다.
+- Node는 resolve된 Actor ref를 인자로 받는 `SpotNode.sendToActor(actorRef)`와 `SpotNode.requestToActor(actorRef)`를 노출한다.
+- send operation은 submit이 성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면 완료된다.
+- request operation은 submit이 성공하면 요청 part의 소유권을 넘기고, Actor handler가 만든 reply part를 전달한다.
+- Node는 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면 안 된다.

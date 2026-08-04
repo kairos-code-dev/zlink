@@ -175,7 +175,6 @@ try {
 | `zlink_socket_monitor_open(...)` | `socket.monitorOpen([...])` |
 | `zlink_poller_new()` | `zlink.createPoller()` |
 | `zlink_timer_new()` | `zlink.createTimer()` |
-| `zlink_spot_node_new(ctx, opts)` | `zlink.createSpotNode(ctx)` |
 
 ---
 
@@ -196,7 +195,6 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 | `Context`·소켓 | 메인 이벤트 루프에서 사용 |
 | 블로킹 `recv()` | 이벤트 루프를 막으므로 짧게 사용하거나 논블로킹 + 폴러 권장 |
 | 비동기 `submit()` | Promise 기반 — 이벤트 루프를 막지 않음 |
-| Worker 스레드 | SpotNode 핸들은 Worker 간 공유 불가 |
 
 ---
 
@@ -213,11 +211,9 @@ console.log(`zlink ${major}.${minor}.${patch}`);
 | `stream_recv_sample.ts` | STREAM 원시 TCP |
 | `stream_packet_callback_sample.ts` | STREAM 패킷 콜백 |
 | `monitor_recv_sample.ts` | 모니터 이벤트 수신 |
-| `spot_recv_sample.ts` | SpotNode/Spot PUB/SUB |
-| `spot_request_sample.ts` | SpotNode 요청 |
-| `actor_single_player_queue_sample.ts` | 액터 조인·이동·메시지 큐 |
-| `actor_room_server_sample.ts` | 방 서버 패턴 |
-| `actor_gateway_relay_sample.ts` | 게이트웨이 릴레이 |
+
+> SPOT·Actor 예제는 core 바인딩이 아니라 framework 샘플이 다룬다 — 아래
+> [더 보기](#더-보기)의 서비스 링크를 본다.
 
 ```bash
 cd bindings/node
@@ -251,7 +247,7 @@ const socket = zlink.createPairSocket(ctx);
 ```bash
 cd bindings/node && npm run build      # 공유 런타임 빌드
 cd ../javascript/samples
-node spot_pubsub_example.js             # 또는 ./run_samples.sh
+node pair_recv_sample.js                # 또는 ./run_samples.sh
 ```
 
 코어 가이드의 언어 탭에는 **JavaScript** 칸이 따로 있어 메시징·서비스 사용법을

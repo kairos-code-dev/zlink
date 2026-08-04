@@ -92,7 +92,7 @@ cache 항목을 지우지 않는 조건까지 구현해야 한다.
 ## 3. 후보 목록을 호출마다 만들지 않는다
 
 이름으로 대상을 고를 때는 후보를 추려야 한다. 제외 조건은 weight가 0인 대상과 종료
-준비 중인 대상이다([Channel 메시징 §115-116](../spec/08-channel-messaging.ko.md)).
+준비 중인 대상이다([Channel 메시징 「3.2 ChannelName select-one」](../spec/08-channel-messaging.ko.md#32-channelname-select-one)).
 
 **결정 — 후보 목록은 변경 시점에 만들어 두고 호출은 읽기만 한다.** peer 상태가 바뀔
 때 새 목록을 만들어 바꿔 끼우고, 호출 경로에서는 필터링과 정렬을 하지 않는다.
@@ -179,9 +179,9 @@ framework 안에서는 닫을 수 없다. Core의 load balancer가 §5의 절차
 절차를 지키면서 호출 비용을 낮추는 방법이다.
 
 정식 spec은 두 가지를 요구한다 — 장기 선택 비율이 weight 비율에 수렴할 것
-([Channel 메시징 §122-123](../spec/08-channel-messaging.ko.md)), 그리고 ClientServer
+([Channel 메시징 「3.2 ChannelName select-one」](../spec/08-channel-messaging.ko.md#32-channelname-select-one)), 그리고 ClientServer
 경로에서 **같은 weight를 가진 대상끼리 순환할 것**
-([ClientServer Channel §242-243](../spec/09-client-server-channel.ko.md)).
+([ClientServer Channel 「5. Weight와 target 선택」](../spec/09-client-server-channel.ko.md#5-weight와-target-선택)).
 
 이 둘을 만족하는 알고리즘은 여럿이고, **만족하면서도 서로 다른 순서를 낸다.** 한 mesh에
 여러 언어로 만든 node가 섞이면 같은 후보 집합에 같은 요청을 보내도 분포 모양이 달라진다.
@@ -329,7 +329,7 @@ flowchart LR
 
 **결정 — 발행은 결과값 없이 완료하며 대상별 결과를 돌려주지 않는다.** 수락하지 못한
 대상을 public 결과로도 monitoring으로도 집계하지 않는다
-([Spot 메시징 §702,708-709](../spec/12-spot-messaging.ko.md)). 완료 시점은 보내는 쪽이
+([Spot 메시징 「4.4 Publish가 시작된 이후의 처리」](../spec/12-spot-messaging.ko.md#44-publish가-시작된-이후의-처리)). 완료 시점은 보내는 쪽이
 자기 자리를 확보한 때다.
 
 이것이 §"일부 대상이 실패해도 되돌리지 않는다"와 짝을 이룬다 — 되돌리지도 않고 알리지도

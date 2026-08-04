@@ -10,7 +10,7 @@
 **결정 — session의 실행 권한과 Actor의 실행 권한은 서로 다른 권한이다.**
 
 session callback을 실행하는 문맥이 Actor handler를 실행하지 않는다
-([Session Actor dispatch §65](../spec/20-session-actor-dispatch.ko.md)).
+([Session Actor dispatch 「3. Inbound dispatch와 reply」](../spec/20-session-actor-dispatch.ko.md#3-inbound-dispatch와-reply)).
 
 나누지 않으면 두 방향으로 문제가 생긴다. 한 client가 보낸 packet 처리가 그 Actor가
 속한 실행 단위인 [Spot](../spec/01-glossary.ko.md#spot) 전체를 잡거나, 반대로 Spot이 바쁠 때
@@ -18,7 +18,7 @@ session callback을 실행하는 문맥이 Actor handler를 실행하지 않는�
 연결 수명 관리와 업무 처리는 빈도도 지연 요구도 다르다.
 
 **결정 — runtime이 쓰는 제어 record는 application queue에 넣지 않는다**
-([Session Actor dispatch §151](../spec/20-session-actor-dispatch.ko.md)). 연결 유지
+([Session Actor dispatch 「4. Session이 Actor route를 보관하는 방법」](../spec/20-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)). 연결 유지
 신호가 업무 message와 같은 줄에 서면, 업무가 밀릴 때 연결이 끊긴 것으로 오판된다.
 
 ## 2. 직렬 실행 원시 타입을 종류마다 새로 만들지 않는다
@@ -56,7 +56,7 @@ interface 없이 공존한다.
 않는다.
 
 **결정 — 이전 연결이 정리를 확인한 뒤에만 새 연결을 확정한다**
-([Session Actor dispatch §159-166](../spec/20-session-actor-dispatch.ko.md)).
+([Session Actor dispatch 「4. Session이 Actor route를 보관하는 방법」](../spec/20-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)).
 
 ```mermaid
 sequenceDiagram
@@ -78,7 +78,7 @@ session 소유자는 기존 경로를 유지한 채 남는다 — 두 경로가 
 되지 않는다.
 
 **결정 — 연결 관계는 값 하나가 아니라 `(연결 식별자, 교체 순번)` 쌍으로 식별한다**
-([Session Actor dispatch §86-87](../spec/20-session-actor-dispatch.ko.md)). 교체 중에
+([Session Actor dispatch 「4. Session이 Actor route를 보관하는 방법」](../spec/20-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)). 교체 중에
 이전 연결로 보낸 응답이 늦게 도착할 수 있고, 순번을 비교해야 그 응답이 지금 연결에
 대한 것인지 판단할 수 있다.
 
@@ -92,7 +92,7 @@ session 소유자는 기존 경로를 유지한 채 남는다 — 두 경로가 
 | Actor가 다른 node로 이동 | **유지한다** | 없다. runtime이 경로만 갱신한다 |
 
 재접속은 새 session을 만들고, 이전 연결의 응답과 갱신은 새 session에 적용하지 않는다
-([장애 대응과 failover 범위 §210-212](../spec/31-failure-failover-policy.ko.md)).
+([장애 대응과 failover 범위 「7. Store 장애」](../spec/31-failure-failover-policy.ko.md#7-store-장애)).
 재접속 시도 자체는 client 라이브러리의 몫이다.
 
 **결정 — 이전 연결 관계를 새 session으로 옮기려 시도하지 않는다.** 네 구현 중 둘은

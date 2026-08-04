@@ -17,9 +17,9 @@ C++·.NET·JVM·Node.js service runtime이 **서로 다른 언어로 구현되�
 
 spec이 이미 정한 내용은 다시 적지 않고 링크만 둔다.
 
-현재 구현이 이 결정과 어긋나는 자리와 아직 검증하지 못한 항목은 저장소의 작업 문서에서
-별도로 관리한다. 그 목록은 이 문서의 설계를 대신하는 정본이 아니라, 각 runtime의 확인
-상태와 다음 검증 조건을 기록하는 임시 문서다.
+현재 구현이 이 결정과 어긋나는 자리와 아직 검증하지 못한 항목은 구현 갭 목록을 포함한
+저장소의 작업 문서에서 별도로 관리한다. 그 목록은 이 문서의 설계를 대신하는 정본이
+아니라, 각 runtime의 확인 상태와 다음 검증 조건을 기록하는 임시 문서다.
 
 ## 부품과 담당 장
 
@@ -127,9 +127,9 @@ process가 각각 조회하고 기록한다. 한 묶음 안에 넣으면 그 pro
 
 | 주제 | 정본 |
 |---|---|
-| 대기열 포화 시 결과 | [2. 직렬 실행 §2](02-serialization.ko.md)의 계열×위치 표 |
-| owner 점유 상한과 lifecycle 연속 실행 상한 | [Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md) |
-| 대상 선택 절차와 tiebreak | [Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md) |
+| 대기열 포화 시 결과 | [2. 직렬 실행 「2. 실행 권한을 만들 때의 함정」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정)의 계열×위치 표 |
+| owner 점유 상한과 lifecycle 연속 실행 상한 | [Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue) |
+| 대상 선택 절차와 tiebreak | [Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md#선택-순서) |
 | 관찰자 합치기와 유실 | [Runtime 상태와 운영 진단](../spec/24-runtime-monitoring.ko.md) |
 | `ObjectGeneration`을 쓰는 자리와 쓰지 않는 자리 | [Spot·Actor routing 「2.5」](../spec/18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가) |
 
@@ -152,11 +152,21 @@ Wire protocol 문서만 이 구분을 적용하지 않는다.
 
 ### 인용 표기
 
-| 표기 | 뜻 |
-|---|---|
-| `[문서 §123]` 또는 `[문서 §123-125]` | 정식 spec 문서의 **줄 번호**. spec이 개정되면 밀릴 수 있다 |
-| `[내부 문서 §5]` | 다른 internals 문서의 **절 번호** |
-| `[문서 「제목」]` | 그 문서의 절 제목 |
+인용은 **절 제목**으로 한다. 링크를 누르면 그 절로 바로 이동한다.
+
+```markdown
+[Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue)
+```
+
+**줄 번호로 인용하지 않는다.** `§123` 형태는 문서 맨 위로만 이동해 독자가 그 자리를 다시
+찾아야 하고, 인용한 문서가 한 줄만 바뀌어도 가리키는 곳이 틀어진다. 절 제목은 그 절이
+사라지거나 이름이 바뀔 때만 깨지며, 그때는 링크 검사에서 드러난다.
+
+anchor는 제목을 소문자로 바꾸고 공백을 `-`로 이은 값이다. 확인은 다음으로 한다.
+
+```bash
+mkdocs build --strict   # doc/site에서 실행
+```
 
 | 확인 방법 | 어떤 항목인가 |
 |---|---|

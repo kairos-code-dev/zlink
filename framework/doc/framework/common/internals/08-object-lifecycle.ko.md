@@ -30,7 +30,7 @@ Spot 종류는 닫힌 값 집합이다 — `Invalid = 0`, `Entry = 1`, `User = 2
 ## 2. Entry Spot이 이동하지 않는다는 뜻
 
 Entry Spot **인스턴스**는 그 Object Server의 lifecycle에 속하므로 이동 대상 목록에
-들어가지 않는다([Spot 모델 §270-275](../spec/11-spot-model.ko.md)).
+들어가지 않는다([Spot 모델 「4.2 Entry Spot의 Actor lifecycle」](../spec/11-spot-model.ko.md#42-entry-spot의-actor-lifecycle)).
 
 여기서 자주 어긋난다 — **Entry Spot에 있던 Actor는 이동한다.** 이동하지 않는 것은 Entry
 Spot 자신이다. 이동 대상을 고를 때 "Entry Spot에 속한 Actor"를 통째로 제외하면 그
@@ -40,7 +40,7 @@ Actor들은 node가 내려갈 때 사라진다.
 
 **일반 message는 없는 객체를 만들지 않는다.** 만들겠다는 의사를 명시한 Spot 전용
 호출만 새로 만들 수 있고, 일반 message와 조회 호출은 이미 준비된 객체만 대상으로 한다
-([Spot·Actor routing §113-119](../spec/18-object-routing.ko.md)).
+([Spot·Actor routing 「2.2 최근 Ready route를 사용하는 조건」](../spec/18-object-routing.ko.md#22-최근-ready-route를-사용하는-조건)).
 
 이 구분이 없으면 오타 하나가 객체를 만든다. 잘못된 ID로 보낸 message가 그 ID의 객체를
 새로 만들어 버리고, 그 객체는 아무도 정리하지 않는다.
@@ -90,7 +90,7 @@ owner 정보는 캐시되므로, 보내는 쪽이 아는 owner가 이미 바뀌�
 **결정 — 걸러내는 기준은 owner 신원과 유효 기간이다. 객체 세대가 아니다.**
 
 [ObjectGeneration](../spec/01-glossary.ko.md#objectgeneration)은 일반 message의 대상
-조건이 **아니다**([Spot·Actor routing §2.5](../spec/18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)).
+조건이 **아니다**([Spot·Actor routing 「2.5 ObjectGeneration을 어디에 쓰고 어디에 쓰지 않는가」](../spec/18-object-routing.ko.md#25-objectgeneration을-어디에-쓰고-어디에-쓰지-않는가)).
 객체 세대까지 일반 message의 조건으로 검사하면, 객체가 다시 만들어진 직후 정상
 message가 전부 거절된다. 객체 세대는 lifecycle 변경과 이동 중계를 걸러낼 때 쓴다.
 
@@ -159,7 +159,7 @@ Instance Spot 한정으로 추가했다([Spot 모델](../spec/11-spot-model.ko.m
 
 **결정 — Framework는 정리할 때 application 상태를 보존하지 않는다.** 유지해야 하는
 상태는 application이 종료 callback에서 직접 저장한다
-([Spot 모델 §6.2](../spec/11-spot-model.ko.md)). Framework가 상태를 대신 저장하려면 무엇을
+([Spot 모델 「6.2 유휴 Instance Spot 정리」](../spec/11-spot-model.ko.md#62-유휴-instance-spot-정리)). Framework가 상태를 대신 저장하려면 무엇을
 저장할지 알아야 하고, 그것은 application의 몫이다.
 
 ## 6. 메모리 회계를 어느 단위로 하는가
@@ -206,14 +206,14 @@ process 단위 회계가 이미 byte로 되어 있다(§6 첫 문단). 같은 �
 구조다([Framework API](../spec/06-framework-api.ko.md)).
 
 초과했을 때의 결과는 **하나가 아니다.** 제출 계열과 대기열 위치에 따라 갈리므로 구현이
-하나로 뭉뚱그리면 안 된다. 표는 [2. 직렬 실행 §2](02-serialization.ko.md)에 있다.
+하나로 뭉뚱그리면 안 된다. 표는 [2. 직렬 실행 「2. 실행 권한을 만들 때의 함정」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정)에 있다.
 
 대기열이 아닌 두 자리는 그 표에 없으며 각각 `CapacityExceeded`다 — **worker scheduler
 대기열**과 **배치 수용량**이다. 뒤의 것은 대기열 포화가 아니라 admission 판정이다.
 
 이동 중 보류 한도만은 건수와 byte를 함께 쓴다(1,024건 / 16 MiB). 정식 spec이 정한
 값이므로 그대로 따른다
-([Host Relocate와 Shutdown §804-805](../spec/28-graceful-drain-handoff.ko.md)).
+([Host Relocate와 Shutdown 「9. 대기 중인 message, timer와 session을 옮긴다」](../spec/28-graceful-drain-handoff.ko.md#9-대기-중인-message-timer와-session을-옮긴다)).
 
 ## 7. 확인할 결과
 

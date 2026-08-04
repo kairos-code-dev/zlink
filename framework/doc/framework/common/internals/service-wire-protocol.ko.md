@@ -206,7 +206,7 @@ lease token은 process 전체가 공유한다.
 Actor와 User Spot manager create와 target-owned Instance activation은 generic reservation으로 final object·owner generation과
 `Creating` row를 만든다. Creation record는 object kind, global key, stable type, target descriptor, capacity delta,
 provider-issued fence와 최대 1 MiB complete request envelope의 content reference·hash를 보존한다. Pending current
-row에 보존된 이 값을 생성 의도 기록이라고 한다. 복구할 때는 이 기록을 훑어 fence 값과 receipt가 그대로 일치하는지 확인한 뒤
+row에 보존된 이 값을 `stored creation intent`, 즉 저장된 생성 의도 기록이라고 한다. 복구할 때는 이 기록을 훑어 fence 값과 receipt가 그대로 일치하는지 확인한 뒤
 복원할 수 있다. 객체를 실제로 만드는 application 코드를
 [Factory](../spec/01-glossary.ko.md#factory)라고 한다. Factory, initialize와 initial
 membership이 끝나면 같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Target-owned Instance cold
@@ -326,7 +326,7 @@ target attempt·reservation을 함께 보존한다. `Committed`부터 `Completed
 각 transition은 expected `StoreVersion` CAS다. Target replacement는 target attempt, target owner lease와 reservation만
 바꾸며 stable identity와 relocation root를 바꾸지 않는다.
 
-User Spot과 member Actor relocation은 0이 아닌 128-bit 묶음 ID를 쓰고, 참여 대상 목록이 그대로 일치해야 한다.
+User Spot과 member Actor relocation은 `non-zero 128-bit aggregate ID`, 즉 0이 아닌 128-bit 묶음 ID를 쓰고, 참여 대상 목록이 그대로 일치해야 한다.
 Participant 총수에는 1,024개 상한을 두지 않는다. Location Store에는 최대 1,024개·
 encoded 1 MiB의 immutable leaf chunk와 필요한 index chunk로 inventory tree를
 저장한다. Target offer는 tree root·전체 count·digest와 Spot·member Actor의 capacity

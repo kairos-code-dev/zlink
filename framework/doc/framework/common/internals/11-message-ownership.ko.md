@@ -88,7 +88,7 @@ typed handler를 제공하는 이상 wire 표현을 그 언어의 객체로 만�
 소유권 이전에는 복사하지 않는 경로를 따로 둔다.
 
 raw byte를 다루는 API는 **transport 검사와 codec extension 구현에만** 쓴다
-([메시지 모델 §18-19](../spec/04-message-model.ko.md)). 업무 handler 인자로 raw payload를
+([메시지 모델 「1. Typed 메시지」](../spec/04-message-model.ko.md#1-typed-메시지)). 업무 handler 인자로 raw payload를
 받게 하는 구현이 있는데, 이는 계약 위반이다.
 
 ## 6. 역직렬화를 언제 하는가
@@ -145,7 +145,7 @@ Node의 공개 계약은 content-type만 받는다
 | 송신 | 보낼 **업무 타입** | JSON codec을 쓴다 |
 | 수신 | envelope에 실린 **content-type** | JSON으로 다시 해석하지 않고 `ProtocolError`로 끝낸다 |
 
-근거는 [Framework API §447-452](../spec/06-framework-api.ko.md)이며, "송신 타입 선택의
+근거는 [Framework API 「8.2 Handler 실행 객체와 dependency 수명」](../spec/06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)이며, "송신 타입 선택의
 기본값과 수신 wire content-type 검증은 서로 다른 경계이므로 같은 fallback 규칙을 적용하지
 않는다"고 명시한다.
 
@@ -190,7 +190,7 @@ Node의 공개 계약은 content-type만 받는다
 송신 캐시에는 한도를 둔다. 무한히 늘어나는 타입을 보내는 application이 있으면 캐시가
 memory를 잠식한다.
 
-[1. 계층 경계와 식별자 §5](01-layering.ko.md)의 "등록 선언은 시작할 때 한 번만 검증한다"가
+[1. 계층 경계와 식별자 「5. 등록 선언은 시작할 때 한 번만 검증한다」](01-layering.ko.md#5-등록-선언은-시작할-때-한-번만-검증한다)의 "등록 선언은 시작할 때 한 번만 검증한다"가
 여기 그대로 적용된다 — 시작 뒤 불변이면 미리 계산해 두고 **잠금 없이** 읽으면 된다. 한
 구현은 실행 중에 조회 결과를 동시 접근을 견디지 못하는 사전에 써 넣는데, 미리 확정해
 두면 그 코드가 없어진다.

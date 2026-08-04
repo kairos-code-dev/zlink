@@ -136,18 +136,18 @@ topology resource를 개별적으로 닫는 호출이 host 종료 절차를 건�
 **결정 — 같은 종류의 요청이 겹치면 먼저 확정된 쪽에 합류하고, 조건이 다르면 거절한다.**
 mode나 대상 버전이 같으면 진행 중인 절차에 합류한다. 다르면 기다리지 않고
 `Blocked/OperationInProgress`로 끝낸다
-([Host Relocate와 Shutdown §325](../spec/28-graceful-drain-handoff.ko.md)). 같은 종류의
+([Host Relocate와 Shutdown 「6. Concurrent 호출과 cancellation」](../spec/28-graceful-drain-handoff.ko.md#6-concurrent-호출과-cancellation)). 같은 종류의
 두 절차가 서로 다른 조건으로 겹쳐 돌면 어느 쪽 결과가 최종인지 정할 수 없다.
 
 **Relocate와 Shutdown이 겹치는 경우는 다르다.** 이때는 거절이 아니라 shutdown이 이기고,
 relocation을 기다리던 쪽이 `Blocked/ShutdownRequested`로 끝난다
-([Host Relocate와 Shutdown §879](../spec/28-graceful-drain-handoff.ko.md)). Shutdown은
+([Host Relocate와 Shutdown 「11. Shutdown과 Relocate의 경쟁」](../spec/28-graceful-drain-handoff.ko.md#11-shutdown과-relocate의-경쟁)). Shutdown은
 어차피 이 host의 모든 것을 정리하므로 relocation을 마칠 이유가 없다.
 
 **결정 — 이전 후 종료는 상태를 바꾸기 전에 host 전체를 한 번에 검사한다**
-([Host Relocate와 Shutdown §231](../spec/28-graceful-drain-handoff.ko.md)). 이 확인 전에
+([Host Relocate와 Shutdown 「4. Target을 선택하기 전에 확인하는 조건」](../spec/28-graceful-drain-handoff.ko.md#4-target을-선택하기-전에-확인하는-조건)). 이 확인 전에
 새 작업을 막으면, 옮기지 못한다는 사실을 알았을 때 그 node는 이유 없이 멈춰 있던 셈이
-된다([5. 이동 중 message 연속성 §1](05-relocation-continuity.ko.md)).
+된다([5. 이동 중 message 연속성 「1. 네 개의 경계」](05-relocation-continuity.ko.md#1-네-개의-경계)).
 
 받을 node가 당장 없다고 바로 거절하지는 않는다. **정해진 시간까지 대상 정보가 퍼지기를
 기다린 뒤** `Blocked/TargetUnavailable`로 끝낸다(`28:288`). 거절 결과는 저장하지 않으므로
@@ -235,7 +235,7 @@ flowchart TB
 
 **4번이 5번보다 앞서는 것이 핵심이다.** 종료 사유를 받는 callback은 그 객체의 소속과
 지역 인스턴스가 아직 유효한 상태에서 실행되어야 한다
-([Host Relocate와 Shutdown §887-899](../spec/28-graceful-drain-handoff.ko.md)). timer와
+([Host Relocate와 Shutdown 「11. Shutdown과 Relocate의 경쟁」](../spec/28-graceful-drain-handoff.ko.md#11-shutdown과-relocate의-경쟁)). timer와
 session을 먼저 멈추면 callback이 쓸 것이 이미 사라진 뒤다.
 
 **결정 — 최종 결과를 게시한 뒤에는 callback·timer·완료·이벤트를 새로 시작하지 않는다.**

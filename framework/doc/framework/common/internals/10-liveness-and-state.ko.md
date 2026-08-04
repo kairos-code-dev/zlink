@@ -11,7 +11,7 @@
 
 정식 spec은 확인 주기 **5초**, peer 판정 기한 **15초**를 고정값으로 정하고, 세 연결
 방식에 같은 기준을 적용한다. 이 값은 builder가 공개하지 않으며 channel·handler·peer마다
-다르게 지정할 수도 없다([Transport liveness §53-57](../spec/29-transport-liveness.ko.md)).
+다르게 지정할 수도 없다([Transport liveness 「2. 고정된 시간과 public API 경계」](../spec/29-transport-liveness.ko.md#2-고정된-시간과-public-api-경계)).
 
 한 구현은 이 판단이 서브시스템마다 흩어져 있고 주기도 제각각이다. 이렇게 되면 같은
 peer가 한쪽에서는 살아 있고 다른 쪽에서는 죽은 것으로 보이는 구간이 생긴다.
@@ -22,7 +22,7 @@ peer가 한쪽에서는 살아 있고 다른 쪽에서는 죽은 것으로 보�
 
 **결정 — 업무 message 수신을 생존 신호로 쓰지 않는다.** 업무 message는 마지막 수신
 시각만 갱신하고 판정 기한을 연장하지 않는다
-([Transport liveness §95,265](../spec/29-transport-liveness.ko.md)).
+([Transport liveness 「3. RouteMesh와 ClientServer」](../spec/29-transport-liveness.ko.md#3-routemesh와-clientserver)).
 
 이유는 방향이 비대칭이기 때문이다. 상대가 나에게 계속 보내고 있어도 **내가 보낸 것이
 상대에게 닿는지는 알 수 없다.** 수신만으로 살아 있다고 판단하면 한쪽 방향만 끊긴
@@ -35,7 +35,7 @@ message 관측에도 포함하지 않는다.
 
 기준값은 같아도 **방법**은 다를 수 있다. 양방향 연결은 확인 요청과 응답을 주고받지만,
 한쪽으로만 흐르는 fanout은 구독자가 응답할 수 없으므로 발신자가 주기적으로 신호를
-보내는 방식을 쓴다([Transport liveness §33-34](../spec/29-transport-liveness.ko.md)).
+보내는 방식을 쓴다([Transport liveness 「1. Application에서 보이는 결과」](../spec/29-transport-liveness.ko.md#1-application에서-보이는-결과)).
 
 STREAM session의 연결 유지 신호는 **목적이 다른 별도 신호**이며, mesh peer 생존 판단을
 대신하지 않는다.
@@ -47,9 +47,9 @@ STREAM session의 연결 유지 신호는 **목적이 다른 별도 신호**이�
 **결정 — peer가 하나도 준비되지 않았다는 이유로 application 호출 수락을 막지 않는다.**
 
 host가 `serving`이어도 특정 channel에 준비된 대상이 없으면 **그 topology만 저하 상태로
-표시한다**([Runtime 상태와 운영 진단 §127-129](../spec/24-runtime-monitoring.ko.md)).
+표시한다**([Runtime 상태와 운영 진단 「2.2 Topology 상태」](../spec/24-runtime-monitoring.ko.md#22-topology-상태)).
 시작 절차는 local 수락 완료를 기다리지 않는다
-([Channel 메시징 §172-173](../spec/08-channel-messaging.ko.md)).
+([Channel 메시징 「선택 순서」](../spec/08-channel-messaging.ko.md#선택-순서)).
 
 | 방식 | 결과 |
 |---|---|
@@ -63,7 +63,7 @@ host가 `serving`이어도 특정 channel에 준비된 대상이 없으면 **그
 
 **결정 — 자기 주소를 알린 뒤에 `serving`을 공개한다.**
 
-순서는 이렇다([MeshNode §252-262](../spec/13-mesh-node.ko.md)).
+순서는 이렇다([MeshNode 「6. 등록과 startup 순서」](../spec/13-mesh-node.ko.md#6-등록과-startup-순서)).
 
 1. 등록 선언을 검증한다.
 2. 수신 endpoint를 bind하고 **실제 주소를 확정한다.**
@@ -86,7 +86,7 @@ flowchart TB
 
 **결정 — 상태 값은 닫힌 집합이다.** `preparing`·`serving`·`relocating`·`relocated`·
 `draining`·`stopped`·`error` 일곱이며, 준비 완료 표시는 `serving`일 때만 참이다
-([Runtime 상태와 운영 진단 §83-98](../spec/24-runtime-monitoring.ko.md)).
+([Runtime 상태와 운영 진단 「2.1 Host 상태」](../spec/24-runtime-monitoring.ko.md#21-host-상태)).
 
 **결정 — 준비 여부를 참·거짓 값 하나로만 관리하지 않는다.** 한 구현은 전역 참·거짓 값
 하나로 관리하는데, 이 방식으로는 위 일곱 상태를 표현할 수 없고 "왜 아직 준비되지
@@ -102,7 +102,7 @@ flowchart TB
 
 **결정 — 자리가 넘쳤다는 이유로 구독을 끊지 않는다.** 합치기로만 따라잡으며, 구독자가
 계속 느려도 stream은 열려 있다. 구독 종료는 application이 취소했을 때뿐이다
-([Runtime 상태와 운영 진단 §270-273](../spec/24-runtime-monitoring.ko.md)).
+([Runtime 상태와 운영 진단 「합치기」](../spec/24-runtime-monitoring.ko.md#합치기)).
 
 **결정 — 종료된 source의 terminal 상태 보관량에도 상한을 둔다.** 상한을 넘기면 가장
 오래된 terminal 상태부터 버리고 그 횟수를 버림 횟수에 반영한다. 무한히 보관하면 느린
@@ -174,7 +174,7 @@ message가 그 비용을 낸다.**
 
 > `off`에서는 현재 level을 확인하는 읽기와 분기 외에 trace 전용 작업을 하지 않는다.
 > ... log provider에서 출력만 막는 구현은 `off` 계약을 만족하지 않는다.
-> — [Message flow tracing §231,241](../spec/26-message-flow-tracing.ko.md)
+> — [Message flow tracing 「4.1 실행 중에 기록 수준 변경」](../spec/26-message-flow-tracing.ko.md#41-실행-중에-기록-수준-변경)
 
 두 번째 문장이 핵심이다. **값을 다 만들어 놓고 출력 단계에서 버리는 구현은 계약 위반이다.**
 비용은 이미 다 치른 뒤이기 때문이다.

@@ -49,7 +49,7 @@ owner가 바뀐다. message는 **더 이상 owner가 아닌 node의 대기열**�
 1. host와 topology가 지금 application 작업을 받는 상태인가
 2. 대상 객체가 이 node에 있고 owner 정보가 유효한가
 3. 이동 봉인·생성 대기·session 연결 대기 중이 아닌가
-4. 대기열에 자리가 있는가([8. 객체 종류와 활성화 §6](08-object-lifecycle.ko.md)의 byte 한도)
+4. 대기열에 자리가 있는가([8. 객체 종류와 활성화 「6. 메모리 회계를 어느 단위로 하는가」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가)의 byte 한도)
 5. 넣고, 비어 있던 대기열이 채워졌으면 §1의 준비 집합에 넣는다
 
 **결정 — 확인에 실패한 message는 대기열에 나타나지 않는다.** 일단 넣었다가 빼는 방식으로
@@ -58,7 +58,7 @@ owner가 바뀐다. message는 **더 이상 owner가 아닌 node의 대기열**�
 
 **언어별 재량.** 이 구간을 잠금으로 만들지 다른 방법으로 만들지는 자유다. 구간이 길면
 그 자체가 병목이 되므로 **확인만 하고 넣는 것까지만** 넣는다 — 역직렬화나 handler 조회
-같은 일은 이 구간 밖에서 한다([11. Payload 소유권과 복사 §6](11-message-ownership.ko.md)).
+같은 일은 이 구간 밖에서 한다([11. Payload 소유권과 복사 「6. 역직렬화를 언제 하는가」](11-message-ownership.ko.md#6-역직렬화를-언제-하는가)).
 
 ## 3. owner를 가져올 때 배타권을 함께 가져온다
 
@@ -83,7 +83,7 @@ owner를 가져오는 비용과 gate를 얻는 비용은 message 하나당 한 �
 끝낼 때마다 예산이 남았는지 보고, 남았으면 다음 건을 처리하고 아니면 남은 일을 집합에
 되돌리고 권한을 놓는다.
 
-건수를 기준으로 삼지 않는다 — [8. 객체 종류와 활성화 §6](08-object-lifecycle.ko.md)과
+건수를 기준으로 삼지 않는다 — [8. 객체 종류와 활성화 「6. 메모리 회계를 어느 단위로 하는가」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가)과
 같은 이유다. 같은 100건이라도 어떤 handler는 1 ms에 끝나고 어떤 handler는 1초를 쓴다.
 건수는 점유 시간을 예측하지 못한다.
 
@@ -226,7 +226,7 @@ Spot마다 timer가 몇 개씩 있으면 timer는 금세 Spot보다 많아진다
 
 주기를 넘겨 늦게 실행될 때 지나간 tick을 어떻게 할지는 **공개 option**이다 — 건너뛰고
 현재 것만, 정해진 개수까지 따라잡기, 다음 예정을 완료 시점 기준으로 다시 계산하기
-([Stage wrapper on Spot §86](../spec/17-stage-wrapper-on-spot.ko.md)). 네 구현이 모두 이
+([Stage wrapper on Spot 「5. Timer」](../spec/17-stage-wrapper-on-spot.ko.md#5-timer)). 네 구현이 모두 이
 셋을 구현했고 이름도 같다.
 
 internals가 이 중 하나를 골라 고정하지 않는다. 특히 **"다음 예약을 처리 완료 뒤에 한다"는
@@ -234,7 +234,7 @@ internals가 이 중 하나를 골라 고정하지 않는다. 특히 **"다음 �
 
 **결정 — 기본 동작은 밀린 tick을 하나로 합치는 것이다.** spec이 "중복 만료를 한 번의
 pending record로 합칠 수 있다"고 허용한다
-([비동기 실행 정책 §271-272](../spec/05-async-execution-policy.ko.md)). 다만 application이
+([비동기 실행 정책 「5. Spot timer」](../spec/05-async-execution-policy.ko.md#5-spot-timer)). 다만 application이
 따라잡기를 골랐다면 **그 option이 정한 개수까지가 상한**이며, internals가 하나로 줄이지
 않는다.
 
@@ -257,7 +257,7 @@ timer가 자기 권한을 얻지 못하면 그 tick은 보관 자리에 남았�
 거치지 않고 상태를 바꾸는 경로가 생긴다.
 
 형식 검사는 handler를 부르기 전에 끝낸다. 형식이 맞지 않는 입력은 handler에 도달하지
-않고, 응답을 기다리는 호출은 `ProtocolError`로([Framework 오류 모델 §72](../spec/32-framework-error-model.ko.md)),
+않고, 응답을 기다리는 호출은 `ProtocolError`로([Framework 오류 모델 「5. `Request` 완료와 실패」](../spec/32-framework-error-model.ko.md#5-request-완료와-실패)),
 기다리지 않는 호출은 기록만 남기고 끝난다.
 
 ## 9. 확인할 결과

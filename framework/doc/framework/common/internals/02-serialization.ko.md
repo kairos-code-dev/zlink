@@ -10,11 +10,11 @@ Application handler에 동기화 코드가 없어도 되는 이유를 만드는 
 정식 spec은 서로 다른 두 가지를 각각 요구한다.
 
 - Actor 앞으로 온 payload는 **실행 모드와 무관하게 항상 그 Actor의 queue에 제출한다**
-  ([Actor 모델 §76-79](../spec/14-actor-model.ko.md)).
+  ([Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue)).
 - `SpotWide`에서는 Actor 여럿을 담는 실행 단위인 그 [Spot](../spec/01-glossary.ko.md#spot)의
   Actor handler·Spot handler·timer·lifecycle callback이
   **전체에서 한 번에 하나만** 실행된다
-  ([Actor 모델 §84-86](../spec/14-actor-model.ko.md)).
+  ([Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue)).
 
 두 문장은 각각 다른 절에 있고, 함께 읽어야 하나의 구조가 나온다. **줄 서는 곳(queue)은
 Actor마다 두고, 실행 권한(gate)은 Spot이 공유한다.**
@@ -57,7 +57,7 @@ flowchart TB
 ### PerActor에서 timer를 Spot 줄에 넣지 않는다
 
 `PerActor`는 Actor별·Spot별로 나누는 것으로 끝이 아니라 **timer마다도 따로**다
-([Stage wrapper on Spot §157](../spec/17-stage-wrapper-on-spot.ko.md)). timer 두 개를
+([Stage wrapper on Spot 「9. 구현 및 contract test 검증 요구」](../spec/17-stage-wrapper-on-spot.ko.md#9-구현-및-contract-test-검증-요구)). timer 두 개를
 Spot 줄에 함께 넣으면 서로 다른 timer가 서로를 기다린다.
 
 ## 2. 실행 권한을 만들 때의 함정
@@ -86,7 +86,7 @@ thread 고정을 전제로 thread-local에 문맥을 넣어 두었다면, 옮긴
 
 **결과를 정하는 축은 셋이다** — 제출 계열, 대기열이 어느 runtime에 있는가, 그리고
 호출의 public 결과가 이미 확정됐는가. 정본은
-[Spot 메시징 §5.3](../spec/12-spot-messaging.ko.md)이며 요지는 다음과 같다.
+[Spot 메시징 「5.3 Spot application queue에 들어가는 작업」](../spec/12-spot-messaging.ko.md#53-spot-application-queue에-들어가는-작업)이며 요지는 다음과 같다.
 
 | 계열 | 대기열 위치 | 결과 |
 |---|---|---|
@@ -124,7 +124,7 @@ Request는 받을 수 있으므로 기다리지 않고, send 계열은 받을 �
 | lifecycle lane | join·leave·relocation·lifecycle control | application lane과 **공유하지 않는** 별도 한도 |
 
 turn 경계에서 어느 lane을 실행할지 하나의 원자적 판단으로 정한다. 둘 다 ready이면
-lifecycle lane이 먼저다([Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md)).
+lifecycle lane이 먼저다([Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue)).
 
 **우선순위만으로는 굶주림을 막지 못한다.** 여기에는 서로 다른 두 상한이 관여한다.
 
@@ -138,7 +138,7 @@ ready이면 같은 우선순위 규칙이 lifecycle을 다시 고른다. 그래�
 lifecycle lane 연속 선택이 상한에 도달하면 그 owner에 부채를 표시하고, 부채가 있는 동안에는
 application lane이 ready인 한 application turn을 한 번 실행할 때까지 lifecycle을 고르지
 않는다. 실행하면 부채를 지운다. 경계 조건은
-[Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md)이 정의한다.
+[Actor 모델 「3. Actor queue」](../spec/14-actor-model.ko.md#3-actor-queue)이 정의한다.
 
 이 규칙으로 lifecycle 작업이 끊임없이 도착해도 **handler 경계에서 application turn이
 결국 선택된다.** "몇 ms 안에"는 아직 보장하지 않는다 — 점유 상한의 값이 정해져 있지 않고,
@@ -176,7 +176,7 @@ application lane이 ready인 한 application turn을 한 번 실행할 때까지
 **결정 — 재진입을 허용하지 않는다.** 이것은 선택이 아니라 spec 규정이다 — 같은 gate가
 필요한 요청을 기다리거나 자신에게 보낸 요청을 기다리는 호출은 **제출 전에
 `InvalidOperation`으로 거부한다**
-([Stage wrapper on Spot §100](../spec/17-stage-wrapper-on-spot.ko.md)).
+([Stage wrapper on Spot 「5. Timer」](../spec/17-stage-wrapper-on-spot.ko.md#5-timer)).
 
 **금지 대상은 public operation이다.** 무엇이 금지인지 정확히 나누면 이렇다.
 
@@ -247,7 +247,7 @@ handler가 원격 응답을 기다리는 동안 실행 권한을 계속 쥐면, 
 시간만큼 막힌다. 그래서 반납하고 기다리는 방법이 있다.
 
 **반납한 뒤 재개할 때는 새 작업으로 재개한다.** 하나의 작업이 대기 구간을 가로질러
-유지되지 않는다([비동기 실행 정책 §27](../spec/05-async-execution-policy.ko.md)).
+유지되지 않는다([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.ko.md#11-submit-async와-yield)).
 
 ```mermaid
 sequenceDiagram
@@ -268,8 +268,8 @@ sequenceDiagram
 정상 경로만 그렸다. 재개를 기다리는 중 Spot이 종료되거나 **그 단위가 이동을 위해 봉인되면**
 재개하지 않고 실패로 끝난다. 이동이 *시작*되는 것만으로는 멈추지 않는다 — 봉인 전까지는
 기존 message와 timer를 계속 처리한다
-([Stage wrapper on Spot §104](../spec/17-stage-wrapper-on-spot.ko.md),
-[Host Relocate와 Shutdown §930](../spec/28-graceful-drain-handoff.ko.md)).
+([Stage wrapper on Spot 「5. Timer」](../spec/17-stage-wrapper-on-spot.ko.md#5-timer),
+[Host Relocate와 Shutdown 「12. State별 admission」](../spec/28-graceful-drain-handoff.ko.md#12-state별-admission)).
 
 ### 여기서 나오는 설계 제약
 
@@ -285,7 +285,7 @@ sequenceDiagram
 
 반납은 `SpotWide` User Spot과 Instance Spot에서만 쓸 수 있다. 그 밖의 자리에서 호출하면
 **원격 요청을 보내기 전에, queue를 바꾸기 전에** 실패로 끝낸다
-([비동기 실행 정책 §35-36](../spec/05-async-execution-policy.ko.md)). 요청이 나간 뒤에
+([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.ko.md#11-submit-async와-yield)). 요청이 나간 뒤에
 실패하면 원격에 부작용만 남기고 caller는 실패를 받는다.
 
 ## 7. 확인할 결과

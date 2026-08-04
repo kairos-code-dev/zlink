@@ -17,7 +17,7 @@ runtime의 작업은 성격이 다른 두 무리로 나뉜다.
 
 정식 spec의 요구는 "독립적으로 진행한다"보다 강하다 — infrastructure 작업은
 **application handler가 점유할 수 없는 실행 영역**에서 진행한다
-([Framework API §429-431](../spec/06-framework-api.ko.md)).
+([Framework API 「8.2 Handler 실행 객체와 dependency 수명」](../spec/06-framework-api.ko.md#82-handler-실행-객체와-dependency-수명)).
 
 ```mermaid
 flowchart LR
@@ -49,7 +49,7 @@ application 작업이 실행 중에 대기하면 그 실행 자원은 여전히 
 
 정식 spec이 이 문제를 푸는 방식도 예약이 아니라 분리다 — 처리 대기 byte가 상한에
 도달하면 **새 application 수신만 멈추고**, 응답 수신과 runtime 제어 처리, 송신 준비
-알림은 계속 처리한다([Framework API §112-113](../spec/06-framework-api.ko.md)).
+알림은 계속 처리한다([Framework API 「2.1 수신 payload가 memory를 계속 늘리지 않게 한다」](../spec/06-framework-api.ko.md#21-수신-payload가-memory를-계속-늘리지-않게-한다)).
 
 **결정 — 실행 자리를 미리 떼어 두는 예약 구획을 두지 않는다.** 굶주림은 영역 분리로
 막는다. 이것은 정식 spec이 정하지 않은 부분을 internals가 정한 것이다.
@@ -66,7 +66,7 @@ process 단위 처리 대기 byte 상한(`06:100-113`), 응답 처리용 내부 
 
 구독자에게 보내는 자리는 한도를 두고, 넘치면 **source별 최신 status로 합쳐서** 따라잡는다.
 자리가 가득 찼다는 이유로 stream을 끊지는 않는다
-([Runtime 상태와 운영 진단 §213-231](../spec/24-runtime-monitoring.ko.md)). 반대로
+([Runtime 상태와 운영 진단 「3. 현재 상태 조회와 변화 관찰」](../spec/24-runtime-monitoring.ko.md#3-현재-상태-조회와-변화-관찰)). 반대로
 message 처리를 늦추지도 않는다.
 
 ## 4. 두 영역에 자원을 어떻게 나누는가
@@ -119,11 +119,11 @@ Node는 event loop가 하나이므로 물리적으로 전용 자원을 만들 �
 
 1. 첫 제출이 거절되면 **정해진 시간까지 보낼 공간이 생기기를 기다린다.**
 2. 시간 안에 공간이 생기면 **한 번** 제출한다.
-3. 시간이 먼저 끝나면 `DeadlineExceeded`로 끝낸다([비동기 실행 정책 §73](../spec/05-async-execution-policy.ko.md)).
+3. 시간이 먼저 끝나면 `DeadlineExceeded`로 끝낸다([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.ko.md#13-one-way-submit)).
 
 **Request 계열은 기다리지 않는다.** 같은 runtime의 Spot·Actor 대기열이 가득 차면 즉시
 `CapacityExceeded`, 다른 node의 대기열이면 `Unavailable`로 끝낸다
-([Spot 메시징 §5.3](../spec/12-spot-messaging.ko.md)). Request는 호출자가 결과를 받아
+([Spot 메시징 「5.3 Spot application queue에 들어가는 작업」](../spec/12-spot-messaging.ko.md#53-spot-application-queue에-들어가는-작업)). Request는 호출자가 결과를 받아
 재시도 판단을 할 수 있으므로 기다릴 이유가 없다. 반면 send 계열은 돌려줄 결과가 없어
 호출자가 판단할 수 없으므로 기다린다.
 
@@ -142,7 +142,7 @@ Node는 event loop가 하나이므로 물리적으로 전용 자원을 만들 �
 
 수신 쪽 한도는 방향이 다르다. 처리 대기 byte가 상한에 도달하면 **새 application 수신만
 멈추고**, 응답 수신과 runtime 제어 처리, 송신 준비 알림은 계속 처리한다
-([Framework API §112-113](../spec/06-framework-api.ko.md)). 수신을 통째로 멈추면 그
+([Framework API 「2.1 수신 payload가 memory를 계속 늘리지 않게 한다」](../spec/06-framework-api.ko.md#21-수신-payload가-memory를-계속-늘리지-않게-한다)). 수신을 통째로 멈추면 그
 안에 섞여 있던 응답까지 막혀 교착이 된다.
 
 다만 binding이 complete message 길이를 `Recv` 전에 알려 주지 않는 multiplexed receive path는
@@ -156,12 +156,12 @@ raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있�
 
 **결정 — `R`은 부하에 따라 늘리지 않는다.** HWM은 정확한 차단선이 아니라 **압력이 올라왔다는
 신호**이고, 받기를 멈추는 것이 그 압력을 보내는 쪽까지 되돌리는 유일한 수단이다
-([Framework API §2.1](../spec/06-framework-api.ko.md)). `R`을 connection 수나 대기 message
+([Framework API 「2.1 수신 payload가 memory를 계속 늘리지 않게 한다」](../spec/06-framework-api.ko.md#21-수신-payload가-memory를-계속-늘리지-않게-한다)). `R`을 connection 수나 대기 message
 수에 비례시키면 **세게 밀릴수록 더 많이 삼켜서, 정작 압력이 필요한 순간에 신호가 약해진다.**
 `R`은 configuration으로 정해지는 고정 여유여야 하며, 이 조항이 요구하는 것은 정확한 회계가
 아니라 초과분이 부하와 무관하게 남는 것이다.
 
-`R`은 [7. 수신과 dispatch 루프 §6](07-dispatch-loop.ko.md)의 건수·byte·경과 시간 한도와 다른
+`R`은 [7. 수신과 dispatch 루프 「6. 소켓에서 한 번에 여러 건을 읽는다」](07-dispatch-loop.ko.md#6-소켓에서-한-번에-여러-건을-읽는다)의 건수·byte·경과 시간 한도와 다른
 축이다. 그 셋은 **한 번 깨어났을 때 한 연결에서 얼마나 읽을지**를 정하고, `R`은 **분류를 마치지
 않은 raw receive가 동시에 몇 개나 떠 있을 수 있는지**를 정한다. 같은 값으로 합치지 않는다.
 
@@ -169,7 +169,7 @@ raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있�
 
 **결정 — 처리하지 못하는 작업은 caller가 관찰할 수 있는 결과로 끝낸다.** 무한정 쌓아
 두지도, 조용히 버리지도, 나중에 몰래 다시 제출하지도 않는다
-([비동기 실행 정책 §72-73](../spec/05-async-execution-policy.ko.md)).
+([비동기 실행 정책 「1.3 One-way submit」](../spec/05-async-execution-policy.ko.md#13-one-way-submit)).
 
 한 구현에서 실제로 관찰된 반례가 있다. 응답을 잠시 보관하는 자리가 가득 차면 **응답을
 버리고 정리해 버린다.** 기다리던 caller는 아무 통보도 받지 못하고 timeout이 날 때까지
@@ -185,10 +185,10 @@ raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있�
 | 이동 중 보류 | 건수와 byte 둘 다 | 이동 한 건당 1,024건 / 16 MiB |
 
 한도를 건수가 아니라 byte로 재는 이유는
-[8. 객체 종류와 활성화 §6](08-object-lifecycle.ko.md)이 다룬다.
+[8. 객체 종류와 활성화 「6. 메모리 회계를 어느 단위로 하는가」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가)이 다룬다.
 
 이동 중 보류 한도의 근거는
-[Host Relocate와 Shutdown §804-805](../spec/28-graceful-drain-handoff.ko.md)이며,
+[Host Relocate와 Shutdown 「9. 대기 중인 message, timer와 session을 옮긴다」](../spec/28-graceful-drain-handoff.ko.md#9-대기-중인-message-timer와-session을-옮긴다)이며,
 넘겼을 때의 결과는 [5. 이동 중 연속성](05-relocation-continuity.ko.md)이 다룬다.
 
 ## 7. 이 결정이 만드는 구현 제약

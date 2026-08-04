@@ -68,7 +68,7 @@ SubmitResult 보내기(..., out 호출식별자, ...)
 
 여기서 말하는 값은 **응답 상관 값**이다. operation 자체를 가리키는 식별자와는 다른
 값이며, 완료 표에 등록하는 것은 전자다. 둘을 하나로 다루면 홉을 거칠 때마다 새 상관
-값을 만드는 규칙([Request correlation §47](../spec/27-flow-correlation.ko.md))이 깨진다.
+값을 만드는 규칙([Request correlation 「2. 두 식별자의 역할」](../spec/27-flow-correlation.ko.md#2-두-식별자의-역할))이 깨진다.
 
 ```mermaid
 flowchart LR
@@ -104,14 +104,14 @@ flowchart LR
 - 보관 자리는 **한도를 둔다.**
 - 한도를 넘으면 **관찰 가능한 실패로 끝낸다.** 보관 자리는 source runtime이 소유한
   **한도 있는 자원**이므로 오류 kind는 `CapacityExceeded`다
-  ([Framework 오류 모델 §73](../spec/32-framework-error-model.ko.md)). 한 구현은 여기서
+  ([Framework 오류 모델 「5. `Request` 완료와 실패」](../spec/32-framework-error-model.ko.md#5-request-완료와-실패)). 한 구현은 여기서
   응답을 조용히 버려서, 기다리던 caller가 timeout으로만 알게 된다.
 - 보관 자리와 대기 표 두 곳이 있으므로 **양쪽을 다 관찰한 경로가 전달을 책임진다.**
   이 규칙이 없으면 응답이 두 자리 사이에서 사라진다 — 넣는 쪽은 "표에 없으니 보관하자",
   등록하는 쪽은 "보관 자리에 없으니 기다리자"가 동시에 성립한다.
 
 **이동 중 보류 자리와 혼동하면 안 된다.** 그쪽은 한도를 넘기면 request가 `Unavailable`로
-끝난다([Host Relocate와 Shutdown §804-805](../spec/28-graceful-drain-handoff.ko.md)).
+끝난다([Host Relocate와 Shutdown 「9. 대기 중인 message, timer와 session을 옮긴다」](../spec/28-graceful-drain-handoff.ko.md#9-대기-중인-message-timer와-session을-옮긴다)).
 kind가 다른 이유는 소유자가 다르기 때문이다 — 응답 보관 자리는 **호출을 시작한 runtime**이
 자기 자원으로 갖고 있고, 이동 보류 자리는 **이동 중인 상대 쪽** 사정이다. 호출자가 재시도
 대상을 판단하려면 이 둘이 구분되어야 한다.
@@ -122,7 +122,7 @@ kind가 다른 이유는 소유자가 다르기 때문이다 — 응답 보관 �
 대상으로 다시 보내면 두 번 실행될 수 있다.
 
 **결정 — 수락 이후에는 runtime이 자동으로 다시 보내지 않는다.** 연결이 끊겨도
-마찬가지다([Transport liveness §205-206](../spec/29-transport-liveness.ko.md)).
+마찬가지다([Transport liveness 「5. Ready와 장애 판정」](../spec/29-transport-liveness.ko.md#5-ready와-장애-판정)).
 Application이 새 호출을 시작할 수는 있으며, 그때 중복 실행 위험은 application이
 판단한다.
 
@@ -137,7 +137,7 @@ Application이 새 호출을 시작할 수는 있으며, 그때 중복 실행 �
 
 응답을 기다리지 않는 호출은 **이 process의 송신 경로가 message를 수락한 시점**에
 정상 완료한다. 원격 queue가 받았는지, handler가 실행했는지는 이 결과로 알 수 없다
-([Framework API §673](../spec/06-framework-api.ko.md)).
+([Framework API 「12. Spot, Actor와 STREAM owner」](../spec/06-framework-api.ko.md#12-spot-actor와-stream-owner)).
 
 이 정의는 네 구현이 이미 일치한다. 다만 표현이 갈리기 쉽다 — "로컬 수락"과 "전송
 수락"이 다른 것처럼 읽히지만, 이 제품에서 송신 경로는 곧 socket의 송신 큐이므로 같은

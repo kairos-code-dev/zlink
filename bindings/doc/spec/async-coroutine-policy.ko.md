@@ -20,6 +20,13 @@ bindings 라이브러리는 coroutine을 직접 실행하거나 재개하는 기
 따라서 C++ `co_await` 지원, Rust `async fn submit_async`, Python coroutine 반환
 메서드처럼 coroutine 전용 public API를 bindings 계약에 넣지 않는다.
 
+| 절 | 다루는 내용 |
+|---|---|
+| [공통 원칙](#공통-원칙) | operation 시작점 이름·builder·submit 실패 표현에 대한 공통 규칙 |
+| [Request 완료 방식](#request-완료-방식) | 완료 객체 반환과 callback 기반 submit의 표면 비교 |
+| [언어별 이름과 반환 타입](#언어별-이름과-반환-타입) | 언어별 builder 마지막 실행 메서드와 반환 타입 |
+| [Framework에서 coroutine을 붙이는 방법](#framework에서-coroutine을-붙이는-방법) | 언어별 framework가 완료 경계를 자기 실행 모델로 바꾸는 방법 |
+
 ## 공통 원칙
 
 - bindings public API는 operation 시작점 이름을 하나로 유지한다. `requestAsync`,

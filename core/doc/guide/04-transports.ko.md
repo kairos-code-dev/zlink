@@ -1,10 +1,18 @@
-[English](04-transports.en.md) | [한국어](04-transports.ko.md)
+---
+title: "Transport 가이드"
+---
+
+[English](04-transports.en.md)
 
 <!-- zlink-nav:start -->
-[← 프록시](03-6-proxy.ko.md) | [TLS/보안 →](05-tls-security.ko.md)
+[가이드 목록](README.ko.md) | [이전: 프록시 패턴](03-6-proxy.ko.md) | [다음: TLS와 WSS](05-tls-security.ko.md)
 <!-- zlink-nav:end -->
 
 # Transport 가이드
+
+> **이 장이 답하는 것** — `tcp://`·`inproc://`·`tls://`·`wss://` 등 endpoint 형식과
+> transport별 특성을 비교한다. 각 socket에 적용되는 정확한 조건은 socket 스펙이
+> 소유한다.
 
 ## 1. Transport 종류
 

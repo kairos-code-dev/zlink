@@ -1,6 +1,17 @@
+---
+title: "Socket pattern 선택"
+---
+
 [English](03-0-socket-patterns.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: 개요](01-overview.ko.md) | [다음: Raw messaging 신뢰성](reliability.ko.md)
+<!-- zlink-nav:end -->
+
 # Socket pattern 선택
+
+> **이 장의 계약 소유 문서** — [Core socket 스펙 목차](../spec/core/socket/README.ko.md)가
+> 다룬다. 이 챕터는 통신 요구에 맞는 socket pattern을 고르는 기준을 비교한다.
 
 Message 방향, peer 선택 방식과 framing 요구를 기준으로 pattern을 고른다.
 

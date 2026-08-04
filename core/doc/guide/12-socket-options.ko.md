@@ -1,6 +1,17 @@
+---
+title: "Socket option"
+---
+
 [English](12-socket-options.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Core C API](02-core-api.ko.md) | [다음: ZMP protocol](zmp-protocol.ko.md)
+<!-- zlink-nav:end -->
+
 # Socket option
+
+> **이 장이 답하는 것** — `zlink_set_option()`·`zlink_get_option()`으로 다루는 공통·
+> socket별 option을 정리한다. 정확한 값 범위는 각 socket 스펙이 소유한다.
 
 공통 raw-socket option은 `zlink_set_option()`과 `zlink_get_option()`으로 처리한다. Router,
 dealer, stream, pub, sub option은 각 typed accessor를 사용한다. 지원하지 않는 option은

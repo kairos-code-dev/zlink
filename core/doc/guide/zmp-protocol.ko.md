@@ -1,4 +1,16 @@
+---
+title: "ZMP protocol"
+---
+
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Socket option](12-socket-options.ko.md) | [다음: Core 용어](glossary.ko.md)
+<!-- zlink-nav:end -->
+
 # ZMP protocol
+
+> **이 장이 답하는 것** — socket 사이에서 handshake와 message frame을 교환하는 wire
+> protocol의 개념을 소개한다. 정확한 frame 형식은
+> [ZMP protocol internals](../internals/protocol-zmp.ko.md)가 소유한다.
 
 ZMP는 zlink raw socket 사이에서 handshake와 message frame을 교환하는 wire protocol이다. Application은
 일반적으로 protocol을 직접 구현하지 않고 socket API를 사용한다.

@@ -1,10 +1,17 @@
+---
+title: "zlink 개요"
+---
+
 [English](01-overview.en.md)
 
 <!-- zlink-nav:start -->
-[Core API →](02-core-api.ko.md)
+[가이드 목록](README.ko.md) | [다음: Socket pattern 선택](03-0-socket-patterns.ko.md)
 <!-- zlink-nav:end -->
 
 # zlink 개요
+
+> **이 장의 계약 소유 문서** — [Core 스펙 목차](../spec/core/README.ko.md)가 다룬다. 이
+> 챕터는 runtime 범위와 socket pattern을 개념 중심으로 소개한다.
 
 zlink Core는 raw 메시징 runtime이다. Context, socket pattern, multipart message,
 poller, generic timer, socket monitor, TLS와 network transport를 제공한다. Application

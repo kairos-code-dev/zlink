@@ -1,6 +1,19 @@
-[English](08-routing-id.en.md) | [Message API →](09-message-api.ko.md)
+---
+title: "Routing ID"
+---
+
+[English](08-routing-id.en.md)
+
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Thread safety](11-thread-safety.ko.md) | [다음: PAIR 소켓](03-1-pair.ko.md)
+<!-- zlink-nav:end -->
 
 # Routing ID
+
+> **이 장이 답하는 것** — ROUTER와 STREAM에서 연결된 peer를 식별하는 routing id의
+> 형식과 수명을 설명한다. 정확한 계약은
+> [ROUTER](../spec/core/socket/07-router.ko.md)와
+> [STREAM](../spec/core/socket/08-stream.ko.md) socket 스펙이 소유한다.
 
 Routing id는 routed raw socket에 연결된 peer를 식별한다. Core는 byte sequence와 길이를 가진
 `zlink_routing_id_t`로 이 값을 표현한다.

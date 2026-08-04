@@ -1,6 +1,17 @@
+---
+title: "Thread safety"
+---
+
 [English](11-thread-safety.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Message API와 ownership](09-message-api.ko.md) | [다음: Routing ID](08-routing-id.ko.md)
+<!-- zlink-nav:end -->
+
 # Thread safety
+
+> **이 장이 답하는 것** — 어느 API를 여러 thread에서 동시에 불러도 되고, 어느 API는
+> 호출을 직렬화해야 하는지 정리한다.
 
 Core는 같은 handle에 단계별 concurrency 계약을 적용한다.
 

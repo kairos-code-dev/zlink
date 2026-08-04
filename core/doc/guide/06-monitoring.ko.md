@@ -1,6 +1,17 @@
+---
+title: "Raw socket monitoring"
+---
+
 [English](06-monitoring.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: TLS와 WSS](05-tls-security.ko.md) | [다음: Core 성능](10-performance.ko.md)
+<!-- zlink-nav:end -->
+
 # Raw socket monitoring
+
+> **이 장의 계약 소유 문서** — [Monitoring](../spec/core/07-monitoring.ko.md)이 다룬다.
+> 이 챕터는 연결 상태를 관측하는 방법을 사용법 중심으로 설명한다.
 
 Socket monitor는 data receive 경로를 바꾸지 않고 transport와 protocol event를 제공한다.
 `zlink_socket_monitor_open()`으로 monitor를 열고 한 가지 소비 방식을 선택한다.

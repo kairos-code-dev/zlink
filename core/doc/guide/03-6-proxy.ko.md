@@ -1,10 +1,17 @@
-[English](03-6-proxy.en.md) | [한국어](03-6-proxy.ko.md)
+---
+title: "프록시 패턴"
+---
+
+[English](03-6-proxy.en.md)
 
 <!-- zlink-nav:start -->
-[← STREAM](03-5-stream.ko.md) | [Transport →](04-transports.ko.md)
+[가이드 목록](README.ko.md) | [이전: STREAM](03-5-stream.ko.md) | [다음: Transport 가이드](04-transports.ko.md)
 <!-- zlink-nav:end -->
 
 # 프록시 패턴
+
+> **이 장이 답하는 것** — ROUTER·DEALER·PAIR를 조합해 메시지를 중계하는 proxy를
+> 구성하는 방법을 설명한다. 개별 socket의 계약은 각 socket 스펙이 소유한다.
 
 ## 1. 개요
 

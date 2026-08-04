@@ -1,4 +1,15 @@
+---
+title: "Core 사용 시나리오"
+---
+
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Core 용어](glossary.ko.md)
+<!-- zlink-nav:end -->
+
 # Core 사용 시나리오
+
+> **이 장이 답하는 것** — 흔한 요구 사항을 socket pattern과 핵심 API로 바로 찾을 수
+> 있는 조회표다. 각 pattern의 정확한 계약은 해당 socket 스펙이 소유한다.
 
 | 요구 사항 | Socket pattern | 핵심 API |
 |---|---|---|

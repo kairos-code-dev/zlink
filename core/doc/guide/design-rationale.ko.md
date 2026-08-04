@@ -1,8 +1,15 @@
-[한국어](design-rationale.ko.md)
+---
+title: "설계 근거 — 왜 이렇게 만들었나"
+---
 
-[가이드 목록](README.ko.md) · [개요](01-overview.ko.md)
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Raw messaging 신뢰성](reliability.ko.md) | [다음: Message API와 ownership](09-message-api.ko.md)
+<!-- zlink-nav:end -->
 
 # 설계 근거 — 왜 이렇게 만들었나
+
+> **이 장이 답하는 것** — zlink 핵심 설계 결정의 이유를 사용자 관점에서 설명한다.
+> 구현 상세는 [internals](../internals/architecture.ko.md)가 소유한다.
 
 이 문서는 zlink가 채택한 핵심 설계 결정의 **이유**를 사용자 관점에서 설명한다.
 구현 상세는 [internals](../internals/architecture.ko.md)가 소유하며, 여기서는

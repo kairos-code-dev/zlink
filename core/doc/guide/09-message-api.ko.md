@@ -1,6 +1,17 @@
+---
+title: "Message API와 ownership"
+---
+
 [English](09-message-api.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: 설계 근거](design-rationale.ko.md) | [다음: Thread safety](11-thread-safety.ko.md)
+<!-- zlink-nav:end -->
+
 # Message API와 ownership
+
+> **이 장의 계약 소유 문서** — [Message](../spec/core/02-message.ko.md)가 다룬다. 이
+> 챕터는 message 소유권과 API 사용법을 설명한다.
 
 `zlink_msg_t`는 message part 하나를 소유한다. 사용 전에 초기화하고, ownership이 move되거나 성공한
 send가 소비하지 않았다면 정확히 한 번 close한다.

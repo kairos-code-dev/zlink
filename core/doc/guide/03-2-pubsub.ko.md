@@ -1,10 +1,20 @@
-[English](03-2-pubsub.en.md) | [한국어](03-2-pubsub.ko.md)
+---
+title: "PUB/SUB/XPUB/XSUB 발행-구독"
+---
+
+[English](03-2-pubsub.en.md)
 
 <!-- zlink-nav:start -->
-[← PAIR](03-1-pair.ko.md) | [DEALER →](03-3-dealer.ko.md)
+[가이드 목록](README.ko.md) | [이전: PAIR](03-1-pair.ko.md) | [다음: DEALER](03-3-dealer.ko.md)
 <!-- zlink-nav:end -->
 
 # PUB/SUB/XPUB/XSUB 발행-구독
+
+> **이 장의 계약 소유 문서** — [PUB](../spec/core/socket/02-pub.ko.md) ·
+> [SUB](../spec/core/socket/03-sub.ko.md) ·
+> [XPUB](../spec/core/socket/04-xpub.ko.md) ·
+> [XSUB](../spec/core/socket/05-xsub.ko.md) socket 스펙이 다룬다. 이 챕터는 그
+> 계약을 언어별 예제로 보여준다.
 
 ## 1. 개요
 

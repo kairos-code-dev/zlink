@@ -1,6 +1,17 @@
+---
+title: "TLS와 WSS"
+---
+
 [English](05-tls-security.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Transport 가이드](04-transports.ko.md) | [다음: Raw socket monitoring](06-monitoring.ko.md)
+<!-- zlink-nav:end -->
+
 # TLS와 WSS
+
+> **이 장이 답하는 것** — OpenSSL 기반 `tls://`·`wss://` endpoint를 구성하는 방법을
+> 설명한다.
 
 Core는 OpenSSL을 사용해 암호화된 `tls://`와 `wss://` endpoint를 제공한다. Bind나 connect 전에
 raw socket에 TLS를 설정한다.

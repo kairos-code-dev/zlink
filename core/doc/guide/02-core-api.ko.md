@@ -1,6 +1,17 @@
+---
+title: "Core C API"
+---
+
 [English](02-core-api.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Core 성능](10-performance.ko.md) | [다음: Socket option](12-socket-options.ko.md)
+<!-- zlink-nav:end -->
+
 # Core C API
+
+> **이 장의 계약 소유 문서** — [Core 스펙 목차](../spec/core/README.ko.md)가 다룬다. 이
+> 챕터는 context·socket·eventing API를 사용 순서대로 소개한다.
 
 `<zlink.h>`를 include한다. `zlink_ctx_new()`로 context를 만들고 `zlink_socket()`으로 typed raw
 socket을 만든다. 모든 socket을 닫은 뒤 context를 종료한다.

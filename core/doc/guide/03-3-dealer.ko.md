@@ -1,10 +1,17 @@
-[English](03-3-dealer.en.md) | [한국어](03-3-dealer.ko.md)
+---
+title: "DEALER 소켓"
+---
+
+[English](03-3-dealer.en.md)
 
 <!-- zlink-nav:start -->
-[← PUB/SUB](03-2-pubsub.ko.md) | [ROUTER →](03-4-router.ko.md)
+[가이드 목록](README.ko.md) | [이전: PUB/SUB](03-2-pubsub.ko.md) | [다음: ROUTER](03-4-router.ko.md)
 <!-- zlink-nav:end -->
 
 # DEALER 소켓
+
+> **이 장의 계약 소유 문서** — [DEALER socket 스펙](../spec/core/socket/06-dealer.ko.md)이
+> 다룬다. 이 챕터는 그 계약을 언어별 예제로 보여준다.
 
 ## 1. 개요
 

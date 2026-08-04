@@ -1,4 +1,15 @@
+---
+title: "Raw messaging 신뢰성"
+---
+
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: Socket pattern 선택](03-0-socket-patterns.ko.md) | [다음: 설계 근거](design-rationale.ko.md)
+<!-- zlink-nav:end -->
+
 # Raw messaging 신뢰성
+
+> **이 장이 답하는 것** — Core가 보장하는 전달 규칙과, 보장하지 않아 application이나
+> Framework가 책임져야 하는 것(재시도·중복 제거·durable storage)을 가른다.
 
 Core는 transport와 socket pattern의 전달 규칙을 제공하지만 application-level delivery 보장을 만들지
 않는다. 재시도, deduplication, durable storage와 업무 transaction은 application 또는 Framework가

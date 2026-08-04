@@ -1,6 +1,17 @@
+---
+title: "ROUTER"
+---
+
 [English](03-4-router.en.md)
 
+<!-- zlink-nav:start -->
+[가이드 목록](README.ko.md) | [이전: DEALER](03-3-dealer.ko.md) | [다음: STREAM](03-5-stream.ko.md)
+<!-- zlink-nav:end -->
+
 # ROUTER
+
+> **이 장의 계약 소유 문서** — [ROUTER socket 스펙](../spec/core/socket/07-router.ko.md)이
+> 다룬다. 이 챕터는 그 계약을 언어별 예제로 보여준다.
 
 ROUTER는 수신 메시지와 함께 routing id를 반환하고, 송신할 때 이 값을 사용해 peer를 선택한다.
 하나의 socket이 여러 DEALER 또는 ROUTER peer와 통신할 때 사용한다.

@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "C++ 바인딩 최종 구조"
+---
 
-[스펙 목차](https://kairos-code-dev.github.io/zlink/spec/) · [바인딩 정책](../README.ko.md)
+<!-- bindings-nav:start -->
+[스펙 목록](../README.ko.md) | [이전: .NET](../dotnet/README.ko.md) | [다음: Java](../java/README.ko.md)
+<!-- bindings-nav:end -->
 
 # C++ 바인딩 최종 구조
+
+> **이 장이 정의하는 것** — 바인딩 리팩터링이 끝난 뒤 C++ 라이브러리가 가져야 할
+> `Contracts`/`Runtime` 형태와 필수 의미 범위.
 
 이 문서는 바인딩 리팩터링이 끝난 뒤 C++ 라이브러리가 가져야 할 형태를 정의한다.
 모든 메서드를 빠짐없이 열거하지 않는다. 구체적인 공개 계약은
@@ -18,6 +25,26 @@
 이 바인딩은 공통 바인딩 아키텍처 지도를 C++ 네이밍으로 따른다. `Contracts/`는 설치되는
 공개 헤더를 소유하고, `Runtime/`은 `src/` 아래 비공개 구현을 소유한다. 폴더 이름은 저장소
 구성을 위한 것이지 사용자가 의존해야 하는 네임스페이스 분절이 아니다.
+
+| 절 | 다루는 내용 |
+|---|---|
+| [공개 계약 소스](#공개-계약-소스) | Contracts/Runtime 소스 위치, 언어 기준, 비동기 표면 정책 링크 |
+| [저장소 레이아웃](#저장소-레이아웃) | 정렬된 디렉터리 트리와 파일 세분화 정책 |
+| [.NET 계약 카테고리 투영](#net-계약-카테고리-투영) | .NET 레이아웃을 C++ 네이밍으로 투영하는 방법 |
+| [공개 계약 한눈에 보기](#공개-계약-한눈에-보기) | 영역 → 공개 객체 → 소유 헤더 표, 구체 파사드 예시 |
+| [코어 기능 소유 규칙](#코어-기능-소유-규칙) | 새 기능을 추가할 때 따르는 절차 |
+| [라이브러리 형태](#라이브러리-형태) | RAII, snake_case, Pimpl, 빌더 필수화 규칙 |
+| [계약/런타임 배치 규칙](#계약런타임-배치-규칙) | 공개 선언과 런타임 헬퍼의 경계 |
+| [빌드 및 패키징 정책](#빌드-및-패키징-정책) | `zlink_cpp` 타깃 빌드·링크·설치 규칙 |
+| [계약 폴더 레이아웃](#계약-폴더-레이아웃) | `Contracts/` 하위 카테고리별 소유 범위 |
+| [표준 인터페이스 규칙](#표준-인터페이스-규칙) | recv 시그니처, 빌더, handler 이름 규칙 |
+| [64-bit byte HWM과 monitoring 계약](#64-bit-byte-hwm과-monitoring-계약) | `byte_count_t` 표현과 monitor snapshot field |
+| [기능 범위](#기능-범위) | 완성된 공개 헤더가 다루는 그룹 |
+| [수명과 ownership](#수명과-ownership) | 리소스 클래스 해제·move·수신 저장소 규칙 |
+| [에러와 result 정책](#에러와-result-정책) | 실패 표현과 result 도메인 |
+| [성능 정책](#성능-정책) | hot path·링크 대상 제약 |
+| [완성 구조 요구사항](#완성-구조-요구사항) | 완성 선언 전 확인 항목 |
+| [Actor와 Spot 라우트 결과](#actor와-spot-라우트-결과) | 라우트 결과 타입과 Actor 대상 send/request |
 
 ## 공개 계약 소스
 
@@ -36,20 +63,17 @@
 - 문서의 역할: 이 README는 형태, 경계, 필수 의미 범위를 정의한다. 정확한 멤버 목록은
   `Contracts/`가 소유하며, 설치되는 헤더는 이를 의도적으로 투영한다.
 
-C++는 더 이상 header-only 바인딩으로 모델링하지 않는다. 두 번째
-`bindings/cpp/src/zlink/Contracts/` 트리를 만들지 않는다. 공개 계약은 설치되는 헤더에
-남고, 구현은 `.cpp` 파일과 비공개 런타임 헤더 뒤로 옮긴다. 계약/런타임 분리는 그대로다.
-`Contracts/`는 사용자 표면을 선언하고, `src/Runtime/`은 그 표면을 위한 구현 지원을 담는다.
-Java나 .NET의 인터페이스 중심 레이아웃을 C++에 그대로 복사하지 않는다. C++는 설치되는
-헤더, RAII 클래스, 구체 값, 불투명 구현 상태를 자연스러운 경계로 사용한다.
+- C++는 더 이상 header-only 바인딩으로 모델링하지 않는다.
+- 두 번째 `bindings/cpp/src/zlink/Contracts/` 트리를 만들지 않는다.
+- 공개 계약은 설치되는 헤더에 남고, 구현은 `.cpp` 파일과 비공개 런타임 헤더 뒤로 옮긴다. 계약/런타임 분리는 그대로다.
+- `Contracts/`는 사용자 표면을 선언하고, `src/Runtime/`은 그 표면을 위한 구현 지원을 담는다.
+- Java나 .NET의 인터페이스 중심 레이아웃을 C++에 그대로 복사하지 않는다.
+- C++는 설치되는 헤더, RAII 클래스, 구체 값, 불투명 구현 상태를 자연스러운 경계로 사용한다.
 
-C++20은 bindings 라이브러리의 최소 지원 범위다. bindings 라이브러리는
-`async_result_t<T>` 기반 완료 객체와 callback submit을 제공할 수 있지만, coroutine
-awaiter, framework handler executor, framework dispatcher를 소유하지 않는다. framework
-coroutine은 bindings의 완료 객체나 callback 완료를 framework 실행 경계에서 감싸서
-제공한다.
-언어별 비동기 실행 표면 기준은
-[바인딩 비동기 실행 표면 정책](../async-coroutine-policy.ko.md)을 따른다.
+- C++20은 bindings 라이브러리의 최소 지원 범위다.
+- bindings 라이브러리는 `async_result_t<T>` 기반 완료 객체와 callback submit을 제공할 수 있지만, coroutine awaiter, framework handler executor, framework dispatcher를 소유하지 않는다.
+- framework coroutine은 bindings의 완료 객체나 callback 완료를 framework 실행 경계에서 감싸서 제공한다.
+- 언어별 비동기 실행 표면 기준은 [바인딩 비동기 실행 표면 정책](../async-coroutine-policy.ko.md)을 따른다.
 
 ## 저장소 레이아웃
 
@@ -188,12 +212,10 @@ Layout 섹션이다. 이 C++ README는 그 카테고리의 C++ 투영만 정의�
 다른 카테고리로 이동하지 않는다. 런타임 헬퍼 코드는 `src/Runtime/` 아래에서 더 세분화될 수
 있지만, 공개 계약 소유자는 해당 카테고리에 그대로 남는다.
 
-이 투영은 C# 인터페이스 스타일을 엄격하게 따르지 않는다. `.NET`의 socket role 인터페이스는
-공개 계약에서 socket role을 식별한다. C++가 기본적으로 `isocket_t`, `istream_socket_t`,
-`ISocket`, `IStreamSocket`을 노출하도록 요구하지 않는다. 사용자가 진짜 substitutable한
-동작을 필요로 하지 않는 한 구체 RAII facade를 사용한다. substitutable한 role이 필요하면
-인터페이스를 좁게 유지하고, send/receive/poll/dispatch 핫패스에서 회피 가능한 virtual
-dispatch가 없도록 한다.
+- 이 투영은 C# 인터페이스 스타일을 엄격하게 따르지 않는다.
+- `.NET`의 socket role 인터페이스는 공개 계약에서 socket role을 식별한다. C++가 기본적으로 `isocket_t`, `istream_socket_t`, `ISocket`, `IStreamSocket`을 노출하도록 요구하지 않는다.
+- 사용자가 진짜 substitutable한 동작을 필요로 하지 않는 한 구체 RAII facade를 사용한다.
+- substitutable한 role이 필요하면 인터페이스를 좁게 유지하고, send/receive/poll/dispatch 핫패스에서 회피 가능한 virtual dispatch가 없도록 한다.
 
 ## 공개 계약 한눈에 보기
 
@@ -433,10 +455,10 @@ C++가 header-only를 벗어나면 바인딩은 컴파일된 산출물을 하나
 
 ## 64-bit byte HWM과 monitoring 계약
 
-HWM과 Auto HWM planning unit은 `byte_count_t`로 표현한다. 이 값 타입은 `uint64_t` byte만
-보관하며 `bytes(...)` 생성 함수와 `bytes()` 조회 함수로 단위를 드러낸다. 이전
-`message_count_t`는 alias나 adapter로 유지하지 않는다. `0`은 HWM에서 무제한을 뜻하며,
-수동 기본값은 `4,096,000 bytes`다.
+- HWM과 Auto HWM planning unit은 `byte_count_t`로 표현한다.
+- 이 값 타입은 `uint64_t` byte만 보관하며 `bytes(...)` 생성 함수와 `bytes()` 조회 함수로 단위를 드러낸다.
+- 이전 `message_count_t`는 alias나 adapter로 유지하지 않는다.
+- `0`은 HWM에서 무제한을 뜻하며, 수동 기본값은 `4,096,000 bytes`다.
 
 ```cpp
 auto options = socket.options ();
@@ -543,10 +565,7 @@ C++는 Actor와 Spot 라우트 조회 결과를 구체 계약 타입으로 노�
 - `spot_node_spot_entry_t`와 `spot_node_actor_entry_t`는 코어 snapshot과 같은 Spot
   kind/현재 Spot 필드를 노출한다.
 
-C++는 resolve된 Actor ref를 인자로 받는 `spot_node_t::send_to_actor(actor_ref_t)`와
-`spot_node_t::request_to_actor(actor_ref_t)`를 노출한다. `send_to_actor`는 submit이
-성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면
-완료된다. `request_to_actor`는 submit이 성공하면 요청 part의 소유권을 넘기고,
-Actor handler가 만든 reply part를 callback 또는 awaitable 결과로 전달한다. C++는
-제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면
-안 된다.
+- C++는 resolve된 Actor ref를 인자로 받는 `spot_node_t::send_to_actor(actor_ref_t)`와 `spot_node_t::request_to_actor(actor_ref_t)`를 노출한다.
+- `send_to_actor`는 submit이 성공하면 하나 이상의 message part 소유권을 넘기고, Actor 소유자 mailbox가 인계를 받으면 완료된다.
+- `request_to_actor`는 submit이 성공하면 요청 part의 소유권을 넘기고, Actor handler가 만든 reply part를 callback 또는 awaitable 결과로 전달한다.
+- C++는 제거된 Discovery route table이나 resolver API를 compatibility helper로 되살리면 안 된다.

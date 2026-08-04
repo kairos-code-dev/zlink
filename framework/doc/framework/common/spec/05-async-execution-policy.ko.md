@@ -14,6 +14,18 @@ title: "비동기 실행과 handler turn"
 cancellation과 timer 계약을 정의한다. 대상 독자는 언어별 비동기 API와 scheduler adapter를 구현하는
 개발자다.
 
+| 절 | 다루는 내용 |
+|---|---|
+| [1.1 Submit, Async와 Yield](#11-submit-async와-yield) | terminator별 완료 의미, `Yield` 사용 가능 범위, `SpotWide` gate와 Actor claim의 관계 |
+| [1.2 Worker offload](#12-worker-offload) | CPU·I/O worker 완료 방식과 오류 분류 |
+| [1.3 One-way submit](#13-one-way-submit) | Send·publish류의 source-local admission 경계와 실패 분류 |
+| [1.4 Admission deadline](#14-admission-deadline) | operation family별 deadline owner와 기본값 |
+| [2. Request completion](#2-request-completion) | reply·remote 오류·timeout·cancellation·shutdown의 완료 경쟁과 turn 유지 규칙 |
+| [3. Handler turn과 claim](#3-handler-turn과-claim) | gate·claim 소유권, `Yield` 시 반납 범위, Actor Join `Defer()` |
+| [4. Cancellation과 shutdown](#4-cancellation과-shutdown) | 언어별 cancellation 입력, drain·relocation 중 pending operation 처리 |
+| [5. Spot timer](#5-spot-timer) | timer generation, cancel 의미, 고빈도 tick의 batch 처리 |
+| [6. 언어별 표현](#6-언어별-표현) | 언어별 실제 반환 타입과 exact interface 소유권 |
+
 ## 1. Messaging·Worker call terminator
 
 ### 1.1 Submit, Async와 Yield

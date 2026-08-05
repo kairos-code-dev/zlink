@@ -44,7 +44,7 @@ question outside this document's scope.
 | [Messaging](02-messaging.en.md) | Drafted | `Contracts/Messaging/`: `Message.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` (`MessageEnvelopeParts.cs` is `internal`, no public entry) |
 | [Sockets](03-sockets.en.md) | Drafted | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
 | [Eventing](04-eventing.en.md) | Drafted | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
-| Errors | Not started | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
+| [Errors](05-errors.en.md) | Drafted | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
 
 On "Core": this names the literal source folder `Contracts/Core/` (context lifecycle, context
 options, `RoutingId`, utility resources) — it is not this repository's `core/` C library. The name

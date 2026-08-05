@@ -41,7 +41,7 @@ Actor)를 포함한 6개 category를 정의한다. 그 category는 스펙이 bin
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `Contracts/Messaging/`: `Message.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs`(`MessageEnvelopeParts.cs`는 `internal`이라 public 항목 없음) |
 | [Sockets](03-sockets.ko.md) | 작성 완료 | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
-| Errors | 미착수 | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
+| [Errors](05-errors.ko.md) | 작성 완료 | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
 
 "Core" 표기에 대해: 이는 문자 그대로 소스 폴더 이름 `Contracts/Core/`(context lifecycle,
 context option, `RoutingId`, utility resource)를 가리키는 것이지, 이 저장소의 `core/` C

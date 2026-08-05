@@ -69,7 +69,7 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [Polling and pollers](15-polling.en.md) | Drafted | 06-polling, 05-events |
 | [Timers](16-timers.en.md) | Drafted | 08-utilities §Timers |
 | [Utilities](17-utilities.en.md) | Drafted | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
-| Errors, results, and version | Not started | 03-errors, 04-errno-map |
+| [Errors, results, and version](18-errors.en.md) | Drafted | 03-errors, 04-errno-map |
 
 Filenames follow `NN-slug.en.md`/`NN-slug.ko.md` in the numbering above once drafted; the table
 only links a category once its file exists, so this table never carries a dangling link.

@@ -66,7 +66,7 @@ Core의 공개 표면은 framework의 정제된 8개 category보다 훨씬 세�
 | [Polling and pollers](15-polling.ko.md) | 작성 완료 | 06-polling, 05-events |
 | [Timers](16-timers.ko.md) | 작성 완료 | 08-utilities §Timers |
 | [Utilities](17-utilities.ko.md) | 작성 완료 | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
-| Errors, results, and version | 미착수 | 03-errors, 04-errno-map |
+| [Errors, results, and version](18-errors.ko.md) | 작성 완료 | 03-errors, 04-errno-map |
 
 파일명은 작성되는 순서대로 위 번호의 `NN-slug.en.md`/`NN-slug.ko.md`를 따른다 — 이 표는 파일이
 실제로 있을 때만 링크를 걸어서 끊어진 링크를 만들지 않는다.

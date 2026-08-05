@@ -256,7 +256,7 @@ Why the bound is measured in bytes rather than count is covered by
 The basis for the pending-during-a-move bound is
 [Host Relocate And Shutdown 「9. Moving Pending Messages, Timers, And Sessions」](../spec/28-graceful-drain-handoff.en.md#9-moving-pending-messages-timers-and-sessions),
 and the result of exceeding it is covered by
-[5. Continuity During A Move](05-relocation-continuity.ko.md).
+[5. Continuity During A Move](05-relocation-continuity.en.md).
 
 ## 7. The Implementation Constraint This Decision Produces
 

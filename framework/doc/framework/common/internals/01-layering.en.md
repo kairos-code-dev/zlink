@@ -198,7 +198,7 @@ Target」](../spec/28-graceful-drain-handoff.en.md#4-conditions-checked-before-s
 If new work is blocked before this check, that node would have been
 stopped for no reason once it learns it can't move
 ([5. Message Continuity During A Move 「1. The Four
-Boundaries」](05-relocation-continuity.ko.md#1-네-개의-경계)).
+Boundaries」](05-relocation-continuity.en.md#1-four-boundaries)).
 
 It doesn't immediately reject just because there's no node to receive
 it right now. **After waiting for target information to spread up to

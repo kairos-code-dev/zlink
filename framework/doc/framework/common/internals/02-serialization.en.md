@@ -70,7 +70,7 @@ observed.
 | In `SpotWide`, **the queue itself is merged into one** | This violates the first requirement above. When moving, the remaining work must be split out per Actor, but it's already mixed together and can't be split |
 
 Why the second one is a problem comes up again in
-[5. Continuity During A Move](05-relocation-continuity.ko.md) — when
+[5. Continuity During A Move](05-relocation-continuity.en.md) — when
 the unit of a move is an Actor, only that Actor's remaining work must
 be picked out.
 

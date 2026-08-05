@@ -4,7 +4,7 @@ title: "4. Operation Completion Confirmation — Only One Finalizes"
 
 # 4. Operation Completion Confirmation — Only One Finalizes
 
-[Internal structure table of contents](README.en.md) · [Previous: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) · [Next: 5. Message Continuity During A Move](05-relocation-continuity.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) · [Next: 5. Message Continuity During A Move](05-relocation-continuity.en.md)
 
 > **What this chapter answers** — when a response, timeout,
 > cancellation, shutdown, and disconnect all arrive at once, what
@@ -230,4 +230,4 @@ message string is for humans to read, not a branch condition.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) · [Next: 5. Message Continuity During A Move](05-relocation-continuity.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) · [Next: 5. Message Continuity During A Move](05-relocation-continuity.en.md)

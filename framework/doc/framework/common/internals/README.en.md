@@ -105,7 +105,7 @@ connection easy to miss when reading a chapter separately.
   must bypass execution authority. Turning on observation must not
   slow down processing.
 - `relocation → selector`'s **"invalidates cache"** — the point where
-  [5](05-relocation-continuity.ko.md) and
+  [5](05-relocation-continuity.en.md) and
   [6](06-routing-and-cache.ko.md) meet. Without this line, every
   traffic detours until the cache lifetime ends after a move.
 
@@ -117,7 +117,7 @@ connection easy to miss when reading a chapter separately.
 | [2. Spot · Actor Execution Serialization](02-serialization.en.md) | Why the queueing spot and execution authority are separated. Why execution resource mustn't be proportional to Spot count |
 | [3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) | What must still progress even while a handler is stuck. Why it's a region separation, not a reserved section |
 | [4. Operation Completion Confirmation](04-completion.en.md) | How to make only one win when multiple paths try to finish at once. How not to lose a response |
-| [5. Message Continuity During A Move](05-relocation-continuity.ko.md) | Where a message goes while an object is moving |
+| [5. Message Continuity During A Move](05-relocation-continuity.en.md) | Where a message goes while an object is moving |
 | [6. Target Selection And Route Cache](06-routing-and-cache.ko.md) | How often location is looked up. What slows down if the cache doesn't die after a move |
 | [7. Receive And Dispatch Loop](07-dispatch-loop.ko.md) | Whether to wake per message or batch-process. What wakes it |
 | [8. Object Kind And Activation](08-object-lifecycle.ko.md) | How the three Spot kinds are distinguished. When a missing object is built |

@@ -65,18 +65,17 @@ try {
 }
 ```
 
-**Options.** protected 생성자만 존재 — `ZlinkException(int code)`와
-`ZlinkException(int code, int nativeErrno)`. 임의 typed exception을 만드는
-public 진입점은 그 exception 자신의 result enum을 받는 public 생성자다
+**Options.** 생성자는 `protected`다 — 임의 typed exception을 만드는 public
+진입점은 그 exception 자신의 result enum을 받는 public 생성자다
 (`ZlinkSubmitException(SubmitResult)` 등), 또는 명시적 `nativeErrno`를
-더한 같은 생성자다. Member: `getCode()`(`int`, 실패를 분류하는 zlink
-result code), `getNativeErrno()`(`int`, 밑에 깔린 native errno, 없으면
-`0`). static factory helper `fromLastError(String operation)`/
-`fromLastError(ErrorCategory)`와 `fromErrno(String operation, int errno)`/
-`fromErrno(ErrorCategory, int errno)`는 raw native errno와
-`ErrorCategory`(`CONFIG`/`BIND`/`CONNECT`/`CLOSE`/`HANDLER`/`RECV`/
-`REQUEST`/`SUBMIT`)로부터 올바른 타입의 exception을 만든다 — `String
-operation` overload는 operation 이름에서 category를 추론한다.
+더한 같은 생성자다.
+
+| Member | 의미 |
+| --- | --- |
+| `getCode()` | `int`, 실패를 분류하는 zlink result code |
+| `getNativeErrno()` | `int`, 밑에 깔린 native errno, 없으면 `0` |
+| `fromLastError(String operation)` / `fromLastError(ErrorCategory)` | static factory; 현재 native errno와 `ErrorCategory`(`CONFIG`/`BIND`/`CONNECT`/`CLOSE`/`HANDLER`/`RECV`/`REQUEST`/`SUBMIT`)로부터 올바른 타입의 exception을 만든다 — `String operation` overload는 operation 이름에서 category를 추론한다 |
+| `fromErrno(String operation, int errno)` / `fromErrno(ErrorCategory, int errno)` | static factory; `fromLastError`와 같은 매핑이지만 현재 native errno를 읽는 대신 명시적 `errno`를 받는다 |
 
 **Completion result.** 해당 없음 — 이건 exception 계층 자체다.
 `TypedZlinkException`(중간 sealed class)은 package-private다 —

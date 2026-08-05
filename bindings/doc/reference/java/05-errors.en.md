@@ -62,16 +62,17 @@ try {
 }
 ```
 
-**Options.** Protected constructors only — `ZlinkException(int code)` and `ZlinkException(int
-code, int nativeErrno)`; the public entry point for constructing any typed exception is that
-exception's own public constructor taking its result enum (`ZlinkSubmitException(SubmitResult)`,
-etc.), or the same constructor plus an explicit `nativeErrno`. Members: `getCode()` (`int`, the
-zlink result code that classifies the failure), `getNativeErrno()` (`int`, the underlying native
-errno, or `0` when none). Static factory helpers `fromLastError(String operation)`/
-`fromLastError(ErrorCategory)` and `fromErrno(String operation, int errno)`/`fromErrno(ErrorCategory,
-int errno)` build the correctly-typed exception from a raw native errno and an `ErrorCategory`
-(`CONFIG`/`BIND`/`CONNECT`/`CLOSE`/`HANDLER`/`RECV`/`REQUEST`/`SUBMIT`) — the `String operation`
-overloads infer the category from the operation name.
+**Options.** Constructors are `protected` — the public entry point for constructing any typed
+exception is that exception's own public constructor taking its result enum
+(`ZlinkSubmitException(SubmitResult)`, etc.), or the same constructor plus an explicit
+`nativeErrno`.
+
+| Member | Meaning |
+| --- | --- |
+| `getCode()` | `int`, the zlink result code that classifies the failure |
+| `getNativeErrno()` | `int`, the underlying native errno, or `0` when none |
+| `fromLastError(String operation)` / `fromLastError(ErrorCategory)` | static factory; builds the correctly-typed exception from the current native errno and an `ErrorCategory` (`CONFIG`/`BIND`/`CONNECT`/`CLOSE`/`HANDLER`/`RECV`/`REQUEST`/`SUBMIT`); the `String operation` overload infers the category from the operation name |
+| `fromErrno(String operation, int errno)` / `fromErrno(ErrorCategory, int errno)` | static factory; same mapping as `fromLastError` but from an explicit `errno` instead of reading the current native one |
 
 **Completion result.** N/A — this is the exception hierarchy itself. `TypedZlinkException` (the
 intermediate sealed class) is package-private — application code can catch/reference

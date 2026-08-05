@@ -606,7 +606,7 @@ public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 ```
 
 The exact full interface and lifecycle callbacks are owned by the
-[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.ko.md).
+[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.en.md).
 
 ## 8. Document Boundary
 

@@ -5,7 +5,7 @@
 This category covers the external entry points `IZLinkSpotManager`·`IZLinkSpotClient`·
 `IZLinkSpotPublisherClient` provide, and the entry points used inside Spot code through
 `IZLinkSpotContext`. The exact signatures are owned by the
-[Spot exact interface](../../common/spec/server/languages/dotnet/interfaces/05-spots.ko.md)
+[Spot exact interface](../../common/spec/server/languages/dotnet/interfaces/05-spots.en.md)
 (Korean-only).
 
 ---
@@ -362,5 +362,5 @@ at a specific turn boundary. Under the default `AnyTurnBoundary` mode, this call
 ---
 
 The full basis is the
-[Spot exact interface](../../common/spec/server/languages/dotnet/interfaces/05-spots.ko.md)
+[Spot exact interface](../../common/spec/server/languages/dotnet/interfaces/05-spots.en.md)
 (Korean-only).

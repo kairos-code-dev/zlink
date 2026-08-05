@@ -205,7 +205,7 @@ registration/execution flow of the common canonical scenarios.
 | The full definition of interfaces, attributes, and contexts | [Exact interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | Cross-reference only |
 | Channel registration (AddZLinkFramework), lifecycle | [Configuration and host](../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md) | Link only, when needed |
 | Handler/client usage examples, dispatch flow | aspnet-core-channel-messaging, samples | |
-| SPOT concepts, registration, lifecycle | [Spots](../common/spec/server/languages/dotnet/interfaces/05-spots.ko.md) | Link only, when needed |
+| SPOT concepts, registration, lifecycle | [Spots](../common/spec/server/languages/dotnet/interfaces/05-spots.en.md) | Link only, when needed |
 | Actor lifecycle, session bind, user Spot join, session actor dispatch | [Actors](../common/spec/server/languages/dotnet/interfaces/06-actors.ko.md) | Link only, when needed |
 | Location store registration, auto-connect, operational queries | [Location](../common/spec/server/languages/dotnet/interfaces/08-location-maintenance.ko.md) | Link only, when needed |
 

@@ -132,7 +132,7 @@ resolve, reservation, factory, and the Ready barrier.
 The following .NET excerpt shows the two operations' identity input and
 common optional values. It doesn't require the same signature in other
 languages; the exact .NET contract is defined by the
-[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.ko.md).
+[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.en.md).
 
 ```csharp
 public interface IZLinkSpotManager
@@ -252,7 +252,7 @@ Missing.
 The following .NET excerpt shows the difference between a regular direct
 call and a call allowing cold activation. It doesn't require the same
 signature in other languages; the exact .NET contract is defined by the
-[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.ko.md).
+[.NET Spot Interface](server/languages/dotnet/interfaces/05-spots.en.md).
 
 ```csharp
 public interface IZLinkSpotClient

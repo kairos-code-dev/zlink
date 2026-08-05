@@ -157,7 +157,7 @@ target. Use it for an operation that needs to confirm the exact generation, like
 `CloseAsync(spotRef)`.
 
 For the exact lifecycle and calls, see the
-[Spot exact interface](../../../common/spec/server/languages/dotnet/interfaces/05-spots.ko.md).
+[Spot exact interface](../../../common/spec/server/languages/dotnet/interfaces/05-spots.en.md).
 
 ## 4. Actor
 

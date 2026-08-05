@@ -21,7 +21,7 @@ the provider-neutral payload the handler receives.
 | [Configuration and host](02-configuration-host.ko.md) | Defines the package, ASP.NET Core host, DI, and startup interface. |
 | [Topology configuration](03-configuration-topology.en.md) | Defines RouteMesh, ClientServer, and fanout builder and runtime options. |
 | [Channel messaging](04-channel-messaging.ko.md) | Defines the call and handler for Node direct, ChannelName, and Logical Multicast. |
-| [Spots](05-spots.ko.md) | Defines Entry/User/Instance Spot lifecycle, relocation adapter, the [Spot](../../../../01-glossary.en.md#spot)-dedicated fluent call, [User Spot](../../../../01-glossary.en.md#entry-user-instance-spot) manager, and timer. |
+| [Spots](05-spots.en.md) | Defines Entry/User/Instance Spot lifecycle, relocation adapter, the [Spot](../../../../01-glossary.en.md#spot)-dedicated fluent call, [User Spot](../../../../01-glossary.en.md#entry-user-instance-spot) manager, and timer. |
 | [Actors](06-actors.ko.md) | Defines Actor factory, context, client, manager, relocation adapter, and policy. |
 | [Bound STREAM session](07-bound-stream-session.ko.md) | Defines the bound session call an Actor owns. |
 | [STREAM session](07-stream-session.ko.md) | Defines the STREAM server session and handler interface. |

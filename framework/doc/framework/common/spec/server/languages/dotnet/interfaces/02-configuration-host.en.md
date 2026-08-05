@@ -91,7 +91,7 @@ Spot activation scope, and an Actor handler in the Actor activation
 scope. Handler types aren't resolved directly from DI — only constructor
 dependencies are resolved in that scope. When a handler uses a service,
 it uses constructor injection, not the context as a service locator. The
-detailed lifetime follows the [Spot Interface](05-spots.ko.md).
+detailed lifetime follows the [Spot Interface](05-spots.en.md).
 
 ## 5. Location Store Registration
 

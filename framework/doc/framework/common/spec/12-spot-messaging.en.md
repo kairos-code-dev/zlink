@@ -58,7 +58,7 @@ public API. This example doesn't define the common interface's signature or requ
 the C# shape in other languages.
 
 The exact .NET signature is defined by
-[.NET Spot Public Interface](server/languages/dotnet/interfaces/05-spots.ko.md) and
+[.NET Spot Public Interface](server/languages/dotnet/interfaces/05-spots.en.md) and
 [.NET Common Runtime Interface](server/languages/dotnet/interfaces/01-common-runtime.ko.md).
 
 The following interface shows how to send messages from Spot direct and a Spot

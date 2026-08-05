@@ -224,7 +224,7 @@ public abstract record ZLinkActorJoinCompletion
 
 The Actor packet handler is registered on the registry the Spot owns.
 The handler's exact context and generic parameter are defined by the
-[Spot Interface](05-spots.ko.md). `SpotId == null` means the Entry Spot
+[Spot Interface](05-spots.en.md). `SpotId == null` means the Entry Spot
 stage, and a value present means it's a member of that user
 [Spot](../../../../01-glossary.en.md#spot). A separate boolean
 representing the same state isn't provided.
@@ -317,7 +317,7 @@ ACK or phase API to directly confirm or manipulate this isn't provided.
 The order of lifecycle callbacks run during Entry Spot maintenance and a
 regular join, sealed retry after a callback failure, and callback
 omission for a whole User Spot aggregate move are determined by the
-[Spot Interface](05-spots.ko.md). The Actor relocation adapter doesn't
+[Spot Interface](05-spots.en.md). The Actor relocation adapter doesn't
 substitute for this lifecycle callback. There's no public phase API that
 controls this order.
 

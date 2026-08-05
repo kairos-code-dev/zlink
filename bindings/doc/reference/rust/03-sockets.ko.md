@@ -19,21 +19,21 @@ block을 가진 독립 struct다. PUB/SUB/XPUB/XSUB 4개 타입은 public trait�
 
 ## 공유 socket 표면(공유 기반 trait 없음)
 
-아래 모든 구체 socket type은 같은 lifecycle/TLS 메서드 집합을
-독립적으로 선언한다: `close(&mut self) -> Result<(), CloseError>`,
-`bind(&self, addr: &str) -> Result<(), BindError>`, `unbind(&self, addr:
-&str) -> Result<(), ConnectError>`, `last_endpoint(&self) ->
-Result<String, ConfigError>`, `set_tls_cert(&self, cert: &str)`/
-`set_tls_key(&self, key: &str)`/`set_tls_ca(&self, ca_cert: &str)`/
-`set_tls_hostname(&self, hostname: &str)`/`set_tls_trust_system(&self,
-bool)`(각각 `Result<(), ConfigError>` — **개별 TLS setter가 여기 public
-메서드로 존재한다**, 지금까지 다룬 다른 모든 언어가 결합된 형태만
-노출하는 것과 다르다), 그리고 결합된 `set_tls_server(&self, cert, key,
-require_client_cert: bool)`/`set_tls_client(&self, ca_cert, hostname,
-trust_system: bool)`. `StreamSocket`(아래 참고)을 제외한 모든 socket
-type은 `connect(&self, addr: &str)`/`disconnect(&self, addr: &str)`/
-`disconnect_rid(&self, peer_rid: &RoutingId)`(전부 `Result<(),
-ConnectError>`)도 선언한다.
+**Options.** 아래 모든 구체 socket type은 같은 메서드 집합을 독립적으로
+선언한다. 이 메서드 전부가 `Result`를 반환한다, 대응하는 lifecycle
+호출에 error 경로가 없는 다른 언어와 다르다.
+
+| Member | 의미 |
+| --- | --- |
+| `close(&mut self) -> Result<(), CloseError>` | native socket을 닫는다 |
+| `bind(&self, addr: &str) -> Result<(), BindError>` | 주소에서 listen을 시작 |
+| `unbind(&self, addr: &str) -> Result<(), ConnectError>` | 주소에서 listen을 중단 |
+| `last_endpoint(&self) -> Result<String, ConfigError>` | 실제로 해석된 bind 주소 |
+| `set_tls_cert(&self, cert: &str)` / `set_tls_key(&self, key: &str)` / `set_tls_ca(&self, ca_cert: &str)` / `set_tls_hostname(&self, hostname: &str)` / `set_tls_trust_system(&self, bool)` | 개별 TLS setter — **여기 public 메서드로 존재한다**, 지금까지 다룬 다른 모든 언어가 결합된 형태만 노출하는 것과 다르다 |
+| `set_tls_server(&self, cert, key, require_client_cert: bool)` | 결합된 서버측 TLS 설정, `bind` 전에 적용 |
+| `set_tls_client(&self, ca_cert, hostname, trust_system: bool)` | 결합된 클라이언트측 TLS 설정, `connect` 전에 적용 |
+| `connect(&self, addr: &str)` / `disconnect(&self, addr: &str)` | peer 주소로 connect/disconnect; `StreamSocket`(아래 참고)을 제외한 모든 socket type에 선언됨 |
+| `disconnect_rid(&self, peer_rid: &RoutingId)` | 해당 routing id로 식별되는 peer를 disconnect; 위와 같은 예외 |
 
 **Completion result.** 이 메서드 전부가 `Result`를 반환한다, 대응하는
 lifecycle 호출에 error 경로가 없는 다른 언어와 다르다.
@@ -57,25 +57,28 @@ options.set_linger(Duration::from_secs(1))?;
 options.set_submit_retry_mode(SubmitRetryMode::LocalFailure)?;
 ```
 
-**Options.** 짝을 이루는 getter/setter 메서드, 전부 `Result<T,
-ConfigError>` 반환: `linger()`/`set_linger(Duration)`,
-`send_high_water_mark()`/`set_send_high_water_mark(u64)`,
-`receive_high_water_mark()`/`set_receive_high_water_mark(u64)`,
-`send_timeout()`/`set_send_timeout(Duration)`,
-`receive_timeout()`/`set_receive_timeout(Duration)`,
-`immediate()`/`set_immediate(bool)`, `rid_duplicate_policy()`/
-`set_rid_duplicate_policy(RidDuplicatePolicy)`,
-`connect_timeout()`/`set_connect_timeout(Duration)`,
-`ipv6()`/`set_ipv6(bool)`, `tcp_no_delay()`/`set_tcp_no_delay(bool)`,
-`tcp_keepalive()`/`set_tcp_keepalive(bool)`(**여기선 순수 on/off
-`bool`이다**, 다른 언어의 tri-state -1/0/1 정수와 다름),
-`max_message_size()`/`set_max_message_size(i64)`,
-`backlog()`/`set_backlog(i32)`,
-`reconnect_interval()`/`set_reconnect_interval(Duration)`,
-`reconnect_interval_max()`/`set_reconnect_interval_max(Duration)`,
-`submit_retry_mode()`/`set_submit_retry_mode(SubmitRetryMode)`,
-`submit_retry_timeout()`/`set_submit_retry_timeout(Duration)`,
-`submit_retry_attempts()`/`set_submit_retry_attempts(i32)`.
+**Options.** 아래 모든 getter/setter는 `Result<T, ConfigError>`를 반환한다.
+
+| Member | 의미 |
+| --- | --- |
+| `linger()` / `set_linger(Duration)` | `close()`가 대기 중인 send를 flush하기 위해 기다리는 상한 |
+| `send_high_water_mark()` / `set_send_high_water_mark(u64)` | outbound accounted-byte HWM; `0`은 무제한 |
+| `receive_high_water_mark()` / `set_receive_high_water_mark(u64)` | inbound accounted-byte HWM; `0`은 무제한 |
+| `send_timeout()` / `set_send_timeout(Duration)` | blocking send가 기다리는 상한 |
+| `receive_timeout()` / `set_receive_timeout(Duration)` | blocking receive가 기다리는 상한 |
+| `immediate()` / `set_immediate(bool)` | send가 지금 당장 살아있는 연결을 요구하는지, 아니면 연결이 생길 때까지 큐잉하는지 |
+| `rid_duplicate_policy()` / `set_rid_duplicate_policy(RidDuplicatePolicy)` | peer가 기존 routing id를 재사용할 때 벌어지는 일 |
+| `connect_timeout()` / `set_connect_timeout(Duration)` | connect handshake가 기다리는 상한 |
+| `ipv6()` / `set_ipv6(bool)` | socket이 IPv6 연결을 받아들이는지 |
+| `tcp_no_delay()` / `set_tcp_no_delay(bool)` | `true`면 Nagle 알고리즘을 비활성화 |
+| `tcp_keepalive()` / `set_tcp_keepalive(bool)` | OS TCP keepalive 모드 — **여기선 순수 on/off `bool`이다**, 다른 언어의 tri-state -1/0/1 정수와 다름 |
+| `max_message_size()` / `set_max_message_size(i64)` | 수신 허용하는 메시지 한 건의 최대 바이트 크기 |
+| `backlog()` / `set_backlog(i32)` | listening socket의 대기 연결 큐 길이 |
+| `reconnect_interval()` / `set_reconnect_interval(Duration)` | 재연결 시도 사이 간격 |
+| `reconnect_interval_max()` / `set_reconnect_interval_max(Duration)` | 재연결 간격의 상한 |
+| `submit_retry_mode()` / `set_submit_retry_mode(SubmitRetryMode)` | local back-pressure에서 실패한 submit이 자동 재시도되는지 |
+| `submit_retry_timeout()` / `set_submit_retry_timeout(Duration)` | `submit_retry_mode()`가 `LocalFailure`일 때의 재시도 timeout |
+| `submit_retry_attempts()` / `set_submit_retry_attempts(i32)` | `submit_retry_mode()`가 `LocalFailure`일 때의 재시도 횟수 상한 |
 
 **Completion result.** 모든 getter/setter는 동기이며 `Result<_,
 ConfigError>`를 반환한다.
@@ -97,11 +100,14 @@ let mut received = Received::empty();
 if pair.recv(&mut received, RecvFlags::NONE)? { /* ... */ }
 ```
 
-**Options.** `send(&self) -> SendOp<Empty>`(공유 `SendOp` builder 시작),
-`recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool,
-RecvError>`, `on_send_ready<F>(&mut self, handler: F) -> Result<(),
-HandlerError> where F: Fn() + Send + 'static`, `common_options() ->
-CommonSocketOptions<'_>`, 위 공유 lifecycle/TLS 표면.
+**Options.** 위 공유 lifecycle/TLS 표면에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `send(&self) -> SendOp<Empty>` | 공유 `SendOp` builder를 시작 |
+| `recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>` | `out`을 다음 메시지로 채움 |
+| `on_send_ready<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn() + Send + 'static` | back-pressure 해제 콜백을 등록 |
+| `common_options() -> CommonSocketOptions<'_>` | 공유 option facade |
 
 **Completion result.** `recv`는 `RecvFlags::DONT_WAIT`가 설정되고
 메시지가 없을 때만 `Ok(false)`를 반환한다.
@@ -124,15 +130,13 @@ dealer.request()
     .submit(|result| { /* result: Result<Vec<Message>, RequestError> */ })?;
 ```
 
-**Options.** `PairSocket`과 같은 공유 표면에 더해: `request(&self) ->
-RequestOp<Empty>`(공유 `RequestOp` builder 시작 — target 인자 없음,
-DEALER는 API 레벨 peer routing id가 없기 때문), `set_routing_id(&self,
-id: &RoutingId) -> Result<(), ConfigError>`, `routing_id(&self) ->
-Result<RoutingId, ConfigError>`, `dealer_options() ->
-DealerSocketOptions<'_>`(`set_probe(bool)` — set-only, getter 없음;
-`weight()`/`set_weight(u32)`; `set_request_timeout(Duration)` —
-set-only, getter 없음, 이 option에 대한 다른 모든 언어의 Dealer 비대칭과
-일치).
+**Options.** `PairSocket`과 같은 공유 표면에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `request(&self) -> RequestOp<Empty>` | 공유 `RequestOp` builder를 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없기 때문 |
+| `set_routing_id(&self, id: &RoutingId) -> Result<(), ConfigError>` / `routing_id(&self) -> Result<RoutingId, ConfigError>` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `dealer_options() -> DealerSocketOptions<'_>` | 타입별 option facade 반환: `set_probe(bool)` — set-only, getter 없음; `weight()`/`set_weight(u32)`; `set_request_timeout(Duration)` — set-only, getter 없음, 이 option에 대한 다른 모든 언어의 Dealer 비대칭과 일치 |
 
 **Completion result.** `recv`(`PairSocket`과 같은 형태)는 같은 관례를
 따른다.
@@ -156,20 +160,18 @@ router.send(&peer_rid).message(Message::try_from("hello")?)?.submit()?;
 
 **Options.** `PairSocket`과 같은 공유 lifecycle/TLS 표면(여기서도
 자신만의 사본을 독립적으로 선언한다, 다른 모든 socket type과 동일)에
-더해: `send(&self, target: &RoutingId) -> SendOp<Empty>`, `recv(&self,
-out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>`,
-`request(&self, peer_rid: &RoutingId) -> RequestOp<Empty>`(Messaging
-category의 `RequestOp`, 특정 peer로 향함), `reply(&self, rid:
-&RoutingId, request_seq: u64) -> ReplyOp<Empty>`(Messaging category의
-`ReplyOp`), `on_send_ready<F>(...)`, `set_routing_id(&self,
-&RoutingId)`/`routing_id(&self)`, `common_options()`,
-`router_options() -> RouterSocketOptions<'_>`(`set_mandatory(bool)` —
-set-only; `set_probe(bool)` — set-only; `set_connect_routing_id
-(&RoutingId)` — set-only(**이 binding엔 할당된 connect routing id의
-getter가 없다**, dotnet/cpp의 읽기 전용 `ConnectRoutingId`/
-`connect_routing_id()` property와 다름); `weight()`/`set_weight(u32)`;
-`request_timeout()`/`set_request_timeout(Duration)` — Dealer와 달리
-양방향 모두).
+더해:
+
+| Member | 의미 |
+| --- | --- |
+| `send(&self, target: &RoutingId) -> SendOp<Empty>` | 공유 `SendOp`을 그 peer로 향해 시작 |
+| `recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>` | `out`을 다음 메시지로 채움 |
+| `request(&self, peer_rid: &RoutingId) -> RequestOp<Empty>` | Messaging category의 `RequestOp`, 특정 peer로 향함 |
+| `reply(&self, rid: &RoutingId, request_seq: u64) -> ReplyOp<Empty>` | Messaging category의 `ReplyOp`, 해당 peer의 request에 응답 |
+| `on_send_ready<F>(...)` | back-pressure 해제 콜백을 등록 |
+| `set_routing_id(&self, &RoutingId)` / `routing_id(&self)` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `common_options()` | 공유 option facade |
+| `router_options() -> RouterSocketOptions<'_>` | 타입별 option facade 반환: `set_mandatory(bool)` — set-only; `set_probe(bool)` — set-only; `set_connect_routing_id(&RoutingId)` — set-only(**이 binding엔 할당된 connect routing id의 getter가 없다**, dotnet/cpp의 읽기 전용 `ConnectRoutingId`/`connect_routing_id()` property와 다름); `weight()`/`set_weight(u32)`; `request_timeout()`/`set_request_timeout(Duration)` — Dealer와 달리 양방향 모두 |
 
 **Completion result.** `recv`는 `PairSocket`과 같은 관례를 따른다.
 **이 binding엔 `try_send_completion_control`/
@@ -201,22 +203,23 @@ let mut msg = TopicMessage::empty();
 if sub.subscribe(&mut msg, RecvFlags::NONE)? { /* ... */ }
 ```
 
-**Options.** `PubSocket`: `publish(&self, topic: &str) -> SendOp<Empty>`
-(`topic`이 내부 고정 크기 검사를 통과하지 못하면 panic —
-`fixed_topic_or_panic`을 통해), `on_send_ready<F>(...)`,
-`common_options()`, `pub_options() -> PubSocketOptions<'_>`.
+**Options.**
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `PubSocket` | `publish(&self, topic: &str) -> SendOp<Empty>` | 공유 `SendOp` builder를 시작; `topic`이 내부 고정 크기 검사를 통과하지 못하면 panic(`fixed_topic_or_panic`을 통해) |
+| | `on_send_ready<F>(...)` | back-pressure 해제 콜백을 등록 |
+| | `common_options()` | 공유 option facade |
+| | `pub_options() -> PubSocketOptions<'_>` | 타입별 option facade |
+| `SubSocket` / `XSubSocket` | `subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>` | `out`을 다음 매칭 publish로 채움 |
+| | `set_subscription(&self, filter: &str)` / `unset_subscription(&self, filter: &str)` | topic filter를 추가/제거; 구독은 누적된다 |
+| | `subscription_at(&self, index: usize) -> Result<Option<(String, bool)>, ConfigError>` | 명명된 struct/record가 아니라 `(filter, is_pattern)` tuple — 해당 index의 filter |
+| | `common_options()` | 공유 option facade |
+| | `sub_options() -> SubSocketOptions<'_>` | 타입별 option facade |
+| `XPubSocket` | `receive_subscription_event(&self, out: &mut SubscriptionEvent, flags: RecvFlags) -> Result<bool, RecvError>` | `PubSocket` 형태 위에 이걸 더함, 자신만의 `impl` block(`PubSocket` 타입의 확장이 아님); `out`을 다음 subscribe/unsubscribe로 채움 |
+
 **`PubSocket`도 `XPubSocket`도 `set_routing_id`/`routing_id`를 선언하지
 않는다**(이 binding의 두 타입 모두에 routing-id 표면이 전혀 없다).
-`SubSocket`/`XSubSocket`: `subscribe(&self, out: &mut TopicMessage,
-flags: RecvFlags) -> Result<bool, RecvError>`,
-`set_subscription(&self, filter: &str)`/`unset_subscription(&self,
-filter: &str)`(구독은 누적된다), `subscription_at(&self, index: usize)
--> Result<Option<(String, bool)>, ConfigError>`(명명된 struct/record가
-아니라 `(filter, is_pattern)` tuple), `common_options()`,
-`sub_options() -> SubSocketOptions<'_>`. `XPubSocket`은 `PubSocket`
-형태 위에 `receive_subscription_event(&self, out: &mut
-SubscriptionEvent, flags: RecvFlags) -> Result<bool, RecvError>`를
-더한다(자신만의 `impl` block이지 `PubSocket` 타입의 확장이 아니다).
 **`XSubSocket`의 `impl` block은 `SubSocket`의 완전하고 독립적인
 사본이다** — 같은 method 집합, 같은 signature, 동일한 형태 외엔 둘을
 연결하는 공유 타입이 없다.
@@ -243,21 +246,18 @@ let stream = ctx.stream_socket()?;
 stream.on_packet(|routing_id, header, body| { /* header/body 소유 */ })?;
 ```
 
-**Options.** `send(&self, target: &RoutingId) -> SendOp<Empty>`,
-`recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool,
-RecvError>`(이 binding의 `recv`는 추가로 source routing id를 `out`의
-send/reply context로 포착해서, 이후 `out.send()`가 packet을 보낸
-쪽으로 향하게 한다 — 다른 언어에선 이렇게 명시적으로 문서화되지 않은
-STREAM 고유 보강), `disconnect_rid(&self, peer_rid: &RoutingId) ->
-Result<(), ConnectError>`(직접 선언됨, `StreamSocket`엔 `connect`/
-`disconnect`가 전혀 없다 — 다른 socket type이 공유하는
-connect/disconnect/disconnect_rid 삼총사를 아예 선언하지 않는다),
-`on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError> where
-F: Fn(RoutingId, Message, Message) + Send + 'static`(handler가
-`header`와 `body`를 둘 다 소유하며, 반환하면 drop됨),
-`on_send_ready<F>(...)`, `set_routing_id(&self, &RoutingId)`/
-`routing_id(&self)`, `common_options()`, `stream_options() ->
-StreamSocketOptions<'_>`(`set_notify(bool)`/`notify()`).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `send(&self, target: &RoutingId) -> SendOp<Empty>` | 공유 `SendOp`을 그 peer로 향해 시작 |
+| `recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>` | `out`을 다음 packet으로 채움; 이 binding의 `recv`는 추가로 source routing id를 `out`의 send/reply context로 포착해서, 이후 `out.send()`가 packet을 보낸 쪽으로 향하게 한다 — 다른 언어에선 이렇게 명시적으로 문서화되지 않은 STREAM 고유 보강 |
+| `disconnect_rid(&self, peer_rid: &RoutingId) -> Result<(), ConnectError>` | 직접 선언됨, `StreamSocket`엔 `connect`/`disconnect`가 전혀 없다 — 다른 socket type이 공유하는 connect/disconnect/disconnect_rid 삼총사를 아예 선언하지 않는다 |
+| `on_packet<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(RoutingId, Message, Message) + Send + 'static` | callback 기반 packet loop를 등록; handler가 `header`와 `body`를 둘 다 소유하며, 반환하면 drop됨 |
+| `on_send_ready<F>(...)` | back-pressure 해제 콜백을 등록 |
+| `set_routing_id(&self, &RoutingId)` / `routing_id(&self)` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `common_options()` | 공유 option facade |
+| `stream_options() -> StreamSocketOptions<'_>` | 타입별 option facade: `set_notify(bool)`/`notify()` — 활성화 시 peer connect/disconnect를 application 메시지로 전달 |
 
 **Completion result.** `recv`는 위 `DONT_WAIT`에서 `Ok(false)` 관례를
 따른다.

@@ -45,7 +45,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Core](01-core.en.md) | Drafted | `__init__.py` (factory/free functions); `contracts/core/`: `context.py`, `options.py`, `routing_id.py`, `utilities.py`, `codes.py` |
 | [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `message.py`, `received.py`, `topic_message.py`, `subscription_event.py` (no separate `operations.py` — the builder Protocols live in `contracts/sockets/operations.py`) |
 | [Sockets](03-sockets.en.md) | Drafted | `contracts/sockets/`: `socket.py`, `message_socket_contracts.py`, `routed_socket_contracts.py`, `pubsub_socket_contracts.py`, `stream_socket.py`, `socket_options.py`, `operations.py`, `codes.py` |
-| Eventing | Not started | `contracts/eventing/`: `poller.py`, `monitor.py`, `timer.py`, `codes.py` |
+| [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing/`: `poller.py`, `monitor.py`, `timer.py`, `codes.py` |
 | Errors | Not started | `contracts/errors/`: `errors.py`, `results.py`, `codes.py` |
 
 This document tree is not yet listed in the `mkdocs.yml` nav.

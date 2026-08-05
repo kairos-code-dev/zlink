@@ -4,7 +4,7 @@ title: "Spot Address Messaging"
 
 # Spot Address Messaging
 
-[Spec table of contents](README.en.md) · [Previous: Spot And Actor Membership](15-spot-actor.en.md) · [Next: Stage Wrapper On Spot](17-stage-wrapper-on-spot.ko.md)
+[Spec table of contents](README.en.md) · [Previous: Spot And Actor Membership](15-spot-actor.en.md) · [Next: Stage Wrapper On Spot](17-stage-wrapper-on-spot.en.md)
 
 > **What this chapter defines** — the public contract for creating/looking up
 > a global SpotId and calling a Spot directly by that SpotId.

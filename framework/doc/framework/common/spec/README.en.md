@@ -33,7 +33,7 @@ failure/completion conditions its implementation and contract tests need.
 - [14 Actor model](14-actor-model.en.md)
 - [15 Spot and Actor membership](15-spot-actor.en.md)
 - [16 Spot address messaging](16-spot-address-messaging.en.md)
-- [17 Stage wrapper on Spot](17-stage-wrapper-on-spot.ko.md)
+- [17 Stage wrapper on Spot](17-stage-wrapper-on-spot.en.md)
 - [18 Spot/Actor routing](18-object-routing.en.md)
 
 ## STREAM And Sessions

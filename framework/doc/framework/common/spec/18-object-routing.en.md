@@ -4,7 +4,7 @@ title: "Spot/Actor Routing"
 
 # Spot/Actor Routing
 
-[Spec table of contents](README.en.md) · [Previous: Stage Wrapper On Spot](17-stage-wrapper-on-spot.ko.md) · [Next: STREAM Server Session](19-stream-session.en.md)
+[Spec table of contents](README.en.md) · [Previous: Stage Wrapper On Spot](17-stage-wrapper-on-spot.en.md) · [Next: STREAM Server Session](19-stream-session.en.md)
 
 > **What this chapter defines** — the criterion splitting paths that query the
 > Location Store for a message going to a Spot/Actor from paths that don't.

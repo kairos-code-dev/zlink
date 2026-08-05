@@ -246,7 +246,7 @@ by [session-actor-dispatch](20-session-actor-dispatch.en.md).
 
 A session callback doesn't directly change [Spot](01-glossary.en.md#spot)
 state. It only proceeds as far as submitting an Actor dispatch or Spot call
-([Stage Wrapper On Spot §3](17-stage-wrapper-on-spot.ko.md#3-spot-turn-보존)).
+([Stage Wrapper On Spot §3](17-stage-wrapper-on-spot.en.md#3-preserving-the-spot-turn)).
 
 Even if the Actor is on a different MeshNode, the physical STREAM socket and
 session object are kept on the current session owner. The framework only

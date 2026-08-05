@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Spec table of contents](README.en.md) | [Previous: C++ exact interface](interfaces/README.en.md) | [Next: C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
+[Spec table of contents](README.en.md) | [Previous: C++ exact interface](interfaces/README.en.md) | [Next: C++ Embedded HTTP Server](61-embedded-http-server.en.md)
 <!-- framework-adapter-nav:end -->
 
 [Framework common document](../../../../README.en.md)
@@ -639,7 +639,7 @@ use the framework's `http_request_t`, `http_response_t`, and
 | Method | Supports `GET`, `POST`, `PUT`, `DELETE` with the same builder convention. |
 | Cancellation | Doesn't add a separate cancellation token to the handler signature — applies the request timeout and host drain contract. |
 | Response customization | A typed DTO defaults to `200 OK` status. Direct status and header control is provided by a handler that returns `http_response_t`. |
-| Server hardening | Follows [Embedded HTTP Server](61-embedded-http-server.ko.md)'s limit, timeout, and shutdown contract. |
+| Server hardening | Follows [Embedded HTTP Server](61-embedded-http-server.en.md)'s limit, timeout, and shutdown contract. |
 
 ## 11. Regression Test
 
@@ -683,7 +683,7 @@ The minimal test covers the axes below.
   exceeded is `413`
 - Embedded server lifecycle: keep-alive, request timeout, graceful
   shutdown drain, and connection metrics are verified by
-  [Embedded HTTP Server](61-embedded-http-server.ko.md) regression
+  [Embedded HTTP Server](61-embedded-http-server.en.md) regression
   tests
 - Lifecycle: `app.stop()` stops accepting a new request and completes
   after draining an in-progress request
@@ -710,5 +710,5 @@ Handler signature regression matrix:
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Spec table of contents](README.en.md) | [Previous: C++ exact interface](interfaces/README.en.md) | [Next: C++ Embedded HTTP Server](61-embedded-http-server.ko.md)
+[Spec table of contents](README.en.md) | [Previous: C++ exact interface](interfaces/README.en.md) | [Next: C++ Embedded HTTP Server](61-embedded-http-server.en.md)
 <!-- framework-adapter-nav:bottom:end -->

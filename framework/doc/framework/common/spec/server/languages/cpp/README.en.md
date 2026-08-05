@@ -17,7 +17,7 @@ directory.
 | `02` | [Exact Interface Per Capability](interfaces/README.en.md) | Server package's per-capability C++ public type and member |
 | `03` | [Location · Relocation Store · Redis Relocation Notice](03-location-store.en.md) | Links to the per-capability exact interface's Store/Redis document |
 | `60` | [HTTP Hosting](60-http-hosting.en.md) | HTTP hosting contract |
-| `61` | [Embedded HTTP Server](61-embedded-http-server.ko.md) | Embedded server |
+| `61` | [Embedded HTTP Server](61-embedded-http-server.en.md) | Embedded server |
 
 **The meaning and behavior rule of a capability is owned by the
 [common spec](../../../README.en.md).** This directory fixes the

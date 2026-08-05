@@ -25,7 +25,7 @@
 > **The public type and signature is owned by the
 > [exact interface per capability](interfaces/README.en.md).**
 > HTTP is owned by [60](60-http-hosting.en.md) ·
-> [61](61-embedded-http-server.ko.md).
+> [61](61-embedded-http-server.en.md).
 > **The internal runtime structure is owned by
 > [internals/runtime-architecture](../../../../internals/README.ko.md)**
 > — it isn't a public contract.
@@ -245,7 +245,7 @@ distinguished by type.
 ## 7. HTTP Hosting
 
 **The framework provides an embedded HTTP server.** The contract is
-owned by [60](60-http-hosting.en.md) · [61](61-embedded-http-server.ko.md),
+owned by [60](60-http-hosting.en.md) · [61](61-embedded-http-server.en.md),
 and the public type is owned by
 [configuration and host](interfaces/02-configuration-host.en.md). Here
 only the **rule that hits system structure** is summarized.
@@ -287,7 +287,7 @@ The registration surface of each capability is owned by the
 | Channel | §7 Channel Builder |
 | SPOT · Actor | §11 Spot Framework API and Instance Spot registration/call |
 | STREAM | §12 Hosted Service and Module |
-| HTTP | [60](60-http-hosting.en.md) · [61](61-embedded-http-server.ko.md) |
+| HTTP | [60](60-http-hosting.en.md) · [61](61-embedded-http-server.en.md) |
 | Monitoring · Location | §13 Configuration and Logging |
 
 **The startup validation item is owned by the common spec** —

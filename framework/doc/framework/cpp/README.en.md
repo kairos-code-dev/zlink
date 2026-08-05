@@ -7,7 +7,7 @@ The documentation hub for the `zlink::framework` C++ artifact.
 | [01 System Structure](../common/spec/server/languages/cpp/01-system-structure.ko.md) | Packages/build targets, application host, **DI container**, configuration, **logging**, HTTP scope/middleware order, feature registration |
 | [Exact Interface Per Feature](../common/spec/server/languages/cpp/interfaces/README.ko.md) | App/Host, builder, messaging, Spot, Actor, STREAM, Location, and monitoring's exact public contract |
 | [60 HTTP Hosting](../common/spec/server/languages/cpp/60-http-hosting.en.md) | The HTTP hosting contract |
-| [61 Embedded HTTP Server](../common/spec/server/languages/cpp/61-embedded-http-server.ko.md) | The embedded server |
+| [61 Embedded HTTP Server](../common/spec/server/languages/cpp/61-embedded-http-server.en.md) | The embedded server |
 
 **The meaning and behavioral rules of a feature are owned by the [common spec](../common/spec/README.ko.md).**
 The C++ documents fix the **exact public surface** that meaning takes in C++.

@@ -61,14 +61,14 @@ try {
 }
 ```
 
-**Options.** protected 생성자만 존재 — `binding_error_t(int code_, int
-internal_errno_)`. 임의 typed exception을 만드는 public 진입점은 그
-exception 자신의 result enum을 받는 public 생성자다(예:
-`submit_error_t(submit_result_t)`), 또는 native result에서 변환할 때 내부적으로
-쓰이는 명시적 `internal_errno_`를 더한 같은 생성자다. Member: `code()`(`int`,
-실패를 분류하는 zlink result code), `internal_errno()`(`int`, 밑에 깔린 native
-errno, 또는 1-인자 형태로 생성됐으면 `code()`와 같은 값), `what()`(재정의된
-`std::runtime_error::what()`, 포맷된 메시지 텍스트 반환).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `binding_error_t(int code_, int internal_errno_)` | protected 생성자만 존재 — public 진입점은 각 typed exception 자신의 result enum을 받는 생성자다(예: `submit_error_t(submit_result_t)`), 또는 native result에서 변환할 때 내부적으로 쓰이는 명시적 `internal_errno_`를 더한 같은 생성자 |
+| `code()` | `int`, 실패를 분류하는 zlink result code |
+| `internal_errno()` | `int`, 밑에 깔린 native errno, 또는 1-인자 형태로 생성됐으면 `code()`와 같은 값 |
+| `what()` | 재정의된 `std::runtime_error::what()`, 포맷된 메시지 텍스트 반환 |
 
 **Completion result.** 해당 없음 — 이건 exception 계층 자체다. `error_t`(family에
 속하지 않는 일반 exception)는 `error_t(int code_)` 또는 `error_t(int code_, int

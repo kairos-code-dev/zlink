@@ -59,13 +59,14 @@ try {
 }
 ```
 
-**Options.** Protected constructor only — `binding_error_t(int code_, int internal_errno_)`; the
-public entry point for constructing any typed exception is that exception's own public constructor
-taking its result enum (e.g. `submit_error_t(submit_result_t)`), or the same constructor plus an
-explicit `internal_errno_` used internally when converting from a native result. Members: `code()`
-(`int`, the zlink result code that classifies the failure), `internal_errno()` (`int`, the
-underlying native errno, or the same value as `code()` when constructed with the one-argument
-form), `what()` (overridden `std::runtime_error::what()`, returns the formatted message text).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `binding_error_t(int code_, int internal_errno_)` | protected constructor only — the public entry point is each typed exception's own constructor taking its result enum (e.g. `submit_error_t(submit_result_t)`), or the same plus an explicit `internal_errno_` used internally when converting from a native result |
+| `code()` | `int`, the zlink result code that classifies the failure |
+| `internal_errno()` | `int`, the underlying native errno, or the same value as `code()` when constructed with the one-argument form |
+| `what()` | overridden `std::runtime_error::what()`, returns the formatted message text |
 
 **Completion result.** N/A — this is the exception hierarchy itself. `error_t` (the general,
 non-family-specific exception) can be constructed directly from a raw code via `error_t(int code_)`

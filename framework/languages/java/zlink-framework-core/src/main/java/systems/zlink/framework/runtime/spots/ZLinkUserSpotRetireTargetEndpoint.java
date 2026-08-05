@@ -766,6 +766,9 @@ final class ZLinkUserSpotRetireTargetEndpoint
         }
         return coordinator.readTargetOwnerGenerations(
                 expectedParticipants(request),
+                new ZLinkAggregateFence(
+                    request.fence().aggregateId(),
+                    request.fence().aggregateGeneration()),
                 new ZLinkLocationOwnerToken(
                     request.targetOwnerId(),
                     request.targetOwnerLeaseGeneration()),

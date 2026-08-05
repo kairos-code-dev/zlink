@@ -1397,10 +1397,12 @@ public final class ZLinkAggregateRelocationCoordinator {
     /** Reads provider-issued owner generations after a target commit. */
     public CompletionStage<Map<String, Long>> readTargetOwnerGenerations(
         List<ExpectedParticipant> participants,
+        ZLinkAggregateFence fence,
         ZLinkLocationOwnerToken targetOwner,
         ZLinkStoreCancellation cancellation) {
         List<ExpectedParticipant> expected = List.copyOf(
             Objects.requireNonNull(participants, "participants"));
+        Objects.requireNonNull(fence, "fence");
         Objects.requireNonNull(targetOwner, "targetOwner");
         Objects.requireNonNull(cancellation, "cancellation");
         if (expected.isEmpty()) {
@@ -1413,6 +1415,10 @@ public final class ZLinkAggregateRelocationCoordinator {
             reads = reads.thenCompose(ignored -> authorityStore.read(
                     participant.authorityKey(), cancellation)
                 .thenCompose(read -> {
+                    var publication = read instanceof ZLinkAuthoritySnapshot snapshot
+                        ? ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+                            snapshot.payload())
+                        : null;
                     if (!(read instanceof ZLinkAuthoritySnapshot snapshot)
                         || snapshot.objectGeneration()
                             != participant.objectGeneration()
@@ -1421,7 +1427,20 @@ public final class ZLinkAggregateRelocationCoordinator {
                             snapshot.authorityOwnerGeneration())
                         || !snapshot.ownerId().equals(targetOwner.ownerId())
                         || snapshot.ownerLeaseGeneration()
-                            != targetOwner.leaseGeneration()) {
+                            != targetOwner.leaseGeneration()
+                        || publication == null
+                        || !publication.aggregateId().equals(fence.aggregateId())
+                        || publication.aggregateGeneration()
+                            != fence.aggregateGeneration()
+                        || !publication.targetOwnerId().equals(
+                            targetOwner.ownerId())
+                        || publication.targetOwnerLeaseGeneration()
+                            != targetOwner.leaseGeneration()
+                        || !publication.targetNodeRid().equals(
+                            snapshot.allocation().descriptor().rid())
+                        || publication.targetNodeGeneration()
+                            != snapshot.allocation()
+                                .descriptorLifecycleGeneration()) {
                         return failed(new RelocationDataLostException(
                             "target owner generation differs: "
                                 + participant.authorityKey()));

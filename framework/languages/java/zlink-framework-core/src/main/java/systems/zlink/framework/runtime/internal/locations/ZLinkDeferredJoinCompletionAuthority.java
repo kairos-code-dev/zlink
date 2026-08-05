@@ -19,6 +19,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
 import systems.zlink.framework.runtime.locations.ZLinkAuthorityKeyCodec;
 import systems.zlink.framework.runtime.locations.ZLinkServiceAuthorityPayloadCodec;
+import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.runtime.spots.ZLinkCanonicalActorRelocationEnvelope;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
@@ -283,7 +284,10 @@ public final class ZLinkDeferredJoinCompletionAuthority {
             .thenCompose(result ->
                 result == ZLinkAggregateCommitResult.COMMITTED
                     || result == ZLinkAggregateCommitResult.ALREADY_COMMITTED
-                    ? readCommittedOwnerGeneration(actor)
+                    ? readCommittedOwnerGeneration(
+                        aggregateId,
+                        aggregateGeneration,
+                        actor)
                     : CompletableFuture.failedFuture(
                         new IllegalStateException(
                             "direct Join relocation aggregate commit failed: "
@@ -291,28 +295,76 @@ public final class ZLinkDeferredJoinCompletionAuthority {
     }
 
     private CompletionStage<Long> readCommittedOwnerGeneration(
+        UUID aggregateId,
+        long aggregateGeneration,
         ZLinkBackendActorRef actor) {
         return authority.read(
                 ZLinkAuthorityKeyCodec.actor(actor.actorId()),
                 NEVER)
-            .thenApply(result -> {
+            .thenCompose(result -> {
                 if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
                     || snapshot.objectGeneration() != actor.generation()) {
-                    throw new IllegalStateException(
-                        "direct Join Actor authority is missing after commit");
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "direct Join Actor authority is missing after commit"));
+                }
+                var publication =
+                    ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+                        snapshot.payload());
+                if (publication == null
+                    || !publication.aggregateId().equals(aggregateId)
+                    || publication.aggregateGeneration()
+                        != aggregateGeneration
+                    || !publication.targetOwnerId().equals(snapshot.ownerId())
+                    || publication.targetOwnerLeaseGeneration()
+                        != snapshot.ownerLeaseGeneration()
+                    || !publication.targetNodeRid().equals(
+                        snapshot.allocation().descriptor().rid())
+                    || publication.targetNodeGeneration()
+                        != snapshot.allocation()
+                            .descriptorLifecycleGeneration()) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "direct Join canonical owner fence differs after commit"));
                 }
                 var payload = new ZLinkActorAuthorityPayloadCodec()
                     .decode(
-                        ZLinkCanonicalRelocationAuthorityStateCodec
-                            .applicationPayloadOrOriginal(snapshot.payload()))
-                    .orElseThrow(() -> new IllegalStateException(
-                        "direct Join Actor authority is invalid after commit"));
-                if (!payload.actorId().equals(actor.actorId())
-                    || !payload.nodeRid().equals(actor.nodeRid())) {
-                    throw new IllegalStateException(
-                        "direct Join Actor authority owner differs after commit");
+                        publication.applicationPayload())
+                    .orElse(null);
+                if (payload == null
+                    || !payload.actorId().equals(actor.actorId())
+                    || !payload.nodeRid().equals(actor.nodeRid())
+                    || payload.nodeGeneration() != actor.generation()
+                    || !payload.ownerId().equals(snapshot.ownerId())
+                    || payload.ownerLeaseGeneration()
+                        != snapshot.ownerLeaseGeneration()
+                    || !payload.meshName().equals(
+                        snapshot.allocation().descriptor().meshName())
+                    || !payload.nodeRid().equals(
+                        snapshot.allocation().descriptor().rid())
+                    || payload.nodeGeneration()
+                        != snapshot.allocation()
+                            .descriptorLifecycleGeneration()
+                    || snapshot.allocation().objectKind()
+                        != ZLinkPlacementObjectKind.ACTOR) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "direct Join Actor authority owner differs after commit"));
                 }
-                return snapshot.authorityOwnerGeneration();
+                return load(
+                        publication.reference(),
+                        publication.checksumCrc32c())
+                    .thenApply(loaded -> {
+                        var root = loaded.root();
+                        if (root.relocationHigh()
+                                != aggregateId.getMostSignificantBits()
+                            || root.relocationLow()
+                                != aggregateId.getLeastSignificantBits()) {
+                            throw new IllegalStateException(
+                                "direct Join canonical root identity differs after commit");
+                        }
+                        return snapshot.authorityOwnerGeneration();
+                    });
             });
     }
 

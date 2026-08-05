@@ -98,7 +98,7 @@ through .NET standard diagnostics.
 
 The application configures level, sampling, and whether to record
 message size with
-[Topology And Host Monitoring](10-topology-monitoring.ko.md)'s
+[Topology And Host Monitoring](10-topology-monitoring.en.md)'s
 `IZLinkDiagnosticsOptions`. Exporter, log provider, file, and remote
 backend are configured by the application.
 

@@ -1,7 +1,7 @@
 # .NET Location Configuration And Operations Public Interface
 
 [.NET exact interface table of contents](README.en.md) · [Location Runtime](../../../../21-location-runtime.en.md) ·
-[Provider SPI](08-authority-relocation.ko.md) · [Host Monitoring](10-topology-monitoring.ko.md)
+[Provider SPI](08-authority-relocation.ko.md) · [Host Monitoring](10-topology-monitoring.en.md)
 
 ## 1. Scope
 
@@ -181,4 +181,4 @@ application can shut down the host with `ShutdownAsync(...)` after
 confirming the result. Calling `ShutdownAsync(...)` directly from
 `Serving` doesn't start a new relocation, and shuts down the host after
 bounded cleanup. The exact signature and result are owned by
-[Host Monitoring](10-topology-monitoring.ko.md).
+[Host Monitoring](10-topology-monitoring.en.md).

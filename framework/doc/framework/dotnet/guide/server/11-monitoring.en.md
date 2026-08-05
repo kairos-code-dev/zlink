@@ -9,7 +9,7 @@ title: "11. Monitoring — Status Observation And Diagnostics · C#/.NET"
 # 11. Monitoring — Status Observation And Diagnostics
 
 > **The document that owns this chapter's contract** — covered by
-> [.NET topology and host monitoring public interfaces](../../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md).
+> [.NET topology and host monitoring public interfaces](../../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.en.md).
 > This chapter explains the four observation surfaces that contract exposes, focused on
 > usage.
 

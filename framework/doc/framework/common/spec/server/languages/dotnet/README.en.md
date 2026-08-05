@@ -12,7 +12,7 @@ types, methods, generic constraints, nullable, and async return types.
 | [Topology configuration](interfaces/03-configuration-topology.ko.md) | Defines RouteMesh, ClientServer, and fanout builder and runtime options. |
 | [Location configuration and operations](interfaces/08-location-maintenance.ko.md) | Defines application-facing Location options, readiness, and operational queries. |
 | [Location/Relocation provider](interfaces/08-authority-relocation.ko.md) | Defines the generic atomic Location Store and immutable Relocation Store SPI. |
-| [Host monitoring](interfaces/10-topology-monitoring.ko.md) | Defines host state, Relocate/Shutdown results, and operational status. |
+| [Host monitoring](interfaces/10-topology-monitoring.en.md) | Defines host state, Relocate/Shutdown results, and operational status. |
 
 The Stream connector client is a separate package, and the
 [.NET Stream Connector Contract](../../../stream-connector/languages/dotnet/03-stream-connector.ko.md)

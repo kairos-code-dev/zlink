@@ -7,7 +7,7 @@ and the entry points that query RouteMesh·ClientServer·Fanout operational stat
 signatures are owned by the
 [RouteMesh·MeshNode exact interface](../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
 and the
-[Topology monitoring exact interface](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)
+[Topology monitoring exact interface](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.en.md)
 (both Korean-only). Every registration entry is a host configuration-time call.
 
 ---
@@ -412,5 +412,5 @@ category's `Status`/`ObserveAsync`.
 
 The full basis is
 [RouteMesh·MeshNode exact interface](../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md) and
-[Topology monitoring exact interface](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)
+[Topology monitoring exact interface](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.en.md)
 (both Korean-only).

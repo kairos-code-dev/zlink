@@ -76,7 +76,7 @@ a native handle, caller buffer, payload, or application metadata.
 
 The following C# is a non-normative excerpt showing the common behavior. It doesn't
 require the same signature in other languages. The exact type and signature are set by
-[.NET Topology Monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.ko.md).
+[.NET Topology Monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.en.md).
 
 ```csharp
 public interface IZLinkRouteMeshRuntime

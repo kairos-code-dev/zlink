@@ -62,7 +62,7 @@ source are specified together. If there's no eligible node for the
 requested version, the framework waits until the deadline and then
 returns `Blocked/TargetUnavailable`, without automatically switching to a
 different version. The exact option and result types are owned by
-[Host Monitoring](10-topology-monitoring.ko.md).
+[Host Monitoring](10-topology-monitoring.en.md).
 
 ## 4. DI Public Service
 

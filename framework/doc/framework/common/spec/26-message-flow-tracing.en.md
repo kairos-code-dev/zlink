@@ -217,7 +217,7 @@ and local sequence.
 The following C# is a non-normative excerpt explaining the common
 behavior. It doesn't require the same signature in other languages, and
 the exact .NET declaration is defined by
-[.NET Topology Monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.ko.md).
+[.NET Topology Monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.en.md).
 
 ```csharp
 public interface IZLinkDiagnosticsOptions

@@ -8,7 +8,7 @@ title: "8. Session And Actor Binding · Node/TypeScript"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 07-actor-spot.en.md](07-actor-spot.en.md) | [Next: 09-stream.en.md](09-stream.en.md)
+[Guide Home](README.en.md) | [Previous: 07-actor-spot.en.md](07-actor-spot.en.md) | [Next: 9. STREAM](09-stream.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

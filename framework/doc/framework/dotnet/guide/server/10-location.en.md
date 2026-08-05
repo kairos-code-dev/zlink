@@ -8,7 +8,7 @@ title: "10. Location — Auto-Connect And Object Location · C#/.NET"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 09-stream.en.md](09-stream.en.md) | [Next: 11-monitoring.en.md](11-monitoring.en.md)
+[Guide Home](README.en.md) | [Previous: 9. STREAM](09-stream.en.md) | [Next: 11-monitoring.en.md](11-monitoring.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

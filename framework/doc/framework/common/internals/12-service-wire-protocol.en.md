@@ -13,7 +13,7 @@ title: "12. Service wire protocol"
 > schema defines, and unlike other chapters it does not apply the decision/discretion/
 > confirmable-result distinction.
 >
-> **Related contracts** — [Layer Boundaries and Identifiers](01-layering.ko.md) ·
+> **Related contracts** — [Layer Boundaries and Identifiers](01-layering.en.md) ·
 > [Location runtime](../spec/21-location-runtime.ko.md) ·
 > [Redis Relocation Store](../spec/23-relocation-store-redis.ko.md) ·
 > [Transport liveness](../spec/29-transport-liveness.ko.md)

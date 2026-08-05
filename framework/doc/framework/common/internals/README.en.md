@@ -113,7 +113,7 @@ connection easy to miss when reading a chapter separately.
 
 | Document | Decision It Covers |
 |---|---|
-| [1. Layer Boundary And Identifier](01-layering.ko.md) | Where to draw the binding boundary. Which values mustn't be merged |
+| [1. Layer Boundary And Identifier](01-layering.en.md) | Where to draw the binding boundary. Which values mustn't be merged |
 | [2. Spot · Actor Execution Serialization](02-serialization.ko.md) | Why the queueing spot and execution authority are separated. Why execution resource mustn't be proportional to Spot count |
 | [3. Application And Infrastructure Execution Separation](03-progress-isolation.ko.md) | What must still progress even while a handler is stuck. Why it's a region separation, not a reserved section |
 | [4. Operation Completion Confirmation](04-completion.ko.md) | How to make only one win when multiple paths try to finish at once. How not to lose a response |
@@ -211,4 +211,4 @@ source or a common native binary.
 
 ---
 
-[Next: 1. Layer Boundary And Identifier](01-layering.ko.md)
+[Next: 1. Layer Boundary And Identifier](01-layering.en.md)

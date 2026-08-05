@@ -5100,179 +5100,226 @@ following criteria.
     a workaround and reference the bug report.
 
 ## Test Matrix
-- 이 섹션은 각 바인딩이 최소한 가져야 할 테스트 항목을 정리한다.
-- 바인딩별 표면은 달라도 아래 의미 계약은 모두 검증해야 한다.
-- `Surface Tests`, `Contract Tests`, `Behavior Tests`, `Failure Contract Tests`,
-  `Helper/Facade Tests`, `Optimization Guard Tests`, `Boundary Validation Tests`,
-  `Option Tests`, `Ownership Tests`는 모든 바인딩의 기본 `Required` 항목이다.
-- `Callback Tests`, `Monitor Tests`, `Poller Tests`, `Service Tests`, `Codec Tests`,
-  `Sample Smoke Tests`는 해당 public API, extension package, sample suite를 제공하는
-  바인딩에서 `Conditional` 항목이다.
-- `Language Runtime Tests`는 런타임 특성 때문에 위험이 생기는 바인딩에서
-  `Language-specific` 항목이다.
+- This section lists the minimum test items each binding must have.
+- Even though the surface differs per binding, every semantic contract
+  below must be verified.
+- `Surface Tests`, `Contract Tests`, `Behavior Tests`, `Failure Contract
+  Tests`, `Helper/Facade Tests`, `Optimization Guard Tests`, `Boundary
+  Validation Tests`, `Option Tests`, `Ownership Tests` are baseline
+  `Required` items for every binding.
+- `Callback Tests`, `Monitor Tests`, `Poller Tests`, `Service Tests`,
+  `Codec Tests`, `Sample Smoke Tests` are `Conditional` items for a
+  binding that provides the matching public API, extension package, or
+  sample suite.
+- `Language Runtime Tests` are `Language-specific` items for a binding
+  where runtime characteristics create a risk.
 
-### Required: Surface 테스트
-- canonical public API surface test
-- socket type 역할 분리 확인
-- typed option surface 존재 확인
-- socket 공통 TLS helper 존재 확인
-- service TLS helper 존재 확인
-- raw option bag 비노출 확인
-- monitor canonical surface 존재 확인
+### Required: Surface Tests
+- a canonical public API surface test
+- confirming socket-type role separation
+- confirming a typed option surface exists
+- confirming the shared socket TLS helper exists
+- confirming the service TLS helper exists
+- confirming a raw option bag is not exposed
+- confirming a monitor canonical surface exists
   - `recv()`
 
-### Required: Contract 테스트
-- FFI/native 호출 매핑 검증
-  - 바인딩 public API 호출이 올바른 C API 함수에 매핑되는지 확인
-  - 파라미터 전달과 반환값 변환이 올바른지 확인
-- managed ↔ native 경계 타입 변환 검증
-  - 언어 타입에서 C 타입으로의 변환이 올바른지 확인
-  - C 타입에서 언어 타입으로의 변환이 올바른지 확인
-- 리소스 lifecycle 검증
-  - context/socket native handle 생성과 해제가 누수 없이 동작하는지 확인
-  - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
+### Required: Contract Tests
+- verifying FFI/native call mapping
+  - confirming a binding public API call maps to the correct C API
+    function
+  - confirming parameter passing and return-value conversion are
+    correct
+- verifying type conversion at the managed ↔ native boundary
+  - confirming the language-type-to-C-type conversion is correct
+  - confirming the C-type-to-language-type conversion is correct
+- verifying resource lifecycle
+  - confirming context/socket native handle construction and release
+    work without leaking
+  - confirming native resources are cleaned up on exception/error paths
+    too
 
-### Required: Behavior 테스트
-- 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
-- 목적은 core 메시징 기능 재검증이 아니라 바인딩 경로의 정확성 확인이다.
-- blocking 경로:
-  - `send` → core send 중계 성공
-  - `recv` → core recv 중계 성공
-  - `publish` → core publish 중계 성공
-  - `subscribe` → core subscribe 중계 성공
-  - routed `send` → routing id 포함 중계 성공
-- non-blocking 경로:
-  - `recv` non-blocking → 데이터 없음 시 empty 반환
-  - `subscribe` non-blocking → 데이터 없음 시 empty 반환
-  - `receiveSubscriptionEvent` non-blocking → 데이터 없음 시 empty 반환
-  - `send` 실패 시 예외 또는 오류 경로 확인
-  - `publish` 실패 시 예외 또는 오류 경로 확인
+### Required: Behavior Tests
+- Verify the binding layer correctly relays the core contract.
+- The goal is confirming the correctness of the binding path, not
+  re-verifying core messaging functionality.
+- Blocking paths:
+  - `send` → successfully relays to core send
+  - `recv` → successfully relays to core recv
+  - `publish` → successfully relays to core publish
+  - `subscribe` → successfully relays to core subscribe
+  - routed `send` → successfully relays including the routing id
+- Non-blocking paths:
+  - `recv` non-blocking → returns empty when there's no data
+  - `subscribe` non-blocking → returns empty when there's no data
+  - `receiveSubscriptionEvent` non-blocking → returns empty when there's
+    no data
+  - confirms an exception or error path on `send` failure
+  - confirms an exception or error path on `publish` failure
 
-### Required: Helper/Facade 테스트
-- public helper와 facade가 단순 native 호출 이상의 의미를 제공하는 경우 그 의미를
-  직접 검증한다.
-- `Message`, `Received`, multipart collection, routing id value/codec, typed option
-  facade, domain object, request/reply helper, topology snapshot value object 같은
-  바인딩 제공 타입의 불변식을 검증한다.
-- helper가 native 세부사항을 사용자에게 누출하지 않는지 확인한다.
-- helper가 성공/실패, empty payload, one empty message, multipart boundary를
-  구분해서 유지하는지 확인한다.
-- helper가 public API에 없는 internal sequencing을 사용자에게 요구하지 않는지
-  확인한다.
-- convenience API가 canonical API와 다른 의미를 만들지 않는지 확인한다.
+### Required: Helper/Facade Tests
+- When a public helper or facade provides meaning beyond a simple
+  native call, directly verify that meaning.
+- Verify the invariants of binding-provided types such as `Message`,
+  `Received`, a multipart collection, a routing id value/codec, a typed
+  option facade, a domain object, a request/reply helper, and a topology
+  snapshot value object.
+- Confirm a helper does not leak native detail to the user.
+- Confirm a helper keeps success/failure, an empty payload, one empty
+  message, and multipart boundaries distinct.
+- Confirm a helper does not require the user to perform internal
+  sequencing that isn't in the public API.
+- Confirm a convenience API does not create a meaning different from
+  the canonical API.
 
-### Required: Optimization Guard 테스트
-- hot path가 High-Performance Binding Policy를 계속 지키는지 검증한다.
-- send/recv/request/reply/publish/subscribe 내부 경로가 `*_part` substrate를
-  사용하는지 확인한다.
-- aggregate native 함수 호출, 숨은 double materialization, 불필요한 eager copy,
-  반복 호출마다 생기는 closure/boxing/allocation이 다시 들어오지 않았는지 확인한다.
-- callback, dispatch, poller, request completion 경로에서 숨은 blocking wait,
-  sleep, busy wait, thread join이 생기지 않았는지 확인한다.
-- 이 검증은 항상 micro benchmark일 필요는 없다. 안정적으로 자동화할 수 있으면
-  source-level/static check, public API allocation check, stress smoke, perf gate 중
-  가장 낮은 비용의 방식을 사용한다.
-- perf benchmark는 수치 회귀를 담당하고, optimization guard test는 금지된 구조가
-  코드에 들어오지 않도록 막는 역할을 담당한다.
+### Required: Optimization Guard Tests
+- Verify the hot path continues to satisfy the High-Performance Binding
+  Policy.
+- Confirm the internal send/recv/request/reply/publish/subscribe path
+  uses the `*_part` substrate.
+- Confirm an aggregate native function call, hidden double
+  materialization, an unnecessary eager copy, or a per-call closure/
+  boxing/allocation hasn't crept back in.
+- Confirm a hidden blocking wait, sleep, busy wait, or thread join
+  hasn't appeared on the callback, dispatch, poller, or request-
+  completion path.
+- This verification does not always need to be a micro benchmark. When
+  it can be automated reliably, use whichever of a source-level/static
+  check, a public API allocation check, a stress smoke test, or a perf
+  gate costs the least.
+- A perf benchmark owns numeric regression, while an optimization guard
+  test owns keeping a forbidden structure out of the code.
 
-### Required: Failure Contract 테스트
-- blocking `send` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
-- blocking `publish` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
-- `send` backpressure 예외 확인
-- `send` not-ready 예외 확인
-- `publish` backpressure 또는 not-ready 예외 확인
-- native `NO_DATA` 외 오류가 무시되지 않는지 확인
-- callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 확인
-- direct recv 불가 상태에서 empty/null로 숨기지 않는지 확인
-- native `NO_DATA`만 empty/non-success 결과로 처리되는지 확인
+### Required: Failure Contract Tests
+- confirm a blocking `send` failure is delivered to the caller through
+  an exception or the per-language error path
+- confirm a blocking `publish` failure is delivered to the caller
+  through an exception or the per-language error path
+- confirm the `send` backpressure exception
+- confirm the `send` not-ready exception
+- confirm the `publish` backpressure or not-ready exception
+- confirm an error other than native `NO_DATA` is not ignored
+- confirm an error is delivered per the native contract when callback
+  mode and direct recv conflict
+- confirm a state where direct recv is impossible is not hidden as
+  empty/null
+- confirm only native `NO_DATA` is treated as an empty/non-success
+  result
 
-### Required: Boundary Validation 테스트
-- `RoutingId` 최대 길이 경계 (255바이트 OK)
-- `RoutingId` 초과 길이 즉시 오류 반환 (256바이트 이상 → 예외)
-- `Duration -> int millis` overflow 경계
-- offset/length bounds 검증
-- null 불가 인자 검증
-- enum 범위 밖 값 검증
-- `channel_name` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
-- `endpoint` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
-- topic/filter에 embedded null 문자 포함 시 즉시 오류 반환
+### Required: Boundary Validation Tests
+- `RoutingId`'s maximum length boundary (255 bytes OK)
+- `RoutingId` over the length returns an immediate error (256+ bytes →
+  exception)
+- the `Duration -> int millis` overflow boundary
+- offset/length bounds validation
+- non-nullable argument validation
+- out-of-enum-range value validation
+- `channel_name` over 255 bytes returns an immediate error (fixed-size
+  `char[256]`)
+- `endpoint` over 255 bytes returns an immediate error (fixed-size
+  `char[256]`)
+- an embedded null character in topic/filter returns an immediate
+  error
 
-### Required: Option 테스트
+### Required: Option Tests
 - common option typed getter/setter
-- socket type별 typed option getter/setter
-- 잘못된 소켓 타입에서 option 역할 접근 차단
-- raw integer 대신 enum/boolean surface가 제공되는지 확인
+- per-socket-type typed option getter/setter
+- blocking an option-role access on the wrong socket type
+- confirming an enum/boolean surface is provided instead of a raw
+  integer
 
-### Required: Ownership 테스트
-- send 성공 시 ownership 이동 계약 (native에 넘어감, 바인딩이 이후 접근 금지)
-- send 실패 시 restore 또는 caller ownership 유지 계약
-- 생성 후 send하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
-- recv 결과 ownership 계약 (바인딩이 받아서 해제 책임)
-- callback 후 frame validity 계약
-- multipart receive shape와 callback delivery shape 일치 여부
+### Required: Ownership Tests
+- the ownership-transfer contract on send success (moves to native; the
+  binding must not access it afterward)
+- the restore-or-caller-keeps-ownership contract on send failure
+- explicit close/release of a constructed-but-unsent message (native
+  memory leaks without close)
+- the ownership contract of a recv result (the binding receives it and
+  is responsible for releasing it)
+- the frame-validity contract after a callback
+- whether the multipart receive shape and the callback delivery shape
+  match
 
-### Conditional: Callback 테스트
-- public callback API가 있는 경우 callback delivery를 검증한다.
-- callback이 받은 message 또는 multipart payload의 ownership을 검증한다.
-- callback 예외, panic, rejected promise, delegate exception 같은 언어별 실패가
-  문서화된 오류 경로로 전달되는지 확인한다.
-- callback delegate/function/object lifetime이 native callback보다 짧아져
-  use-after-free를 만들지 않는지 검증한다.
-- callback 안에서 금지된 blocking wait나 hidden thread join이 발생하지 않는지
-  확인한다.
+### Conditional: Callback Tests
+- If there's a public callback API, verify callback delivery.
+- Verify the ownership of the message or multipart payload the callback
+  receives.
+- Confirm a per-language failure — a callback exception, panic,
+  rejected promise, delegate exception — is delivered through the
+  documented error path.
+- Verify a callback delegate/function/object's lifetime doesn't outlive
+  the native callback in the wrong direction and create a
+  use-after-free.
+- Confirm a forbidden blocking wait or hidden thread join doesn't occur
+  inside the callback.
 
-### Conditional: Monitor 테스트
-- blocking monitor `recv` 성공 경로
-- non-blocking monitor recv empty path
-- monitor callback/state 변화와 data plane readiness 일치 여부
+### Conditional: Monitor Tests
+- the successful blocking monitor `recv` path
+- the non-blocking monitor recv empty path
+- whether the monitor callback/state change matches data-plane
+  readiness
 
-### Conditional: Poller 테스트
-- raw socket readiness 또는 fd readiness가 public poller API로 전달되는지 확인한다.
-- poller가 지원하지 않는 service-specific handle을 조용히 받아들이지 않는지 확인한다.
-- readiness event 값은 data plane contract를 대체하지 않는다는 점을 검증한다.
+### Conditional: Poller Tests
+- Confirm raw socket readiness or fd readiness is delivered through the
+  public poller API.
+- Confirm the poller doesn't silently accept a service-specific handle
+  it doesn't support.
+- Verify a readiness event value does not replace the data-plane
+  contract.
 
-### Conditional: Service 테스트
-- spot/actor public API를 제공하는 바인딩은 해당 service lifecycle을 최소 경로로
-  검증한다.
-- close/connect/unbind 같은 lifecycle 제약이 public API에서 native 계약대로
-  전달되는지 확인한다.
-- spot publish/subscribe, spot request/reply, SPOT status/snapshot은 public
-  surface가 있으면 roundtrip 또는 snapshot 검증을 수행한다.
-- service test는 service layer 바인딩 계약 검증이 목적이다. core service 전체
-  matrix를 모든 언어에서 다시 실행하지 않는다.
+### Conditional: Service Tests
+- A binding that provides the spot/actor public API verifies that
+  service's lifecycle through a minimal path.
+- Confirm a lifecycle constraint such as close/connect/unbind is
+  delivered through the public API per the native contract.
+- For spot publish/subscribe, spot request/reply, and SPOT status/
+  snapshot, perform a round-trip or snapshot verification wherever a
+  public surface exists.
+- A service test's goal is verifying the service-layer binding
+  contract. It does not re-run the entire core service matrix in every
+  language.
 
-### Conditional: Codec 테스트
-- codec extension package를 제공하는 바인딩은 codec별 payload roundtrip을 검증한다.
-- core binding package가 codec dependency를 필수로 끌어들이지 않는지 확인한다.
-- serializer 선택 규칙이 있는 언어는 기본 serializer와 오류 경로를 검증한다.
+### Conditional: Codec Tests
+- A binding that provides a codec extension package verifies a
+  per-codec payload round trip.
+- Confirm the core binding package doesn't pull in a codec dependency as
+  required.
+- A language with a serializer-selection rule verifies the default
+  serializer and its error path.
 
-### Conditional: Sample Smoke 테스트
-- sample suite를 제공하는 바인딩은 canonical sample set의 실행 smoke를 제공한다.
-- sample smoke는 public API 사용 가능성을 확인하는 최소 검증이다.
-- sample smoke는 core transport matrix, stress, perf 측정을 대신하지 않는다.
+### Conditional: Sample Smoke Tests
+- A binding that provides a sample suite provides a run smoke test for
+  the canonical sample set.
+- Sample smoke is the minimal verification that confirms the public API
+  is usable.
+- Sample smoke does not replace the core transport matrix, stress
+  testing, or perf measurement.
 
-### Language-specific: Runtime 테스트
-- .NET: `IDisposable`, `SafeHandle`, delegate lifetime, `GCHandle`, native library
-  loader, `ZlinkException` mapping을 검증한다.
-- Java: `AutoCloseable`, JNI object lifetime, checked/unchecked exception policy,
-  classloader/native loader 경계를 검증한다.
-- Go: cgo pointer rule, finalizer에 의존하지 않는 explicit close, `(T, error)`
-  mapping을 검증한다.
-- Rust: ownership move, borrow lifetime, `Drop`, `Send`/`Sync` 노출 여부, concrete
-  error type mapping을 검증한다.
-- Python: buffer protocol, reference counting, context manager, exception mapping을
-  검증한다.
-- Node: native addon lifetime, `Buffer` ownership, async callback error path,
-  package export boundary를 검증한다.
-- C++: RAII, move-only message ownership, exception type, installed header boundary를
-  검증한다.
-- C: raw ABI, errno/result code, caller-provided message lifecycle을 검증한다.
+### Language-specific: Runtime Tests
+- .NET: verifies `IDisposable`, `SafeHandle`, delegate lifetime,
+  `GCHandle`, the native library loader, and `ZlinkException` mapping.
+- Java: verifies `AutoCloseable`, JNI object lifetime, the checked/
+  unchecked exception policy, and the classloader/native loader
+  boundary.
+- Go: verifies the cgo pointer rule, an explicit close that doesn't
+  depend on a finalizer, and `(T, error)` mapping.
+- Rust: verifies ownership move, borrow lifetime, `Drop`, whether
+  `Send`/`Sync` is exposed, and concrete error type mapping.
+- Python: verifies the buffer protocol, reference counting, the context
+  manager, and exception mapping.
+- Node: verifies native addon lifetime, `Buffer` ownership, the async
+  callback error path, and the package export boundary.
+- C++: verifies RAII, move-only message ownership, the exception type,
+  and the installed header boundary.
+- C: verifies the raw ABI, errno/result codes, and caller-provided
+  message lifecycle.
 
-### 참고: Performance and Sample Verification
-- 성능 회귀 검증은 Perf Policy (`doc/perf/`)가 담당한다. Test Matrix에 중복하지
-  않는다.
-- sample/helper의 canonical API 준수, send 실패 무시 방지, legacy surface
-  우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
+### Note: Performance And Sample Verification
+- Performance regression verification is owned by the Perf Policy
+  (`doc/perf/`). It is not duplicated in the Test Matrix.
+- A sample/helper's compliance with the canonical API, avoiding
+  ignoring a send failure, and avoiding a legacy-surface bypass are
+  verified in the Review Checklist. These are not automated test items.
 
 ## 샘플 정책
 - 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/en/spec/sample/SAMPLE_POLICY/)

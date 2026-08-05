@@ -35,7 +35,7 @@ The browser connector isn't a public interface of the Node.js host
 This tree only owns the **contract**. For usage, check the
 per-language guide:
 [C++](../../../cpp/guide/stream-connector/README.ko.md),
-[.NET](../../../dotnet/guide/stream-connector/README.ko.md),
+[.NET](../../../dotnet/guide/stream-connector/README.en.md),
 [Java](../../../java/guide/stream-connector/README.en.md),
 [Kotlin](../../../kotlin/guide/stream-connector/README.en.md),
 [Node.js/TypeScript](../../../node/guide/stream-connector/README.en.md).

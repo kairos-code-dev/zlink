@@ -14,7 +14,7 @@
 > public surface** that meaning has in `.NET`.
 >
 > Usage is owned by the
-> [.NET Stream Connector guide](../../../../../dotnet/guide/stream-connector/INDEX.ko.md).
+> [.NET Stream Connector guide](../../../../../dotnet/guide/stream-connector/INDEX.en.md).
 
 ## 1. Package And Boundary
 

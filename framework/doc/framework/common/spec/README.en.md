@@ -71,9 +71,9 @@ uses for the common server contract are owned by the following documents.
 
 ## HTTP Client
 
-- [HTTP client spec index](http-client/README.ko.md)
-- [12 HTTP client integration contract](http-client/12-http-client.ko.md)
-- [Per-language HTTP client contract](http-client/language-interfaces.ko.md)
+- [HTTP client spec index](http-client/README.en.md)
+- [12 HTTP client integration contract](http-client/12-http-client.en.md)
+- [Per-language HTTP client contract](http-client/language-interfaces.en.md)
 
 `10-revision-candidates.ko.md` is not a public contract — it's a document
 that manages design candidates for the next revision.

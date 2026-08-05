@@ -141,7 +141,7 @@ and message.
   number, content-type, and typed-payload-selection contract, but don't share
   a registry instance. The server owns a per-server-root registry; the HTTP
   client owns a per-host registry
-  ([HTTP Client §5](http-client/12-http-client.ko.md#5-codec)); the connector
+  ([HTTP Client §5](http-client/12-http-client.en.md#5-codec)); the connector
   owns a per-connector-instance typed codec option
   ([Stream Connector §5.4](stream-connector/32-stream-connector.ko.md#54-codec)).
 

@@ -305,7 +305,7 @@ follow.
 
 The client package's public interface isn't defined here. Stream connector is owned by the
 [per-language Stream connector contract](spec/stream-connector/README.ko.md), and HTTP
-client by the [per-language HTTP client contract](spec/http-client/README.ko.md).
+client by the [per-language HTTP client contract](spec/http-client/README.en.md).
 
 The per-language specs aren't documents that copy each other's signatures. They fix the
 same common behavior as a public contract that user of that language can use naturally.

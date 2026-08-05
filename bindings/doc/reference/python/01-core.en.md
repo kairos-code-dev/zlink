@@ -69,11 +69,25 @@ ctx.options.auto_hwm_profile = AutoHwmProfile.LOW_LATENCY
 ctx.options.add_thread_affinity(2)
 ```
 
-**Options.** Plain properties (get/set except where noted): `io_threads`, `max_sockets`,
-`max_message_size`, `thread_scheduling_policy`, `thread_name_prefix`, `auto_hwm_enabled`,
-`auto_hwm_recalc_debounce`, `blocky`, `auto_hwm_profile`, `auto_hwm_msg_unit_bytes`; read-only:
-`socket_limit`, `msg_t_size`. Methods: `add_thread_affinity(cpu)`/`remove_thread_affinity(cpu)`.
-**No `thread_priority` property exists here**, unlike every other language covered so far.
+**Options.** Plain properties are get/set except where noted. **No `thread_priority` property
+exists here**, unlike every other language covered so far.
+
+| Member | Meaning |
+| --- | --- |
+| `io_threads` | I/O thread count |
+| `max_sockets` | context-wide socket cap |
+| `socket_limit` | read-only, build's hard cap on `max_sockets` |
+| `max_message_size` | per-message size cap |
+| `msg_t_size` | read-only, native message struct size, diagnostic only |
+| `thread_scheduling_policy` | dispatch thread scheduling policy |
+| `thread_name_prefix` | OS-visible dispatch thread name prefix |
+| `auto_hwm_enabled` | whether auto-HWM sizing is active |
+| `auto_hwm_recalc_debounce` | minimum interval between automatic recalculations |
+| `blocky` | whether blocking calls actually block vs. fail fast |
+| `auto_hwm_profile` | automatic HWM sizing profile — see Sockets category |
+| `auto_hwm_msg_unit_bytes` | accounted-byte unit for auto-HWM; `0` selects the socket-type default |
+| `add_thread_affinity(cpu)` | pins an I/O thread to a CPU |
+| `remove_thread_affinity(cpu)` | unpins an I/O thread from a CPU |
 
 **Completion result.** All property reads/writes and both methods are synchronous.
 
@@ -114,15 +128,22 @@ from_uuid = RoutingId.from_(uuid.uuid4())
 restored = RoutingId.from_hex(previously_printed.to_hex())
 ```
 
-**Options.** `RoutingId(data)` constructor (copies a bytes-like object of 1..255 bytes, raises
-`ValueError` out of range). Static factory `from_(value)` (named with a trailing underscore since
-`from` is a Python keyword) dispatches on the argument's type: `str` (UTF-8 encode), `int` (4-byte
-big-endian uint32, `0..4294967295`), `uuid.UUID` (16 bytes), or any bytes-like object (copied).
-`from_hex(value: str)` restores bytes `to_hex()` printed. Instance members: `size` (property),
-`to_bytes()`, `to_hex()`, `__str__` (printable UTF-8, then 4-byte-as-`int`, then
-16-byte-as-`uuid.UUID`, then a `hex:`-prefixed fallback), `__bytes__`, `__len__`, `__hash__`,
-`__eq__` (also accepts a raw bytes-like value for comparison, not just another `RoutingId`),
-`__repr__`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `RoutingId(data)` | constructor; copies a bytes-like object of 1..255 bytes, raises `ValueError` out of range |
+| `from_(value)` | static factory (named with a trailing underscore since `from` is a Python keyword); dispatches on the argument's type — `str` (UTF-8 encode), `int` (4-byte big-endian uint32, `0..4294967295`), `uuid.UUID` (16 bytes), or any bytes-like object (copied) |
+| `from_hex(value: str)` | restores bytes `to_hex()` printed |
+| `size` | property, byte length, 1-255 |
+| `to_bytes()` | defensive copy of the bytes |
+| `to_hex()` | hex encoding, round-trippable with `from_hex` |
+| `__str__` | display form: printable UTF-8, then 4-byte-as-`int`, then 16-byte-as-`uuid.UUID`, then a `hex:`-prefixed fallback |
+| `__bytes__` | the raw bytes, via `bytes(routing_id)` |
+| `__len__` | byte length, via `len(routing_id)` |
+| `__hash__` | value-based hash |
+| `__eq__` | value equality; also accepts a raw bytes-like value for comparison, not just another `RoutingId` |
+| `__repr__` | debug representation |
 
 **Completion result.** Every factory and accessor is synchronous. Out-of-range length raises
 `ValueError`; a malformed hex string to `from_hex` raises `TypeError`/`ValueError`.
@@ -145,8 +166,13 @@ has_tls = has("tls")
 message = strerror(errnum)
 ```
 
-**Options.** `has(capability: str)` — recognized names include `"tcp"`, `"ipc"`, `"tls"`, `"ws"`,
-`"wss"`; any other string returns `False`. `strerror(errnum: int)`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `version()` | `(major, minor, patch)` tuple |
+| `has(capability: str)` | whether the named optional capability is compiled into this build — recognized names are `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; any other string returns `False` |
+| `strerror(errnum: int)` | the message text for that native error code |
 
 **Completion result.** All are synchronous with no error path. `version()` returns a
 `(major, minor, patch)` tuple. `has` returns `bool`. `strerror` returns `str`.
@@ -176,10 +202,15 @@ thread.join()
 ```
 
 **Options.** None of the three factories takes parameters beyond `create_thread`'s target callable.
-`AtomicCounter`: `set(value)`, `increment()`/`decrement()` (return the *new* value), `value`
-(property). `Stopwatch`: `intermediate()`/`stop()` (both microseconds), `close()`. `Thread`: **only
-`join()`** — no `close()`, unlike every other utility type here, which supports the
-context-manager protocol.
+
+| Member | Meaning |
+| --- | --- |
+| `AtomicCounter.set(value)` | assigns the counter's value |
+| `AtomicCounter.increment()` / `decrement()` | adjusts the counter by one, returning the *new* value |
+| `AtomicCounter.value` | property, reads the current value |
+| `Stopwatch.intermediate()` / `stop()` | both microseconds since construction; `intermediate()` callable any number of times, `stop()` called exactly once to finish |
+| `Stopwatch.close()` | releases the stopwatch |
+| `Thread.join()` | blocks until the task finishes — **the only member**; no `close()`, unlike every other utility type here, which supports the context-manager protocol |
 
 **Completion result.** `AtomicCounter`/`Stopwatch` support both sync and async context-manager
 protocols; `Thread` does not (it has no `close()`/`__enter__` at all).
@@ -203,8 +234,14 @@ sleep(1)  # seconds, not milliseconds
 multipart_close(parts)
 ```
 
-**Options.** `proxy(frontend, backend, capture=None)`. `proxy_steerable(frontend, backend, capture,
-control)`. `sleep(seconds)` — whole seconds directly. `multipart_close(parts)`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `proxy(frontend, backend, capture=None)` | `capture` is optional |
+| `proxy_steerable(frontend, backend, capture, control)` | adds a required `control` socket |
+| `sleep(seconds)` | blocks the calling thread; takes whole seconds directly |
+| `multipart_close(parts)` | closes every message in one call |
 
 **Completion result.** All are synchronous with no return value. `proxy`/`proxy_steerable` block
 the calling thread until the context is terminated (or, for `proxy_steerable`, until a control

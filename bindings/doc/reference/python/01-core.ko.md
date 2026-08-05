@@ -74,13 +74,25 @@ ctx.options.auto_hwm_profile = AutoHwmProfile.LOW_LATENCY
 ctx.options.add_thread_affinity(2)
 ```
 
-**Options.** 순수 property(별도 표기 없으면 get/set): `io_threads`,
-`max_sockets`, `max_message_size`, `thread_scheduling_policy`,
-`thread_name_prefix`, `auto_hwm_enabled`, `auto_hwm_recalc_debounce`,
-`blocky`, `auto_hwm_profile`, `auto_hwm_msg_unit_bytes`; 읽기 전용:
-`socket_limit`, `msg_t_size`. Method: `add_thread_affinity(cpu)`/
-`remove_thread_affinity(cpu)`. **지금까지 다룬 다른 모든 언어와 달리
-여기엔 `thread_priority` property가 없다.**
+**Options.** 별도 표기 없으면 순수 property는 get/set이다. **지금까지
+다룬 다른 모든 언어와 달리 여기엔 `thread_priority` property가 없다.**
+
+| Member | 의미 |
+| --- | --- |
+| `io_threads` | I/O thread 개수 |
+| `max_sockets` | context 전체 socket 상한 |
+| `socket_limit` | 읽기 전용, `max_sockets`의 빌드상 하드 상한 |
+| `max_message_size` | 메시지 하나의 크기 상한 |
+| `msg_t_size` | 읽기 전용, native message struct 크기, 진단 전용 |
+| `thread_scheduling_policy` | dispatch thread scheduling policy |
+| `thread_name_prefix` | OS에 보이는 dispatch thread 이름 접두사 |
+| `auto_hwm_enabled` | auto-HWM sizing 활성 여부 |
+| `auto_hwm_recalc_debounce` | 자동 재계산 사이 최소 간격 |
+| `blocky` | blocking 호출이 실제로 block하는지 fail fast하는지 |
+| `auto_hwm_profile` | automatic HWM sizing profile — Sockets category 참고 |
+| `auto_hwm_msg_unit_bytes` | auto-HWM용 accounted-byte 단위; `0`은 socket-type 기본값 선택 |
+| `add_thread_affinity(cpu)` | I/O thread를 CPU에 고정 |
+| `remove_thread_affinity(cpu)` | I/O thread의 CPU 고정을 해제 |
 
 **Completion result.** 모든 property 읽기/쓰기와 두 method는 동기다.
 
@@ -121,17 +133,22 @@ from_uuid = RoutingId.from_(uuid.uuid4())
 restored = RoutingId.from_hex(previously_printed.to_hex())
 ```
 
-**Options.** `RoutingId(data)` 생성자(1..255바이트의 bytes-like 객체를
-복사, 범위를 벗어나면 `ValueError`). Static factory `from_(value)`
-(`from`이 Python 키워드라 뒤에 underscore가 붙음)는 인자 타입에 따라
-분기한다: `str`(UTF-8 인코딩), `int`(4-byte big-endian uint32,
-`0..4294967295`), `uuid.UUID`(16바이트), 또는 임의 bytes-like
-객체(복사됨). `from_hex(value: str)`는 `to_hex()`가 출력한 byte를
-복원한다. Instance member: `size`(property), `to_bytes()`, `to_hex()`,
-`__str__`(printable UTF-8, 그 다음 4-byte를 `int`로, 그 다음 16-byte를
-`uuid.UUID`로, 마지막 `hex:` 접두 fallback), `__bytes__`, `__len__`,
-`__hash__`, `__eq__`(다른 `RoutingId`뿐 아니라 raw bytes-like 값도
-비교에 받아들임), `__repr__`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `RoutingId(data)` | 생성자; 1..255바이트의 bytes-like 객체를 복사, 범위를 벗어나면 `ValueError` |
+| `from_(value)` | static factory(`from`이 Python 키워드라 뒤에 underscore가 붙음); 인자 타입에 따라 분기 — `str`(UTF-8 인코딩), `int`(4-byte big-endian uint32, `0..4294967295`), `uuid.UUID`(16바이트), 또는 임의 bytes-like 객체(복사됨) |
+| `from_hex(value: str)` | `to_hex()`가 출력한 byte를 복원 |
+| `size` | property, byte 길이, 1-255 |
+| `to_bytes()` | bytes의 방어적 복사 |
+| `to_hex()` | hex 인코딩, `from_hex`와 왕복 가능 |
+| `__str__` | 표시 형태: printable UTF-8, 그 다음 4-byte를 `int`로, 그 다음 16-byte를 `uuid.UUID`로, 마지막 `hex:` 접두 fallback |
+| `__bytes__` | `bytes(routing_id)`를 통한 raw bytes |
+| `__len__` | `len(routing_id)`를 통한 byte 길이 |
+| `__hash__` | 값 기반 hash |
+| `__eq__` | 값 동등성; 다른 `RoutingId`뿐 아니라 raw bytes-like 값도 비교에 받아들임 |
+| `__repr__` | 디버그 표현 |
 
 **Completion result.** 모든 factory·accessor는 동기다. 범위를 벗어난
 길이는 `ValueError`를 던진다. `from_hex`에 잘못된 hex 문자열을 주면
@@ -156,9 +173,13 @@ has_tls = has("tls")
 message = strerror(errnum)
 ```
 
-**Options.** `has(capability: str)` — 인식하는 이름은 `"tcp"`,
-`"ipc"`, `"tls"`, `"ws"`, `"wss"`; 다른 문자열은 `False`를 반환한다.
-`strerror(errnum: int)`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `version()` | `(major, minor, patch)` tuple |
+| `has(capability: str)` | 지정한 선택적 역할이 이 빌드에 컴파일돼 있는지 — 인식하는 이름은 `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; 다른 문자열은 `False`를 반환한다 |
+| `strerror(errnum: int)` | 해당 native error code의 메시지 텍스트 |
 
 **Completion result.** 모두 동기이며 error 경로가 없다. `version()`은
 `(major, minor, patch)` tuple을 반환한다. `has`는 `bool`을 반환한다.
@@ -190,11 +211,16 @@ thread.join()
 ```
 
 **Options.** 세 factory 중 `create_thread`의 target callable 외엔
-인자를 받지 않는다. `AtomicCounter`: `set(value)`,
-`increment()`/`decrement()`(*새* 값을 반환), `value`(property).
-`Stopwatch`: `intermediate()`/`stop()`(둘 다 마이크로초), `close()`.
-`Thread`: **`join()`만** — `close()`가 없다, context-manager
-프로토콜을 지원하는 여기 다른 모든 utility 타입과 다르다.
+인자를 받지 않는다.
+
+| Member | 의미 |
+| --- | --- |
+| `AtomicCounter.set(value)` | counter 값을 지정 |
+| `AtomicCounter.increment()` / `decrement()` | counter를 1 조정, *새* 값을 반환 |
+| `AtomicCounter.value` | property, 현재 값을 읽음 |
+| `Stopwatch.intermediate()` / `stop()` | 생성 이후 경과 마이크로초, 둘 다; `intermediate()`는 몇 번이든 호출, `stop()`은 정확히 한 번 호출해 종료 |
+| `Stopwatch.close()` | stopwatch를 해제 |
+| `Thread.join()` | task가 끝날 때까지 block — **유일한 member**; `close()`가 없다, context-manager 프로토콜을 지원하는 여기 다른 모든 utility 타입과 다르다 |
 
 **Completion result.** `AtomicCounter`/`Stopwatch`는 sync·async
 context-manager 프로토콜을 둘 다 지원한다. `Thread`는 그렇지 않다
@@ -221,9 +247,14 @@ sleep(1)  # 초 단위, 밀리초 아님
 multipart_close(parts)
 ```
 
-**Options.** `proxy(frontend, backend, capture=None)`.
-`proxy_steerable(frontend, backend, capture, control)`.
-`sleep(seconds)` — 초 단위를 직접 받는다. `multipart_close(parts)`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `proxy(frontend, backend, capture=None)` | `capture`는 선택 사항 |
+| `proxy_steerable(frontend, backend, capture, control)` | 필수 `control` socket을 더함 |
+| `sleep(seconds)` | 호출 스레드를 block; 초 단위를 직접 받는다 |
+| `multipart_close(parts)` | 모든 메시지를 한 번에 닫음 |
 
 **Completion result.** 모두 반환값 없이 동기다. `proxy`/
 `proxy_steerable`은 context가 종료될 때까지(또는 `proxy_steerable`의

@@ -24,14 +24,11 @@ using IContext context = Zlink.CreateContext();
 
 **옵션.** 매개변수 없음.
 
-**완료 결과.** 동기로 `IContext`를 반환한다. Caller가 반환된 context를 소유하며
-해제해야 한다(`IDisposable`/`IAsyncDisposable`) — 해제하면 그 아래에서 만들어진 socket을
-포함해 여전히 열려 있는 모든 것이 종료된다.
+**완료 결과.** 동기로 `IContext`를 반환한다. Caller가 소유하며 해제해야 한다
+(`IDisposable`/`IAsyncDisposable`) — 해제하면 그 아래 열려 있던 socket도 함께 종료된다.
 
-**선택 기준.** Application이 필요로 하는 context마다 한 번 호출한다 — 대부분의
-application은 정확히 하나만 필요하다. 모든 socket은 context에서 만들어야 하며 context
-자신의 해제와 독립적으로 caller가 소유하지만, context를 해제하면 그 아래에 남아 있는
-socket은 종료된다.
+**선택 기준.** Application이 필요로 하는 context마다 한 번 — 대부분은 정확히 하나만
+필요하다.
 
 ---
 
@@ -47,22 +44,20 @@ context.RecalculateAutoHwm();
 
 **옵션.** 둘 다 매개변수가 없다.
 
-**완료 결과.** 둘 다 동기이며 `void`를 반환한다. `Shutdown`은 이 context 아래 socket의
-blocking 호출을 중단시키지만 context나 그 socket을 해제하지 않는다 — 자원을 해제하려면
-이후 context를 해제한다. `RecalculateAutoHwm`은 여전히 `AutoHwmProfile`로 구성된
-socket에 대해서만 automatic HWM을 재계산한다(별도로 문서화된 실패 모드는 없다).
+**완료 결과.** 둘 다 동기이며 `void`를 반환한다. `Shutdown`은 context 아래 socket의
+blocking 호출을 중단시키지만 context나 그 socket을 해제하지 않는다. `RecalculateAutoHwm`은
+여전히 `AutoHwmProfile`로 구성된 socket에 대해서만 automatic HWM을 재계산한다.
 
-**선택 기준.** 여러 스레드에서 socket을 쓰는 context를 해제하기 전에 `Shutdown`을 호출해,
-스레드가 socket 호출에 무한정 block되는 것을 피한다. Context나 socket의 auto-HWM
-profile이나 message-unit 옵션을 바꾼 뒤, 일반 갱신 경로를 기다리지 않고 새 연결별
-크기를 즉시 적용하려면 `RecalculateAutoHwm`을 호출한다.
+**선택 기준.** 여러 스레드에서 socket을 쓰는 context를 해제하기 전에 `Shutdown`을 호출해
+스레드가 무한정 block되는 걸 피한다. `AutoHwmProfile` 변경은 `RecalculateAutoHwm`과 짝지어
+일반 갱신 경로를 기다리지 않고 즉시 적용한다.
 
 ---
 
 ## `IContext.Options`
 
-Context 전역 옵션 facade를 읽는다 — 그 속성이 I/O thread와 context에서 만들어지는 모든
-socket이 물려받는 기본값을 지배한다.
+Context 전역 옵션 facade — I/O thread와 context에서 만들어지는 모든 socket이 물려받는
+기본값을 관장한다.
 
 ```csharp
 context.Options.IoThreads = 8;
@@ -70,20 +65,30 @@ context.Options.AutoHwmProfile = AutoHwmProfile.LowLatency;
 context.Options.AddThreadAffinityCpu(2);
 ```
 
-**옵션.** `IContextOptions`는 get/set 속성을 노출한다 — `IoThreads`, `MaxSockets`,
-`SocketLimit`(읽기 전용 — 빌드의 `MaxSockets` 상한), `ThreadPriority`,
-`ThreadSchedulingPolicy`, `MaxMessageSize`, `MessageThreadSize`(읽기 전용), `Blocky`,
-`AutoHwmProfile`, `AutoHwmMessageUnitBytes`(`ulong` — 회계된 바이트 HWM에 대해서는
-Sockets category의 관련 설명 참고), `AutoHwmEnabled`, `AutoHwmRecalcDebounce`,
-`ThreadNamePrefix`, 그리고 `AddThreadAffinityCpu(cpu)`/`RemoveThreadAffinityCpu(cpu)`
-메서드.
+**옵션.**
 
-**완료 결과.** 모든 속성 get/set과 두 affinity 메서드는 동기다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `IoThreads` | 1 | dispatch thread 개수 |
+| `MaxSockets` | 1023 | context 전역 socket 상한 |
+| `SocketLimit` | 읽기 전용 | 빌드의 `MaxSockets` 하드캡 |
+| `ThreadPriority` | OS 기본값 | dispatch thread 우선순위 |
+| `ThreadSchedulingPolicy` | OS 기본값 | dispatch thread 스케줄링 정책 |
+| `MaxMessageSize` | 무제한 | 메시지당 크기 상한 |
+| `MessageThreadSize` | 읽기 전용 | native message struct 크기, 진단 전용 |
+| `Blocky` | `true` | blocking 호출이 실제로 block할지 즉시 실패할지 |
+| `AutoHwmProfile` | `Balanced` | automatic HWM 크기 profile — Sockets category 참고 |
+| `AutoHwmMessageUnitBytes` | profile 기본값 | auto-HWM 회계 단위 바이트(`ulong`) |
+| `AutoHwmEnabled` | `true` | auto-HWM 크기 조정 활성 여부 |
+| `AutoHwmRecalcDebounce` | profile 기본값 | 자동 재계산 사이 최소 간격 |
+| `ThreadNamePrefix` | 없음 | OS에 보이는 dispatch thread 이름 접두 |
+| `AddThreadAffinityCpu(cpu)` / `RemoveThreadAffinityCpu(cpu)` | 없음 | dispatch thread를 특정 CPU에 고정/해제 |
 
-**선택 기준.** 기본값이 배포 환경(thread 수, HWM 크기 profile, message-size 상한)에
-맞지 않으면 socket을 만들기 전에 조정한다. `AutoHwmProfile`/`AutoHwmEnabled`는 실행 중인
-context에서 바꿀 수 있다 — 일반 갱신 경로를 기다리지 않고 즉시 적용하려면 위
-`RecalculateAutoHwm`과 짝지어 쓴다.
+**완료 결과.** 모든 get/set과 두 affinity 메서드는 동기다.
+
+**선택 기준.** 기본값이 배포 환경에 맞지 않으면 socket을 만들기 전에 조정한다.
+`AutoHwmProfile`/`AutoHwmEnabled`는 실행 중인 context에서도 바꿀 수 있다 — 즉시 적용하려면
+위 `RecalculateAutoHwm`과 짝짓는다.
 
 ---
 
@@ -95,14 +100,14 @@ context에서 바꿀 수 있다 — 일반 갱신 경로를 기다리지 않고 
 using IDealerSocket dealer = context.CreateDealerSocket();
 ```
 
-**옵션.** 여덟 factory 메서드 모두 매개변수가 없다.
+**옵션.** 여덟 factory 메서드 모두 매개변수가 없다 — 각각 대응하는 interface
+(`IPairSocket`, `IDealerSocket`, `IRouterSocket`, `IPubSocket`, `ISubSocket`, `IXPubSocket`,
+`IXSubSocket`, `IStreamSocket`)를 반환한다.
 
-**완료 결과.** 각각 해당 socket interface(`IPairSocket`, `IDealerSocket`, `IRouterSocket`,
-`IPubSocket`, `ISubSocket`, `IXPubSocket`, `IXSubSocket`, `IStreamSocket`)를 동기로
-반환한다. Caller가 반환된 socket을 context와 독립적으로 소유·해제해야 한다.
+**완료 결과.** 동기. Caller가 반환된 socket을 context와 독립적으로 소유·해제해야 한다.
 
-**선택 기준.** 각 socket interface의 연산·옵션·역할은 Sockets category를 참고한다 — 이
-항목은 각각을 어떻게 만드는지만 다룬다.
+**선택 기준.** 각 interface의 연산·옵션은 Sockets category를 참고한다 — 이 항목은 생성만
+다룬다.
 
 ---
 
@@ -118,22 +123,29 @@ RoutingId fromGuid = RoutingId.From(Guid.NewGuid());
 RoutingId restored = RoutingId.FromHex(previouslyPrinted.ToHex());
 ```
 
-**옵션.** Static factory — `From(ReadOnlySpan<byte>)`/`From(byte[])`(raw 바이트를 그대로
-복사), `From(string)`(UTF-8 인코딩), `From(uint)`(4바이트 big-endian), `From(Guid)`(16바이트
-big-endian), `FromHex(string)`(`ToHex()`가 출력한 바이트를 복원). Instance member —
-`Size`/`IsEmpty`, `ToBytes()`(내부 storage 기반 view), `ToHex()`, `TryToUInt32(out uint)`,
-`TryToGuid(out Guid)`, `ToString()`(표시용 형태 — printable UTF-8, 그다음 `uint`, 그다음
-`Guid`, 그다음 `hex:` prefix fallback), 값 동등성(`Equals`/`==`/`!=`/`GetHashCode`).
+**옵션.**
 
-**완료 결과.** 모든 factory와 accessor는 동기다. 범위 밖 바이트 길이(1..255 아님)는
-`ArgumentOutOfRangeException`을 던진다. `FromHex`에 잘못된 형식의 hex 문자열은
-`ArgumentException`을 던진다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `From(ReadOnlySpan<byte>)` / `From(byte[])` | — | raw 바이트를 그대로 복사 |
+| `From(string)` | — | UTF-8 인코딩 |
+| `From(uint)` | — | 4바이트 big-endian |
+| `From(Guid)` | — | 16바이트 big-endian |
+| `FromHex(string)` | — | `ToHex()`가 출력한 바이트 복원 |
+| `Size` / `IsEmpty` | — | 길이 / 길이 0 여부 |
+| `ToBytes()` | — | 내부 storage 기반 view |
+| `ToHex()` | — | `FromHex`와 round-trip 가능 |
+| `TryToUInt32(out uint)` / `TryToGuid(out Guid)` | — | typed decode, 형태 불일치면 `false` |
+| `ToString()` | — | 표시 전용: printable UTF-8, 그다음 `uint`, 그다음 `Guid`, 그다음 `hex:` prefix fallback |
+| `Equals`/`==`/`!=`/`GetHashCode` | — | 값 동등성 |
 
-**선택 기준.** 사람이 부여한 identity에는 `From(string)`, 숫자나 GUID 형태의 identity에는
-`From(uint)`/`From(Guid)`, identity가 이미 binary면 raw `From(byte[])`/
-`From(ReadOnlySpan<byte>)`를 쓴다. 안정적인 raw-byte round trip에는 특히
-`ToHex()`/`FromHex()`를 쓴다 — `ToString()`은 표시 전용이며 역변환을 보장하지 않는다(숫자/
-GUID/hex 형태로 넘어가기 전에 printable UTF-8 해석을 우선한다).
+**완료 결과.** 모두 동기다. 범위 밖 바이트 길이(1..255 아님)는
+`ArgumentOutOfRangeException`을, `FromHex`의 잘못된 hex 문자열은 `ArgumentException`을
+던진다.
+
+**선택 기준.** 사람이 부여한 identity엔 `From(string)`, 숫자·GUID 형태 identity엔
+`From(uint)`/`From(Guid)`, 이미 binary인 identity엔 raw `From(byte[])`를 쓴다. 안정적인
+raw-byte round trip엔 `ToHex()`/`FromHex()`를 쓴다 — `ToString()`은 표시 전용이다.
 
 ---
 
@@ -148,24 +160,26 @@ string message = Zlink.Strerror(errnum);
 bool hasTls = Zlink.Has("tls");
 ```
 
-**옵션.** `Strerror`는 `errnum`(`int` error code)을 받는다. `Has`는 `capability`(문자열 —
-`"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`가 인식되는 이름이며 그 밖의 문자열은 `false`)를
-받는다.
+**옵션.**
 
-**완료 결과.** 셋 다 동기다. `Version()`은 `(int Major, int Minor, int Patch)` tuple을
-반환한다. `Strerror`는 `string`을 반환한다. `Has`는 `bool`을 반환한다.
+| Member | 매개변수 | 의미 |
+| --- | --- | --- |
+| `Version()` | 없음 | 링크된 native library 버전 |
+| `Strerror(errnum)` | `int` error code | native errno 텍스트 |
+| `Has(capability)` | `"tcp"`/`"ipc"`/`"tls"`/`"ws"`/`"wss"`; 그 외 문자열은 `false` | 선택적 빌드 capability 확인 |
 
-**선택 기준.** 링크된 native library가 application이 기대하는 것과 일치하는지 확인하려면
-`Version()`을 쓴다(특히 동적으로 로드될 때). 모든 transport가 컴파일에 포함되어 있다고
-가정하는 대신 startup에 `Has(...)`로 선택적 transport를 분기한다. `Strerror`는 다른
-곳에서 드러난 native error code와 함께 진단할 때 쓴다.
+**완료 결과.** 모두 동기다. `Version()`은 `(int Major, int Minor, int Patch)` tuple을,
+`Strerror`는 `string`을, `Has`는 `bool`을 반환한다.
+
+**선택 기준.** 동적으로 로드된 native library가 기대와 일치하는지 확인하려면
+`Version()`을 쓴다. Startup에 선택적 transport를 분기하려면 `Has(...)`를 쓴다.
+`Strerror`는 다른 곳에서 드러난 native error code와 함께 진단할 때 쓴다.
 
 ---
 
 ## `Zlink.CreateAtomicCounter()` / `Zlink.CreateStopwatch()` / `Zlink.CreateThread(Action)`
 
-스레드에 안전한 정수 counter, 고해상도 stopwatch, 또는 실행 중인 백그라운드 thread — 세
-가지 독립적인 utility resource를 만든다.
+스레드에 안전한 정수 counter, 고해상도 stopwatch, 실행 중인 백그라운드 thread를 만든다.
 
 ```csharp
 using IAtomicCounter counter = Zlink.CreateAtomicCounter();
@@ -179,22 +193,25 @@ using IZlinkThread thread = Zlink.CreateThread(() => DoWork());
 thread.Join();
 ```
 
-**옵션.** `CreateAtomicCounter()`/`CreateStopwatch()`는 매개변수가 없다. `CreateThread(Action
-task)`는 새 thread에서 즉시 실행할 작업을 받는다. `IAtomicCounter`는 `Value`(get),
-`Set(value)`, `Increment()`, `Decrement()`를 제공한다 — 뒤의 둘은 operation 이전 값이
-아니라 이후의 *새* 값을 반환한다. `IZlinkStopwatch`는 `Intermediate()`와 `Stop()`을
-제공하며 둘 다 마이크로초 단위다. `IZlinkThread`는 `Join()`(작업이 끝날 때까지
-block하며 반복 호출은 no-op)과 `Close()`(여전히 실행 중이면 먼저 join한 뒤 handle을
-해제)를 제공한다.
+**옵션.**
 
-**완료 결과.** 세 factory 모두 자신의 resource interface를 동기로 반환하며, caller가
+| Member | 반환 | 의미 |
+| --- | --- | --- |
+| `CreateAtomicCounter()` | `IAtomicCounter` | 매개변수 없음 |
+| `IAtomicCounter.Value` | `int` | get |
+| `IAtomicCounter.Set(value)` / `.Increment()` / `.Decrement()` | `int` | 뒤 둘은 이전 값이 아니라 *새* 값을 반환 |
+| `CreateStopwatch()` | `IZlinkStopwatch` | 매개변수 없음 |
+| `IZlinkStopwatch.Intermediate()` / `.Stop()` | `ulong` 마이크로초 | `Intermediate()`는 몇 번이든, `Stop()`은 한 번 |
+| `CreateThread(Action task)` | `IZlinkThread` | `task`가 새 thread에서 즉시 실행 |
+| `IZlinkThread.Join()` | — | 작업이 끝날 때까지 block, 반복 호출은 no-op |
+| `IZlinkThread.Close()` | — | 실행 중이면 먼저 join한 뒤 handle 해제 |
+
+**완료 결과.** 세 factory 모두 자신의 resource interface를 동기로 반환한다 — caller가
 각각을 소유하고 해제해야 한다(`IDisposable`/`IAsyncDisposable`).
 
-**선택 기준.** 스레드 사이에서 안전한 공유 count에는 `CreateAtomicCounter`를 쓴다.
-Benchmarking·profiling에는 `CreateStopwatch`를 쓴다 — 연속 읽기가 필요한 만큼
-`Intermediate()`를 부르고, 마치고 해제할 때 정확히 한 번 `Stop()`을 부른다. 플랫폼
-전용 API 대신 portable 백그라운드 thread에는 `CreateThread`를 쓴다 — 해제하려면(또는
-`Join()` 뒤 `Close()`) 반드시 부른다.
+**선택 기준.** 스레드 사이 공유 count엔 `CreateAtomicCounter`, benchmarking엔
+`CreateStopwatch`, 플랫폼 전용 API 대신 portable 백그라운드 thread엔 `CreateThread`를
+쓴다.
 
 ---
 
@@ -211,20 +228,22 @@ Zlink.Sleep(TimeSpan.FromSeconds(1));
 Zlink.MultipartClose(parts);
 ```
 
-**옵션.** `Proxy`/`ProxySteerable`은 `frontend`/`backend`(필수 `IZlinkSocket`),
-`capture`(선택적 — 전달되는 모든 메시지의 복사본을 받음)를 받는다. `ProxySteerable`은
-추가로 필수 `control` socket을 받는다. `Sleep`은 `TimeSpan` duration을 받는다.
-`MultipartClose`는 `IReadOnlyList<Message>`를 받는다.
+**옵션.**
+
+| Member | 매개변수 | 의미 |
+| --- | --- | --- |
+| `Proxy(frontend, backend, capture)` | `IZlinkSocket` frontend/backend(필수), capture(선택) | context 종료까지 forward |
+| `ProxySteerable(frontend, backend, capture, control)` | 필수 `control` socket 추가 | `control`로 pause/resume 가능 |
+| `Sleep(TimeSpan)` | duration | 호출한 스레드를 block |
+| `MultipartClose(IReadOnlyList<Message>)` | 해제할 part | 한 번에 모든 메시지 해제 |
 
 **완료 결과.** 넷 다 동기이며 반환값이 없다. `Proxy`/`ProxySteerable`은 context가
-종료될 때까지(또는 `ProxySteerable`의 경우 `TERMINATE` control 명령이나 오류가 loop를
-끝낼 때까지) 호출한 스레드를 block한다 — 둘 다 전용 스레드에서 실행한다.
+종료될 때까지(또는 `ProxySteerable`의 경우 `TERMINATE` 명령이나 오류가 loop를 끝낼
+때까지) 호출한 스레드를 block한다 — 둘 다 전용 스레드에서 실행한다.
 
-**선택 기준.** 단순한 fire-and-forget forwarding loop를 자신의 스레드에서 실행하려면
-`Proxy`를 쓴다. Application이 다른 스레드에서 control socket을 통해 loop를 멈추거나·
-재개하거나·종료하거나 통계를 뽑아야 하면 `ProxySteerable`을 쓴다. 손으로 짠 loop
-대신 한 번의 호출로 수신·구성된 multipart 배열의 모든 `Message`를 해제하려면
-`MultipartClose`를 쓴다.
+**선택 기준.** 단순 fire-and-forget forwarding loop엔 `Proxy`, 다른 스레드에서
+`control`로 loop를 멈추거나·재개하거나·종료해야 하면 `ProxySteerable`을 쓴다.
+수신·구성된 multipart 배열을 한 번에 해제하려면 `MultipartClose`를 쓴다.
 
 ---
 
@@ -243,7 +262,7 @@ using IZlinkTimer timer = Zlink.CreateTimer();
 **완료 결과.** 둘 다 자신의 resource interface(`IPoller`, `IZlinkTimer`)를 동기로
 반환한다 — caller가 각각을 소유하고 해제해야 한다.
 
-**선택 기준.** `IPoller`와 `IZlinkTimer` 자신의 연산은 Eventing category를 참고한다 — 이
+**선택 기준.** `IPoller`/`IZlinkTimer` 자신의 연산은 Eventing category를 참고한다 — 이
 항목은 생성만 다룬다.
 
 ---
@@ -258,15 +277,12 @@ Zlink.UnhandledCallbackException += ex => logger.LogError(ex, "callback failed")
 
 **옵션.** `Action<Exception>`을 구독·구독 해제한다.
 
-**완료 결과.** 동기 add/remove다. 이 event는 예외를 던진 callback을 실행하는 백그라운드
-dispatch thread에서 발생한다 — 그 callback이 등록한 쪽에 대해 비동기로 실행되므로 그
-스레드는 예외를 원래 caller에게 전파할 수 없다.
+**완료 결과.** 동기 add/remove다. 예외를 던진 callback을 실행하는 백그라운드 dispatch
+thread에서 이 event가 발생한다 — 그 스레드는 원래 caller에게 예외를 전파할 수 없다.
 
-**선택 기준.** 등록된 어떤 callback(stream packet handler, monitor handler, poll
-handler, SPOT dispatch handler, request/reply callback 등 — Sockets/Eventing/Service
-category)에서든 예외를 관찰하려면 여기를 구독한다 — 그 callback 중 어느 것도 caller에게
-예외를 직접 드러낼 수 있는 스레드에서 실행되지 않으므로, 구독하지 않으면 조용히
-사라진다.
+**선택 기준.** 등록된 어떤 callback(stream packet, monitor, poll, SPOT dispatch,
+request/reply — Sockets/Eventing/Service category)에서든 예외를 관찰하려면 여기를
+구독한다 — 구독하지 않으면 조용히 사라진다.
 
 ---
 

@@ -6,7 +6,7 @@ This category covers the entry points used inside STREAM session code
 (`packet_stream_session_t`, `stream_t`, `session_actor_manager_t`, `session_actor_t`) and the
 entry point used for a bound session inside Actor code (`bound_session_t`). The exact signatures
 are owned by the
-[STREAM session exact interface](../../common/spec/server/languages/cpp/interfaces/06-stream-session.ko.md)
+[STREAM session exact interface](../../common/spec/server/languages/cpp/interfaces/06-stream-session.en.md)
 and the
 [Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.ko.md)
 (Korean-only).
@@ -220,7 +220,7 @@ to be kept. Use the `close` entry to disconnect directly from the Session side.
 ---
 
 See the
-[STREAM session exact interface](../../common/spec/server/languages/cpp/interfaces/06-stream-session.ko.md)
+[STREAM session exact interface](../../common/spec/server/languages/cpp/interfaces/06-stream-session.en.md)
 and the
 [Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.ko.md)
 (Korean-only) for the full rationale.

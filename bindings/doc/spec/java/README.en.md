@@ -1,8 +1,15 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "Java Binding Implementation Blueprint"
+---
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/) · [Bindings Policy](../README.en.md)
+<!-- bindings-nav:start -->
+[Spec index](../README.md) | [Previous: C++](../cpp/README.md) | [Next: Node.js](../node/README.md)
+<!-- bindings-nav:end -->
 
 # Java Binding Implementation Blueprint
+
+> **What this chapter defines** — the target `contracts`/`runtime` shape the
+> Java binding must have, and the JPMS export boundary.
 
 This document defines the target Java binding shape. It is not an exhaustive
 method reference. The exact public member list belongs in
@@ -28,6 +35,32 @@ operation/model grouping.
 This is a breaking target. Do not keep compatibility shims, deprecated
 wrappers, duplicate construction paths, public runtime aliases, or direct
 constructors only to preserve the old Java surface.
+
+| Section | Covers |
+|---|---|
+| [Source Of Truth](#source-of-truth) | The semantic source of truth and the Java repository ownership boundary |
+| [Current Refactor Rule](#current-refactor-rule) | The test for "the right direction" while the refactor is in progress |
+| [Architecture Map](#architecture-map) | The `contracts`/`internal`/`runtime` package tree |
+| [Public Contract Categories](#public-contract-categories) | A table of contract/runtime packages to purpose |
+| [Native Wait Boundary](#native-wait-boundary) | The boundary between blocking recv and poller-based receive |
+| [Proposed Repository Layout](#proposed-repository-layout) | The full Gradle project directory tree |
+| [Contract Interface Rule](#contract-interface-rule) | Types that stay interfaces and types that stay concrete |
+| [Factory Entry Points](#factory-entry-points) | Root/context/service factory methods |
+| [Contract File Requirements](#contract-file-requirements) | What a contract file may and may not import |
+| [Runtime Implementation Requirements](#runtime-implementation-requirements) | The implementation detail runtime owns |
+| [Socket Contract Shape](#socket-contract-shape) | Common and per-type socket behavior |
+| [Operation Builder Shape](#operation-builder-shape) | Builder start methods and terminal methods |
+| [Messaging Values](#messaging-values) | The `Message`/`Received`/`TopicMessage`/`SubscriptionEvent` contract |
+| [Receive And Subscribe Shape](#receive-and-subscribe-shape) | Caller-provided storage and the no-data distinction |
+| [Handler Registration Naming](#handler-registration-naming) | The `set...Handler` naming rule |
+| [Byte HWM And Monitoring ABI v2](#byte-hwm-and-monitoring-abi-v2) | Unsigned `long` HWM and monitor snapshot fields |
+| [Error And Result Policy](#error-and-result-policy) | Typed exceptions and validation timing |
+| [Spot And Actor Contract Shape](#spot-and-actor-contract-shape) | `SpotNode`/`Spot` responsibilities and route results |
+| [Spot Get-Or-Create](#spot-get-or-create) | The `getOrCreateSpot` contract |
+| [Performance Policy](#performance-policy) | Hot-path constraints |
+| [Refactor Workflow](#refactor-workflow) | The order of alignment work |
+| [Implementation Checklist](#implementation-checklist) | Checks before declaring alignment |
+| [Verification](#verification) | Required verification commands and structural searches |
 
 ## Source Of Truth
 
@@ -721,13 +754,11 @@ Canonical Java names:
 
 ## Byte HWM And Monitoring ABI v2
 
-An HWM limits accounted bytes computed by Core, not the number of queued
-messages. The Java interface interprets all 64 bits of a `long` as an unsigned
-value, preserving the complete range of Core's `uint64_t` without loss. Java
-callers use `Long.compareUnsigned` and `Long.toUnsignedString`; Kotlin callers
-convert with `ULong.toLong()` and `Long.toULong()`. Zero means unlimited, and the
-manual default is `4_096_000 bytes`. The former `int` overload, an alias, and a
-count-unit adapter are not provided.
+- An HWM is not the number of queued messages but the limit on accounted bytes Core computes.
+- The Java public interface interprets all 64 bits of a `long` as an unsigned value, carrying the full range of Core's `uint64_t` without loss.
+- A Java caller uses `Long.compareUnsigned` and `Long.toUnsignedString`; a Kotlin caller converts with `ULong.toLong()` and `Long.toULong()`.
+- `0` means unlimited, and the manual default is `4_096_000 bytes`.
+- The former `int` overload, an alias, or a count-unit adapter is not provided.
 
 ```java
 public final class ContextOptions {
@@ -743,15 +774,11 @@ public class CommonSocketOptions {
 }
 ```
 
-The `MonitorStatus` record exposes the same fields as native
-`zlink_monitor_status_t` ABI version 2. Planned, applied, and deferred HWMs and
-in-flight usage are unsigned `long` byte values. A deferred value is meaningful
-only when its matching `autoHwmDeferredSendHwmValid()` or
-`autoHwmDeferredRecvHwmValid()` method returns `true`. Pending messages remain
-count diagnostics and do not share names with byte fields. A snapshot whose
-`abiVersion()` is not `2` or whose `structSize()` differs from the binding layout
-causes `UnsupportedOperationException`. The former 32-bit monitoring layout is
-not accepted.
+- The `MonitorStatus` record exposes the same fields as native `zlink_monitor_status_t` ABI version 2.
+- Planned, applied, and deferred HWMs, and in-flight usage, are unsigned `long` byte values.
+- A deferred value is meaningful only when its matching `autoHwmDeferredSendHwmValid()` or `autoHwmDeferredRecvHwmValid()` method returns `true`.
+- A pending-message value remains a count diagnostic and does not share a name with a byte field.
+- A snapshot whose `abiVersion()` is not `2`, or whose `structSize()` differs from the binding layout, raises `UnsupportedOperationException`. The former 32-bit monitoring layout is not accepted.
 
 Java and Kotlin call the same Java methods. No Kotlin-only adapter or option
 with a different unit is added. Request/reply APIs do not take an HWM argument
@@ -798,12 +825,10 @@ Actor and SPOT route results are concrete contract models:
 - `SpotKind` distinguishes Entry Spot from user Spot.
 - Invalid kind is not a successful route result.
 
-Java exposes `SpotNode.sendToActor` and `SpotNode.requestToActor` for resolved
-Actor refs, using the language naming convention. The send operation consumes
-one or more message parts on successful submit and completes when the Actor owner mailbox accepts the
-handoff. The request operation consumes request parts on successful submit and
-delivers the Actor handler reply parts. Java must not reintroduce the removed
-Discovery route table or resolver APIs as compatibility helpers.
+- Java exposes `SpotNode.sendToActor(ActorRef)` and `SpotNode.requestToActor(ActorRef)`, taking a resolved Actor ref as their argument.
+- The send operation hands off ownership of one or more message parts once submit succeeds, and completes once the Actor owner mailbox accepts the handoff.
+- The request operation hands off ownership of the request part once submit succeeds, and delivers the reply part the Actor handler produced.
+- Java does not revive a removed Discovery route table or resolver API as a compatibility helper.
 
 ## Spot Get-Or-Create
 

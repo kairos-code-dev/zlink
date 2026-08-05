@@ -24,11 +24,11 @@ shared error type — a caller catches the specific type (or the shared `ZlinkEr
 |---|---|---|---|
 | `SubmitError` | `SubmitResult` (Sockets category) | send/publish/request-submit APIs | `Backpressured`(1, ordinary control flow), `NotConnected`(2), `NotFound`(3), `Terminated`(4), `InvalidHandle`(5), `InvalidArgument`(6), `NotSupported`(7), `InvalidState`(8), `ThreadViolation`(9), `OutOfMemory`(10), `SeqExhausted`(11), `InternalError`(12), `NotAdmitted`(13, ordinary control flow) |
 | `RequestError` | `RequestResult` | request/reply completion | `TimedOut`(101), `NotFound`(102), `Terminated`(103), `ProtocolError`(104), `InternalError`(105), `Rejected`(106), `Conflict`(107), `Busy`(108), `NotConnected`(109), `InvalidArgument`(110), `InvalidState`(111), `NotSupported`(112), `Backpressured`(113) |
-| `RecvError` | `RecvResult` | recv-family APIs | `NoData`(201), `Busy`(202), `Terminated`(203), `InvalidHandle`(204), `NotSupported`(205), `InternalError`(206), `BufferTooSmall`(207), `InvalidState`(208) — **this binding's `RecvResult` is the only one among every language covered so far to include `BufferTooSmall`/`InvalidState`** |
+| `RecvError` | `RecvResult` | recv-family APIs | `NoData`(201), `Busy`(202), `Terminated`(203), `InvalidHandle`(204), `NotSupported`(205), `InternalError`(206), `BufferTooSmall`(207), `InvalidState`(208) — **this binding's `RecvResult` includes `BufferTooSmall`/`InvalidState`, matching go's; every other language shares a 6-value set without them** |
 | `HandlerError` | `HandlerResult` | handler registration APIs | `InvalidArgument`(301), `Busy`(302), `NotSupported`(303), `Deadlock`(304), `InvalidHandle`(305), `InternalError`(306) |
 | `CloseError` | `CloseResult` | `close()` paths, `Context.shutdown()` | `Busy`(401), `Shutdown`(402), `InvalidHandle`(403), `InternalError`(404) |
 | `BindError` | `BindResult` | `Socket.bind(...)` | `InvalidArgument`(501), `AddrInUse`(502), `NotSupported`(503), `InvalidHandle`(504), `InternalError`(505) |
-| `ConnectError` | `ConnectResult` | `connect`/`unbind`/`disconnect`/`disconnectRid` | `InvalidArgument`(601), `NotSupported`(602), `InvalidHandle`(603), `InternalError`(604), `NotFound`(605), `Conflict`(606), `Busy`(607), `AuthFailed`(608) — **this binding is the only one covered so far with `AuthFailed`** |
+| `ConnectError` | `ConnectResult` | `connect`/`unbind`/`disconnect`/`disconnectRid` | `InvalidArgument`(601), `NotSupported`(602), `InvalidHandle`(603), `InternalError`(604), `NotFound`(605), `Conflict`(606), `Busy`(607), `AuthFailed`(608) — **this binding has `AuthFailed`, matching go's; every other language shares a 7-value set without it** |
 | `ConfigError` | `ConfigResult` | every socket/context option getter/setter | `InvalidHandle`(701), `InvalidArgument`(702), `NotSupported`(703), `InternalError`(704), `InvalidState`(705), `NotFound`(706), `Conflict`(707), `BufferTooSmall`(708), `Busy`(709) — the full 9-value set (matching dotnet, unlike cpp/java's 6-value set) |
 
 **Cross-language asymmetry, corrected here.** Every wrapper binding's result constant set is
@@ -36,9 +36,10 @@ supposed to mirror core's `zlink_*_result_t` families exactly (documented in cor
 category), but they don't all agree with each other: dotnet's `RecvResult`/`ConnectResult` are
 missing `BufferTooSmall`/`InvalidState` and `AuthFailed` respectively; cpp's and java's
 `ConfigResult` stop at `NotFound`(706), missing `Conflict`/`BufferTooSmall`/`Busy`. Node's three
-result sets documented here match core's full definitions. Whether the other bindings should gain
-these missing values, or whether node should be pared back to match them, is a spec-level question
-outside this reference's scope — this entry states the fact so it doesn't get lost.
+result sets documented here match core's full definitions — **go's do too**, so this is a
+two-binding pairing, not a node-only trait. Whether the other bindings should gain these missing
+values, or whether node/go should be pared back to match them, is a spec-level question outside
+this reference's scope — this entry states the fact so it doesn't get lost.
 
 **What each value family actually means.** `SubmitResult`'s `Backpressured`/`NotConnected`/
 `NotFound`/`NotAdmitted` are ordinary execution flow, not exceptional failures — a caller that

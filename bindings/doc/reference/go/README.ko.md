@@ -55,6 +55,6 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `contracts/messaging.go` → `internal/native/message.go`, `received.go`, `topic_message.go`, `subscription_event.go`, `operations.go`, `request_reply_types.go` |
 | [Sockets](03-sockets.ko.md) | 작성 완료 | `contracts/sockets.go` → `internal/native/socket_core.go`, `socket_types.go`, `socket_options.go`, `connection_socket.go`, `socket_direct.go`, `socket_routed.go`, `socket_publish.go`, `socket_subscribe.go`, `socket_completion_control.go` |
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `contracts/eventing.go` → `internal/native/monitor.go`, `poller_timer.go` |
-| Errors | 미착수 | `contracts/errors.go` → `internal/native/error.go`, `result_codes.go` |
+| [Errors](05-errors.ko.md) | 작성 완료 | `contracts/errors.go` → `internal/native/error.go`, `result_codes.go` |
 
 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.

@@ -26,11 +26,11 @@ bind/connect/config 실패 API(Sockets/Messaging/Eventing/Core category)가
 |---|---|---|---|
 | `SubmitError` | `SubmitResult`(Sockets category) | send/publish/request-submit API | `Backpressured`(1, 정상 제어 흐름), `NotConnected`(2), `NotFound`(3), `Terminated`(4), `InvalidHandle`(5), `InvalidArgument`(6), `NotSupported`(7), `InvalidState`(8), `ThreadViolation`(9), `OutOfMemory`(10), `SeqExhausted`(11), `InternalError`(12), `NotAdmitted`(13, 정상 제어 흐름) |
 | `RequestError` | `RequestResult` | request/reply 완료 | `TimedOut`(101), `NotFound`(102), `Terminated`(103), `ProtocolError`(104), `InternalError`(105), `Rejected`(106), `Conflict`(107), `Busy`(108), `NotConnected`(109), `InvalidArgument`(110), `InvalidState`(111), `NotSupported`(112), `Backpressured`(113) |
-| `RecvError` | `RecvResult` | recv-family API | `NoData`(201), `Busy`(202), `Terminated`(203), `InvalidHandle`(204), `NotSupported`(205), `InternalError`(206), `BufferTooSmall`(207), `InvalidState`(208) — **지금까지 다룬 모든 언어 중 이 binding의 `RecvResult`만 `BufferTooSmall`/`InvalidState`를 포함한다** |
+| `RecvError` | `RecvResult` | recv-family API | `NoData`(201), `Busy`(202), `Terminated`(203), `InvalidHandle`(204), `NotSupported`(205), `InternalError`(206), `BufferTooSmall`(207), `InvalidState`(208) — **이 binding의 `RecvResult`는 `BufferTooSmall`/`InvalidState`를 포함한다, go와 일치**; 다른 모든 언어는 이 값들이 없는 6개 값 집합을 공유한다 |
 | `HandlerError` | `HandlerResult` | handler 등록 API | `InvalidArgument`(301), `Busy`(302), `NotSupported`(303), `Deadlock`(304), `InvalidHandle`(305), `InternalError`(306) |
 | `CloseError` | `CloseResult` | `close()` 경로, `Context.shutdown()` | `Busy`(401), `Shutdown`(402), `InvalidHandle`(403), `InternalError`(404) |
 | `BindError` | `BindResult` | `Socket.bind(...)` | `InvalidArgument`(501), `AddrInUse`(502), `NotSupported`(503), `InvalidHandle`(504), `InternalError`(505) |
-| `ConnectError` | `ConnectResult` | `connect`/`unbind`/`disconnect`/`disconnectRid` | `InvalidArgument`(601), `NotSupported`(602), `InvalidHandle`(603), `InternalError`(604), `NotFound`(605), `Conflict`(606), `Busy`(607), `AuthFailed`(608) — **지금까지 다룬 것 중 이 binding만 `AuthFailed`가 있다** |
+| `ConnectError` | `ConnectResult` | `connect`/`unbind`/`disconnect`/`disconnectRid` | `InvalidArgument`(601), `NotSupported`(602), `InvalidHandle`(603), `InternalError`(604), `NotFound`(605), `Conflict`(606), `Busy`(607), `AuthFailed`(608) — **이 binding은 `AuthFailed`가 있다, go와 일치**; 다른 모든 언어는 이 값이 없는 7개 값 집합을 공유한다 |
 | `ConfigError` | `ConfigResult` | 모든 socket/context option getter/setter | `InvalidHandle`(701), `InvalidArgument`(702), `NotSupported`(703), `InternalError`(704), `InvalidState`(705), `NotFound`(706), `Conflict`(707), `BufferTooSmall`(708), `Busy`(709) — 9개 값 전체 집합(dotnet과 일치, cpp/java의 6개 값 집합과 다름) |
 
 **언어간 비대칭, 여기서 바로잡음.** 모든 wrapper binding의 result 상수
@@ -40,9 +40,11 @@ bind/connect/config 실패 API(Sockets/Messaging/Eventing/Core category)가
 `AuthFailed`가 빠져 있다. cpp와 java의 `ConfigResult`는
 `NotFound`(706)에서 멈춰 `Conflict`/`BufferTooSmall`/`Busy`가 빠져
 있다. 여기 문서화된 node의 세 result 집합은 core의 완전한 정의와
-일치한다. 다른 binding이 이 빠진 값을 가져야 하는지, 아니면 node를
-줄여서 맞춰야 하는지는 스펙 차원의 질문이며 이 레퍼런스의 범위 밖이다 —
-이 항목은 그 사실이 묻히지 않도록 명시해둔다.
+일치한다 — **go도 마찬가지다**, 그러니 이건 node 단독 특성이 아니라
+두 binding의 짝이다. 다른 binding이 이 빠진 값을 가져야 하는지,
+아니면 node/go를 줄여서 맞춰야 하는지는 스펙 차원의 질문이며 이
+레퍼런스의 범위 밖이다 — 이 항목은 그 사실이 묻히지 않도록
+명시해둔다.
 
 **각 값 family가 실제로 뜻하는 것.** `SubmitResult`의 `Backpressured`/
 `NotConnected`/`NotFound`/`NotAdmitted`는 예외적 실패가 아니라 정상적인

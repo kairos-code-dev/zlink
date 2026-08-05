@@ -57,11 +57,13 @@ catch (ZlinkSubmitException ex) when (ex.Result == ZlinkSubmitException.ErrorCod
 }
 ```
 
-**Options.** protected 생성자만 존재 — `ZlinkException(int code)`와
-`ZlinkException(int code, int nativeErrno)`. 임의 typed exception을 만드는 public
-진입점은 그 exception 자신의 `ErrorCode`를 받는 public 생성자다(`Ok`는 절대 안 됨 —
-아래 참고). Member: `Code`(`int`, 실패를 분류하는 zlink result code),
-`NativeErrno`(`int`, 밑에 깔린 native errno, 없으면 `0`).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `ZlinkException(int code)` / `ZlinkException(int code, int nativeErrno)` | protected 생성자만 존재 — public 진입점은 각 typed exception 자신의 `ErrorCode`를 받는 생성자다(`Ok`는 절대 안 됨, 아래 참고) |
+| `Code` | `int`, 실패를 분류하는 zlink result code |
+| `NativeErrno` | `int`, 밑에 깔린 native errno, 없으면 `0` |
 
 **Completion result.** 해당 없음 — 이건 exception 계층 자체다. 모든 typed
 exception의 public 생성자는 `ValidatePublicErrorCode<TErrorCode>`를 통해 성공값

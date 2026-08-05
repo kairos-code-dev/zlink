@@ -55,11 +55,13 @@ catch (ZlinkSubmitException ex) when (ex.Result == ZlinkSubmitException.ErrorCod
 }
 ```
 
-**Options.** Protected constructors only — `ZlinkException(int code)` and `ZlinkException(int
-code, int nativeErrno)`; the public entry point for constructing any typed exception is that
-exception's own public constructor taking its `ErrorCode` (never `Ok` — see below). Members:
-`Code` (`int`, the zlink result code that classifies the failure), `NativeErrno` (`int`, the
-underlying native errno, or `0` when none).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `ZlinkException(int code)` / `ZlinkException(int code, int nativeErrno)` | protected constructors only — the public entry point is each typed exception's own constructor taking its `ErrorCode` (never `Ok`, see below) |
+| `Code` | `int`, the zlink result code that classifies the failure |
+| `NativeErrno` | `int`, the underlying native errno, `0` when none |
 
 **Completion result.** N/A — this is the exception hierarchy itself. Every typed exception's public
 constructor rejects the success value `Ok` via `ValidatePublicErrorCode<TErrorCode>`, throwing

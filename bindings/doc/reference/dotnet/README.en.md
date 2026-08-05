@@ -41,7 +41,7 @@ question outside this document's scope.
 | Category | Status | Contract source (verified against `Contracts/`) |
 |---|---|---|
 | [Core](01-core.en.md) | Drafted | `Contracts/Core/`: `Context.cs`, `ContextOptions.cs`, `RoutingId.cs`, `Zlink.cs`, `AtomicCounter.cs`, `ZlinkStopwatch.cs`, `ZlinkThread.cs` |
-| Messaging | Not started | `Contracts/Messaging/`: `Message.cs`, `MessageEnvelopeParts.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` |
+| [Messaging](02-messaging.en.md) | Drafted | `Contracts/Messaging/`: `Message.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` (`MessageEnvelopeParts.cs` is `internal`, no public entry) |
 | Sockets | Not started | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
 | Eventing | Not started | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
 | Errors | Not started | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |

@@ -38,7 +38,7 @@ Actor)를 포함한 6개 category를 정의한다. 그 category는 스펙이 bin
 | Category | 상태 | Contract 원본(`Contracts/` 대조 확인) |
 |---|---|---|
 | [Core](01-core.ko.md) | 작성 완료 | `Contracts/Core/`: `Context.cs`, `ContextOptions.cs`, `RoutingId.cs`, `Zlink.cs`, `AtomicCounter.cs`, `ZlinkStopwatch.cs`, `ZlinkThread.cs` |
-| Messaging | 미착수 | `Contracts/Messaging/`: `Message.cs`, `MessageEnvelopeParts.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` |
+| [Messaging](02-messaging.ko.md) | 작성 완료 | `Contracts/Messaging/`: `Message.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs`(`MessageEnvelopeParts.cs`는 `internal`이라 public 항목 없음) |
 | Sockets | 미착수 | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
 | Eventing | 미착수 | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
 | Errors | 미착수 | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |

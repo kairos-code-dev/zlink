@@ -90,7 +90,12 @@ value-type wrapper들로, 각각 static `value(...)` factory로 생성한다.
 
 | 타입 | 감싸는 것 | 의미 |
 | --- | --- | --- |
-| `io_thread_count_t`, `socket_count_t`, `worker_count_t`, `thread_priority_t`, `cpu_index_t`, `socket_backlog_t` | `int`(`::value(int)`/`.value()`) | — |
+| `io_thread_count_t` | `int`(`::value(int)`/`.value()`) | — |
+| `socket_count_t` | `int`(`::value(int)`/`.value()`) | — |
+| `worker_count_t` | `int`(`::value(int)`/`.value()`) | — |
+| `thread_priority_t` | `int`(`::value(int)`/`.value()`) | — |
+| `cpu_index_t` | `int`(`::value(int)`/`.value()`) | — |
+| `socket_backlog_t` | `int`(`::value(int)`/`.value()`) | — |
 | `byte_size_t` | `int64_t`(`::bytes(int64_t)`/`.bytes()`) | — |
 | `byte_count_t`(Core) | `uint64_t`(`::bytes(uint64_t)`/`.bytes()`) | HWM과 byte-budget option이 쓰는 무손실 byte count |
 | `peer_weight_t` | `uint32_t`(`::value(uint32_t)`) | 0-100 범위 밖이면 `std::invalid_argument` |

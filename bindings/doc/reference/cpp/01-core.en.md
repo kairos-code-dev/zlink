@@ -88,7 +88,12 @@ Small value-type wrappers used throughout `context_options_t` and socket options
 
 | Type | Wraps | Meaning |
 | --- | --- | --- |
-| `io_thread_count_t`, `socket_count_t`, `worker_count_t`, `thread_priority_t`, `cpu_index_t`, `socket_backlog_t` | `int` via `::value(int)`/`.value()` | — |
+| `io_thread_count_t` | `int` via `::value(int)`/`.value()` | — |
+| `socket_count_t` | `int` via `::value(int)`/`.value()` | — |
+| `worker_count_t` | `int` via `::value(int)`/`.value()` | — |
+| `thread_priority_t` | `int` via `::value(int)`/`.value()` | — |
+| `cpu_index_t` | `int` via `::value(int)`/`.value()` | — |
+| `socket_backlog_t` | `int` via `::value(int)`/`.value()` | — |
 | `byte_size_t` | `int64_t` via `::bytes(int64_t)`/`.bytes()` | — |
 | `byte_count_t` (Core) | `uint64_t` via `::bytes(uint64_t)`/`.bytes()` | lossless byte count used by HWM and byte-budget options |
 | `peer_weight_t` | `uint32_t` via `::value(uint32_t)` | throws `std::invalid_argument` outside 0-100 |

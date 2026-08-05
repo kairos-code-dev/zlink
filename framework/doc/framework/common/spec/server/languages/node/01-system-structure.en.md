@@ -251,7 +251,7 @@ re-thrown.** A half-open socket or hanging context isn't left behind.
 The internal cleanup order is owned by
 [runtime-lifecycle](../../../../internals/README.en.md), and the backend
 adapter port is owned by
-[backend-dependency-policy](../../../../../node/internals/backend-dependency-policy.ko.md).
+[backend-dependency-policy](../../../../../node/internals/backend-dependency-policy.en.md).
 
 ## 6. RouteMesh Registration
 
@@ -402,4 +402,4 @@ default rule.
 
 The regression items for registration and startup validation are owned
 by
-[regression-test-matrix](../../../../../node/internals/regression-test-matrix.ko.md).
+[regression-test-matrix](../../../../../node/internals/regression-test-matrix.en.md).

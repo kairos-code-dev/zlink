@@ -52,9 +52,9 @@ maintainers. Check the spec for the public API and allowed combinations.
 
 | Document | Scope |
 |------|------|
-| [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | Backend replaceability, public-surface isolation |
+| [backend-dependency-policy](internals/backend-dependency-policy.en.md) | Backend replaceability, public-surface isolation |
 | [Common Internals](../common/internals/README.en.md) | Runtime architecture decisions shared across all four languages |
-| [regression-test-matrix](internals/regression-test-matrix.ko.md) | Regression test criteria |
+| [regression-test-matrix](internals/regression-test-matrix.en.md) | Regression test criteria |
 
 ## 4. Common Samples
 

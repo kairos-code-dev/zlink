@@ -53,7 +53,7 @@ Kotlin follow the Kotlin spec.
 | [Channel messaging](../common/spec/server/languages/java/interfaces/channel-messaging.ko.md) | Channel registration, the outbound client, and dispatch |
 | [Spot](../common/spec/server/languages/java/interfaces/spots.ko.md) | Spot lifecycle and factory |
 | [Actor](../common/spec/server/languages/java/interfaces/actors.ko.md) | The actor factory, relocation adapter, and bound session |
-| [STREAM](../common/spec/server/languages/java/interfaces/stream-session.ko.md) | The stream node and header session |
+| [STREAM](../common/spec/server/languages/java/interfaces/stream-session.en.md) | The stream node and header session |
 | [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | The Java/Kotlin Stream Connector |
 | [Location and maintenance](../common/spec/server/languages/java/interfaces/location-maintenance.ko.md) | Discovery, authority, and relocation |
 | [Monitoring](../common/spec/server/languages/java/interfaces/monitoring.ko.md) | Runtime events and typed handlers |

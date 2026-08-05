@@ -5,7 +5,7 @@
 This category covers the entry points used inside STREAM session code (`ZLinkSession`,
 `ZLinkSessionClient`, `ZLinkSessionActors`, `ZLinkSessionActor`) and the entry point used for a
 bound session inside Actor code (`ZLinkBoundSession`). The exact signatures are owned by the
-[Java STREAM session exact interface](../../common/spec/server/languages/java/interfaces/stream-session.ko.md)
+[Java STREAM session exact interface](../../common/spec/server/languages/java/interfaces/stream-session.en.md)
 and the
 [Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.ko.md)
 (Korean-only).
@@ -214,7 +214,7 @@ to be kept. Use the `close` entry to disconnect directly from the Session side.
 ---
 
 See the
-[Java STREAM session exact interface](../../common/spec/server/languages/java/interfaces/stream-session.ko.md)
+[Java STREAM session exact interface](../../common/spec/server/languages/java/interfaces/stream-session.en.md)
 and the
 [Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.ko.md)
 (Korean-only) for the full rationale.

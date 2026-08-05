@@ -11,7 +11,7 @@ package, organized per feature. Common behavior is owned by the
 - [Channel Messaging](channel-messaging.ko.md)
 - [Spot](spots.ko.md)
 - [Actor](actors.ko.md)
-- [STREAM Session](stream-session.ko.md)
+- [STREAM Session](stream-session.en.md)
 - [Location And Maintenance](location-maintenance.ko.md)
 - [Monitoring](monitoring.ko.md)
 

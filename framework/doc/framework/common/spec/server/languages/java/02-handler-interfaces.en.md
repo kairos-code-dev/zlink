@@ -7,7 +7,7 @@ feature in the
 - [Channel Messaging](interfaces/channel-messaging.ko.md)
 - [Spot](interfaces/spots.ko.md)
 - [Actor](interfaces/actors.ko.md)
-- [STREAM Session](interfaces/stream-session.ko.md)
+- [STREAM Session](interfaces/stream-session.en.md)
 - [Monitoring](interfaces/monitoring.ko.md)
 
 Actor and Instance Spot relocation behavior is wired directly into the

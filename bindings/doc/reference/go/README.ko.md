@@ -53,7 +53,7 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 |---|---|---|
 | [Core](01-core.ko.md) | 작성 완료 | `contracts/core.go` → `internal/native/context.go`, `utility.go` |
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `contracts/messaging.go` → `internal/native/message.go`, `received.go`, `topic_message.go`, `subscription_event.go`, `operations.go`, `request_reply_types.go` |
-| Sockets | 미착수 | `contracts/sockets.go` → `internal/native/socket_core.go`, `socket_types.go`, `socket_options.go`, `connection_socket.go`, `operations.go` |
+| [Sockets](03-sockets.ko.md) | 작성 완료 | `contracts/sockets.go` → `internal/native/socket_core.go`, `socket_types.go`, `socket_options.go`, `connection_socket.go`, `socket_direct.go`, `socket_routed.go`, `socket_publish.go`, `socket_subscribe.go`, `socket_completion_control.go` |
 | Eventing | 미착수 | `contracts/eventing.go` → `internal/native/monitor.go`, `poller_timer.go` |
 | Errors | 미착수 | `contracts/errors.go` → `internal/native/error.go`, `result_codes.go` |
 

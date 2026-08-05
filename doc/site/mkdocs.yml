@@ -350,7 +350,8 @@ nav:
         - Go: bindings/guide/go/index.ko.md
         - Rust: bindings/guide/rust/index.ko.md
       - Reference:
-        - C: bindings/reference/c/README.md
+        - C:
+          - "Reference home": bindings/reference/c/README.md
         - .NET:
           - "Reference home": bindings/reference/dotnet/README.md
           - "01. Core": bindings/reference/dotnet/01-core.md

@@ -8,7 +8,7 @@ title: "14. Picking A Sample — Start With The Example Closest To Your Problem 
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 13-interface-catalog.en.md](13-interface-catalog.en.md) | [Next: 15-e2e-testing.en.md](15-e2e-testing.en.md)
+[Guide Home](README.en.md) | [Previous: 13. Key Type Usage Index](13-interface-catalog.en.md) | [Next: 15. E2E Testing — Verifying The Whole System With A Client](15-e2e-testing.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

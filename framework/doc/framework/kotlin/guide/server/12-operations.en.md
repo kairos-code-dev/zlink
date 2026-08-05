@@ -8,7 +8,7 @@ title: "12. Operations — Runtime Metrics · Graceful Drain · Readiness · Kot
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 11-monitoring.en.md](11-monitoring.en.md) | [Next: 13-interface-catalog.en.md](13-interface-catalog.en.md)
+[Guide Home](README.en.md) | [Previous: 11. Monitoring — Status Observation And Diagnostics](11-monitoring.en.md) | [Next: 13. Key Type Usage Index](13-interface-catalog.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

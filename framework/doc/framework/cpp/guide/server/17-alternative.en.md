@@ -8,7 +8,7 @@ title: "17. Where ZLink Fits — Internal Service Communication And Real-Time St
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 16-options.en.md](16-options.en.md) | [Next: 18-di-container.en.md](18-di-container.en.md)
+[Guide Home](README.en.md) | [Previous: 16. Options — Setting List And Defaults](16-options.en.md) | [Next: 18-di-container.en.md](18-di-container.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

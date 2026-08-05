@@ -40,7 +40,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 |---|---|---|
 | [Core](01-core.en.md) | Drafted | `contracts/core/`: `Context.java`, `ContextOptions.java`, `ContextOption.java`, `RoutingId.java`, `Zlink.java`, `ZlinkVersion.java`, `AtomicCounter.java`, `ZlinkStopwatch.java`, `ZlinkThread.java` |
 | [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `Message.java`, `Received.java`, `TopicMessage.java`, `SubscriptionEvent.java`, `SubscriptionEntry.java`, `SendOperation.java`, `SendSubmitOperation.java`, `RequestOperation.java`, `RequestSubmitOperation.java`, `RequestCallbackSubmitOperation.java`, `TimeoutSubmitOperation.java`, `ReplyOperation.java`, `ReplySubmitOperation.java`, `MessageBuilderStage.java` |
-| Sockets | Not started | `contracts/sockets/`: `Socket.java`, `StreamSocket.java`, `MessageSocketContracts/{PairSocket,DealerSocket}.java`, `RoutedSocketContracts/RouterSocket.java`, `PubSubSocketContracts/{PubSocket,SubSocket,XPubSocket,XSubSocket}.java`, `SocketOptionFacades/*.java`, `SocketEnums/*.java`, `SocketHandlers/*.java` |
+| [Sockets](03-sockets.en.md) | Drafted | `contracts/sockets/`: `Socket.java`, `StreamSocket.java`, `MessageSocketContracts/{PairSocket,DealerSocket}.java`, `RoutedSocketContracts/RouterSocket.java`, `PubSubSocketContracts/{PubSocket,SubSocket,XPubSocket,XSubSocket}.java`, `SocketOptionFacades/*.java`, `SocketEnums/*.java`, `SocketHandlers/*.java` |
 | Eventing | Not started | `contracts/eventing/`: `Poller.java`, `ZlinkTimer.java`, `SocketMonitor.java`, `EventEnums/*.java`, `EventHandlers/*.java`, `EventModels/*.java` |
 | Errors | Not started | `contracts/errors/`: `ErrorCategory.java`, `Errors/*.java` (exception classes + result enums) |
 

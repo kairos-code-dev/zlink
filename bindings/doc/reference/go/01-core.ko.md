@@ -76,18 +76,24 @@ opts.AddThreadAffinity(2)
 
 **Options.** 모든 getter는 `(T, error)`를 반환한다. 모든 setter는
 `error`를 반환한다 — accessor 일부만 실패할 수 있는 다른 언어와 다르다.
-`IOThreads()`/`SetIOThreads(int)`, `MaxSockets()`/`SetMaxSockets(int)`,
-`SocketLimit()`(읽기 전용), `ThreadPriority()`/
-`SetThreadPriority(int)`, `ThreadSchedulingPolicy()`/
-`SetThreadSchedulingPolicy(int)`, `ThreadNamePrefix()`/
-`SetThreadNamePrefix(string)`, `AutoHwmEnabled()`/
-`SetAutoHwmEnabled(bool)`, `AutoHwmRecalcDebounce()`/
-`SetAutoHwmRecalcDebounce(time.Duration)`, `MaxMessageSize()`/
-`SetMaxMessageSize(int)`, `MessageStructSize()`(읽기 전용),
-`Blocky()`/`SetBlocky(bool)`, `AutoHwmProfile()`/
-`SetAutoHwmProfile(AutoHwmProfile)`, `AutoHwmMsgUnitBytes()`/
-`SetAutoHwmMsgUnitBytes(int)`. setter만: `AddThreadAffinity(cpu
-int)`/`RemoveThreadAffinity(cpu int)`.
+
+| Member | 의미 |
+| --- | --- |
+| `IOThreads()` / `SetIOThreads(int)` | I/O thread 개수 |
+| `MaxSockets()` / `SetMaxSockets(int)` | context 전체 socket 상한 |
+| `SocketLimit()` | 읽기 전용, `MaxSockets`의 빌드상 하드 상한 |
+| `ThreadPriority()` / `SetThreadPriority(int)` | dispatch thread 우선순위 |
+| `ThreadSchedulingPolicy()` / `SetThreadSchedulingPolicy(int)` | dispatch thread scheduling policy |
+| `ThreadNamePrefix()` / `SetThreadNamePrefix(string)` | OS에 보이는 dispatch thread 이름 접두사 |
+| `AutoHwmEnabled()` / `SetAutoHwmEnabled(bool)` | auto-HWM sizing 활성 여부 |
+| `AutoHwmRecalcDebounce()` / `SetAutoHwmRecalcDebounce(time.Duration)` | 자동 재계산 사이 최소 간격 |
+| `MaxMessageSize()` / `SetMaxMessageSize(int)` | 메시지 하나의 크기 상한 |
+| `MessageStructSize()` | 읽기 전용, native message struct 크기, 진단 전용 |
+| `Blocky()` / `SetBlocky(bool)` | blocking 호출이 실제로 block하는지 fail fast하는지 |
+| `AutoHwmProfile()` / `SetAutoHwmProfile(AutoHwmProfile)` | automatic HWM sizing profile — Sockets category 참고 |
+| `AutoHwmMsgUnitBytes()` / `SetAutoHwmMsgUnitBytes(int)` | auto-HWM용 accounted-byte 단위; `0`은 socket-type 기본값 선택 |
+| `AddThreadAffinity(cpu int)` | setter만, I/O thread를 CPU에 고정 |
+| `RemoveThreadAffinity(cpu int)` | setter만, I/O thread의 CPU 고정을 해제 |
 
 **Completion result.** 모든 accessor는 동기이며, 값과 함께 `error`를
 반환한다.
@@ -132,18 +138,22 @@ fromUint32 := contracts.NewRoutingIDUint32(42)
 restored, err := contracts.NewRoutingIDFromHex(previouslyPrinted.Hex())
 ```
 
-**Options.** Package-level 생성자(`NewRoutingIDFromHex`를 제외하곤
-error를 반환하지 않는다 — 나머지는 잘못된 길이에 panic한다, 아래
-참고): `NewRoutingID(data []byte)`, `NewRoutingIDString(value
-string)`(UTF-8 인코딩), `NewRoutingIDUint32(value uint32)`(4-byte
-big-endian), `NewRoutingIDUUIDBytes(value [16]byte)`,
-`NewRoutingIDFromHex(value string) (RoutingID, error)`(panic 대신
-error를 반환하는 유일한 생성자). Instance member: `Bytes()`,
-`Size()`, `Hash() uint64`(진단/map-key helper, `RoutingID`가 고정
-크기 value struct라는 점에서 Go의 내장 `==` 비교 가능성과는 별개),
-`Hex()`, `Equal(other RoutingID) bool`, `String()`(printable UTF-8,
-그 다음 4-byte를 uint32로, 그 다음 16-byte를 UUID 포맷으로, 마지막
-`hex:` 접두 fallback).
+**Options.** Package-level 생성자; `NewRoutingIDFromHex`를 제외하곤
+error를 반환하지 않는다 — 나머지는 잘못된 길이에 panic한다.
+
+| Member | 의미 |
+| --- | --- |
+| `NewRoutingID(data []byte)` | slice 전체를 그대로 복사; 범위를 벗어나면 panic |
+| `NewRoutingIDString(value string)` | UTF-8 인코딩; 범위를 벗어나면 panic |
+| `NewRoutingIDUint32(value uint32)` | 4-byte big-endian; 범위를 벗어나면 panic |
+| `NewRoutingIDUUIDBytes(value [16]byte)` | 16-byte, 예: UUID byte; 범위를 벗어나면 panic |
+| `NewRoutingIDFromHex(value string) (RoutingID, error)` | `Hex()`가 출력한 byte를 복원 — panic 대신 error를 반환하는 유일한 생성자 |
+| `Bytes()` | bytes의 방어적 복사 |
+| `Size()` | byte 길이, 1-255 |
+| `Hash() uint64` | 진단/map-key helper, `RoutingID`가 고정 크기 value struct라는 점에서 Go의 내장 `==` 비교 가능성과는 별개 |
+| `Hex()` | hex 인코딩, `NewRoutingIDFromHex`와 왕복 가능 |
+| `Equal(other RoutingID) bool` | 값 동등성 |
+| `String()` | 표시 형태: printable UTF-8, 그 다음 4-byte를 uint32로, 그 다음 16-byte를 UUID 포맷으로, 마지막 `hex:` 접두 fallback |
 
 **Completion result.** 모든 member는 동기다. `RoutingID`가 순수
 value struct라는 건 `==`로 직접 비교 가능하고 `Hash()`/`Equal()`
@@ -197,14 +207,20 @@ thread, err := contracts.NewThread(doWork)
 _ = thread.Join()
 ```
 
-**Options.** `NewStopwatch()`/`NewAtomicCounter()`는 resource를
-error 없이 직접 반환한다(**error 경로 없음**, 이 binding의 다른
-대부분의 생성자와 다름). `NewThread(target func()) (*Thread,
-error)`는 새 OS 스레드에서 `target`을 즉시 실행한다. `Stopwatch`:
-`Intermediate()`/`Stop()`(둘 다 `uint64` 마이크로초, error 반환
-없음). `AtomicCounter`: `Set(int)`, `Increment()`/`Decrement()`
-(*새* 값을 반환), `Value()`, `Close()`(error를 반환하지 않음).
-`Thread`: `Join() error`, `Close() error`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `NewStopwatch()` | resource를 error 없이 직접 반환 — **error 경로 없음**, 이 binding의 다른 대부분의 생성자와 다름 |
+| `Stopwatch.Intermediate()` / `Stop()` | 생성 이후 경과 마이크로초(`uint64`), 둘 다 error 반환 없음; `Intermediate()`는 몇 번이든 호출, `Stop()`은 정확히 한 번 호출해 종료 |
+| `NewAtomicCounter()` | `NewStopwatch()`와 마찬가지로 resource를 error 없이 직접 반환 |
+| `AtomicCounter.Set(int)` | counter 값을 지정, error 반환 없음 |
+| `AtomicCounter.Increment()` / `Decrement()` | counter를 1 조정, *새* 값을 반환 |
+| `AtomicCounter.Value()` | 현재 값을 읽음 |
+| `AtomicCounter.Close()` | counter를 해제, error 반환 없음 |
+| `NewThread(target func()) (*Thread, error)` | 새 OS 스레드에서 `target`을 즉시 실행 |
+| `Thread.Join() error` | task가 끝날 때까지 block |
+| `Thread.Close() error` | thread handle을 해제 |
 
 **Completion result.** `Stopwatch`/`AtomicCounter` 생성과 대부분의
 메서드는 error 경로가 전혀 없다. `Thread` 생성과 메서드는 있다.
@@ -230,14 +246,16 @@ contracts.Sleep(1) // 초 단위, 밀리초 아님
 contracts.MultipartClose(parts)
 ```
 
-**Options.** `Proxy(frontend, backend, capture SocketTarget) error`
-— `capture`는 `nil` 가능. `ProxySteerable(frontend, backend, capture,
-control SocketTarget) error`. `Sleep(seconds int)` — 반환값이 전혀
-없다(여기 대부분의 함수가 반환하는 값 없는 `error`조차 없다).
-`Proxy`와 모든 socket type이 `SocketTarget` interface를
-만족하므로(Eventing category도 `Poller`/`SocketMonitor` 등록에
-이걸 쓴다), 어떤 구체 socket이든 직접 넘길 수 있다.
-`MultipartClose(parts []*Message)`.
+**Options.** `Proxy`와 모든 socket type이 `SocketTarget` interface를
+만족하므로(Eventing category도 `Poller`/`SocketMonitor` 등록에 이걸
+쓴다), 어떤 구체 socket이든 직접 넘길 수 있다.
+
+| Member | 의미 |
+| --- | --- |
+| `Proxy(frontend, backend, capture SocketTarget) error` | `capture`는 `nil` 가능 |
+| `ProxySteerable(frontend, backend, capture, control SocketTarget) error` | 필수 `control` source를 더함 |
+| `Sleep(seconds int)` | 호출 goroutine을 block; 반환값이 전혀 없다 — 여기 대부분의 함수가 반환하는 값 없는 `error`조차 없다 |
+| `MultipartClose(parts []*Message)` | 모든 part를 한 번에 닫음 |
 
 **Completion result.** `Proxy`/`ProxySteerable`은 `error`를
 반환하며 context가 종료될 때까지(또는 `ProxySteerable`의 경우 control

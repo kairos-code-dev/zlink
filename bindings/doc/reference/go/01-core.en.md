@@ -67,15 +67,25 @@ opts.AddThreadAffinity(2)
 ```
 
 **Options.** Every getter returns `(T, error)`; every setter returns `error` — unlike languages
-where only a subset of accessors can fail. `IOThreads()`/`SetIOThreads(int)`,
-`MaxSockets()`/`SetMaxSockets(int)`, `SocketLimit()` (read-only), `ThreadPriority()`/
-`SetThreadPriority(int)`, `ThreadSchedulingPolicy()`/`SetThreadSchedulingPolicy(int)`,
-`ThreadNamePrefix()`/`SetThreadNamePrefix(string)`, `AutoHwmEnabled()`/`SetAutoHwmEnabled(bool)`,
-`AutoHwmRecalcDebounce()`/`SetAutoHwmRecalcDebounce(time.Duration)`, `MaxMessageSize()`/
-`SetMaxMessageSize(int)`, `MessageStructSize()` (read-only), `Blocky()`/`SetBlocky(bool)`,
-`AutoHwmProfile()`/`SetAutoHwmProfile(AutoHwmProfile)`, `AutoHwmMsgUnitBytes()`/
-`SetAutoHwmMsgUnitBytes(int)`. Setter-only: `AddThreadAffinity(cpu int)`/
-`RemoveThreadAffinity(cpu int)`.
+where only a subset of accessors can fail.
+
+| Member | Meaning |
+| --- | --- |
+| `IOThreads()` / `SetIOThreads(int)` | I/O thread count |
+| `MaxSockets()` / `SetMaxSockets(int)` | context-wide socket cap |
+| `SocketLimit()` | read-only, build's hard cap on `MaxSockets` |
+| `ThreadPriority()` / `SetThreadPriority(int)` | dispatch thread priority |
+| `ThreadSchedulingPolicy()` / `SetThreadSchedulingPolicy(int)` | dispatch thread scheduling policy |
+| `ThreadNamePrefix()` / `SetThreadNamePrefix(string)` | OS-visible dispatch thread name prefix |
+| `AutoHwmEnabled()` / `SetAutoHwmEnabled(bool)` | whether auto-HWM sizing is active |
+| `AutoHwmRecalcDebounce()` / `SetAutoHwmRecalcDebounce(time.Duration)` | minimum interval between automatic recalculations |
+| `MaxMessageSize()` / `SetMaxMessageSize(int)` | per-message size cap |
+| `MessageStructSize()` | read-only, native message struct size, diagnostic only |
+| `Blocky()` / `SetBlocky(bool)` | whether blocking calls actually block vs. fail fast |
+| `AutoHwmProfile()` / `SetAutoHwmProfile(AutoHwmProfile)` | automatic HWM sizing profile — see Sockets category |
+| `AutoHwmMsgUnitBytes()` / `SetAutoHwmMsgUnitBytes(int)` | accounted-byte unit for auto-HWM; `0` selects the socket-type default |
+| `AddThreadAffinity(cpu int)` | setter-only, pins an I/O thread to a CPU |
+| `RemoveThreadAffinity(cpu int)` | setter-only, unpins an I/O thread from a CPU |
 
 **Completion result.** Every accessor is synchronous, returning `error` alongside its value.
 
@@ -117,15 +127,22 @@ fromUint32 := contracts.NewRoutingIDUint32(42)
 restored, err := contracts.NewRoutingIDFromHex(previouslyPrinted.Hex())
 ```
 
-**Options.** Package-level constructors (none return an error except `NewRoutingIDFromHex`; the
-others panic on invalid length — see below): `NewRoutingID(data []byte)`, `NewRoutingIDString(value
-string)` (UTF-8 encode), `NewRoutingIDUint32(value uint32)` (4-byte big-endian),
-`NewRoutingIDUUIDBytes(value [16]byte)`, `NewRoutingIDFromHex(value string) (RoutingID, error)` (the
-only constructor returning an error rather than panicking). Instance members: `Bytes()`, `Size()`,
-`Hash() uint64` (a diagnostic/map-key helper, distinct from Go's built-in `==` comparability since
-`RoutingID` is a fixed-size value struct), `Hex()`, `Equal(other RoutingID) bool`, `String()`
-(printable UTF-8, then 4-byte-as-uint32, then 16-byte-as-UUID-format, then a `hex:`-prefixed
-fallback).
+**Options.** Package-level constructors; none return an error except `NewRoutingIDFromHex` — the
+others panic on invalid length.
+
+| Member | Meaning |
+| --- | --- |
+| `NewRoutingID(data []byte)` | copies the full slice as-is; panics out of range |
+| `NewRoutingIDString(value string)` | UTF-8 encode; panics out of range |
+| `NewRoutingIDUint32(value uint32)` | 4-byte big-endian; panics out of range |
+| `NewRoutingIDUUIDBytes(value [16]byte)` | 16-byte, e.g. UUID bytes; panics out of range |
+| `NewRoutingIDFromHex(value string) (RoutingID, error)` | restores bytes `Hex()` printed — the only constructor returning an error rather than panicking |
+| `Bytes()` | defensive copy of the bytes |
+| `Size()` | byte length, 1-255 |
+| `Hash() uint64` | a diagnostic/map-key helper, distinct from Go's built-in `==` comparability since `RoutingID` is a fixed-size value struct |
+| `Hex()` | hex encoding, round-trippable with `NewRoutingIDFromHex` |
+| `Equal(other RoutingID) bool` | value equality |
+| `String()` | display form: printable UTF-8, then 4-byte-as-uint32, then 16-byte-as-UUID-format, then a `hex:`-prefixed fallback |
 
 **Completion result.** All members are synchronous. `RoutingID` being a plain value struct means it
 is directly comparable with `==` and usable as a map key without `Hash()`/`Equal()`, though both are
@@ -175,12 +192,20 @@ thread, err := contracts.NewThread(doWork)
 _ = thread.Join()
 ```
 
-**Options.** `NewStopwatch()`/`NewAtomicCounter()` return the resource directly with no error (**no
-error path**, unlike most other constructors in this binding). `NewThread(target func()) (*Thread,
-error)` runs `target` immediately on the new OS thread. `Stopwatch`: `Intermediate()`/`Stop()` (both
-`uint64` microseconds, no error return). `AtomicCounter`: `Set(int)`, `Increment()`/`Decrement()`
-(return the *new* value), `Value()`, `Close()` (none return an error). `Thread`: `Join() error`,
-`Close() error`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `NewStopwatch()` | returns the resource directly with no error — **no error path**, unlike most other constructors in this binding |
+| `Stopwatch.Intermediate()` / `Stop()` | both `uint64` microseconds since construction, no error return; `Intermediate()` callable any number of times, `Stop()` called exactly once to finish |
+| `NewAtomicCounter()` | returns the resource directly with no error, same as `NewStopwatch()` |
+| `AtomicCounter.Set(int)` | assigns the counter's value, no error return |
+| `AtomicCounter.Increment()` / `Decrement()` | adjusts the counter by one, returning the *new* value |
+| `AtomicCounter.Value()` | reads the current value |
+| `AtomicCounter.Close()` | releases the counter, no error return |
+| `NewThread(target func()) (*Thread, error)` | runs `target` immediately on the new OS thread |
+| `Thread.Join() error` | blocks until the task finishes |
+| `Thread.Close() error` | releases the thread handle |
 
 **Completion result.** `Stopwatch`/`AtomicCounter` construction and most of their methods have no
 error path at all; `Thread` construction and its methods do.
@@ -204,12 +229,16 @@ contracts.Sleep(1) // seconds, not milliseconds
 contracts.MultipartClose(parts)
 ```
 
-**Options.** `Proxy(frontend, backend, capture SocketTarget) error` — `capture` may be `nil`.
-`ProxySteerable(frontend, backend, capture, control SocketTarget) error`. `Sleep(seconds int)` — no
-return value at all (not even the value-less `error` most other functions here return). Both
-`Proxy` and every socket type satisfy the `SocketTarget` interface (Eventing category also uses
-it for `Poller`/`SocketMonitor` registration), so any concrete socket can be passed directly.
-`MultipartClose(parts []*Message)`.
+**Options.** Both `Proxy` and every socket type satisfy the `SocketTarget` interface (Eventing
+category also uses it for `Poller`/`SocketMonitor` registration), so any concrete socket can be
+passed directly.
+
+| Member | Meaning |
+| --- | --- |
+| `Proxy(frontend, backend, capture SocketTarget) error` | `capture` may be `nil` |
+| `ProxySteerable(frontend, backend, capture, control SocketTarget) error` | adds a required `control` source |
+| `Sleep(seconds int)` | blocks the calling goroutine; no return value at all — not even the value-less `error` most other functions here return |
+| `MultipartClose(parts []*Message)` | closes every part in one call |
 
 **Completion result.** `Proxy`/`ProxySteerable` return `error` and block the calling goroutine
 until the context is terminated (or, for `ProxySteerable`, until a control command or error ends

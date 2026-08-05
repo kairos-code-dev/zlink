@@ -63,19 +63,21 @@ socket.Options.SubmitRetryMode = SubmitRetryMode.LocalFailure;
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `MaxMessageSize` | -1(제한 없음) | `long` |
-| `SendHighWaterMark` / `ReceiveHighWaterMark` | 0(제한 없음) | `ulong` accounted-byte 제한 — Core category의 byte-HWM 참고 |
-| `SendBufferSize` / `ReceiveBufferSize` | -1(OS 기본값) | `int` |
-| `Linger` | null(무기한 대기) | `TimeSpan?` |
-| `ReconnectInterval` / `ReconnectIntervalMax` | null(비활성화/무제한) | `TimeSpan?` |
-| `Backlog` | — | `int` |
-| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval` | null(무기한 block / OS·native 기본값) | `TimeSpan?` |
-| `TcpKeepAlive` | — | `int`, -1/0/1 |
-| `IPv6` / `TcpNoDelay` / `Immediate` | — | `bool` |
-| `SubmitRetryMode` | `Off` | `SubmitRetryMode` |
-| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts` | — | `int` |
-| `RoutingIdDuplicatePolicy` | `Reject` | `RidDuplicatePolicy` |
-| `LastEndpoint` | 읽기 전용 | resolve된 bind 주소 |
+| `MaxMessageSize`(`long`) | -1(제한 없음) | 단일 수신 메시지의 최대 바이트 크기 |
+| `SendHighWaterMark` / `ReceiveHighWaterMark`(`ulong`) | 0(제한 없음) | accounted-byte send/receive queue 제한 — Core category의 byte-HWM 참고 |
+| `SendBufferSize` / `ReceiveBufferSize`(`int`) | -1(OS 기본값) | OS 레벨 socket send/receive buffer 크기 |
+| `Linger`(`TimeSpan?`) | null(무기한 대기) | `Close`/`Dispose`가 대기 중인 send가 flush될 때까지 기다리는 상한 |
+| `ReconnectInterval` / `ReconnectIntervalMax`(`TimeSpan?`) | null(비활성화/무제한) | 재연결 시도 사이 간격, 그리고 그 상한 |
+| `Backlog`(`int`) | OS 기본값 | listening socket의 대기 connection queue 길이 |
+| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval`(`TimeSpan?`) | null(무기한 block / OS·native 기본값) | 대응하는 blocking operation이 기다리는 상한 |
+| `TcpKeepAlive`(`int`, -1/0/1) | OS 기본값 | OS TCP keepalive 모드 |
+| `IPv6`(`bool`) | `false` | socket이 IPv6 connection을 받을지 |
+| `TcpNoDelay`(`bool`) | `false` | `true`면 Nagle 알고리즘을 끔 |
+| `Immediate`(`bool`) | `false` | send가 지금 살아있는 connection을 요구할지, 아니면 생길 때까지 대기열에 쌓을지 |
+| `SubmitRetryMode` | `Off` | local back-pressure에서 실패한 submit을 자동 재시도할지 |
+| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts`(`int`) | 모드 기본값 | `SubmitRetryMode`가 `LocalFailure`일 때의 재시도 timeout과 시도 횟수 상한 |
+| `RoutingIdDuplicatePolicy` | `Reject` | peer가 기존 routing id를 재사용하면 어떻게 되는지 |
+| `LastEndpoint` | 읽기 전용 | 실제로 resolve된 bind 주소 |
 
 **완료 결과.** 모든 property get/set은 동기다.
 
@@ -135,7 +137,7 @@ IReadOnlyList<Message> reply = await dealer.Request()
 | `Options.Probe` | — | `bool`, set-only; connect 시 빈 probe 전송 |
 | `Options.RequestTimeout` | — | `TimeSpan?`, set-only |
 | `Options.PeerWeight` | — | `int` 0-100, load-balancing 가중치 |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | 이 socket 자신의 routing id를 지정/읽음, peer가 connect 시 관찰 |
 | `Request()` | — | 공유 `RequestOperation` builder 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없음 |
 
 **완료 결과.** `Request()`의 builder는 Messaging category의 operation-builder
@@ -170,11 +172,11 @@ router.OnCompletionControl((rid, parts) => { /* ... */ });
 | `Options.ConnectRoutingId` / `SetConnectRoutingId(RoutingId)` | 읽기 전용 getter | peer가 고르는 대신 다음 outbound connection의 id를 지정 |
 | `Options.RequestTimeout` | — | `TimeSpan?` |
 | `Options.PeerWeight` | — | `int` 0-100 |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
-| `Request(RoutingId peerRid)` | — | Messaging category의 `RequestOperation` |
-| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category의 `ReplyOperation` |
-| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | opaque control record |
-| `OnCompletionControl(CompletionControlHandler handler)` | — | — |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | 이 socket 자신의 routing id를 지정/읽음, peer가 connect 시 관찰 |
+| `Request(RoutingId peerRid)` | — | Messaging category의 `RequestOperation`, 특정 peer로 향함 |
+| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category의 `ReplyOperation`, 그 peer의 request에 응답 |
+| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | `parts`를 소비하지 않고 peer의 기존 connection으로 opaque control record 전송 |
+| `OnCompletionControl(CompletionControlHandler handler)` | — | 수신되는 completion-control record를 받는 콜백 등록 |
 
 **완료 결과.** `TrySendCompletionControl`은 동기로 `bool`을 반환한다 — `false`는
 completion-lane back-pressure를 뜻하고, 그 외 실패는 `ZlinkSubmitException`을
@@ -214,7 +216,7 @@ if (xpub.ReceiveSubscriptionEvent(evt)) { /* ... */ }
 | `ManualLastValue` | `false` | 새로 승인된 구독자에게 topic별 마지막 캐시 메시지도 재생하는 manual 모드 |
 | `NoDrop` | `false` | back-pressure에서 조용히 버리는 대신 에러 |
 | `WelcomeMessage` | 없음 | 새로 연결된 구독자마다 자동 전송; getter는 caller 소유 복사본 반환 |
-| `TopicsCount` | 읽기 전용 | — |
+| `TopicsCount` | 읽기 전용 | 연결된 peer 중 하나라도 구독 중인 고유 topic 개수 |
 | `ApproveSubscribe(RoutingId)` / `RejectSubscribe(RoutingId)` | — | `Manual` 필요 |
 | `ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)` | `RecvFlags.None` | `IXPubSocket`만 |
 
@@ -244,11 +246,11 @@ if (sub.Subscribe(msg)) { /* ... */ }
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `SetSubscription(string)` / `UnsetSubscription(string)` | — | 구독은 누적된다 |
-| `SubscriptionAt(int index)` | `SubscriptionEntry?` | 범위 밖이면 `null` |
-| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | — |
-| `Options.TopicsCount` | 읽기 전용 | `int` |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | `ISubSocket`만 |
+| `SetSubscription(string)` / `UnsetSubscription(string)` | — | topic filter를 추가/제거; 구독은 누적된다 |
+| `SubscriptionAt(int index)` | `SubscriptionEntry?` | 해당 index의 filter, 범위 밖이면 `null` |
+| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | 다음 매칭 publish로 `result`를 채움 |
+| `Options.TopicsCount`(`int`) | 읽기 전용 | 활성 구독 filter 개수 |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | 이 socket 자신의 routing id를 지정/읽음; `ISubSocket`만 |
 
 **`IXSubSocket`은 `ISubscriberSocket` 외에 더하는 게 없다** — `SetRoutingId`/
 `GetRoutingId`도, 고유 member도 없다; 모든 operation이 공유 표면이다(자신의
@@ -278,8 +280,8 @@ stream.OnPacket((routingId, header, body) => { /* header/body 소유; 각각 한
 | --- | --- | --- |
 | `Options.Notify` | `false` | `bool`; peer connect/disconnect를 application message로 전달 |
 | `OnPacket(StreamPacketHandler handler)` | — | background-dispatch-thread 콜백; handler가 `header`/`body`를 소유하며 정확히 한 번 dispose해야 함 |
-| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | 첫 호출이 이 socket을 receive 모드로 고정 — `OnPacket`과 함께 쓸 수 없음 |
-| `DisconnectRid(RoutingId peerRid)` | — | — |
+| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | 다음 packet part를 가져옴; 첫 호출이 이 socket을 receive 모드로 고정 — `OnPacket`과 함께 쓸 수 없음 |
+| `DisconnectRid(RoutingId peerRid)` | — | 그 routing id로 식별되는 peer의 connection을 끊음 |
 
 **완료 결과.** `RecvPart`는 동기로 `bool`을 반환한다 — 반환된 `part`는 caller
 소유다. `StreamPacketHandler`는 메시지 소유권을 콜백으로 이전하며, 콜백은

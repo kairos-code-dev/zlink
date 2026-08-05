@@ -61,19 +61,21 @@ socket.Options.SubmitRetryMode = SubmitRetryMode.LocalFailure;
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `MaxMessageSize` | -1 (no limit) | `long` |
-| `SendHighWaterMark` / `ReceiveHighWaterMark` | 0 (no limit) | `ulong` accounted-byte limits — see Core category's byte-HWM note |
-| `SendBufferSize` / `ReceiveBufferSize` | -1 (OS default) | `int` |
-| `Linger` | null (wait indefinitely) | `TimeSpan?` |
-| `ReconnectInterval` / `ReconnectIntervalMax` | null (disables/uncaps) | `TimeSpan?` |
-| `Backlog` | — | `int` |
-| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval` | null (block indefinitely / OS or native default) | `TimeSpan?` |
-| `TcpKeepAlive` | — | `int`, -1/0/1 |
-| `IPv6` / `TcpNoDelay` / `Immediate` | — | `bool` |
-| `SubmitRetryMode` | `Off` | `SubmitRetryMode` |
-| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts` | — | `int` |
-| `RoutingIdDuplicatePolicy` | `Reject` | `RidDuplicatePolicy` |
-| `LastEndpoint` | read-only | resolved bind address |
+| `MaxMessageSize` (`long`) | -1 (no limit) | maximum size in bytes of a single accepted message |
+| `SendHighWaterMark` / `ReceiveHighWaterMark` (`ulong`) | 0 (no limit) | accounted-byte send/receive queue limit — see Core category's byte-HWM note |
+| `SendBufferSize` / `ReceiveBufferSize` (`int`) | -1 (OS default) | OS-level socket send/receive buffer size |
+| `Linger` (`TimeSpan?`) | null (wait indefinitely) | upper bound on how long `Close`/`Dispose` waits for pending sends to flush |
+| `ReconnectInterval` / `ReconnectIntervalMax` (`TimeSpan?`) | null (disables/uncaps) | delay between reconnect attempts, and its cap |
+| `Backlog` (`int`) | OS default | pending-connection queue length for a listening socket |
+| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval` (`TimeSpan?`) | null (block indefinitely / OS or native default) | upper bound on how long the matching blocking operation waits |
+| `TcpKeepAlive` (`int`, -1/0/1) | OS default | OS TCP keepalive mode |
+| `IPv6` (`bool`) | `false` | whether the socket accepts IPv6 connections |
+| `TcpNoDelay` (`bool`) | `false` | disables Nagle's algorithm when `true` |
+| `Immediate` (`bool`) | `false` | whether a send requires a live connection now, instead of queueing until one exists |
+| `SubmitRetryMode` | `Off` | whether a failed submit retries automatically on local back-pressure |
+| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts` (`int`) | mode default | retry timeout and attempt cap when `SubmitRetryMode` is `LocalFailure` |
+| `RoutingIdDuplicatePolicy` | `Reject` | what happens when a peer reuses an existing routing id |
+| `LastEndpoint` | read-only | the concrete resolved bind address |
 
 **Completion result.** Every property get/set is synchronous.
 
@@ -132,7 +134,7 @@ IReadOnlyList<Message> reply = await dealer.Request()
 | `Options.Probe` | — | `bool`, set-only; sends an empty probe on connect |
 | `Options.RequestTimeout` | — | `TimeSpan?`, set-only |
 | `Options.PeerWeight` | — | `int` 0-100, load-balancing weight |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | assigns/reads this socket's own routing id, observed by peers on connect |
 | `Request()` | — | starts the shared `RequestOperation` builder; no target parameter — DEALER has no API-level peer routing id |
 
 **Completion result.** `Request()`'s builder resolves per the Messaging category's
@@ -167,11 +169,11 @@ router.OnCompletionControl((rid, parts) => { /* ... */ });
 | `Options.ConnectRoutingId` / `SetConnectRoutingId(RoutingId)` | read-only getter | assigns the next outbound connection's id instead of letting the peer choose |
 | `Options.RequestTimeout` | — | `TimeSpan?` |
 | `Options.PeerWeight` | — | `int` 0-100 |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
-| `Request(RoutingId peerRid)` | — | Messaging category's `RequestOperation` |
-| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category's `ReplyOperation` |
-| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | opaque control record |
-| `OnCompletionControl(CompletionControlHandler handler)` | — | — |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | assigns/reads this socket's own routing id, observed by peers on connect |
+| `Request(RoutingId peerRid)` | — | Messaging category's `RequestOperation`, addressed to a specific peer |
+| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category's `ReplyOperation`, answering that peer's request |
+| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | sends an opaque control record to a peer over its existing connection, without consuming `parts` |
+| `OnCompletionControl(CompletionControlHandler handler)` | — | registers the callback that receives incoming completion-control records |
 
 **Completion result.** `TrySendCompletionControl` returns `bool` synchronously — `false` means
 completion-lane back-pressure; other failures throw `ZlinkSubmitException`. `CompletionControlHandler`
@@ -210,7 +212,7 @@ same `PubSocketOptions` facade:
 | `ManualLastValue` | `false` | manual mode that also replays the last cached message per topic to a newly accepted subscriber |
 | `NoDrop` | `false` | error instead of silent drop on back-pressure |
 | `WelcomeMessage` | none | sent automatically to each newly connected subscriber; getter returns a caller-owned copy |
-| `TopicsCount` | read-only | — |
+| `TopicsCount` | read-only | number of distinct topics currently subscribed by any connected peer |
 | `ApproveSubscribe(RoutingId)` / `RejectSubscribe(RoutingId)` | — | require `Manual` |
 | `ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)` | `RecvFlags.None` | `IXPubSocket` only |
 
@@ -240,11 +242,11 @@ if (sub.Subscribe(msg)) { /* ... */ }
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `SetSubscription(string)` / `UnsetSubscription(string)` | — | subscriptions accumulate |
-| `SubscriptionAt(int index)` | `SubscriptionEntry?` | `null` when out of range |
-| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | — |
-| `Options.TopicsCount` | read-only | `int` |
-| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | `ISubSocket` only |
+| `SetSubscription(string)` / `UnsetSubscription(string)` | — | adds/removes a topic filter; subscriptions accumulate |
+| `SubscriptionAt(int index)` | `SubscriptionEntry?` | the filter at that index, `null` when out of range |
+| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | populates `result` with the next matching publish |
+| `Options.TopicsCount` (`int`) | read-only | number of active subscription filters |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | assigns/reads this socket's own routing id; `ISubSocket` only |
 
 **`IXSubSocket` adds nothing beyond `ISubscriberSocket`** — no `SetRoutingId`/`GetRoutingId`, no
 unique members; every operation is the shared surface (its own `Options` is the same
@@ -274,8 +276,8 @@ stream.OnPacket((routingId, header, body) => { /* owns header/body; dispose each
 | --- | --- | --- |
 | `Options.Notify` | `false` | `bool`; deliver peer connect/disconnect as application messages |
 | `OnPacket(StreamPacketHandler handler)` | — | background-dispatch-thread callback; handler owns and must dispose `header`/`body` exactly once |
-| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | first call fixes this socket to receive mode — cannot combine with `OnPacket` |
-| `DisconnectRid(RoutingId peerRid)` | — | — |
+| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | pulls the next packet part; first call fixes this socket to receive mode — cannot combine with `OnPacket` |
+| `DisconnectRid(RoutingId peerRid)` | — | disconnects the peer identified by that routing id |
 
 **Completion result.** `RecvPart` returns `bool` synchronously; the returned `part` is
 caller-owned. `StreamPacketHandler` transfers message ownership to the callback, which must

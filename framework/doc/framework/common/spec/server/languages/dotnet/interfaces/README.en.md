@@ -25,7 +25,7 @@ the provider-neutral payload the handler receives.
 | [Actors](06-actors.ko.md) | Defines Actor factory, context, client, manager, relocation adapter, and policy. |
 | [Bound STREAM session](07-bound-stream-session.ko.md) | Defines the bound session call an Actor owns. |
 | [STREAM session](07-stream-session.ko.md) | Defines the STREAM server session and handler interface. |
-| [Location configuration and operations](08-location-maintenance.ko.md) | Defines application-facing Location options, readiness, and operational queries. |
+| [Location configuration and operations](08-location-maintenance.en.md) | Defines application-facing Location options, readiness, and operational queries. |
 | [Location/Relocation provider](08-authority-relocation.ko.md) | Defines the generic atomic Location Store and immutable Relocation Store provider SPI. |
 | [Official Redis Store](08-location-provider-redis.ko.md) | Defines the minimal constructor and options of the two Redis Store classes. |
 | [Host and topology monitoring](10-topology-monitoring.en.md) | Defines host state, termination, topology snapshot, and metrics. |

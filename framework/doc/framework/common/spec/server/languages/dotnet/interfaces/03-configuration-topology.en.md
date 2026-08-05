@@ -790,4 +790,4 @@ Without registration, host startup fails. A process-local in-memory
 implementation can only be registered in a single-process contract test.
 The exact store capability and the Redis constructor/options are owned
 by
-[.NET Location And Maintenance](08-location-maintenance.ko.md).
+[.NET Location And Maintenance](08-location-maintenance.en.md).

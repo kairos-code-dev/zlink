@@ -5,7 +5,7 @@
 This category covers Location/Relocation Store registration, `ZLinkLocationOptions` tuning, and
 the entry points `ZLinkLocationReadiness` and `ZLinkLocationRuntimeQuery`
 (`ZLINK_LOCATION_RUNTIME_QUERY`) provide. The exact signatures are owned by the
-[Location/Relocation provider exact interface](../../common/spec/server/languages/node/interfaces/08-location-maintenance.ko.md),
+[Location/Relocation provider exact interface](../../common/spec/server/languages/node/interfaces/08-location-maintenance.en.md),
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.ko.md),
 and the
@@ -156,7 +156,7 @@ real-time availability of a single MeshName/ChannelName.
 ---
 
 See the
-[Location/Relocation provider exact interface](../../common/spec/server/languages/node/interfaces/08-location-maintenance.ko.md)
+[Location/Relocation provider exact interface](../../common/spec/server/languages/node/interfaces/08-location-maintenance.en.md)
 and the
 [Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
 (Korean-only) for the full rationale.

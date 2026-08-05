@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -755,7 +756,6 @@ final class ZLinkInMemoryAuthorityStore {
                 return completed(new ZLinkAggregateConflict());
             }
             if (request.participants().isEmpty()
-                || request.participants().size() > 1024
                 || request.inventoryDigest().length != 32
                 || !aggregateParticipantsAreCanonical(
                     request.participants())) {
@@ -906,6 +906,8 @@ final class ZLinkInMemoryAuthorityStore {
                 state.request.capacityBundle(),
                 1);
             state.state = State.COMMITTED;
+            state.storeVersion = nextVersion();
+            state.progress = tryInitialProgress(state.request);
             return completed(ZLinkAggregateCommitResult.COMMITTED);
         }
     }
@@ -931,6 +933,112 @@ final class ZLinkInMemoryAuthorityStore {
                 state.request.capacityBundle(),
                 -1);
             return completed(ZLinkAggregateAbortResult.ABORTED);
+        }
+    }
+
+    public CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+        readAggregateProgress(
+            ZLinkAggregateFence fence,
+            ZLinkStoreCancellation cancellation) {
+        synchronized (gate) {
+            AggregateState state = aggregates.get(fence.aggregateId());
+            if (!sameAggregate(state, fence)
+                || state.state != State.COMMITTED
+                || state.progress == null) {
+                return completed(Optional.empty());
+            }
+            return completed(Optional.of(progressSnapshot(state, fence)));
+        }
+    }
+
+    public CompletionStage<ZLinkAggregateProgressWriteResult>
+        compareExchangeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            ZLinkAggregateProgress progress,
+            ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(expectedStoreVersion, "expectedStoreVersion");
+        Objects.requireNonNull(progress, "progress");
+        synchronized (gate) {
+            AggregateState state = aggregates.get(fence.aggregateId());
+            if (!sameAggregate(state, fence)
+                || state.state != State.COMMITTED
+                || !expectedStoreVersion.equals(state.storeVersion)
+                || !ownerLeaseIsLive.test(state.request.targetOwner())) {
+                return completed(new ZLinkAggregateProgressConflict());
+            }
+            state.progress = progress;
+            state.storeVersion = nextVersion();
+            return completed(new ZLinkAggregateProgressStored(
+                progressSnapshot(state, fence)));
+        }
+    }
+
+    public CompletionStage<List<ZLinkAggregateProgressSnapshot>>
+        listAggregateProgress(ZLinkStoreCancellation cancellation) {
+        synchronized (gate) {
+            List<ZLinkAggregateProgressSnapshot> result = aggregates.values()
+                .stream()
+                .filter(value -> value.state == State.COMMITTED
+                    && value.progress != null)
+                .map(value -> progressSnapshot(
+                    value,
+                    new ZLinkAggregateFence(
+                        value.request.aggregateId(),
+                        value.request.aggregateGeneration())))
+                .toList();
+            return completed(result);
+        }
+    }
+
+    public CompletionStage<Boolean> removeAggregateProgress(
+        ZLinkAggregateFence fence,
+        String expectedStoreVersion,
+        ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(expectedStoreVersion, "expectedStoreVersion");
+        synchronized (gate) {
+            AggregateState state = aggregates.get(fence.aggregateId());
+            if (!sameAggregate(state, fence)
+                || state.state != State.COMMITTED
+                || !expectedStoreVersion.equals(state.storeVersion)
+                || !ownerLeaseIsLive.test(state.request.targetOwner())) {
+                return completed(false);
+            }
+            aggregates.remove(fence.aggregateId());
+            return completed(true);
+        }
+    }
+
+    private static ZLinkAggregateProgressSnapshot progressSnapshot(
+        AggregateState state,
+        ZLinkAggregateFence fence) {
+        return new ZLinkAggregateProgressSnapshot(
+            fence,
+            state.storeVersion,
+            state.request,
+            state.progress);
+    }
+
+    private static ZLinkAggregateProgress initialProgress(
+        ZLinkAggregatePrepareRequest request) {
+        for (ZLinkAggregateParticipant participant : request.participants()) {
+            try {
+                return ZLinkCanonicalRelocationAuthorityStateCodec.progress(
+                    participant.authorityPayload());
+            } catch (RuntimeException ignored) {
+                // The next participant may contain the canonical publication.
+            }
+        }
+        throw new IllegalStateException(
+            "committed aggregate has no canonical relocation root");
+    }
+
+    private static ZLinkAggregateProgress tryInitialProgress(
+        ZLinkAggregatePrepareRequest request) {
+        try {
+            return initialProgress(request);
+        } catch (RuntimeException ignored) {
+            return null;
         }
     }
 
@@ -1724,6 +1832,8 @@ final class ZLinkInMemoryAuthorityStore {
     private static final class AggregateState {
         private final ZLinkAggregatePrepareRequest request;
         private State state;
+        private String storeVersion;
+        private ZLinkAggregateProgress progress;
 
         private AggregateState(
             ZLinkAggregatePrepareRequest request,

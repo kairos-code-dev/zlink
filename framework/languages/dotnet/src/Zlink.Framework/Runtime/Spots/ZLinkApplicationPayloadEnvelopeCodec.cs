@@ -361,27 +361,37 @@ internal static class ZLinkApplicationPayloadEnvelopeCodec
             || count > (span.Length - sizeof(uint)) / sizeof(uint))
             return false;
 
-        var decoded = new Message[(int)count];
-        var created = 0;
+        var partCount = checked((int)count);
         var offset = sizeof(uint);
+        for (var index = 0; index < partCount; index++)
+        {
+            if (span.Length - offset < sizeof(uint))
+                return false;
+            var length = BinaryPrimitives.ReadUInt32BigEndian(
+                span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            if (length > (uint)(span.Length - offset))
+                return false;
+            offset += checked((int)length);
+        }
+        if (offset != span.Length)
+            return false;
+
+        var decoded = new Message[partCount];
+        var created = 0;
+        offset = sizeof(uint);
         try
         {
             for (var index = 0; index < decoded.Length; index++)
             {
-                if (span.Length - offset < sizeof(uint))
-                    return false;
                 var length = BinaryPrimitives.ReadUInt32BigEndian(
                     span.Slice(offset, sizeof(uint)));
                 offset += sizeof(uint);
-                if (length > (uint)(span.Length - offset))
-                    return false;
                 decoded[index] = Message.From(
                     span.Slice(offset, checked((int)length)));
                 created++;
                 offset += checked((int)length);
             }
-            if (offset != span.Length)
-                return false;
 
             parts = decoded;
             return true;

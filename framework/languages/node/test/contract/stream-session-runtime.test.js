@@ -1821,6 +1821,9 @@ test('stream session runtime decompresses dispatch payloads before session handl
 
 test('stream session runtime rejects compressed dispatch payloads above receive limit', async () => {
   const socket = new FakeStreamSocket();
+  // Keep the transport frame below its own limit so this test reaches the
+  // separate decompressed-payload guard.
+  socket.maxMessageSize = 128 * 1024;
   const errors = [];
   const events = [];
   const runtime = createStreamRuntime({
@@ -2012,7 +2015,7 @@ class FakeStreamSocket {
     // them, so a fake that omits them is not a backend socket.
     this.sendTimeoutMs = 0;
     this.sendHighWaterMark = 0;
-    this.maxMessageSize = 16 * 1024 * 1024;
+    this.maxMessageSize = 64 * 1024;
   }
 
   recv() {

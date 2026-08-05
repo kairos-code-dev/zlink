@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
+using Zlink.Framework.Runtime.Spots;
 using Systems.Zlink.Framework.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
@@ -44,6 +45,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _completions = new ZLinkMeshCompletionTable(
             meshName: (node as ZLinkManagedMeshNode)?.MeshName);
         _pump = new ZLinkMeshDispatchPump(node, _completions);
+        _node.SetCompletionOverflowHandler(
+            (record, parts) => _completions.Complete(record, parts));
         _messageFollowIngress = new ActorMessageFollowIngressAdapter(_pump);
         _node.SetActorMessageFollowIngressTarget(_messageFollowIngress);
     }
@@ -70,6 +73,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void SetActorMessageFollowIngressHandler(
         Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler) =>
         _messageFollowIngress.SetHandler(handler);
+
+    public void SetActorMessageFollowIngressAdmission(
+        Func<ActorMessageFollowIngress, bool> admission) =>
+        _messageFollowIngress.SetAdmission(admission);
 
     public void SetMessageFollowNotificationHandler(
         Action<RoutingId, ZLinkServiceWireCodec.MessageFollowRecord> handler) =>
@@ -1230,7 +1237,19 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     internal sealed class ActorMessageFollowIngressAdapter(
         ZLinkMeshDispatchPump pump) : IActorMessageFollowIngressTarget
     {
+        private Func<ActorMessageFollowIngress, bool>? _admission;
         private Func<IReadOnlyList<ZLinkBackendActorPart>, bool>? _handler;
+
+        internal void SetAdmission(
+            Func<ActorMessageFollowIngress, bool> admission)
+        {
+            ArgumentNullException.ThrowIfNull(admission);
+            if (Interlocked.CompareExchange(ref _admission, admission, null)
+                is { } existing
+                && !ReferenceEquals(existing, admission))
+                throw new InvalidOperationException(
+                    "An Actor Message Follow admission handler is already registered.");
+        }
 
         internal void SetHandler(
             Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler)
@@ -1246,8 +1265,27 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         public bool TryFollow(ActorMessageFollowIngress ingress)
         {
             var handler = Volatile.Read(ref _handler);
-            if (handler is null || ingress.Parts.Count == 0)
+            if (handler is null)
                 return false;
+            IReadOnlyList<Message> parts = ingress.Parts;
+            var decoded = false;
+            if (parts.Count == 0 && !ingress.EncodedPayload.IsEmpty)
+            {
+                var admission = Volatile.Read(ref _admission);
+                if (admission is not null && !admission(ingress))
+                    return false;
+                if (!ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
+                        ingress.EncodedPayload,
+                        out var decodedParts))
+                    return false;
+                parts = decodedParts;
+                decoded = true;
+            }
+            if (parts.Count == 0)
+                return false;
+            var applicationMetadata = ingress.ApplicationMetadataSource is { } source
+                ? source.AsReadOnlyMemory().ToArray()
+                : ingress.ApplicationMetadata;
             var actor = ingress.TargetActor.ToBackend();
             var flags = ingress.Reply is null ? 0u : 1u;
             var requestSource = pump.ResolveRequestSourceFence(
@@ -1262,22 +1300,34 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
                 ingress.ReplyRouteId,
                 flags,
                 DeadlineUnixMs: ingress.DeadlineUnixMs);
-            var parts = new ZLinkBackendActorPart[ingress.Parts.Count];
-            for (var index = 0; index < parts.Length; index++)
-                parts[index] = new ZLinkBackendActorPart(
+            var backendParts = new ZLinkBackendActorPart[parts.Count];
+            for (var index = 0; index < backendParts.Length; index++)
+                backendParts[index] = new ZLinkBackendActorPart(
                     actor,
                     ingress.SourceNodeRid,
                     default,
                     ingress.ReplyRouteId,
                     flags,
-                    ingress.Parts[index],
-                    index + 1 < parts.Length,
+                    parts[index],
+                    index + 1 < backendParts.Length,
                     RouteContext: route,
                     SourceNodeGeneration: ingress.SourceNodeGeneration,
                     RequestSource: requestSource,
                     DirectReply: index == 0 ? ingress.Reply : null,
-                    ApplicationMetadata: ingress.ApplicationMetadata);
-            return handler(parts);
+                    ApplicationMetadata: applicationMetadata);
+            try
+            {
+                var accepted = handler(backendParts);
+                if (!accepted && decoded)
+                    ZLinkMessageParts.DisposeAll(parts);
+                return accepted;
+            }
+            catch
+            {
+                if (decoded)
+                    ZLinkMessageParts.DisposeAll(parts);
+                throw;
+            }
         }
     }
 }

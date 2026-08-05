@@ -8,7 +8,10 @@ import {
   type StreamSocket,
   type SubmitResult as SubmitResultValue
 } from '@zlink-systems/zlink';
-import type { ZLinkBackendMessageLike as MessageLike } from '../runtime-values';
+import {
+  isZLinkBackendResultError,
+  type ZLinkBackendMessageLike as MessageLike
+} from '../runtime-values';
 import type {
   MeshOperationId,
   MeshPeerEntry,
@@ -27,11 +30,16 @@ import {
   ReceiveKind
 } from '../../foundation/service-runtime-contracts';
 import {
+  OperationCancelledError,
+  OperationTimeoutError
+} from '../../foundation/operation-registry';
+import {
   RawServiceMeshRuntime,
   type RawServiceRequestResult
 } from '../../foundation/raw-service-mesh-runtime';
 import {
   decodeApplicationPayloadView,
+  encodeMultipartApplicationPayload,
   ServiceWireProtocolError
 } from '../../foundation/service-wire-m6a-codec';
 import {
@@ -70,6 +78,7 @@ import type {
 } from '../../foundation/service-instance-activation-recovery-codec';
 import type {
   ServiceMailboxClaim,
+  ServiceMailboxDomain,
   ServiceMailboxRecord
 } from '../../foundation/service-mailbox';
 import type {
@@ -81,6 +90,7 @@ import type {
 } from '../../../contracts';
 import type {
   ZLinkBackendActorRef,
+  ZLinkBackendObjectPlacement,
   ZLinkBackendMeshNode
 } from '../contracts';
 
@@ -173,20 +183,29 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.inboundMessageDropped = handler;
   }
 
-  selectObjectPlacement(stableType: string) {
+  selectObjectPlacement(stableType: string): ZLinkBackendObjectPlacement {
     const runtime = this.requireRuntime();
     const localNodeRid = runtime.topology.localDescriptor().nodeRoutingId;
+    const status = runtime.topology.objectPlacementStatus(
+      stableType,
+      candidate => candidate.nodeRoutingId === localNodeRid
+        || runtime.isPeerRouteReady(candidate.nodeRoutingId)
+    );
+    if (status !== 'available') return { kind: status };
     const descriptor = runtime.topology.selectObjectPlacement(
       stableType,
       candidate => candidate.nodeRoutingId === localNodeRid
         || runtime.isPeerRouteReady(candidate.nodeRoutingId)
     );
     return descriptor === undefined
-      ? undefined
+      ? { kind: 'unavailable' }
       : {
-          targetNodeRid: descriptor.nodeRoutingId,
-          targetNodeGeneration: descriptor.lifecycleGeneration,
-          descriptorVersion: descriptor.descriptorRevision.toString()
+          kind: 'selected',
+          target: {
+            targetNodeRid: descriptor.nodeRoutingId,
+            targetNodeGeneration: descriptor.lifecycleGeneration,
+            descriptorVersion: descriptor.descriptorRevision.toString()
+          }
         };
   }
 
@@ -201,9 +220,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): SubmitResult {
-    const result = this.requireStateful().sendToMissingInstanceSpot(
+    const result = this.requireStateful().sendToMissingInstanceSpotFrame(
       target,
-      encodeMultipart(parts),
+      encodeMultipartApplicationFrame(parts),
       deadlineUnixMs,
       sourceSpotId,
       metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
@@ -211,19 +230,36 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return result as SubmitResult;
   }
 
+  prepareMissingInstanceSpotSend(
+    target: ServiceInstanceActivationTarget,
+    parts: MessageLike | readonly MessageLike[],
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): () => SubmitResult {
+    const submit = this.requireStateful().prepareMissingInstanceSpotSendFrame(
+      target,
+      encodeMultipartApplicationFrame(parts),
+      deadlineUnixMs,
+      sourceSpotId,
+      metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
+    );
+    return () => submit() as SubmitResult;
+  }
+
   requestToMissingInstanceSpot(
     target: ServiceInstanceActivationTarget,
     parts: MessageLike | readonly MessageLike[],
-    timeoutMs: number,
+    deadlineUnixMs: bigint,
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId {
     return this.observeStateful(
       OperationKind.InstanceSpotRequest,
-      this.requireStateful().requestToMissingInstanceSpot(
+      this.requireStateful().requestToMissingInstanceSpotFrame(
         target,
-        encodeMultipart(parts),
-        timeoutMs,
+        encodeMultipartApplicationFrame(parts),
+        deadlineUnixMs,
         sourceSpotId,
         metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
       )
@@ -654,17 +690,24 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const target = requireRawReadyBatch(batch);
     if ((domains & ReadyDomain.Infrastructure) !== 0) {
       this.drainCompletions(target);
+      this.drainMailbox('infrastructure', target);
     }
     if ((domains & ReadyDomain.Application) !== 0) {
-      this.drainApplication(target);
+      this.drainMailbox('application', target);
     }
     const runtime = this.runtime;
-    return {
-      ok: true,
-      hasResidue:
+    const infrastructureResidue = (domains & ReadyDomain.Infrastructure) !== 0
+      && (
         this.completionCount > 0
         || (runtime?.mailbox.pendingMessages('infrastructure') ?? 0) > 0
-        || (runtime?.mailbox.pendingMessages('application') ?? 0) > 0,
+      );
+    const applicationResidue = (domains & ReadyDomain.Application) !== 0
+      && (runtime?.mailbox.pendingMessages('application') ?? 0) > 0;
+    return {
+      ok: true,
+      // Residue is scoped to the requested lane. The pump drains lanes in
+      // separate turns and must not wait on another lane before returning.
+      hasResidue: infrastructureResidue || applicationResidue,
       records: target.records
     };
   }
@@ -1296,10 +1339,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     const id = { high: 2n, low: pending.id };
     void pending.promise.then(
       result => this.enqueueCompletion(id, operationKind, result),
-      () => this.enqueueCompletion(id, operationKind, {
-        terminalResult: RequestResult.NotConnected,
-        failureCode: 0
-      })
+      error => this.enqueueCompletion(id, operationKind, statefulOperationFailure(error))
     );
     return id;
   }
@@ -1360,25 +1400,27 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.completionCount = 0;
   }
 
-  private drainApplication(batch: RawReadyBatch): void {
+  private drainMailbox(domain: ServiceMailboxDomain, batch: RawReadyBatch): void {
     const runtime = this.runtime;
     if (runtime === undefined) return;
     while (!batch.full) {
       const claim = runtime.mailbox.tryClaim(
-        'application',
+        domain,
         MAX_DRAIN_RECORDS,
         Number.MAX_SAFE_INTEGER
       );
       if (claim === undefined) break;
-      const owner = readyOwner(claim.owner, this.routingId, this.stateful);
+      const owner = readyOwner(claim.owner, this.routingId, this.stateful, domain);
       batch.push(
         owner,
         new MailboxClaim(runtime, claim, () => {
           // A receive batch may intentionally consume fewer records than the
           // mailbox claim. Releasing the claim re-queues the remainder, so
-          // expose that newly ready application work to the dispatch pump.
-          if (runtime.mailbox.pendingMessages('application') > 0) {
-            this.readyHandler?.(ReadyDomain.Application);
+          // expose that newly ready work to the dispatch pump.
+          if (runtime.mailbox.pendingMessages(domain) > 0) {
+            this.readyHandler?.(
+              domain === 'infrastructure' ? ReadyDomain.Infrastructure : ReadyDomain.Application
+            );
           }
         })
       );
@@ -1906,7 +1948,7 @@ function decodeMultipartRecord(
       : 0;
   return {
     kind,
-    domain: ReadyDomain.Application,
+    domain: readyDomain(record.domain),
     sourceNodeRid: record.sourceRoutingId as RoutingId | undefined ?? null,
     sourceSpotId: null,
     sourceBindingGeneration: 0n,
@@ -1944,7 +1986,7 @@ function decodeStatefulRecord(
     : { high: 2n, low: record.correlation };
   return {
     kind: stateful.receiveKind,
-    domain: ReadyDomain.Application,
+    domain: readyDomain(record.domain),
     sourceNodeRid: record.sourceRoutingId as RoutingId | undefined ?? null,
     sourceSpotId: stateful.sourceSpotId as RoutingId | undefined ?? null,
     sourceBindingGeneration: stateful.sourceBindingGeneration ?? 0n,
@@ -1964,6 +2006,8 @@ function decodeStatefulRecord(
     terminalResult: 0,
     failureErrno: 0,
     parts: application === undefined ? [] : decodeMultipart(application.payload),
+    ...(stateful.isPending === undefined ? {} : { isPending: stateful.isPending }),
+    ...(stateful.deadlineUnixMs === undefined ? {} : { deadlineUnixMs: stateful.deadlineUnixMs }),
     ...(stateful.messageFollowOrigin === undefined
       ? {}
       : { messageFollowOrigin: stateful.messageFollowOrigin }),
@@ -2008,12 +2052,13 @@ function decodeStatefulRecord(
 function readyOwner(
   owner: string,
   nodeRid: string,
-  stateful: ServiceStatefulRuntime | undefined
+  stateful: ServiceStatefulRuntime | undefined,
+  domain: ServiceMailboxDomain
 ): ReadyRecord {
   if (owner.startsWith('spot:')) {
     return {
       ownerKind: ReadyOwnerKind.Spot,
-      domain: ReadyDomain.Application,
+      domain: readyDomain(domain),
       spotId: owner.slice('spot:'.length),
       actor: null
     };
@@ -2027,7 +2072,7 @@ function readyOwner(
     const current = stateful?.actor(actorId);
     return {
       ownerKind: ReadyOwnerKind.Actor,
-      domain: ReadyDomain.Application,
+      domain: readyDomain(domain),
       spotId: current?.spot.spotId ?? null,
       actor: current?.ref ?? {
         nodeRid,
@@ -2038,10 +2083,32 @@ function readyOwner(
   }
   return {
     ownerKind: ReadyOwnerKind.Node,
-    domain: ReadyDomain.Application,
+    domain: readyDomain(domain),
     spotId: null,
     actor: null
   };
+}
+
+function readyDomain(domain: ServiceMailboxDomain): number {
+  return domain === 'infrastructure'
+    ? ReadyDomain.Infrastructure
+    : ReadyDomain.Application;
+}
+
+function statefulOperationFailure(error: unknown): RawServiceRequestResult {
+  if (error instanceof OperationTimeoutError) {
+    return { terminalResult: RequestResult.TimedOut, failureCode: 0 };
+  }
+  if (isZLinkBackendResultError(error)) {
+    return {
+      terminalResult: error.result,
+      failureCode: error.nativeErrno ?? 0
+    };
+  }
+  if (error instanceof OperationCancelledError) {
+    return { terminalResult: RequestResult.NotConnected, failureCode: 0 };
+  }
+  return { terminalResult: RequestResult.InternalError, failureCode: 17 };
 }
 
 function encodeMultipart(parts: MessageLike | readonly MessageLike[]) {
@@ -2063,6 +2130,18 @@ function encodeMultipart(parts: MessageLike | readonly MessageLike[]) {
     contentType: MULTIPART_CONTENT_TYPE,
     payload
   };
+}
+
+function encodeMultipartApplicationFrame(
+  parts: MessageLike | readonly MessageLike[]
+): Buffer {
+  const values = Array.isArray(parts) ? parts : [parts];
+  if (values.length === 0) throw new TypeError('Multipart payload must contain at least one part.');
+  return encodeMultipartApplicationPayload(
+    values.map(messageBytesView),
+    MULTIPART_PACKET_NAME,
+    MULTIPART_CONTENT_TYPE
+  );
 }
 
 function decodeApplicationEnvelope(frame: Uint8Array) {
@@ -2146,6 +2225,14 @@ function messageBytes(value: MessageLike): Buffer {
     return Buffer.from(value.data());
   }
   return Buffer.from(value);
+}
+
+function messageBytesView(value: MessageLike): Uint8Array {
+  if (typeof value === 'object' && 'data' in value) {
+    return value.data();
+  }
+  if (typeof value === 'string') return Buffer.from(value);
+  return value;
 }
 
 function requireRawReadyBatch(batch: ReadyBatch): RawReadyBatch {

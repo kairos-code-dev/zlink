@@ -1061,6 +1061,13 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
   set_tests_properties(test_cpp_framework_target_contract PROPERTIES
     LABELS "framework-contract"
     TIMEOUT 60)
+  add_test(
+    NAME test_cpp_framework_common_e2e_inventory
+    COMMAND bash
+      ${CMAKE_CURRENT_LIST_DIR}/e2e/verify_common_inventory.sh)
+  set_tests_properties(test_cpp_framework_common_e2e_inventory PROPERTIES
+    LABELS "framework-contract;framework-e2e"
+    TIMEOUT 30)
   set(ZLINK_FRAMEWORK_CPP_TOOLING_CONTRACT_ARGS
     -D ZLINK_FRAMEWORK_CPP_SOURCE_DIR=${CMAKE_CURRENT_LIST_DIR}
     -D ZLINK_FRAMEWORK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR})

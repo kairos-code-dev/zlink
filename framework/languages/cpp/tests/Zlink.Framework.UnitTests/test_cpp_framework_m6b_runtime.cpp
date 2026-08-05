@@ -1021,6 +1021,49 @@ void verify_session_binding_and_terminal_once ()
     assert (terminal_count == 1);
 }
 
+void verify_displaced_stream_binding_can_be_restored ()
+{
+    stateful::stateful_object_runtime_t runtime;
+    runtime.replace_placement_candidates (
+      {{"mesh-a", "node-a", {"player"}, 100, 16, 0, 8, 0}});
+    const auto actor = create_ready (
+      runtime,
+      {stateful::object_kind_t::actor,
+       "restore-session-actor",
+       "player",
+       std::nullopt,
+       {},
+       false,
+       false});
+    stateful::stream_session_registry_t sessions (
+      [&] (const std::string &actor_id) {
+          return runtime.find (stateful::object_kind_t::actor, actor_id);
+      });
+
+    const auto first_connection = sessions.open ("restore-stream-a");
+    const auto second_connection = sessions.open ("restore-stream-b");
+    const auto [first_error, first_binding] =
+      sessions.bind (first_connection, actor);
+    assert (first_error == stateful::stateful_error_t::none);
+    const auto [second_error, second_binding] =
+      sessions.bind (second_connection, actor);
+    assert (second_error == stateful::stateful_error_t::none);
+    assert (sessions.current_binding (actor.key) == second_binding);
+
+    assert (sessions.unbind (second_binding)
+            == stateful::stateful_error_t::none);
+    assert (sessions.restore (first_binding)
+            == stateful::stateful_error_t::none);
+    assert (sessions.current_binding (actor.key) == first_binding);
+
+    const auto [third_error, third_binding] =
+      sessions.bind (second_connection, actor);
+    assert (third_error == stateful::stateful_error_t::none);
+    assert (sessions.restore (first_binding)
+            == stateful::stateful_error_t::conflict);
+    assert (sessions.current_binding (actor.key) == third_binding);
+}
+
 void verify_bounded_message_follow ()
 {
     using namespace zlink::framework;
@@ -3779,6 +3822,7 @@ int main ()
     verify_membership_turns_and_independent_infrastructure ();
     verify_instance_cold_activation_only_from_intent ();
     verify_session_binding_and_terminal_once ();
+    verify_displaced_stream_binding_can_be_restored ();
     verify_bounded_message_follow ();
     verify_bounded_actor_handoff_backlog ();
     verify_public_host_dispatches_one_application_record_per_turn ();

@@ -26,7 +26,7 @@ final class StreamNetworkDefaultsTest {
     void streamSocketUsesFiniteDefaultAndRejectsNegativeLimit() {
         StreamNodeRegistration registration = new StreamNodeRegistration("gateway");
 
-        assertEquals(16_777_216L, registration.socketConfig().maxMessageSize());
+        assertEquals(64L * 1024L, registration.socketConfig().maxMessageSize());
         assertThrows(ZLinkConfigurationException.class,
             () -> registration.socketConfig().setMaxMessageSize(-1));
     }

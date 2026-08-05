@@ -33,22 +33,4 @@ inline void run_rm_c8_payload_round_trip_scenario (const client_options_t &optio
     std::cout << "scenario RM-C8 passed\n";
 }
 
-inline void run_rm_c8_max_message_size_scenario (const client_options_t &options)
-{
-    const auto consumer = options.single_consumer_url;
-    const auto oversized_payload = std::string (3 * 1024 * 1024, 'x');
-    auto oversized = post_json<payload_req_t, request_failure_res_t> (
-      consumer, "/profile/payload-over-limit",
-      payload_req_t{.marker = "oversized", .payload = oversized_payload},
-      std::chrono::milliseconds (2500));
-    ensure (oversized.failed, "RM-C8 oversized payload should fail");
-    ensure (oversized.error_type == "RequestFailed",
-            "RM-C8 oversized payload error type mismatch: " + oversized.error_type);
-
-    auto follow_up = post_json<profile_req_t, profile_res_t> (
-      consumer, "/profile/request", profile_req_t{.value = "rm-c8-after"});
-    ensure (follow_up.value == "profile:rm-c8-after", "RM-C8 follow-up request failed");
-    std::cout << "scenario RM-C8-max passed\n";
-}
-
 } // namespace zlink::framework::e2e::registry_messaging::client

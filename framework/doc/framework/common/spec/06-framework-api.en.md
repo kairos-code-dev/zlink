@@ -123,7 +123,7 @@ received to completion, and if that pushes the total over HWM, subsequent receiv
 So an empty host can process one message larger than HWM but no larger than
 `MaxMessageSize`.
 
-On a multiplexed receive path where the binding doesn't provide a complete message's length
+On a receive path such as ClientServer where the binding doesn't provide a complete message's length
 before `Recv`, the transport `Recv` itself can't be stopped immediately at the HWM boundary.
 In this case the framework first acquires a bounded reservation per raw receive, then
 classifies application versus control after receiving. A message classified as control isn't
@@ -135,6 +135,11 @@ started.
 Letting `M` be the effective `MaxMessageSize` and `R` the number of raw receive reservations
 that can be held concurrently, the amount received over HWM on this path is at most `R * M`.
 The "one message" from the paragraph above becomes, here, at most `R` messages.
+
+StreamNode checks its complete client-to-server message separately on the Core STREAM
+inbound path. Its size is header bytes plus payload bytes, excluding the 6-byte prefix, and
+its default is `64 KiB`. `0` maps to Core `-1`, while the cap isn't applied to server-to-client
+outbound messages.
 
 `R` is a finite positive number fixed at configuration time and **doesn't grow with load.**
 `R` isn't increased in proportion to connection count, pending message count, or peer count.
@@ -273,7 +278,12 @@ The framework application listener's `MaxMessageSize` default is `16,777,216` by
 cap. If the application explicitly changes this to `0`, it keeps the original meaning of no
 separate cap, but this is rejected at startup validation if Application HWM is Auto or
 positive. Only when both unlimited messages and unlimited pending payload are needed should
-`MaxMessageSize = 0` and `ApplicationHwmBytes = 0` be specified together.
+`MaxMessageSize = 0` and `ApplicationHwmBytes = 0` be specified.
+
+The StreamNode Core STREAM inbound cap is separate from this regular application-listener
+rule. It defaults to `64 KiB`, checks the complete client-to-server message as header plus
+payload bytes excluding the 6-byte prefix, maps `0` to Core `-1`, and doesn't apply to
+server-to-client outbound messages.
 
 The MeshNode builder doesn't add a drain policy or lifecycle command. The framework
 runtime's `Relocate` performs continuity maintenance of the host, and `Shutdown` performs

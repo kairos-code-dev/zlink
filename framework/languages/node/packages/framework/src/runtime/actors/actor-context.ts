@@ -199,20 +199,53 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       throw error;
     }
     const operationId = createJoinOperationId();
-    deferActorJoin({
-      requestBytes: requestMessage.data().byteLength,
-      discard: () => {
-        this.state.endDeferredJoin();
+    let discarded = false;
+    let prepared = false;
+    let pendingJoin: Promise<import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>> | undefined;
+    const discard = async (): Promise<void> => {
+      if (discarded) return;
+      discarded = true;
+      this.state.endDeferredJoin();
+      try {
+        await this.coordinator.abortDeferredJoin?.(this.actor, this.state, operationId);
+      } finally {
         requestMessage.close();
-      },
-      execute: async () => {
-        // Registration owns the pending fence only until the deferred work
-        // starts. A remote Join then transfers that fence to the relocation
-        // move before its first asynchronous source operation.
-        this.state.endDeferredJoin();
+      }
+    };
+    try {
+      deferActorJoin({
+        requestBytes: requestMessage.data().byteLength,
+        prepare: async () => {
+          if (prepared) return;
+          prepared = true;
+          this.state.endDeferredJoin();
+          try {
+            // The provisional ingress fence is installed only after the
+            // handler terminal. Target admission starts before reply encoding,
+            // while completion and finalization remain in execute().
+            this.coordinator.beginDeferredJoin?.(this.actor, this.state, operationId);
+            pendingJoin = this.coordinator.joinSpot(
+              this.actor,
+              this.state,
+              this.spotId,
+              requestMessage,
+              remainingJoinTimeout(deadline),
+              undefined,
+              operationId
+            );
+            if (this.turn?.yieldAllowed !== true) {
+              await pendingJoin.catch(() => undefined);
+            }
+          } catch (error) {
+            pendingJoin = Promise.reject(error);
+            void pendingJoin.catch(() => undefined);
+          }
+        },
+        discard,
+        execute: async () => {
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
-          const pending = this.coordinator.joinSpot(
+          const pending = pendingJoin ?? this.coordinator.joinSpot(
             this.actor,
             this.state,
             this.spotId,
@@ -225,7 +258,10 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
             ? await this.turn.yieldPromise(pending)
             : await pending;
         } catch (error) {
+          this.state.endDeferredJoin();
           await notifyJoinFailure(this.actor, operationId, error);
+          await this.coordinator.abortDeferredJoin?.(this.actor, this.state, operationId)
+            .catch(() => undefined);
           return;
         } finally {
           requestMessage.close();
@@ -240,8 +276,13 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
         } else {
           result.reply?.close();
         }
-      }
-    });
+        await result.finalizeDeferredJoin?.();
+        }
+      });
+    } catch (error) {
+      void discard().catch(() => undefined);
+      throw error;
+    }
   }
 }
 
@@ -282,17 +323,50 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
       throw error;
     }
     const operationId = createJoinOperationId();
-    deferActorJoin({
-      requestBytes: requestMessage.data().byteLength,
-      discard: () => {
-        this.state.endDeferredJoin();
+    let discarded = false;
+    let prepared = false;
+    let pendingJoin: Promise<import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>> | undefined;
+    const discard = async (): Promise<void> => {
+      if (discarded) return;
+      discarded = true;
+      this.state.endDeferredJoin();
+      try {
+        await this.coordinator.abortDeferredJoin?.(this.actor, this.state, operationId);
+      } finally {
         requestMessage.close();
-      },
-      execute: async () => {
-        this.state.endDeferredJoin();
+      }
+    };
+    try {
+      deferActorJoin({
+        requestBytes: requestMessage.data().byteLength,
+        prepare: async () => {
+          if (prepared) return;
+          prepared = true;
+          this.state.endDeferredJoin();
+          try {
+            this.coordinator.beginDeferredJoin?.(this.actor, this.state, operationId);
+            pendingJoin = this.coordinator.joinEntrySpot(
+              this.actor,
+              this.state,
+              undefined,
+              requestMessage,
+              remainingJoinTimeout(deadline),
+              undefined,
+              operationId
+            );
+            if (this.turn?.yieldAllowed !== true) {
+              await pendingJoin.catch(() => undefined);
+            }
+          } catch (error) {
+            pendingJoin = Promise.reject(error);
+            void pendingJoin.catch(() => undefined);
+          }
+        },
+        discard,
+        execute: async () => {
         let result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>;
         try {
-          const pending = this.coordinator.joinEntrySpot(
+          const pending = pendingJoin ?? this.coordinator.joinEntrySpot(
             this.actor,
             this.state,
             undefined,
@@ -305,7 +379,10 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
             ? await this.turn.yieldPromise(pending)
             : await pending;
         } catch (error) {
+          this.state.endDeferredJoin();
           await notifyJoinFailure(this.actor, operationId, error);
+          await this.coordinator.abortDeferredJoin?.(this.actor, this.state, operationId)
+            .catch(() => undefined);
           return;
         } finally {
           requestMessage.close();
@@ -320,8 +397,13 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
         } else {
           result.reply?.close();
         }
-      }
-    });
+        await result.finalizeDeferredJoin?.();
+        }
+      });
+    } catch (error) {
+      void discard().catch(() => undefined);
+      throw error;
+    }
   }
 }
 

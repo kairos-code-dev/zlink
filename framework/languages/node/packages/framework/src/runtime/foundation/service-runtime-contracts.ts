@@ -197,6 +197,10 @@ export interface ReceiveRecord {
   readonly terminalResult: number;
   readonly failureErrno: number;
   readonly parts: Message[];
+  /** Returns whether the local operation can still accept a lifecycle reply. */
+  readonly isPending?: () => boolean;
+  /** Absolute deadline used by the local lifecycle dispatch fence. */
+  readonly deadlineUnixMs?: bigint;
   readonly messageFollowOrigin?: ZLinkMessageFollowOrigin;
   readonly onTerminalCompletion?: () => void | Promise<void>;
   reply(parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;

@@ -11,7 +11,6 @@ export interface ServerOptions {
   readonly routeEndpoint?: string;
   readonly routePeers: readonly string[];
   readonly weight: number;
-  readonly maxMessageSize: number;
 }
 
 export function validateServerOptions(value: unknown, defaultRole = 'provider'): ServerOptions {
@@ -32,8 +31,7 @@ export function validateServerOptions(value: unknown, defaultRole = 'provider'):
     manualClientEndpoint: optionalString(values, 'manualClientEndpoint'),
     routeEndpoint: optionalString(values, 'routeEndpoint'),
     routePeers,
-    weight: parseWeight(values.weight),
-    maxMessageSize: parseMaxMessageSize(values.maxMessageSize)
+    weight: parseWeight(values.weight)
   };
 }
 
@@ -48,14 +46,4 @@ function parseWeight(value: unknown): number {
   return weight;
 }
 
-function parseMaxMessageSize(value: unknown): number {
-  if (value === undefined) {
-    return 0;
-  }
-  const size = Number(value);
-  if (!Number.isInteger(size) || size < 0) {
-    throw new Error('--max-message-size must be a non-negative integer.');
-  }
-  return size;
-}
 import { objectValues, optionalString } from '../../../configuration';

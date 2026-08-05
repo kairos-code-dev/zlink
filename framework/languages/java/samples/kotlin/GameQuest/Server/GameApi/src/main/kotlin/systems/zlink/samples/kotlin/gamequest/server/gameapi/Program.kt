@@ -45,6 +45,7 @@ import systems.zlink.framework.spots.ZLinkEntrySpotContext
 import systems.zlink.samples.kotlin.gamequest.server.configuration.RedisSampleStore
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleLocationStore
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
+import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemReq
 import systems.zlink.samples.kotlin.gamequest.shared.contracts.CollectItemRes
@@ -205,6 +206,7 @@ class GameQuestSession(
             ?: context.actors().bind(actorRef).await()
         val ownerProjection = routes
             .requestToSpot(request.playerId, GetQuestProgressReq(request.playerId))
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestMesh)
             .submit(GetQuestProgressRes::class.java)
@@ -216,6 +218,7 @@ class GameQuestSession(
     private suspend fun handleGetProgress(request: GetQuestProgressReq) {
         val ownerProjection = routes
             .requestToSpot(request.playerId, request)
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestMesh)
             .submit(GetQuestProgressRes::class.java)
@@ -227,6 +230,7 @@ class GameQuestSession(
     private suspend fun handleSync(request: SyncQuestProgressReq) {
         val response = routes
             .requestToSpot(request.playerId, request)
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestMesh)
             .submit(SyncQuestProgressRes::class.java)
@@ -372,11 +376,12 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
     when (parts.getOrElse(5) { "" }) {
         "delete" -> {
             val deleted = kotlinx.coroutines.runBlocking {
-                Program.routes
+                    Program.routes
                     .requestToSpot(
                         playerId,
                         DeleteQuestProjectionReq(playerId, questId),
                     )
+                    .timeout(SampleTimings.RequestTimeout)
                     .instanceSpot(SampleNames.PlayerQuestSpotType)
                     .inMesh(SampleNames.PlayerQuestMesh)
                     .submit(DeleteQuestProjectionRes::class.java)
@@ -387,11 +392,12 @@ private fun handleProjection(exchange: HttpExchange, store: GameQuestStore, topo
         }
         "rebuild" -> {
             val rebuilt = kotlinx.coroutines.runBlocking {
-                Program.routes
+                    Program.routes
                     .requestToSpot(
                         playerId,
                         RebuildQuestProjectionReq(playerId, questId, 0),
                     )
+                    .timeout(SampleTimings.RequestTimeout)
                     .instanceSpot(SampleNames.PlayerQuestSpotType)
                     .inMesh(SampleNames.PlayerQuestMesh)
                     .submit(QuestProgress::class.java)

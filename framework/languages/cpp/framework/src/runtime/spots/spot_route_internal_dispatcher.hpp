@@ -26,15 +26,17 @@ class spot_route_internal_dispatcher_t final : public route_internal_packet_disp
                       service_provider_t &services) const override;
 
   private:
-    void bind_actor_session_route (actor_gateway_runtime_t &actor_gateway,
-                                   const actor_ref_t &actor_ref,
-                                   std::string route_channel_name,
-                                   zlink::routing_id_t session_node_rid,
-                                   std::optional<zlink::routing_id_t> session_rid,
-                                   bool replace_existing) const;
-    actor_gateway_runtime_t bind_actor_route (const actor_ref_t &actor_ref,
-                                              const runtime::messaging::envelope_header_t &header,
-                                              const route_received_packet_t &received) const;
+    result_t<void> bind_actor_session_route (
+      actor_gateway_runtime_t &actor_gateway,
+      const actor_ref_t &actor_ref,
+      std::string route_channel_name,
+      zlink::routing_id_t session_node_rid,
+      std::optional<zlink::routing_id_t> session_rid,
+      bool replace_existing) const;
+    result_t<actor_gateway_runtime_t> bind_actor_route (
+      const actor_ref_t &actor_ref,
+      const runtime::messaging::envelope_header_t &header,
+      const route_received_packet_t &received) const;
 
     spot_node_runtime_t _runtime;
     actor_gateway_runtime_t _actor_gateway;

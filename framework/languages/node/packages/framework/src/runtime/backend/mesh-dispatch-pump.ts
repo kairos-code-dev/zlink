@@ -9,6 +9,7 @@ import type { ZLinkBackendMeshNode } from './contracts';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
 
 const MESH_DISPATCH_TIMER_YIELD_BATCHES = 16;
+const MESH_DISPATCH_LIFECYCLE_CLAIM_BUDGET = 4;
 
 //  The pump awaits between the two reads and the budget can pause in that gap.
 //  Reading through a function keeps the later check honest; an inline read
@@ -33,6 +34,7 @@ export class ZLinkMeshDispatchPump {
   private scheduled = false;
   private disposed = false;
   private drainPromise?: Promise<void>;
+  private readonly activeDrains = new Set<Promise<void>>();
   private readonly removeResumeListener?: () => void;
 
   constructor(
@@ -64,7 +66,9 @@ export class ZLinkMeshDispatchPump {
     this.disposed = true;
     this.pendingDomains = ReadyDomain.None;
     this.removeResumeListener?.();
-    await this.drainPromise;
+    while (this.activeDrains.size > 0) {
+      await Promise.all([...this.activeDrains]);
+    }
   }
 
   private schedule(): void {
@@ -75,8 +79,10 @@ export class ZLinkMeshDispatchPump {
     const drain = yieldToEventLoop()
       .then(() => this.drain())
       .catch((error) => this.options.reportError?.(error));
+    this.activeDrains.add(drain);
     this.drainPromise = drain;
     void drain.finally(() => {
+      this.activeDrains.delete(drain);
       if (this.drainPromise === drain) {
         this.drainPromise = undefined;
         this.scheduled = false;
@@ -99,39 +105,56 @@ export class ZLinkMeshDispatchPump {
   }
 
   private async drainDomains(domains: number): Promise<void> {
+    let lifecycleBudgetExhausted = false;
     if ((domains & ReadyDomain.Infrastructure) !== 0) {
-      await this.drainDomain(ReadyDomain.Infrastructure);
+      lifecycleBudgetExhausted = await this.drainDomain(
+        ReadyDomain.Infrastructure,
+        MESH_DISPATCH_LIFECYCLE_CLAIM_BUDGET
+      );
     }
     if ((domains & ReadyDomain.Application) !== 0) {
       await this.drainDomain(ReadyDomain.Application);
     }
+    if (lifecycleBudgetExhausted) {
+      this.pendingDomains |= ReadyDomain.Infrastructure;
+    }
   }
 
-  private async drainDomain(domain: number): Promise<void> {
+  private async drainDomain(domain: number, claimBudget?: number): Promise<boolean> {
     const applicationBudget = domain === ReadyDomain.Application
       ? this.options.inboundDispatchBudget
       : undefined;
-    if (budgetPaused(applicationBudget)) return;
-    const readyBatch = this.node.createReadyBatch(this.options.readyCapacity ?? 32);
+    if (budgetPaused(applicationBudget)) return false;
+    const readyCapacity = claimBudget === undefined
+      ? (this.options.readyCapacity ?? 32)
+      : Math.min(this.options.readyCapacity ?? 32, claimBudget);
+    const readyBatch = this.node.createReadyBatch(readyCapacity);
     const receiveBatch = this.node.createReceiveBatch(
       applicationBudget === undefined ? (this.options.messageCapacity ?? 64) : 1,
       this.options.partCapacity ?? 256,
       this.options.byteCapacity ?? (1 << 20)
     );
     let receiveBatchesSinceTimerYield = 0;
+    let claimsDrained = 0;
     try {
       for (;;) {
+        if (claimBudget !== undefined && claimsDrained >= claimBudget) {
+          // Lifecycle work has priority, but a bounded turn lets application
+          // work make progress when lifecycle records keep arriving.
+          return true;
+        }
         readyBatch.reset();
         const drained = this.node.drainReady(domain, readyBatch, ZLINK_BACKEND_RECV_DONT_WAIT);
         if (!drained.ok || drained.records.length === 0) {
-          return;
+          return false;
         }
         for (let index = 0; index < drained.records.length; index += 1) {
           const claim = readyBatch.takeClaim(index);
+          claimsDrained += 1;
           try {
             receiveBatch.reset();
             for (;;) {
-              if (budgetPaused(applicationBudget)) return;
+              if (budgetPaused(applicationBudget)) return false;
               const received = claim.recvBatch(receiveBatch, ZLINK_BACKEND_RECV_DONT_WAIT);
               if (!received.ok) {
                 break;
@@ -189,7 +212,7 @@ export class ZLinkMeshDispatchPump {
         await yieldToTimers();
         receiveBatchesSinceTimerYield = 0;
         if (!drained.hasResidue) {
-          return;
+          return false;
         }
       }
     } finally {

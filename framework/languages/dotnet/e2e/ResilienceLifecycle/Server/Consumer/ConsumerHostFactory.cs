@@ -82,12 +82,23 @@ internal static class ConsumerHostFactory
             IZLinkRouteMeshRuntime meshRuntime,
             TopologyWaitReq request) =>
         {
+            if (!Enum.TryParse<ZLinkLocationTopologyState>(
+                    request.State,
+                    ignoreCase: true,
+                    out var expectedState))
+            {
+                return Results.BadRequest(
+                    $"Unknown topology state '{request.State}'.");
+            }
+
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var elapsed = Stopwatch.StartNew();
             while (true)
             {
                 var peers = await query.ListTopologyAsync(
-                    new ZLinkLocationTopologyFilter(ResilienceLifecycleNames.Channel));
+                    new ZLinkLocationTopologyFilter(
+                        ResilienceLifecycleNames.Channel,
+                        State: expectedState));
                 var matches = peers.Items
                     .Where(peer => MatchesRole(peer.NodeRid.ToString(), request.RoutingId)
                                    && (request.ExpectedWeight is null
@@ -95,8 +106,13 @@ internal static class ConsumerHostFactory
                                    && (request.ExpectedDraining is null
                                        || peer.Draining == request.ExpectedDraining))
                     .ToArray();
-                var readyRids = meshRuntime.GetStatus(ResilienceLifecycleNames.Channel).Peers
+                var status = meshRuntime.GetStatus(ResilienceLifecycleNames.Channel);
+                var readyRids = status.Peers
                     .Where(static peer => peer.State == ZLinkPeerState.Ready)
+                    .Select(static peer => peer.NodeRid.ToString())
+                    .ToHashSet(StringComparer.Ordinal);
+                var activeRids = status.Peers
+                    .Where(static peer => peer.State is ZLinkPeerState.Ready or ZLinkPeerState.Draining)
                     .Select(static peer => peer.NodeRid.ToString())
                     .ToHashSet(StringComparer.Ordinal);
                 // A gone row is not yet a gone candidate. Spec 08 §3.2 picks
@@ -108,7 +124,10 @@ internal static class ConsumerHostFactory
                     ? matches.Length == 0
                       && !readyRids.Any(rid => MatchesRole(rid, request.RoutingId))
                     : matches.Length >= request.ExpectedCount
-                      && matches.All(peer => readyRids.Contains(peer.NodeRid.ToString()));
+                      && matches.All(peer =>
+                          (request.ExpectedDraining == true
+                              ? activeRids
+                              : readyRids).Contains(peer.NodeRid.ToString()));
                 if (satisfied)
                     return Results.Ok(matches
                         .Select(peer => new TopologyEntryRes(

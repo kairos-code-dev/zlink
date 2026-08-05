@@ -52,7 +52,16 @@ export class ZLinkSpotActorAdmissionCoordinator {
       remoteBoundSessionTarget,
       fallbackActorRef,
       undefined,
-      messageFollowOrigin
+      messageFollowOrigin,
+      (replayedParts, replayReturnResponse, replayRemoteBoundSessionTarget, replayFallbackActorRef) =>
+        this.dispatchActorPacketDirect(
+          activation,
+          actorId,
+          replayedParts,
+          replayReturnResponse,
+          replayRemoteBoundSessionTarget,
+          replayFallbackActorRef
+        )
     );
     if (handoff !== undefined) return await handoff;
     return await this.dispatchActorPacketDirect(

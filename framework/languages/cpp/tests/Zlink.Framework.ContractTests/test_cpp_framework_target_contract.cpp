@@ -548,9 +548,10 @@ int main ()
     gate.require (store_location_resolvers.find ("version < observed")
                     != std::string::npos,
                   "IMP-CP-07", "actor resolver does not reject regressed generations");
-    gate.require (store_location_resolvers.find (
-                    "!row.actor_ref.empty ()")
-                    != std::string::npos,
+    gate.require (store_location_resolvers.find ("row.actor_ref") != std::string::npos
+                    && store_location_resolvers.find (
+                         "actor_ref_access_t::empty (*row.actor_ref)")
+                         != std::string::npos,
                   "IMP-CP-07", "actor resolver does not reject pending actor rows");
     gate.require (app_runtime.find ("actor_location_observer") != std::string::npos,
                   "IMP-CP-07", "actor resolver and runtime query do not share generation state");

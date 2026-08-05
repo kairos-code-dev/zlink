@@ -44,8 +44,10 @@ import {
   M6A_SERVICE_WIRE_MAJOR,
   M6A_SERVICE_WIRE_REQUIRED_CAPABILITY,
   M6aServiceWireCommand,
+  decodeApplicationPayload,
   decodeRouteMeshAdmission,
   decodeReplyHeader,
+  encodeApplicationPayload,
   encodeReplyHeader,
   encodeRouteMeshAdmission
 } from '../../packages/framework/src/runtime/foundation/service-wire-m6a-codec';
@@ -178,6 +180,22 @@ test('reply header preserves the schema tail length field', () => {
   });
 });
 
+test('application payload encoding writes an offset Uint8Array into one owned frame', () => {
+  const source = Uint8Array.from([0, 1, 2, 3, 4, 5]);
+  const frame = encodeApplicationPayload({
+    packetName: 'Notice',
+    contentType: 'application/octet-stream',
+    payload: source.subarray(2, 5)
+  });
+  source.fill(9);
+
+  assert.deepEqual(decodeApplicationPayload(frame), {
+    packetName: 'Notice',
+    contentType: 'application/octet-stream',
+    payload: Buffer.from([2, 3, 4])
+  });
+});
+
 test('topology snapshots fence reconnect and exclude retiring placement targets', () => {
   const topology = new ServiceTopologyRegistry(descriptor('local'));
   const peer = { ...descriptor('peer'), state: 'serving' as const };
@@ -234,6 +252,26 @@ test('object placement excludes admitted peers until the caller confirms readine
       ?.nodeRoutingId,
     'peer'
   );
+});
+
+test('object placement checks capacity before applying a zero placement weight', () => {
+  const exhausted = new ServiceTopologyRegistry({
+    ...descriptor('zero-weight-exhausted'),
+    state: 'serving',
+    placementWeight: 0,
+    protocolCapabilities: ['framework-service-v11', 'object-type:quest'],
+    activeCapacityLimit: 1,
+    activeCapacityUsed: 1
+  });
+  assert.equal(exhausted.objectPlacementStatus('quest'), 'capacity');
+
+  const filtered = new ServiceTopologyRegistry({
+    ...descriptor('zero-weight-available'),
+    state: 'serving',
+    placementWeight: 0,
+    protocolCapabilities: ['framework-service-v11', 'object-type:quest']
+  });
+  assert.equal(filtered.objectPlacementStatus('quest'), 'unsupported');
 });
 
 test('topology admission fences expected identity, immutable revisions, duplicate pipes, and late disconnect', () => {

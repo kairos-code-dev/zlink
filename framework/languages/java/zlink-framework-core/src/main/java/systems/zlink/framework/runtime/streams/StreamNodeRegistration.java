@@ -164,7 +164,7 @@ public final class StreamNodeRegistration {
     }
 
     private static final class StreamSocketConfig implements ZLinkStreamSocketConfig {
-        private long maxMessageSize = 16_777_216L;
+        private long maxMessageSize = 64L * 1024L;
 
         @Override
         public long maxMessageSize() {

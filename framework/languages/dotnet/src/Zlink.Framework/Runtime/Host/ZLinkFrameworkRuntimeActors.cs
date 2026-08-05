@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Runtime.ExceptionServices;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -1032,14 +1033,20 @@ internal sealed partial class ZLinkFrameworkRuntime
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"handoff_completion actor={request.ActorId} id={request.HandoffId} frames={request.Frames.Count}");
         }
-        catch
+        catch (Exception handoffFailure)
         {
-            await ObserveSessionRouteCommitTaskAsync(
+            var routeFailure = await ObserveSessionRouteCommitTaskAsync(
                     sessionRouteCommitTask,
                     "actor-session-route-update-after-handoff-failure")
                 .ConfigureAwait(false);
             if (ownsRecordedCompletion)
                 _actorHandoffAdmissions.CancelCompletion(request, spotId);
+            if (routeFailure is not null
+                && !ReferenceEquals(routeFailure, handoffFailure))
+                handoffFailure = new AggregateException(
+                    handoffFailure,
+                    routeFailure);
+            ExceptionDispatchInfo.Capture(handoffFailure).Throw();
             throw;
         }
     }
@@ -3524,6 +3531,13 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _actorSessionManager.GetOrCreateState(actorId);
     }
 
+    internal bool TryGetActorState(
+        string actorId,
+        out ZLinkActorRuntimeState state)
+    {
+        return _actorSessionManager.TryGetState(actorId, out state!);
+    }
+
     internal ValueTask DeactivateActorOnOwnershipLossAsync(
         string actorId,
         CancellationToken cancellationToken = default)
@@ -4223,6 +4237,15 @@ internal sealed partial class ZLinkFrameworkRuntime
         _actorBoundSessionCoordinator.RetireMigratedActorSession(
             actorId,
             bindingToken);
+    }
+
+    internal ValueTask FinalizeMigratedActorSourceAsync(
+        ZLinkActorRuntimeState state,
+        ZLinkBackendActorRef sourceActor)
+    {
+        return _actorSessionManager.FinalizeMigratedSourceAsync(
+            state,
+            sourceActor);
     }
 
     internal void RemoveActorSessionBinding(

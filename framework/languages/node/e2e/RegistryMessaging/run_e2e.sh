@@ -268,7 +268,6 @@ start_role() {
         --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --channel-endpoint "$API_A" \
         --route-endpoint "$ROUTE_A" --route-peer "$ROUTE_B" \
-        --max-message-size "$((2 * 1024 * 1024))" \
         --evidence-file "$LOG_DIR/api-a.evidence.log" --log-dir "$LOG_DIR"
       ;;
     api-b)
@@ -277,7 +276,6 @@ start_role() {
         --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
         --channel-endpoint "$API_B" \
         --route-endpoint "$ROUTE_B" --route-peer "$ROUTE_A" \
-        --max-message-size "$((2 * 1024 * 1024))" \
         --evidence-file "$LOG_DIR/api-b.evidence.log" --log-dir "$LOG_DIR"
       ;;
     workflow-a)

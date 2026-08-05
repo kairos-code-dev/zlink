@@ -58,7 +58,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
         string? advertisedEndpoint = null,
         ZLinkInboundDispatchBudget? inboundDispatchBudget = null,
         ZLinkCompletionAdmissionOwner? completionAdmission = null,
-        long maxMessageSize = 16L * 1024L * 1024L)
+        long maxMessageSize = 64L * 1024L)
     {
         NodeName = nodeName;
         Socket = socket;

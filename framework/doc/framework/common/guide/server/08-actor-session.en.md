@@ -28,7 +28,7 @@ that stored route after the relocation commits — the application doesn't rebin
 Create or find the Actor in the Session handler, then bind the `ActorRef`. Don't pass a
 local Actor instance or a target `NodeRid` directly.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the spot that receives an authentication request, creates the player Actor, binds it to
 > the session, and sends the reply. Actual code from the repository.
 

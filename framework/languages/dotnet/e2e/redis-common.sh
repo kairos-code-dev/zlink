@@ -59,16 +59,16 @@ zlink_redis_start_scoped_assign() {
   local endpoint_var="$2"
   shift 2
 
-  local output container_id redis_endpoint
+  local output container_id endpoint_value
   output="$(zlink_redis_start_scoped "$@")" || return $?
-  read -r container_id redis_endpoint <<<"${output}"
-  if [[ -z "${container_id}" || -z "${redis_endpoint}" ]]; then
+  read -r container_id endpoint_value <<<"${output}"
+  if [[ -z "${container_id}" || -z "${endpoint_value}" ]]; then
     printf 'Redis helper did not return container id and endpoint.\n' >&2
     return 1
   fi
 
   printf -v "${container_var}" '%s' "${container_id}"
-  printf -v "${endpoint_var}" '%s' "${redis_endpoint}"
+  printf -v "${endpoint_var}" '%s' "${endpoint_value}"
 }
 
 zlink_redis_wait_ready() {

@@ -1685,15 +1685,26 @@ handler registration are all finished, so it can receive new messages.
 ### MaxMessageSize
 
 The byte cap on the complete transport message a listener can receive. A message
-exceeding the cap doesn't have any partial payload delivered to the handler.
+exceeding the cap doesn't have any partial payload delivered to the handler. A regular
+application listener uses the value owned by its socket options. A StreamNode has a
+separate rule for its Core STREAM inbound path.
+
+For a StreamNode, `MaxMessageSize` checks a complete message received from client to
+server. Its size is the sum of header bytes and payload bytes, excluding the 6-byte
+prefix. The default is `64 KiB` (`65,536` bytes). `0` adds no separate Framework cap and
+maps to Core `ZLINK_OPT_MAXMSGSIZE = -1`. A positive value is finite, and a negative value
+is a startup configuration error. This cap isn't applied to a message sent from server
+to client. An over-limit message isn't partly delivered to the session handler; the
+server records `EMSGSIZE` and closes the connection. A raw client receives no separate
+error code and observes only the connection closing.
 
 | Item | Content |
 |---|---|
 | Shape | Byte-size configuration limit |
-| .NET notation | `long MaxMessageSize` |
-| Public composition | A single byte count applying to the whole complete message. `0` uses the binding or transport default. |
-| Creation/management | Specified by the application in listener options before startup. |
-| Lifetime | Fixed for the listener's lifecycle; no runtime setter is provided. |
+| .NET notation | `long MaxMessageSize` for a regular socket, and `ConfigureSocket().MaxMessageSize` for a StreamNode. |
+| Public composition | Applies to the complete message received by the socket owner. A regular socket's `0` uses its binding or transport default; a StreamNode's `0` maps to Core `-1`. |
+| Creation/management | The application sets it in the listener or StreamNode socket options before startup. |
+| Lifetime | Fixed for the listener lifecycle; the StreamNode value is fixed after startup. Framework doesn't add the StreamNode-specific cap to ClientServer listeners or RouteMesh SS transport; ClientServer keeps its regular application-listener rule. |
 
 ## 7. Channel Messaging
 

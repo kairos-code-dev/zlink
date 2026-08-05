@@ -24,6 +24,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.gamequest.server.configuration.SampleLocationStore;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
+import systems.zlink.samples.gamequest.server.configuration.SampleTimings;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.gameapi.sessions.GameQuestSession;
 import systems.zlink.samples.gamequest.server.gameapi.actors.GameQuestPlayerActor;
@@ -155,6 +156,7 @@ public class Program {
                 .requestToSpot(
                     playerId,
                     new Messages.DeleteQuestProjectionReq(playerId, questId))
+                .timeout(SampleTimings.RequestTimeout)
                 .instanceSpot(SampleNames.PlayerQuestSpotType)
                 .inMesh(SampleNames.PlayerQuestSpotDiscovery)
                 .submit(Messages.DeleteQuestProjectionRes.class)
@@ -168,6 +170,7 @@ public class Program {
                 .requestToSpot(
                     playerId,
                     new Messages.RebuildQuestProjectionReq(playerId, questId, 0))
+                .timeout(SampleTimings.RequestTimeout)
                 .instanceSpot(SampleNames.PlayerQuestSpotType)
                 .inMesh(SampleNames.PlayerQuestSpotDiscovery)
                 .submit(Messages.QuestProgress.class)

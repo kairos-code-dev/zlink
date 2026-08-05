@@ -70,6 +70,16 @@ internal static class SmB9ActorJoinAdmissionScenario
         ZlinkStreamAssert.Ensure(allowed.Accepted, "SM-B9 allowed join was rejected.");
         ZlinkStreamAssert.Ensure(allowed.SpotRid == spotRid, "SM-B9 allowed join spot mismatch.");
 
+        // The request reply is the admission result. The second binding must
+        // start only after the actor's public join-completion evidence, so it
+        // cannot race the first actor's entry-to-user-spot handoff.
+        await owner.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([
+                $"spot-actor-joined|rid={nodeRid}|spot={spotRid}|actor={actorId}",
+                $"actor-join-completed|rid={nodeRid}|actor={actorId}|spot={spotRid}"
+            ]))
+            .Async<string[]>();
+
         var rejectedActorId = $"{actorId}-rejected";
         await client.Request(new AuthReq(rejectedActorId, $"rejected {nodeRid}"))
             .PacketName("AuthReq")
@@ -111,5 +121,10 @@ internal static class SmB9ActorJoinAdmissionScenario
         await playB.Post("/placement-weight")
             .Body(new PlacementWeightReq(playBWeight))
             .Async<PlacementWeightRes>();
+        // Placement updates are published through the shared location view.
+        // Let both nodes observe the new values before creating the next
+        // object; otherwise the local/remote variant can select a stale
+        // candidate and report evidence on the other process.
+        await Task.Delay(TimeSpan.FromSeconds(2));
     }
 }

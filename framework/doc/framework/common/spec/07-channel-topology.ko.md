@@ -77,8 +77,7 @@ public interface IZLinkNetworkOptions
 
 public interface IZLinkMeshNodeSocketConfig
 {
-    // 수신 가능한 complete transport message 크기의 상한이다.
-    long MaxMessageSize { get; set; }
+    // RouteMesh SS에는 Framework-level message-size setting이 없다.
     TimeSpan? ReceiveTimeout { get; set; }
     TimeSpan? SendTimeout { get; set; }
 }
@@ -352,9 +351,10 @@ flowchart LR
 같은 ChannelName에 `Client`와 `Server` role을 동시에 등록하지 않는다. `Server`
 role이 Channel 호출을 시작하는 기능까지 포함하기 때문이다.
 
-현재 MeshNode에 `match` Server role을 등록하고 local MeshNode가 ready이며 weight가
-0보다 크면 이 node도 Server 후보 목록에 포함된다. 따라서 자신이 시작한 select-one
-호출에서 자기 node가 선택될 수 있다.
+현재 MeshNode에 `match` Server role을 등록하면 Client role을 다시 등록하지 않아도
+Channel 호출을 시작할 수 있다. 호출을 시작한 현재 MeshNode도 RouteMesh의 선택 후보에
+포함된다. 현재 MeshNode가 ready이고 weight가 0보다 크며 drain 중이 아니면 remote
+Server와 같은 조건으로 후보가 된다.
 
 ```mermaid
 flowchart LR
@@ -368,18 +368,20 @@ flowchart LR
         SD["server D"]
     end
 
-    Caller -->|select-one에서 자기 node도 선택 가능| SA
+    Caller -->|Server 하나를 선택| SA
 
     style ServerTargets fill:transparent,stroke:transparent
 ```
 
 왼쪽 원은 별도로 등록한 Client role이 아니라 server A의 Server role에 포함된 송신
-capability를 나타낸다. Server A부터 D까지는 모두 select-one 후보이며, 예시는 호출을
-시작한 server A 자신이 선택된 경우다.
+capability를 나타낸다. Server A는 호출을 시작하면서 자신의 RouteMesh 호출에서도
+후보가 된다. 그림은 자기 node가 선택된 경우다.
 
-자기 node가 선택되면 local `match` Channel queue에 제출한다. Remote Server가
-선택되면 4.2.1 그림의 기존 RouteMesh peer 연결을 사용한다. 어느 경우에도 Channel
-등록이 새로운 socket을 만들지는 않는다.
+Remote Server가 선택되면 4.2.1 그림의 기존 RouteMesh peer 연결을 사용한다. 자기 node가
+선택되면 Framework는 같은 RouteMesh message 처리 경로를 사용하여 local submission을
+수행한다. 두 경우 모두 codec, admission, HWM, timeout, correlation과 terminal completion을
+건너뛰지 않으며 handler를 직접 호출하는 우회 경로를 제공하지 않는다. 양의 weight를 가진
+후보가 없을 때만 target 없음으로 끝난다.
 
 [Logical Multicast](01-glossary.ko.md#logical-multicast)는 같은 조건의 remote Server membership을 모두 선택하며
 [20 Spot 메시징](12-spot-messaging.ko.md)이 별도로 정의한다.
@@ -590,26 +592,23 @@ Drain을 시작한 MeshNode는 새로운 ChannelName 선택과 Logical Multicast
 target에서 제외한다. 이미 제출한 작업과 RID direct의 종료 규칙은
 [Graceful drain](28-graceful-drain-handoff.ko.md)이 정의한다.
 
-## 8. ROUTER가 받을 수 있는 message 크기
+## 8. RouteMesh SS message 크기
 
-MeshNode의 transport 설정은 startup 전에 확정한다. 실행 중에는 ChannelName weight만
-바꿀 수 있다.
+RouteMesh MeshNode의 startup 설정에는 Framework-level `MaxMessageSize`가 없다. RouteMesh의
+ServerServer(SS) transport는 listener message-size setter를 제공하지 않으며, Framework-level
+`MaxMessageSize`를 이유로 complete message를 별도로 거부하지 않는다.
 
-[`MaxMessageSize`](01-glossary.ko.md#maxmessagesize)는 수신할 수 있는 complete
-transport message의 byte 상한이다.
+메시지는 transport와 service-wire protocol의 표현 한계, 그리고 process가 사용할 수 있는
+메모리 한계를 계속 따른다. 이 하위 한계에서 message가 거부되면 payload 일부를 handler에
+전달하지 않고, request는 [오류 모델](32-framework-error-model.ko.md)에 정의된 terminal
+결과로 끝난다. Application handler가 payload 크기를 검사하여 이 하위 한계를 대신하지
+않는다.
 
-| 값 | 동작 |
-|---|---|
-| 양수 | 해당 byte 수를 넘는 message를 거부한다. |
-| `0` | Framework가 별도 상한을 추가하지 않는다. 실제 transport 표현 한계는 유지한다. |
-| 음수 | 잘못된 설정이므로 startup에 실패한다. |
-
-상한을 넘긴 message의 일부 payload를 handler에 전달하지 않는다. Request header도
-완성되지 않아 error reply를 만들 수 없다면 caller는 request timeout으로 완료된다.
-
-큰 message 하나를 거부해도 같은 RouteMesh의 이후 정상 크기 message 처리는 계속할
-수 있어야 한다. Application handler가 decode된 payload 길이를 검사하는 방식으로
-transport 상한을 대신하지 않는다.
+ClientServer는 [Framework API §6](06-framework-api.ko.md)가 정의하는 일반 application
+listener의 `MaxMessageSize` 계약을 유지한다. StreamNode의 `64 KiB` 기본값이나 Core STREAM의
+방향별 규칙을 ClientServer에 적용하지 않는다. 이 절에서 추가하지 않는 것은 RouteMesh SS의
+별도 listener 설정이며, StreamNode의 Core STREAM inbound 상한은 [STREAM session §4](19-stream-session.ko.md#4-stream-socket-message-size)가
+정의한다.
 
 ## 9. Classic fanout과의 경계
 
@@ -690,7 +689,10 @@ Fanout 연결의 ready와 liveness는
 - Weight 0과 drain은 새로운 ChannelName 선택에만 적용한다.
 - Logical Multicast는 positive weight의 크기와 관계없이 eligible remote member마다
   한 번만 전송한다.
-- `MaxMessageSize` 경계값과 큰 message를 거부한 뒤 정상 request 처리를 검증한다.
+- RouteMesh는 Framework-level message-size 설정 없이 정상 message를 처리하고, 하위
+  transport·protocol 한계를 넘긴 경우 partial payload를 전달하지 않는다. ClientServer의
+  effective cap은 [Config 12 CH-E2E-13](../e2e/config-12-channel-egress-routing.ko.md)의
+  별도 시나리오로 검증한다.
 - Automatic fanout subscriber는 같은 ChannelName publisher만 연결한다.
 - Automatic fanout subscriber끼리는 물리 연결을 만들지 않는다.
 - Automatic publisher는 fanout publisher descriptor만 게시하고 outbound connect를

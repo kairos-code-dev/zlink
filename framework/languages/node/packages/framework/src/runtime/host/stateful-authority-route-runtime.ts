@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityKey,
-  ZLinkAuthoritySnapshot
+  ZLinkAuthoritySnapshot,
+  ZLinkAuthorityReadResult
 } from '../../contracts/Locations/Authority';
 import type { ZLinkAuthorityStore, ZLinkObjectCreationStore } from '../locations/internal-store-contracts';
 import type {
@@ -454,7 +455,10 @@ export class ZLinkStatefulAuthorityRouteRuntime {
   private async readCompleteSnapshot(
     signal?: AbortSignal
   ): Promise<CompleteAuthoritySnapshot | undefined> {
-    const candidates = new Map<string, ZLinkAuthorityKey>();
+    const candidates = new Map<
+      string,
+      { readonly key: ZLinkAuthorityKey; readonly snapshot: ZLinkAuthoritySnapshot }
+    >();
     let cursor: Parameters<ZLinkAuthorityStore['listAuthorities']>[1];
     do {
       const page = await this.options.store.listAuthorities(
@@ -465,7 +469,11 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       );
       if (page.kind === 'scanExpired') return undefined;
       for (const entry of page.items) {
-        candidates.set(entry.key.value, entry.key);
+        // listAuthorities returns the key and the snapshot observed by the
+        // same bounded scan. Re-reading every key here adds one store round
+        // trip per authority and can observe a different version from the
+        // scan that selected the key.
+        candidates.set(entry.key.value, entry);
       }
       cursor = page.nextCursor;
     } while (cursor !== undefined);
@@ -475,9 +483,12 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     const actors: ZLinkAuthoritySnapshot[] = [];
     const relocations: ZLinkAuthoritySnapshot[] = [];
     const relocationCodec = new ServiceRelocationAuthorityPayloadCodec();
-    for (const key of candidates.values()) {
-      let current = await this.options.store.readAuthority(key, signal);
-      if (current.kind !== 'snapshot') continue;
+    for (const { key, snapshot: scanned } of candidates.values()) {
+      let current: ZLinkAuthorityReadResult = scanned;
+      if (authorityNeedsExactRead(scanned, relocationCodec)) {
+        current = await this.options.store.readAuthority(key, signal);
+        if (current.kind !== 'snapshot') continue;
+      }
       const steadyPayload = decodePreparingAuthorityEnvelope(current.payload);
       if (steadyPayload !== undefined) {
         const restored = await this.options.store.compareExchangeAuthority(
@@ -521,6 +532,21 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     }
     return { routes: result, pending, actors, relocations };
   }
+}
+
+function authorityNeedsExactRead(
+  snapshot: ZLinkAuthoritySnapshot,
+  relocationCodec: ServiceRelocationAuthorityPayloadCodec
+): boolean {
+  if (decodePreparingAuthorityEnvelope(snapshot.payload) !== undefined) return true;
+  if (pendingInstanceActivation(snapshot) !== undefined) return true;
+  if (relocationCodec.read(snapshot.payload) !== undefined) return true;
+  if (decodeServiceReadySpotAuthority(snapshot.payload)?.activationRecovery !== undefined) {
+    return true;
+  }
+  return snapshot.allocation.state === 'active'
+    && snapshot.allocation.objectKind === 'actor'
+    && decodeActorAuthorityIdentity(snapshot.payload) !== undefined;
 }
 
 function pendingInstanceActivation(

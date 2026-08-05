@@ -22,7 +22,6 @@ import systems.zlink.contracts.core.RoutingId;
  * only durable replay progress and terminal delivery state may change.
  */
 public final class ZLinkServiceRelocationEnvelopeCodec {
-    private static final int MAX_PARTICIPANTS = 1_024;
     private static final int MAX_RECORDS = 65_536;
 
     private ZLinkServiceRelocationEnvelopeCodec() {
@@ -43,7 +42,10 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
 
         Set<Long> states = new HashSet<>();
         List<ApplicationState> applicationStates = new ArrayList<>();
-        int stateCount = reader.count(MAX_PARTICIPANTS, "application state");
+        int stateCount = reader.count(MAX_RECORDS, "application state");
+        if (stateCount > reader.remaining() / 13) {
+            throw invalid("application state count exceeds remaining bytes");
+        }
         long previousId = 0;
         for (int index = 0; index < stateCount; index++) {
             long participantId = reader.nonzeroU64(
@@ -66,7 +68,10 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
 
         int progressOffset = reader.position();
         int progressCount = reader.count(
-            MAX_PARTICIPANTS, "participant progress");
+            MAX_RECORDS, "participant progress");
+        if (progressCount > reader.remaining() / 24) {
+            throw invalid("participant progress count exceeds remaining bytes");
+        }
         if (progressCount != stateCount) {
             throw invalid("participant progress coverage");
         }
@@ -327,6 +332,9 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
         Reader reader,
         Map<Long, Progress> progress) {
         int count = reader.count(MAX_RECORDS, "journal");
+        if (count > reader.remaining()) {
+            throw invalid("journal count exceeds remaining bytes");
+        }
         List<JournalEntry> entries = new ArrayList<>(count);
         long previousParticipant = 0;
         long previousSequence = 0;
@@ -424,6 +432,10 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
         Reader reader,
         Set<Long> participants) {
         int count = reader.count(MAX_RECORDS, "timer registration");
+        if (count > reader.remaining()) {
+            throw invalid(
+                "timer registration count exceeds remaining bytes");
+        }
         Map<Long, Set<String>> names = new HashMap<>();
         List<TimerRegistration> registrations = new ArrayList<>();
         long previousParticipant = 0;
@@ -463,6 +475,10 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
         Set<Long> participants,
         Map<Long, Set<String>> timerNames) {
         int count = reader.count(MAX_RECORDS, "pending timer tick");
+        if (count > reader.remaining()) {
+            throw invalid(
+                "pending timer tick count exceeds remaining bytes");
+        }
         List<PendingTimerTick> values = new ArrayList<>();
         long previousParticipant = 0;
         long previousSequence = 0;
@@ -496,6 +512,10 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
         Reader reader,
         Set<Long> participants) {
         int count = reader.count(MAX_RECORDS, "terminal completion");
+        if (count > reader.remaining()) {
+            throw invalid(
+                "terminal completion count exceeds remaining bytes");
+        }
         List<Completion> values = new ArrayList<>(count);
         Set<OperationKey> operations = new HashSet<>();
         long previousParticipant = 0;
@@ -898,6 +918,7 @@ public final class ZLinkServiceRelocationEnvelopeCodec {
             offset += size;
             return result;
         }
+        int remaining() { return source.length - offset; }
     }
 
     private static final class Writer {

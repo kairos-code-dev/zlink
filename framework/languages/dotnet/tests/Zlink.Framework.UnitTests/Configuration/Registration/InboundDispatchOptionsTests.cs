@@ -216,6 +216,24 @@ public sealed class InboundDispatchOptionsTests
             registration.SpotNodes["mesh"].Router!.SocketConfig.MaxMessageSize);
     }
 
+    [Fact]
+    public void Stream_Listener_Default_Is_Sixty_Four_Kibibytes()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.AddStreamNode("stream")
+                .Bind(0)
+                .AddSession<TestSession>();
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        Assert.Equal(
+            64L * 1024L,
+            registration.StreamNodes["stream"].SocketConfig.MaxMessageSize);
+    }
+
     private sealed class TestSession : IZLinkSession
     {
         public IZLinkSessionContext Context => null!;

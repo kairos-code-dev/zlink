@@ -92,6 +92,8 @@ write_role_config() {
   local workflow_client="$6" workflow_server="$7" weight="$8"
   local workflow_endpoint="${9:-}"
   local stream_endpoint="${10:-}"
+  local route_endpoint="${11:-}"
+  local route_advertise_host="${12:-}"
   local config="$CONFIG_DIR/$role.json"
   local evidence="$LOG_DIR/$role.evidence.log"
   EVIDENCE["$role"]="$evidence"
@@ -117,6 +119,8 @@ write_role_config() {
   done
   [[ -z "$workflow_endpoint" ]] || args+=(--workflow-endpoint "$workflow_endpoint")
   [[ -z "$stream_endpoint" ]] || args+=(--stream-endpoint "$stream_endpoint")
+  [[ -z "$route_endpoint" ]] || args+=(--route-endpoint "$route_endpoint")
+  [[ -z "$route_advertise_host" ]] || args+=(--route-advertise-host "$route_advertise_host")
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "${args[@]}"
 }
 
@@ -125,13 +129,15 @@ start_role() {
   local workflow_client="$5" workflow_server="$6" weight="$7"
   local workflow_endpoint="${8:-}"
   local stream_endpoint="${9:-}"
+  local route_endpoint="${10:-}"
+  local route_advertise_host="${11:-}"
   local port url
   port="$(pick_port)"
   url="http://127.0.0.1:$port"
   URLS["$role"]="$url"
   write_role_config "$role" "$rid" "$url" "$servers" "$clients" \
     "$workflow_client" "$workflow_server" "$weight" "$workflow_endpoint" \
-    "$stream_endpoint"
+    "$stream_endpoint" "$route_endpoint" "$route_advertise_host"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
     --config "$CONFIG_DIR/$role.json" \
     >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
@@ -183,8 +189,40 @@ start_role session 00-session \
   "$SESSION_STREAM_ENDPOINT"
 start_role play 10-play \
   "game.play" "game.session,game.api,audit.record" true false 100
+API_ROUTE_ENDPOINT=""
+API_ROUTE_ADVERTISE_HOST=""
+API_ROUTE_PORT=""
+API_PROXY_PID=""
+if [[ "$SCENARIO" == *"CH-E2E-07C"* ]]; then
+  API_ROUTE_PORT="$(pick_port)"
+  API_ROUTE_ENDPOINT="tcp://127.0.0.1:$API_ROUTE_PORT"
+  API_ROUTE_ADVERTISE_HOST="127.0.0.2"
+fi
 start_role api 20-api \
-  "game.api" "" false false 100
+  "game.api" "" false false 100 "" "" \
+  "$API_ROUTE_ENDPOINT" "$API_ROUTE_ADVERTISE_HOST"
+if [[ -n "$API_ROUTE_PORT" ]]; then
+  setsid python3 "$ROOT_DIR/tcp_proxy.py" \
+    --listen-host 127.0.0.2 \
+    --listen-port "$API_ROUTE_PORT" \
+    --upstream-host 127.0.0.1 \
+    --upstream-port "$API_ROUTE_PORT" \
+    >"$LOG_DIR/api-route-proxy.log" 2>&1 &
+  API_PROXY_PID="$!"
+  pids+=("$API_PROXY_PID")
+  proxy_deadline=$((SECONDS + 5))
+  while ! nc -z -w 1 127.0.0.2 "$API_ROUTE_PORT"; do
+    if ! kill -0 "$API_PROXY_PID" 2>/dev/null; then
+      cat "$LOG_DIR/api-route-proxy.log" >&2 || true
+      exit 1
+    fi
+    if (( SECONDS >= proxy_deadline )); then
+      echo "Timed out waiting for the API route proxy." >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+fi
 start_role audit 30-audit \
   "audit.record" "" false false 100
 start_role workflow100 workflow-100 \
@@ -212,9 +250,9 @@ if [[ -n "$SERVER_ONLY_URL" ]]; then
 fi
 
 wait_json "${URLS[session]}/topology/game" \
-  "value['readyPeerCount'] >= 2 and value['channels'] and any(channel['channelName'] == 'game.session' and channel['isReady'] for channel in value['channels'])" "session game topology"
+  "value['readyPeerCount'] >= 2 and value['channels'] and any(channel['channelName'] == 'game.play' and channel['isReady'] for channel in value['channels'])" "session game topology"
 wait_json "${URLS[play]}/topology/game" \
-  "value['readyPeerCount'] >= 1 and value['channels'] and any(channel['channelName'] == 'game.play' and channel['isReady'] for channel in value['channels'])" "play game topology"
+  "value['readyPeerCount'] >= 1 and value['channels'] and any(channel['channelName'] == 'game.session' and channel['isReady'] for channel in value['channels'])" "play game topology"
 wait_json "${URLS[play]}/topology/audit" \
   "value['channels'] and any(channel['channelName'] == 'audit.record' for channel in value['channels'])" "play audit topology"
 wait_json "${URLS[workflow-client]}/client-server/workflow.command" \
@@ -258,14 +296,18 @@ if [[ "$SCENARIO" == *"CH-REG-05"* || "$SCENARIO" == *"CH-E2E-04C"* ]]; then
 fi
 
 if [[ "$SCENARIO" == *"CH-E2E-07C"* ]]; then
-  # Keep the known descriptor and its physical connection while excluding the
-  # target from new selection. Removing the descriptor would correctly
-  # produce NotFound instead of the required Unavailable result.
-  curl --max-time 2 -fsS -X POST \
-    "${URLS[api]}/client-server/game.api/weight/0" >/dev/null
+  # The API descriptor remains published, but its advertised TCP endpoint is
+  # isolated behind this runner-owned proxy. Stopping the proxy blocks the
+  # network path without changing membership or channel weight.
+  kill -KILL -- "-$API_PROXY_PID" 2>/dev/null \
+    || kill -KILL "$API_PROXY_PID" 2>/dev/null || true
+  wait "$API_PROXY_PID" 2>/dev/null || true
+  API_PROXY_PID=""
   wait_json "${URLS[session]}/topology/game" \
-    "any(channel['channelName'] == 'game.api' and channel['readyTargetCount'] == 0 for channel in value['channels'])" \
-    "game.api unavailable after weight update"
+    "any(channel['channelName'] == 'game.api' and not channel['isReady'] and channel['readyTargetCount'] == 0 for channel in value['channels'])" \
+    "game.api unavailable after network block" 20
+  curl --max-time 2 -fsS "${URLS[session]}/topology/game" \
+    >"$LOG_DIR/session.game.topology.after-network-block.json"
 fi
 
 python3 - "$CONFIG_DIR/client.json" "$SCENARIO" "$SERVER_PROJECT" \

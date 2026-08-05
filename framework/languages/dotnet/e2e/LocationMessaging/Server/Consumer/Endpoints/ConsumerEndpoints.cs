@@ -242,13 +242,6 @@ internal static class ConsumerEndpoints
             var reply = await RequestPayloadAsync(channel, request);
             return Results.Ok(reply);
         });
-        app.MapPost("/profile/payload-over-limit", async (
-            PayloadReq request,
-            IZLinkRouteClient channel) =>
-        {
-            var result = await RequestPayloadFailureAsync(channel, request);
-            return Results.Ok(result);
-        });
         app.MapPost("/profile/backpressure/send", async (
             BackpressureMsg command,
             IZLinkRouteClient channel,
@@ -330,30 +323,6 @@ internal static class ConsumerEndpoints
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<PayloadRes>()
             .AsTask();
-
-    static async Task<ExpectedFailureRes> RequestPayloadFailureAsync(
-        IZLinkRouteClient channel,
-        PayloadReq request)
-    {
-        try
-        {
-            await channel.RequestToChannel("profile", request)
-                .Timeout(TimeSpan.FromSeconds(5))
-                .Async<PayloadRes>();
-            throw new InvalidOperationException(
-                "An oversized payload completed without the expected public size error.");
-        }
-        catch (TimeoutException error)
-        {
-            return new ExpectedFailureRes(error.GetType().Name);
-        }
-        catch (ZLinkFrameworkException error) when (
-            error.Kind is ZLinkFrameworkErrorKind.ProtocolError
-                or ZLinkFrameworkErrorKind.DeadlineExceeded)
-        {
-            return new ExpectedFailureRes(error.Kind.ToString());
-        }
-    }
 
     static async Task<ExpectedFailureRes> RequestProfileFailureAsync(
         IZLinkRouteClient channel,

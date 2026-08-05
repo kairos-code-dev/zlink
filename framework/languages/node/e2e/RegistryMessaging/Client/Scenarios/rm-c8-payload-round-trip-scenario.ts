@@ -1,5 +1,5 @@
-// RM-C8: 수신 message 크기 상한을 적용한다 시나리오를 검증한다.
-import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
+// RM-C8: RouteMesh SS payload 무결성 시나리오를 검증한다.
+import type { PayloadRes, ProfileRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
@@ -20,15 +20,6 @@ export async function runRmC8(
     ensure(reply.length === payload.length, 'RM-C8 payload length mismatch.');
     ensure(reply.sha256 === sha256Hex(payload), 'RM-C8 payload hash mismatch.');
   }
-
-  const oversized = await postJson<RequestFailureRes>(directConsumerUrl, '/profile/payload-over-limit', {
-    marker: uniqueMarker('rm-c8-over-limit'),
-    payload: buildPayload(3 * 1024 * 1024)
-  });
-  ensure(
-    oversized.failed && oversized.failureType === '7',
-    'RM-C8 oversized payload should fail with DeadlineExceeded (7).'
-  );
 
   const followUp = await postJson<ProfileRes>(directConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
   ensure(followUp.value === 'profile:rm-c8-after', 'RM-C8 follow-up request failed.');

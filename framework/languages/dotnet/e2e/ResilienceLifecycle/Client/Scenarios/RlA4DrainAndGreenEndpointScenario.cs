@@ -73,7 +73,6 @@ internal static class RlA4DrainAndGreenEndpointScenario
         var result = (await drainTask).Body;
         ZlinkStreamAssert.Ensure(result.Result == "Drained",
             $"RL-A4 {rid} did not reach terminal Drained: {result.Result}/{result.Reason}.");
-        await provider.Post("/shutdown").AsyncRaw();
         await waitExited();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq(rid, "Ready", 0))

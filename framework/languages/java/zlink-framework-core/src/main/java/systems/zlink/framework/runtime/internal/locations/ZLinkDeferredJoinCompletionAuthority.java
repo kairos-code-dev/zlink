@@ -333,8 +333,6 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                     .orElse(null);
                 if (payload == null
                     || !payload.actorId().equals(actor.actorId())
-                    || !payload.nodeRid().equals(actor.nodeRid())
-                    || payload.nodeGeneration() != actor.generation()
                     || !payload.ownerId().equals(snapshot.ownerId())
                     || payload.ownerLeaseGeneration()
                         != snapshot.ownerLeaseGeneration()
@@ -411,6 +409,65 @@ public final class ZLinkDeferredJoinCompletionAuthority {
                 }),
             timeout,
             "deferred Join target commit");
+    }
+
+    /**
+     * Waits until the target has completed the durable Join completion
+     * callback.  Source cleanup is allowed only after this point; the target
+     * callback itself must not wait for source cleanup.
+     */
+    public CompletionStage<Void> awaitTargetCompletion(
+        UUID aggregateId,
+        long aggregateGeneration,
+        ZLinkActorJoinOperationId operationId,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        Objects.requireNonNull(aggregateId, "aggregateId");
+        Objects.requireNonNull(operationId, "operationId");
+        Objects.requireNonNull(actor, "actor");
+        Objects.requireNonNull(timeout, "timeout");
+        if (aggregateGeneration <= 0
+            || timeout.isZero()
+            || timeout.isNegative()) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "deferred Join target-completion wait is invalid"));
+        }
+        return await(
+            () -> authority.read(
+                    ZLinkAuthorityKeyCodec.actor(actor.actorId()),
+                    NEVER)
+                .thenCompose(result -> {
+                    if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
+                        || snapshot.objectGeneration() != actor.generation()) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    var publication =
+                        ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+                            snapshot.payload());
+                    if (publication == null
+                        || !publication.aggregateId().equals(aggregateId)
+                        || publication.aggregateGeneration()
+                            != aggregateGeneration
+                        || !snapshot.ownerId().equals(
+                            publication.targetOwnerId())
+                        || snapshot.ownerLeaseGeneration()
+                            != publication.targetOwnerLeaseGeneration()) {
+                        return CompletableFuture.completedFuture(false);
+                    }
+                    return load(
+                            publication.reference(),
+                            publication.checksumCrc32c())
+                        .thenApply(loaded -> {
+                            var completion = find(
+                                loaded.root().terminalCompletions(),
+                                operationId);
+                            return completion != null
+                                && completion.deliveryState() >= 3;
+                        });
+                }),
+            timeout,
+            "deferred Join target completion");
     }
 
     /**

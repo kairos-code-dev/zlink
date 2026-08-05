@@ -58,6 +58,19 @@ export type ZLinkBackendMeshPeerEntry = MeshPeerEntry;
 export type ZLinkBackendReadyBatch = ReadyBatch;
 export type ZLinkBackendReceiveBatch = ReceiveBatch;
 
+export type ZLinkBackendObjectPlacement =
+  | {
+      readonly kind: 'selected';
+      readonly target: {
+        readonly targetNodeRid: string;
+        readonly targetNodeGeneration: bigint;
+        readonly descriptorVersion: string;
+      };
+    }
+  | { readonly kind: 'unsupported' }
+  | { readonly kind: 'capacity' }
+  | { readonly kind: 'unavailable' };
+
 export interface ZLinkBackendMeshNode {
   setRoutingId(routingId: unknown): void;
   setBind(endpoint: string): void;
@@ -89,11 +102,7 @@ export interface ZLinkBackendMeshNode {
     readonly pendingCapacityLimit: number;
     readonly objectCapabilities: readonly string[];
   }): void;
-  selectObjectPlacement(stableType: string): {
-    readonly targetNodeRid: string;
-    readonly targetNodeGeneration: bigint;
-    readonly descriptorVersion: string;
-  } | undefined;
+  selectObjectPlacement(stableType: string): ZLinkBackendObjectPlacement;
   instanceSpotPlacementTypes?(): readonly string[];
   sendToMissingInstanceSpot(
     target: {
@@ -108,6 +117,20 @@ export interface ZLinkBackendMeshNode {
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): SubmitResult;
+  /** Prepares one immutable Missing Instance send for bounded admission retries. */
+  prepareMissingInstanceSpotSend?(
+    target: {
+      readonly targetNodeRid: string;
+      readonly targetNodeGeneration: bigint;
+      readonly targetSpotId: string;
+      readonly stableType: string;
+      readonly descriptorVersion: string;
+    },
+    parts: ZLinkBackendMessageLike | readonly ZLinkBackendMessageLike[],
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadata?: ReadonlyMap<string, string>
+  ): () => SubmitResult;
   requestToMissingInstanceSpot(
     target: {
       readonly targetNodeRid: string;
@@ -117,7 +140,7 @@ export interface ZLinkBackendMeshNode {
       readonly descriptorVersion: string;
     },
     parts: ZLinkBackendMessageLike | readonly ZLinkBackendMessageLike[],
-    timeoutMs: number,
+    deadlineUnixMs: bigint,
     sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId;

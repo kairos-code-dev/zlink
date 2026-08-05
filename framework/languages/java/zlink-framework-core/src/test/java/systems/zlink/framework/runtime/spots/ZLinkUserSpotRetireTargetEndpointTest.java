@@ -468,6 +468,8 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
         private final Map<String, ZLinkAuthoritySnapshot> rows =
             new ConcurrentHashMap<>();
         private ZLinkAggregatePrepareRequest prepared;
+        private ZLinkAggregateProgress progress;
+        private String progressStoreVersion;
 
         ZLinkLocationRepository proxy() {
             return (ZLinkLocationRepository) Proxy.newProxyInstance(
@@ -486,6 +488,22 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
                             null) == null
                             ? new ZLinkAuthorityMissing(Instant.now())
                             : rows.get((String) arguments[0]));
+                    case "compareExchange" -> compareExchange(
+                        (String) arguments[0],
+                        (ZLinkAuthorityExpectation) arguments[1],
+                        (ZLinkAuthorityMutation) arguments[2]);
+                    case "readAggregateProgress" -> readAggregateProgress(
+                        (ZLinkAggregateFence) arguments[0]);
+                    case "compareExchangeAggregateProgress" ->
+                        compareExchangeAggregateProgress(
+                            (ZLinkAggregateFence) arguments[0],
+                            (String) arguments[1],
+                            (ZLinkAggregateProgress) arguments[2]);
+                    case "listAggregateProgress" -> listAggregateProgress();
+                    case "removeAggregateProgress" ->
+                        removeAggregateProgress(
+                            (ZLinkAggregateFence) arguments[0],
+                            (String) arguments[1]);
                     default -> throw new UnsupportedOperationException(
                         method.getName());
                 });
@@ -527,8 +545,104 @@ final class ZLinkUserSpotRetireTargetEndpointTest {
                         prepared.capacityBundle()),
                     Instant.now()));
             }
+            progress = ZLinkCanonicalRelocationAuthorityStateCodec.progress(
+                prepared.participants().getFirst().authorityPayload());
+            progressStoreVersion = "aggregate-commit";
             return CompletableFuture.completedFuture(
                 ZLinkAggregateCommitResult.COMMITTED);
+        }
+
+        private CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+            readAggregateProgress(ZLinkAggregateFence fence) {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? Optional.empty()
+                    : Optional.of(progressSnapshot(fence)));
+        }
+
+        private CompletionStage<ZLinkAggregateProgressWriteResult>
+            compareExchangeAggregateProgress(
+                ZLinkAggregateFence fence,
+                String expectedStoreVersion,
+                ZLinkAggregateProgress next) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(
+                    new ZLinkAggregateProgressConflict());
+            }
+            progress = next;
+            progressStoreVersion = "aggregate-progress";
+            return CompletableFuture.completedFuture(
+                new ZLinkAggregateProgressStored(progressSnapshot(fence)));
+        }
+
+        private CompletionStage<List<ZLinkAggregateProgressSnapshot>>
+            listAggregateProgress() {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? List.of()
+                    : List.of(progressSnapshot(new ZLinkAggregateFence(
+                        prepared.aggregateId(),
+                        prepared.aggregateGeneration()))));
+        }
+
+        private CompletionStage<Boolean> removeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(false);
+            }
+            progress = null;
+            progressStoreVersion = null;
+            return CompletableFuture.completedFuture(true);
+        }
+
+        private ZLinkAggregateProgressSnapshot progressSnapshot(
+            ZLinkAggregateFence fence) {
+            return new ZLinkAggregateProgressSnapshot(
+                fence,
+                progressStoreVersion,
+                prepared,
+                progress);
+        }
+
+        private CompletionStage<ZLinkAuthorityWriteResult> compareExchange(
+            String key,
+            ZLinkAuthorityExpectation expectation,
+            ZLinkAuthorityMutation mutation) {
+            ZLinkAuthoritySnapshot current = rows.get(key);
+            if (!(expectation instanceof ZLinkAuthorityExpectFound found)
+                || current == null
+                || !current.storeVersion().equals(found.storeVersion())
+                || !(mutation instanceof ZLinkAuthorityPut put)
+                || put.generationTransition()
+                    != ZLinkAuthorityGenerationTransition.PRESERVE) {
+                return CompletableFuture.completedFuture(
+                    new ZLinkAuthorityConflict(current == null
+                        ? new ZLinkAuthorityMissing(Instant.now())
+                        : current));
+            }
+            ZLinkAuthoritySnapshot stored = new ZLinkAuthoritySnapshot(
+                "cas-" + key,
+                put.payload(),
+                current.objectGeneration(),
+                current.authorityOwnerGeneration(),
+                current.ownerId(),
+                current.ownerLeaseGeneration(),
+                current.allocation(),
+                Instant.now());
+            rows.put(key, stored);
+            return CompletableFuture.completedFuture(
+                new ZLinkAuthorityStored(
+                    stored.storeVersion(),
+                    stored.payload(),
+                    stored.objectGeneration(),
+                    stored.authorityOwnerGeneration(),
+                    stored.ownerId(),
+                    stored.ownerLeaseGeneration(),
+                    stored.allocation(),
+                    stored.storeNow()));
         }
     }
 

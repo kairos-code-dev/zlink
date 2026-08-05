@@ -1499,6 +1499,7 @@ int main ()
           std::string ("ws://127.0.0.1:")
           + std::to_string (websocket_connect_acceptor.local_endpoint ().port ()) + "/stream";
         callback_latch_t websocket_connect_server_latch;
+        callback_latch_t websocket_connect_close_latch;
         joining_thread_t websocket_connect_server_thread ([&] {
             auto accepted = std::make_shared<boost::asio::ip::tcp::socket> (websocket_connect_io);
             boost::system::error_code accept_error;
@@ -1510,6 +1511,7 @@ int main ()
             websocket_connect_io.run_for (std::chrono::milliseconds (200));
             if (accept_error || !accepted->is_open ()) {
                 websocket_connect_server_latch.signal ();
+                websocket_connect_close_latch.wait_for (std::chrono::seconds (1));
                 return;
             }
             boost::beast::websocket::stream<boost::asio::ip::tcp::socket> websocket (
@@ -1517,6 +1519,8 @@ int main ()
             boost::system::error_code error;
             websocket.accept (error);
             websocket_connect_server_latch.signal ();
+            // Keep the peer open until the client observes the successful callback.
+            websocket_connect_close_latch.wait_for (std::chrono::seconds (1));
             boost::system::error_code ignored;
             boost::beast::get_lowest_layer (websocket).close (ignored);
         });
@@ -1537,20 +1541,26 @@ int main ()
         const auto websocket_connect_submit_elapsed =
           std::chrono::steady_clock::now () - websocket_connect_started;
         if (websocket_connect_submit_elapsed > std::chrono::milliseconds (50)) {
+            websocket_connect_close_latch.signal ();
             websocket_connect_connector.close ();
             boost::system::error_code ignored;
             websocket_connect_acceptor.close (ignored);
             websocket_connect_server_thread.join ();
             return 101;
         }
-        if (!websocket_connect_latch.wait_for (std::chrono::milliseconds (100))
+        // The elapsed assertion above checks that connect() submits asynchronously.
+        // Allow the server thread enough time to be scheduled before judging the
+        // separate completion callback contract on a loaded test host.
+        if (!websocket_connect_latch.wait_for (std::chrono::seconds (1))
             || !websocket_connect_seen || !websocket_connect_connector.is_connected ()) {
+            websocket_connect_close_latch.signal ();
             websocket_connect_connector.close ();
             boost::system::error_code ignored;
             websocket_connect_acceptor.close (ignored);
             websocket_connect_server_thread.join ();
             return 102;
         }
+        websocket_connect_close_latch.signal ();
         websocket_connect_connector.close ();
         websocket_connect_server_latch.wait_for (std::chrono::milliseconds (100));
         websocket_connect_server_thread.join ();

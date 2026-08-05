@@ -1,10 +1,7 @@
 import * as os from 'node:os';
 
-/**
- * The default application listener bound used by the Framework stream parser.
- * This is an internal contract value; it is not a new registration option.
- */
-export const DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE = 16_777_216;
+/** Default complete header plus payload size accepted by a StreamNode. */
+export const DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE = 64 * 1024;
 
 /** Defaults shared by registration normalization and the runtime worker pool. */
 export const DEFAULT_WORKER_MIN_THREADS = 0;

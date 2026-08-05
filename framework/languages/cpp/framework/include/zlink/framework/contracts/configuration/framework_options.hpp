@@ -19,6 +19,7 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -963,6 +964,13 @@ class route_mesh_channel_builder_t
     std::vector<std::function<void (route_channel_builder_t &)>> _route_handlers;
 };
 
+struct stream_socket_config_t
+{
+    // The complete header plus payload size accepted from a client.
+    // Zero disables the separate Framework cap.
+    std::int64_t max_message_size = 64 * 1024;
+};
+
 class stream_node_options_builder_t
 {
   public:
@@ -1003,6 +1011,8 @@ class stream_node_options_builder_t
         apply ();
         return *this;
     }
+
+    stream_socket_config_t &configure_socket () noexcept { return _socket_config; }
 
     //  Lets a STREAM session relay to Actors. Mirrors the .NET
     //  EnableActorDispatch() and the Java/Node enableActorDispatch(), including
@@ -1063,17 +1073,24 @@ class stream_node_options_builder_t
         if (_endpoint.empty () || _session_name.empty ()) {
             return;
         }
+        if (_socket_config.max_message_size < 0) {
+            throw framework_exception_t (
+              framework_error_kind_t::protocol_error,
+              "STREAM MaxMessageSize must be zero or positive");
+        }
         const auto stream_name = _stream_name;
         const auto endpoint = _endpoint;
         const auto session_name = _session_name;
+        const auto max_message_size = _socket_config.max_message_size;
         const auto tls_certificate_file = _tls_certificate_file;
         const auto tls_private_key_file = _tls_private_key_file;
         const auto tls_require_client_certificate = _tls_require_client_certificate;
         _options->set_zlink_action (
-          "stream_node:" + stream_name, [stream_name, endpoint, session_name, tls_certificate_file,
-                                         tls_private_key_file,
-                                         tls_require_client_certificate] (zlink_builder_t &zlink) {
+          "stream_node:" + stream_name,
+          [stream_name, endpoint, session_name, max_message_size, tls_certificate_file,
+           tls_private_key_file, tls_require_client_certificate] (zlink_builder_t &zlink) {
               auto stream = zlink.stream (stream_name);
+              stream.set_max_message_size (max_message_size);
               if (!endpoint.empty ()) {
                   stream.bind (endpoint);
               }
@@ -1094,6 +1111,7 @@ class stream_node_options_builder_t
     std::string _session_name;
     std::string _tls_certificate_file;
     std::string _tls_private_key_file;
+    stream_socket_config_t _socket_config;
     bool _tls_require_client_certificate = false;
     bool _session_configured = false;
 };

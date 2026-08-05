@@ -21,6 +21,7 @@
 #include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/messaging/submit_result_mapper.hpp"
 #include "runtime/spots/spot_route_internal_dispatcher.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
@@ -872,7 +873,104 @@ std::optional<std::uint64_t> resolve_target_spot_generation (
     return address->spot_generation;
 }
 
-result_t<runtime::messaging::message_parts_t>
+framework_exception_t spot_request_terminal_exception (
+  runtime::foundation::operation_terminal_t terminal)
+{
+    switch (terminal) {
+        case runtime::foundation::operation_terminal_t::timed_out:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::timed_out, "SPOT mesh request timed out");
+        case runtime::foundation::operation_terminal_t::cancelled:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::cancelled, "SPOT mesh request was cancelled");
+        case runtime::foundation::operation_terminal_t::transport_failed:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
+              "SPOT mesh request lost its connection");
+        case runtime::foundation::operation_terminal_t::shutdown:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::shutdown,
+              "SPOT mesh request stopped because the runtime is shutting down");
+        case runtime::foundation::operation_terminal_t::completed:
+            break;
+    }
+    return framework_exception_t (
+      framework_error_kind_t::internal_failure,
+      "SPOT mesh request completed without a terminal result");
+}
+
+task_t<runtime::messaging::message_parts_t> request_spot_parts_async (
+  service::spot_handle_t egress,
+  const zlink::routing_id_t &target_node_rid,
+  const spot_id_t &target_spot_id,
+  std::uint64_t target_generation,
+  runtime::messaging::message_parts_t parts,
+  std::chrono::milliseconds timeout)
+{
+    auto source = std::make_shared<
+      detail::task_completion_source_t<runtime::messaging::message_parts_t>> ();
+    auto output = source->task ();
+    try {
+        const auto &native_parts = parts.items ();
+        if (native_parts.empty ()) {
+            source->complete (result_t<runtime::messaging::message_parts_t>::failure (
+              framework_error_kind_t::protocol_error,
+              "SPOT mesh request requires at least one message part"));
+            return output;
+        }
+        service::operation_id_t operation_id;
+        const auto submitted = egress.request_to_spot (
+          target_node_rid, target_spot_id, target_generation,
+          native_parts, operation_id, zlink::send_flags_t::none, timeout, {},
+          [source] (runtime::foundation::operation_terminal_t terminal,
+                    result_t<std::vector<zlink::message_t>> decoded) mutable {
+              if (terminal != runtime::foundation::operation_terminal_t::completed) {
+                  source->complete (detail::result_access_t::failure<
+                    runtime::messaging::message_parts_t> (
+                    spot_request_terminal_exception (terminal)));
+                  return;
+              }
+              if (!decoded) {
+                  source->complete (detail::propagate_failure<
+                    runtime::messaging::message_parts_t> (
+                    decoded, "SPOT mesh request reply decode failed"));
+                  return;
+              }
+              source->complete (result_t<runtime::messaging::message_parts_t>::success (
+                runtime::messaging::message_parts_t (std::move (decoded.value()))));
+          });
+        if (submitted != zlink::submit_result_t::ok) {
+            source->complete (detail::result_access_t::failure<
+              runtime::messaging::message_parts_t> (
+              runtime::messaging::map_submit_result_exception (
+                submitted, "SPOT mesh request was not submitted")));
+            return output;
+        }
+    }
+    catch (const framework_exception_t &error) {
+        source->complete (detail::result_access_t::failure<
+          runtime::messaging::message_parts_t> (error));
+    }
+    catch (const zlink::request_error_t &error) {
+        source->complete (detail::result_access_t::failure<
+          runtime::messaging::message_parts_t> (
+          runtime::messaging::map_request_result_exception (
+            error.result (), error.what ())));
+    }
+    catch (const zlink::submit_error_t &error) {
+        source->complete (detail::result_access_t::failure<
+          runtime::messaging::message_parts_t> (
+          runtime::messaging::map_submit_result_exception (
+            error.result (), error.what ())));
+    }
+    catch (const std::exception &error) {
+        source->complete (result_t<runtime::messaging::message_parts_t>::failure (
+          framework_error_kind_t::internal_failure, error.what ()));
+    }
+    return output;
+}
+
+task_t<runtime::messaging::message_parts_t>
 request_spot_mesh_parts (const std::shared_ptr<detail::spot_context_state_t> &state,
                          node_rid_t node_rid,
                          spot_id_t spot_id,
@@ -880,58 +978,39 @@ request_spot_mesh_parts (const std::shared_ptr<detail::spot_context_state_t> &st
                          std::chrono::milliseconds timeout)
 {
     if (!state) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::protocol_error, "SPOT context is not configured");
+        return task_t<runtime::messaging::message_parts_t> (
+          result_t<runtime::messaging::message_parts_t>::failure (
+            framework_error_kind_t::protocol_error, "SPOT context is not configured"));
     }
     auto native = state->native_spot.lock ();
     if (!native) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::not_found,
-          "SPOT mesh route requires a running native Spot");
+        return task_t<runtime::messaging::message_parts_t> (
+          result_t<runtime::messaging::message_parts_t>::failure (
+            framework_error_kind_t::not_found,
+            "SPOT mesh route requires a running native Spot"));
     }
     try {
-        auto native_parts = parts.items ();
-        if (native_parts.empty ()) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::protocol_error,
-              "SPOT mesh request requires at least one message part");
-        }
-        service::operation_id_t operation_id;
         const auto target_node_rid =
           zlink::routing_id_t::from (std::string (node_rid.value ()));
-        const auto target_spot_id = spot_id;
         const auto target_generation =
-          resolve_target_spot_generation (state->node, target_node_rid, target_spot_id);
+          resolve_target_spot_generation (state->node, target_node_rid, spot_id);
         if (!target_generation) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::not_found,
-              "SPOT mesh request target generation is unavailable");
+            return task_t<runtime::messaging::message_parts_t> (
+              result_t<runtime::messaging::message_parts_t>::failure (
+                framework_error_kind_t::not_found,
+                "SPOT mesh request target generation is unavailable"));
         }
-        const auto submitted = native->request_to_spot (
-          target_node_rid, target_spot_id, *target_generation, native_parts,
-          operation_id, zlink::send_flags_t::none, timeout);
-        if (submitted != zlink::submit_result_t::ok) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::internal_failure, "SPOT mesh request was not submitted");
-        }
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::internal_failure,
-          "SPOT mesh request completion is not available outside the MeshNode dispatch loop");
+        return request_spot_parts_async (
+          *native, target_node_rid, spot_id, *target_generation, std::move (parts), timeout);
     }
     catch (const framework_exception_t &error) {
-        return detail::result_access_t::failure<runtime::messaging::message_parts_t> (error);
-    }
-    catch (const zlink::request_error_t &error) {
-        return detail::result_access_t::failure<runtime::messaging::message_parts_t> (
-          runtime::messaging::map_request_result_exception (
-            error.result (), error.what ()));
-    }
-    catch (const zlink::submit_error_t &error) {
-        return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, error.what ());
+        return task_t<runtime::messaging::message_parts_t> (
+          detail::result_access_t::failure<runtime::messaging::message_parts_t> (error));
     }
     catch (const std::exception &error) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::internal_failure, error.what ());
+        return task_t<runtime::messaging::message_parts_t> (
+          result_t<runtime::messaging::message_parts_t>::failure (
+            framework_error_kind_t::internal_failure, error.what ()));
     }
 }
 
@@ -942,31 +1021,60 @@ request_spot_mesh_message (const std::shared_ptr<detail::spot_context_state_t> &
                            runtime::messaging::message_parts_t parts,
                            std::chrono::milliseconds timeout)
 {
-    auto reply = request_spot_mesh_parts (state, std::move (node_rid), std::move (spot_id),
-                                          std::move (parts), timeout);
-    if (!reply) {
-        co_return result_t<zlink::message_t>::failure (reply.error_kind (),
-                                                       reply.error () ? reply.error ()->what ()
-                                                                      : "SPOT mesh request failed");
-    }
-    runtime::messaging::envelope_codec_t envelope;
-    auto reply_header = envelope.decode_header (reply.value ());
-    if (!reply_header) {
-        co_return result_t<zlink::message_t>::failure (reply_header.error_kind (),
-                                                       reply_header.error ()
-                                                         ? reply_header.error ()->what ()
-                                                         : "SPOT route reply header decode failed");
-    }
-    if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-        co_return result_t<zlink::message_t>::failure (
-          framework_error_kind_t::internal_failure,
-          reply_header.value ().error_message.value_or ("SPOT route request failed"));
-    }
-    auto body = envelope.decode_body (reply.value ());
-    if (!body) {
-        co_return detail::propagate_failure<zlink::message_t> (body, "SPOT route reply body decode failed");
-    }
-    co_return result_t<zlink::message_t>::success (body.value ());
+    auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
+    auto output = source->task ();
+    auto reply = request_spot_mesh_parts (
+      state, std::move (node_rid), std::move (spot_id), std::move (parts), timeout);
+    detail::observe_task_completion (
+      reply,
+      [source] (const result_t<runtime::messaging::message_parts_t> &reply_result) mutable {
+          try {
+          if (!reply_result) {
+              source->complete (detail::propagate_failure<zlink::message_t> (
+                reply_result, "SPOT mesh request failed"));
+              return;
+          }
+          runtime::messaging::envelope_codec_t envelope;
+          auto reply_header = envelope.decode_header (reply_result.value ());
+          if (!reply_header) {
+              source->complete (result_t<zlink::message_t>::failure (
+                reply_header.error_kind (),
+                reply_header.error () ? reply_header.error ()->what ()
+                                      : "SPOT route reply header decode failed"));
+              return;
+          }
+          if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
+              runtime::messaging::request_failure_mapper_t failure_mapper;
+              source->complete (detail::result_access_t::failure<zlink::message_t> (
+                failure_mapper.error_header_exception (
+                  reply_header.value ().error_code.value_or ("request_failed"),
+                  reply_header.value ().error_message.value_or ("SPOT route request failed"),
+                  "SPOT route request")));
+              return;
+          }
+          auto body = envelope.decode_body (reply_result.value ());
+          if (!body) {
+              source->complete (detail::propagate_failure<zlink::message_t> (
+                body, "SPOT route reply body decode failed"));
+              return;
+          }
+          source->complete (result_t<zlink::message_t>::success (body.value ()));
+          }
+          catch (const framework_exception_t &error) {
+              source->complete (
+                detail::result_access_t::failure<zlink::message_t> (error));
+          }
+          catch (const std::exception &error) {
+              source->complete (result_t<zlink::message_t>::failure (
+                framework_error_kind_t::internal_failure, error.what ()));
+          }
+          catch (...) {
+              source->complete (result_t<zlink::message_t>::failure (
+                framework_error_kind_t::internal_failure,
+                "SPOT route reply processing failed"));
+          }
+      });
+    return output;
 }
 
 } // namespace
@@ -1011,7 +1119,7 @@ bool spot_context_state_t::enter_callback ()
     return true;
 }
 
-void spot_context_state_t::leave_callback ()
+void spot_context_state_t::leave_callback () noexcept
 {
     bool should_close = false;
     {
@@ -1025,7 +1133,11 @@ void spot_context_state_t::leave_callback ()
         }
     }
     if (should_close) {
-        (void) close_now ();
+        try {
+            (void) close_now ();
+        }
+        catch (...) {
+        }
     }
 }
 
@@ -6805,62 +6917,6 @@ std::optional<std::uint64_t> spot_node_runtime_t::resolve_spot_generation (
       _state, target_node_rid, target_spot_id);
 }
 
-result_t<runtime::messaging::message_parts_t> spot_node_runtime_t::request_spot_mesh_parts (
-  const zlink::routing_id_t &target_node_rid,
-  const spot_id_t &target_spot_id,
-  runtime::messaging::message_parts_t parts,
-  std::chrono::milliseconds timeout) const
-{
-    auto node = native_node ();
-    if (!node) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::not_found,
-          "SPOT mesh route requires a running native node");
-    }
-    try {
-        auto native_parts = parts.items ();
-        if (native_parts.empty ()) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::protocol_error,
-              "SPOT mesh request requires at least one message part");
-        }
-        auto egress = node->entry_spot ();
-        service::operation_id_t operation_id;
-        const auto target_generation =
-          resolve_target_spot_generation (_state, target_node_rid, target_spot_id);
-        if (!target_generation) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::not_found,
-              "SPOT mesh request target generation is unavailable");
-        }
-        const auto submitted = egress.request_to_spot (
-          target_node_rid, target_spot_id, *target_generation, native_parts, operation_id,
-          zlink::send_flags_t::none, timeout);
-        if (submitted != zlink::submit_result_t::ok) {
-            return result_t<runtime::messaging::message_parts_t>::failure (
-              framework_error_kind_t::internal_failure, "SPOT mesh request was not submitted");
-        }
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::internal_failure,
-          "SPOT mesh request completion is not available outside the MeshNode dispatch loop");
-    }
-    catch (const framework_exception_t &error) {
-        return detail::result_access_t::failure<runtime::messaging::message_parts_t> (error);
-    }
-    catch (const zlink::request_error_t &error) {
-        return detail::result_access_t::failure<runtime::messaging::message_parts_t> (
-          runtime::messaging::map_request_result_exception (
-            error.result (), error.what ()));
-    }
-    catch (const zlink::submit_error_t &error) {
-        return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, error.what ());
-    }
-    catch (const std::exception &error) {
-        return result_t<runtime::messaging::message_parts_t>::failure (
-          framework_error_kind_t::internal_failure, error.what ());
-    }
-}
-
 void spot_node_runtime_t::set_route_client (route_client_t route_client)
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
@@ -7076,6 +7132,15 @@ bool spot_node_runtime_t::dispatch_mesh_record (
             return false;
         }
 
+        /* Native SPOT delivery bypasses the RouteMesh packet dispatcher after
+         * the envelope has been decoded. Re-enter the wire flow here so the
+         * remote Spot handler observes the same flow as the originating
+         * STREAM/session request. */
+        auto flow_scope = runtime::flow_context_t::enter (
+          header.value ().flow_id, header.value ().flow_origin,
+          detail::message_flow_tracer_t (_state->dispatch).capture_enabled (),
+          flow_origin_t::inbound);
+
         auto &actor_gateway = services.get_required<actor_gateway_runtime_t> ();
         spot_route_internal_dispatcher_t dispatcher (
           *this, actor_gateway, *route_client, serializers);
@@ -7089,7 +7154,29 @@ bool spot_node_runtime_t::dispatch_mesh_record (
                 : std::make_optional (record.operation_id.low),
               std::move (encoded),
               std::nullopt};
-            (void) dispatcher.dispatch_send (received, services);
+            const auto dispatched = dispatcher.dispatch_send (received, services);
+            if (!dispatched) {
+                const framework_exception_t error (
+                  dispatched.error_kind (),
+                  dispatched.error () != nullptr ? dispatched.error ()->what ()
+                                                 : "SPOT route send failed");
+                report_spot_dispatch_error (
+                  _state, dispatch_error_surface_t::spot_route,
+                  dispatch_message_kind_t::send,
+                  dispatch_reason_from_error (error.kind ()),
+                  dispatch_error_action_t::drop,
+                  header.value ().message_name,
+                  std::nullopt,
+                  owner.spot_id.empty ()
+                    ? std::nullopt
+                    : std::make_optional (owner.spot_id),
+                  std::nullopt,
+                  std::make_exception_ptr (error),
+                  record.operation_id.low == 0
+                    ? std::nullopt
+                    : std::make_optional (
+                        std::to_string (record.operation_id.low)));
+            }
             return true;
         }
         if ((record.kind == service::record_kind_t::spot_request
@@ -7155,59 +7242,76 @@ bool spot_node_runtime_t::dispatch_mesh_record (
                     return true;
                 }
             }
-            /* Complete route admission before creating the typed body. */
-            auto body = codec.decode_body (encoded);
-            if (!body) {
-                reply_error (framework_exception_t (
-                  body.error_kind (),
-                  body.error () ? body.error ()->what ()
-                                 : "Spot request envelope body is invalid"));
+            try {
+                /* Complete route admission before creating the typed body. */
+                auto body = codec.decode_body (encoded);
+                if (!body) {
+                    reply_error (framework_exception_t (
+                      body.error_kind (),
+                      body.error () ? body.error ()->what ()
+                                     : "Spot request envelope body is invalid"));
+                    return true;
+                }
+                report_spot_dispatch_trace (
+                  _state, message_flow_outcome_t::received,
+                  dispatch_error_surface_t::spot_route,
+                  record.kind == service::record_kind_t::spot_request
+                    ? dispatch_message_kind_t::request
+                    : dispatch_message_kind_t::send,
+                  header.value ().message_name, {}, owner.spot_id);
+                auto handled = spot_handler_registry_t (context->_state)
+                                 .invoke_erased (
+                                   spot_handler_kind_t::packet,
+                                   header.value ().message_name, {},
+                                   std::type_index (typeid (void)),
+                                   context->_state->spot_instance.get (), nullptr,
+                                   services, serializers, body.value (),
+                                   spot_inbound_message_t{
+                                     .content_type = header.value ().content_type,
+                                     .values = header.value ().metadata})
+                                 .result ();
+                if (!handled) {
+                    const auto *error = handled.error ();
+                    reply_error (framework_exception_t (
+                      handled.error_kind (),
+                      error != nullptr ? error->what () : "Spot handler failed"));
+                    return true;
+                }
+                if (record.kind == service::record_kind_t::spot_request) {
+                    auto reply = replies.reply_raw_envelope (
+                      replies.create_reply_header (
+                        runtime::messaging::message_kind_t::response,
+                        header.value ().channel_name, header.value ()),
+                      std::move (handled.value ()));
+                    (void) service::reply (record.reply_token, reply.items ());
+                }
+                report_spot_dispatch_trace (
+                  _state,
+                  record.kind == service::record_kind_t::spot_request
+                    ? message_flow_outcome_t::replied
+                    : message_flow_outcome_t::dispatched,
+                  dispatch_error_surface_t::spot_route,
+                  record.kind == service::record_kind_t::spot_request
+                    ? dispatch_message_kind_t::response
+                    : dispatch_message_kind_t::send,
+                  header.value ().message_name, {}, owner.spot_id);
                 return true;
             }
-            report_spot_dispatch_trace (
-              _state, message_flow_outcome_t::received,
-              dispatch_error_surface_t::spot_route,
-              record.kind == service::record_kind_t::spot_request
-                ? dispatch_message_kind_t::request
-                : dispatch_message_kind_t::send,
-              header.value ().message_name, {}, owner.spot_id);
-            auto handled = spot_handler_registry_t (context->_state)
-                             .invoke_erased (
-                               spot_handler_kind_t::packet,
-                               header.value ().message_name, {},
-                               std::type_index (typeid (void)),
-                               context->_state->spot_instance.get (), nullptr,
-                               services, serializers, body.value (),
-                               spot_inbound_message_t{
-                                 .content_type = header.value ().content_type,
-                                 .values = header.value ().metadata})
-                             .result ();
-            if (!handled) {
-                const auto *error = handled.error ();
-                reply_error (framework_exception_t (
-                  handled.error_kind (),
-                  error != nullptr ? error->what () : "Spot handler failed"));
+            catch (const framework_exception_t &error) {
+                reply_error (error);
                 return true;
             }
-            if (record.kind == service::record_kind_t::spot_request) {
-                auto reply = replies.reply_raw_envelope (
-                  replies.create_reply_header (
-                    runtime::messaging::message_kind_t::response,
-                    header.value ().channel_name, header.value ()),
-                  std::move (handled.value ()));
-                (void) service::reply (record.reply_token, reply.items ());
+            catch (const std::exception &error) {
+                reply_error (framework_exception_t (
+                  framework_error_kind_t::internal_failure, error.what ()));
+                return true;
             }
-            report_spot_dispatch_trace (
-              _state,
-              record.kind == service::record_kind_t::spot_request
-                ? message_flow_outcome_t::replied
-                : message_flow_outcome_t::dispatched,
-              dispatch_error_surface_t::spot_route,
-              record.kind == service::record_kind_t::spot_request
-                ? dispatch_message_kind_t::response
-                : dispatch_message_kind_t::send,
-              header.value ().message_name, {}, owner.spot_id);
-            return true;
+            catch (...) {
+                reply_error (framework_exception_t (
+                  framework_error_kind_t::internal_failure,
+                  "Spot handler dispatch failed"));
+                return true;
+            }
         }
         parts = std::move (encoded).take_items ();
         return false;
@@ -7746,7 +7850,7 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
     return result_t<void>::success ();
 }
 
-std::size_t spot_node_runtime_t::dispatch_multicast (
+result_t<std::size_t> spot_node_runtime_t::dispatch_multicast (
   std::string topic,
   const std::vector<zlink::message_t> &parts,
   service_provider_t &services,
@@ -7762,11 +7866,15 @@ std::size_t spot_node_runtime_t::dispatch_multicast (
           });
         if (!subscribed)
             continue;
-        (void) dispatch_subscription (
+        auto delivered = dispatch_subscription (
           context, topic, parts, services, serializers);
+        if (!delivered) {
+            return detail::propagate_failure<std::size_t> (
+              delivered, "spot multicast dispatch failed");
+        }
         ++dispatched;
     }
-    return dispatched;
+    return result_t<std::size_t>::success (dispatched);
 }
 
 

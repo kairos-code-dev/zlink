@@ -11,9 +11,11 @@ export const ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL =
 export const REMOTE_ACTOR_JOIN_PACKET = ZLINK_REMOTE_ACTOR_JOIN_PACKET;
 export const REMOTE_ACTOR_JOIN_ADMISSION = 'admission';
 export const REMOTE_ACTOR_JOIN_COMMIT = 'commit';
+export const REMOTE_ACTOR_JOIN_ABORT = 'abort';
 export type ZLinkRemoteActorJoinPhase =
   | typeof REMOTE_ACTOR_JOIN_ADMISSION
-  | typeof REMOTE_ACTOR_JOIN_COMMIT;
+  | typeof REMOTE_ACTOR_JOIN_COMMIT
+  | typeof REMOTE_ACTOR_JOIN_ABORT;
 
 export interface ZLinkRemoteActorSourceLeaveTerminal {
   readonly packetName: typeof ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL;

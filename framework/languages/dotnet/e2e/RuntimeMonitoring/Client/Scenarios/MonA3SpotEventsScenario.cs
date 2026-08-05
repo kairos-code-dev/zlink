@@ -15,20 +15,21 @@ internal static class MonA3SpotEventsScenario
         using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl)
             .Timeout(TimeSpan.FromSeconds(35)).Build();
 
-        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 2), 2);
-        AssertChannel(await WaitForReadyTargetsAsync(serviceB, 2), 2);
+        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 1), 1);
+        AssertChannel(await WaitForReadyTargetsAsync(serviceB, 1), 1);
         var evidenceBaseline =
             (await serviceA.Get("/evidence").Async<string[]>()).Body.Length;
         ZlinkStreamAssert.Ensure(
             await ObserveProviderAsync(serviceA, "svc-b", 8),
             "MON-A3 baseline selection never reached svc-b.");
+        ZlinkStreamAssert.Ensure(
+            await ObserveProviderAsync(serviceB, "svc-a", 8),
+            "MON-A3 remote caller did not select svc-a.");
 
         await serviceB.Post("/admin/weight/exclude").AsyncRaw();
-        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 1), 1);
+        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 0), 0);
         AssertChannel(await WaitForReadyTargetsAsync(serviceB, 1), 1);
-        ZlinkStreamAssert.Ensure(
-            !await ObserveProviderAsync(serviceA, "svc-b", 8),
-            "MON-A3 weight-0 svc-b remained selectable.");
+        await AssertNoSelectableTargetAsync(serviceA);
 
         var eventEvidence = (await serviceA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
@@ -50,11 +51,14 @@ internal static class MonA3SpotEventsScenario
             "MON-A3 channel_changed event was missing.");
 
         await serviceB.Post("/admin/weight/include").AsyncRaw();
-        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 2), 2);
-        AssertChannel(await WaitForReadyTargetsAsync(serviceB, 2), 2);
+        AssertChannel(await WaitForReadyTargetsAsync(serviceA, 1), 1);
+        AssertChannel(await WaitForReadyTargetsAsync(serviceB, 1), 1);
         ZlinkStreamAssert.Ensure(
             await ObserveProviderAsync(serviceA, "svc-b", 8),
             "MON-A3 restored svc-b did not become selectable.");
+        ZlinkStreamAssert.Ensure(
+            await ObserveProviderAsync(serviceB, "svc-a", 8),
+            "MON-A3 restored remote caller did not select svc-a.");
 
         Console.WriteLine("scenario MON-A3 passed");
     }
@@ -66,7 +70,8 @@ internal static class MonA3SpotEventsScenario
         var channel = status.Channels.Single(candidate =>
             candidate.ChannelName == RuntimeMonitoringNames.Channel);
         ZlinkStreamAssert.Ensure(
-            channel.IsReady && channel.ReadyTargetCount == readyTargets,
+            channel.IsReady == readyTargets > 0
+                && channel.ReadyTargetCount == readyTargets,
             $"MON-A3 channel status was ready={channel.ReadyTargetCount},"
             + $" isReady={channel.IsReady}.");
     }
@@ -85,6 +90,17 @@ internal static class MonA3SpotEventsScenario
                 return true;
         }
         return false;
+    }
+
+    private static async Task AssertNoSelectableTargetAsync(
+        ZLinkHttpClient service)
+    {
+        var response = await service.Post("/profile/request")
+            .Body(new ProfileReq("weight-0-unavailable", "mon-a3-unavailable"))
+            .AsyncRaw();
+        ZlinkStreamAssert.Ensure(
+            response.Status == 500,
+            $"MON-A3 expected a terminal no-target response, got HTTP {response.Status}.");
     }
 
     private static async Task<MeshRuntimeSnapshotRes> WaitForReadyTargetsAsync(

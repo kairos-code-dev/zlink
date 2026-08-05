@@ -27,6 +27,14 @@ runtime이 `sessionActorLocationUpdateReqMsg`를 send하여 해당 Actor route�
 응답이 없어도 Target Actor 처리를 멈추지 않으며 정해진 간격으로 같은 요청을 다시 보낸다. 같은 Session에서 relocation 대상에
 포함되지 않은 다른 Actor의 route와 physical STREAM connection은 유지한다. Application은 relocation을 알기 위해 rebind하지 않는다.
 
+## STREAM socket message 크기
+
+Kotlin은 Java `configureSocket().setMaxMessageSize(...)` 계약을 그대로 사용한다. 기본값은
+`64 KiB`이며 StreamNode의 Core STREAM inbound에서 client→server complete message에만 적용한다.
+크기는 6-byte prefix를 제외한 header와 payload의 합이다. `0`은 상한을 사용하지 않는 값이고
+음수는 startup error다. 상한 초과 message는 handler에 전달하지 않고 server가 `EMSGSIZE`를 기록한
+뒤 연결을 종료한다. server→client outbound에는 이 Framework 상한을 적용하지 않는다.
+
 ## Kotlin source signature
 
 ```kotlin

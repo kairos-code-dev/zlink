@@ -210,6 +210,11 @@ control progress stays bounded. A binding that can check the length in
 advance can stop new application `Recv` directly at the HWM without
 this classification span.
 
+A StreamNode checks its complete client-to-server message separately on
+the Core STREAM inbound path. The measured size is header bytes plus
+payload bytes, excluding the 6-byte prefix, and the StreamNode default is
+`64 KiB`. This cap isn't applied to a server-to-client outbound message.
+
 **Decision — `R` isn't grown with load.** HWM is not an exact cutoff
 line but **a signal that pressure has risen**, and stopping receiving
 is the only way to feed that pressure back to the sender

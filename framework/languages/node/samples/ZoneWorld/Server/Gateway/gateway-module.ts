@@ -22,7 +22,8 @@ function createGatewayModule() {
         builder.addLocationStore(createZoneWorldLocationStore(config.shared));
         zoneWorldLocationOptions(builder.configureLocations());
         builder.configureDispatch()
-          .messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
+          .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+          .traceLogFile(`${config.shared.logDirectory}/flow-gateway.log`)
           .traceLabel('gateway');
         const zoneMesh = builder
           .addRouteMesh(ZoneWorldNames.zoneMesh)

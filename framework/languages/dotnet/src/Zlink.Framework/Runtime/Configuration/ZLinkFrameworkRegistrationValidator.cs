@@ -126,6 +126,10 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ZLinkStreamNodeRegistration streamNode,
         ZLinkFrameworkRegistration registration)
     {
+        if (streamNode.SocketConfig.MaxMessageSize < 0)
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNode.StreamNodeName}' MaxMessageSize must be zero or positive.");
+
         if (string.IsNullOrWhiteSpace(streamNode.BindEndpoint)
             && streamNode.ListenPort is null)
             throw new ZLinkConfigurationException(

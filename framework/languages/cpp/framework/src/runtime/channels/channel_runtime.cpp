@@ -1571,6 +1571,7 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
       flow_origin_t::application,
       state && state->runtime
         && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
+    const auto ambient_context = detail::capture_ambient_context ();
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::protocol_error, "route client is not configured"));
@@ -1632,7 +1633,9 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                                    router_channel_id = std::move (router_channel_id),
                                    target_node_rid = std::move (target_node_rid),
                                    packet_name = std::move (packet_name), parts = std::move (parts),
-                                   effective_timeout, mesh_requester] () mutable {
+                                   effective_timeout, mesh_requester,
+                                   ambient_context] () mutable {
+              const auto ambient_guard = detail::enter_ambient_context (ambient_context);
               try {
                   runtime::messaging::envelope_codec_t envelope;
                   result_t<runtime::messaging::message_parts_t> reply =
@@ -1661,9 +1664,12 @@ task_t<zlink::message_t> route_client_t::submit_request_reply_message_erased (
                       return;
                   }
                   if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        framework_error_kind_t::internal_failure,
-                        reply_header.value ().error_message.value_or ("route request failed")));
+                      runtime::messaging::request_failure_mapper_t failure_mapper;
+                      source->complete (detail::result_access_t::failure<zlink::message_t> (
+                        failure_mapper.error_header_exception (
+                          reply_header.value ().error_code.value_or ("request_failed"),
+                          reply_header.value ().error_message.value_or ("route request failed"),
+                          "route request")));
                       return;
                   }
                   auto body = envelope.decode_body (reply.value ());
@@ -1718,6 +1724,7 @@ task_t<zlink::message_t> route_client_t::submit_channel_request_reply_message_er
       flow_origin_t::application,
       state && state->runtime
         && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
+    const auto ambient_context = detail::capture_ambient_context ();
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::protocol_error, "route client is not configured"));
@@ -1772,7 +1779,8 @@ task_t<zlink::message_t> route_client_t::submit_channel_request_reply_message_er
         executor->submit (
           [runtime_state, source, requester, channel_name = std::move (channel_name),
            packet_name = std::move (packet_name), parts = std::move (parts),
-           effective_timeout] () mutable {
+           effective_timeout, ambient_context] () mutable {
+              const auto ambient_guard = detail::enter_ambient_context (ambient_context);
               try {
                   runtime::messaging::envelope_codec_t envelope;
                   auto reply = (*requester) (std::move (parts), effective_timeout);
@@ -1790,10 +1798,13 @@ task_t<zlink::message_t> route_client_t::submit_channel_request_reply_message_er
                       return;
                   }
                   if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        framework_error_kind_t::internal_failure,
-                        reply_header.value ().error_message.value_or (
-                          "RouteMesh channel request failed")));
+                      runtime::messaging::request_failure_mapper_t failure_mapper;
+                      source->complete (detail::result_access_t::failure<zlink::message_t> (
+                        failure_mapper.error_header_exception (
+                          reply_header.value ().error_code.value_or ("request_failed"),
+                          reply_header.value ().error_message.value_or (
+                            "RouteMesh channel request failed"),
+                          "RouteMesh channel request")));
                       return;
                   }
                   auto body = envelope.decode_body (reply.value ());
@@ -1857,6 +1868,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
       flow_origin_t::application,
       state && state->runtime
         && detail::message_flow_tracer_t (state->runtime->dispatch).capture_enabled ());
+    const auto ambient_context = detail::capture_ambient_context ();
     if (!state || !state->runtime || state->serializers == nullptr) {
         return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
           framework_error_kind_t::protocol_error, "route client is not configured"));
@@ -1918,7 +1930,9 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                    spot_id = std::move (spot_id),
                                    target_spot_generation,
                                    packet_name = std::move (packet_name), parts = std::move (parts),
-                                   effective_timeout, mesh_requester] () mutable {
+                                   effective_timeout, mesh_requester,
+                                   ambient_context] () mutable {
+              const auto ambient_guard = detail::enter_ambient_context (ambient_context);
               try {
                   runtime::messaging::envelope_codec_t envelope;
                   auto reply = [&] () -> result_t<runtime::messaging::message_parts_t> {
@@ -1966,10 +1980,13 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                       return;
                   }
                   if (reply_header.value ().kind == runtime::messaging::message_kind_t::error) {
-                      source->complete (result_t<zlink::message_t>::failure (
-                        framework_error_kind_t::internal_failure,
-                        reply_header.value ().error_message.value_or (
-                          "route spot request failed")));
+                      runtime::messaging::request_failure_mapper_t failure_mapper;
+                      source->complete (detail::result_access_t::failure<zlink::message_t> (
+                        failure_mapper.error_header_exception (
+                          reply_header.value ().error_code.value_or ("request_failed"),
+                          reply_header.value ().error_message.value_or (
+                            "route spot request failed"),
+                          "route spot request")));
                       return;
                   }
                   auto body = envelope.decode_body (reply.value ());

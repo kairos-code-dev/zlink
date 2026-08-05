@@ -89,6 +89,30 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     });
   }
 
+  beginDeferredJoin(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: import('../../contracts').ZLinkActorJoinOperationId
+  ): void {
+    this.options.sourceTransfer?.beginDeferredActorHandoff?.(
+      actor,
+      state,
+      deferredOperationKey(operationId)
+    );
+  }
+
+  async abortDeferredJoin(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: import('../../contracts').ZLinkActorJoinOperationId
+  ): Promise<void> {
+    await this.options.sourceTransfer?.cancelDeferredActorHandoff?.(
+      actor,
+      state,
+      deferredOperationKey(operationId)
+    );
+  }
+
   async joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
@@ -102,9 +126,10 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     const node = this.node();
     const actorRef = state.nativeActorRef ?? lookupNativeActorRef(node, actor.context.actorId) ?? node.createActor(actor.context.actorId);
     state.setNativeActorRef(actorRef as never);
-    const target = await this.options.spotRouteResolver?.resolve(spotId, signal);
+    let target: Awaited<ReturnType<ZLinkSpotRouteResolver['resolve']>> | undefined;
+    target = await this.options.spotRouteResolver?.resolve(spotId, signal);
     installResolvedSpotRoute(node, target);
-    return await this.localJoin.joinSpot(
+    const result = await this.localJoin.joinSpot(
       node,
       actor,
       state,
@@ -114,6 +139,13 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       request,
       timeoutMs ?? this.options.actorTransferTimeoutMs,
       signal,
+      completionOperationId
+    );
+    return this.withDeferredJoinFinalizer(
+      actor,
+      state,
+      target,
+      result,
       completionOperationId
     );
   }
@@ -133,7 +165,8 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     state.setNativeActorRef(actorRef as never);
     const meshName = state.meshName ?? actor.context.meshName;
     const entrySpotId = this.options.entrySpotIdProvider?.(meshName);
-    const resolvedTarget = entrySpotId === undefined
+    let resolvedTarget: Awaited<ReturnType<ZLinkSpotRouteResolver['resolve']>> | undefined;
+    resolvedTarget = entrySpotId === undefined
       ? undefined
       : await this.options.spotRouteResolver?.resolve(entrySpotId, signal);
     // The caller may carry the Entry node from the previous membership.
@@ -144,7 +177,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ?? state.entryNodeRid
       ?? toFrameworkRoutingId(node.status().routingId);
     const target = resolvedTarget;
-    return await this.localJoin.joinEntrySpot(
+    const result = await this.localJoin.joinEntrySpot(
       node,
       actor,
       state,
@@ -156,6 +189,39 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       signal,
       completionOperationId
     );
+    return this.withDeferredJoinFinalizer(
+      actor,
+      state,
+      target,
+      result,
+      completionOperationId
+    );
+  }
+
+  private withDeferredJoinFinalizer(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    target: Awaited<ReturnType<ZLinkSpotRouteResolver['resolve']>> | undefined,
+    result: ZLinkActorJoinRuntimeResult<Message>,
+    operationId: import('../../contracts').ZLinkActorJoinOperationId | undefined
+  ): ZLinkActorJoinRuntimeResult<Message> {
+    if (operationId === undefined || this.options.sourceTransfer === undefined) return result;
+    const key = deferredOperationKey(operationId);
+    return {
+      ...result,
+      finalizeDeferredJoin: async () => {
+        if (result.accepted && result.actor !== undefined && target !== undefined) {
+          await this.options.sourceTransfer!.completeDeferredActorHandoff?.(
+            actor,
+            target,
+            result.actor,
+            key
+          );
+        } else {
+          await this.options.sourceTransfer!.cancelDeferredActorHandoff?.(actor, state, key);
+        }
+      }
+    };
   }
 
   private node(): ZLinkBackendMeshNode {
@@ -163,6 +229,12 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
       ? this.options.node()
       : this.options.node;
   }
+}
+
+function deferredOperationKey(
+  operationId: import('../../contracts').ZLinkActorJoinOperationId
+): string {
+  return `${operationId.high.toString(16)}:${operationId.low.toString(16)}`;
 }
 
 function installResolvedSpotRoute(

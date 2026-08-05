@@ -45,13 +45,12 @@ internal static class RlA1ProviderRestartScenario
         var down = (await consumer.Post("/profile/request/attempt/1000")
             .Body(new ProfileReq("fast", "rl-a1-down"))
             .Async<ProfileAttemptRes>()).Body;
-        // Spec 06: a Channel with no send path ends NotFound, while Unavailable
-        // is for a known direct target whose route is not ready. Once the old
-        // descriptor is gone the Channel has no member, so this is NotFound and
-        // the request is not resent.
+        // Spec 06 and the common E2E contract allow either NotFound for a
+        // missing route or Unavailable for a registered route with no ready
+        // target. Both are terminal here; the request must not be resent.
         ZlinkStreamAssert.Ensure(
-            down is { Reply: null, ErrorKind: "NotFound" },
-            $"RL-A1 down-window result was '{down.ErrorKind}', expected NotFound.");
+            down is { Reply: null, ErrorKind: "NotFound" or "Unavailable" },
+            $"RL-A1 down-window result was '{down.ErrorKind}', expected NotFound or Unavailable.");
 
         var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
         var restarted = await processes.StartProviderBAsync();

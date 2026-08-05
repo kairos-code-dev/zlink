@@ -53,13 +53,14 @@ internal static class ObsC6RollingUpdateScenario
                 == workload.RoomGeneration,
             "OBS-C6 changed Actor or User Spot ObjectGeneration.");
         var instance = (await context.PlayB.Get("/evidence")
-            .Query("spotRid", workload.Instance.SpotId)
             .Async<EvidenceSnapshot>()).Body;
         ZlinkStreamAssert.Ensure(
-            instance.SpotRows.Any(row =>
-                row.SpotRid == workload.Instance.SpotId
-                && row.NodeRid == targetNode),
-            "OBS-C6 Instance Spot did not move to application version 2.");
+            instance.Entries.Any(entry =>
+                entry.Contains(
+                    $"instance-initialized|spot={workload.Instance.SpotId}"
+                    + $"|node={targetNode}",
+                    StringComparison.Ordinal)),
+            "OBS-C6 Instance Spot did not initialize on the target node.");
 
         //  이동이 막 끝난 창에서는 `Actor is moving`이 `Unavailable`로 돌아올 수
         //  있다. 런타임이 일시 상태로 분류하는 값이므로 예산 안에서 재시도한다.
@@ -95,6 +96,7 @@ internal static class ObsC6RollingUpdateScenario
 
         var shutdown = (await context.PlayA.Post("/shutdown/direct")
             .Body(new ShutdownHostReq())
+            .Timeout(TimeSpan.FromSeconds(35))
             .Async<ShutdownHostRes>()).Body;
         ZlinkStreamAssert.Ensure(
             shutdown is { Outcome: "Stopped", Reason: "None" },

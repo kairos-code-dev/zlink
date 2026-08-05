@@ -18,6 +18,7 @@ internal sealed class ZLinkActorRuntimeState(
     private static readonly AsyncLocal<DispatchOwnership?> AmbientDispatch = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _terminalLifecycleGate = new();
     private readonly object _sessionGate = new();
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly TimeSpan _sessionBindingTombstoneRetention =
@@ -41,6 +42,7 @@ internal sealed class ZLinkActorRuntimeState(
     private readonly IServiceProvider _services = services ?? EmptyServices;
     private ZLinkActorHandlerActivation? _handlerActivation;
     private bool _handlerActivationClosed;
+    private Task? _terminalLifecycleCompletion;
     private int _contextInvalidated;
 
     public string ActorId { get; } = actorId;
@@ -101,15 +103,22 @@ internal sealed class ZLinkActorRuntimeState(
         Func<T> terminalTransition)
     {
         ArgumentNullException.ThrowIfNull(terminalTransition);
-        CloseHandlerActivation();
-        var requiresDispatchRelease =
-            AmbientDispatch.Value is { IsActive: true } ownership
-            && ReferenceEquals(ownership.State, this);
-        var barrier =
-            _dispatchMailbox.CloseAdmissionAndReserveLifecycleBarrier();
-        return new ZLinkActorHandlerTerminalCompletion<T>(
-            CompleteHandlerActivationCoreAsync(barrier, terminalTransition),
-            requiresDispatchRelease);
+        lock (_terminalLifecycleGate)
+        {
+            CloseHandlerActivation();
+            var requiresDispatchRelease =
+                AmbientDispatch.Value is { IsActive: true } ownership
+                && ReferenceEquals(ownership.State, this);
+            var barrier =
+                _dispatchMailbox.CloseAdmissionAndReserveLifecycleBarrier();
+            var completion = CompleteHandlerActivationCoreAsync(
+                barrier,
+                terminalTransition);
+            _terminalLifecycleCompletion = completion;
+            return new ZLinkActorHandlerTerminalCompletion<T>(
+                completion,
+                requiresDispatchRelease);
+        }
     }
 
     private async Task<T> CompleteHandlerActivationCoreAsync<T>(
@@ -127,10 +136,33 @@ internal sealed class ZLinkActorRuntimeState(
 
     internal async ValueTask InvalidateRuntimeGenerationAfterDispatchesAsync()
     {
-        CloseHandlerActivation();
-        var barrier =
-            _dispatchMailbox.CloseAdmissionAndReserveLifecycleBarrier();
-        using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+        Task? terminalCompletion;
+        ZLinkActorDispatchMailbox.BarrierReservation? barrier = null;
+        lock (_terminalLifecycleGate)
+        {
+            CloseHandlerActivation();
+            terminalCompletion = _terminalLifecycleCompletion;
+            if (terminalCompletion is null)
+                barrier = _dispatchMailbox
+                    .CloseAdmissionAndReserveLifecycleBarrier();
+        }
+
+        if (terminalCompletion is not null)
+        {
+            // A migration or teardown may have already closed admission and
+            // be waiting for the current dispatch to return. Reusing that
+            // completion keeps shutdown from reserving a second terminal
+            // barrier for the same actor.
+            await terminalCompletion.ConfigureAwait(false);
+            await ExecuteLockedAsync(
+                    InvalidateRuntimeGeneration,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            await DisposeHandlerActivationAsync().ConfigureAwait(false);
+            return;
+        }
+
+        using var turn = await barrier!.ClaimAsync().ConfigureAwait(false);
         await ExecuteLockedAsync(
                 InvalidateRuntimeGeneration,
                 CancellationToken.None)
@@ -981,11 +1013,11 @@ internal sealed class ZLinkActorRuntimeState(
     {
         lock (_sessionGate)
         {
-            if (_boundSession is { } current)
-            {
-                session = current;
-                return true;
-            }
+            // Once the target authority is committed, a relocation can still
+            // retain the source projection in _boundSession until the session
+            // owner acknowledges the route switch. Outbound pushes must use
+            // the committed target projection during that interval; otherwise
+            // the first target push is fenced as a stale source push.
             if (_pendingSessionRoute is
                 {
                     TargetActor: not null,
@@ -993,6 +1025,11 @@ internal sealed class ZLinkActorRuntimeState(
                 } pending)
             {
                 session = CreateCommittedRelocationSession(pending);
+                return true;
+            }
+            if (_boundSession is { } current)
+            {
+                session = current;
                 return true;
             }
         }
@@ -1198,9 +1235,17 @@ internal sealed class ZLinkActorRuntimeState(
         Handoff.PrepareForTransferredActivation();
         NativeActorRef = null;
         Interlocked.Exchange(ref _contextInvalidated, 0);
-        lock (_sessionGate)
-            _handlerActivationClosed = false;
-        _dispatchMailbox.ReopenAdmission();
+        lock (_terminalLifecycleGate)
+        {
+            if (_terminalLifecycleCompletion is { IsCompleted: false })
+                throw new InvalidOperationException(
+                    $"Actor '{ActorId}' still has a pending terminal lifecycle completion.");
+
+            _dispatchMailbox.ReopenAdmission();
+            _terminalLifecycleCompletion = null;
+            lock (_sessionGate)
+                _handlerActivationClosed = false;
+        }
     }
 
     public void ClearRetiredLocalActorRef(ZLinkBackendActorRef actor)

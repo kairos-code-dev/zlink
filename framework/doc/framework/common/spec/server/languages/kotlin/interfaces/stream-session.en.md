@@ -40,6 +40,17 @@ connection of a different Actor on the same Session that isn't included
 in the relocation target are kept. The application doesn't rebind to
 learn about relocation.
 
+## STREAM Socket Message Size
+
+Kotlin uses Java's `configureSocket().setMaxMessageSize(...)` contract
+unchanged. The default is `64 KiB`, and it applies only to complete
+client-to-server messages received by a StreamNode through Core STREAM. The
+size is header bytes plus payload bytes, excluding the 6-byte prefix. `0`
+means no Framework limit and a negative value is a startup error. An
+over-limit message isn't delivered to the handler; the server records
+`EMSGSIZE` and closes the connection. The Framework limit doesn't apply to
+server-to-client outbound messages.
+
 ## Kotlin Source Signature
 
 ```kotlin

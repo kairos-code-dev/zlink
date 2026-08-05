@@ -118,7 +118,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
         try
         {
             var result = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
-                    runtime.WorkerPool,
+                    runtime.LogicalMulticastWorkerPool,
                     () => bundle.Spot.Publish(
                         channelName,
                         topic,
@@ -248,12 +248,16 @@ internal static class ZLinkLogicalMulticastSubmitter
 
         public void Run(CancellationToken shutdownToken)
         {
-            _ = shutdownToken;
             if (Interlocked.CompareExchange(ref _state, Committed, Pending) != Pending) return;
             DisposeRegistrations();
             _source.TrySetResult(SubmitResult.Ok);
             try
             {
+                // ForceStop cancels the pool token before owner disposal. A
+                // committed publish has no public failure result, but it must
+                // not start target processing after its MeshNode/socket owner
+                // has entered forced cleanup.
+                if (shutdownToken.IsCancellationRequested) return;
                 _publish();
             }
             catch (Exception error)

@@ -284,7 +284,7 @@ baseline — it doesn't substitute for judgment:
   missing.
 - Falling below 80% needs a clear reason, like code better suited to integration/
   contract tests than line coverage — generated code, platform-specific glue code (this
-  follows "Judging Exceptions" at the end of Part 1 of the general document).
+  follows the condition in the "Testing" section of Part 1 of the general document).
 - Don't add shallow tests just to move the number.
 
 If a module exposes a public API or a cross-language contract, prefer focused contract
@@ -299,8 +299,9 @@ separately scheduled big cleanup.
 **When and how.** The procedure is mechanical: once a related feature's development
 passes its regression tests, sweep that change's scope right there against
 [POSDDD](./posddd.md)'s risk sign checklist (information leakage, temporal
-decomposition, shallow modules, and the other 17 items). If any matching smell turns
-up, refactor it on the spot instead of deferring it to "clean up later." A green
+decomposition, shallow modules, and the other 19 items) and the shallow module smell
+catalog. If any matching smell turns up, refactor it on the spot instead of deferring
+it to "clean up later." A green
 regression-test state is the point where it's safe to change the structure — changing
 structure without confirming the tests pass first mixes functional defects with
 refactoring defects and makes the cause hard to isolate.
@@ -319,7 +320,7 @@ improvement."
 
 ## ZLink-Specific Risk Sign Checklist
 
-In addition to the general document's 17-item checklist, check the following.
+In addition to the general document's 19-item checklist, check the following.
 
 | # | Risk sign | Diagnostic question |
 |---|---|---|

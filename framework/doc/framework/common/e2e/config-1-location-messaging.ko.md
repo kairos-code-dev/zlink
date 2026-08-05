@@ -386,28 +386,28 @@ scenario는 두 provider를 처음부터 다른 weight로 시작하여 runtime �
   positive weight 장기 선택 비율을 검증한다. 실행 중 weight 제외·복원은
   [Config 5 RL-B4](config-5-resilience-lifecycle.ko.md)가 검증한다.
 
-#### RM-C8 수신 message 크기 상한을 적용한다
+#### RM-C8 RouteMesh SS payload 무결성을 검증한다
 
 우선순위: `P1`
 
-각 MeshNode는 자신이 받을 complete transport message의 최대 크기를 startup에서 정한다. 이 값은
-sender와 협상한 공통 상한이 아니다. Receiver는 자신의 상한을 넘는 message를 handler에 일부만
-전달해서는 안 되며, 거부 뒤에도 정상 크기 message를 계속 처리해야 한다.
+RouteMesh ServerServer(SS)는 Framework-level `MaxMessageSize` 설정을 제공하지 않는다. 이
+scenario는 SS transport에 listener 상한을 추가하지 않고, 여러 크기의 정상 payload가 손상 없이
+왕복하는지 확인한다. StreamNode의 Core STREAM inbound 상한은 별도 계약이며 이 scenario의 대상이
+아니다.
 
-**검증 질문:** Receiver의 `MaxMessageSize`보다 충분히 작은 payload는 손상 없이 처리되고 상한보다
-큰 payload는 handler 실행 없이 거부되는가.
+**검증 질문:** RouteMesh SS가 별도의 Framework message-size 설정 없이 여러 크기의 payload를
+손상 없이 처리하는가.
 
-- 시작 조건: Provider의 `MaxMessageSize`를 32 MiB로 설정하고, payload 길이와 checksum을 reply와
-  evidence에 기록한다.
-- 절차: Client가 1 KiB와 17 MiB JSON payload를 각각 request로 보낸다. 이어서 payload만으로도 상한을
-  넘는 33 MiB request와 다시 1 KiB request를 차례로 보낸다. JSON envelope 크기를 계산하여 정확한
-  32 MiB 경계값이라고 단정하지 않는다.
-- 검증: 1 KiB와 17 MiB request는 payload 길이와 checksum이 같은 reply를 받으며 provider handler가
-  각각 한 번 실행된다. 33 MiB request는 handler를 실행하지 않고, error reply를 만들 수 있으면
-  `ProtocolError`, header까지 처리할 수 없으면 request deadline의 `DeadlineExceeded`로 끝난다. 거부
-  뒤의 1 KiB request는 정상 reply를 받는다.
-- 세부 동작: [RouteMesh topology §8](../spec/07-channel-topology.ko.md)과
-  [오류 모델 §5](../spec/32-framework-error-model.ko.md)를 검증한다.
+- 시작 조건: Provider와 Consumer는 RouteMesh SS의 public topology만 설정하고 Framework
+  `MaxMessageSize`를 설정하지 않는다. Provider는 payload 길이와 checksum을 reply와 evidence에
+  기록한다.
+- 절차: Client가 1 byte, 4 KiB, 256 KiB, 1 MiB payload를 각각 request로 보낸 뒤 1 byte 정상
+  request를 한 번 더 보낸다.
+- 검증: 각 payload request는 입력과 같은 길이와 checksum의 reply를 받고 provider handler가 한 번
+  실행된다. 마지막 정상 request도 reply를 받으며, payload 일부만 전달된 evidence가 없다.
+- 세부 동작: [RouteMesh topology §8](../spec/07-channel-topology.ko.md)의 SS 경계를 확인한다.
+  StreamNode 상한은 [STREAM session §4](../spec/19-stream-session.ko.md#4-stream-socket-message-size)에서
+  별도로 정의한다.
 
 #### RM-C9 Application HWM 도달 뒤 수신을 재개한다
 
@@ -420,7 +420,7 @@ message 수신을 멈춘다. Handler가 완료되어 pending payload가 HWM보�
 **검증 질문:** Provider의 pending payload가 Application HWM에 도달하면 public status가 수신 중단을
 표시하고, handler 완료 뒤 수신 재개와 정상 request 처리를 표시하는가.
 
-- 시작 조건: Provider의 `ApplicationHwmBytes`는 1 MiB, `MaxMessageSize`는 4 MiB다. Provider handler는
+- 시작 조건: Provider의 `ApplicationHwmBytes`는 1 MiB다. Provider handler는
   public application control endpoint가 release할 때까지 2 MiB command 처리를 완료하지 않는다.
   Baseline request는 성공한 상태다.
 - 절차: Client가 consumer를 통해 2 MiB command를 한 번 보낸다. Provider의 public application

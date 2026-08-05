@@ -1913,7 +1913,23 @@ test('ZLinkModule.forRoot maps stream node options into runtime registration', a
 
   assert.equal(streamNode.bind, 'tcp://127.0.0.1:9100');
   assert.equal(streamNode.session, ClientHeaderSession);
+  assert.equal(streamNode.maxMessageSize, 64 * 1024);
   assert.equal(registration.spotNodes.get('game.spot').router.bind, 'tcp://127.0.0.1:9110');
+
+  const configuredOptions = framework.createFrameworkOptions((builder) => {
+    builder.configureInboundDispatch().applicationHwmBytes(0n);
+    const stream = builder.addStreamNode('configured-stream')
+      .bind('tcp://127.0.0.1:9111')
+      .registerSession(ClientHeaderSession);
+    const socket = stream.configureSocket();
+    assert.equal(socket.maxMessageSize, 64 * 1024);
+    socket.maxMessageSize = 0;
+  });
+  const configuredRegistration = framework.createFrameworkRegistration(configuredOptions);
+  assert.equal(
+    configuredRegistration.streamNodes.get('configured-stream').maxMessageSize,
+    0
+  );
 
   assert.throws(
     () => framework.createFrameworkOptions((builder) => builder.addStreamNode('')),

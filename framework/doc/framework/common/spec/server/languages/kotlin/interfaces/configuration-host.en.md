@@ -133,6 +133,18 @@ public interface systems.zlink.framework.configuration.ZLinkStreamSocketConfig {
 }
 ```
 
+Kotlin uses Java's `ZLinkStreamNodeBuilder.configureSocket()` and
+`ZLinkStreamSocketConfig.setMaxMessageSize(...)` unchanged. The default is
+`64 KiB`, and the setting applies only to complete client-to-server messages
+received by a StreamNode through Core STREAM. The size is header bytes plus
+payload bytes, excluding the 6-byte prefix. `0` maps to Core `-1`, so
+Framework adds no limit; a negative value is a startup configuration error.
+A message over the limit is never partly delivered to the handler. The
+server records `EMSGSIZE` and a diagnostic trace, then closes the connection.
+The raw client observes the close without a separate wire error code. The
+limit doesn't apply to server-to-client outbound messages, and the setting
+isn't added to ClientServer or RouteMesh SS.
+
 Kotlin uses the Java runtime's managed heap cap
 (`Runtime.maxMemory()`). If `processMemoryLimitBytes()` is empty, it
 checks the finite OS cap applied to the process and the JVM managed heap

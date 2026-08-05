@@ -384,6 +384,12 @@ class transport_error_session_t final : public zlink::framework::packet_stream_s
         return _errors;
     }
 
+    int packets () const
+    {
+        const std::lock_guard lock (_mutex);
+        return _packets;
+    }
+
     zlink::framework::stream_session_error_t last_error () const
     {
         const std::lock_guard lock (_mutex);
@@ -1220,7 +1226,9 @@ int main ()
       zlink::framework::service_lifetime_t::scoped);
     zlink::framework::zlink_framework_options_t transport_options (
       transport_services, transport_handlers, transport_serializers, transport_zlink);
-    transport_options.add_stream_node ("transport-stream")
+    auto transport_stream_options = transport_options.add_stream_node ("transport-stream");
+    transport_stream_options.configure_socket ().max_message_size = 0;
+    transport_stream_options
       .bind (transport_endpoint)
       .register_session ("transport-session");
     transport_options.apply ();
@@ -1297,6 +1305,12 @@ int main ()
      * frame before the first connection completes. */
     auto transport_runtime = zlink::framework::detail::stream_runtime_t::from (
       transport_zlink);
+    const auto transport_snapshots = transport_runtime.snapshots ();
+    if (transport_snapshots.size () != 1
+        || transport_snapshots[0].max_message_size != 0) {
+        transport_host.stop ();
+        return 45;
+    }
     const zlink::framework::detail::stream_header_t fairness_header (
       zlink::framework::detail::stream_message_kind_t::send,
       zlink::framework::stream_codec_t::raw,
@@ -1373,6 +1387,54 @@ int main ()
     ::close (buffered_client);
 
     transport_host.stop ();
+
+    const auto limited_port = reserve_loopback_port ();
+    const auto limited_endpoint =
+      "tcp://127.0.0.1:" + std::to_string (limited_port);
+    zlink::framework::zlink_builder_t limited_zlink;
+    zlink::framework::zlink_framework_options_t limited_options (
+      transport_services, transport_handlers, transport_serializers, limited_zlink);
+    auto limited_stream_options = limited_options.add_stream_node ("limited-stream");
+    limited_stream_options.configure_socket ().max_message_size = 128;
+    limited_stream_options.bind (limited_endpoint).register_session ("limited-session");
+    limited_options.apply ();
+    auto limited_runtime = zlink::framework::detail::stream_runtime_t::from (limited_zlink);
+    const auto limited_snapshots = limited_runtime.snapshots ();
+    if (limited_snapshots.size () != 1
+        || limited_snapshots[0].max_message_size != 128) {
+        return 46;
+    }
+    transport_error_session_t limited_session;
+    zlink::framework::runtime::stream_host_service_t limited_host (
+      limited_runtime, limited_snapshots,
+      {{"limited-session",
+        [&limited_session] (zlink::framework::service_provider_t &)
+          -> zlink::framework::packet_stream_session_t & { return limited_session; }}});
+    limited_host.start (transport_provider);
+    const int limited_client = connect_loopback (limited_port);
+    if (limited_client < 0 || !limited_session.wait_connected (1)) {
+        if (limited_client >= 0) {
+            ::close (limited_client);
+        }
+        limited_host.stop ();
+        return 47;
+    }
+    const zlink::framework::detail::stream_header_t limited_header (
+      zlink::framework::detail::stream_message_kind_t::send,
+      zlink::framework::stream_codec_t::raw,
+      zlink::framework::detail::stream_header_flags_t::none,
+      std::nullopt,
+      "limited-probe");
+    const auto limited_frame = make_native_stream_frame (
+      limited_runtime, limited_header, zlink::message_t::from (std::string (512, 'x')));
+    send_native_bytes (limited_client, limited_frame);
+    const bool limited_disconnected = limited_session.wait_disconnected (1);
+    ::shutdown (limited_client, SHUT_RDWR);
+    ::close (limited_client);
+    limited_host.stop ();
+    if (!limited_disconnected || limited_session.packets () != 0) {
+        return 48;
+    }
 
     const auto rejected_port = reserve_loopback_port ();
     const auto rejected_endpoint =

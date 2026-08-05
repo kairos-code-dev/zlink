@@ -185,7 +185,10 @@ import { ZLinkConfigurationException } from '../../contracts/Configuration/Confi
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 import { ZLinkStatefulAuthorityRouteRuntime } from './stateful-authority-route-runtime';
 import { ZLinkInstanceActivationAuthority } from './instance-activation-authority';
-import type { ServiceAsyncInstanceActivationAuthority } from '../foundation/service-stateful-runtime';
+import type {
+  ServiceAsyncInstanceActivationAuthority,
+  ServiceInstanceApplicationLifecycle
+} from '../foundation/service-stateful-runtime';
 import {
   hasObjectClientCapability,
   ZLinkHostSpotAddressTransport
@@ -323,6 +326,26 @@ export class ZLinkFrameworkRuntimeHost implements
       () => this.runtimeState
     );
     this.meshRouters = new MeshRouterResolver(options.registration);
+    this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
+    const sendTimeoutMsForSpotMesh = (meshName: string): number =>
+      options.registration.spotNodes.get(meshName)?.router?.sendTimeoutMs
+        ?? LEGACY_MESH_SEND_TIMEOUT_MS;
+    const sendTimeoutMsForSpotRouteChannel = (routeChannelId: string): number => {
+      const routeChannel = options.registration.routeChannelOptions.get(routeChannelId);
+      if (routeChannel !== undefined) {
+        return routeChannel.sendTimeoutMs ?? LEGACY_MESH_SEND_TIMEOUT_MS;
+      }
+      return sendTimeoutMsForSpotMesh(routeChannelId);
+    };
+    const defaultSpotSendTimeoutMs = Math.max(
+      LEGACY_MESH_SEND_TIMEOUT_MS,
+      ...[...options.registration.spotNodes.values()].map(node =>
+        node.router?.sendTimeoutMs ?? LEGACY_MESH_SEND_TIMEOUT_MS
+      ),
+      ...[...options.registration.routeChannelOptions.values()].map(route =>
+        route.sendTimeoutMs ?? LEGACY_MESH_SEND_TIMEOUT_MS
+      )
+    );
     this.routeTransport = new ZLinkRuntimeRouteTransport(
       () => this.channelRuntime,
       (routerChannelId) => this.meshRouters.canUseRouterChannel(routerChannelId),
@@ -346,9 +369,13 @@ export class ZLinkFrameworkRuntimeHost implements
       completions: (meshName) => this.spotNodeRuntime?.meshCompletionTable(meshName),
       codecs: { serializers: options.registration.messageSerializers },
       defaultRequestTimeoutMs: options.registration.requestTimeoutMs ?? 30_000,
+      defaultSendTimeoutMs: defaultSpotSendTimeoutMs,
+      sendTimeoutMsForMesh: sendTimeoutMsForSpotMesh,
+      sendTimeoutMsForRouteChannel: sendTimeoutMsForSpotRouteChannel,
+      submitMissingInstance: (meshName, attempt, signal, timeoutMs) =>
+        this.meshSubmitters.submit(meshName, attempt, signal, timeoutMs),
       dispatchErrors: this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink)
     });
-    this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
     this.locationOwner = new ZLinkLocationRuntimeOwner({
       registration: options.registration,
       runtimeEventPublisher: this.runtimeEventPublisher,
@@ -1340,62 +1367,12 @@ export class ZLinkFrameworkRuntimeHost implements
               expectedCurrentRoute?: import('../foundation/service-stateful-wire-codec').ServiceInstanceRouteFence | null
             ) => void;
             registerInstanceApplicationLifecycle?: (
-              lifecycle: import('../foundation/service-stateful-runtime')
-                .ServiceInstanceApplicationLifecycle
+              lifecycle: ServiceInstanceApplicationLifecycle
             ) => void;
           };
           const spotManager = this.spotManager;
           if (spotManager !== undefined) {
-            activationNode.registerInstanceApplicationLifecycle?.({
-              isMaterialized: (target) =>
-                spotManager.isInstanceMaterialized(
-                  meshName,
-                  target.stableType,
-                  target.targetSpotId as never
-                ),
-              isMaterializing: (target) =>
-                spotManager.isInstanceMaterializing(
-                  meshName,
-                  target.targetSpotId as never
-                ),
-              isClosing: (target) =>
-                spotManager.isInstanceClosing(
-                  meshName,
-                  target.targetSpotId as never
-                ),
-              isIdleEvicting: (target) =>
-                spotManager.isInstanceSpotIdleEvicting(
-                  meshName,
-                  target.targetSpotId as never
-                ),
-              beginIdleEviction: (target) =>
-                spotManager.beginInstanceSpotIdleEviction(
-                  meshName,
-                  target.targetSpotId as never
-                ),
-              materialize: (target, objectGeneration) =>
-                spotManager.materializeInstance(
-                  meshName,
-                  target.stableType,
-                  target.targetSpotId as never,
-                  objectGeneration,
-                  this.executionState?.abortController.signal
-                ),
-              discard: (target) =>
-                spotManager.discardInstance(meshName, target.targetSpotId as never),
-              beginTerminal: (target) =>
-                spotManager.beginInstanceTerminal(
-                  meshName,
-                  target.targetSpotId as never,
-                  target.objectGeneration
-                ),
-              completeTerminal: (target) =>
-                spotManager.completeInstanceTerminal(
-                  meshName,
-                  target.targetSpotId as never,
-                  target.objectGeneration
-                )
-            });
+            this.registerInstanceApplicationLifecycle(meshName, activationNode, spotManager);
           }
           activationNode.registerAsyncInstanceActivationAuthority?.(
             new ZLinkInstanceActivationAuthority({
@@ -1835,6 +1812,68 @@ export class ZLinkFrameworkRuntimeHost implements
     await this.spotManager?.drainForShutdown(meshName);
   }
 
+  private registerInstanceApplicationLifecycle(
+    meshName: string,
+    node: ZLinkBackendMeshNode,
+    spotManager: DefaultZLinkSpotManager
+  ): void {
+    const activationNode = node as typeof node & {
+      registerInstanceApplicationLifecycle?: (
+        lifecycle: ServiceInstanceApplicationLifecycle
+      ) => void;
+    };
+    activationNode.registerInstanceApplicationLifecycle?.({
+      isMaterialized: (target) =>
+        spotManager.isInstanceMaterialized(
+          meshName,
+          target.stableType,
+          target.targetSpotId as never
+        ),
+      isMaterializing: (target) =>
+        spotManager.isInstanceMaterializing(
+          meshName,
+          target.targetSpotId as never
+        ),
+      isClosing: (target) =>
+        spotManager.isInstanceClosing(
+          meshName,
+          target.targetSpotId as never
+        ),
+      isIdleEvicting: (target) =>
+        spotManager.isInstanceSpotIdleEvicting(
+          meshName,
+          target.targetSpotId as never
+        ),
+      beginIdleEviction: (target) =>
+        spotManager.beginInstanceSpotIdleEviction(
+          meshName,
+          target.targetSpotId as never
+        ),
+      materialize: (target, objectGeneration) =>
+        spotManager.materializeInstance(
+          meshName,
+          target.stableType,
+          target.targetSpotId as never,
+          objectGeneration,
+          this.executionState?.abortController.signal
+        ),
+      discard: (target) =>
+        spotManager.discardInstance(meshName, target.targetSpotId as never),
+      beginTerminal: (target) =>
+        spotManager.beginInstanceTerminal(
+          meshName,
+          target.targetSpotId as never,
+          target.objectGeneration
+        ),
+      completeTerminal: (target) =>
+        spotManager.completeInstanceTerminal(
+          meshName,
+          target.targetSpotId as never,
+          target.objectGeneration
+        )
+    });
+  }
+
   setActorManager(actorManager: DefaultZLinkActorManager): void {
     this.actorManager = actorManager;
   }
@@ -1842,62 +1881,7 @@ export class ZLinkFrameworkRuntimeHost implements
   setSpotManager(spotManager: DefaultZLinkSpotManager): void {
     this.spotManager = spotManager;
     for (const [meshName, node] of this.spotNodeRuntime?.meshNodesByName ?? []) {
-      const activationNode = node as typeof node & {
-        registerInstanceApplicationLifecycle?: (
-          lifecycle: import('../foundation/service-stateful-runtime')
-            .ServiceInstanceApplicationLifecycle
-        ) => void;
-      };
-      activationNode.registerInstanceApplicationLifecycle?.({
-        isMaterialized: (target) =>
-          spotManager.isInstanceMaterialized(
-            meshName,
-            target.stableType,
-            target.targetSpotId as never
-          ),
-        isMaterializing: (target) =>
-          spotManager.isInstanceMaterializing(
-            meshName,
-            target.targetSpotId as never
-          ),
-        isClosing: (target) =>
-          spotManager.isInstanceClosing(
-            meshName,
-            target.targetSpotId as never
-          ),
-        isIdleEvicting: (target) =>
-          spotManager.isInstanceSpotIdleEvicting(
-            meshName,
-            target.targetSpotId as never
-          ),
-        beginIdleEviction: (target) =>
-          spotManager.beginInstanceSpotIdleEviction(
-            meshName,
-            target.targetSpotId as never
-          ),
-        materialize: (target, objectGeneration) =>
-          spotManager.materializeInstance(
-            meshName,
-            target.stableType,
-            target.targetSpotId as never,
-            objectGeneration,
-            this.executionState?.abortController.signal
-          ),
-        discard: (target) =>
-          spotManager.discardInstance(meshName, target.targetSpotId as never),
-        beginTerminal: (target) =>
-          spotManager.beginInstanceTerminal(
-            meshName,
-            target.targetSpotId as never,
-            target.objectGeneration
-          ),
-        completeTerminal: (target) =>
-          spotManager.completeInstanceTerminal(
-            meshName,
-            target.targetSpotId as never,
-            target.objectGeneration
-          )
-      });
+      this.registerInstanceApplicationLifecycle(meshName, node, spotManager);
     }
   }
 
@@ -2935,6 +2919,9 @@ export class ZLinkFrameworkRuntimeHost implements
           }
         );
     this.cachedLocationSpotRouteResolver = resolver;
+    this.locationOwner.setSpotRouteInvalidator(
+      resolver === undefined ? undefined : spotId => resolver.invalidate?.(spotId)
+    );
     return resolver;
   }
 

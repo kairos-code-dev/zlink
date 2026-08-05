@@ -65,19 +65,32 @@ struct server_options_t
     }
 };
 
-/* Aggregates the config-11 §3 evidence arrays. Metric samples keep the raw
- * catalog fields so counter deltas and current gauges stay distinguishable. */
+/* Aggregates the config-11 §3 evidence arrays. The runtime emits structured
+ * log fields, while this public evidence endpoint exposes the metric shape
+ * used by the E2E contract: instrument kind and value are metric properties;
+ * the remaining low-cardinality fields are labels. */
 class observability_evidence_t
 {
   public:
     void record_metric (const fw::log_record_t &record)
     {
-        nlohmann::json fields = nlohmann::json::object ();
+        nlohmann::json metric = nlohmann::json::object ();
+        nlohmann::json tags = nlohmann::json::object ();
         for (const auto &field : record.fields) {
-            fields[field.key] = field.value;
+            if (field.key == "instrument_kind") {
+                metric["kind"] = field.value;
+            } else if (field.key == "value") {
+                metric["value"] = std::stod (field.value);
+            } else if (field.key == "name" || field.key == "unit"
+                       || field.key == "temporality") {
+                metric[field.key] = field.value;
+            } else {
+                tags[field.key] = field.value;
+            }
         }
+        metric["tags"] = std::move (tags);
         std::lock_guard lock (_mutex);
-        _metrics.push_back (std::move (fields));
+        _metrics.push_back (std::move (metric));
     }
 
     nlohmann::json snapshot () const
@@ -661,6 +674,10 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
     /* OBS-B4: a node without a metric reader must keep messaging intact on
      * the inactive instrument path. */
     if (options.metrics_enabled) {
+        /* Runtime metrics are debug records. Keep the evidence sink on the
+         * same logging path as the runtime instead of lowering the runtime's
+         * observability level after the callback is installed. */
+        app.logging ().set_min_level (fw::log_level_t::debug);
         app.logging ().use_callback_sink (
           [evidence] (const fw::log_record_t &record) {
               if (record.message == "zlink.runtime.metric.recorded") {
@@ -691,7 +708,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
         {
             auto &locations = framework.configure_locations ();
             locations.owner_lease_renew_interval = std::chrono::seconds (1);
-            locations.owner_lease_ttl = std::chrono::seconds (5);
+            locations.owner_lease_ttl = std::chrono::seconds (15);
             locations.polling_interval = std::chrono::milliseconds (250);
         }
         /* OBS-A3(b): an off node must not create flows but still propagates
@@ -704,7 +721,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
 
         if (role == host_role_t::session) {
             auto spot = framework.add_route_mesh (obs::spot_mesh);
-            spot.channel_name (obs::spot_mesh);
+            spot.channel_name (obs::spot_mesh).server ();
             spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
               .listen (options.spot_router_endpoint);
         } else {
@@ -716,7 +733,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                                       : obs::room_spot;
             if (role == host_role_t::play) {
                 auto spot = framework.add_route_mesh (mesh_name);
-                spot.channel_name (mesh_name);
+                spot.channel_name (mesh_name).server ();
                 spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
                   .listen (options.spot_router_endpoint)
                   .add_entry_spot<obs_entry_spot_t> (
@@ -742,7 +759,7 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                     });
             } else {
                 auto spot = framework.add_route_mesh (mesh_name);
-                spot.channel_name (mesh_name);
+                spot.channel_name (mesh_name).server ();
                 spot.set_routing_id (zlink::routing_id_t::from (options.node_rid))
                   .listen (options.spot_router_endpoint)
                   .add_spot_factory<room_spot_t> (

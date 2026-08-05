@@ -3,6 +3,7 @@
 #include "runtime/stateful/stream_session_registry.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -122,6 +123,40 @@ stateful_error_t stream_session_registry_t::unbind (
     const auto indexed = _actor_bindings.find (binding.actor.key);
     if (indexed != _actor_bindings.end () && indexed->second == binding)
         _actor_bindings.erase (indexed);
+    return stateful_error_t::none;
+}
+
+stateful_error_t stream_session_registry_t::restore (
+  const stream_binding_t &binding)
+{
+    std::lock_guard lock (_mutex);
+    if (_all_sealed) {
+        return stateful_error_t::moving;
+    }
+    const auto current =
+      _connections.find (binding.connection.connection_id);
+    if (current == _connections.end ()
+        || current->second.connection != binding.connection
+        || current->second.barrier_tokens.contains (binding.actor.key)) {
+        return stateful_error_t::conflict;
+    }
+
+    const auto indexed = _actor_bindings.find (binding.actor.key);
+    if (indexed != _actor_bindings.end () && indexed->second != binding) {
+        return stateful_error_t::conflict;
+    }
+    const auto local = current->second.bindings.find (binding.actor.key);
+    if (local != current->second.bindings.end () && local->second != binding) {
+        return stateful_error_t::conflict;
+    }
+
+    current->second.bindings[binding.actor.key] = binding;
+    _actor_bindings[binding.actor.key] = binding;
+    if (current->second.next_binding_generation
+        <= binding.binding_generation
+        && binding.binding_generation != std::numeric_limits<std::uint64_t>::max ()) {
+        current->second.next_binding_generation = binding.binding_generation + 1;
+    }
     return stateful_error_t::none;
 }
 

@@ -55,6 +55,7 @@ export {
   ZLinkActorHandoffCoordinator,
   decodeHandoffPacket,
   type ZLinkActorHandoffPacket,
+  type ZLinkActorHandoffDispatch,
   type ZLinkActorHandoffResult,
   type ZLinkActorHandoffTarget
 } from './actor-handoff';

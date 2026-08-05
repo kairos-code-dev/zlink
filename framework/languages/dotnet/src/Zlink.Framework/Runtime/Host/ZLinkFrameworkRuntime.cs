@@ -63,6 +63,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private int _lifecyclePhase;
     private ZLinkFrameworkComponentState? _state;
     private ZLinkWorkerPool? _workerPool;
+    private ZLinkWorkerPool? _logicalMulticastWorkerPool;
     private TaskCompletionSource? _operationsDrained;
     private TaskCompletionSource? _operationsAtZero;
     private int _activeOperations;
@@ -752,6 +753,24 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         }
     }
 
+    // Logical Multicast admission is isolated from handler and activation work.
+    // A remote target can remain unavailable after a node failure; that state
+    // must not consume the worker capacity used by the rest of the runtime.
+    internal ZLinkWorkerPool LogicalMulticastWorkerPool
+    {
+        get
+        {
+            if (!IsStarted)
+                throw new InvalidOperationException("ZLink framework runtime is not running.");
+            lock (_workerPoolGate)
+            {
+                if (!IsStarted || _state is null)
+                    throw new InvalidOperationException("ZLink framework runtime is not running.");
+                return _logicalMulticastWorkerPool ??= Registration.WorkerOptions.CreatePool();
+            }
+        }
+    }
+
     internal IZLinkRouteClient RouteClient => Services.GetRequiredService<IZLinkRouteClient>();
 
     internal ZLinkSpotNodeRuntime GetSpotNodeRuntime(RoutingId nodeRid)
@@ -994,13 +1013,28 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     {
         var failures = new List<Exception>();
         ZLinkWorkerPool? workerPool;
+        ZLinkWorkerPool? logicalMulticastWorkerPool;
+        var logicalMulticastPoolDisposed = false;
         lock (_workerPoolGate)
         {
             workerPool = _workerPool;
             _workerPool = null;
+            logicalMulticastWorkerPool = _logicalMulticastWorkerPool;
+            _logicalMulticastWorkerPool = null;
         }
 
         if (workerPool is not null) Capture(workerPool.RequestStop);
+        if (logicalMulticastWorkerPool is not null)
+            Capture(logicalMulticastWorkerPool.RequestStop);
+        // ForceStop does not wait for the runtime operation drain. Stop the
+        // logical multicast lane before disposing MeshNode/socket owners so a
+        // committed worker cannot begin target processing against torn-down
+        // state.
+        if (forceStopToken.CanBeCanceled && logicalMulticastWorkerPool is not null)
+        {
+            await CaptureAsync(logicalMulticastWorkerPool.DisposeAsync).ConfigureAwait(false);
+            logicalMulticastPoolDisposed = true;
+        }
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
         var generationCleanupReporter =
@@ -1022,6 +1056,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
 
         if (workerPool is not null) await CaptureAsync(workerPool.DisposeAsync).ConfigureAwait(false);
+        if (logicalMulticastWorkerPool is not null && !logicalMulticastPoolDisposed)
+            await CaptureAsync(logicalMulticastWorkerPool.DisposeAsync).ConfigureAwait(false);
         return failures;
 
         async ValueTask CaptureAsync(Func<ValueTask> cleanup)

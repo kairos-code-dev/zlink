@@ -43,10 +43,18 @@ void trace_client_server (std::string_view stage, std::string details = {})
 {
     if (!client_server_trace_enabled ())
         return;
-    std::cerr << "zlink-cpp-client-server-trace stage=" << stage;
+    std::clog << "zlink-cpp-client-server-trace stage=" << stage;
     if (!details.empty ())
-        std::cerr << ' ' << details;
-    std::cerr << std::endl;
+        std::clog << ' ' << details;
+    std::clog << '\n';
+}
+
+template <typename DetailBuilder>
+void trace_client_server_lazy (std::string_view stage, DetailBuilder &&builder)
+{
+    if (!client_server_trace_enabled ())
+        return;
+    trace_client_server (stage, std::forward<DetailBuilder> (builder) ());
 }
 
 std::string routing_id_label (const std::vector<std::uint8_t> &routing_id)
@@ -159,16 +167,18 @@ void raw_client_server_server_t::start ()
       zlink::byte_count_t::bytes (server_hwm_bytes));
     router->options ().recv_hwm (
       zlink::byte_count_t::bytes (server_hwm_bytes));
-    trace_client_server (
+    trace_client_server_lazy (
       "server-socket-options",
-      "endpoint=" + _options.descriptor.advertised_endpoint
-        + " max_message_bytes="
-        + std::to_string (
-            router->options ().max_message_size ().bytes ())
-        + " send_hwm_bytes="
-        + std::to_string (router->options ().send_hwm ().bytes ())
-        + " recv_hwm_bytes="
-        + std::to_string (router->options ().recv_hwm ().bytes ()));
+      [&] {
+          return "endpoint=" + _options.descriptor.advertised_endpoint
+                 + " max_message_bytes="
+                 + std::to_string (
+                     router->options ().max_message_size ().bytes ())
+                 + " send_hwm_bytes="
+                 + std::to_string (router->options ().send_hwm ().bytes ())
+                 + " recv_hwm_bytes="
+                 + std::to_string (router->options ().recv_hwm ().bytes ());
+      });
     router->set_routing_id (
       zlink::routing_id_t::from (
         _options.descriptor.server_routing_id));
@@ -341,36 +351,42 @@ std::size_t raw_client_server_server_t::drain_monitor_events (
             return count;
         }
         ++count;
-        trace_client_server (
+        trace_client_server_lazy (
           "server-monitor-event",
-          "event="
-            + std::to_string (static_cast<int> (event->event))
-            + " routing_id="
-            + (event->routing_id
-                 ? event->routing_id->to_string ()
-                 : std::string ("-"))
-            + " value=" + std::to_string (event->value)
-            + " local=" + event->local_addr + " remote="
-            + event->remote_addr);
+          [&] {
+              return "event="
+                     + std::to_string (static_cast<int> (event->event))
+                     + " routing_id="
+                     + (event->routing_id
+                          ? event->routing_id->to_string ()
+                          : std::string ("-"))
+                     + " value=" + std::to_string (event->value)
+                     + " local=" + event->local_addr + " remote="
+                     + event->remote_addr;
+          });
         if (!event->routing_id) {
             continue;
         }
         const auto client = event->routing_id->to_bytes ();
         if (event->event == zlink::monitor_event::connection_ready) {
-            trace_client_server (
+            trace_client_server_lazy (
               "server-connection-ready",
-              "channel=" + _options.descriptor.channel_name
-                + " client=" + routing_id_label (client));
+              [&] {
+                  return "channel=" + _options.descriptor.channel_name
+                         + " client=" + routing_id_label (client);
+              });
             std::lock_guard lock (_mutex);
             // The monitor value is a ready-count, not a physical connection
             // identity.  The route id is the stable identity available at
             // this framework boundary.
             _connections.insert_or_assign (client, client);
         } else if (event->event == zlink::monitor_event::disconnected) {
-            trace_client_server (
+            trace_client_server_lazy (
               "server-disconnected",
-              "channel=" + _options.descriptor.channel_name
-                + " client=" + routing_id_label (client));
+              [&] {
+                  return "channel=" + _options.descriptor.channel_name
+                         + " client=" + routing_id_label (client);
+              });
             {
                 std::lock_guard lock (_mutex);
                 _connections.erase (client);
@@ -417,22 +433,27 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
           protocol::decode_header (received->parts.front ());
         if (header.kind == protocol::command::channelRequest
             || header.kind == protocol::command::channelSend) {
-            trace_client_server (
+            trace_client_server_lazy (
               "server-received",
-              "channel=" + _options.descriptor.channel_name
-                + " kind=" + std::to_string (static_cast<int> (header.kind))
-                + " client=" + routing_id_label (received->source_routing_id)
-                + " endpoint=" + _options.descriptor.advertised_endpoint
-                + " request_seq="
-                + (received->request_sequence
-                     ? std::to_string (*received->request_sequence)
-                     : std::string ("-"))
-                + " part0_bytes="
-                + std::to_string (received->parts.front ().size ())
-                + " part1_bytes="
-                + (received->parts.size () > 1
-                     ? std::to_string (received->parts[1].size ())
-                     : std::string ("-")));
+              [&] {
+                  return "channel=" + _options.descriptor.channel_name
+                         + " kind="
+                         + std::to_string (static_cast<int> (header.kind))
+                         + " client="
+                         + routing_id_label (received->source_routing_id)
+                         + " endpoint="
+                         + _options.descriptor.advertised_endpoint
+                         + " request_seq="
+                         + (received->request_sequence
+                              ? std::to_string (*received->request_sequence)
+                              : std::string ("-"))
+                         + " part0_bytes="
+                         + std::to_string (received->parts.front ().size ())
+                         + " part1_bytes="
+                         + (received->parts.size () > 1
+                              ? std::to_string (received->parts[1].size ())
+                              : std::string ("-"));
+              });
         }
         if (header.kind == protocol::command::hello) {
             if (received->parts.size () != 1) {
@@ -441,11 +462,15 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
             const auto client =
               protocol::decode_client_server_client_admission (
                 received->parts.front (), protocol::command::hello);
-            trace_client_server (
+            trace_client_server_lazy (
               "server-hello",
-              "channel=" + client.channel_name
-                + " client=" + routing_id_label (received->source_routing_id)
-                + " endpoint=" + _options.descriptor.advertised_endpoint);
+              [&] {
+                  return "channel=" + client.channel_name
+                         + " client="
+                         + routing_id_label (received->source_routing_id)
+                         + " endpoint="
+                         + _options.descriptor.advertised_endpoint;
+              });
             if (client.channel_name != _options.descriptor.channel_name
                 || client.security_identity
                      != _options.descriptor.security_identity) {
@@ -468,11 +493,15 @@ client_server_pump_result_t raw_client_server_server_t::pump_one (
                     protocol::command::admit, _options.descriptor)})) {
                 return client_server_pump_result_t::protocol_error;
             }
-            trace_client_server (
+            trace_client_server_lazy (
               "server-admit-sent",
-              "channel=" + _options.descriptor.channel_name
-                + " client=" + routing_id_label (received->source_routing_id)
-                + " endpoint=" + _options.descriptor.advertised_endpoint);
+              [&] {
+                  return "channel=" + _options.descriptor.channel_name
+                         + " client="
+                         + routing_id_label (received->source_routing_id)
+                         + " endpoint="
+                         + _options.descriptor.advertised_endpoint;
+              });
             return client_server_pump_result_t::infrastructure;
         }
         std::vector<std::uint8_t> connection;
@@ -676,16 +705,18 @@ void raw_client_server_client_t::start ()
       zlink::byte_count_t::bytes (client_hwm_bytes));
     dealer->options ().recv_hwm (
       zlink::byte_count_t::bytes (client_hwm_bytes));
-    trace_client_server (
+    trace_client_server_lazy (
       "client-socket-options",
-      "endpoint=" + _options.expected_server.advertised_endpoint
-        + " max_message_bytes="
-        + std::to_string (
-            dealer->options ().max_message_size ().bytes ())
-        + " send_hwm_bytes="
-        + std::to_string (dealer->options ().send_hwm ().bytes ())
-        + " recv_hwm_bytes="
-        + std::to_string (dealer->options ().recv_hwm ().bytes ()));
+      [&] {
+          return "endpoint=" + _options.expected_server.advertised_endpoint
+                 + " max_message_bytes="
+                 + std::to_string (
+                     dealer->options ().max_message_size ().bytes ())
+                 + " send_hwm_bytes="
+                 + std::to_string (dealer->options ().send_hwm ().bytes ())
+                 + " recv_hwm_bytes="
+                 + std::to_string (dealer->options ().recv_hwm ().bytes ());
+      });
     dealer->set_routing_id (
       zlink::routing_id_t::from (_options.client_routing_id));
     auto monitor = std::make_unique<zlink::socket_monitor_t> (
@@ -798,21 +829,28 @@ std::size_t raw_client_server_client_t::drain_monitor_events (
             return count;
         }
         ++count;
-        trace_client_server (
+        trace_client_server_lazy (
           "client-monitor-event",
-          "event="
-            + std::to_string (static_cast<int> (event->event))
-            + " value=" + std::to_string (event->value)
-            + " local=" + event->local_addr + " remote="
-            + event->remote_addr);
+          [&] {
+              return "event="
+                     + std::to_string (static_cast<int> (event->event))
+                     + " value=" + std::to_string (event->value)
+                     + " local=" + event->local_addr + " remote="
+                     + event->remote_addr;
+          });
         if (event->event == zlink::monitor_event::connection_ready) {
-            trace_client_server (
+            trace_client_server_lazy (
               "client-connection-ready",
-              "endpoint=" + _options.expected_server.advertised_endpoint
-                + " channel=" + _options.admission.channel_name
-                + " client=" + routing_id_label (_options.admission.channel_name.empty ()
-                                                      ? std::vector<std::uint8_t>{}
-                                                      : _options.client_routing_id));
+              [&] {
+                  return "endpoint="
+                         + _options.expected_server.advertised_endpoint
+                         + " channel=" + _options.admission.channel_name
+                         + " client="
+                         + routing_id_label (
+                             _options.admission.channel_name.empty ()
+                               ? std::vector<std::uint8_t>{}
+                               : _options.client_routing_id);
+              });
             {
                 std::lock_guard lock (_mutex);
                 _connection_id = liveness_connection_identity (
@@ -825,11 +863,15 @@ std::size_t raw_client_server_client_t::drain_monitor_events (
                     protocol::command::hello, _options.admission)});
             }
         } else if (event->event == zlink::monitor_event::disconnected) {
-            trace_client_server (
+            trace_client_server_lazy (
               "client-disconnected",
-              "endpoint=" + _options.expected_server.advertised_endpoint
-                + " channel=" + _options.admission.channel_name
-                + " client=" + routing_id_label (_options.client_routing_id));
+              [&] {
+                  return "endpoint="
+                         + _options.expected_server.advertised_endpoint
+                         + " channel=" + _options.admission.channel_name
+                         + " client="
+                         + routing_id_label (_options.client_routing_id);
+              });
             bool current = false;
             std::vector<std::uint8_t> connection;
             {
@@ -911,12 +953,15 @@ client_server_pump_result_t raw_client_server_client_t::pump_one (
                 _ready =
                   server.state == mesh::service_node_state_t::serving
                   && server.weight > 0;
-                trace_client_server (
+                trace_client_server_lazy (
                   "client-admitted",
-                  "endpoint=" + server.advertised_endpoint
-                    + " channel=" + server.channel_name
-                    + " client=" + routing_id_label (_options.client_routing_id)
-                    + " ready=" + (_ready ? "true" : "false"));
+                  [&] {
+                      return "endpoint=" + server.advertised_endpoint
+                             + " channel=" + server.channel_name
+                             + " client="
+                             + routing_id_label (_options.client_routing_id)
+                             + " ready=" + (_ready ? "true" : "false");
+                  });
                 connection = _connection_id;
             }
             _liveness.admit (
@@ -1011,18 +1056,22 @@ bool raw_client_server_client_t::send (
     const auto wire = detail::backend::raw_message_t{
       protocol::encode_channel_send_header (channel),
       protocol::encode_application_payload (payload)};
-    trace_client_server (
+    trace_client_server_lazy (
       "client-send-wire",
-      "endpoint=" + _options.expected_server.advertised_endpoint
-        + " packet=" + payload.packet_name
-        + " payload_bytes=" + std::to_string (wire[1].size ())
-        + " wire_bytes=" + std::to_string (raw_message_bytes (wire)));
+      [&] {
+          return "endpoint=" + _options.expected_server.advertised_endpoint
+                 + " packet=" + payload.packet_name
+                 + " payload_bytes=" + std::to_string (wire[1].size ())
+                 + " wire_bytes=" + std::to_string (raw_message_bytes (wire));
+      });
     const auto submitted = port && port->send (wire);
-    trace_client_server (
+    trace_client_server_lazy (
       "client-send-result",
-      "endpoint=" + _options.expected_server.advertised_endpoint
-        + " packet=" + payload.packet_name
-        + " submitted=" + std::to_string (submitted));
+      [&] {
+          return "endpoint=" + _options.expected_server.advertised_endpoint
+                 + " packet=" + payload.packet_name
+                 + " submitted=" + std::to_string (submitted);
+      });
     return submitted;
 }
 
@@ -1056,11 +1105,13 @@ bool raw_client_server_client_t::request (
               "ClientServer correlation is exhausted");
         }
     }
-    trace_client_server (
+    trace_client_server_lazy (
       "client-request-submit",
-      "endpoint=" + endpoint + " channel=" + channel
-        + " client=" + routing_id_label (_options.client_routing_id)
-        + " correlation=" + std::to_string (correlation));
+      [&] {
+          return "endpoint=" + endpoint + " channel=" + channel
+                 + " client=" + routing_id_label (_options.client_routing_id)
+                 + " correlation=" + std::to_string (correlation);
+      });
     const auto id = operation_id (lifecycle, correlation);
     struct reply_state_t
     {
@@ -1086,12 +1137,15 @@ bool raw_client_server_client_t::request (
     const auto wire = detail::backend::raw_message_t{
       protocol::encode_channel_request_header (correlation, channel),
       protocol::encode_application_payload (payload)};
-    trace_client_server (
+    trace_client_server_lazy (
       "client-request-wire",
-      "endpoint=" + endpoint + " correlation="
-        + std::to_string (correlation) + " packet=" + payload.packet_name
-        + " payload_bytes=" + std::to_string (wire[1].size ())
-        + " wire_bytes=" + std::to_string (raw_message_bytes (wire)));
+      [&] {
+          return "endpoint=" + endpoint + " correlation="
+                 + std::to_string (correlation) + " packet="
+                 + payload.packet_name + " payload_bytes="
+                 + std::to_string (wire[1].size ()) + " wire_bytes="
+                 + std::to_string (raw_message_bytes (wire));
+      });
     const auto operations = _operations;
     const auto submitted = port->request (
       wire,
@@ -1099,11 +1153,14 @@ bool raw_client_server_client_t::request (
       [operations, id, correlation, reply_state] (
         detail::backend::raw_request_result_t result,
         detail::backend::raw_message_t parts) {
-          trace_client_server (
+          trace_client_server_lazy (
             "client-request-complete",
-            "correlation=" + std::to_string (correlation)
-              + " result=" + std::to_string (static_cast<int> (result))
-              + " parts=" + std::to_string (parts.size ()));
+            [&] {
+                return "correlation=" + std::to_string (correlation)
+                       + " result="
+                       + std::to_string (static_cast<int> (result))
+                       + " parts=" + std::to_string (parts.size ());
+            });
           if (result != detail::backend::raw_request_result_t::ok) {
               (void) operations->fail (id, request_failure (result));
               return;
@@ -1115,6 +1172,15 @@ bool raw_client_server_client_t::request (
               }
               const auto reply =
                 protocol::decode_reply_header (parts.front ());
+              trace_client_server_lazy (
+                "client-request-header",
+                [&] {
+                    return "correlation=" + std::to_string (correlation)
+                           + " terminal_result="
+                           + std::to_string (reply.terminal_result)
+                           + " failure_code="
+                           + std::to_string (reply.failure_code);
+                });
               if (reply.correlation != correlation) {
                   throw protocol::service_wire_error_t (
                     "ClientServer reply correlation does not match");
@@ -1147,11 +1213,13 @@ bool raw_client_server_client_t::request (
         (void) _operations->fail (
           id, foundation::operation_terminal_t::transport_failed);
     }
-    trace_client_server (
+    trace_client_server_lazy (
       "client-request-submitted",
-      "endpoint=" + endpoint + " correlation="
-        + std::to_string (correlation)
-        + " submitted=" + std::to_string (submitted));
+      [&] {
+          return "endpoint=" + endpoint + " correlation="
+                 + std::to_string (correlation) + " submitted="
+                 + std::to_string (submitted);
+      });
     return submitted;
 }
 

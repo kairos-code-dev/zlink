@@ -1186,6 +1186,147 @@ public sealed class StatefulServiceRuntimeTests
             messages,
             message => Assert.Throws<ObjectDisposedException>(
                 () => message.AsReadOnlySpan()));
+
+        var admissionCalls = 0;
+        adapter.SetAdmission(_ =>
+        {
+            admissionCalls++;
+            return false;
+        });
+        var encodedPayload = ZLinkApplicationPayloadEnvelopeCodec
+            .EncodeFrameworkMultipart(
+                new ReadOnlyMemory<byte>[] { new byte[] { 11, 13, 17 } });
+        var rejected = new ActorMessageFollowIngress(
+            source.NodeRid,
+            source.NodeGeneration,
+            "source-spot",
+            actor,
+            new MeshOperationId(281, 283),
+            ReplyRouteId: 287,
+            TargetNodeGeneration: 293,
+            AuthorityOwnerGeneration: 307,
+            OwnerLeaseGeneration: 311,
+            MessageFollowHopCount: 1,
+            DeadlineUnixMs: 313,
+            ApplicationMetadata: ReadOnlyMemory<byte>.Empty,
+            Parts: Array.Empty<Message>(),
+            Reply: null)
+        {
+            EncodedPayload = encodedPayload
+        };
+
+        Assert.False(adapter.TryFollow(rejected));
+        Assert.Equal(1, admissionCalls);
+        Assert.Equal(1, follower.Count);
+
+        var ownershipAdapter =
+            new ZLinkBackendSpotNodeWrapper.ActorMessageFollowIngressAdapter(
+                pump);
+        var ownershipFollower = new CapturingBackendActorMessageFollowHandler(
+            acceptsOwnership: true,
+            reply: false);
+        ownershipAdapter.SetHandler(ownershipFollower.TryFollow);
+        ownershipAdapter.SetAdmission(_ => true);
+        using (var metadataSource = Message.From(new byte[] { 19, 23, 29 }))
+        {
+            var admitted = rejected with
+            {
+                ApplicationMetadataSource = metadataSource
+            };
+
+            Assert.True(ownershipAdapter.TryFollow(admitted));
+        }
+        Assert.Equal([19, 23, 29], ownershipFollower.LastApplicationMetadata);
+    }
+
+    [Fact]
+    public void MailboxAccountingSeparatesPayloadHwmFromRetainedMailboxBytes()
+    {
+        var record = new MeshReceiveRecord(
+            MeshRecordKind.ActorSend,
+            MeshReadyDomains.Application,
+            default,
+            string.Empty,
+            0,
+            default,
+            default,
+            MeshOperationKind.NodeRequest,
+            null,
+            null,
+            new byte[] { 19, 23, 29 },
+            0,
+            1,
+            0,
+            0,
+            null);
+        var queued = new ZLinkMeshQueuedRecord(
+            record,
+            new[] { Message.From(new byte[] { 31, 37 }) });
+
+        try
+        {
+            Assert.Equal(2UL, queued.PayloadBytes);
+            Assert.Equal(
+                2UL + 3UL + ZLinkMeshQueuedRecord.FixedRecordBytes,
+                queued.PendingBytes);
+        }
+        finally
+        {
+            queued.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task CompletionOverflowUsesInternalSinkWhenMarkerExceedsByteBudget()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var node = NewNode(context, "completion-overflow-node");
+        node.MailboxByteBudget = 1024;
+        var actor = node.CreateActor("completion-overflow-actor");
+        DrainAndDispose(node);
+
+        var overflow = new List<MeshReceiveRecord>();
+        node.SetCompletionOverflowHandlerCore((record, parts) =>
+        {
+            Assert.Empty(parts);
+            overflow.Add(record);
+        });
+
+        using var request = Message.From(new byte[] { 41 });
+        Assert.Equal(
+            SubmitResult.Ok,
+            node.RequestToActor(
+                actor,
+                [request],
+                out var operation,
+                TimeSpan.FromSeconds(2)));
+
+        await WaitUntilAsync(() =>
+        {
+            using var ready = new MeshReadyBatch();
+            node.DrainReady(
+                MeshReadyDomains.Application,
+                ready,
+                RecvFlags.DontWait);
+            if (ready.Count == 0)
+                return false;
+            using var claim = ready.TakeClaim(0);
+            using var received = new MeshReceiveBatch();
+            if (!claim.Receive(received, RecvFlags.DontWait))
+                return false;
+
+            node.MailboxByteBudget = 1;
+            Assert.Equal(
+                SubmitResult.Ok,
+                received[0].Reply(Array.Empty<Message>()));
+            return true;
+        });
+
+        var failure = Assert.Single(overflow);
+        Assert.Equal(operation, failure.OperationId);
+        Assert.Equal(
+            (int)RequestResult.Backpressured,
+            failure.TerminalResult);
     }
 
     [Fact]

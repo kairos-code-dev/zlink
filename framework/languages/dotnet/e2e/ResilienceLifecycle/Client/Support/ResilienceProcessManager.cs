@@ -143,6 +143,11 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
             if (signalProcess.ExitCode != 0)
                 throw new InvalidOperationException($"Sending SIG{signal} to provider B failed.");
 
+            // Process.GetProcessById returns an observer for a process started by
+            // the shell runner. It can wait for termination, but it cannot expose
+            // the exit code as a Process instance owned by this client. The signal
+            // command and the termination observation are the reliable evidence
+            // for this externally owned process.
             await target.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
         }
     }
@@ -301,6 +306,7 @@ internal sealed record ProviderStartResult(string Rid, string Status, string Url
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
     private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private bool _disposed;
 
@@ -336,28 +342,37 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         if (_disposed) return;
 
         _disposed = true;
-        if (!process.HasExited)
-            try
-            {
-                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
-                await http.Post("/shutdown").AsyncRaw();
-            }
-            catch
-            {
-                if (!process.HasExited) process.Kill(true);
-            }
-
         try
         {
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        }
-        catch (TimeoutException)
-        {
-            if (!process.HasExited) process.Kill(true);
-            await process.WaitForExitAsync();
-        }
+            if (!process.HasExited)
+            {
+                try
+                {
+                    using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(5)).Build();
+                    await http.Post("/shutdown").AsyncRaw();
+                }
+                catch
+                {
+                    if (!process.HasExited) process.Kill(true);
+                }
+            }
 
-        process.Dispose();
+            try
+            {
+                await process.WaitForExitAsync().WaitAsync(ShutdownTimeout);
+            }
+            catch (TimeoutException)
+            {
+                if (!process.HasExited) process.Kill(true);
+                await process.WaitForExitAsync();
+            }
+
+            EnsureSuccessfulExit();
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     public async Task WaitExitedAsync(TimeSpan timeout)
@@ -367,31 +382,45 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         _disposed = true;
         try
         {
-            await process.WaitForExitAsync().WaitAsync(timeout);
-        }
-        catch (TimeoutException)
-        {
-            if (!process.HasExited) process.Kill(true);
-            await process.WaitForExitAsync();
-        }
+            try
+            {
+                await process.WaitForExitAsync().WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                if (!process.HasExited) process.Kill(true);
+                await process.WaitForExitAsync();
+            }
 
-        process.Dispose();
+            EnsureSuccessfulExit();
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     public async Task SendSigtermAsync()
     {
         if (_disposed) return;
         _disposed = true;
-        using var signalProcess = Process.Start(new ProcessStartInfo("kill")
+        try
         {
-            ArgumentList = { "-TERM", process.Id.ToString() },
-            UseShellExecute = false
-        }) ?? throw new InvalidOperationException("Failed to send SIGTERM to provider process.");
-        await signalProcess.WaitForExitAsync();
-        if (signalProcess.ExitCode != 0)
-            throw new InvalidOperationException("Sending SIGTERM to provider process failed.");
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
-        process.Dispose();
+            using var signalProcess = Process.Start(new ProcessStartInfo("kill")
+            {
+                ArgumentList = { "-TERM", process.Id.ToString() },
+                UseShellExecute = false
+            }) ?? throw new InvalidOperationException("Failed to send SIGTERM to provider process.");
+            await signalProcess.WaitForExitAsync();
+            if (signalProcess.ExitCode != 0)
+                throw new InvalidOperationException("Sending SIGTERM to provider process failed.");
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            EnsureSuccessfulExit();
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     public async Task KillAsync()
@@ -401,5 +430,12 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
         if (!process.HasExited) process.Kill(true);
         await process.WaitForExitAsync();
         process.Dispose();
+    }
+
+    private void EnsureSuccessfulExit()
+    {
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"Provider process '{healthUrl}' exited with code {process.ExitCode}.");
     }
 }

@@ -133,9 +133,6 @@ public final class Program {
             var serverSocket = runtimeOptions
                 .clientServerChannel(Contracts.API_CHANNEL)
                 .configureServerSocket();
-            if (options.maxMessageSize() > 0) {
-                serverSocket.maxMessageSize(options.maxMessageSize());
-            }
             String weight = options.apiWeight();
             if (!weight.isBlank()) {
                 serverSocket.weight(Integer.parseInt(weight));

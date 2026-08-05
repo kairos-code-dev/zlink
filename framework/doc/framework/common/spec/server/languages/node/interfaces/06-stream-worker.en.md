@@ -72,9 +72,14 @@ export interface ZLinkStreamNodeBuilder {
     bind(port?: number): this;
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
+    configureSocket(): ZLinkStreamSocketConfig;
     enableActorDispatch(): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
+}
+
+export interface ZLinkStreamSocketConfig {
+    maxMessageSize: number;
 }
 
 export declare function ZLinkStreamPacket(): MethodDecorator;
@@ -98,6 +103,16 @@ export interface ZLinkTimerOptions {
     stopOnUnhandledException?: boolean;
 }
 ```
+
+The default of `configureSocket().maxMessageSize` is `64 KiB`. The limit
+applies only to complete messages received by a StreamNode from client to
+server through Core STREAM. Its size is the header bytes plus payload bytes,
+excluding the 6-byte prefix. `0` maps to Core `-1`, meaning that Framework
+doesn't add a limit; a negative value is a startup configuration error. A
+message over the limit is never partly delivered to the session handler. The
+server records `EMSGSIZE` and a diagnostic trace, then closes the connection.
+The raw client observes the close without a separate wire error code. The
+Framework limit doesn't apply to server-to-client outbound messages.
 
 ## 3. Timer Scheduling And Worker
 

@@ -208,6 +208,8 @@ export interface ZLinkSpotRoutedTransport {
 
 export interface ZLinkSpotRoutedSendOptions {
   readonly packetName?: string;
+  /** Internal end-to-end budget remaining for route admission. */
+  readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
   readonly metadata?: ReadonlyMap<string, string>;
 }
@@ -259,11 +261,14 @@ function createAddressedSpotSendCall(
     },
     async submit(signal?: AbortSignal): Promise<void> {
       markSubmitted(options);
-      const result = await serial.execute(() => transport.sendToSpotAddress(
-        spotId,
-        message,
-        freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
-      ));
+      const pending = startRequestOnSerial(serial, () => ({
+        pending: transport.sendToSpotAddress(
+          spotId,
+          message,
+          freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
+        )
+      }));
+      const result = await (serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending));
       requireOneWayCompletion(
         result,
         'Spot send',
@@ -502,8 +507,8 @@ function wrapRoutedSpotSendCall(
       return this;
     },
     async submit(signal?: AbortSignal): Promise<void> {
-      const result = await serial.execute(async () => {
-        return await sendToSpotHandle(
+      const pending = startRequestOnSerial(serial, () => ({
+        pending: sendToSpotHandle(
           transport,
           spot,
           message,
@@ -513,8 +518,9 @@ function wrapRoutedSpotSendCall(
             spotRouterChannelIdForMesh,
             sourceSpot: sourceSpotProvider?.()
           }
-        );
-      });
+        )
+      }));
+      const result = await (serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending));
       requireOneWayCompletion(
         result,
         'Spot send',
@@ -608,12 +614,14 @@ export async function sendToSpotHandle(
     if (options.sourceSpot !== undefined && transport.sendFromSpotToSpot !== undefined) {
       return await transport.sendFromSpotToSpot(options.sourceSpot, target, message, {
         packetName,
+        timeoutMs: options.timeoutMs,
         signal: options.signal,
         metadata: options.metadata
       });
     }
     return await transport.sendToSpot(target, message, {
       packetName,
+      timeoutMs: options.timeoutMs,
       signal: options.signal,
       metadata: options.metadata
     });

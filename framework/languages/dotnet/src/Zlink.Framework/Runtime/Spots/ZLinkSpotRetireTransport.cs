@@ -1633,12 +1633,22 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             DecodeRelocationId(prepare.RelocationId),
             prepare.TargetAttemptGeneration);
         if (!_staged.TryGetValue(fence, out var entry))
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"aggregate_target_complete_lookup relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16} "
+                + $"attempt={prepare.TargetAttemptGeneration} found=False active={ActiveStageCount} "
+                + $"tombstones={TerminalTombstoneCount}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 "Canonical target completion has no staged relocation.",
                 ZLinkRetryAdvice.RetryAfterBackoff);
+        }
         if (entry is TargetStageTombstone terminal)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"aggregate_target_complete_lookup relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16} "
+                + $"attempt={prepare.TargetAttemptGeneration} found=True entry=tombstone "
+                + $"outcome={terminal.Outcome}");
             if (terminal.SourceNodeRid != sourceNodeRid
                 || terminal.Outcome
                    != TargetStageTerminalOutcome.Completed)
@@ -1649,17 +1659,38 @@ internal sealed class ZLinkSpotRetireTargetRuntime(
             return;
         }
         if (entry is not TargetStage stage
-            || stage.SourceNodeRid != sourceNodeRid
-            || Volatile.Read(ref stage.Published) == 0)
+            || stage.SourceNodeRid != sourceNodeRid)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"aggregate_target_complete_lookup relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16} "
+                + $"attempt={prepare.TargetAttemptGeneration} found=True entry={entry.GetType().Name} "
+                + $"source_match={entry is TargetStage candidate && candidate.SourceNodeRid == sourceNodeRid} "
+                + $"published={entry is TargetStage published && Volatile.Read(ref published.Published) != 0}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.Unavailable,
                 "Canonical target completion overtook target publication.",
                 ZLinkRetryAdvice.RetryAfterBackoff);
+        }
 
         await stage.PublishGate.WaitAsync(cancellationToken)
             .ConfigureAwait(false);
         try
         {
+            // Target publication writes the exact authority and catalog before
+            // it records Published. A command 35 arriving in that interval
+            // must wait for the same gate instead of rejecting a valid target
+            // as if publication had been overtaken.
+            if (Volatile.Read(ref stage.Published) == 0)
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"aggregate_target_complete_lookup relocation={prepare.RelocationId.High:x16}{prepare.RelocationId.Low:x16} "
+                    + $"attempt={prepare.TargetAttemptGeneration} found=True entry={entry.GetType().Name} "
+                    + $"source_match=True published=False after_gate=True");
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.Unavailable,
+                    "Canonical target completion overtook target publication.",
+                    ZLinkRetryAdvice.RetryAfterBackoff);
+            }
             if (!await IsAuthorityNormalizedAsync(stage, cancellationToken)
                     .ConfigureAwait(false))
                 await ValidateDurableCompletionRootAsync(

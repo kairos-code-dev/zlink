@@ -34,6 +34,7 @@ import {
   mergeRemoteBoundSessionTarget,
   preferredRemoteBoundSessionTarget,
   type ZLinkActorHandoffCoordinator,
+  type ZLinkActorHandoffDispatch,
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
   ZLinkDeferredJoinAcceptedJournal,
@@ -143,6 +144,70 @@ export class ZLinkActorTransferRuntime {
   }>();
 
   constructor(private readonly options: ZLinkActorTransferRuntimeOptions) {}
+
+  beginDeferredActorHandoff(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: string
+  ): void {
+    const actorId = actor.context.actorId;
+    this.options.actorHandoff.beginProvisional(
+      actorId,
+      operationId,
+      state.nativeActorRef?.generation ?? 0n,
+      state.nativeActorRef === undefined ? undefined : String(state.nativeActorRef.nodeRid),
+      state.locationGeneration ?? 1n,
+      state.ownerLeaseGeneration
+    );
+  }
+
+  promoteDeferredActorHandoff(
+    actor: ZLinkActor,
+    _state: ZLinkActorRuntimeState,
+    operationId: string
+  ): void {
+    this.options.actorHandoff.promoteProvisional(actor.context.actorId, operationId);
+  }
+
+  async completeDeferredActorHandoff(
+    actor: ZLinkActor,
+    target: ZLinkSpotRouteTarget,
+    _targetActorRef: ActorRef,
+    operationId: string
+  ): Promise<void> {
+    const actorId = actor.context.actorId;
+    if (!this.options.actorHandoff.isProvisional(actorId)) return;
+    const manager = this.options.spotManager();
+    if (manager === undefined) {
+      throw new Error(`Actor '${actorId}' same-node Join has no local Spot manager.`);
+    }
+    const dispatch: ZLinkActorHandoffDispatch = (
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    ) => manager.dispatchRoutedActorPacket(
+      target.spotId,
+      actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    );
+    await this.options.actorHandoff.releaseDeferred(actorId, operationId, dispatch);
+  }
+
+  async cancelDeferredActorHandoff(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: string
+  ): Promise<void> {
+    await this.options.actorHandoff.releaseDeferred(
+      actor.context.actorId,
+      operationId,
+      this.sourceHandoffReplay(actor, state)
+    );
+  }
 
   async prepareDeferredJoinAccepted(
     actorId: string,
@@ -486,44 +551,99 @@ export class ZLinkActorTransferRuntime {
     await this.options.restoreEntrySpotActorJoined(actor, signal);
   }
 
-  private async beginSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
+  private async beginSourceActorMove(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    deferredOperationId?: string
+  ): Promise<void> {
+    if (deferredOperationId !== undefined && this.options.actorHandoff.isProvisional(actor.context.actorId)) {
+      this.promoteDeferredActorHandoff(actor, state, deferredOperationId);
+    }
     state.beginMove();
-    this.options.actorHandoff.begin(
-      actor.context.actorId,
-      state.nativeActorRef?.generation ?? 0n,
-      state.nativeActorRef === undefined ? undefined : String(state.nativeActorRef.nodeRid),
-      state.locationGeneration ?? 1n,
-      state.ownerLeaseGeneration
-    );
+    if (!this.options.actorHandoff.isActive(actor.context.actorId)) {
+      this.options.actorHandoff.begin(
+        actor.context.actorId,
+        state.nativeActorRef?.generation ?? 0n,
+        state.nativeActorRef === undefined ? undefined : String(state.nativeActorRef.nodeRid),
+        state.locationGeneration ?? 1n,
+        state.ownerLeaseGeneration
+      );
+    }
     try {
       if (state.spotId !== undefined) {
         await this.options.spotManager()?.beginActorTransfer(state.spotId, actor.context.actorId);
       }
     } catch (error) {
-      this.options.actorHandoff.cancel(actor.context.actorId);
+      if (deferredOperationId === undefined) {
+        this.options.actorHandoff.cancel(actor.context.actorId);
+      } else {
+        await this.options.actorHandoff.releaseDeferred(
+          actor.context.actorId,
+          deferredOperationId,
+          this.sourceHandoffReplay(actor, state)
+        )
+          .catch(() => undefined);
+      }
       state.endMove();
       throw error;
     }
   }
 
-  private async cancelSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
+  private async cancelSourceActorMove(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    deferredOperationId?: string
+  ): Promise<void> {
     try {
       if (state.spotId !== undefined) {
         await this.options.spotManager()?.cancelActorTransfer(state.spotId, actor.context.actorId);
       }
     } finally {
-      this.options.actorHandoff.cancel(actor.context.actorId);
+      if (deferredOperationId === undefined) {
+        this.options.actorHandoff.cancel(actor.context.actorId);
+      } else {
+        await this.options.actorHandoff.releaseDeferred(
+          actor.context.actorId,
+          deferredOperationId,
+          this.sourceHandoffReplay(actor, state)
+        );
+      }
       state.endMove();
     }
+  }
+
+  private sourceHandoffReplay(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState
+  ): ZLinkActorHandoffDispatch | undefined {
+    const sourceSpotId = state.spotId;
+    const manager = this.options.spotManager();
+    if (sourceSpotId === undefined || manager === undefined) {
+      return undefined;
+    }
+    return (
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    ) => manager.dispatchRoutedActorPacket(
+      sourceSpotId,
+      actor.context.actorId,
+      parts,
+      returnResponse,
+      remoteBoundSessionTarget,
+      fallbackActorRef
+    );
   }
 
   async prepareSource(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     signal?: AbortSignal,
-    lifecycleAuthority: 'framework' | 'core' = 'framework'
+    lifecycleAuthority: 'framework' | 'core' = 'framework',
+    deferredOperationId?: string
   ) {
-    await this.beginSourceActorMove(actor, state);
+    await this.beginSourceActorMove(actor, state, deferredOperationId);
     const relocationMetric = state.meshName === undefined
       ? undefined
       : this.options.metrics?.startRelocation(
@@ -771,7 +891,7 @@ export class ZLinkActorTransferRuntime {
           if (transferStateReference !== undefined) {
             await this.options.relocationStore()?.delete(transferStateReference, signal);
           }
-          await this.cancelSourceActorMove(actor, state);
+          await this.cancelSourceActorMove(actor, state, deferredOperationId);
           await this.restoreSourceActor(actor, sourceSpotId);
         }
       };
@@ -784,7 +904,7 @@ export class ZLinkActorTransferRuntime {
         if (acceptedRoot !== undefined) {
           await this.boundSessionAcceptedJournal()?.delete(acceptedRoot);
         }
-        await this.cancelSourceActorMove(actor, state);
+        await this.cancelSourceActorMove(actor, state, deferredOperationId);
         if (sourceLeaveStarted) await this.restoreSourceActor(actor, sourceSpotId);
       } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'Actor source leave and rollback both failed.');

@@ -107,6 +107,7 @@ async Task RunAsync(string scenario)
                 "session", ChannelEgressNames.Api, "unavailable-api");
             Require(!unavailable.Succeeded && unavailable.Error == "Unavailable",
                 $"known but unavailable channel should be Unavailable, got {unavailable.Error}.");
+            await AssertNoEvidenceAsync("api", "request|", "id=unavailable-api");
             break;
         case "CH-E2E-08":
             await AssertClientServerStateAddressAsync();
@@ -782,6 +783,17 @@ async Task WaitEvidenceAsync(string[] roles, params string[] fragments)
     } while (DateTimeOffset.UtcNow < deadline);
     throw new InvalidOperationException(
         $"Expected one evidence entry containing {string.Join(',', fragments)}.");
+}
+
+async Task AssertNoEvidenceAsync(string role, params string[] fragments)
+{
+    var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(1);
+    do
+    {
+        Require(EvidenceCount(role, fragments) == 0,
+            $"Unexpected evidence entry containing {string.Join(',', fragments)}.");
+        await Task.Delay(50);
+    } while (DateTimeOffset.UtcNow < deadline);
 }
 
 int EvidenceCount(string role, params string[] fragments)

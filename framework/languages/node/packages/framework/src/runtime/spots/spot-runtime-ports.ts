@@ -13,6 +13,7 @@ import type {
   ZLinkDeferredJoinAcceptedRoot,
   ZLinkDeferredJoinRecoveryInput
 } from '../actors';
+import type { ZLinkActorHandoffDispatch } from '../actors/actor-handoff';
 import type { ZLinkActorResponseOptions } from './spot-actor-packet-dispatch';
 import type {
   ZLinkRemoteActorJoinActor,
@@ -262,6 +263,7 @@ export interface ZLinkSpotActorHandoffRuntime {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
     deadlineUnixMs?: number,
-    messageFollowOrigin?: ZLinkMessageFollowOrigin
+    messageFollowOrigin?: ZLinkMessageFollowOrigin,
+    provisionalReplay?: ZLinkActorHandoffDispatch
   ): Promise<unknown> | undefined;
 }

@@ -149,6 +149,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         monitorEvents = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final Map<RoutingId, String> connectionIds =
         new ConcurrentHashMap<>();
+    private final Map<RoutingId, String> admissionControlReadyConnections =
+        new ConcurrentHashMap<>();
     private final Map<ConnectionCandidate,
         java.util.concurrent.ConcurrentLinkedQueue<String>>
         pendingConnectionIds = new ConcurrentHashMap<>();
@@ -198,6 +200,11 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private final java.util.concurrent.ConcurrentLinkedQueue<
         InfrastructureSend> pendingInfrastructureSends =
             new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final ZLinkJavaAdmissionControlRetryQueue
+        pendingAdmissionControls =
+            new ZLinkJavaAdmissionControlRetryQueue();
+    private final AtomicBoolean admissionControlRetryReady =
+        new AtomicBoolean();
     private volatile ZLinkInternalMeshNode.SessionRelocationRouteHandler
         sessionRelocationRouteHandler;
     private final Map<UserSpotOperationKey, UserSpotTerminalSlot>
@@ -736,6 +743,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 nextAnnouncementNanos.remove(removed.expectedRoutingId());
                 String connectionId =
                     connectionIds.remove(removed.expectedRoutingId());
+                admissionControlReadyConnections.remove(
+                    removed.expectedRoutingId());
                 if (connectionId != null) {
                     ZLinkServiceTopologyRegistry currentTopology = topology;
                     if (currentTopology != null) {
@@ -746,6 +755,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                         removed.expectedRoutingId(), connectionId);
                 }
                 clearConnectionCandidates(removed.expectedRoutingId());
+                pendingAdmissionControls.removeTarget(
+                    removed.expectedRoutingId());
             }
             router.disconnect(removed.endpoint());
         }
@@ -976,6 +987,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             return false;
         }
         return current.peer(peerRoutingId)
+            .filter(peer -> peer.connectionId().equals(
+                admissionControlReadyConnections.get(peerRoutingId)))
             .map(peer -> liveness.isReady(
                 peerRoutingId, peer.connectionId()))
             .orElse(false);
@@ -983,8 +996,10 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
 
     private boolean isReadyPeer(
         ZLinkServiceTopologyRegistry.Peer peer) {
-        return liveness.isReady(
-            peer.descriptor().nodeRoutingId(), peer.connectionId());
+        RoutingId peerRoutingId = peer.descriptor().nodeRoutingId();
+        return peer.connectionId().equals(
+                admissionControlReadyConnections.get(peerRoutingId))
+            && liveness.isReady(peerRoutingId, peer.connectionId());
     }
 
     long lifecycleGeneration() {
@@ -3398,8 +3413,11 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             });
         pendingReplyRelays.clear();
         pendingInfrastructureSends.clear();
+        pendingAdmissionControls.clear();
+        admissionControlRetryReady.set(false);
         admittedPeerChannels.clear();
         connectionIds.clear();
+        admissionControlReadyConnections.clear();
         pendingConnectionIds.clear();
         monitorConnectionIds.clear();
         operations.close();
@@ -3436,6 +3454,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             while (!closed.get()) {
                 long now = System.nanoTime();
                 drainMonitorEvents();
+                drainAdmissionControlRetries();
                 announceExpectedPeers(now);
                 tickLiveness(now);
                 drainInfrastructureSends();
@@ -5195,6 +5214,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 localDescriptor,
                 descriptor)) {
                 disconnectAdmitted(inbound.source());
+                pendingAdmissionControls.removeTarget(inbound.source());
+                admissionControlReadyConnections.remove(inbound.source());
                 admittedPeerObjectRoles.put(
                     inbound.source(),
                     descriptor.objectRole());
@@ -5219,6 +5240,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                                     .ConnectionDirection.OUTBOUND);
             String connectionId = connectionIdForAdmission(
                 inbound.source(), direction);
+            String previousConnectionId =
+                connectionIds.get(inbound.source());
             ZLinkServiceTopologyRegistry.AdmissionResult admitted =
                 topology.admit(
                     descriptor,
@@ -5248,6 +5271,11 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                     "admission-rejected");
                 return;
             }
+            pendingAdmissionControls.removeTarget(inbound.source());
+            if (command != ServiceWireConstants.COMMAND_UPDATE
+                || !connectionId.equals(previousConnectionId)) {
+                admissionControlReadyConnections.remove(inbound.source());
+            }
             connectionIds.put(inbound.source(), connectionId);
             admitPeerChannels(
                 inbound.source(),
@@ -5261,6 +5289,10 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             liveness.admit(inbound.source(), connectionId, System.nanoTime());
             liveness.requestProbe(
                 inbound.source(), connectionId, System.nanoTime());
+            if (command == ServiceWireConstants.COMMAND_ADMIT) {
+                admissionControlReadyConnections.put(
+                    inbound.source(), connectionId);
+            }
             if (command == ServiceWireConstants.COMMAND_HELLO) {
                 trySendAdmissionControl(
                     inbound.source(),
@@ -5281,24 +5313,157 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         RoutingId target,
         List<byte[]> frames,
         String reason) {
+        int command = wire.decodeHeader(frames.getFirst()).command();
+        String connectionId = connectionIds.getOrDefault(target, "");
+        long intentVersion = pendingAdmissionControls.nextIntentVersion();
         try {
             boolean submitted = port.send(
                 requireStarted(),
                 target,
                 frames);
-            if (!submitted) {
-                streamTrace("admission-control-not-submitted target="
-                    + target + " reason=" + reason);
+            if (submitted) {
+                pendingAdmissionControls.removeUpTo(
+                    target,
+                    connectionId,
+                    command,
+                    intentVersion);
+                markAdmissionControlReady(target, connectionId, command);
+                return true;
             }
-            return submitted;
+            streamTrace("admission-control-not-submitted target="
+                + target
+                + " reason=" + reason
+                + " result=" + SubmitResult.BACKPRESSURED);
+            rememberAdmissionControlRetry(
+                target,
+                connectionId,
+                command,
+                frames,
+                intentVersion,
+                reason);
+            return false;
+        } catch (ZlinkSubmitException failure) {
+            streamTrace("admission-control-send-failed target="
+                + target
+                + " reason=" + reason
+                + " result=" + failure.getResult()
+                + " error=" + failure.getClass().getSimpleName()
+                + ":" + String.valueOf(failure.getMessage()));
+            if (failure.getResult() == SubmitResult.BACKPRESSURED) {
+                rememberAdmissionControlRetry(
+                    target,
+                    connectionId,
+                    command,
+                    frames,
+                    intentVersion,
+                    reason);
+            }
+            return false;
         } catch (RuntimeException failure) {
             streamTrace("admission-control-send-failed target="
                 + target
                 + " reason=" + reason
+                + " result=PERMANENT_FAILURE"
                 + " error=" + failure.getClass().getSimpleName()
                 + ":" + String.valueOf(failure.getMessage()));
             return false;
         }
+    }
+
+    private void rememberAdmissionControlRetry(
+        RoutingId target,
+        String connectionId,
+        int command,
+        List<byte[]> frames,
+        long intentVersion,
+        String reason) {
+        if (pendingAdmissionControls.remember(
+                target,
+                connectionId,
+                command,
+                frames,
+                intentVersion)) {
+            streamTrace("admission-control-deferred target="
+                + target
+                + " reason=" + reason
+                + " connection=" + connectionId
+                + " command=" + command);
+            return;
+        }
+        streamTrace("admission-control-retry-capacity target="
+            + target
+            + " reason=" + reason
+            + " connection=" + connectionId
+            + " command=" + command);
+    }
+
+    private void drainAdmissionControlRetries() {
+        if (!admissionControlRetryReady.compareAndSet(true, false)) {
+            return;
+        }
+        pendingAdmissionControls.flush(pending -> {
+            if (closed.get()) {
+                return ZLinkJavaAdmissionControlRetryQueue.RetryResult.STALE;
+            }
+            if (pending.connectionId().isBlank()
+                || !pending.connectionId().equals(
+                    connectionIds.get(pending.target()))) {
+                return ZLinkJavaAdmissionControlRetryQueue.RetryResult.STALE;
+            }
+            try {
+                boolean submitted = port.send(
+                    requireStarted(),
+                    pending.target(),
+                    pending.frames());
+                streamTrace("admission-control-retry target="
+                    + pending.target()
+                    + " connection=" + pending.connectionId()
+                    + " command=" + pending.command()
+                    + " result=" + (submitted
+                        ? "ACCEPTED"
+                        : "BACKPRESSURED"));
+                if (submitted) {
+                    markAdmissionControlReady(
+                        pending.target(),
+                        pending.connectionId(),
+                        pending.command());
+                }
+                return submitted
+                    ? ZLinkJavaAdmissionControlRetryQueue.RetryResult.ACCEPTED
+                    : ZLinkJavaAdmissionControlRetryQueue.RetryResult.BACKPRESSURED;
+            } catch (ZlinkSubmitException failure) {
+                streamTrace("admission-control-retry-failed target="
+                    + pending.target()
+                    + " connection=" + pending.connectionId()
+                    + " command=" + pending.command()
+                    + " result=" + failure.getResult());
+                return failure.getResult() == SubmitResult.BACKPRESSURED
+                    ? ZLinkJavaAdmissionControlRetryQueue.RetryResult.BACKPRESSURED
+                    : ZLinkJavaAdmissionControlRetryQueue.RetryResult.PERMANENT_FAILURE;
+            } catch (RuntimeException failure) {
+                streamTrace("admission-control-retry-failed target="
+                    + pending.target()
+                    + " connection=" + pending.connectionId()
+                    + " command=" + pending.command()
+                    + " result=PERMANENT_FAILURE"
+                    + " error=" + failure.getClass().getSimpleName()
+                    + ":" + String.valueOf(failure.getMessage()));
+                return ZLinkJavaAdmissionControlRetryQueue.RetryResult.PERMANENT_FAILURE;
+            }
+        });
+    }
+
+    private void markAdmissionControlReady(
+        RoutingId target,
+        String connectionId,
+        int command) {
+        if (command != ServiceWireConstants.COMMAND_ADMIT
+            || connectionId == null
+            || connectionId.isBlank()
+            || !connectionId.equals(connectionIds.get(target))) {
+            return;
+        }
+        admissionControlReadyConnections.put(target, connectionId);
     }
 
     private void dispatchLiveness(
@@ -5355,6 +5520,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
      * application submit was rejected after the liveness ACK.
      */
     private void notifyAdmissionReadyPeers() {
+        admissionControlRetryReady.set(true);
         ZLinkJavaRawSpotNode spots = spotNode;
         ZLinkServiceTopologyRegistry current = topology;
         if (spots == null || current == null) {
@@ -5408,6 +5574,13 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
                 || event.event() == MonitorEventType.CLOSED) {
                 String disconnectedId = removeTransportConnection(event);
                 discardPendingConnectionId(disconnectedId);
+                if (disconnectedId == null) {
+                    pendingAdmissionControls.removeTarget(peer.orElseThrow());
+                } else {
+                    pendingAdmissionControls.removeTargetConnection(
+                        peer.orElseThrow(),
+                        disconnectedId);
+                }
                 disconnectAdmitted(peer.orElseThrow(), disconnectedId);
                 nextAnnouncementNanos.put(peer.orElseThrow(), 0L);
             }
@@ -5530,10 +5703,18 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private void disconnectAdmitted(
         RoutingId peer,
         String connectionId) {
-        if (connectionId == null
-            || !topology.disconnect(peer, connectionId)) {
+        if (connectionId == null) {
+            pendingAdmissionControls.removeTarget(peer);
+            admissionControlReadyConnections.remove(peer);
             return;
         }
+        if (!topology.disconnect(peer, connectionId)) {
+            pendingAdmissionControls.removeTargetConnection(peer, connectionId);
+            admissionControlReadyConnections.remove(peer, connectionId);
+            return;
+        }
+        pendingAdmissionControls.removeTarget(peer);
+        admissionControlReadyConnections.remove(peer, connectionId);
         connectionIds.remove(peer, connectionId);
         boolean wasAdmitted = admittedPeerChannels.remove(peer) != null;
         if (wasAdmitted && !notRequiredPeers.contains(peer)) {
@@ -6004,11 +6185,6 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             frames = frames.stream().map(byte[]::clone).toList();
             java.util.Objects.requireNonNull(active, "active");
             java.util.Objects.requireNonNull(onFailure, "onFailure");
-        }
-
-        @Override
-        public List<byte[]> frames() {
-            return frames.stream().map(byte[]::clone).toList();
         }
     }
 

@@ -117,12 +117,15 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
                 auto request = _serializers
                   ->get<spot_multicast_route_send_t> ()
                   .deserialize (detail::encoded_payload_from_raw (body.value ()));
-                (void) _runtime.dispatch_multicast (
+                auto dispatched = _runtime.dispatch_multicast (
                   std::move (request.topic),
                   std::vector<zlink::message_t>{
                     zlink::message_t::from (std::move (request.frame))},
                   services, *_serializers);
-                return result_t<void>::success ();
+                return dispatched
+                         ? result_t<void>::success ()
+                         : detail::propagate_failure<void> (
+                             dispatched, "SPOT multicast route dispatch failed");
             }
         }
         auto request = _serializers->get<actor_bound_session_route_request_t> ().deserialize (
@@ -150,7 +153,7 @@ spot_route_internal_dispatcher_t::dispatch_send (const route_received_packet_t &
     }
 }
 
-void spot_route_internal_dispatcher_t::bind_actor_session_route (
+result_t<void> spot_route_internal_dispatcher_t::bind_actor_session_route (
   actor_gateway_runtime_t &actor_gateway,
   const actor_ref_t &actor_ref,
   std::string route_channel_name,
@@ -158,23 +161,27 @@ void spot_route_internal_dispatcher_t::bind_actor_session_route (
   std::optional<zlink::routing_id_t> session_rid,
   bool replace_existing) const
 {
-    actor_gateway.bind_session_route (actor_ref, _route_client, route_channel_name,
-                                      session_node_rid, stream_codec_t::message_pack,
-                                      replace_existing);
-    actor_gateway.record_bound_session_route (actor_ref, std::move (session_node_rid),
-                                              std::move (session_rid));
+    auto bound = actor_gateway.bind_session_route (
+      actor_ref, _route_client, std::move (route_channel_name), session_node_rid,
+      stream_codec_t::message_pack, replace_existing, std::move (session_rid));
+    return bound;
 }
 
-actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
+result_t<actor_gateway_runtime_t> spot_route_internal_dispatcher_t::bind_actor_route (
   const actor_ref_t &actor_ref,
   const runtime::messaging::envelope_header_t &header,
   const route_received_packet_t &received) const
 {
     auto actor_gateway = _actor_gateway;
-    bind_actor_session_route (actor_gateway, actor_ref,
-                              _runtime.actor_route_transport_name ().value_or (header.channel_name),
-                              received.source_node_rid, received.source_session_rid, false);
-    return actor_gateway;
+    auto bound = bind_actor_session_route (
+      actor_gateway, actor_ref,
+      _runtime.actor_route_transport_name ().value_or (header.channel_name),
+      received.source_node_rid, received.source_session_rid, false);
+    if (!bound) {
+        return detail::propagate_failure<actor_gateway_runtime_t> (
+          bound, "actor session route binding failed");
+    }
+    return result_t<actor_gateway_runtime_t>::success (std::move (actor_gateway));
 }
 
 result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
@@ -195,10 +202,14 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                 detail::encoded_payload_from_raw (body.value ()));
             auto actor_ref = actor_ref_from_bound_session_route (request);
             auto actor_gateway = _actor_gateway;
-            bind_actor_session_route (
+            auto bound = bind_actor_session_route (
               actor_gateway, actor_ref,
               _runtime.actor_route_transport_name ().value_or (header.channel_name),
               zlink::routing_id_t::from (request.session_node_rid), std::nullopt, true);
+            if (!bound) {
+                return detail::propagate_failure<zlink::message_t> (
+                  bound, "actor bound session route binding failed");
+            }
             return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
               _serializers->get<actor_bound_session_route_reply_t> ().serialize (
                 actor_bound_session_route_reply_t{.accepted = true})));
@@ -246,10 +257,15 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               detail::encoded_payload_from_raw (body.value ()));
             trace_actor_transfer_target ("commit-received", request.actor_id, request.transfer_id);
             auto actor_ref = actor_ref_from_spot_route (request);
-            auto actor_gateway =
-              request.core_transfer
-                ? _actor_gateway
-                : bind_actor_route (actor_ref, header, received);
+            auto actor_gateway = _actor_gateway;
+            if (!request.core_transfer) {
+                auto bound = bind_actor_route (actor_ref, header, received);
+                if (!bound) {
+                    return detail::propagate_failure<zlink::message_t> (
+                      bound, "actor session route binding failed");
+                }
+                actor_gateway = std::move (bound.value ());
+            }
             trace_actor_transfer_target ("commit-route-bound", request.actor_id,
                                          request.transfer_id);
             auto runtime = _runtime;
@@ -367,15 +383,19 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                       actor_ref_updated.error () ? actor_ref_updated.error ()->what ()
                                                  : "remote actor ref update failed");
                 }
-                bind_actor_session_route (
+                auto bound = bind_actor_session_route (
                   actor_gateway, target_actor_ref,
                   _runtime.actor_route_transport_name ().value_or (header.channel_name),
                   zlink::routing_id_t::from (request.bound_session_node_rid),
                   request.bound_session_rid.empty ()
-                    ? std::nullopt
-                    : std::make_optional (
-                        zlink::routing_id_t::from (request.bound_session_rid)),
+                        ? std::nullopt
+                        : std::make_optional (
+                            zlink::routing_id_t::from (request.bound_session_rid)),
                   true);
+                if (!bound) {
+                    return detail::propagate_failure<zlink::message_t> (
+                      bound, "actor bound session route binding failed");
+                }
             }
             if (request.finalize && recovered_completion) {
                 const auto replacement_prepared =
@@ -425,7 +445,7 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                                                  : "remote actor ref update failed");
                 }
                 if (!request.bound_session_node_rid.empty ()) {
-                    bind_actor_session_route (
+                    auto bound = bind_actor_session_route (
                       actor_gateway, committed.value ().actor,
                       _runtime.actor_route_transport_name ().value_or (header.channel_name),
                       zlink::routing_id_t::from (request.bound_session_node_rid),
@@ -434,6 +454,10 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                         : std::make_optional (
                             zlink::routing_id_t::from (request.bound_session_rid)),
                       true);
+                    if (!bound) {
+                        return detail::propagate_failure<zlink::message_t> (
+                          bound, "actor bound session route binding failed");
+                    }
                 }
             }
             trace_actor_transfer_target ("commit-replying", request.actor_id, request.transfer_id);
@@ -476,9 +500,15 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             if (!header.correlation_id.empty ())
                 metadata.correlation_id = header.correlation_id;
             const auto message_kind = actor_relay_kind_from_metadata (metadata);
-            auto actor_gateway = should_bind_actor_session_route (metadata)
-                                   ? bind_actor_route (actor_ref, header, received)
-                                   : _actor_gateway;
+            auto actor_gateway = _actor_gateway;
+            if (should_bind_actor_session_route (metadata)) {
+                auto bound = bind_actor_route (actor_ref, header, received);
+                if (!bound) {
+                    return detail::propagate_failure<zlink::message_t> (
+                      bound, "actor session route binding failed");
+                }
+                actor_gateway = std::move (bound.value ());
+            }
             auto relayed = runtime.manager ().relay_actor_packet (
               actor_ref, actor_gateway.actor_context (actor_ref), message_kind,
               request.packet_name_value, zlink::message_t::from (request.payload), services,
@@ -519,7 +549,12 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
           detail::encoded_payload_from_raw (body.value ()));
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
-        auto actor_gateway = bind_actor_route (actor_ref, header, received);
+        auto bound = bind_actor_route (actor_ref, header, received);
+        if (!bound) {
+            return detail::propagate_failure<zlink::message_t> (
+              bound, "actor session route binding failed");
+        }
+        auto actor_gateway = std::move (bound.value ());
         const auto entry_actor_ref = ::zlink::framework::detail::actor_ref_access_t::make (
           runtime.node_rid (), std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)),
           std::string (actor_ref.actor_id ().value ()), actor_ref.object_generation ());

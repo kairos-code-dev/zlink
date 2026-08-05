@@ -164,6 +164,10 @@ application은 payload byte를 기록한 뒤 terminal 상태까지 reservation�
 raw 분류 구간만 유한하게 남는다. 길이를 미리 확인할 수 있는 binding은 이 분류 구간 없이 HWM에서
 새 application `Recv`를 바로 멈출 수 있다.
 
+StreamNode는 이 multiplexed receive reservation과 별도로 Core STREAM inbound에서 complete
+client→server message의 크기를 검사한다. 이 크기는 6-byte prefix를 제외한 header와 payload의
+합이며, StreamNode 기본값은 `64 KiB`다. 이 상한은 server→client outbound message에 적용하지 않는다.
+
 **결정 — `R`은 부하에 따라 늘리지 않는다.** HWM은 정확한 차단선이 아니라 **압력이 올라왔다는
 신호**이고, 받기를 멈추는 것이 그 압력을 보내는 쪽까지 되돌리는 유일한 수단이다
 ([Framework API 「2.1 수신 payload가 memory를 계속 늘리지 않게 한다」](../spec/06-framework-api.ko.md#21-수신-payload가-memory를-계속-늘리지-않게-한다)). `R`을 connection 수나 대기 message

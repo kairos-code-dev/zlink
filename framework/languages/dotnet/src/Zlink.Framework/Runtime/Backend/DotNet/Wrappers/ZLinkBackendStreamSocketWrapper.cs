@@ -38,8 +38,14 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
     public IZLinkBackendSocketPoller CreateReceivePoller() =>
         ZLinkBackendSocketPoller.Create(_socket);
 
-    public void ApplySocketConfig(IZLinkSocketConfig config) =>
+    public void ApplySocketConfig(IZLinkSocketConfig config)
+    {
         ZLinkBackendSocketOptionsMapper.Apply(_socket.Options, config);
+        // Core uses -1 as the explicit unlimited value. The Framework's
+        // StreamNode value 0 must not leave a binding-specific default in use.
+        if (config.MaxMessageSize == 0)
+            _socket.Options.MaxMessageSize = -1;
+    }
 
     public string GetLastEndpoint() => _socket.Options.LastEndpoint;
 

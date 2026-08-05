@@ -201,7 +201,19 @@ internal readonly record struct ActorMessageFollowIngress(
     ulong DeadlineUnixMs,
     ReadOnlyMemory<byte> ApplicationMetadata,
     IReadOnlyList<Message> Parts,
-    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? Reply);
+    Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? Reply)
+{
+    // A stale Actor route is admitted by the follow target before the payload is
+    // materialized. The adapter decodes this envelope only after it accepts the
+    // follow, while the existing Parts property remains available to internal
+    // callers that already own materialized messages.
+    internal ReadOnlyMemory<byte> EncodedPayload { get; init; }
+
+    // The received metadata message remains owned by the synchronous ingress
+    // call. Copy it only after admission so a rejected stale route does not
+    // allocate an application-metadata snapshot.
+    internal Message? ApplicationMetadataSource { get; init; }
+}
 
 internal interface IActorMessageFollowIngressTarget
 {
@@ -550,6 +562,17 @@ internal struct MeshReceiveRecord
     internal static MeshReceiveRecord CompletionFailure(
         MeshOperationId operationId,
         RequestResult result) =>
+        CompletionFailure(
+            operationId,
+            MeshOperationKind.NodeRequest,
+            result,
+            failureErrno: 0);
+
+    internal static MeshReceiveRecord CompletionFailure(
+        MeshOperationId operationId,
+        MeshOperationKind operationKind,
+        RequestResult result,
+        int failureErrno = 0) =>
         new(
             MeshRecordKind.Completion,
             MeshReadyDomains.Infrastructure,
@@ -558,14 +581,14 @@ internal struct MeshReceiveRecord
             0,
             default,
             operationId,
-            MeshOperationKind.NodeRequest,
+            operationKind,
             null,
             null,
             null,
             0,
             0,
             (int) result,
-            0,
+            failureErrno,
             null);
 }
 
@@ -608,6 +631,8 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     MeshPeerChannel[] PeerChannels(RoutingId peerRid, ulong lifecycleGeneration);
     IMeshNodeMonitor OpenMonitor(MeshMonitorEventMask events = MeshMonitorEventMask.All);
     void SetReadyHandler(Func<MeshReadyDomains, MeshReadyDomains> handler);
+    void SetCompletionOverflowHandler(
+        Action<MeshReceiveRecord, IReadOnlyList<Message>> handler) { }
     bool DrainReady(MeshReadyDomains domains, MeshReadyBatch batch, RecvFlags flags = RecvFlags.None);
     ISpot CreateSpot();
     ISpot EntrySpot();

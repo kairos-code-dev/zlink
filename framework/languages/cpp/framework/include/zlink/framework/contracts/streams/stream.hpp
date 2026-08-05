@@ -276,6 +276,9 @@ struct stream_snapshot_t
     std::string tls_certificate_file;
     std::string tls_private_key_file;
     bool tls_require_client_certificate = false;
+    // Complete header plus payload bytes accepted from a client. Zero means
+    // that Framework adds no separate limit.
+    std::int64_t max_message_size = 64 * 1024;
 };
 
 class stream_builder_t
@@ -301,6 +304,7 @@ class stream_builder_t
     friend class stream_node_options_builder_t;
     friend class detail::stream_runtime_t;
     explicit stream_builder_t (std::shared_ptr<detail::stream_builder_state_t> state);
+    stream_builder_t &set_max_message_size (std::int64_t value);
     stream_builder_t &configure_tls_server (std::string certificate_file,
                                             std::string private_key_file,
                                             bool require_client_certificate);

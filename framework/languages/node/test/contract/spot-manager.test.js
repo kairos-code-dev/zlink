@@ -26,6 +26,9 @@ const {
   ZLinkRoutedSpotPacketDispatch
 } = require('../../packages/framework/dist/runtime/spots/spot-routed-spot-packet-dispatch');
 const {
+  ZLinkSpotRuntimeOptionsFactory
+} = require('../../packages/framework/dist/runtime/host/spot-runtime-options-factory');
+const {
   disposeLifecycleHandlers
 } = require('../../packages/framework/dist/runtime/handlers/handler-instance-scope');
 
@@ -115,6 +118,61 @@ function decodeActorReplyFrame(message) {
   const payload = JSON.parse(frame.subarray(6 + headerSize, 6 + headerSize + payloadSize).toString('utf8'));
   return { header, payload };
 }
+
+test('spot runtime owner resolver converts backend actor generation to objectGeneration', () => {
+  const nativeActorRef = {
+    actorId: 'actor-1',
+    nodeRid: 'node-a',
+    generation: 7n
+  };
+  const actorState = {
+    actor: {},
+    spot: {},
+    spotId: 'spot-a',
+    isMoving: false,
+    nativeActorRef,
+    meshName: 'test.mesh',
+    remoteActorPacketTarget: undefined
+  };
+  const factory = new ZLinkSpotRuntimeOptionsFactory({
+    registration: framework.createFrameworkRegistration(),
+    channelTransport: {},
+    routeTransport: {},
+    addressTransport: {},
+    spotPublisherTransport: {},
+    meshRouters: { spotRouterChannelIdByMesh: () => new Map() },
+    runtimeEventPublisher: {},
+    spotNodeRuntime: () => ({
+      primaryMeshNode: {
+        status: () => ({ routingId: 'node-a' })
+      }
+    }),
+    actorManager: () => ({
+      getState: (actorId) => actorId === nativeActorRef.actorId ? actorState : undefined
+    }),
+    locationLifecycle: () => undefined,
+    releaseInstanceAuthority: async () => {},
+    beginInstanceIdleClosingAuthority: async () => false,
+    beginInstanceClosingAuthority: async () => false,
+    createLocationSpotRouteResolver: () => undefined,
+    boundSessionRelay: { boundSessions: {} },
+    actorHandoff: {},
+    dispatchErrorReporter: () => ({}),
+    runtimeOrPreStartErrorSink: {},
+    detachedTaskRunner: {},
+    metrics: {},
+    admission: {}
+  });
+
+  const runtimeOptions = factory.create({});
+  const owner = runtimeOptions.actorDispatchOwnerResolver(nativeActorRef.actorId);
+
+  assert.equal(owner.spotId, 'spot-a');
+  assert.equal(owner.actorRef.actorId, nativeActorRef.actorId);
+  assert.equal(owner.actorRef.nodeRid, nativeActorRef.nodeRid);
+  assert.equal(owner.actorRef.objectGeneration, nativeActorRef.generation);
+  assert.equal(owner.actorRef.generation, nativeActorRef.generation);
+});
 
 test('Mesh actor ingress uses the current runtime owner for handoff capture', async () => {
   let fallbackActorRef;
@@ -2441,6 +2499,103 @@ test('spot manager rejects one-phase native remote join without materializing a 
   nativeJoinMessage.close();
 });
 
+test('Mesh actor join skips the target callback after the source operation is terminal', async () => {
+  let callbackCalls = 0;
+  let replyCalls = 0;
+  const actor = { context: { actorId: 'player-1' } };
+  class RoomSpot {
+    async onActorJoin() {
+      callbackCalls += 1;
+      return { accepted: true };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
+    actorResolver: () => actor
+  });
+  await manager.getOrCreate('test.mesh', RoomSpot, 'room-1');
+  const request = zlink.Message.from('join');
+  try {
+    await manager.dispatchMeshActorJoin('test.mesh', {
+      ownerKind: framework.ReadyOwnerKind.Spot,
+      spotId: zlink.RoutingId.from('room-1'),
+      actor: null
+    }, {
+      kind: framework.ReceiveKind.SpotControl,
+      kindData: {
+        kind: 'actorControl',
+        currentActor: {
+          nodeRid: zlink.RoutingId.from('node-a'),
+          actorId: actor.context.actorId,
+          generation: 1n
+        }
+      },
+      parts: [request],
+      isPending: () => false,
+      replyActorJoin() {
+        replyCalls += 1;
+        return zlink.SubmitResult.Ok;
+      }
+    });
+  } finally {
+    request.close();
+    await manager.close('test.mesh', 'room-1');
+  }
+  assert.equal(callbackCalls, 0);
+  assert.equal(replyCalls, 0);
+});
+
+test('Mesh actor join drops a callback result when the source ends before target commit', async () => {
+  let pending = true;
+  let callbackCalls = 0;
+  let replyCalls = 0;
+  const actor = { context: { actorId: 'player-1' } };
+  class RoomSpot {
+    async onActorJoin() {
+      callbackCalls += 1;
+      pending = false;
+      return { accepted: true };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
+    actorResolver: () => actor
+  });
+  await manager.getOrCreate('test.mesh', RoomSpot, 'room-1');
+  const request = zlink.Message.from('join');
+  try {
+    await manager.dispatchMeshActorJoin('test.mesh', {
+      ownerKind: framework.ReadyOwnerKind.Spot,
+      spotId: zlink.RoutingId.from('room-1'),
+      actor: null
+    }, {
+      kind: framework.ReceiveKind.SpotControl,
+      kindData: {
+        kind: 'actorControl',
+        currentActor: {
+          nodeRid: zlink.RoutingId.from('node-a'),
+          actorId: actor.context.actorId,
+          generation: 1n
+        }
+      },
+      parts: [request],
+      isPending: () => pending,
+      deadlineUnixMs: BigInt(Date.now() + 1_000),
+      replyActorJoin() {
+        replyCalls += 1;
+        return zlink.SubmitResult.Ok;
+      }
+    });
+  } finally {
+    request.close();
+    await manager.close('test.mesh', 'room-1');
+  }
+  assert.equal(callbackCalls, 1);
+  assert.equal(replyCalls, 0);
+});
+
 test('Mesh actor return to Entry Spot completes after the lifecycle callback', async () => {
   const entryNodeRid = zlink.RoutingId.from('entry-node');
   const actor = { actorId: 'player-1' };
@@ -2607,17 +2762,29 @@ test('formal remote Actor transfer to Entry Spot materializes state before commi
   }
 });
 
-test('formal remote Actor transfer reads referenced state before target admission', async () => {
+test('formal remote Actor transfer admits the target before reading referenced state', async () => {
   const events = [];
   const actor = { context: { actorId: 'player-1' } };
-  const transferMessage = zlink.Message.from(JSON.stringify({
+  const commonTransfer = {
     packetName: '__zlink.actor.join_spot.request',
+    actorId: 'player-1',
     actorType: 'PlayerActor',
+    actorNodeRid: 'source-node',
+    actorGeneration: '1',
+    routerChannelId: 'test.mesh',
     transferId: 'formal-user-transfer',
-    transferStateReference: 'relocation-state',
-    transferStateChecksumCrc32c: 17,
     request: Buffer.from('join-room').toString('base64'),
     handoffBacklog: []
+  };
+  const admissionMessage = zlink.Message.from(JSON.stringify({
+    ...commonTransfer,
+    phase: 'admission'
+  }));
+  const commitMessage = zlink.Message.from(JSON.stringify({
+    ...commonTransfer,
+    phase: 'commit',
+    transferStateReference: 'relocation-state',
+    transferStateChecksumCrc32c: 17
   }));
   class RoomSpot {
     async onActorJoin() {
@@ -2655,21 +2822,122 @@ test('formal remote Actor transfer reads referenced state before target admissio
           nodeRid: zlink.RoutingId.from('source-node'),
           actorId: actor.context.actorId,
           generation: 1n
-        }
+        },
+        currentSpotGeneration: 1n
       },
-      parts: [transferMessage],
+      parts: [admissionMessage],
+      replyActorJoin() {
+        return zlink.SubmitResult.Ok;
+      }
+    });
+
+    await manager.dispatchMeshActorJoin('test.mesh', {
+      spotId: zlink.RoutingId.from('room-1'),
+      actor: null
+    }, {
+      kind: framework.ReceiveKind.SpotControl,
+      kindData: {
+        kind: 'actorControl',
+        currentActor: {
+          nodeRid: zlink.RoutingId.from('source-node'),
+          actorId: actor.context.actorId,
+          generation: 1n
+        },
+        currentSpotGeneration: 1n
+      },
+      parts: [commitMessage],
       replyActorJoin() {
         return zlink.SubmitResult.Ok;
       }
     });
 
     assert.deepEqual(events, [
-      ['read', 'relocation-state', 17],
       'admission',
+      ['read', 'relocation-state', 17],
       ['materialize', 'player-state']
     ]);
   } finally {
-    transferMessage.close();
+    admissionMessage.close();
+    commitMessage.close();
+  }
+});
+
+test('formal remote Actor admission and commit retries are idempotent', async () => {
+  const events = [];
+  const actor = { context: { actorId: 'player-1' } };
+  const commonTransfer = {
+    packetName: '__zlink.actor.join_spot.request',
+    actorId: 'player-1',
+    actorType: 'PlayerActor',
+    actorNodeRid: 'source-node',
+    actorGeneration: '1',
+    routerChannelId: 'test.mesh',
+    transferId: 'formal-idempotent-transfer',
+    request: Buffer.from('join-room').toString('base64'),
+    handoffBacklog: []
+  };
+  const makeRecord = (message) => ({
+    kind: framework.ReceiveKind.SpotControl,
+    kindData: {
+      kind: 'actorControl',
+      currentActor: {
+        nodeRid: zlink.RoutingId.from('source-node'),
+        actorId: actor.context.actorId,
+        generation: 1n
+      },
+      currentSpotGeneration: 1n
+    },
+    parts: [message],
+    replyActorJoin() {
+      return zlink.SubmitResult.Ok;
+    }
+  });
+  const admission = zlink.Message.from(JSON.stringify({ ...commonTransfer, phase: 'admission' }));
+  const duplicateAdmission = zlink.Message.from(JSON.stringify({ ...commonTransfer, phase: 'admission' }));
+  const commit = zlink.Message.from(JSON.stringify({
+    ...commonTransfer,
+    phase: 'commit',
+    transferState: Buffer.from('player-state').toString('base64')
+  }));
+  const duplicateCommit = zlink.Message.from(JSON.stringify({
+    ...commonTransfer,
+    phase: 'commit',
+    transferState: Buffer.from('player-state').toString('base64')
+  }));
+  let materializeCount = 0;
+  class RoomSpot {
+    async onActorJoin() {
+      events.push('admission');
+      return { accepted: true, reply: 'accepted' };
+    }
+  }
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [RoomSpot],
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
+    actorTransferRuntime: {
+      async materializeRoutedActor(_actorId, _actorType, _adapterKey, transferState) {
+        materializeCount += 1;
+        events.push(`materialize:${transferState.getString('utf8')}`);
+        return { actor, actorRef: { actorId: actor.context.actorId, nodeRid: 'target-node', generation: 2n } };
+      },
+      rememberRoutedActorTransferTarget() {},
+      async rollbackRoutedActor() {}
+    }
+  });
+
+  await manager.getOrCreate('test.mesh', RoomSpot, 'room-1');
+  try {
+    await manager.dispatchMeshActorJoin('test.mesh', { spotId: zlink.RoutingId.from('room-1'), actor: null }, makeRecord(admission));
+    await manager.dispatchMeshActorJoin('test.mesh', { spotId: zlink.RoutingId.from('room-1'), actor: null }, makeRecord(duplicateAdmission));
+    await manager.dispatchMeshActorJoin('test.mesh', { spotId: zlink.RoutingId.from('room-1'), actor: null }, makeRecord(commit));
+    await manager.dispatchMeshActorJoin('test.mesh', { spotId: zlink.RoutingId.from('room-1'), actor: null }, makeRecord(duplicateCommit));
+    assert.deepEqual(events, ['admission', 'materialize:player-state']);
+    assert.equal(materializeCount, 1);
+  } finally {
+    admission.close();
+    duplicateAdmission.close();
+    commit.close();
+    duplicateCommit.close();
   }
 });
 
@@ -2775,9 +3043,58 @@ test('spot outbound routed send and request use SpotRef targets inside serial ex
   assert.deepEqual(events, [
     'spot:start',
     'spot:end',
-    `send:node-b:stage-b:${framework.ZLinkSpotKind.User}:9:Notice:notice`,
-    `request:play.route:stage-b:${framework.ZLinkSpotKind.User}:9:250:ping`
+    `request:play.route:stage-b:${framework.ZLinkSpotKind.User}:9:250:ping`,
+    `send:node-b:stage-b:${framework.ZLinkSpotKind.User}:9:Notice:notice`
   ]);
+});
+
+test('spot outbound one-way admission does not hold the serial executor during transport wait', async () => {
+  const events = [];
+  let releaseSend;
+  let sendStarted;
+  const sendGate = new Promise((resolve) => { releaseSend = resolve; });
+  const sendReady = new Promise((resolve) => { sendStarted = resolve; });
+  const targetSpot = framework.createSpotHandle('stage-b', async () => ({
+    meshName: 'play.route',
+    nodeRid: 'node-b',
+    spotId: 'stage-b',
+    spotKind: framework.ZLinkSpotKind.User,
+    spotGeneration: 9n
+  }));
+  const routedTransport = {
+    async sendToSpot() {
+      events.push('send:start');
+      sendStarted();
+      await sendGate;
+      events.push('send:end');
+      return { status: ZLinkSubmitStatus.Submitted };
+    },
+    async requestToSpot() {
+      events.push('request');
+      return 'reply';
+    }
+  };
+  const outbound = new framework.DefaultZLinkSpotOutbound(
+    new framework.ZLinkSpotSerialExecutor(),
+    undefined,
+    undefined,
+    undefined,
+    routedTransport
+  );
+
+  class Notice {}
+  class Ping {}
+  const send = outbound.sendToSpot(targetSpot, new Notice()).submit();
+  await sendReady;
+  const request = outbound.requestToSpot(targetSpot, new Ping()).submit();
+  const requestResult = await Promise.race([
+    request,
+    new Promise((resolve) => setTimeout(() => resolve('serial-blocked'), 50))
+  ]);
+  assert.equal(requestResult, 'reply');
+  releaseSend();
+  await send;
+  assert.deepEqual(events, ['send:start', 'request', 'send:end']);
 });
 
 test('spot outbound routed calls require runtime transport', async () => {

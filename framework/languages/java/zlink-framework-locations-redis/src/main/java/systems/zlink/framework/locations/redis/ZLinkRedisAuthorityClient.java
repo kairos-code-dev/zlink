@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -20,12 +21,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.internal.locations.*;
 
 final class ZLinkRedisAuthorityClient {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final Logger LOGGER =
+        Logger.getLogger(ZLinkRedisAuthorityClient.class.getName());
+    private static final boolean TRACE =
+        "1".equals(System.getenv("ZLINK_JAVA_STREAM_TRACE"));
+    private static final Duration AGGREGATE_COMMIT_RETRY_WINDOW =
+        Duration.ofSeconds(5);
+    private static final int AGGREGATE_COMMIT_RETRY_LIMIT = 64;
     private static final String PROLOGUE = """
         if redis.replicate_commands then redis.replicate_commands() end
         local time = redis.call('TIME')
@@ -1411,26 +1421,26 @@ final class ZLinkRedisAuthorityClient {
             KEYS[15], KEYS[16]}
         if redis.call('HGET', KEYS[1], 'aggregateGeneration')
                 ~= ARGV[1] then
-            return {'stale', nowMs}
+            return {'aggregate-stale', nowMs}
         end
         local state = redis.call('HGET', KEYS[1], 'state')
         if state == 'committed' then
             return {'already-committed', nowMs}
         end
-        if state ~= 'prepared' then return {'stale', nowMs} end
+        if state ~= 'prepared' then return {'aggregate-stale', nowMs} end
         local targetOwner = redis.call(
             'HGET', KEYS[1], 'targetOwner')
         local targetLease = redis.call(
             'HGET', KEYS[1], 'targetLease')
         if not leaseIsLive(
             KEYS[2], targetOwner, targetLease) then
-            return {'stale', nowMs}
+            return {'target-owner-stale', nowMs}
         end
         local ok, record = pcall(
             cjson.decode, redis.call('HGET', KEYS[1], 'record'))
         if not ok or type(record) ~= 'table'
             or type(record.Participants) ~= 'table' then
-            return {'stale', nowMs}
+            return {'aggregate-stale', nowMs}
         end
         local targetDescriptor = redis.call(
             'HGET', KEYS[1], 'targetDescriptor')
@@ -1451,7 +1461,7 @@ final class ZLinkRedisAuthorityClient {
                 or redis.call(
                     'HGET', row, 'preparedAggregateGeneration')
                     ~= ARGV[1] then
-                return {'stale', nowMs}
+                return {'participant-stale', nowMs}
             end
             if participant.Transition == 'new-owner' then
                 ownerIncrements = ownerIncrements + 1
@@ -1470,7 +1480,7 @@ final class ZLinkRedisAuthorityClient {
                             'descriptorLifecycleGeneration'),
                         redis.call('HGET', row, 'capacityBundle'),
                         'active', -1) then
-                    return {'stale', nowMs}
+                    return {'participant-stale', nowMs}
                 end
             end
         end
@@ -2322,7 +2332,12 @@ final class ZLinkRedisAuthorityClient {
                 Long.toString(
                     request.targetOwner().leaseGeneration()),
                 aggregate.json))
-            .thenApply(raw -> switch (string(raw.getFirst())) {
+            .thenApply(raw -> {
+                trace("aggregate-prepare id="
+                    + request.aggregateId()
+                    + " generation=" + request.aggregateGeneration()
+                    + " status=" + string(raw.getFirst()));
+                return switch (string(raw.getFirst())) {
                 case "prepared" ->
                     new ZLinkAggregatePrepared(
                         new ZLinkAggregateFence(
@@ -2337,12 +2352,25 @@ final class ZLinkRedisAuthorityClient {
                 case "generation-exhausted" ->
                     new ZLinkAggregateGenerationExhausted();
                 default -> new ZLinkAggregateConflict();
+                };
             });
     }
 
     CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation) {
+        return commitAggregate(
+            fence,
+            cancellation,
+            0,
+            Instant.now().plus(AGGREGATE_COMMIT_RETRY_WINDOW));
+    }
+
+    private CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
+        ZLinkAggregateFence fence,
+        ZLinkStoreCancellation cancellation,
+        int retryAttempt,
+        Instant retryDeadline) {
         if (cancelled(cancellation)) {
             return cancelledStage();
         }
@@ -2361,15 +2389,70 @@ final class ZLinkRedisAuthorityClient {
                     operationKeys,
                     Long.toString(fence.aggregateGeneration())));
             })
-            .thenApply(raw -> switch (string(raw.getFirst())) {
-                case "committed" ->
-                    ZLinkAggregateCommitResult.COMMITTED;
-                case "already-committed" ->
-                    ZLinkAggregateCommitResult.ALREADY_COMMITTED;
-                case "generation-exhausted" ->
-                    ZLinkAggregateCommitResult.GENERATION_EXHAUSTED;
-                default -> ZLinkAggregateCommitResult.STALE;
+            .thenCompose(raw -> {
+                String status = string(raw.getFirst());
+                trace("aggregate-commit id="
+                    + fence.aggregateId()
+                    + " generation=" + fence.aggregateGeneration()
+                    + " attempt=" + retryAttempt
+                    + " status=" + status);
+                if ("target-owner-stale".equals(status)
+                    && retryAttempt < AGGREGATE_COMMIT_RETRY_LIMIT
+                    && Instant.now().isBefore(retryDeadline)
+                    && !cancelled(cancellation)) {
+                    return delayAggregateCommitRetry(
+                            retryAttempt,
+                            retryDeadline,
+                            cancellation)
+                        .thenCompose(ignored -> commitAggregate(
+                            fence,
+                            cancellation,
+                            retryAttempt + 1,
+                            retryDeadline));
+                }
+                return CompletableFuture.completedFuture(
+                    switch (status) {
+                        case "committed" ->
+                            ZLinkAggregateCommitResult.COMMITTED;
+                        case "already-committed" ->
+                            ZLinkAggregateCommitResult.ALREADY_COMMITTED;
+                        case "generation-exhausted" ->
+                            ZLinkAggregateCommitResult.GENERATION_EXHAUSTED;
+                        default -> ZLinkAggregateCommitResult.STALE;
+                    });
             });
+    }
+
+    private static CompletionStage<Void> delayAggregateCommitRetry(
+        int retryAttempt,
+        Instant retryDeadline,
+        ZLinkStoreCancellation cancellation) {
+        long remainingMillis = Duration.between(
+                Instant.now(), retryDeadline).toMillis();
+        if (remainingMillis <= 0 || cancelled(cancellation)) {
+            return CompletableFuture.completedFuture(null);
+        }
+        long baseMillis = Math.min(
+            100L,
+            2L << Math.min(retryAttempt, 5));
+        long jitterMillis =
+            java.util.concurrent.ThreadLocalRandom.current()
+                .nextLong(baseMillis + 1L);
+        long delayMillis = Math.min(
+            remainingMillis,
+            baseMillis + jitterMillis);
+        return CompletableFuture.runAsync(
+            () -> {},
+            CompletableFuture.delayedExecutor(
+                delayMillis,
+                TimeUnit.MILLISECONDS));
+    }
+
+    private static void trace(String message) {
+        if (TRACE) {
+            LOGGER.warning("[zlink-java-stream-trace] redis-authority "
+                + message);
+        }
     }
 
     CompletionStage<ZLinkAggregateAbortResult> abortAggregate(

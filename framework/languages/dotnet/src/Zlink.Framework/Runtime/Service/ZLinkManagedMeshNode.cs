@@ -23,6 +23,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private const int MaxCompletionControlParts = 64;
     private const long MaxCompletionControlBytes = 256 * 1024;
     private const long MaxCompletionPayloadBytes = 4_294_966_774L;
+    private const long DefaultPendingCompletionByteBudget = 16L * 1024 * 1024;
     private const string DefaultInboundSecurityIdentity = "none";
     private static readonly TimeSpan DefaultInboundOperationShutdownTimeout =
         TimeSpan.FromSeconds(2);
@@ -58,6 +59,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private readonly ConcurrentDictionary<MailboxKey, OwnedMailbox> _ownedMailboxes = new();
     private readonly object _pendingCompletionGate = new();
     private readonly Queue<QueuedRecord> _pendingInfrastructureCompletions = new();
+    private long _pendingInfrastructureCompletionBytes;
+    private long _pendingInfrastructureCompletionCount;
     private readonly ConcurrentDictionary<ulong, PendingOperation> _operations = new();
     private readonly Dictionary<RelocationReplyTerminalKey, RelocationReplyTerminal>
         _relocationReplyTerminals = [];
@@ -93,6 +96,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private Task? _receiveLoop;
     private Task? _disposeTask;
     private Func<MeshReadyDomains, MeshReadyDomains>? _readyHandler;
+    private Action<MeshReceiveRecord, IReadOnlyList<Message>>?
+        _completionOverflowHandler;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
     private IActorCreateOperationTarget? _actorCreateOperationTarget;
     private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
@@ -1399,7 +1404,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 .Where(static entry =>
                     entry.Key.Domain == MeshReadyDomains.Infrastructure)
                 .Sum(static entry => entry.Value.Count)
-                + _peerControlRetry.Count;
+                + _peerControlRetry.Count
+                + checked((int)Math.Max(
+                    0,
+                    Volatile.Read(ref _pendingInfrastructureCompletionCount)));
+            var pendingBytes = checked(
+                (ulong)Math.Max(0, Volatile.Read(ref _queuedBytes))
+                + (ulong)Math.Max(
+                    0,
+                    Volatile.Read(ref _pendingInfrastructureCompletionBytes)));
             return new MeshNodeStatus(
                 _state,
                 _routingId,
@@ -1413,7 +1426,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 checked((uint)draining),
                 checked((ulong)pendingApplication),
                 checked((ulong)pendingInfrastructure),
-                checked((ulong)Volatile.Read(ref _queuedBytes)),
+                pendingBytes,
                 0,
                 checked((ulong)Environment.TickCount64));
         }
@@ -1461,6 +1474,17 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         // be drained.
         Volatile.Write(ref _readyPosted, 0);
         SignalReadyIfNeeded();
+    }
+
+    void IMeshNode.SetCompletionOverflowHandler(
+        Action<MeshReceiveRecord, IReadOnlyList<Message>> handler) =>
+        SetCompletionOverflowHandlerCore(handler);
+
+    internal void SetCompletionOverflowHandlerCore(
+        Action<MeshReceiveRecord, IReadOnlyList<Message>> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        Volatile.Write(ref _completionOverflowHandler, handler);
     }
 
     public bool DrainReady(
@@ -2041,10 +2065,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 peer.PhysicalRoutingId,
                 parts,
                 checked(head.Length + metadata.Length)));
-            if (!TrySend(peer.PhysicalRoutingId, wireParts, flags))
-                Publish(
-                    MeshMonitorEventKind.Backpressured,
-                    peerRid: target.RoutingId);
+            // Publish has already crossed its admission boundary. A remote target
+            // that is no longer reachable must not hold this worker until the
+            // socket send timeout; target acceptance is neither a public result nor
+            // publish-specific monitoring data after the transaction starts.
+            _ = TrySend(
+                peer.PhysicalRoutingId,
+                wireParts,
+                flags | SendFlags.DontWait);
         }
     }
 
@@ -4872,25 +4900,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     Array.Empty<Message>());
             return;
         }
-        var metadata = stateful.HasMetadata
-            ? received.Parts[1].ToArray()
-            : null;
-        if (!ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
-                received.Parts[payloadOffset].AsReadOnlyMemory(),
-                out var parts))
-        {
-            if (request)
-                Reply(
-                    RequestResult.ProtocolError,
-                    (uint)ServiceWireConstants.FrameworkErrorCode.RequestProtocolError,
-                    Array.Empty<Message>());
-            return;
-        }
         MailboxKey owner;
         MeshRecordKind kind;
         MeshOperationKind operationKind;
         ActorRef sourceActor = default;
         string sourceSpotId = stateful.SourceSpotId;
+        ManagedActor? admittedActor = null;
         if (stateful.Command is ServiceWireConstants.Command.SpotSend
             or ServiceWireConstants.Command.SpotRequest)
         {
@@ -4914,7 +4929,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     + $"local_spot_gen={(hasTargetSpot ? spot!.LifecycleGeneration : 0)} "
                     + $"local_authority_gen={(hasTargetSpot ? spot!.AuthorityOwnerGeneration : 0)} "
                     + $"local_lease_gen={localOwnerLeaseGeneration}");
-                DisposeParts(parts);
                 if (request)
                     Reply(
                         RequestResult.Conflict,
@@ -4948,7 +4962,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                                 replyParts)
                         : null;
                 var followed = messageFollowTarget?.TryFollow(
-                        new ActorMessageFollowIngress(
+                    new ActorMessageFollowIngress(
                             sourceRid,
                             ResolvePeerGeneration(sourceRid),
                             sourceSpotId,
@@ -4960,9 +4974,16 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                             stateful.OwnerLeaseGeneration,
                             stateful.MessageFollowHopCount,
                             stateful.DeadlineUnixMs,
-                            metadata ?? ReadOnlyMemory<byte>.Empty,
-                            parts,
-                            messageFollowReply));
+                            ReadOnlyMemory<byte>.Empty,
+                            Array.Empty<Message>(),
+                            messageFollowReply)
+                    {
+                        EncodedPayload = received.Parts[payloadOffset]
+                            .AsReadOnlyMemory(),
+                        ApplicationMetadataSource = stateful.HasMetadata
+                            ? received.Parts[1]
+                            : null
+                    });
                 //  Follow taking responsibility without replying and the stale
                 //  reply below are indistinguishable from the caller's side.
                 ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -4971,7 +4992,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     + $"request={request}");
                 if (followed == true)
                     return;
-                DisposeParts(parts);
                 //  Spec 06 §13.1 separates two outcomes. No Actor incarnation
                 //  under this reference means the authority is gone, which is
                 //  `NotFound`. An incarnation that is here under a different
@@ -4988,11 +5008,29 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                         Array.Empty<Message>());
                 return;
             }
+            admittedActor = actor;
             owner = MailboxKey.ForActor(actor, MeshReadyDomains.Application);
             kind = request ? MeshRecordKind.ActorRequest : MeshRecordKind.ActorSend;
             operationKind = MeshOperationKind.ActorRequest;
-            actor.NextSequence();
         }
+
+        var metadata = stateful.HasMetadata
+            ? received.Parts[1].ToArray()
+            : null;
+        if (!ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
+                received.Parts[payloadOffset].AsReadOnlyMemory(),
+                out var parts))
+        {
+            if (request)
+                Reply(
+                    RequestResult.ProtocolError,
+                    (uint)ServiceWireConstants.FrameworkErrorCode.RequestProtocolError,
+                    Array.Empty<Message>());
+            return;
+        }
+        if (stateful.Command is not (ServiceWireConstants.Command.SpotSend
+            or ServiceWireConstants.Command.SpotRequest))
+            admittedActor!.NextSequence();
 
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null;
         if (request)
@@ -7165,19 +7203,81 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 failure,
                 kindData),
             parts);
+        var currentCompletionReplaced = false;
+        MeshReceiveRecord? currentOverflowFailure = null;
+        List<MeshReceiveRecord>? overflowFailures = null;
         lock (_pendingCompletionGate)
         {
             if (_pendingInfrastructureCompletions.Count != 0
                 || !TryEnqueueInfrastructureCompletionUnderLock(queued))
-                _pendingInfrastructureCompletions.Enqueue(queued);
+            {
+                if (!TryRetainPendingInfrastructureCompletionUnderLock(
+                        queued,
+                        out currentCompletionReplaced,
+                        out overflowFailures))
+                {
+                    if (currentCompletionReplaced)
+                    {
+                        // A Backpressured marker is still a retained record and
+                        // therefore has the fixed mailbox cost. When the
+                        // configured byte budget is smaller than that cost, the
+                        // marker cannot be queued; complete it through the
+                        // internal overflow sink instead.
+                        currentOverflowFailure =
+                            MeshReceiveRecord.CompletionFailure(
+                                operationId,
+                                operationKind,
+                                RequestResult.Backpressured);
+                    }
+                }
+            }
+        }
+        if (currentCompletionReplaced)
+            RecordCompletionRetentionOverflow(operationId);
+        var overflowHandler = Volatile.Read(ref _completionOverflowHandler);
+        if (currentOverflowFailure is { } currentFailure
+            && overflowHandler is not null)
+        {
+            try
+            {
+                overflowHandler(currentFailure, Array.Empty<Message>());
+            }
+            catch (Exception exception)
+            {
+                ZLinkFrameworkDebugLog.TaskFailure(
+                    "completion-overflow-handler",
+                    exception);
+            }
+        }
+        if (overflowFailures is not null)
+        {
+            foreach (var overflowFailure in overflowFailures)
+            {
+                RecordCompletionRetentionOverflow(overflowFailure.OperationId);
+                if (overflowHandler is not null)
+                {
+                    try
+                    {
+                        overflowHandler(overflowFailure, Array.Empty<Message>());
+                    }
+                    catch (Exception exception)
+                    {
+                        ZLinkFrameworkDebugLog.TaskFailure(
+                            "completion-overflow-handler",
+                            exception);
+                    }
+                }
+            }
         }
         SignalReadyIfNeeded();
         if (publishEvent)
             Publish(
                 MeshMonitorEventKind.OperationCompleted,
                 operationId: operationId,
-                resultCode: result,
-                failureErrno: failure);
+                resultCode: currentCompletionReplaced
+                    ? (int)RequestResult.Backpressured
+                    : result,
+                failureErrno: currentCompletionReplaced ? 0 : failure);
     }
 
     private bool TryEnqueueInfrastructureCompletionUnderLock(QueuedRecord queued)
@@ -7203,6 +7303,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 if (!TryEnqueueInfrastructureCompletionUnderLock(queued))
                     break;
                 _pendingInfrastructureCompletions.Dequeue();
+                RemovePendingInfrastructureCompletionAccounting(queued);
                 enqueued = true;
             }
         }
@@ -7215,8 +7316,128 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         lock (_pendingCompletionGate)
         {
             while (_pendingInfrastructureCompletions.TryDequeue(out var queued))
+            {
+                RemovePendingInfrastructureCompletionAccounting(queued);
                 queued.Dispose();
+            }
         }
+    }
+
+    private bool TryRetainPendingInfrastructureCompletionUnderLock(
+        QueuedRecord queued,
+        out bool currentCompletionReplaced,
+        out List<MeshReceiveRecord>? overflowFailures)
+    {
+        currentCompletionReplaced = false;
+        overflowFailures = null;
+        var byteBudget = PendingInfrastructureCompletionByteBudget;
+        if (queued.PendingBytes > byteBudget)
+        {
+            queued = ReplaceWithBackpressuredCompletion(queued);
+            currentCompletionReplaced = true;
+            if (queued.PendingBytes > byteBudget)
+            {
+                queued.Dispose();
+                return false;
+            }
+        }
+
+        while (_pendingInfrastructureCompletions.Count
+                   >= PendingInfrastructureCompletionRecordBudget
+               || !CanAddPendingInfrastructureCompletionBytes(
+                   queued.PendingBytes,
+                   byteBudget))
+        {
+            if (!_pendingInfrastructureCompletions.TryDequeue(out var evicted))
+                break;
+            RemovePendingInfrastructureCompletionAccounting(evicted);
+            evicted.Dispose();
+            overflowFailures ??= [];
+            overflowFailures.Add(
+                MeshReceiveRecord.CompletionFailure(
+                    evicted.Record.OperationId,
+                    evicted.Record.OperationKind,
+                    RequestResult.Backpressured));
+        }
+
+        if (_pendingInfrastructureCompletions.Count
+            >= PendingInfrastructureCompletionRecordBudget)
+        {
+            queued.Dispose();
+            return false;
+        }
+
+        _pendingInfrastructureCompletions.Enqueue(queued);
+        AddPendingInfrastructureCompletionAccounting(queued);
+        return true;
+    }
+
+    private QueuedRecord ReplaceWithBackpressuredCompletion(
+        QueuedRecord queued)
+    {
+        var failure = QueuedRecordForCompletionFailure(queued.Record);
+        queued.Dispose();
+        return failure;
+    }
+
+    private static QueuedRecord QueuedRecordForCompletionFailure(
+        MeshReceiveRecord record) =>
+        new(
+            MeshReceiveRecord.CompletionFailure(
+                record.OperationId,
+                record.OperationKind,
+                RequestResult.Backpressured),
+            Array.Empty<Message>());
+
+    private void AddPendingInfrastructureCompletionAccounting(
+        QueuedRecord queued)
+    {
+        Interlocked.Increment(ref _pendingInfrastructureCompletionCount);
+        Interlocked.Add(
+            ref _pendingInfrastructureCompletionBytes,
+            checked((long)queued.PendingBytes));
+    }
+
+    private void RemovePendingInfrastructureCompletionAccounting(
+        QueuedRecord queued)
+    {
+        Interlocked.Decrement(ref _pendingInfrastructureCompletionCount);
+        Interlocked.Add(
+            ref _pendingInfrastructureCompletionBytes,
+            -checked((long)queued.PendingBytes));
+    }
+
+    private bool CanAddPendingInfrastructureCompletionBytes(
+        ulong pendingBytes,
+        ulong byteBudget)
+    {
+        if (pendingBytes > byteBudget)
+            return false;
+        var current = checked((ulong)Math.Max(
+            0,
+            Volatile.Read(ref _pendingInfrastructureCompletionBytes)));
+        return pendingBytes <= byteBudget - Math.Min(current, byteBudget);
+    }
+
+    private int PendingInfrastructureCompletionRecordBudget =>
+        Math.Max(1, _maxPendingOperations);
+
+    private ulong PendingInfrastructureCompletionByteBudget =>
+        MailboxByteBudget == 0
+            ? checked((ulong)DefaultPendingCompletionByteBudget)
+            : Math.Min(MailboxByteBudget, (ulong)long.MaxValue);
+
+    private void RecordCompletionRetentionOverflow(MeshOperationId operationId)
+    {
+        ZLinkRuntimeMetrics.RecordMessageDropped(
+            _meshName,
+            "completion",
+            "reply",
+            "capacity_exceeded");
+        ZLinkFrameworkDebugLog.SpotDiscovery(
+            $"completion_retention_capacity_exceeded operation="
+            + $"{operationId.High:x16}{operationId.Low:x16}");
+        Publish(MeshMonitorEventKind.Backpressured, operationId: operationId);
     }
 
     private void EnqueueSendReady()
@@ -7311,7 +7532,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 {
                     lease = budget.TrackReceived(
                         receivePermit,
-                        queued.PendingBytes);
+                        queued.PayloadBytes);
                     budget.CompleteReceiveAttempt(receivePermit);
                     receivePermit = null;
                     queued.AttachLease(lease);
@@ -7404,7 +7625,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void SignalReadyIfNeeded()
     {
-        if (!_ownedMailboxes.Values.Any(static mailbox => mailbox.HasRecords)
+        if ((!_ownedMailboxes.Values.Any(static mailbox => mailbox.HasRecords)
+             && Volatile.Read(ref _pendingInfrastructureCompletionCount) == 0)
             || Interlocked.CompareExchange(ref _readyPosted, 1, 0) != 0)
             return;
         _readyHandler?.Invoke(MeshReadyDomains.All);
@@ -7416,11 +7638,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             return _channelSelection.TrySelect(channelName, out targetRid);
     }
 
-    //  Spec 08 §7 separates two outcomes. A ChannelName with no declared
-    //  target ends as NotFound, while a declared target that is currently not
-    //  selectable (including a weight-zero member) is a connection error the
-    //  caller may observe as Unavailable. The declaration check must therefore
-    //  retain channel membership independently of its current weight.
+    //  Spec 08 §7 treats a ChannelName with no selectable target as NotFound.
+    //  A weight-zero or draining member is excluded before submission, so it
+    //  is not a transport connection failure. The declaration check is kept
+    //  separately for monitoring and failure metrics.
     private SubmitResult ChannelSelectionFailureResult(string channelName)
     {
         var reason = ChannelSelectionFailureReason(channelName);
@@ -7428,9 +7649,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             _meshName,
             channelName,
             reason);
-        return reason == "no_member"
-            ? SubmitResult.NotFound
-            : SubmitResult.NotConnected;
+        return reason switch
+        {
+            "draining" => SubmitResult.Terminated,
+            "not_ready" => SubmitResult.NotConnected,
+            _ => SubmitResult.NotFound
+        };
     }
 
     private string ChannelSelectionFailureReason(string channelName)
@@ -7440,12 +7664,18 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             if (_state == MeshNodeState.Draining)
                 return "draining";
             //  Spec 08 §3.2 step 4 removes a weight-zero target from selection,
-            //  but the target remains a declared member. This lets callers
-            //  distinguish deliberate exclusion or a not-ready route from an
-            //  unknown ChannelName.
-            return _channelSelection.IsDeclared(channelName)
+            //  but the target remains a declared member for monitoring and
+            //  connection intent reconciliation. A previously admitted peer
+            //  that is now connecting is a known target whose route is not
+            //  ready, so it maps to Unavailable instead of NotFound.
+            if (!_channelSelection.IsDeclared(channelName))
+                return "no_member";
+            return _peersByIntent.Values.Any(peer =>
+                    !peer.Admitted
+                    && peer.State != MeshPeerState.Closed
+                    && peer.Channels.ContainsKey(channelName))
                 ? "not_ready"
-                : "no_member";
+                : "no_target";
         }
     }
 
@@ -7455,8 +7685,11 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             StringComparer.Ordinal);
         // RouteMesh selects an admitted remote Server. The local Server role
         // advertises membership but is never a candidate for its own route.
-        // Keep only peer declarations so a local-only channel reports no member.
-        foreach (var peer in _peersByRid.Values)
+        // Keep peer declarations, including the last admitted declaration on
+        // a connection that is currently being re-established. This preserves
+        // the known-target distinction for Unavailable while still keeping
+        // only admitted peers as actual selection candidates.
+        foreach (var peer in _peersByIntent.Values)
             channelNames.UnionWith(peer.Channels.Keys);
         _channelSelection.Rebuild(channelNames, BuildChannelTargetsUnderLock);
     }
@@ -7779,6 +8012,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void RetireDuplicatePeer(Peer peer)
     {
+        var wasAdmitted = peer.Admitted;
+        var physicalRoutingId = peer.PhysicalRoutingId;
         if (peer.Admitted
             || peer.State != MeshPeerState.Configured
             || _peersByIntent.ContainsKey(peer.Intent))
@@ -7796,14 +8031,10 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         RebuildChannelSelectionPlansUnderLock();
         if (peer.Direction == ZLinkServiceConnectionDirection.Outbound
             && _socket is not null)
-            try
-            {
-                lock (_socketGate)
-                    _socket.Disconnect(peer.Endpoint);
-            }
-            catch (ZlinkException)
-            {
-            }
+            DisconnectTransport(
+                peer,
+                wasAdmitted,
+                physicalRoutingId);
         _peerControlRetry.RemoveTarget(peer.PhysicalRoutingId);
     }
 
@@ -7817,6 +8048,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void RemovePeer(Peer peer, bool disconnect)
     {
+        var wasAdmitted = peer.Admitted;
+        var physicalRoutingId = peer.PhysicalRoutingId;
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"mesh_peer_remove local={_routingId} peer={peer.RoutingId} "
             + $"expected={peer.ExpectedRid?.ToString() ?? "<unknown>"} "
@@ -7832,15 +8065,46 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         _peerControlRetry.RemoveTarget(peer.PhysicalRoutingId);
         RebuildChannelSelectionPlansUnderLock();
         if (disconnect && _socket is not null)
-            try
-            {
-                lock (_socketGate)
-                    _socket.Disconnect(peer.Endpoint);
-            }
-            catch (ZlinkException)
-            {
-            }
+            DisconnectTransport(
+                peer,
+                wasAdmitted,
+                physicalRoutingId);
         Publish(MeshMonitorEventKind.PeerClosed, peerRid: peer.RoutingId);
+    }
+
+    private void DisconnectTransport(
+        Peer peer,
+        bool wasAdmitted,
+        RoutingId physicalRoutingId)
+    {
+        try
+        {
+            lock (_socketGate)
+            {
+                if (wasAdmitted && !physicalRoutingId.IsEmpty)
+                {
+                    // Endpoint termination is broader than one mesh lifetime.
+                    // During a rolling RID handover it can terminate the old
+                    // pipe while the replacement connect is being attached.
+                    // An admitted peer has an exact physical RID, so retire
+                    // only that pipe and leave other candidates on the endpoint
+                    // untouched.
+                    _socket!.DisconnectRid(physicalRoutingId);
+                    ZLinkFrameworkDebugLog.SpotDiscovery(
+                        $"mesh_peer_transport_disconnect local={_routingId} "
+                        + $"peer={peer.RoutingId} mode=rid physical={physicalRoutingId}");
+                    return;
+                }
+
+                _socket!.Disconnect(peer.Endpoint);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"mesh_peer_transport_disconnect local={_routingId} "
+                    + $"peer={peer.RoutingId} mode=endpoint endpoint={peer.Endpoint}");
+            }
+        }
+        catch (ZlinkException)
+        {
+        }
     }
 
     private void Publish(

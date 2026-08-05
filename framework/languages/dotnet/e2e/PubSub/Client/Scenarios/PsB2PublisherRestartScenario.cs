@@ -76,8 +76,19 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected restarted publisher to become healthy.");
-        // The subscribers keep their subscriptions; a delivered probe confirms
-        // that every subscriber reconnected without exposing transport events.
+        // A publisher health response does not mean that every existing fanout
+        // subscription has completed its new transport handshake. Classic
+        // fanout has no public connection-status surface, so use the existing
+        // bounded delivery barrier to wait for each subscriber's first valid
+        // post-restart record before publishing the measured marker.
+        await Task.WhenAll(subscribers.Select((subscriber, index) =>
+            FanoutReadiness.WaitUntilReceivingAsync(
+                publisher,
+                subscriber,
+                $"PS-B2 subscriber {index + 1} after publisher restart")));
+
+        // The subscribers keep their subscriptions; this second marker is the
+        // scenario-visible recovery evidence after all subscriptions are ready.
         var readyRun = $"ready-{Guid.NewGuid():N}";
         await publisher.Post("/publish/event")
             .Query("topic", PubSubNames.MainTopic)

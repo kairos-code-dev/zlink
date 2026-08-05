@@ -6,13 +6,19 @@ namespace Zlink.Framework.Runtime.Configuration;
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSocketConfig
 {
     internal const long DefaultMaxMessageSize = 16L * 1024L * 1024L;
+    internal const long DefaultStreamMaxMessageSize = 64L * 1024L;
     internal const int DefaultPeerWeight = 100;
     internal const int MaximumPeerWeight = 10_000;
 
     private TimeSpan? _sendTimeout;
     private int _weight = DefaultPeerWeight;
 
-    public long MaxMessageSize { get; set; } = DefaultMaxMessageSize;
+    public ZLinkSocketConfig(long defaultMaxMessageSize = DefaultMaxMessageSize)
+    {
+        MaxMessageSize = defaultMaxMessageSize;
+    }
+
+    public long MaxMessageSize { get; set; }
 
     public ulong SendHighWaterMark { get; set; }
 

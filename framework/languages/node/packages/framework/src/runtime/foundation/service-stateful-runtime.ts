@@ -77,6 +77,7 @@ import { validateServiceMetadataFrame } from './service-metadata-codec';
 import {
   ZLinkFrameworkException
 } from '../../contracts';
+import { appendFileSync } from 'node:fs';
 
 const ACTOR_ROUTE_STALE = 21;
 const SPOT_MOVING = 34;
@@ -140,6 +141,10 @@ export interface ServiceStatefulMailboxData {
   readonly kindData?: ReceiveKindData;
   readonly applicationMetadata?: Buffer;
   readonly messageFollowOrigin?: import('./service-runtime-contracts').ZLinkMessageFollowOrigin;
+  /** Prevents a local lifecycle callback from publishing after its operation ended. */
+  readonly isPending?: () => boolean;
+  /** Carries the local operation deadline into the lifecycle dispatch lane. */
+  readonly deadlineUnixMs?: bigint;
   readonly onTerminalCompletion?: () => void | Promise<void>;
   readonly reply?: (
     terminalResult: number,
@@ -304,6 +309,10 @@ export class ServiceStatefulRuntime {
   private readonly pendingInstanceTerminals = new Map<string, number>();
   private readonly pendingInstanceAuthorityTerminals = new Map<string, number>();
   private readonly instanceApplicationWaiters = new Map<string, Set<() => void>>();
+  private readonly actorJoinPhases = new Map<bigint, 'admission' | 'commit' | 'abort' | undefined>();
+  private readonly actorJoinTransferIds = new Map<bigint, string | undefined>();
+  private readonly actorJoinCommittedTransfers = new Map<string, number>();
+  private readonly actorJoinSourceLeaves = new Map<string, number>();
   private readonly actorRoutes = new Map<string, ServiceActorRouteFence>();
   // Direct application messages use the logical Spot ID. Actor joins and
   // lifecycle controls use the exact Spot object generation. Keep both views
@@ -711,6 +720,15 @@ export class ServiceStatefulRuntime {
       throw new Error('Async Instance activation authority is not registered.');
     }
     await this.instanceApplicationLifecycle?.materialize(target, route.objectGeneration);
+    return this.finishRecoveredInstanceActivation(envelope, route, expectedCurrentRoute);
+  }
+
+  private async finishRecoveredInstanceActivation(
+    envelope: ServiceInstanceActivationRecoveryEnvelope,
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<boolean> {
+    const target = envelope.target;
     const spot = this.registry.spot(target.targetSpotId)
       ?? this.registry.restoreSpot(
         {
@@ -823,7 +841,7 @@ export class ServiceStatefulRuntime {
       this.registry.closeSpot(spot.ref);
       throw new ServiceInstanceActivationRedirectError(committed.route);
     }
-    return this.recoverInstanceActivation(envelope, committed.route, expectedCurrentRoute);
+    return this.finishRecoveredInstanceActivation(envelope, committed.route, expectedCurrentRoute);
   }
 
   async completeRecoveredInstanceActivation(
@@ -1238,8 +1256,40 @@ export class ServiceStatefulRuntime {
     sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): number {
+    return this.prepareMissingInstanceSpotSend(
+      target,
+      payload,
+      deadlineUnixMs,
+      sourceSpotId,
+      metadataFrame
+    )();
+  }
+
+  sendToMissingInstanceSpotFrame(
+    target: ServiceInstanceActivationTarget,
+    payloadFrame: Buffer,
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadataFrame?: Uint8Array
+  ): number {
+    return this.prepareMissingInstanceSpotSendFrame(
+      target,
+      payloadFrame,
+      deadlineUnixMs,
+      sourceSpotId,
+      metadataFrame
+    )();
+  }
+
+  prepareMissingInstanceSpotSend(
+    target: ServiceInstanceActivationTarget,
+    payload: ServiceApplicationPayload,
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadataFrame?: Uint8Array
+  ): () => number {
     const operation = { high: this.nodeGeneration, low: this.nextInstanceOperation++ };
-    return this.submitOneWay(target.targetNodeRid, instanceOperationParts([
+    const parts = instanceOperationParts([
       encodeInstanceSpotActivationHeader(
         target,
         this.nodeGeneration,
@@ -1252,7 +1302,33 @@ export class ServiceStatefulRuntime {
         metadataFrame !== undefined
       ),
       encodeApplicationPayload(payload)
-    ], metadataFrame));
+    ], metadataFrame);
+    return () => this.submitOneWay(target.targetNodeRid, parts);
+  }
+
+  prepareMissingInstanceSpotSendFrame(
+    target: ServiceInstanceActivationTarget,
+    payloadFrame: Buffer,
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadataFrame?: Uint8Array
+  ): () => number {
+    const operation = { high: this.nodeGeneration, low: this.nextInstanceOperation++ };
+    const parts = instanceOperationParts([
+      encodeInstanceSpotActivationHeader(
+        target,
+        this.nodeGeneration,
+        this.nodeRid,
+        sourceSpotId,
+        'send',
+        operation,
+        deadlineUnixMs,
+        undefined,
+        metadataFrame !== undefined
+      ),
+      payloadFrame
+    ], metadataFrame);
+    return () => this.submitOneWay(target.targetNodeRid, parts);
   }
 
   requestToInstanceSpot(
@@ -1292,8 +1368,26 @@ export class ServiceStatefulRuntime {
     sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): ServiceStatefulPendingOperation {
-    const pending = this.operations.reserve(timeoutMs);
     const deadlineUnixMs = BigInt(Date.now() + timeoutMs);
+    const payloadFrame = encodeApplicationPayload(payload);
+    return this.requestToMissingInstanceSpotFrame(
+      target,
+      payloadFrame,
+      deadlineUnixMs,
+      sourceSpotId,
+      metadataFrame
+    );
+  }
+
+  requestToMissingInstanceSpotFrame(
+    target: ServiceInstanceActivationTarget,
+    payloadFrame: Buffer,
+    deadlineUnixMs: bigint,
+    sourceSpotId?: string,
+    metadataFrame?: Uint8Array
+  ): ServiceStatefulPendingOperation {
+    const timeoutMs = remainingDeadlineMs(deadlineUnixMs);
+    const pending = this.operations.reserve(timeoutMs);
     this.submitRequest(
       pending,
       target.targetNodeRid,
@@ -1309,7 +1403,7 @@ export class ServiceStatefulRuntime {
           pending.id,
           metadataFrame !== undefined
         ),
-        encodeApplicationPayload(payload)
+        payloadFrame
       ], metadataFrame),
       timeoutMs,
       'instanceSpotRequest'
@@ -1981,10 +2075,26 @@ export class ServiceStatefulRuntime {
     localReply?: NonNullable<ServiceStatefulMailboxData['reply']>,
     metadataFrame?: Buffer
   ): Promise<void> {
+    let stage = 'validate';
+    statefulDebugTrace('missing-start', [
+      `node=${this.nodeRid}`,
+      `target=${record.target.targetSpotId}`,
+      `source=${record.sourceNodeRid}`,
+      `operation=${record.operation.toString()}`,
+      `reply=${record.replyRouteId?.toString() ?? 'none'}`
+    ]);
     try {
       this.validateInstanceIngress(ingress, record);
+      stage = 'activate';
       const activation = await this.activateMissingInstanceAsync(record, payloadFrame, metadataFrame);
+      statefulDebugTrace('missing-activated', [
+        `node=${this.nodeRid}`,
+        `target=${record.target.targetSpotId}`,
+        `generation=${activation.route.objectGeneration.toString()}`,
+        `ownerGeneration=${activation.route.authorityOwnerGeneration.toString()}`
+      ]);
       if (this.closed) return;
+      stage = 'enqueue';
       const admitted = this.enqueueActivatedInstanceSpot(
         ingress,
         record,
@@ -2000,6 +2110,17 @@ export class ServiceStatefulRuntime {
         throw new Error('Activated Instance message was not admitted to the local queue.');
       }
     } catch (error) {
+      statefulDebugTrace('missing-error', [
+        `node=${this.nodeRid}`,
+        `target=${record.target.targetSpotId}`,
+        `targetNode=${record.target.targetNodeRid}`,
+        `targetGeneration=${record.target.targetNodeGeneration.toString()}`,
+        `currentGeneration=${this.nodeGeneration.toString()}`,
+        `sourceNode=${record.sourceNodeRid}`,
+        `sourceGeneration=${record.sourceNodeGeneration.toString()}`,
+        `stage=${stage}`,
+        `error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`
+      ]);
       let terminalError = error;
       if (error instanceof ServiceInstanceActivationRedirectError && !this.closed) {
         try {
@@ -2091,7 +2212,18 @@ export class ServiceStatefulRuntime {
     return () => completion ??= (async () => {
       let authorityCompletionSignaled = false;
       try {
+        statefulDebugTrace('activation-completion-start', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `generation=${route.objectGeneration.toString()}`,
+          `ownerGeneration=${route.authorityOwnerGeneration.toString()}`
+        ]);
         const released = await this.asyncInstanceAuthority?.complete(target, route);
+        statefulDebugTrace('activation-completion-ok', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `released=${released === undefined ? 'none' : released.storeVersion}`
+        ]);
         this.completeInstanceAuthorityOperation(target.targetSpotId);
         authorityCompletionSignaled = true;
         if (released !== undefined) {
@@ -2103,6 +2235,13 @@ export class ServiceStatefulRuntime {
             this.forgetClosedInstanceRoute(released);
           }
         }
+      } catch (error) {
+        statefulDebugTrace('activation-completion-error', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `error=${error instanceof Error ? `${error.name}:${error.message}` : String(error)}`
+        ]);
+        throw error;
       } finally {
         if (!authorityCompletionSignaled) {
           this.completeInstanceAuthorityOperation(target.targetSpotId);
@@ -2364,15 +2503,6 @@ export class ServiceStatefulRuntime {
         `Instance Spot '${record.route.targetSpotId}' has a different authority owner fence.`
       );
     }
-    if (
-      current.objectGeneration === record.route.objectGeneration
-      && current.storeVersion !== record.route.storeVersion
-    ) {
-      throw createInternalFrameworkException(
-        ZLinkFrameworkInternalErrorKind.SpotMoving,
-        `Instance Spot '${record.route.targetSpotId}' has a different current StoreVersion.`
-      );
-    }
     return { intent, route: current };
   }
 
@@ -2407,6 +2537,15 @@ export class ServiceStatefulRuntime {
       || target.targetNodeGeneration !== this.nodeGeneration
       || record.deadlineUnixMs < BigInt(Date.now())
     ) {
+      statefulDebugTrace('missing-fence-error', [
+        `node=${this.nodeRid}`,
+        `target=${target.targetSpotId}`,
+        `targetNode=${target.targetNodeRid}`,
+        `targetGeneration=${target.targetNodeGeneration.toString()}`,
+        `currentGeneration=${this.nodeGeneration.toString()}`,
+        `deadline=${record.deadlineUnixMs.toString()}`,
+        `now=${Date.now()}`
+      ]);
       throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     if (this.instanceApplicationLifecycle?.isIdleEvicting?.(target) === true) {
@@ -2504,6 +2643,15 @@ export class ServiceStatefulRuntime {
       || target.targetNodeGeneration !== this.nodeGeneration
       || record.deadlineUnixMs < BigInt(Date.now())
     ) {
+      statefulDebugTrace('missing-fence-error', [
+        `node=${this.nodeRid}`,
+        `target=${target.targetSpotId}`,
+        `targetNode=${target.targetNodeRid}`,
+        `targetGeneration=${target.targetNodeGeneration.toString()}`,
+        `currentGeneration=${this.nodeGeneration.toString()}`,
+        `deadline=${record.deadlineUnixMs.toString()}`,
+        `now=${Date.now()}`
+      ]);
       throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     const authority = this.asyncInstanceAuthority;
@@ -2513,11 +2661,28 @@ export class ServiceStatefulRuntime {
 
     const local = this.registry.spot(target.targetSpotId);
     const current = await authority.read(target);
+    statefulDebugTrace('missing-state', [
+      `node=${this.nodeRid}`,
+      `target=${target.targetSpotId}`,
+      `authority=${current.kind}`,
+      `local=${local?.kind ?? 'none'}`,
+      `localState=${local?.kind === 'instance' ? local.state : 'none'}`,
+      `localGeneration=${local?.kind === 'instance' ? local.ref.generation.toString() : 'none'}`,
+      `localOwnerGeneration=${local?.kind === 'instance' ? local.authorityOwnerGeneration.toString() : 'none'}`
+    ]);
     if (current.kind === 'ready') {
       if (current.route.targetNodeRid !== this.nodeRid) {
         throw new ServiceInstanceActivationRedirectError(current.route);
       }
       if (current.route.targetNodeGeneration !== this.nodeGeneration) {
+        statefulDebugTrace('missing-authority-error', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `currentNode=${current.route.targetNodeRid}`,
+          `currentGeneration=${current.route.targetNodeGeneration.toString()}`,
+          `localGeneration=${this.nodeGeneration.toString()}`,
+          `objectGeneration=${current.route.objectGeneration.toString()}`
+        ]);
         throw new ServiceStaleGenerationError('spot', target.targetSpotId);
       }
       if (
@@ -2527,6 +2692,14 @@ export class ServiceStatefulRuntime {
           || local.stableType !== target.stableType
         )
       ) {
+        statefulDebugTrace('missing-local-error', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `authority=${current.kind}`,
+          `local=${local.kind}`,
+          `localType=${local.kind === 'instance' ? local.stableType : 'none'}`,
+          `targetType=${target.stableType}`
+        ]);
         throw new ServiceStaleGenerationError('spot', target.targetSpotId);
       }
       if (
@@ -2568,6 +2741,16 @@ export class ServiceStatefulRuntime {
         (!joinsCreating && !replacesClosingProjection && current.kind !== 'missing')
         || (!joinsCreating && !closing && materialized !== false && !materializing)
       ) {
+        statefulDebugTrace('missing-projection-error', [
+          `node=${this.nodeRid}`,
+          `target=${target.targetSpotId}`,
+          `authority=${current.kind}`,
+          `closing=${closing}`,
+          `materialized=${materialized === undefined ? 'none' : String(materialized)}`,
+          `materializing=${materializing}`,
+          `joinsCreating=${joinsCreating}`,
+          `replacesClosingProjection=${replacesClosingProjection}`
+        ]);
         throw new ServiceStaleGenerationError('spot', target.targetSpotId);
       }
     }
@@ -2762,7 +2945,9 @@ export class ServiceStatefulRuntime {
       resultCode: 0
     };
     const applicationFrame = payloadFrame ?? encodeApplicationPayload(emptyPayload());
-    return this.enqueueApplicationFrame(
+    const actorJoinPhase = actorJoinPhaseFromApplicationFrame(payloadFrame);
+    const actorJoinTransferId = actorJoinTransferIdFromApplicationFrame(payloadFrame);
+    return this.enqueueLifecycleFrame(
       ingress,
       `spot:${record.target.spot.spotId}`,
       applicationFrame,
@@ -2774,14 +2959,34 @@ export class ServiceStatefulRuntime {
         targetActor: actor,
         kindData: control,
         reply: (terminalResult, failureCode, replyPayload, tail) => {
-          if (terminalResult === RequestResult.Ok && tail?.kind === 'actorJoin' && tail.joinResult === 0) {
+          const committedReplay = actorJoinTransferId !== undefined
+            && this.hasCommittedActorJoin(actorJoinTransferId);
+          if (
+            actorJoinPhase !== 'admission'
+            && actorJoinPhase !== 'abort'
+            && !committedReplay
+            && terminalResult === RequestResult.Ok
+            && tail?.kind === 'actorJoin'
+            && tail.joinResult === 0
+          ) {
             this.commitJoinedActor(record.actor.actor, record.target.spot, previousEpoch + 1n);
+            if (actorJoinTransferId !== undefined) {
+              this.rememberCommittedActorJoin(actorJoinTransferId);
+            }
           }
+          const replyTail = committedReplay
+            && tail?.kind === 'actorJoin'
+            ? {
+                ...tail,
+                membershipEpoch: this.registry.actor(record.actor.actor.actorId)?.membershipEpoch
+                  ?? tail.membershipEpoch
+              }
+            : tail;
           return this.replyPort(ingress, record.correlation, 'actorJoin')(
             terminalResult,
             failureCode,
             replyPayload,
-            tail
+            replyTail
           );
         }
       }
@@ -2882,9 +3087,28 @@ export class ServiceStatefulRuntime {
     payloadFrame: Buffer,
     stateful: ServiceStatefulMailboxData
   ): RawServicePumpResult {
+    return this.enqueueFrame('application', ingress, owner, payloadFrame, stateful);
+  }
+
+  private enqueueLifecycleFrame(
+    ingress: RawServiceIngressRecord,
+    owner: string,
+    payloadFrame: Buffer,
+    stateful: ServiceStatefulMailboxData
+  ): RawServicePumpResult {
+    return this.enqueueFrame('infrastructure', ingress, owner, payloadFrame, stateful);
+  }
+
+  private enqueueFrame(
+    domain: 'application' | 'infrastructure',
+    ingress: RawServiceIngressRecord,
+    owner: string,
+    payloadFrame: Buffer,
+    stateful: ServiceStatefulMailboxData
+  ): RawServicePumpResult {
     return this.raw.mailbox.tryEnqueue({
       owner,
-      domain: 'application',
+      domain,
       parts: [ingress.parts[0]!, payloadFrame],
       sourceRoutingId: ingress.sourceRoutingId,
       sourceRoute: ingress.sourceRoute,
@@ -2893,7 +3117,7 @@ export class ServiceStatefulRuntime {
       ...(stateful.correlation === undefined ? {} : { correlation: stateful.correlation }),
       stateful
     })
-      ? 'application'
+      ? domain
       : 'protocolError';
   }
 
@@ -2955,7 +3179,7 @@ export class ServiceStatefulRuntime {
     const header = Buffer.from([0x5a, 0x4d, 1, M6bServiceWireCommand.actorJoined, 0]);
     this.raw.mailbox.tryEnqueue({
       owner: `spot:${spotId}`,
-      domain: 'application',
+      domain: 'infrastructure',
       parts: [header],
       sourceRoutingId: this.nodeRid,
       stateful: {
@@ -2974,7 +3198,7 @@ export class ServiceStatefulRuntime {
     const header = Buffer.from([0x5a, 0x4d, 1, M6bServiceWireCommand.boundSessionBind, 0]);
     this.raw.mailbox.tryEnqueue({
       owner: `actor:${actor.actorId}\0${actor.generation}`,
-      domain: 'application',
+      domain: 'infrastructure',
       parts: [header],
       sourceRoutingId: this.nodeRid,
       stateful: {
@@ -3283,8 +3507,9 @@ export class ServiceStatefulRuntime {
         ? SubmitResult.Ok
         : SubmitResult.InvalidState;
     }
-    return this.raw.sendService(targetNodeRid, parts)
-      ? SubmitResult.Ok
+    if (this.raw.sendService(targetNodeRid, parts)) return SubmitResult.Ok;
+    return rawPeerRouteReady(this.raw, targetNodeRid) === true
+      ? SubmitResult.Backpressured
       : SubmitResult.NotConnected;
   }
 
@@ -3298,6 +3523,7 @@ export class ServiceStatefulRuntime {
     actor?: ServiceActorRef
   ): void {
     if (targetNodeRid === this.nodeRid) {
+      const deadlineUnixMs = BigInt(Date.now() + Math.max(0, timeoutMs));
       const localIngress: RawServiceIngressRecord = {
         command: parts[0]![3]!,
         flags: parts[0]![4]!,
@@ -3306,7 +3532,13 @@ export class ServiceStatefulRuntime {
         parts
       };
       try {
-        this.submitLocalRequest(localIngress, pending, operationKind, actor);
+        this.submitLocalRequest(
+          localIngress,
+          pending,
+          operationKind,
+          actor,
+          deadlineUnixMs
+        );
       } catch (error) {
         this.operations.reply(pending.id, failure(error));
       }
@@ -3314,7 +3546,13 @@ export class ServiceStatefulRuntime {
     }
     void this.raw.requestService(targetNodeRid, parts, timeoutMs).then(
       reply => this.completeRemoteReply(pending, targetNodeRid, operationKind, actor, reply),
-      error => this.operations.fail(pending.id, error)
+      error => {
+        if (operationKind === 'actorJoin') {
+          this.actorJoinPhases.delete(pending.id);
+          this.actorJoinTransferIds.delete(pending.id);
+        }
+        this.operations.fail(pending.id, error);
+      }
     );
   }
 
@@ -3340,6 +3578,14 @@ export class ServiceStatefulRuntime {
       target.spot.spotId === targetNodeRid,
       target
     );
+    this.actorJoinPhases.set(
+      pending.id,
+      actorJoinMetadataFromMultipartPayload(payload?.payload)?.phase
+    );
+    this.actorJoinTransferIds.set(
+      pending.id,
+      actorJoinMetadataFromMultipartPayload(payload?.payload)?.transferId
+    );
     this.submitRequest(
       pending,
       targetNodeRid,
@@ -3358,7 +3604,8 @@ export class ServiceStatefulRuntime {
     pending: ServiceStatefulPendingOperation,
     operationKind: 'spotRequest' | 'actorRequest' | 'actorLookup' | 'actorDestroy' | 'actorJoin' | 'streamBind'
       | 'instanceSpotRequest',
-    actor?: ServiceActorRef
+    actor?: ServiceActorRef,
+    deadlineUnixMs?: bigint
   ): void {
     const decoded = decodeStatefulHeader(ingress.parts[0]!);
     const payloadFrame = ingress.parts.length < 2
@@ -3389,14 +3636,24 @@ export class ServiceStatefulRuntime {
       failureCode,
       replyPayload,
       tail
-    ) => this.operations.reply(pending.id, this.resultFromReply(
-      terminalResult,
-      failureCode,
-      replyPayload,
-      tail,
-      this.nodeRid,
-      actor
-    ));
+    ) => {
+      statefulDebugTrace('local-reply', [
+        `node=${this.nodeRid}`,
+        `pending=${pending.id.toString()}`,
+        `kind=${decoded.kind}`,
+        `result=${terminalResult}`,
+        `failure=${failureCode}`,
+        `tail=${tail?.kind ?? 'none'}`
+      ]);
+      return this.operations.reply(pending.id, this.resultFromReply(
+        terminalResult,
+        failureCode,
+        replyPayload,
+        tail,
+        this.nodeRid,
+        actor
+      ));
+    };
     if (decoded.kind === 'spotRequest') {
       this.validateDirectSpotFence(decoded.target);
       this.enqueueApplicationFrame(
@@ -3450,7 +3707,7 @@ export class ServiceStatefulRuntime {
         currentMembershipEpoch: (previous?.membershipEpoch ?? 0n) + 1n,
         resultCode: 0
       };
-      this.enqueueApplicationFrame(
+      this.enqueueLifecycleFrame(
         ingress,
         `spot:${decoded.target.spot.spotId}`,
         payloadFrame ?? encodeApplicationPayload(emptyPayload()),
@@ -3461,15 +3718,39 @@ export class ServiceStatefulRuntime {
           targetSpot: decoded.target.spot,
           targetActor: decoded.actor.actor,
           kindData: control,
+          isPending: () => this.operations.isPending(pending.id),
+          ...(deadlineUnixMs === undefined ? {} : { deadlineUnixMs }),
           reply: (terminalResult, failureCode, replyPayload, tail) => {
-            if (terminalResult === RequestResult.Ok && tail?.kind === 'actorJoin' && tail.joinResult === 0) {
+            const actorJoinTransferId = actorJoinTransferIdFromApplicationFrame(payloadFrame);
+            const committedReplay = actorJoinTransferId !== undefined
+              && this.hasCommittedActorJoin(actorJoinTransferId);
+            const replyTail = committedReplay
+              && tail?.kind === 'actorJoin'
+              ? {
+                  ...tail,
+                  membershipEpoch: this.registry.actor(decoded.actor.actor.actorId)?.membershipEpoch
+                    ?? tail.membershipEpoch
+                }
+              : tail;
+            const acceptedReply = localReply(terminalResult, failureCode, replyPayload, replyTail);
+            if (
+              acceptedReply
+              &&
+              !committedReplay
+              && terminalResult === RequestResult.Ok
+              && tail?.kind === 'actorJoin'
+              && tail.joinResult === 0
+            ) {
               this.commitJoinedActor(
                 decoded.actor.actor,
                 decoded.target.spot,
                 control.currentMembershipEpoch
               );
+              if (actorJoinTransferId !== undefined) {
+                this.rememberCommittedActorJoin(actorJoinTransferId);
+              }
             }
-            return localReply(terminalResult, failureCode, replyPayload, tail);
+            return acceptedReply;
           }
         }
       );
@@ -3545,18 +3826,44 @@ export class ServiceStatefulRuntime {
     actor: ServiceActorRef | undefined,
     reply: readonly Buffer[]
   ): void {
+    const actorJoinPhase = operationKind === 'actorJoin'
+      ? this.actorJoinPhases.get(pending.id)
+      : undefined;
+    const actorJoinTransferId = operationKind === 'actorJoin'
+      ? this.actorJoinTransferIds.get(pending.id)
+      : undefined;
     try {
       if (reply.length < 1 || reply.length > 2) throw new ServiceWireProtocolError('Invalid M6B reply parts.');
       const decoded = decodeStatefulReply(reply[0]!, pending.id, operationKind, reply.length >= 2);
+      if (decoded.terminalResult !== RequestResult.Ok || decoded.failureCode !== 0) {
+        statefulDebugTrace('remote-reply-error', [
+          `node=${this.nodeRid}`,
+          `pending=${pending.id.toString()}`,
+          `target=${targetNodeRid}`,
+          `kind=${operationKind}`,
+          `result=${decoded.terminalResult}`,
+          `failure=${decoded.failureCode}`,
+          `tail=${decoded.tail?.kind ?? 'none'}`
+        ]);
+      }
       const payload = reply.length < 2 ? undefined : decodeApplicationPayload(reply[1]);
       if (
         operationKind === 'actorJoin'
         && actor !== undefined
+        && actorJoinPhase !== 'admission'
+        && actorJoinPhase !== 'abort'
         && decoded.terminalResult === RequestResult.Ok
         && decoded.tail?.kind === 'actorJoin'
         && decoded.tail.joinResult === 0
+        && (
+          actorJoinTransferId === undefined
+          || !this.hasSourceLeave(actorJoinTransferId)
+        )
       ) {
         this.enqueueRemoteSourceLeave(actor);
+        if (actorJoinTransferId !== undefined) {
+          this.rememberSourceLeave(actorJoinTransferId);
+        }
       }
       this.operations.reply(pending.id, this.resultFromReply(
         decoded.terminalResult,
@@ -3568,6 +3875,11 @@ export class ServiceStatefulRuntime {
       ));
     } catch (error) {
       this.operations.fail(pending.id, error);
+    } finally {
+      if (operationKind === 'actorJoin') {
+        this.actorJoinPhases.delete(pending.id);
+        this.actorJoinTransferIds.delete(pending.id);
+      }
     }
   }
 
@@ -3707,7 +4019,6 @@ export class ServiceStatefulRuntime {
         current.spot.generation === fence.spot.generation
         && (
           current.authorityOwnerGeneration !== fence.authorityOwnerGeneration
-          || current.storeVersion !== fence.storeVersion
         )
       )
     ) {
@@ -3985,7 +4296,6 @@ export class ServiceStatefulRuntime {
           current.spot.generation !== requested.spot.generation
           || (
             current.authorityOwnerGeneration === requested.authorityOwnerGeneration
-            && current.storeVersion === requested.storeVersion
           )
         )
         ? current
@@ -4073,6 +4383,34 @@ export class ServiceStatefulRuntime {
     }
   }
 
+  private hasCommittedActorJoin(transferId: string): boolean {
+    const expiresAt = this.actorJoinCommittedTransfers.get(transferId);
+    if (expiresAt === undefined) return false;
+    if (expiresAt <= Date.now()) {
+      this.actorJoinCommittedTransfers.delete(transferId);
+      return false;
+    }
+    return true;
+  }
+
+  private rememberCommittedActorJoin(transferId: string): void {
+    this.actorJoinCommittedTransfers.set(transferId, Date.now() + 30_000);
+  }
+
+  private hasSourceLeave(transferId: string): boolean {
+    const expiresAt = this.actorJoinSourceLeaves.get(transferId);
+    if (expiresAt === undefined) return false;
+    if (expiresAt <= Date.now()) {
+      this.actorJoinSourceLeaves.delete(transferId);
+      return false;
+    }
+    return true;
+  }
+
+  private rememberSourceLeave(transferId: string): void {
+    this.actorJoinSourceLeaves.set(transferId, Date.now() + 30_000);
+  }
+
   private requireOpen(): void {
     if (this.closed) throw new Error('Stateful runtime is closed.');
   }
@@ -4105,6 +4443,18 @@ function userSpotDeadline(deadlineUnixMs: bigint): {
 function operationReplayExpired(deadlineUnixMs: bigint): boolean {
   return BigInt(Date.now()) > deadlineUnixMs
     + BigInt(USER_SPOT_OPERATION_REPLAY_RETENTION_MS);
+}
+
+function remainingDeadlineMs(deadlineUnixMs: bigint): number {
+  const remainingMs = deadlineUnixMs - BigInt(Date.now());
+  if (remainingMs <= 0n) {
+    throw createInternalFrameworkException(
+      ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
+      'Stateful request exceeded its end-to-end deadline.',
+      true
+    );
+  }
+  return Number(remainingMs);
 }
 
 function userSpotOperationFingerprint(
@@ -4385,6 +4735,72 @@ function emptyPayload(): ServiceApplicationPayload {
   };
 }
 
+function actorJoinPhaseFromApplicationFrame(
+  frame: Uint8Array | undefined
+): 'admission' | 'commit' | 'abort' | undefined {
+  return actorJoinMetadataFromApplicationFrame(frame)?.phase;
+}
+
+function actorJoinTransferIdFromApplicationFrame(
+  frame: Uint8Array | undefined
+): string | undefined {
+  return actorJoinMetadataFromApplicationFrame(frame)?.transferId;
+}
+
+function actorJoinMetadataFromApplicationFrame(
+  frame: Uint8Array | undefined
+): {
+  readonly phase: 'admission' | 'commit' | 'abort' | undefined;
+  readonly transferId: string | undefined;
+} | undefined {
+  if (frame === undefined) return undefined;
+  try {
+    return actorJoinMetadataFromMultipartPayload(decodeApplicationPayload(frame).payload);
+  } catch {
+    return undefined;
+  }
+}
+
+function actorJoinMetadataFromMultipartPayload(
+  payload: Uint8Array | undefined
+): {
+  readonly phase: 'admission' | 'commit' | 'abort' | undefined;
+  readonly transferId: string | undefined;
+} | undefined {
+  if (payload === undefined || payload.byteLength < 8) return undefined;
+  const bytes = Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
+  const partCount = bytes.readUInt32BE(0);
+  if (partCount < 1 || bytes.length < 8) return undefined;
+  const partLength = bytes.readUInt32BE(4);
+  if (partLength > bytes.length - 8) return undefined;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(bytes.subarray(8, 8 + partLength).toString('utf8'));
+  } catch {
+    return undefined;
+  }
+  if (typeof decoded !== 'object' || decoded === null) return undefined;
+  const phase = (decoded as { readonly phase?: unknown }).phase;
+  const transferId = (decoded as { readonly transferId?: unknown }).transferId;
+  return {
+    phase: phase === 'admission' || phase === 'commit' || phase === 'abort'
+      ? phase
+      : undefined,
+    transferId: typeof transferId === 'string' ? transferId : undefined
+  };
+}
+
+function rawPeerRouteReady(
+  raw: RawServiceMeshRuntime,
+  targetNodeRid: string
+): boolean | undefined {
+  const candidate = raw as unknown as {
+    isPeerRouteReady?: (nodeRoutingId: string) => boolean;
+  };
+  if (typeof candidate.isPeerRouteReady !== 'function') return undefined;
+  return candidate.isPeerRouteReady.call(raw, targetNodeRid);
+}
+
 function instanceOperationParts(
   headerAndPayload: readonly Buffer[],
   metadataFrame?: Uint8Array
@@ -4398,6 +4814,20 @@ function instanceOperationParts(
     validateServiceMetadataFrame(metadataFrame),
     headerAndPayload[1]!
   ];
+}
+
+function statefulDebugTrace(event: string, fields: readonly string[]): void {
+  const mode = process.env.ZLINK_NODE_FILE_TRACE_DEBUG;
+  if (mode !== '1' && mode !== 'errors') return;
+  if (mode === 'errors' && !event.endsWith('-error')) return;
+  try {
+    appendFileSync(
+      process.env.ZLINK_NODE_FILE_TRACE_PATH ?? '/tmp/zlink-node-stateful-debug.log',
+      `${new Date().toISOString()} pid=${process.pid} ${event} ${fields.join(' ')}\n`
+    );
+  } catch {
+    // Diagnostic tracing must never affect runtime behavior.
+  }
 }
 
 export function statefulMailboxData(record: ServiceMailboxRecord): ServiceStatefulMailboxData | undefined {

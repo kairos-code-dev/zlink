@@ -1,4 +1,5 @@
 using Zlink.Framework.Runtime.Dispatch;
+using Zlink.Framework.Runtime.Service;
 
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
@@ -130,6 +131,9 @@ internal sealed record ZLinkBackendActorPart(
 
 internal interface IZLinkBackendActorMessageFollowIngress
 {
+    void SetActorMessageFollowIngressAdmission(
+        Func<ActorMessageFollowIngress, bool> admission);
+
     void SetActorMessageFollowIngressHandler(
         Func<IReadOnlyList<ZLinkBackendActorPart>, bool> handler);
 }

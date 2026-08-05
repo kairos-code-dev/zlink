@@ -437,7 +437,7 @@ internal sealed class ZLinkActorInboundPipeline(
         catch (ZLinkFrameworkException exception)
             when (allowCapture
                   && exception.Kind == ZLinkFrameworkErrorKind.Rejected
-                  && state.Handoff.BlocksLocalDispatch)
+                  && IsRelocationAdmissionRejection(state))
         {
             // The frame won the inbound handoff race, but its actor turn
             // reached the Spot admission barrier after relocation sealed the
@@ -528,6 +528,11 @@ internal sealed class ZLinkActorInboundPipeline(
                 $"Actor '{frame.Actor.ActorId}' is moving."),
             cancellationToken,
             frame.DirectReply);
+
+    private static bool IsRelocationAdmissionRejection(
+        ZLinkActorRuntimeState state) =>
+        state.Handoff.BlocksLocalDispatch
+        || state.LiveActivation?.HasRelocationBarrier == true;
 
     private async ValueTask<bool> RouteAwayFromCurrentActorAsync(
         ZLinkActorRuntimeState state,

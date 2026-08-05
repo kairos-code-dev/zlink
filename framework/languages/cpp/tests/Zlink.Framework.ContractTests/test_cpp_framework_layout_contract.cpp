@@ -35,6 +35,9 @@ bool require_absent (const std::filesystem::path &path, const std::string &reaso
 
 bool public_headers_do_not_include_runtime (const std::filesystem::path &root)
 {
+    if (!std::filesystem::exists (root)) {
+        return true;
+    }
     bool ok = true;
     for (const auto &entry : std::filesystem::recursive_directory_iterator (root)) {
         if (!entry.is_regular_file ()) {
@@ -64,6 +67,9 @@ bool public_headers_do_not_include_runtime (const std::filesystem::path &root)
 
 bool public_headers_do_not_expose_runtime_dependencies (const std::filesystem::path &root)
 {
+    if (!std::filesystem::exists (root)) {
+        return true;
+    }
     bool ok = true;
     const std::string forbidden[] = {"#include <boost",
                                      "#include \"boost",

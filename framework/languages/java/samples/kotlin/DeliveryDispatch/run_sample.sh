@@ -186,6 +186,14 @@ wait_port "$(endpoint_host "${courier_node2_spot}")" "$(endpoint_port "${courier
 pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
 wait_port "$(endpoint_host "${dispatch_spot}")" "$(endpoint_port "${dispatch_spot}")"
+wait_framework_ready_logs "${log_dir}" 1
+wait_framework_peer_ready_counts "${log_dir}" \
+  "tracking.log:1" \
+  "customer-gateway.log:1" \
+  "courier-session.log:2" \
+  "courier-node1.log:3" \
+  "courier-node2.log:3" \
+  "dispatch.log:2"
 
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1

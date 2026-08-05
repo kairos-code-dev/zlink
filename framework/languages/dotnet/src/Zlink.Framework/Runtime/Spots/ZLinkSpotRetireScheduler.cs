@@ -1011,7 +1011,10 @@ internal sealed class ZLinkSpotRetireScheduler(
                                 deadline)
                             .ConfigureAwait(false);
                     foreach (var capture in activeActorCaptures.Values)
-                        capture.State.Handoff.CompleteSourceMigration();
+                        await runtime.FinalizeMigratedActorSourceAsync(
+                                capture.State,
+                                capture.SourceActor)
+                            .ConfigureAwait(false);
                     await completeSource(activation, completionToken)
                         .ConfigureAwait(false);
                     sourceCompleted = true;

@@ -71,7 +71,7 @@ import {
   ZLinkManagedStream
 } from './managed-stream';
 import { createStreamSessionInstance } from './session-provider';
-import { DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE } from '../../contracts/Configuration/InternalDefaults';
+import { DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE } from '../../contracts/Configuration/InternalDefaults';
 import {
   ZLinkStreamSessionNodeRuntime as ZLinkStreamSessionNodeRuntimeCore,
   ZLinkStreamSessionRuntime as ZLinkStreamSessionRuntimeCore,
@@ -193,7 +193,11 @@ export class ZLinkStreamRuntimeManager {
       const nativeMeshNode = actorDispatchEnabled ? this.options.nativeMeshNode : undefined;
       const meshCompletions = actorDispatchEnabled ? this.options.meshCompletions : undefined;
       const socket = streamAdapter.createStreamSocket(this.options.context);
-      socket.maxMessageSize = DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE;
+      // Core uses -1 as the explicit unlimited value. The Framework value 0
+      // means that it adds no separate STREAM cap, so preserve that meaning
+      // when applying the socket option.
+      const maxMessageSize = streamNode.maxMessageSize ?? DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE;
+      socket.maxMessageSize = maxMessageSize === 0 ? -1 : maxMessageSize;
       const tlsServer = streamNode.tlsServer;
       if (tlsServer !== undefined) {
         socket.setTlsServer(

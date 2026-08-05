@@ -109,7 +109,7 @@ HWM이 `MaxMessageSize`보다 작아도 유효하다. Pending byte가 HWM보다 
 끝까지 받고, 그 결과 HWM을 넘으면 다음 수신을 멈춘다. 따라서 비어 있는 host는 HWM보다 크고
 `MaxMessageSize` 이하인 message 한 건을 처리할 수 있다.
 
-Binding이 complete message의 길이를 `Recv` 전에 제공하지 않는 multiplexed receive path에서는
+ClientServer처럼 binding이 complete message의 길이를 `Recv` 전에 제공하지 않는 receive path에서는
 transport `Recv` 자체를 HWM 경계에서 즉시 멈출 수 없다. 이 경우 Framework는 raw receive마다 bounded
 reservation을 먼저 얻고, 받은 뒤 application과 control을 분류한다. control로 분류된 message는
 application pending에 넣지 않고 reservation을 즉시 반환하며, application message는 측정한 payload
@@ -118,6 +118,10 @@ byte와 함께 terminal 상태까지 reservation을 유지한다. HWM에 도달�
 
 유효한 `MaxMessageSize`를 `M`, 동시에 보유할 수 있는 raw receive reservation 수를 `R`이라고 하면,
 이 경로에서 HWM을 넘겨 받는 양은 최대 `R * M`이다. 위 문단의 "한 건"이 여기서는 최대 `R`건이 된다.
+
+StreamNode는 이 raw classification 경로와 별도로 Core STREAM inbound에서 complete client→server
+message를 검사한다. 이때 크기는 6-byte prefix를 제외한 header와 payload의 합이며 기본값은 `64 KiB`다.
+`0`은 별도 Framework 상한 없이 Core `-1`로 변환하고, server→client outbound에는 이 상한을 적용하지 않는다.
 
 `R`은 configuration 시점에 정해지는 유한한 양수이며 **부하에 따라 늘어나지 않는다.** Connection 수,
 대기 중인 message 수, peer 수에 비례해 `R`을 늘리지 않는다. `R`은 host가 동시에 실행하는 수신
@@ -229,6 +233,10 @@ Framework application listener의 `MaxMessageSize` 기본값은 `16,777,216` byt
 `0`으로 바꾸면 별도 상한을 두지 않는 기존 의미를 유지하지만, Application HWM이 Auto 또는 양수이면
 startup validation에서 거부한다. 무제한 message와 무제한 pending payload가 모두 필요한 경우에만
 `MaxMessageSize = 0`과 `ApplicationHwmBytes = 0`을 함께 명시한다.
+
+StreamNode의 Core STREAM inbound 상한은 이 일반 application listener 규칙과 별도로 `64 KiB`를
+기본값으로 사용한다. client→server complete message의 header와 payload 합을 검사하고 6-byte prefix는
+제외한다. `0`은 Core `-1`로 변환하며 server→client outbound에는 적용하지 않는다.
 
 MeshNode builder에는 drain policy나 lifecycle command를 추가하지 않는다. Host의 continuity maintenance는
 Framework runtime의 `Relocate`, 일반 종료는 `Shutdown`이 수행한다. Caller는 node 점검에는

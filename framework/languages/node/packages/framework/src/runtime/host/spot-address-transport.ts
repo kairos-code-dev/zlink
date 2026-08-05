@@ -29,8 +29,7 @@ import {
   ZLinkDispatchMessageKind
 } from '../../contracts/Dispatch/ZLinkDispatchOptions';
 import {
-  awaitWithAbort,
-  throwIfAborted
+  awaitWithAbort
 } from '../abort';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import {
@@ -40,6 +39,7 @@ import {
 import {
   decodeChannelReply,
   encodeChannelEnvelopeParts,
+  encodeChannelEnvelopePartsAtDeadline,
   type ZLinkChannelEnvelopeCodecRegistry,
   ZLinkChannelMessageKind
 } from '../channels/channel-envelope';
@@ -51,7 +51,10 @@ import type {
   ZLinkSpotAddressTransport,
   ZLinkSpotRoutedTransport
 } from '../spots/spot-outbound';
-import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
+import type {
+  ZLinkSpotRouteResolver,
+  ZLinkSpotRouteTarget
+} from '../spots/spot-routing-internal';
 
 export interface ZLinkHostSpotAddressTransportOptions {
   readonly resolver: () => ZLinkSpotRouteResolver | undefined;
@@ -62,7 +65,20 @@ export interface ZLinkHostSpotAddressTransportOptions {
   readonly completions: (meshName: string) => ZLinkMeshCompletionTable | undefined;
   readonly codecs?: ZLinkChannelEnvelopeCodecRegistry;
   readonly defaultRequestTimeoutMs: number;
+  /** Internal one-way deadline policy; public calls do not expose this option. */
+  readonly defaultSendTimeoutMs?: number;
+  /** Resolves the send timeout for a configured Spot Mesh. */
+  readonly sendTimeoutMsForMesh?: (meshName: string) => number;
+  /** Resolves the send timeout for a resolved Spot route channel. */
+  readonly sendTimeoutMsForRouteChannel?: (routeChannelId: string) => number;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
+  /** Internal admission hook; public Spot calls do not expose this transport. */
+  readonly submitMissingInstance?: (
+    meshName: string,
+    attempt: () => ZLinkSubmitResult,
+    signal: AbortSignal,
+    timeoutMs: number
+  ) => Promise<ZLinkSubmitResult>;
 }
 
 export function hasObjectClientCapability(
@@ -70,6 +86,24 @@ export function hasObjectClientCapability(
 ): boolean {
   return role === 'client' || role === 'server';
 }
+
+type MissingTarget = {
+  readonly meshName: string;
+  readonly node: ZLinkBackendMeshNode;
+  readonly target: {
+    readonly targetNodeRid: string;
+    readonly targetNodeGeneration: bigint;
+    readonly targetSpotId: string;
+    readonly stableType: string;
+    readonly descriptorVersion: string;
+  };
+};
+
+type MissingTargetSelection =
+  | ({ readonly kind: 'selected' } & MissingTarget)
+  | { readonly kind: 'unsupported' }
+  | { readonly kind: 'capacity' }
+  | { readonly kind: 'unavailable' };
 
 /** Owns global Spot authority lookup and Missing Instance placement. */
 export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport {
@@ -80,14 +114,20 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     message: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<ZLinkSubmitResult> {
-    const existing = await this.resolveExisting(spotId, call.signal, call.instanceSpot);
+    const timeoutMs = initialSendTimeoutMs(this.options, call);
+    const deadline = createSpotAddressDeadline(timeoutMs, call.signal);
+    try {
+    const existing = await this.resolveExisting(spotId, deadline.signal);
+    deadline.requireRemaining();
     if (existing !== undefined) {
       this.validateExisting(existing, call);
+      deadline.setOwnerTimeout(this.sendTimeoutMsForRouteChannel(existing.routerChannelId));
       try {
-        const result = await this.options.routed.sendToSpot(existing, message, {
-          signal: call.signal,
+        const result = await awaitWithAbort(this.options.routed.sendToSpot(existing, message, {
+          timeoutMs: deadline.requireRemaining(),
+          signal: deadline.signal,
           metadata: call.metadata
-        });
+        }), deadline.signal);
         if (result.status === ZLinkSubmitStatus.Submitted) {
           this.traceInstanceAddress(
             ZLinkMessageFlowOutcome.Sent,
@@ -137,10 +177,8 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     if (!call.instanceSpot) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
-    const timeoutMs = call.timeoutMs ?? this.options.defaultRequestTimeoutMs;
-    const deadlineMs = Date.now() + Math.max(0, timeoutMs);
-    const selected = await this.waitForMissingTarget(spotId, call, deadlineMs);
-    if (selected === undefined) {
+    const selected = this.selectMissingTarget(spotId, call);
+    if (selected.kind === 'unsupported') {
       this.traceInstanceAddress(
         ZLinkMessageFlowOutcome.Dropped,
         ZLinkDispatchMessageKind.Send,
@@ -153,15 +191,65 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       );
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
-    const remainingMs = Math.max(1, deadlineMs - Date.now());
-    const result = selected.node.sendToMissingInstanceSpot(
+    if (selected.kind === 'capacity') {
+      const error = missingInstancePlacementCapacity(spotId, call.instanceSpotType);
+      this.traceInstanceAddress(
+        ZLinkMessageFlowOutcome.Dropped,
+        ZLinkDispatchMessageKind.Send,
+        spotId,
+        message,
+        call.initialMeshName,
+        call.instanceSpotType,
+        undefined,
+        ZLinkDispatchErrorReason.Backpressure
+      );
+      throw error;
+    }
+    if (selected.kind === 'unavailable') {
+      this.traceInstanceAddress(
+        ZLinkMessageFlowOutcome.Dropped,
+        ZLinkDispatchMessageKind.Send,
+        spotId,
+        message,
+        call.initialMeshName,
+        call.instanceSpotType,
+        undefined,
+        ZLinkDispatchErrorReason.StaleTarget
+      );
+      return { status: ZLinkSubmitStatus.RouteNotConnected };
+    }
+    deadline.setOwnerTimeout(this.sendTimeoutMsForMesh(selected.meshName));
+    const encoded = this.encode(ZLinkChannelMessageKind.Command, selected.meshName, message);
+    const sourceSpotId = call.sourceSpot === undefined
+      ? undefined
+      : String(call.sourceSpot.routingId);
+    const prepared = selected.node.prepareMissingInstanceSpotSend?.(
       selected.target,
-      this.encode(ZLinkChannelMessageKind.Command, selected.meshName, message),
-      BigInt(Date.now() + remainingMs),
-      call.sourceSpot === undefined ? undefined : String(call.sourceSpot.routingId),
+      encoded,
+      BigInt(deadline.deadlineMs),
+      sourceSpotId,
       call.metadata
     );
-    const mapped = mapSubmitResult(result);
+    const submit = prepared === undefined
+      ? () => mapSubmitResult(selected.node.sendToMissingInstanceSpot(
+          selected.target,
+          encoded,
+          BigInt(deadline.deadlineMs),
+          sourceSpotId,
+          call.metadata
+        ))
+      : () => mapSubmitResult(prepared());
+    const mapped = this.options.submitMissingInstance === undefined
+      ? submit()
+      : await awaitWithAbort(
+          this.options.submitMissingInstance(
+            selected.meshName,
+            submit,
+            deadline.signal,
+            deadline.requireRemaining()
+          ),
+          deadline.signal
+        );
     this.traceInstanceAddress(
       mapped.status === ZLinkSubmitStatus.Submitted
         ? ZLinkMessageFlowOutcome.Sent
@@ -175,6 +263,14 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       mapped.status === ZLinkSubmitStatus.Submitted ? undefined : submitResultReason(mapped.status)
     );
     return mapped;
+    } catch (error) {
+      if (deadline.expired()) {
+        return { status: ZLinkSubmitStatus.TimedOut };
+      }
+      throw error;
+    } finally {
+      deadline.close();
+    }
   }
 
   async requestToSpotAddress<TReply = unknown>(
@@ -182,7 +278,11 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     request: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<TReply> {
-    const existing = await this.resolveExisting(spotId, call.signal, call.instanceSpot);
+    const timeoutMs = call.timeoutMs ?? this.options.defaultRequestTimeoutMs;
+    const deadline = createSpotAddressDeadline(timeoutMs, call.signal);
+    try {
+    let existing = await this.resolveExisting(spotId, deadline.signal);
+    deadline.requireRemaining();
     if (existing !== undefined) {
       this.validateExisting(existing, call);
       try {
@@ -195,11 +295,11 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
           existing.stableType,
           existing.targetNodeRid
         );
-        const reply = await this.options.routed.requestToSpot<TReply>(existing, request, {
-          timeoutMs: call.timeoutMs,
-          signal: call.signal,
+        const reply = await awaitWithAbort(this.options.routed.requestToSpot<TReply>(existing, request, {
+          timeoutMs: deadline.requireRemaining(),
+          signal: deadline.signal,
           metadata: call.metadata
-        });
+        }), deadline.signal);
         this.traceInstanceAddress(
           ZLinkMessageFlowOutcome.ReplyReceived,
           ZLinkDispatchMessageKind.Request,
@@ -223,19 +323,29 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
         ) {
           this.options.resolver()?.invalidate?.(spotId);
         }
-        this.options.dispatchErrors?.report({
-          surface: ZLinkDispatchErrorSurface.InstanceSpot,
-          messageKind: ZLinkDispatchMessageKind.Request,
-          packetName: resolveFrameworkPacketName(request, undefined, 'Channel'),
-          meshName: existing.routerChannelId,
-          targetRid: existing.targetNodeRid,
-          spotId: String(spotId),
-          instanceSpotType: existing.stableType,
-          reason: addressedInstanceErrorReason(error),
-          action: ZLinkDispatchErrorAction.FailCaller,
-          error
-        });
-        throw error;
+        if (await this.canColdActivateAfterTargetNotFound(spotId, call, deadline, error, existing)) {
+          // The request reached a route whose target Spot no longer exists.
+          // Confirming that the logical authority is no longer Ready permits
+          // the Instance intent path below to submit the original operation
+          // as one activation envelope. This is not a retry against a fresh
+          // Ready owner: if a Ready route still exists, the original stale
+          // result remains terminal.
+          existing = undefined;
+        } else {
+          this.options.dispatchErrors?.report({
+            surface: ZLinkDispatchErrorSurface.InstanceSpot,
+            messageKind: ZLinkDispatchMessageKind.Request,
+            packetName: resolveFrameworkPacketName(request, undefined, 'Channel'),
+            meshName: existing.routerChannelId,
+            targetRid: existing.targetNodeRid,
+            spotId: String(spotId),
+            instanceSpotType: existing.stableType,
+            reason: addressedInstanceErrorReason(error),
+            action: ZLinkDispatchErrorAction.FailCaller,
+            error
+          });
+          throw error;
+        }
       }
     }
     if (!call.instanceSpot) {
@@ -244,10 +354,8 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
         `Spot '${String(spotId)}' has no Ready authority.`
       );
     }
-    const timeoutMs = call.timeoutMs ?? this.options.defaultRequestTimeoutMs;
-    const deadlineMs = Date.now() + Math.max(0, timeoutMs);
-    const selected = await this.waitForMissingTarget(spotId, call, deadlineMs);
-    if (selected === undefined) {
+    const selected = this.selectMissingTarget(spotId, call);
+    if (selected.kind === 'unsupported') {
       const error = createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
         `No eligible Instance Spot target serves '${String(spotId)}'.`
@@ -265,11 +373,36 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       });
       throw error;
     }
-    const remainingMs = Math.max(1, deadlineMs - Date.now());
+    if (selected.kind === 'capacity') {
+      throw missingInstancePlacementCapacity(spotId, call.instanceSpotType);
+    }
+    if (selected.kind === 'unavailable') {
+      const error = missingInstancePlacementUnavailable(spotId, call.instanceSpotType);
+      this.options.dispatchErrors?.report({
+        surface: ZLinkDispatchErrorSurface.InstanceSpot,
+        messageKind: ZLinkDispatchMessageKind.Request,
+        packetName: resolveFrameworkPacketName(request, undefined, 'Channel'),
+        meshName: call.initialMeshName,
+        spotId: String(spotId),
+        instanceSpotType: call.instanceSpotType,
+        reason: ZLinkDispatchErrorReason.StaleTarget,
+        action: ZLinkDispatchErrorAction.FailCaller,
+        error
+      });
+      throw error;
+    }
+    const deadlineUnixMs = BigInt(deadline.deadlineMs);
+    const encoded = this.encodeAtDeadline(
+      ZLinkChannelMessageKind.Request,
+      selected.meshName,
+      request,
+      deadline.deadlineMs
+    );
+    deadline.requireRemaining();
     const operation = selected.node.requestToMissingInstanceSpot(
       selected.target,
-      this.encode(ZLinkChannelMessageKind.Request, selected.meshName, request, remainingMs),
-      remainingMs,
+      encoded,
+      deadlineUnixMs,
       call.sourceSpot === undefined ? undefined : String(call.sourceSpot.routingId),
       call.metadata
     );
@@ -286,7 +419,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     if (table === undefined) {
       throw new Error(`MeshNode '${selected.meshName}' completion table is not started.`);
     }
-    const completion = await table.wait(operation, call.signal);
+    const completion = await awaitWithAbort(table.wait(operation, deadline.signal), deadline.signal);
     try {
       if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
         const error = missingInstanceRequestFailure(
@@ -321,25 +454,25 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     } finally {
       closeMeshCompletion(completion);
     }
-  }
-
-  private async waitForMissingTarget(
-    spotId: RoutingId,
-    call: ZLinkSpotAddressCallOptions,
-    deadlineMs: number
-  ): Promise<ReturnType<ZLinkHostSpotAddressTransport['selectMissingTarget']>> {
-    throwIfAborted(call.signal);
-    let selected = this.selectMissingTarget(spotId, call);
-    while (selected === undefined && Date.now() < deadlineMs) {
-      throwIfAborted(call.signal);
-      const remainingMs = deadlineMs - Date.now();
-      await awaitWithAbort(
-        new Promise<void>(resolve => setTimeout(resolve, Math.min(10, remainingMs))),
-        call.signal
-      );
-      selected = this.selectMissingTarget(spotId, call);
+    } catch (error) {
+      if (
+        deadline.expired()
+        && !(
+          error instanceof ZLinkFrameworkException
+          && internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+        )
+      ) {
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
+          `Spot request for '${String(spotId)}' exceeded its end-to-end deadline.`,
+          true,
+          error
+        );
+      }
+      throw error;
+    } finally {
+      deadline.close();
     }
-    return selected;
   }
 
   private traceInstanceAddress(
@@ -369,20 +502,14 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
 
   private async resolveExisting(
     spotId: RoutingId,
-    signal?: AbortSignal,
-    refreshInstanceRoute = false
+    signal?: AbortSignal
   ): Promise<import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined> {
     const resolver = this.options.resolver();
     if (resolver === undefined) {
       throw new Error('Global Spot address resolution requires a Location Store.');
     }
-    // An Instance intent may create a new incarnation after an explicit close.
-    // Do not let a positive cache entry for the previous incarnation turn that
-    // first message into a stale-target failure. The operation still performs
-    // one resolve and one submit; this is a fresh lookup, not a hidden retry.
-    if (refreshInstanceRoute) resolver.invalidate?.(spotId);
     try {
-      return await resolver.resolve(spotId, signal);
+      return await awaitWithAbort(resolver.resolve(spotId, signal), signal);
     } catch (error) {
       if (
         error instanceof ZLinkFrameworkException
@@ -394,20 +521,36 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     }
   }
 
+  private async canColdActivateAfterTargetNotFound(
+    spotId: RoutingId,
+    call: ZLinkSpotAddressCallOptions,
+    deadline: ZLinkSpotAddressDeadline,
+    error: unknown,
+    staleRoute: ZLinkSpotRouteTarget
+  ): Promise<boolean> {
+    if (
+      !call.instanceSpot
+      || !(error instanceof ZLinkFrameworkException)
+      || internalFrameworkErrorKind(error) !== ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+    ) {
+      return false;
+    }
+    for (;;) {
+      deadline.requireRemaining();
+      const current = await this.resolveExisting(spotId, deadline.signal);
+      if (current === undefined) return true;
+      if (!sameSpotRouteSnapshot(current, staleRoute)) return false;
+      await waitForSpotRouteRefresh(
+        Math.min(10, deadline.requireRemaining()),
+        deadline.signal
+      );
+    }
+  }
+
   private selectMissingTarget(
     spotId: RoutingId,
     call: ZLinkSpotAddressCallOptions
-  ): {
-    readonly meshName: string;
-    readonly node: ZLinkBackendMeshNode;
-    readonly target: {
-      readonly targetNodeRid: string;
-      readonly targetNodeGeneration: bigint;
-      readonly targetSpotId: string;
-      readonly stableType: string;
-      readonly descriptorVersion: string;
-    };
-  } | undefined {
+  ): MissingTargetSelection {
     const configuredMeshes = this.options.meshNames();
     if (
       call.initialMeshName !== undefined
@@ -442,31 +585,63 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     const distinctTypes = [...new Set(meshNames.flatMap(meshName =>
       this.options.meshNode(meshName)?.instanceSpotPlacementTypes?.() ?? []
     ))];
+    const canInspectPlacementTypes = meshNames.some(meshName =>
+      typeof this.options.meshNode(meshName)?.instanceSpotPlacementTypes === 'function'
+    );
     const stableType = call.instanceSpotType
       ?? (distinctTypes.length === 1 ? distinctTypes[0] : undefined);
     if (stableType === undefined) {
-      if (distinctTypes.length === 0) return undefined;
+      if (distinctTypes.length === 0) return { kind: 'unsupported' };
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.InvalidConfiguration,
         'Instance Spot type is required when multiple types are registered.'
       );
     }
+    if (canInspectPlacementTypes && !distinctTypes.includes(stableType)) {
+      return { kind: 'unsupported' };
+    }
+    let unavailable = false;
+    let capacity = false;
+    let unsupported = false;
     for (const meshName of meshNames) {
       const node = this.options.meshNode(meshName);
       const placement = node?.selectObjectPlacement(stableType);
-      if (node !== undefined && placement !== undefined) {
+      if (node === undefined || placement === undefined) {
+        unavailable = true;
+        continue;
+      }
+      if (placement.kind === 'selected') {
         return {
+          kind: 'selected',
           meshName,
           node,
           target: {
-            ...placement,
+            ...placement.target,
             targetSpotId: String(spotId),
             stableType
           }
         };
       }
+      if (placement.kind === 'unavailable') unavailable = true;
+      if (placement.kind === 'capacity') capacity = true;
+      if (placement.kind === 'unsupported') unsupported = true;
     }
-    return undefined;
+    if (unavailable) return { kind: 'unavailable' };
+    if (capacity) return { kind: 'capacity' };
+    if (unsupported) return { kind: 'unsupported' };
+    return { kind: 'unavailable' };
+  }
+
+  private sendTimeoutMsForMesh(meshName: string): number {
+    return this.options.sendTimeoutMsForMesh?.(meshName)
+      ?? this.options.defaultSendTimeoutMs
+      ?? this.options.defaultRequestTimeoutMs;
+  }
+
+  private sendTimeoutMsForRouteChannel(routeChannelId: string): number {
+    return this.options.sendTimeoutMsForRouteChannel?.(routeChannelId)
+      ?? this.options.defaultSendTimeoutMs
+      ?? this.options.defaultRequestTimeoutMs;
   }
 
   private validateExisting(
@@ -500,6 +675,26 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       undefined,
       payload,
       timeoutMs,
+      undefined,
+      this.options.codecs,
+      undefined,
+      true,
+      new Map()
+    );
+  }
+
+  private encodeAtDeadline(
+    kind: ZLinkChannelMessageKind,
+    meshName: string,
+    payload: unknown,
+    deadlineUnixMs: number
+  ): readonly MessageLike[] {
+    return encodeChannelEnvelopePartsAtDeadline(
+      kind,
+      meshName,
+      undefined,
+      payload,
+      deadlineUnixMs,
       undefined,
       this.options.codecs,
       undefined,
@@ -555,6 +750,30 @@ function mapSubmitResult(result: number): ZLinkSubmitResult {
   }
 }
 
+function missingInstancePlacementCapacity(
+  spotId: RoutingId,
+  stableType: string | undefined
+): ZLinkFrameworkException {
+  const type = stableType === undefined ? '' : ` of type '${stableType}'`;
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.PlacementCapacityExhausted,
+    `No eligible Instance Spot placement target${type} is available for '${String(spotId)}'.`,
+    true
+  );
+}
+
+function missingInstancePlacementUnavailable(
+  spotId: RoutingId,
+  stableType: string | undefined
+): ZLinkFrameworkException {
+  const type = stableType === undefined ? '' : ` of type '${stableType}'`;
+  return createInternalFrameworkException(
+    ZLinkFrameworkInternalErrorKind.RouteNotConnected,
+    `No connected Instance Spot placement target${type} is available for '${String(spotId)}'.`,
+    true
+  );
+}
+
 function isStaleSpotRouteError(error: unknown): boolean {
   return error instanceof ZLinkFrameworkException
     && (
@@ -564,6 +783,40 @@ function isStaleSpotRouteError(error: unknown): boolean {
       || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
       || internalFrameworkErrorKind(error) === ZLinkFrameworkInternalErrorKind.RouteNotConnected
     );
+}
+
+function sameSpotRouteSnapshot(
+  left: ZLinkSpotRouteTarget,
+  right: ZLinkSpotRouteTarget
+): boolean {
+  return String(left.targetNodeRid) === String(right.targetNodeRid)
+    && String(left.spotId) === String(right.spotId)
+    && left.routerChannelId === right.routerChannelId
+    && left.spotKind === right.spotKind
+    && left.stableType === right.stableType
+    && left.targetSpotGeneration === right.targetSpotGeneration
+    && left.targetNodeGeneration === right.targetNodeGeneration
+    && left.authorityOwnerGeneration === right.authorityOwnerGeneration
+    && left.targetOwnerId === right.targetOwnerId
+    && left.ownerLeaseGeneration === right.ownerLeaseGeneration
+    && left.authorityStoreVersion === right.authorityStoreVersion;
+}
+
+function waitForSpotRouteRefresh(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    };
+    const abort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(finish, delayMs);
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  });
 }
 
 function submitResultReason(
@@ -600,4 +853,76 @@ function addressedInstanceErrorReason(error: unknown): ZLinkDispatchErrorReason 
     }
   }
   return ZLinkDispatchErrorReason.HandlerException;
+}
+
+function initialSendTimeoutMs(
+  options: ZLinkHostSpotAddressTransportOptions,
+  call: ZLinkSpotAddressCallOptions
+): number {
+  return call.initialMeshName === undefined
+    ? options.defaultSendTimeoutMs ?? options.defaultRequestTimeoutMs
+    : options.sendTimeoutMsForMesh?.(call.initialMeshName)
+      ?? options.defaultSendTimeoutMs
+      ?? options.defaultRequestTimeoutMs;
+}
+
+interface ZLinkSpotAddressDeadline {
+  readonly deadlineMs: number;
+  readonly signal: AbortSignal;
+  setOwnerTimeout(timeoutMs: number): void;
+  requireRemaining(): number;
+  expired(): boolean;
+  close(): void;
+}
+
+function createSpotAddressDeadline(timeoutMs: number, parent?: AbortSignal): ZLinkSpotAddressDeadline {
+  const startedAtMs = Date.now();
+  let deadlineMs = startedAtMs + Math.max(0, timeoutMs);
+  const controller = new AbortController();
+  let expired = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const expire = () => {
+    expired = true;
+    controller.abort();
+  };
+  const arm = () => {
+    if (timeout !== undefined) clearTimeout(timeout);
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs <= 0) {
+      expire();
+      return;
+    }
+    timeout = setTimeout(expire, remainingMs);
+  };
+  arm();
+  const abort = () => controller.abort(parent?.reason);
+  if (parent?.aborted === true) abort();
+  else parent?.addEventListener('abort', abort, { once: true });
+  return {
+    get deadlineMs() {
+      return deadlineMs;
+    },
+    signal: controller.signal,
+    setOwnerTimeout(ownerTimeoutMs: number) {
+      deadlineMs = startedAtMs + Math.max(0, ownerTimeoutMs);
+      arm();
+    },
+    requireRemaining() {
+      const remainingMs = deadlineMs - Date.now();
+      if (remainingMs <= 0) {
+        expired = true;
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.DeadlineExceeded,
+          'Spot address operation exceeded its end-to-end deadline.',
+          true
+        );
+      }
+      return Math.max(1, remainingMs);
+    },
+    expired: () => expired,
+    close() {
+      if (timeout !== undefined) clearTimeout(timeout);
+      parent?.removeEventListener('abort', abort);
+    }
+  };
 }

@@ -531,6 +531,10 @@ export class ServiceTerminalOperationRegistry<T> {
     return this.operations.cancel(id);
   }
 
+  isPending(id: bigint): boolean {
+    return this.operations.isPending(id);
+  }
+
   close(): void {
     this.operations.close('Stateful runtime closed.');
   }

@@ -71,9 +71,14 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             active => runtime.SetActivationConcurrency(spotChannelName, active));
         if (node is IZLinkBackendActorMessageFollowIngress
             messageFollowIngress)
+        {
+            messageFollowIngress.SetActorMessageFollowIngressAdmission(
+                ingress => ZLinkActorHandoffIngress
+                    .CanAdmitStaleManagedIngress(runtime, ingress));
             messageFollowIngress.SetActorMessageFollowIngressHandler(
                 parts => ZLinkActorHandoffIngress
                     .TryCaptureOrFollowStaleManagedIngress(runtime, parts));
+        }
         if (node is IZLinkBackendMessageFollowNotifications
             messageFollowNotifications)
         {

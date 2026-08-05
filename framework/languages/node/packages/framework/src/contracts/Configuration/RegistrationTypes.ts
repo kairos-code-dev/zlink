@@ -225,6 +225,7 @@ export interface ZLinkStreamNodeOptions {
   readonly bindHost?: string;
   readonly advertiseHost?: string;
   readonly port?: number;
+  readonly maxMessageSize?: number;
   readonly actorDispatchEnabled?: boolean;
   readonly tlsServer?: ZLinkStreamTlsServerOptions;
   readonly session?: Type;

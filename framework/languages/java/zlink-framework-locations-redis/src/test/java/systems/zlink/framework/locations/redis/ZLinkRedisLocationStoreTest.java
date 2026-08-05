@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.Arrays;
 import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.runtime.internal.locations.ZLinkLocationOwnerToken;
@@ -1780,13 +1782,12 @@ class ZLinkRedisLocationStoreTest {
         assumeTrue(
             endpoint != null && !endpoint.isBlank(),
             "ZLINK_REDIS_LOCATION_ENDPOINT is not set");
+        String prefix = "zlink:aggregate-test:" + UUID.randomUUID();
+        var options = new ZLinkRedisLocationOptions()
+            .setConnectionString(endpoint)
+            .setKeyPrefix(prefix);
         try (ZLinkRedisLocationRepository store =
-            new ZLinkRedisLocationRepository(
-                new ZLinkRedisLocationOptions()
-                    .setConnectionString(endpoint)
-                    .setKeyPrefix(
-                        "zlink:aggregate-test:"
-                            + UUID.randomUUID()))) {
+            new ZLinkRedisLocationRepository(options)) {
             var source = assertInstanceOf(
                 ZLinkOwnerLeaseClaimed.class,
                 store.claimOwnerLease(
@@ -1865,6 +1866,9 @@ class ZLinkRedisLocationStoreTest {
                     .mapToObj(index ->
                         new systems.zlink.framework.runtime.internal.locations.ZLinkAggregateParticipant(
                                 authorityKeys.get(index),
+                                snapshots.get(index).objectGeneration(),
+                                snapshots.get(index)
+                                    .authorityOwnerGeneration(),
                                 snapshots.get(index).storeVersion(),
                                 systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition
                                     .NEW_OWNER,
@@ -1901,6 +1905,9 @@ class ZLinkRedisLocationStoreTest {
                 0,
                 new systems.zlink.framework.runtime.internal.locations.ZLinkAggregateParticipant(
                         participants.getFirst().authorityKey(),
+                        participants.getFirst().objectGeneration(),
+                        participants.getFirst()
+                            .sourceAuthorityOwnerGeneration(),
                         participants.getFirst().expectedStoreVersion(),
                         participants.getFirst().ownerTransition(),
                         new byte[] {99},
@@ -1940,12 +1947,45 @@ class ZLinkRedisLocationStoreTest {
                                 target),
                         () -> false)
                     .toCompletableFuture().get());
-            assertEquals(
-                systems.zlink.framework.runtime.internal.locations.ZLinkAggregateCommitResult.COMMITTED,
-                store.commitAggregate(
-                        prepared.fence(),
-                        () -> false)
-                    .toCompletableFuture().get());
+            String targetLeaseKey = new ZLinkRedisLocationKeys(prefix)
+                .leaseKey(target.ownerId());
+            RedisClient leaseClient = RedisClient.create(options.redisUri());
+            CompletableFuture<Void> restoreLease;
+            try (var leaseConnection = leaseClient.connect()) {
+                leaseConnection.sync().hset(
+                    targetLeaseKey,
+                    "expiresAt",
+                    Long.toString(System.currentTimeMillis() - 1));
+                restoreLease = CompletableFuture.runAsync(
+                    () -> {
+                        RedisClient restoreClient =
+                            RedisClient.create(options.redisUri());
+                        try (var restoreConnection = restoreClient.connect()) {
+                            restoreConnection.sync().hset(
+                                targetLeaseKey,
+                                "expiresAt",
+                                Long.toString(
+                                    System.currentTimeMillis() + 30_000));
+                        } finally {
+                            restoreClient.shutdown();
+                        }
+                    },
+                    CompletableFuture.delayedExecutor(
+                        100,
+                        TimeUnit.MILLISECONDS));
+                try {
+                    assertEquals(
+                        systems.zlink.framework.runtime.internal.locations.ZLinkAggregateCommitResult.COMMITTED,
+                        store.commitAggregate(
+                                prepared.fence(),
+                                () -> false)
+                            .toCompletableFuture().get());
+                } finally {
+                    restoreLease.join();
+                }
+            } finally {
+                leaseClient.shutdown();
+            }
             assertEquals(
                 systems.zlink.framework.runtime.internal.locations.ZLinkAggregateCommitResult.ALREADY_COMMITTED,
                 store.commitAggregate(
@@ -1980,6 +2020,9 @@ class ZLinkRedisLocationStoreTest {
                     .mapToObj(index ->
                         new systems.zlink.framework.runtime.internal.locations.ZLinkAggregateParticipant(
                                 authorityKeys.get(index),
+                                movedSnapshots.get(index).objectGeneration(),
+                                movedSnapshots.get(index)
+                                    .authorityOwnerGeneration(),
                                 movedSnapshots.get(index)
                                     .storeVersion(),
                                 systems.zlink.framework.runtime.internal.locations.ZLinkAuthorityGenerationTransition

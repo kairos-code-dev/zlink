@@ -668,6 +668,86 @@ with urllib.request.urlopen(request, timeout=5) as response:
 PY
 }
 
+set_placement_weight() {
+  local endpoint="$1"
+  local weight="$2"
+  python3 - "${endpoint}/placement-weight" "${weight}" <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"weight": int(sys.argv[2])}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = json.loads(response.read().decode())
+    if body.get("weight") != int(sys.argv[2]):
+        raise SystemExit(f"placement weight was not applied: {body}")
+PY
+}
+
+prepare_default_spot_fixtures() {
+  local room_a_response
+  local room_b_response
+  set_placement_weight "${HTTP_A}" 100
+  set_placement_weight "${HTTP_B}" 0
+  room_a_response="$(python3 - "${HTTP_A}/spot/create" room-a <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"spotRid": sys.argv[2]}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    print(response.read().decode(), end="")
+PY
+)"
+  python3 - "${room_a_response}" room-a play-a <<'PY'
+import json
+import sys
+
+body = json.loads(sys.argv[1])
+if body.get("spotRid") != sys.argv[2] or body.get("nodeRid") != sys.argv[3]:
+    raise SystemExit(f"room-a fixture owner mismatch: {body}")
+PY
+
+  set_placement_weight "${HTTP_A}" 0
+  set_placement_weight "${HTTP_B}" 100
+  room_b_response="$(python3 - "${HTTP_B}/spot/create" room-b <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"spotRid": sys.argv[2]}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    print(response.read().decode(), end="")
+PY
+)"
+  python3 - "${room_b_response}" room-b play-b <<'PY'
+import json
+import sys
+
+body = json.loads(sys.argv[1])
+if body.get("spotRid") != sys.argv[2] or body.get("nodeRid") != sys.argv[3]:
+    raise SystemExit(f"room-b fixture owner mismatch: {body}")
+PY
+
+  set_placement_weight "${HTTP_A}" 100
+  set_placement_weight "${HTTP_B}" 100
+}
+
 read -r ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B _ STREAM_A STREAM_B TLS_STREAM_A_RAW HTTP_A HTTP_B <<<"$(reserve_ports)"
 TLS_STREAM_A=""
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "default-batch" || "${SCENARIO}" == "SM-D14" || "${SCENARIO}" == "sm-d14" || "${ZLINK_KOTLIN_E2E_MODES:-}" == *stream-tls* ]]; then
@@ -688,6 +768,9 @@ start_play play-a "${ROUTE_A}" "${SPOT_A}" "${INGRESS_A}" "${HTTP_A}" "${SPOT_PU
 PLAY_A_PID="${pids[$((${#pids[@]} - 1))]}"
 start_play play-b "${ROUTE_B}" "${SPOT_B}" "${INGRESS_B}" "${HTTP_B}" "${SPOT_PUB_B}" "${STREAM_B}" ""
 PLAY_B_PID="${pids[$((${#pids[@]} - 1))]}"
+if [[ "${SCENARIO}" != "SM-F6" && "${SCENARIO}" != "sm-f6" ]]; then
+  prepare_default_spot_fixtures
+fi
 
 run_client_mode() {
   local mode="$1"

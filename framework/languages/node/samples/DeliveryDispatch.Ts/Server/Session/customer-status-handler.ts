@@ -13,7 +13,7 @@ import type { ZLinkMessageContext } from '@zlink-systems/framework';
 class CustomerStatusHandler {
   async handle(_spot: CustomerEntrySpot, actor: CustomerActor, _context: ZLinkMessageContext, message: DeliveryStatusUpdatedMsg): Promise<void> {
     if (!actor.accepts(message.deliveryId)) return;
-    actor.context.boundSession.send(new DeliveryStatusNotify(
+    await actor.context.boundSession.send(new DeliveryStatusNotify(
       message.deliveryId,
       message.status,
       message.occurredAtUnixMs,

@@ -9,7 +9,7 @@ inline void run_obs_a2_scenario (const verification_input_t &input)
     const auto lines = read_lines (input, "sessionLog");
     require_shared_flow (
       lines,
-      {"phase=received surface=stream_session kind=request label=cpp-obs-session packet=ObsUnknownReq",
+      {"phase=received outcome=succeeded surface=stream_session kind=request label=cpp-obs-session packet=ObsUnknownReq",
        "dispatch error", "outcome=failed"},
       "OBS-A2 success and dispatch error lines do not share one flow");
 }

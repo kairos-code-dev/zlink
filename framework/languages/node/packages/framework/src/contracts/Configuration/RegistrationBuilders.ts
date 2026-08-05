@@ -28,6 +28,7 @@ import type {
   ZLinkClientServerChannelServerBuilder,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec,
+  ZLinkStreamSocketConfig,
   ZLinkStreamNodeBuilder,
   ZLinkSession,
   ZLinkSessionFactory
@@ -73,6 +74,7 @@ import {
   normalizeOptionalPositiveInteger,
   typeMapToRecord
 } from './RegistrationNormalizers';
+import { DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE } from './InternalDefaults';
 import type {
   ZLinkChannelPublishHandlerRegistration,
   ZLinkActorFactoryConfiguration,
@@ -216,7 +218,9 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     if (Object.prototype.hasOwnProperty.call(this.options.streamNodes, name)) {
       throw new ZLinkConfigurationException(`Duplicate STREAM node '${name}'.`);
     }
-    const streamNode: MutableStreamNodeOptions = {};
+    const streamNode: MutableStreamNodeOptions = {
+      maxMessageSize: DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE
+    };
     this.options.streamNodes[name] = streamNode;
     return new DefaultStreamNodeBuilder(streamNode);
   }
@@ -236,6 +240,7 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
       actorTransferTimeoutMs: this.options.actorTransferTimeoutMs,
       messageFollowDurationMs: this.options.messageFollowDurationMs,
       dispatch: this.options.dispatch,
+      inboundDispatch: this.options.inboundDispatch,
       worker: this.options.worker,
       locations: this.options.locations
     };
@@ -658,6 +663,10 @@ class DefaultStreamNodeBuilder implements ZLinkStreamNodeBuilder {
     requireRegistrationName(advertiseHost, 'STREAM advertise host');
     this.streamNode.advertiseHost = advertiseHost;
     return this;
+  }
+
+  configureSocket(): ZLinkStreamSocketConfig {
+    return this.streamNode;
   }
 
   enableActorDispatch(): this {
@@ -1515,6 +1524,7 @@ interface MutableStreamNodeOptions {
   bindHost?: string;
   advertiseHost?: string;
   port?: number;
+  maxMessageSize: number;
   actorDispatchEnabled?: boolean;
   tlsServer?: ZLinkStreamTlsServerOptions;
   session?: Type;

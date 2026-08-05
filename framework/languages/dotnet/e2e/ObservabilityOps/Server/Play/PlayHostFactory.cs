@@ -34,12 +34,6 @@ internal static class PlayHostFactory
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<EvidenceStore>();
-        builder.Services.AddHostedService(provider =>
-            new Support.HostStateEvidenceObserver(
-                provider.GetRequiredService<IZLinkFrameworkRuntime>(),
-                provider.GetRequiredService<IZLinkRouteMeshRuntime>(),
-                provider.GetRequiredService<EvidenceStore>(),
-                options.Rid));
         builder.Services.AddSingleton<RelocationOperation>();
         builder.Services.AddSingleton<ShutdownOperation>();
         builder.Services.AddSingleton<BoundedOperationGate>();
@@ -97,6 +91,12 @@ internal static class PlayHostFactory
                 mesh18.PeerConnections.Connect(options.ManualPeerEndpoint);
             mesh18.Channel(ObservabilityNames.PlayMesh).Client();
         });
+        builder.Services.AddHostedService(provider =>
+            new Support.HostStateEvidenceObserver(
+                provider.GetRequiredService<IZLinkFrameworkRuntime>(),
+                provider.GetRequiredService<IZLinkRouteMeshRuntime>(),
+                provider.GetRequiredService<EvidenceStore>(),
+                options.Rid));
 
         var app = builder.Build();
         if (options.MetricsEnabled) _ = app.Services.GetRequiredService<MetricEvidenceCollector>();

@@ -18,7 +18,7 @@
 | RM-C4 | done | timeout 뒤 후속 request 비오염을 검증한다. |
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
 | RM-C7 | done | public `addRouteMesh(meshName).channel(channelName).server().setWeight(...)`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
-| RM-C8 | done | payload length/hash 왕복을 검증하고, server socket `maxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 확인한다. |
+| RM-C8 | done | RouteMesh SS에 Framework-level `MaxMessageSize`를 설정하지 않고 1 byte, 4KiB, 256KiB, 1MiB payload의 length/hash 왕복과 후속 정상 request를 검증한다. StreamNode의 inbound 상한은 별도 계약이다. |
 | RM-C9 | 10.0.0 전환 대상 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복을 검증한다. `submit()`의 최초 non-blocking 시도, bounded wait와 timeout 결과를 직접 검증해야 한다. |
 
 검증:

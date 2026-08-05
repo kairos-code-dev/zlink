@@ -10,13 +10,13 @@ inline void run_obs_a1_scenario (const verification_input_t &input)
     const auto spot = read_lines (input, "spotLog");
     require_flow_sequence (
       {session, session, spot},
-      {"phase=received surface=stream_session kind=request label=cpp-obs-session packet=ObsActionReq",
-       "phase=sent surface=spot_route kind=request label=cpp-obs-session packet=ObsActionReq",
-       "phase=received surface=spot_route kind=request label=cpp-obs-play-b packet=ObsActionReq"},
+      {"phase=received outcome=succeeded surface=stream_session kind=request label=cpp-obs-session packet=ObsActionReq",
+       "phase=sent outcome=succeeded surface=spot_route kind=request label=cpp-obs-session packet=ObsActionReq",
+       "phase=received outcome=succeeded surface=spot_route kind=request label=cpp-obs-play-b packet=ObsActionReq"},
       "OBS-A1 flow did not preserve the STREAM to route to room order");
     require_shared_flow (
       session,
-      {"phase=received surface=stream_session kind=request label=cpp-obs-session packet=ObsActionReq",
+      {"phase=received outcome=succeeded surface=stream_session kind=request label=cpp-obs-session packet=ObsActionReq",
        "origin=application"},
       "OBS-A1 action flow has no application origin");
 }

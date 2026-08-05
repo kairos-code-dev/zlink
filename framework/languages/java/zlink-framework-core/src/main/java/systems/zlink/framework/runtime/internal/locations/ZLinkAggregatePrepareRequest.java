@@ -28,9 +28,9 @@ public record ZLinkAggregatePrepareRequest(
         }
         participants = List.copyOf(
             Objects.requireNonNull(participants, "participants"));
-        if (participants.isEmpty() || participants.size() > 1024) {
+        if (participants.isEmpty()) {
             throw new IllegalArgumentException(
-                "participants must contain 1..1024 entries");
+                "participants must contain at least one entry");
         }
         inventoryDigest = Objects.requireNonNull(
             inventoryDigest,
@@ -47,7 +47,6 @@ public record ZLinkAggregatePrepareRequest(
         Objects.requireNonNull(capacityBundle, "capacityBundle");
         Objects.requireNonNull(targetOwner, "targetOwner");
         byte[] previous = null;
-        long encodedSize = 16L + Long.BYTES + inventoryDigest.length;
         for (ZLinkAggregateParticipant participant : participants) {
             Objects.requireNonNull(participant, "participant");
             byte[] current = participant.authorityKey()
@@ -58,18 +57,11 @@ public record ZLinkAggregatePrepareRequest(
                     "participants must be sorted by UTF-8 key bytes and unique");
             }
             previous = current;
-            encodedSize = Math.addExact(
-                encodedSize,
-                current.length
-                    + participant.expectedStoreVersion()
-                        .getBytes(StandardCharsets.UTF_8).length
-                    + participant.authorityPayload().length
-                    + participant.membershipMutation().length
-                    + 32L);
-        }
-        if (encodedSize > 1024L * 1024L) {
-            throw new IllegalArgumentException(
-                "encoded aggregate request exceeds 1 MiB");
+            if (participant.authorityPayload().length > 1024 * 1024
+                || participant.membershipMutation().length > 1024 * 1024) {
+                throw new IllegalArgumentException(
+                    "aggregate participant value exceeds 1 MiB");
+            }
         }
     }
 

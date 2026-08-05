@@ -772,6 +772,8 @@ internal sealed partial class ZLinkSpotActivation
 
     internal bool HasPendingApplicationWork => _serial.HasPendingApplicationWork;
 
+    internal bool HasRelocationBarrier => _serial.HasRelocationBarrier;
+
     internal long LastApplicationWorkCompletedAt =>
         _serial.LastApplicationWorkCompletedAt;
 

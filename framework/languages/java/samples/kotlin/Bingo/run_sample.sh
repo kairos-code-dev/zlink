@@ -173,6 +173,16 @@ wait_port "${matchmaking_router_host}" "${matchmaking_router_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
 
+wait_framework_ready_logs "${log_dir}" 1
+wait_framework_peer_ready_counts "${log_dir}" \
+  "session-a.log:2" \
+  "session-b.log:2" \
+  "api-a.log:3" \
+  "api-b.log:3" \
+  "play-a.log:5" \
+  "play-b.log:5" \
+  "matchmaking.log:2"
+
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1
 
 grep -q "bingo=completed" "${log_dir}/client.log"

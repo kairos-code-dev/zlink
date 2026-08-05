@@ -244,6 +244,7 @@ export class ZLinkActorRuntimeOptionsFactory {
         && this.options.actorHandoff.isKnownStale(actor),
       handoffCapture: (meshName, actorId, parts, returnResponse, actor, deadlineUnixMs) =>
         this.actorBelongsToMesh(meshName, actorId)
+          && !this.options.actorHandoff.isProvisional(actorId)
           ? this.options.actorHandoff.capture(
             actorId,
             parts,

@@ -3,13 +3,12 @@ using System.Security.Cryptography;
 using System.Text;
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Scenarios;
 
-// RM-C8 verifies payload size round trips by checking returned length and hash
-// for several message sizes.
+// RM-C8 verifies RouteMesh SS payload round trips by checking returned length
+// and hash for several message sizes.
 internal static class RmC8PayloadRoundTripScenario
 {
     public static async Task RunAsync(
@@ -20,7 +19,7 @@ internal static class RmC8PayloadRoundTripScenario
         var beforeA = (await providerA.Get("/evidence").Async<string[]>()).Body;
         var beforeB = (await providerB.Get("/evidence").Async<string[]>()).Body;
         var markers = new List<string>();
-        foreach (var size in new[] { 1024, 17 * 1024 * 1024 })
+        foreach (var size in new[] { 1, 4096, 256 * 1024, 1024 * 1024 })
         {
             var marker = $"rm-c8-{size}-{Guid.NewGuid():N}";
             markers.Add(marker);
@@ -33,15 +32,6 @@ internal static class RmC8PayloadRoundTripScenario
             ZlinkStreamAssert.Ensure(reply.Length == payload.Length, "RM-C8 payload length mismatch.");
             ZlinkStreamAssert.Ensure(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
         }
-
-        var oversizedMarker = $"rm-c8-over-limit-{Guid.NewGuid():N}";
-        var oversized = (await directConsumer.Post("/profile/payload-over-limit")
-            .Body(new PayloadReq(oversizedMarker, BuildPayload(33 * 1024 * 1024)))
-            .Async<ExpectedFailureRes>()).Body;
-        ZlinkStreamAssert.Ensure(
-            oversized.ErrorKind is nameof(ZLinkFrameworkErrorKind.ProtocolError)
-                or nameof(ZLinkFrameworkErrorKind.DeadlineExceeded),
-            $"RM-C8 oversized payload reported unexpected '{oversized.ErrorKind}'.");
 
         var followUp = (await directConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c8-after"))

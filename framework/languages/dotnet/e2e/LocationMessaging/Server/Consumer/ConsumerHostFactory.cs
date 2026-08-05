@@ -137,8 +137,6 @@ internal static class ConsumerHostFactory
                     profileMesh.PeerConnections.Connect(endpoint);
             }
 
-            profileMesh.ConfigureRouterSocket().MaxMessageSize = options.MaxMessageSize;
-
         });
         builder.Services.AddHostedService<MeshConnectionEventObserver>();
         var app = builder.Build();

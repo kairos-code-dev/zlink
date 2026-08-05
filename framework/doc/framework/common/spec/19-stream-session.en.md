@@ -195,13 +195,22 @@ options
     .Bind(7400)
     .SetBindHost("0.0.0.0")
     .SetAdvertiseHost("node-a.example.net")
-    .ConfigureSocket().MaxMessageSize = 16 * 1024 * 1024; // the finite application message cap used for HWM validation.
+    .ConfigureSocket().MaxMessageSize = 64 * 1024; // default cap for complete STREAM messages received from client to server.
     .SetTlsServer(
         "server.crt",
         "server.key",
         requireClientCertificate: true)
     .AddSession<GatewaySession>(); // registers the single session type this node uses.
 ```
+
+`ConfigureSocket().MaxMessageSize` is this StreamNode's Core STREAM inbound option. Its
+default is `64 KiB`; a complete message is measured as header bytes plus payload bytes,
+excluding the 6-byte prefix. The cap applies only to messages received from client to
+server, not to messages sent from server to client. `0` maps to Core `-1`, meaning no
+separate Framework cap, while a positive value is finite. A negative value is a startup
+configuration error. A message above the cap is not partially delivered to the session
+handler; the server records `EMSGSIZE` and closes the connection. No error code is sent
+to a raw client, so it observes only the connection closing.
 
 Axes of the registration surface:
 

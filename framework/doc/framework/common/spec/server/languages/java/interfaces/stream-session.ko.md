@@ -33,6 +33,14 @@ MeshName·NodeRid를 반영한다. 응답이 없어도 Target Actor 처리를 �
 간격으로 같은 요청을 다시 보낸다. 같은 Session에서 relocation 대상에 포함되지 않은 다른 Actor의 route와 physical STREAM connection은 유지한다.
 Application은 relocation을 알기 위해 rebind하지 않는다.
 
+## STREAM socket message 크기
+
+STREAM node의 `configureSocket().setMaxMessageSize(...)`는 Core STREAM inbound에서
+client→server complete message에 적용된다. 기본값은 `64 KiB`이며 6-byte prefix를 제외한
+header와 payload의 합으로 계산한다. `0`은 상한을 사용하지 않는 값이고 음수는 startup error다.
+상한 초과 message는 handler에 전달하지 않고 server가 `EMSGSIZE`를 기록한 뒤 연결을 종료한다.
+server→client outbound에는 이 Framework 상한을 적용하지 않는다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.

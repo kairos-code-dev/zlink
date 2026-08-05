@@ -40,6 +40,7 @@ export class ZLinkLocationRuntimeOwner {
     readonly stores: ZLinkLocationRuntimeStores;
     readonly tracker: ZLinkOwnerLeaseTracker;
   };
+  private spotRouteInvalidator?: (spotId: RoutingId) => void;
 
   constructor(private readonly options: ZLinkLocationRuntimeOwnerOptions) {}
 
@@ -61,6 +62,10 @@ export class ZLinkLocationRuntimeOwner {
 
   get currentLeaseTracker(): ZLinkOwnerLeaseTracker | undefined {
     return this.leaseTrackerState?.tracker;
+  }
+
+  setSpotRouteInvalidator(invalidator?: (spotId: RoutingId) => void): void {
+    this.spotRouteInvalidator = invalidator;
   }
 
   actorTransferStore(): ZLinkActorTransferStore | undefined {
@@ -102,7 +107,8 @@ export class ZLinkLocationRuntimeOwner {
       stores.actorStore,
       primaryMeshName ?? '',
       stores.authorityStore,
-      stores.spotStore
+      stores.spotStore,
+      spotId => this.spotRouteInvalidator?.(spotId)
     );
     return runtime;
   }

@@ -233,9 +233,10 @@ int get_or_create_does_not_reuse_disconnected_record ()
           "actor-reconnect", actor_record_t{stale, false, true});
         state->bound_session_sinks.emplace (
           "actor-reconnect",
-          [] (std::string, stream_codec_t, const zlink::message_t &) {
-              return task_t<void> (result_t<void>::success ());
-          });
+          std::make_shared<bound_session_sink_t> (
+            [] (std::string, stream_codec_t, const zlink::message_t &) {
+                return task_t<void> (result_t<void>::success ());
+            }));
         state->create_dispatcher =
           [current] (std::string, std::string,
                      const std::optional<zlink::message_t> &) {
@@ -556,6 +557,169 @@ int bound_session_route_preserves_private_fences ()
     return advanced && advanced->session_sequence == 30 ? 0 : 3;
 }
 
+int bound_session_ref_normalization_preserves_type_and_rejects_conflicts ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    actor_gateway_runtime_t gateway (state);
+    const auto node = node_rid_t::from_string ("actor-node");
+    const actor_ref_t typed = test_actor_ref (
+      "actor-node", "support-user", "actor-public-ref", 7);
+    const actor_ref_t public_ref (
+      actor_id_t ("actor-public-ref"), 7, "mesh", node);
+    auto sends = std::make_shared<std::atomic_int> (0);
+    const auto sink = [sends] (std::string,
+                               stream_codec_t,
+                               const zlink::message_t &) {
+        ++*sends;
+        return task_t<void> (result_t<void>::success ());
+    };
+
+    const auto first_bind = gateway.bind_session_sink (typed, sink);
+    if (!first_bind) {
+        return 1;
+    }
+    const auto public_bind = gateway.bind_session_sink (public_ref, sink);
+    if (!public_bind) {
+        return 2;
+    }
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto found = state->actors_by_id.find ("actor-public-ref");
+        if (found == state->actors_by_id.end ()
+            || actor_ref_access_t::actor_type (found->second.ref) != "support-user"
+            || found->second.ref.mesh_name () != "mesh"
+            || found->second.ref.node_rid ().value () != "actor-node") {
+            return 3;
+        }
+    }
+
+    const auto route_recorded = gateway.record_bound_session_route (
+      public_ref, zlink::routing_id_t::from (std::string ("session-node")));
+    if (!route_recorded) {
+        return 4;
+    }
+    const auto dispatched = gateway.dispatch_bound_session_send (
+      public_ref, "push", stream_codec_t::json, zlink::message_t{});
+    if (!dispatched || sends->load () != 1) {
+        return 5;
+    }
+
+    const actor_ref_t wrong_type = test_actor_ref (
+      "actor-node", "other-actor", "actor-public-ref", 7);
+    const auto wrong_type_bind = gateway.bind_session_sink (wrong_type, sink);
+    if (wrong_type_bind
+        || wrong_type_bind.error_kind () != framework_error_kind_t::type_mismatch) {
+        return 6;
+    }
+
+    const actor_ref_t stale = test_actor_ref (
+      "actor-node", "support-user", "actor-public-ref", 8);
+    const auto stale_bind = gateway.bind_session_sink (stale, sink);
+    if (stale_bind
+        || stale_bind.error_kind () != framework_error_kind_t::invalid_operation) {
+        return 7;
+    }
+    const auto stale_route = gateway.record_bound_session_route (
+      stale, zlink::routing_id_t::from (std::string ("other-session")));
+    if (stale_route
+        || stale_route.error_kind () != framework_error_kind_t::invalid_operation) {
+        return 8;
+    }
+    const auto route_after_rejections = gateway.bound_session_route (public_ref);
+    if (!route_after_rejections
+        || route_after_rejections->node_rid.to_string () != "session-node"
+        || route_after_rejections->session_sequence != 1) {
+        return 9;
+    }
+
+    const actor_ref_t public_first (
+      actor_id_t ("actor-type-enrichment"), 3, "mesh", node);
+    const actor_ref_t typed_second = test_actor_ref (
+      "actor-node", "support-user", "actor-type-enrichment", 3);
+    if (!gateway.bind_session_sink (public_first, sink)
+        || !gateway.bind_session_sink (typed_second, sink)) {
+        return 10;
+    }
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto found = state->actors_by_id.find ("actor-type-enrichment");
+        if (found == state->actors_by_id.end ()
+            || actor_ref_access_t::actor_type (found->second.ref) != "support-user") {
+            return 11;
+        }
+    }
+    return 0;
+}
+
+int bound_session_route_installs_sink_and_fence_together ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    actor_gateway_runtime_t gateway (state);
+    const auto actor = test_actor_ref (
+      "route-node", "support-user", "route-actor", 5);
+    const auto bound = gateway.bind_session_route (
+      actor, route_client_t{}, "actor-route",
+      zlink::routing_id_t::from (std::string ("session-node")),
+      stream_codec_t::message_pack, true,
+      std::make_optional (zlink::routing_id_t::from (std::string ("session-rid"))));
+    if (!bound) {
+        return 1;
+    }
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto found = state->actors_by_id.find ("route-actor");
+        if (found == state->actors_by_id.end ()
+            || !found->second.bound
+            || !found->second.bound_session_route
+            || state->bound_session_sinks.count ("route-actor") != 1) {
+            return 2;
+        }
+    }
+    const auto route = gateway.bound_session_route (actor);
+    if (!route || route->node_rid.to_string () != "session-node"
+        || !route->session_rid
+        || route->session_rid->to_string () != "session-rid") {
+        return 3;
+    }
+
+    const auto non_replacing = gateway.bind_session_route (
+      actor, route_client_t{}, "replacement-route",
+      zlink::routing_id_t::from (std::string ("replacement-node")),
+      stream_codec_t::json, false,
+      std::make_optional (zlink::routing_id_t::from (std::string ("replacement-rid"))));
+    if (!non_replacing) {
+        return 4;
+    }
+    const auto retained = gateway.bound_session_route (actor);
+    if (!retained || retained->node_rid.to_string () != "session-node"
+        || !retained->session_rid
+        || retained->session_rid->to_string () != "session-rid") {
+        return 5;
+    }
+
+    const auto wrong_type = test_actor_ref (
+      "route-node", "other-actor", "route-actor", 5);
+    const auto rejected = gateway.bind_session_route (
+      wrong_type, route_client_t{}, "actor-route",
+      zlink::routing_id_t::from (std::string ("other-node")));
+    if (rejected
+        || rejected.error_kind () != framework_error_kind_t::type_mismatch) {
+        return 6;
+    }
+    const auto preserved = gateway.bound_session_route (actor);
+    return preserved && preserved->node_rid.to_string () == "session-node"
+             && preserved->session_rid
+             && preserved->session_rid->to_string () == "session-rid"
+           ? 0
+           : 7;
+}
+
 } // namespace
 
 int main ()
@@ -573,6 +737,16 @@ int main ()
           bound_session_route_preserves_private_fences ();
         route_fence != 0) {
         return 100 + route_fence;
+    }
+    if (const auto normalized =
+          bound_session_ref_normalization_preserves_type_and_rejects_conflicts ();
+        normalized != 0) {
+        return 80 + normalized;
+    }
+    if (const auto atomic_route =
+          bound_session_route_installs_sink_and_fence_together ();
+        atomic_route != 0) {
+        return 70 + atomic_route;
     }
     if (const auto context_fence = actor_context_identity_and_source_fence_are_exact ();
         context_fence != 0) {

@@ -689,8 +689,11 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         ZLinkActor actor = context.actor();
         byte[] admissionReplyBytes = admissionReply.toByteArray();
         AtomicBoolean sourceLeft = new AtomicBoolean();
+        AtomicBoolean commitRequestStarted = new AtomicBoolean();
         AtomicBoolean sourceCoreCommitted = new AtomicBoolean();
         AtomicReference<List<ZLinkActorHandoffPacket>> committedBacklog =
+            new AtomicReference<>(List.of());
+        AtomicReference<List<Message>> commitRetryTemplate =
             new AtomicReference<>(List.of());
         UUID coreId = UUID.fromString(transferId);
         long membershipEpoch =
@@ -733,19 +736,17 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             .thenCompose(sessionRouteCommand44 ->
                 services.actors().beginRemoteMove(actor)
             .thenCompose(ignored -> services.actors().transferOut(actor))
-            .thenCompose(transfer -> services.actors().leaveSourceForCoreRemoteMove(actor)
-                .thenApply(ignored -> {
-                    sourceLeft.set(true);
+            .thenApply(transfer -> {
                     List<ZLinkActorHandoffPacket> backlog =
                         services.actors().takeRemoteMoveBacklog(actor);
                     committedBacklog.set(backlog);
-                    services.actors().traceActorTransferMarker(
-                        "commit_request", actor.context().actorId(), transferId);
                     return new TransferCommit(transfer, backlog);
-                }))
+                })
             .thenCompose(commit -> {
                 Message transferState = Message.from(
                     commit.transfer().state().toEncodedPayload(services.serializer()).bytes());
+                services.actors().traceActorTransferMarker(
+                    "manifest_prepare_start", actor.context().actorId(), transferId);
                 CompletionStage<ZLinkDeferredJoinAcceptedRecovery.Manifest>
                     completionManifest = operationId == null
                         ? CompletableFuture.completedFuture(null)
@@ -763,12 +764,18 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                             sessionRouteCommand44);
                 return completionManifest.thenCompose(manifest -> {
                     acceptedCompletionManifest.set(manifest);
+                    services.actors().traceActorTransferMarker(
+                        "manifest_prepare_result",
+                        actor.context().actorId(),
+                        manifest == null ? "none" : transferId);
                     CompletionStage<Void> sourceCleanup = manifest == null
                         ? CompletableFuture.completedFuture(null)
                         : beginDeferredSourceCleanup(
                             address,
                             currentActorRef,
-                            manifest);
+                            manifest,
+                            sourceLeft,
+                            transferId);
                     if (manifest != null) {
                         deferredSourceCleanup.set(sourceCleanup);
                     }
@@ -802,12 +809,26 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                                     : corePrepared.result().reserveByteCount()),
                             manifest,
                             sessionRouteCommand44);
+                    commitRetryTemplate.set(commitParts.stream()
+                        .map(Message::from)
+                        .toList());
+                    services.actors().traceActorTransferMarker(
+                        "commit_submit", actor.context().actorId(), transferId);
+                    CompletionStage<List<Message>> targetReply;
                     try {
-                        CompletionStage<List<Message>> targetReply =
-                            requestTransfer(address, commitParts);
+                        commitRequestStarted.set(true);
+                        targetReply = requestTransfer(address, commitParts);
                         return sourceCleanup
                             .thenCompose(ignored -> targetReply)
                             .thenCompose(reply -> {
+                                notifySourceAfterTargetCommit(
+                                    actor,
+                                    sourceLeft,
+                                    transferId);
+                                services.actors().traceActorTransferMarker(
+                                    "commit_reply_received",
+                                    actor.context().actorId(),
+                                    transferId);
                                 if (corePrepared != null) {
                                     commitCoreTransfer(
                                         corePrepared,
@@ -837,91 +858,107 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             })
             .exceptionallyCompose(error -> {
                 Throwable cause = unwrap(error);
-                if (!sourceLeft.get()) {
+                if (!sourceLeft.get() && !commitRequestStarted.get()) {
                     admissionReply.close();
                     abortCoreTransfer(corePrepared);
-                    services.actors().cancelRemoteMove(actor);
-                    return CompletableFuture.failedFuture(cause);
-                }
-                // After source leave, the target may have committed the
-                // relocation even when the commit reply was lost. The
-                // authority record is eventually visible through the
-                // Location Store, so a single lookup would incorrectly
-                // report a committed Join as failed.
-                Duration remaining = remainingTimeout(deadlineNanos);
-                CompletionStage<java.util.Optional<systems.zlink.framework.actors.ActorRef>>
-                    committedStage;
-                if (remaining == null) {
-                    committedStage = CompletableFuture.completedFuture(
-                        java.util.Optional.empty());
-                } else {
-                    committedStage = ZLinkActorRetryScheduler.retryRouteUntilPresent(
-                        remaining,
-                        () -> services.actors().findCommittedRemoteActor(
-                            currentActorRef.actorId(),
-                            address.targetNodeRid(),
-                            currentActorRef.generation()));
-                }
-                return committedStage.thenCompose(committed -> {
-                        if (committed.isEmpty()) {
-                            admissionReply.close();
-                            abortCoreTransfer(corePrepared);
-                            failPackets(committedBacklog.get(), cause);
-                            services.actors().failRemoteMove(actor, cause);
-                            return CompletableFuture.failedFuture(cause);
+                    CompletionStage<Void> restored;
+                    try {
+                        restored = services.actors().restoreRemoteMoveBacklog(
+                            actor,
+                            committedBacklog.get());
+                    } catch (RuntimeException restoreStartError) {
+                        cause.addSuppressed(restoreStartError);
+                        return CompletableFuture.failedFuture(cause);
+                    }
+                    return restored.handle((ignored, restoreError) -> {
+                        if (restoreError != null) {
+                            cause.addSuppressed(unwrap(restoreError));
                         }
-                        if (corePrepared != null) {
-                            commitCoreTransfer(
+                        throw new CompletionException(cause);
+                    });
+                }
+                CompletionStage<ZLinkBackendActorJoinResult> retryResult;
+                try {
+                    retryResult = retryCommitReplyAfterLoss(
+                        address,
+                        commitRetryTemplate.get(),
+                        deadlineNanos)
+                        .thenCompose(replyParts ->
+                            applyRecoveredCommitReply(
+                                address,
+                                currentActorRef,
+                                new ZLinkBackendActorRef(
+                                    address.targetNodeRid(),
+                                    currentActorRef.actorId(),
+                                    currentActorRef.generation()),
+                                replyParts,
+                                committedBacklog.get(),
+                                admissionReply,
+                                actor,
+                                sourceLeft,
+                                transferId,
                                 corePrepared,
                                 membershipEpoch,
-                                sourceCoreCommitted);
-                        }
-                        ZLinkBackendActorRef committedActorRef =
-                            new ZLinkBackendActorRef(
-                                address.targetNodeRid(),
-                                currentActorRef.actorId(),
-                                currentActorRef.generation());
-                        return installMessageFollowSource(
-                                address, currentActorRef, committedActorRef)
-                            .thenApply(ignored -> {
-                                if (operationId != null) {
-                                    acceptedCompletionDeliveredOnTarget.set(true);
-                                }
-                                admissionReply.close();
-                                return new ZLinkBackendActorJoinResult(
-                                    ZLinkBackendRequestResult.OK,
-                                    0,
-                                    committedActorRef,
-                                    address.spotId(),
-                                    currentActorRef.generation(),
-                                    0,
-                                    List.of(Message.from(
-                                        admissionReplyBytes)));
-                            })
-                            .exceptionallyCompose(installError -> {
-                                Throwable installCause = unwrap(installError);
-                                admissionReply.close();
-                                failPackets(committedBacklog.get(), installCause);
-                                services.actors().failRemoteMove(actor, installCause);
-                                return CompletableFuture.failedFuture(installCause);
-                            });
-                    });
-            }));
+                                sourceCoreCommitted,
+                                operationId));
+                } catch (RuntimeException retryStartError) {
+                    retryResult = CompletableFuture.failedFuture(retryStartError);
+                }
+                // If the original request never reached the target, the
+                // retry can still consume its pending admission. If the
+                // target already committed, its commit registry returns the
+                // exact terminal without repeating lifecycle or replay.
+                return retryResult.exceptionallyCompose(retryError ->
+                    recoverCommittedByLookup(
+                        address,
+                        currentActorRef,
+                        admissionReply,
+                        admissionReplyBytes,
+                        actor,
+                        sourceLeft,
+                        transferId,
+                        corePrepared,
+                        membershipEpoch,
+                        sourceCoreCommitted,
+                        operationId,
+                        committedBacklog,
+                        cause,
+                        deadlineNanos));
+            }))
+            .whenComplete((ignored, error) ->
+                commitRetryTemplate.get().forEach(Message::close));
+    }
+
+    private void notifySourceAfterTargetCommit(
+        ZLinkActor actor,
+        AtomicBoolean sourceLeft,
+        String transferId) {
+        if (sourceLeft.compareAndSet(false, true)) {
+            services.actors().notifySourceForCoreRemoteMove(actor);
+            services.actors().traceActorTransferMarker(
+                "source_leave_dispatched", actor.context().actorId(), transferId);
+        }
     }
 
     private CompletionStage<Void> beginDeferredSourceCleanup(
         SpotTransportAddress address,
         ZLinkBackendActorRef sourceActorRef,
-        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest) {
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        AtomicBoolean sourceLeft,
+        String transferId) {
         ZLinkBackendActorRef targetActorRef = new ZLinkBackendActorRef(
             address.targetNodeRid(),
             sourceActorRef.actorId(),
             sourceActorRef.generation());
         return services.actors()
-            .awaitDeferredJoinTargetCommit(
+            .awaitDeferredJoinTargetCompletion(
                 manifest,
                 targetActorRef,
                 timeout)
+            .thenRun(() -> notifySourceAfterTargetCommit(
+                context.actor(),
+                sourceLeft,
+                transferId))
             .thenCompose(ignored ->
                 ZLinkActorRetryScheduler.retryRouteUntil(
                     timeout,
@@ -1104,13 +1141,207 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
             ZLinkActorSpotRoutePackets.decodeJoinReply(commitReplyParts.get(0));
         List<ZLinkActorHandoffPacket> lateBacklog =
             services.actors().finishRemoteMoveBacklog(context.actor());
-        CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
-        for (ZLinkActorHandoffPacket packet : lateBacklog) {
-            tail = tail.thenCompose(ignored -> forwardHandoffPacket(
-                address, joinReply.actorRef(), packet));
-        }
+        CompletionStage<Void> tail = forwardHandoffPackets(
+            address, joinReply.actorRef(), lateBacklog);
         joinReply.reply().close();
         return tail.thenApply(ignored -> new CommitReply(commitReplyParts, committedBacklog));
+    }
+
+    private CompletionStage<Void> recoverCommittedBacklogAfterReplyLoss(
+        SpotTransportAddress address,
+        ZLinkBackendActorRef targetActorRef,
+        List<ZLinkActorHandoffPacket> committedBacklog) {
+        List<ZLinkActorHandoffPacket> lateBacklog =
+            services.actors().finishRemoteMoveBacklog(context.actor());
+        if (committedBacklog.isEmpty() && lateBacklog.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        List<ZLinkActorHandoffPacket> packets =
+            new java.util.ArrayList<>(
+                committedBacklog.size() + lateBacklog.size());
+        packets.addAll(committedBacklog);
+        packets.addAll(lateBacklog);
+        packets.sort(java.util.Comparator.comparingLong(
+            ZLinkActorHandoffPacket::arrivalIndex));
+        // The target's accepted-journal fence makes this replay idempotent if
+        // the original commit reached the target but its reply was lost.
+        return forwardHandoffPackets(address, targetActorRef, packets);
+    }
+
+    private CompletionStage<List<Message>> retryCommitReplyAfterLoss(
+        SpotTransportAddress address,
+        List<Message> template,
+        long deadlineNanos) {
+        Duration remaining = remainingTimeout(deadlineNanos);
+        if (template.isEmpty() || remaining == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote Actor commit retry window is unavailable"));
+        }
+        return ZLinkActorRetryScheduler.retryRouteUntil(
+            remaining,
+            () -> {
+                List<Message> attempt = template.stream()
+                    .map(Message::from)
+                    .toList();
+                try {
+                    return requestTransfer(address, attempt)
+                        .whenComplete((ignored, error) ->
+                            attempt.forEach(Message::close));
+                } catch (RuntimeException error) {
+                    attempt.forEach(Message::close);
+                    throw error;
+                }
+            },
+            ZLinkActorSubmitFaults::retryableSessionActorBindFailure);
+    }
+
+    private CompletionStage<ZLinkBackendActorJoinResult>
+        applyRecoveredCommitReply(
+            SpotTransportAddress address,
+            ZLinkBackendActorRef currentActorRef,
+            ZLinkBackendActorRef targetActorRef,
+            List<Message> replyParts,
+            List<ZLinkActorHandoffPacket> committedBacklog,
+            Message admissionReply,
+            ZLinkActor actor,
+            AtomicBoolean sourceLeft,
+            String transferId,
+            PrepareActorTransferResult corePrepared,
+            long membershipEpoch,
+            AtomicBoolean sourceCoreCommitted,
+            ZLinkActorJoinOperationId operationId) {
+        try {
+            notifySourceAfterTargetCommit(actor, sourceLeft, transferId);
+            if (corePrepared != null) {
+                commitCoreTransfer(
+                    corePrepared,
+                    membershipEpoch,
+                    sourceCoreCommitted);
+            }
+            return installMessageFollowSource(
+                    address, currentActorRef, replyParts)
+                .thenCompose(ignored -> forwardLateBacklog(
+                    address, replyParts, committedBacklog))
+                .thenApply(commitReply -> {
+                    if (operationId != null) {
+                        acceptedCompletionDeliveredOnTarget.set(true);
+                    }
+                    return decodeCommitReply(
+                        commitReply.parts(),
+                        admissionReply,
+                        commitReply.backlog());
+                })
+                .whenComplete((ignored, error) -> {
+                    if (error != null) {
+                        replyParts.forEach(Message::close);
+                    }
+                });
+        } catch (RuntimeException error) {
+            replyParts.forEach(Message::close);
+            return CompletableFuture.failedFuture(error);
+        }
+    }
+
+    private CompletionStage<ZLinkBackendActorJoinResult>
+        recoverCommittedByLookup(
+            SpotTransportAddress address,
+            ZLinkBackendActorRef currentActorRef,
+            Message admissionReply,
+            byte[] admissionReplyBytes,
+            ZLinkActor actor,
+            AtomicBoolean sourceLeft,
+            String transferId,
+            PrepareActorTransferResult corePrepared,
+            long membershipEpoch,
+            AtomicBoolean sourceCoreCommitted,
+            ZLinkActorJoinOperationId operationId,
+            AtomicReference<List<ZLinkActorHandoffPacket>> committedBacklog,
+            Throwable cause,
+            long deadlineNanos) {
+        Duration remaining = remainingTimeout(deadlineNanos);
+        CompletionStage<java.util.Optional<systems.zlink.framework.actors.ActorRef>>
+            committedStage;
+        if (remaining == null) {
+            committedStage = CompletableFuture.completedFuture(
+                java.util.Optional.empty());
+        } else {
+            committedStage = ZLinkActorRetryScheduler.retryRouteUntilPresent(
+                remaining,
+                () -> services.actors().findCommittedRemoteActor(
+                    currentActorRef.actorId(),
+                    address.targetNodeRid(),
+                    currentActorRef.generation()));
+        }
+        return committedStage.thenCompose(committed -> {
+            if (committed.isEmpty()) {
+                admissionReply.close();
+                abortCoreTransfer(corePrepared);
+                failPackets(committedBacklog.get(), cause);
+                services.actors().failRemoteMove(actor, cause);
+                return CompletableFuture.failedFuture(cause);
+            }
+            notifySourceAfterTargetCommit(actor, sourceLeft, transferId);
+            if (corePrepared != null) {
+                commitCoreTransfer(
+                    corePrepared,
+                    membershipEpoch,
+                    sourceCoreCommitted);
+            }
+            ZLinkBackendActorRef committedActorRef =
+                new ZLinkBackendActorRef(
+                    address.targetNodeRid(),
+                    currentActorRef.actorId(),
+                    currentActorRef.generation());
+            return recoverCommittedBacklogAfterReplyLoss(
+                    address,
+                    committedActorRef,
+                    committedBacklog.get())
+                .thenCompose(ignored -> installMessageFollowSource(
+                    address, currentActorRef, committedActorRef))
+                .thenApply(ignored -> {
+                    if (operationId != null) {
+                        acceptedCompletionDeliveredOnTarget.set(true);
+                    }
+                    admissionReply.close();
+                    return new ZLinkBackendActorJoinResult(
+                        ZLinkBackendRequestResult.OK,
+                        0,
+                        committedActorRef,
+                        address.spotId(),
+                        currentActorRef.generation(),
+                        0,
+                        List.of(Message.from(admissionReplyBytes)));
+                })
+                .exceptionallyCompose(installError -> {
+                    Throwable installCause = unwrap(installError);
+                    admissionReply.close();
+                    services.actors().failRemoteMove(actor, installCause);
+                    return CompletableFuture.failedFuture(installCause);
+                });
+        });
+    }
+
+    private CompletionStage<Void> forwardHandoffPackets(
+        SpotTransportAddress address,
+        ZLinkBackendActorRef targetActorRef,
+        List<ZLinkActorHandoffPacket> packets) {
+        CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
+        for (int index = 0; index < packets.size(); index++) {
+            ZLinkActorHandoffPacket packet = packets.get(index);
+            int remainingStart = index + 1;
+            tail = tail
+                .thenCompose(ignored -> forwardHandoffPacket(
+                    address, targetActorRef, packet))
+                .whenComplete((ignored, error) -> {
+                    if (error != null && remainingStart < packets.size()) {
+                        failPackets(
+                            packets.subList(remainingStart, packets.size()),
+                            unwrap(error));
+                    }
+                });
+        }
+        return tail;
     }
 
     private CompletionStage<Void> forwardHandoffPacket(

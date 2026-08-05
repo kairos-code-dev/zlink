@@ -21,6 +21,7 @@ internal static class RlA2ProviderEndpointRemapScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>()).Body;
         var oldGeneration = oldRows.Single().Generation;
+        var oldRoutingId = oldRows.Single().RoutingId;
 
         var marker = $"rl-a2-inflight-{Guid.NewGuid():N}";
         var inFlight = consumer.Post("/profile/request/attempt/3000")
@@ -52,8 +53,11 @@ internal static class RlA2ProviderEndpointRemapScenario
         var replacementRow = replacementRows.Single();
         ZlinkStreamAssert.Ensure(
             replacementRow.Endpoint == replacement.Endpoint
-            && replacementRow.Generation != oldGeneration,
-            "RL-A2 replacement row did not publish the new endpoint and owner generation.");
+            && !string.Equals(replacementRow.RoutingId, oldRoutingId, StringComparison.Ordinal),
+            $"RL-A2 replacement row mismatch: endpoint={replacementRow.Endpoint}, "
+            + $"expectedEndpoint={replacement.Endpoint}, routingId={replacementRow.RoutingId}, "
+            + $"oldRoutingId={oldRoutingId}, oldObservation={oldGeneration}, "
+            + $"newObservation={replacementRow.Generation}.");
         await consumer.Post("/connections/wait")
             .Body(new ConnectionWaitReq(
                 ["kind=ConnectionReady", $"remote={replacement.Endpoint}"], replacementConnectionCount))

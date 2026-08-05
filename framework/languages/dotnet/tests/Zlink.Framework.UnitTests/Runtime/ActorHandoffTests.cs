@@ -1064,6 +1064,54 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void Relocation_Session_Route_Prefers_Target_Outbound_Over_Stale_Source_Binding()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var targetNode = RoutingId.From("target-node");
+        var sessionNode = RoutingId.From("session-node");
+        var sessionRid = RoutingId.From("session-rid");
+        state.BindSession(
+            sessionNode,
+            sessionRid,
+            "binding-1",
+            bindingGeneration: 4,
+            objectGeneration: 7,
+            authorityOwnerGeneration: 11,
+            meshName: "play",
+            targetNodeGeneration: 4,
+            ownerLeaseGeneration: 8,
+            sessionOwnerNodeGeneration: 3,
+            acceptedHighWater: 9);
+        state.StageRelocationSessionRoute(
+            "handoff-1",
+            new ZLinkRemoteActorBoundSessionRoute(
+                sessionNode,
+                sessionRid,
+                "binding-1",
+                BindingGeneration: 4,
+                ObjectGeneration: 7,
+                AuthorityOwnerGeneration: 11,
+                MeshName: "play",
+                TargetNodeGeneration: 4,
+                OwnerLeaseGeneration: 8,
+                SessionOwnerNodeGeneration: 3,
+                AcceptedHighWater: 9));
+
+        state.MarkRelocationSessionAuthorityCommitted(
+            "handoff-1",
+            new ZLinkBackendActorRef(targetNode, "actor-1", 7),
+            targetAuthorityOwnerGeneration: 12,
+            targetMeshName: "play",
+            targetNodeGeneration: 5,
+            targetOwnerLeaseGeneration: 9);
+
+        Assert.True(state.TryGetBoundSessionForOutbound(out var outbound));
+        Assert.Equal((ulong)12, outbound.AuthorityOwnerGeneration);
+        Assert.Equal((ulong)5, outbound.TargetNodeGeneration);
+        Assert.Equal((ulong)9, outbound.OwnerLeaseGeneration);
+    }
+
+    [Fact]
     public void Pending_Relocation_Disconnect_Uses_The_Target_Projection_And_Cancels_It()
     {
         var state = new ZLinkActorRuntimeState("actor-1");

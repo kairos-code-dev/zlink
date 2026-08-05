@@ -129,6 +129,16 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         assertPublished(
             journal, locations, roots, authorityKey, operation, actor, 2);
 
+        assertThrows(
+            java.util.concurrent.CompletionException.class,
+            () -> journal.awaitTargetCompletion(
+                    relocationId,
+                    1,
+                    operation,
+                    actor,
+                    Duration.ofMillis(20))
+                .toCompletableFuture().join());
+
         journal.markSourceCleanup(operation, actor)
             .toCompletableFuture().join();
         journal.awaitSourceCleanup(
@@ -143,6 +153,13 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         assertEquals(3, delivered.cursor());
         assertPublished(
             journal, locations, roots, authorityKey, operation, actor, 3);
+        journal.awaitTargetCompletion(
+                relocationId,
+                1,
+                operation,
+                actor,
+                Duration.ofSeconds(1))
+            .toCompletableFuture().join();
 
         journal.completeSourceCleanupAndRelease(delivered, actor)
             .toCompletableFuture().join();
@@ -187,6 +204,8 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         private final AtomicInteger versions = new AtomicInteger();
         private ZLinkAggregatePrepareRequest prepared;
         private ZLinkAggregateRelocationCoordinator.Participant source;
+        private ZLinkAggregateProgress progress;
+        private String progressStoreVersion;
 
         @Override
         public CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
@@ -210,8 +229,74 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
                 source.authorityOwnerGeneration() + 1,
                 prepared.targetOwner().ownerId(),
                 prepared.targetOwner().leaseGeneration()));
+            progress = ZLinkCanonicalRelocationAuthorityStateCodec.progress(
+                participant.authorityPayload());
+            progressStoreVersion = "aggregate-commit";
             return CompletableFuture.completedFuture(
                 ZLinkAggregateCommitResult.COMMITTED);
+        }
+
+        @Override
+        public CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+            readAggregateProgress(
+                ZLinkAggregateFence fence,
+                ZLinkStoreCancellation cancellation) {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? Optional.empty()
+                    : Optional.of(progressSnapshot(fence)));
+        }
+
+        @Override
+        public CompletionStage<ZLinkAggregateProgressWriteResult>
+            compareExchangeAggregateProgress(
+                ZLinkAggregateFence fence,
+                String expectedStoreVersion,
+                ZLinkAggregateProgress next,
+                ZLinkStoreCancellation cancellation) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(
+                    new ZLinkAggregateProgressConflict());
+            }
+            progress = next;
+            progressStoreVersion = "aggregate-progress";
+            return CompletableFuture.completedFuture(
+                new ZLinkAggregateProgressStored(progressSnapshot(fence)));
+        }
+
+        @Override
+        public CompletionStage<List<ZLinkAggregateProgressSnapshot>>
+            listAggregateProgress(ZLinkStoreCancellation cancellation) {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? List.of()
+                    : List.of(progressSnapshot(new ZLinkAggregateFence(
+                        prepared.aggregateId(),
+                        prepared.aggregateGeneration()))));
+        }
+
+        @Override
+        public CompletionStage<Boolean> removeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            ZLinkStoreCancellation cancellation) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(false);
+            }
+            progress = null;
+            progressStoreVersion = null;
+            return CompletableFuture.completedFuture(true);
+        }
+
+        private ZLinkAggregateProgressSnapshot progressSnapshot(
+            ZLinkAggregateFence fence) {
+            return new ZLinkAggregateProgressSnapshot(
+                fence,
+                progressStoreVersion,
+                prepared,
+                progress);
         }
 
         @Override

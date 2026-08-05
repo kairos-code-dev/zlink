@@ -349,7 +349,7 @@ also supported, for development/testing and small fixed deployments
 ([05-channel-messaging §6](05-channel-messaging.ko.md)). You can't use both approaches
 together on the same MeshNode.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the smallest example where all of these concepts show up in one sample. They all meet
 > in one place: the Play server's registration code.
 >

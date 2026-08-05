@@ -235,6 +235,40 @@ public final class ZLinkProviderLocationRepository
     }
 
     @Override
+    public CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+        readAggregateProgress(
+            ZLinkAggregateFence fence,
+            ZLinkStoreCancellation cancellation) {
+        return authority.readAggregateProgress(fence, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkAggregateProgressWriteResult>
+        compareExchangeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            ZLinkAggregateProgress progress,
+            ZLinkStoreCancellation cancellation) {
+        return authority.compareExchangeAggregateProgress(
+            fence, expectedStoreVersion, progress, cancellation);
+    }
+
+    @Override
+    public CompletionStage<java.util.List<ZLinkAggregateProgressSnapshot>>
+        listAggregateProgress(ZLinkStoreCancellation cancellation) {
+        return authority.listAggregateProgress(cancellation);
+    }
+
+    @Override
+    public CompletionStage<Boolean> removeAggregateProgress(
+        ZLinkAggregateFence fence,
+        String expectedStoreVersion,
+        ZLinkStoreCancellation cancellation) {
+        return authority.removeAggregateProgress(
+            fence, expectedStoreVersion, cancellation);
+    }
+
+    @Override
     public CompletionStage<Long> removeAllByOwner(
         ZLinkLocationOwnerToken owner) {
         return authority.removeAllByOwner(owner);

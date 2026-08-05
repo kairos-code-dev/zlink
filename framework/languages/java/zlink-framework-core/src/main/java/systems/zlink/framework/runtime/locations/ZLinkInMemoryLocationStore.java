@@ -227,6 +227,41 @@ public final class ZLinkInMemoryLocationStore
     }
 
     @Override
+    public CompletionStage<java.util.Optional<systems.zlink.framework.runtime.internal.locations.ZLinkAggregateProgressSnapshot>>
+        readAggregateProgress(
+            systems.zlink.framework.runtime.internal.locations.ZLinkAggregateFence fence,
+            systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation cancellation) {
+        return authority.readAggregateProgress(fence, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.runtime.internal.locations.ZLinkAggregateProgressWriteResult>
+        compareExchangeAggregateProgress(
+            systems.zlink.framework.runtime.internal.locations.ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            systems.zlink.framework.runtime.internal.locations.ZLinkAggregateProgress progress,
+            systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation cancellation) {
+        return authority.compareExchangeAggregateProgress(
+            fence, expectedStoreVersion, progress, cancellation);
+    }
+
+    @Override
+    public CompletionStage<java.util.List<systems.zlink.framework.runtime.internal.locations.ZLinkAggregateProgressSnapshot>>
+        listAggregateProgress(
+            systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation cancellation) {
+        return authority.listAggregateProgress(cancellation);
+    }
+
+    @Override
+    public CompletionStage<Boolean> removeAggregateProgress(
+        systems.zlink.framework.runtime.internal.locations.ZLinkAggregateFence fence,
+        String expectedStoreVersion,
+        systems.zlink.framework.runtime.internal.locations.ZLinkStoreCancellation cancellation) {
+        return authority.removeAggregateProgress(
+            fence, expectedStoreVersion, cancellation);
+    }
+
+    @Override
     public CompletionStage<ZLinkLocationWriteResult> updateMeshNode(
         ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent) {

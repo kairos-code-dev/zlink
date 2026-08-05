@@ -30,7 +30,8 @@ export class ZLinkSpotLocationClaims {
   constructor(
     private readonly runtime: IZLinkLocationLifecycleRuntime,
     private readonly authorityStore?: ZLinkAuthorityStore,
-    private readonly spotStore?: ZLinkSpotLocationStore
+    private readonly spotStore?: ZLinkSpotLocationStore,
+    private readonly invalidateSpotRoute?: (spotId: RoutingId) => void
   ) {}
 
   async claim(
@@ -112,12 +113,14 @@ export class ZLinkSpotLocationClaims {
         key,
         this.runtime.currentOwnerToken?.leaseGeneration ?? tracked.generation
       );
+      this.invalidateSpotRoute?.(tracked.row.spotId);
       return;
     }
     await this.releaseAuthority(tracked);
     if (this.spots.get(canonical) === tracked) {
       this.spots.delete(canonical);
     }
+    this.invalidateSpotRoute?.(tracked.spotId);
   }
 
   async beginInstanceClosing(meshName: string, spotId: RoutingId): Promise<boolean> {
@@ -158,6 +161,7 @@ export class ZLinkSpotLocationClaims {
       return false;
     }
     tracked.storeVersion = result.storeVersion.value;
+    this.invalidateSpotRoute?.(tracked.spotId);
     return true;
   }
 
@@ -167,6 +171,11 @@ export class ZLinkSpotLocationClaims {
     }
     const tracked = this.spots.get(event.key);
     this.spots.delete(event.key);
+    if (tracked !== undefined) {
+      this.invalidateSpotRoute?.(
+        tracked.kind === 'authority' ? tracked.spotId : tracked.row.spotId
+      );
+    }
     if (tracked?.deactivate !== undefined) {
       void tracked.deactivate().catch(() => undefined);
     }

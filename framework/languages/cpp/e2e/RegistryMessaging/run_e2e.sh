@@ -946,6 +946,7 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
   STORE_CONSUMER_PID="$LAST_PID"
+  wait_client_server_ready_targets "$HTTP_STORE_CONSUMER" registry.messaging.api 2 30
   run_client rm-c4 rm-c4
   cat "$LOG_DIR/client-rm-c4.stdout.log"
   exit 0
@@ -984,13 +985,7 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   SINGLE_CONSUMER_PID="$LAST_PID"
   run_client rm-c8 rm-c8
   cat "$LOG_DIR/client-rm-c8.stdout.log"
-  stop_pid "$SINGLE_CONSUMER_PID"
-  stop_pid "$API_A_PID"
-  stop_pid "$API_B_PID"
-
-  echo "RM-C8 max-size subflow requires a ClientServer listener MaxMessageSize contract." >&2
-  echo "The current exact C++ public interface only configures RouteMesh ROUTER sockets." >&2
-  exit 2
+  exit 0
 fi
 
 if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then

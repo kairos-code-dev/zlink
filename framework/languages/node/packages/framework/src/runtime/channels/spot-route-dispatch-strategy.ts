@@ -245,7 +245,8 @@ export class ZLinkSpotRouteDispatchStrategy {
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal,
-    metadata?: ReadonlyMap<string, string>
+    metadata?: ReadonlyMap<string, string>,
+    timeoutMs?: number
   ): Promise<void> {
     await this.sourceSpotRouter.send(
       sourceSpot,
@@ -253,7 +254,8 @@ export class ZLinkSpotRouteDispatchStrategy {
       packetName,
       message,
       signal,
-      metadata
+      metadata,
+      timeoutMs
     );
   }
 

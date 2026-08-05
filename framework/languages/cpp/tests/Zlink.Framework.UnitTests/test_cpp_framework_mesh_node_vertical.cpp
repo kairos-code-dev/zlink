@@ -5,6 +5,7 @@
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
+#include "runtime/dispatch/dispatch_limits.hpp"
 #include "runtime/mesh/mesh_node_host_service.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
@@ -14,6 +15,7 @@
 #include <zlink/framework/contracts/configuration/zlink_builder.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -1493,9 +1495,176 @@ int run_cross_process_delivery ()
     close (formal_ack_pipe[0]);
     assert (actor_ack == 1);
 
+    auto local_source = node.get_or_create_spot ("source-spot");
+    auto local_target = node.get_or_create_spot ("local-target");
+    const std::vector<zlink::message_t> local_request_parts{
+      zlink::message_t::from (std::string ("local-request"))};
+    const auto local_node_rid = node.status ().routing_id ();
+    const auto local_target_generation =
+      local_target.status ().lifecycle_generation ();
+    zlink::framework::runtime::host::operation_id_t local_timeout_operation;
+    int local_timeout_callbacks = 0;
+    assert (local_source.request_to_spot (
+              local_node_rid, "local-target", local_target_generation,
+              local_request_parts, local_timeout_operation,
+              zlink::send_flags_t::none, 25ms, {},
+              [&] (zlink::framework::runtime::foundation::operation_terminal_t terminal,
+                   zlink::framework::result_t<std::vector<zlink::message_t>>) {
+                  if (terminal
+                      == zlink::framework::runtime::foundation::operation_terminal_t::timed_out)
+                      ++local_timeout_callbacks;
+              })
+            == zlink::submit_result_t::ok);
+    std::this_thread::sleep_for (40ms);
+    (void) node.dispatch_ready (
+      [] (const zlink::framework::runtime::host::ready_record_t &,
+          const zlink::framework::runtime::host::receive_record_t &,
+          std::vector<zlink::message_t>) {});
+    assert (local_timeout_callbacks == 1);
+
+    zlink::framework::runtime::host::operation_id_t local_shutdown_operation;
+    int local_shutdown_callbacks = 0;
+    assert (local_source.request_to_spot (
+              local_node_rid, "local-target", local_target_generation,
+              local_request_parts, local_shutdown_operation,
+              zlink::send_flags_t::none, 5s, {},
+              [&] (zlink::framework::runtime::foundation::operation_terminal_t terminal,
+                   zlink::framework::result_t<std::vector<zlink::message_t>>) {
+                  if (terminal
+                      == zlink::framework::runtime::foundation::operation_terminal_t::shutdown)
+                      ++local_shutdown_callbacks;
+              })
+            == zlink::submit_result_t::ok);
+
+    zlink::framework::runtime::host::operation_id_t callbackless_shutdown_operation;
+    assert (local_source.request_to_spot (
+              local_node_rid, "local-target", local_target_generation,
+              local_request_parts, callbackless_shutdown_operation,
+              zlink::send_flags_t::none, 5s, {})
+            == zlink::submit_result_t::ok);
+    auto callbackless_wait = std::async (
+      std::launch::async, [&] {
+          return node.wait_for_completion (callbackless_shutdown_operation, 5s);
+      });
+
+    auto limited_state = make_node ("tcp://127.0.0.1:*", "local-budget");
+    limited_state->socket.mailbox_message_budget = 1;
+    zlink::framework::detail::mesh_node_runtime_t limited_node (limited_state);
+    configure_vertical_route_fences (limited_node);
+    limited_node.start ();
+    auto limited_source = limited_node.get_or_create_spot ("budget-source");
+    auto limited_target = limited_node.get_or_create_spot ("budget-target");
+    const auto limited_node_rid = limited_node.status ().routing_id ();
+    const auto limited_target_generation =
+      limited_target.status ().lifecycle_generation ();
+    const std::vector<zlink::message_t> limited_parts{
+      zlink::message_t::from (std::string ("budget"))};
+    zlink::framework::runtime::host::operation_id_t limited_first_operation;
+    int limited_callbacks = 0;
+    assert (limited_source.request_to_spot (
+              limited_node_rid, "budget-target", limited_target_generation,
+              limited_parts, limited_first_operation, zlink::send_flags_t::none,
+              5s, {},
+              [&] (zlink::framework::runtime::foundation::operation_terminal_t,
+                   zlink::framework::result_t<std::vector<zlink::message_t>>) {
+                  ++limited_callbacks;
+              })
+            == zlink::submit_result_t::ok);
+    zlink::framework::runtime::host::operation_id_t limited_second_operation;
+    assert (limited_source.request_to_spot (
+              limited_node_rid, "budget-target", limited_target_generation,
+              limited_parts, limited_second_operation,
+              zlink::send_flags_t::none, 5s, {})
+            == zlink::submit_result_t::backpressured);
+    limited_node.stop ();
+    assert (limited_callbacks == 1);
+
+    auto byte_limited_state = make_node ("tcp://127.0.0.1:*", "local-byte-budget");
+    byte_limited_state->socket.mailbox_message_budget = 10;
+    byte_limited_state->socket.mailbox_byte_budget =
+      zlink::framework::runtime::dispatch_limits::fixed_work_byte_cost
+      + limited_parts.front ().size ();
+    zlink::framework::detail::mesh_node_runtime_t byte_limited_node (
+      byte_limited_state);
+    configure_vertical_route_fences (byte_limited_node);
+    byte_limited_node.start ();
+    auto byte_limited_source =
+      byte_limited_node.get_or_create_spot ("byte-budget-source");
+    auto byte_limited_target =
+      byte_limited_node.get_or_create_spot ("byte-budget-target");
+    const auto byte_limited_node_rid = byte_limited_node.status ().routing_id ();
+    const auto byte_limited_target_generation =
+      byte_limited_target.status ().lifecycle_generation ();
+    zlink::framework::runtime::host::operation_id_t byte_limited_first_operation;
+    int byte_limited_callbacks = 0;
+    assert (byte_limited_source.request_to_spot (
+              byte_limited_node_rid, "byte-budget-target",
+              byte_limited_target_generation, limited_parts,
+              byte_limited_first_operation, zlink::send_flags_t::none, 5s, {},
+              [&] (zlink::framework::runtime::foundation::operation_terminal_t,
+                   zlink::framework::result_t<std::vector<zlink::message_t>>) {
+                  ++byte_limited_callbacks;
+              })
+            == zlink::submit_result_t::ok);
+    zlink::framework::runtime::host::operation_id_t byte_limited_second_operation;
+    assert (byte_limited_source.request_to_spot (
+              byte_limited_node_rid, "byte-budget-target",
+              byte_limited_target_generation, limited_parts,
+              byte_limited_second_operation, zlink::send_flags_t::none, 5s, {})
+            == zlink::submit_result_t::backpressured);
+    byte_limited_node.stop ();
+    assert (byte_limited_callbacks == 1);
+
+    auto race_state = make_node ("tcp://127.0.0.1:*", "local-race");
+    zlink::framework::detail::mesh_node_runtime_t race_node (race_state);
+    configure_vertical_route_fences (race_node);
+    race_node.start ();
+    auto race_source = race_node.get_or_create_spot ("race-source");
+    auto race_target = race_node.get_or_create_spot ("race-target");
+    const auto race_node_rid = race_node.status ().routing_id ();
+    const auto race_target_generation =
+      race_target.status ().lifecycle_generation ();
+    const std::vector<zlink::message_t> race_parts{
+      zlink::message_t::from (std::string ("race"))};
+    std::atomic_bool submit_race{true};
+    std::atomic_int accepted_race_requests{0};
+    std::atomic_int terminal_race_callbacks{0};
+    std::thread race_submitter ([&] {
+        while (submit_race.load (std::memory_order_acquire)) {
+            zlink::framework::runtime::host::operation_id_t operation;
+            const auto submitted = race_source.request_to_spot (
+              race_node_rid, "race-target", race_target_generation, race_parts,
+              operation, zlink::send_flags_t::none, 1s, {},
+              [&] (zlink::framework::runtime::foundation::operation_terminal_t,
+                   zlink::framework::result_t<std::vector<zlink::message_t>>) {
+                  terminal_race_callbacks.fetch_add (
+                    1, std::memory_order_relaxed);
+              });
+            if (submitted == zlink::submit_result_t::ok) {
+                accepted_race_requests.fetch_add (
+                  1, std::memory_order_relaxed);
+            } else {
+                std::this_thread::sleep_for (1ms);
+            }
+        }
+    });
+    std::this_thread::sleep_for (20ms);
+    race_node.stop ();
+    submit_race.store (false, std::memory_order_release);
+    race_submitter.join ();
+    assert (accepted_race_requests.load (std::memory_order_relaxed)
+            == terminal_race_callbacks.load (std::memory_order_relaxed));
+
     int status = 0;
     waitpid (child, &status, 0);
     node.stop ();
+    const auto callbackless_result = callbackless_wait.get ();
+    assert (!callbackless_result);
+    assert (callbackless_result.error () != nullptr);
+    assert (zlink::framework::detail::boundary_state (
+              *callbackless_result.error ())
+            == zlink::framework::detail::boundary_error_t::shutdown);
+    assert (local_shutdown_callbacks == 1);
     const char reciprocal_stop = 1;
     assert (write (reciprocal_child_stop_pipe[1], &reciprocal_stop,
                    sizeof (reciprocal_stop))

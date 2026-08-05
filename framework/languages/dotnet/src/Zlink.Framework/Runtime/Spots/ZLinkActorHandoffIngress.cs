@@ -4,6 +4,34 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkActorHandoffIngress
 {
+    internal static bool CanAdmitStaleManagedIngress(
+        ZLinkFrameworkRuntime runtime,
+        ActorMessageFollowIngress ingress)
+    {
+        if (!runtime.TryGetActorState(
+                ingress.TargetActor.ActorId,
+                out var state))
+            return false;
+        var actor = new ZLinkBackendActorRef(
+            ingress.TargetActor.NodeRid,
+            ingress.TargetActor.ActorId,
+            ingress.TargetActor.ObjectGeneration);
+        var route = new ZLinkBackendActorRouteContext(
+            ingress.OperationId,
+            ingress.MessageFollowHopCount,
+            ingress.TargetNodeGeneration,
+            ingress.AuthorityOwnerGeneration,
+            ingress.OwnerLeaseGeneration,
+            ingress.ReplyRouteId,
+            ingress.Reply is null ? 0u : 1u,
+            DeadlineUnixMs: ingress.DeadlineUnixMs);
+        return state.Handoff.CapturesSourceIngress
+               || ZLinkActorMessageFollowDispatcher.CanFollow(
+                   state,
+                   actor,
+                   route);
+    }
+
     internal static bool TryCaptureOrFollowStaleManagedIngress(
         ZLinkFrameworkRuntime runtime,
         IReadOnlyList<ZLinkBackendActorPart> parts)
@@ -11,7 +39,10 @@ internal static class ZLinkActorHandoffIngress
         if (parts.Count == 0)
             return false;
         var headerPart = parts[0];
-        var state = runtime.GetOrCreateActorState(headerPart.Actor.ActorId);
+        if (!runtime.TryGetActorState(
+                headerPart.Actor.ActorId,
+                out var state))
+            return false;
         if (!state.Handoff.CapturesSourceIngress
             && !ZLinkActorMessageFollowDispatcher.CanFollow(
                 state,

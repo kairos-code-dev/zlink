@@ -67,7 +67,7 @@ certificate is off by default; turning it on rejects a connection that fails ver
 A session implements the connection, packet dispatch, and error/disconnect callbacks. A
 given session's callbacks run serially.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the session that represents one client connection. It filters out the authenticate
 > packet first and relays everything else to the Actor. Actual code from the repository.
 

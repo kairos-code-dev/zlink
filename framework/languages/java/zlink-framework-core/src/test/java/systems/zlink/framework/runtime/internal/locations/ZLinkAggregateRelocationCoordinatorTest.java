@@ -91,7 +91,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
     }
 
     @Test
-    void sourceCleanupPublishesNextGenerationWithPreservedOwnership() {
+    void sourceCleanupPublishesWithPreservedAggregateGeneration() {
         FakeAuthorityStore authority = new FakeAuthorityStore();
         FakeRelocationStore relocation = new FakeRelocationStore();
         var coordinator = new ZLinkAggregateRelocationCoordinator(
@@ -109,16 +109,13 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                 NEVER)
             .toCompletableFuture().join();
 
-        assertEquals(8, completed.fence().aggregateGeneration());
-        assertEquals(2, authority.commitCount);
-        assertTrue(authority.prepared.participants().stream().allMatch(
-            participant -> participant.ownerTransition()
-                == ZLinkAuthorityGenerationTransition.PRESERVE));
-        assertEquals(
-            new ZLinkPlacementCapacityBundle(0, 0, Optional.empty()),
-            authority.prepared.capacityBundle());
-        assertEquals(1, relocation.deleteCount,
-            "completion removes only the previous manifest after commit");
+        assertEquals(7, completed.fence().aggregateGeneration());
+        assertEquals(1, authority.commitCount,
+            "source cleanup uses participant StoreVersion CAS");
+        assertTrue(authority.progress.sourceCleanupCompleted(),
+            "cleanup phase is owned by the aggregate marker");
+        assertEquals(0, relocation.deleteCount,
+            "cleanup keeps a root that remains referenced after CAS");
     }
 
     @Test
@@ -171,16 +168,62 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                 normalized.authorityOwnerGeneration());
             assertEquals(source.targetOwner().ownerId(), normalized.ownerId());
         }
-        assertEquals(3, authority.commitCount,
-            "steady normalization is one atomic Location Store commit");
+        assertEquals(1, authority.commitCount,
+            "steady normalization does not re-commit the aggregate");
         coordinator.normalizeCompletedAggregate(
                 expected,
                 activated.fence(),
                 source.targetOwner(),
                 NEVER)
             .toCompletableFuture().join();
-        assertEquals(3, authority.commitCount,
+        assertEquals(1, authority.commitCount,
             "an already steady aggregate is idempotent");
+    }
+
+    @Test
+    void completedAggregateReconcilesWhenOneParticipantWasAlreadyNormalized() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority,
+            new FakeRelocationStore());
+        var source = request();
+        var activated = coordinator.commit(
+                coordinator.prepare(source, NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+        coordinator.completeSourceCleanup(activated, goldenRoot(), NEVER)
+            .toCompletableFuture().join();
+        var first = authority.rows.get(source.participants().getFirst()
+            .authorityKey());
+        var publication = ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+            first.payload());
+        authority.rows.put(source.participants().getFirst().authorityKey(),
+            new ZLinkAuthoritySnapshot(
+                "already-steady",
+                publication.applicationPayload(),
+                first.objectGeneration(),
+                first.authorityOwnerGeneration(),
+                first.ownerId(),
+                first.ownerLeaseGeneration(),
+                first.allocation(),
+                first.storeNow()));
+        var expected = source.participants().stream()
+            .map(value -> new ZLinkAggregateRelocationCoordinator
+                .ExpectedParticipant(
+                    value.authorityKey(),
+                    value.objectGeneration(),
+                    value.authorityOwnerGeneration()))
+            .toList();
+
+        assertDoesNotThrow(() -> coordinator.normalizeCompletedAggregate(
+                expected,
+                activated.fence(),
+                source.targetOwner(),
+                NEVER)
+            .toCompletableFuture().join());
+        assertTrue(authority.progress == null,
+            "normalization removes the marker after all participants are steady");
     }
 
     @Test
@@ -270,9 +313,10 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                     value.authorityKey(),
                     value.objectGeneration(),
                     value.authorityOwnerGeneration()))
-            .toList();
+                .toList();
         var completion = ZLinkServiceRelocationEnvelopeCodec
             .decode(goldenRoot()).terminalCompletions().getFirst();
+        int rootsBeforeReplay = relocation.valueCount();
 
         var durable = coordinator.updateCanonicalReplay(
                 expected,
@@ -292,6 +336,8 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertEquals(2, durable.root().terminalCompletions().getFirst()
             .deliveryState());
         assertTrue(durable.root().recoveryReleaseEligible());
+        assertEquals(rootsBeforeReplay + 2, relocation.valueCount(),
+            "the previous root remains available for retention cleanup");
         assertFalse(ZLinkCanonicalRelocationAuthorityStateCodec.decode(
             authority.rows.get("spot:room-a").payload())
             .sourceCleanupCompleted());
@@ -304,9 +350,8 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                 source.targetOwner(),
                 NEVER)
             .toCompletableFuture().join();
-        assertTrue(ZLinkCanonicalRelocationAuthorityStateCodec.decode(
-            authority.rows.get("spot:room-a").payload())
-            .sourceCleanupCompleted());
+        assertTrue(authority.progress.sourceCleanupCompleted(),
+            "cleanup phase is owned by the aggregate marker");
         var published = ZLinkCanonicalRelocationAuthorityStateCodec.decode(
             authority.rows.get("spot:room-a").payload());
         assertEquals("owner-a", published.sourceOwnerId());
@@ -672,6 +717,8 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         private int commitCount;
         private int abortCount;
         private long ownerGenerationGap = 1;
+        private ZLinkAggregateProgress progress;
+        private String progressStoreVersion;
         private final Map<String, ZLinkAuthoritySnapshot> rows =
             new ConcurrentHashMap<>();
 
@@ -715,7 +762,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                         source.authorityOwnerGeneration() + ownerGenerationGap,
                         prepared.targetOwner().ownerId(),
                         prepared.targetOwner().leaseGeneration(),
-                        new ZLinkPlacementAllocation(
+                    new ZLinkPlacementAllocation(
                             ZLinkPlacementAllocationState.ACTIVE,
                             source.objectKind(),
                             "RoomSpot",
@@ -724,8 +771,75 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                             capacity),
                         Instant.now()));
             }
+            progress = ZLinkCanonicalRelocationAuthorityStateCodec.progress(
+                prepared.participants().getFirst().authorityPayload());
+            progressStoreVersion = "aggregate-commit-" + commitCount;
             return CompletableFuture.completedFuture(
                 ZLinkAggregateCommitResult.COMMITTED);
+        }
+
+        @Override
+        public CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+            readAggregateProgress(
+                ZLinkAggregateFence fence,
+                ZLinkStoreCancellation cancellation) {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? Optional.empty()
+                    : Optional.of(progressSnapshot(fence)));
+        }
+
+        @Override
+        public CompletionStage<ZLinkAggregateProgressWriteResult>
+            compareExchangeAggregateProgress(
+                ZLinkAggregateFence fence,
+                String expectedStoreVersion,
+                ZLinkAggregateProgress next,
+                ZLinkStoreCancellation cancellation) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(
+                    new ZLinkAggregateProgressConflict());
+            }
+            progress = next;
+            progressStoreVersion = "aggregate-progress-"
+                + progressStoreVersion;
+            return CompletableFuture.completedFuture(
+                new ZLinkAggregateProgressStored(progressSnapshot(fence)));
+        }
+
+        @Override
+        public CompletionStage<List<ZLinkAggregateProgressSnapshot>>
+            listAggregateProgress(ZLinkStoreCancellation cancellation) {
+            return CompletableFuture.completedFuture(
+                progress == null
+                    ? List.of()
+                    : List.of(progressSnapshot(new ZLinkAggregateFence(
+                        prepared.aggregateId(),
+                        prepared.aggregateGeneration()))));
+        }
+
+        @Override
+        public CompletionStage<Boolean> removeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            ZLinkStoreCancellation cancellation) {
+            if (progress == null
+                || !progressStoreVersion.equals(expectedStoreVersion)) {
+                return CompletableFuture.completedFuture(false);
+            }
+            progress = null;
+            progressStoreVersion = null;
+            return CompletableFuture.completedFuture(true);
+        }
+
+        private ZLinkAggregateProgressSnapshot progressSnapshot(
+            ZLinkAggregateFence fence) {
+            return new ZLinkAggregateProgressSnapshot(
+                fence,
+                progressStoreVersion,
+                prepared,
+                progress);
         }
 
         @Override

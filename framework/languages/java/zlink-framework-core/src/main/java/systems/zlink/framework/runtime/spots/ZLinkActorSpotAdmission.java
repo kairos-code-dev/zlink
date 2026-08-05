@@ -43,6 +43,8 @@ final class ZLinkActorSpotAdmission {
     private java.util.function.BooleanSupplier draining = () -> false;
     private final ZLinkPendingActorTransfers pendingTransfers =
         new ZLinkPendingActorTransfers();
+    private final ZLinkActorTransferCommitRegistry commitRegistry =
+        new ZLinkActorTransferCommitRegistry();
     private final java.util.concurrent.ConcurrentMap<String, CompletableFuture<Void>>
         pendingEntryJoins = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentMap<String, CompletableFuture<Void>>
@@ -350,6 +352,26 @@ final class ZLinkActorSpotAdmission {
         Object spotSurface,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback,
         Function<ZLinkBackendActorRef, CompletionStage<List<Message>>> backlogReplay) {
+        return commitRegistry.execute(
+            request,
+            () -> commitRoutedActorOnce(
+                request,
+                transferState,
+                primaryNode,
+                spotId,
+                spotSurface,
+                joinedCallback,
+                backlogReplay));
+    }
+
+    private CompletionStage<RoutedJoin> commitRoutedActorOnce(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkMessage transferState,
+        ZLinkInternalSpotNode primaryNode,
+        String spotId,
+        Object spotSurface,
+        Function<ZLinkActor, CompletionStage<Void>> joinedCallback,
+        Function<ZLinkBackendActorRef, CompletionStage<List<Message>>> backlogReplay) {
         if (!request.commit()) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor transfer commit request has the wrong phase"));
@@ -447,20 +469,14 @@ final class ZLinkActorSpotAdmission {
                     primaryNode);
                 runtime.traceActorTransferMarker(
                     "target_session_bound", actor.context().actorId(), request.transferId());
+                startBoundSessionRouteUpdate(
+                    request,
+                    primaryNode,
+                    committed.authorityOwnerGeneration());
                 return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
                     .yieldCurrent(
-                        runtime.awaitDeferredJoinSourceCleanup(
-                                request,
-                                actorRef,
-                                Duration.ofMillis(Math.max(
-                                    1L,
-                                    request.timeoutMillis())))
-                            .thenRun(() -> completeRemoteMove(runtime, prepared))
-                            .thenCompose(ignored ->
-                                switchBoundSessionRoute(
-                                    request,
-                                    primaryNode,
-                                    committed.authorityOwnerGeneration())))
+                        CompletableFuture.completedFuture(null)
+                            .thenRun(() -> completeRemoteMove(runtime, prepared)))
                     .thenCompose(ignored -> {
                         boolean entryTarget = spotSurface instanceof systems.zlink.framework.spots.ZLinkEntrySpot<?>;
                         if (!entryTarget) {
@@ -529,7 +545,45 @@ final class ZLinkActorSpotAdmission {
                     }
                     throw new java.util.concurrent.CompletionException(error);
                 });
+            });
+    }
+
+    /**
+     * Route publication is post-commit control work.  It starts as soon as
+     * the target authority is committed, but its ACK cannot gate target
+     * lifecycle, Join completion, or replay of the temporary queue.
+     */
+    private void startBoundSessionRouteUpdate(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkInternalSpotNode primaryNode,
+        long authorityOwnerGeneration) {
+        CompletionStage<Void> update;
+        try {
+            update = switchBoundSessionRoute(
+                request,
+                primaryNode,
+                authorityOwnerGeneration);
+        } catch (Throwable failure) {
+            reportBoundSessionRouteUpdateFailure(request, failure);
+            return;
+        }
+        update.whenComplete((ignored, failure) -> {
+            if (failure != null) {
+                reportBoundSessionRouteUpdateFailure(request, failure);
+            }
         });
+    }
+
+    private void reportBoundSessionRouteUpdateFailure(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        Throwable failure) {
+        requireActors().traceActorTransferMarker(
+            "session_route_update_failed",
+            request.actorId(),
+            request.transferId());
+        java.util.logging.Logger.getLogger(ZLinkActorSpotAdmission.class.getName())
+            .warning("Bound Session route update failed after Actor relocation commit: "
+                + failure);
     }
 
     private CompletionStage<Void> switchBoundSessionRoute(

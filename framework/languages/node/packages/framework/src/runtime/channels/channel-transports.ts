@@ -166,6 +166,7 @@ export interface ZLinkRouteClientTransport {
     message: unknown,
     options: {
       readonly packetName?: string;
+      readonly timeoutMs?: number;
       readonly signal?: AbortSignal;
       readonly metadata?: ReadonlyMap<string, string>;
     }
@@ -259,7 +260,8 @@ interface ZLinkChannelTransportRuntime {
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal,
-    metadata?: ReadonlyMap<string, string>
+    metadata?: ReadonlyMap<string, string>,
+    timeoutMs?: number
   ): Promise<void>;
   routeRequestToSpot<TReply>(
     spotRouteTarget: ZLinkSpotRouteTarget,
@@ -719,6 +721,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     message: unknown,
     options: {
       readonly packetName?: string;
+      readonly timeoutMs?: number;
       readonly signal?: AbortSignal;
       readonly metadata?: ReadonlyMap<string, string>;
     }
@@ -773,7 +776,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       } catch (error) {
         throw mapMeshSubmissionError(error, operation);
       }
-    }, options.signal);
+    }, options.signal, options.timeoutMs);
     return result;
   }
 
@@ -783,6 +786,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     message: unknown,
     options: {
       readonly packetName?: string;
+      readonly timeoutMs?: number;
       readonly signal?: AbortSignal;
       readonly metadata?: ReadonlyMap<string, string>;
     }
@@ -793,7 +797,8 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       options.packetName,
       message,
       options.signal,
-      options.metadata
+      options.metadata,
+      options.timeoutMs
     );
     return { status: ZLinkSubmitStatus.Submitted };
   }

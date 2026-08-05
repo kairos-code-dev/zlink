@@ -20,7 +20,6 @@ import {
 import { validateTimerRegistration } from './TimerRegistrationValidator';
 import { zlinkDefaultLocationOptions } from '../Locations';
 import { requireValidSendTimeoutMs } from './SendTimeoutValidation';
-import { DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE } from './InternalDefaults';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -77,10 +76,10 @@ function validateInboundDispatchListenerBounds(
   for (const [spotNodeName, spotNode] of registration.spotNodes) {
     listeners.push([`SpotNode '${spotNodeName}' router`, spotNode.router?.maxMessageSize]);
   }
-  for (const streamNodeName of registration.streamNodes.keys()) {
+  for (const [streamNodeName, streamNode] of registration.streamNodes) {
     listeners.push([
       `STREAM node '${streamNodeName}'`,
-      DEFAULT_APPLICATION_LISTENER_MAX_MESSAGE_SIZE
+      streamNode.maxMessageSize
     ]);
   }
 
@@ -570,6 +569,10 @@ function requireFilePath(label: string, value: string | undefined): void {
 
 function validateStreamNodes(registration: ZLinkFrameworkRegistration): void {
   for (const [streamNodeName, streamNode] of registration.streamNodes.entries()) {
+    requireNonNegativeInteger(
+      `STREAM node '${streamNodeName}' maxMessageSize`,
+      streamNode.maxMessageSize
+    );
     requireEndpoint(`STREAM node '${streamNodeName}'`, streamNode.bind);
     validateListenerNetworkIdentity(
       `STREAM node '${streamNodeName}'`,

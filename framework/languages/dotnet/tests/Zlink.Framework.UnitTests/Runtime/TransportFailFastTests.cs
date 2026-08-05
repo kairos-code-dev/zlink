@@ -3,6 +3,7 @@ using System.Diagnostics.Metrics;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Runtime.Diagnostics;
+using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.UnitTests;
@@ -175,6 +176,48 @@ public sealed class TransportFailFastTests
         Assert.Equal(["runtime-a"], seenA);
         Assert.Equal(["runtime-b", "runtime-b-still-active"], seenB);
         await runtimeB.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task LogicalMulticast_Uses_A_Separate_Admission_Pool()
+    {
+        await using var provider = CreateServices();
+        var registration = provider.GetRequiredService<ZLinkFrameworkRegistration>();
+        registration.WorkerOptions.MinThreads = 0;
+        registration.WorkerOptions.MaxThreads = 1;
+        var runtime = CreateRuntime(provider);
+        await runtime.StartAsync(CancellationToken.None);
+
+        using var releaseRegularWork = new ManualResetEventSlim(false);
+        var regularWorkStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var logicalWorkRan = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var regularPool = runtime.WorkerPool;
+            var logicalMulticastPool = runtime.LogicalMulticastWorkerPool;
+            Assert.NotSame(regularPool, logicalMulticastPool);
+
+            Assert.Equal(
+                ZLinkWorkerSubmitResult.Accepted,
+                regularPool.TrySubmit(_ =>
+                {
+                    regularWorkStarted.TrySetResult();
+                    releaseRegularWork.Wait();
+                }));
+            await regularWorkStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(
+                ZLinkWorkerSubmitResult.Accepted,
+                logicalMulticastPool.TrySubmit(_ => logicalWorkRan.TrySetResult()));
+            await logicalWorkRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseRegularWork.Set();
+            await runtime.StopAsync(CancellationToken.None);
+        }
     }
 
     private static ServiceProvider CreateServices()

@@ -13,6 +13,7 @@ import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
+import systems.zlink.samples.gamequest.server.configuration.SampleTimings;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
 import systems.zlink.samples.gamequest.server.gameapi.store.GameQuestStore;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
@@ -96,6 +97,7 @@ public final class GameQuestSession implements ZLinkSession {
             .requestToSpot(
                 request.playerId(),
                 new Messages.GetQuestProgressReq(request.playerId()))
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.GetQuestProgressRes.class)
@@ -109,6 +111,7 @@ public final class GameQuestSession implements ZLinkSession {
     private java.util.concurrent.CompletionStage<Void> handleGetProgress(Messages.GetQuestProgressReq request) {
         return channels
             .requestToSpot(request.playerId(), request)
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.GetQuestProgressRes.class)
@@ -121,6 +124,7 @@ public final class GameQuestSession implements ZLinkSession {
     private java.util.concurrent.CompletionStage<Void> handleSync(Messages.SyncQuestProgressReq request) {
         return channels
             .requestToSpot(request.playerId(), request)
+            .timeout(SampleTimings.RequestTimeout)
             .instanceSpot(SampleNames.PlayerQuestSpotType)
             .inMesh(SampleNames.PlayerQuestSpotDiscovery)
             .submit(Messages.SyncQuestProgressRes.class)

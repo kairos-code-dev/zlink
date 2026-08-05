@@ -19,7 +19,7 @@
 | CH-E2E-06 | actual 통과 | RouteMesh·ClientServer가 같은 ChannelName을 등록한 경우와 ClientServer Client 역할을 중복 등록한 경우가 각각 별도 process startup configuration error로 끝난다. 증거: `logs/20260729-045555-1335584` |
 | CH-E2E-07A | actual 통과 | `logs/20260805-105202-1234879/`에서 등록하지 않은 ChannelName request가 1초 이내 `NotFound`로 끝나고, 같은 process의 등록된 `game.api` 경로는 영향을 받지 않는 것을 client assertion으로 확인했다. |
 | CH-E2E-07B | actual 통과 | `logs/20260805-105215-1236427/`에서 Session role이 target RID나 endpoint 없이 `game.api` member를 호출하고 Api role evidence가 한 번 기록됐다. |
-| CH-E2E-07C | actual 통과 | `logs/20260805-105226-1237853/`에서 등록된 `game.api` target의 weight를 0으로 내려 known-but-not-ready 상태를 만들고, request가 `Unavailable`로 종료되며 API handler가 호출되지 않음을 확인했다. |
+| CH-E2E-07C | actual 통과 | `logs/20260805-160550-2560586/`에서 `game.api` descriptor를 유지한 채 runner가 관리하는 TCP proxy를 중단하여 target으로 가는 연결만 차단했다. Public topology의 `game.api`는 `readyTargetCount=0`이 되었고 request는 `Unavailable`로 끝났다. API process의 evidence에는 operation ID가 기록되지 않았으며, `session.game.topology.after-network-block.json`과 `api-route-proxy.log`가 연결 차단과 상태 변화를 증명한다. |
 | CH-E2E-08 | actual 통과 | WorkflowServer는 `game` Object Client로만 참여한다. ClientServer handler가 global SpotId와 ActorId로 Spot 다음 Actor를 요청하고 원래 reply에 순서를 보존한다. 증거: `logs/20260729-003016-3958766` |
 | CH-E2E-09 | actual 통과 | `logs/20260805-105316-1241460/`에서 RouteMesh·ClientServer·fanout·STREAM을 함께 실행했다. Location Store의 모든 advertised endpoint가 `127.0.0.1`의 실제 port로 게시되고 `:0`이 아니며, ClientServer request·fanout delivery·STREAM connector connect가 모두 완료됐다. |
 | CH-E2E-10 | actual 통과 | Result-free ClientServer send를 제출하고 두 Server가 선택 구간에서 handler를 각각 실행하며 전체 handler 수가 제출 수와 정확히 일치한다. 증거: `logs/20260729-045617-1359918` |

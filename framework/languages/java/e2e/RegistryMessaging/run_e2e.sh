@@ -313,7 +313,6 @@ start_provider() {
     echo "e2e.provider-rid=${rid}"
     echo "e2e.provider-instance=${instance}"
     echo "e2e.api-weight=${weight}"
-    echo "e2e.max-message-size=2097152"
     echo "e2e.api-endpoint=${api}"
     echo "e2e.route-endpoint=${route}"
     echo "e2e.route-peers=${route:+${route_peer}}"

@@ -91,6 +91,7 @@ case "$SCENARIO_SET" in
     NEED_TLS_STREAM=1
     ;;
   sm-b8)
+    NEED_SESSION_NODES=0
     NEED_PLAY_B=0
     ;;
   sm-d15)

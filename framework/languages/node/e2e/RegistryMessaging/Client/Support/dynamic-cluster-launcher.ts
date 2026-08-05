@@ -62,7 +62,7 @@ export class DynamicClusterLauncher {
         {
           rid, httpUrl, redisEndpoint: this.redisEndpoint, redisKeyPrefix: this.redisKeyPrefix,
           channelEndpoint, routeEndpoint, routePeers, weight,
-          maxMessageSize: 0, evidenceFile: path.join(this.logDir, `${name}.evidence.log`), logDir: this.logDir
+          evidenceFile: path.join(this.logDir, `${name}.evidence.log`), logDir: this.logDir
         },
         httpUrl,
         channelEndpoint

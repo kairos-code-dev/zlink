@@ -21,13 +21,13 @@ Consumer, Workflow role server endpoint 내부에서 public API로 수행한다.
 | RM-C4 | implemented | discovery consumer role endpoint가 timeout을 관측하고 후속 request evidence를 확인한다. |
 | RM-C5 | implemented | missing packet request/send 뒤 dispatch-error evidence와 정상 request 회복을 확인한다. |
 | RM-C7 | implemented | Redis location store 동적 cluster에서 provider weight를 public runtime option으로 설정하고 discovery consumer가 high-weight provider 선호를 검증한다. |
-| RM-C8 | implemented | 1B, 4KiB, 256KiB, 1MiB payload 왕복을 length와 SHA-256 hash로 검증한다. MaxMessageSize 초과 거부는 framework channel runtime 미배선 한계로 완료 주장하지 않는다. |
+| RM-C8 | implemented | RouteMesh SS에 Framework-level `MaxMessageSize`를 설정하지 않고 1 byte, 4KiB, 256KiB, 1MiB payload 왕복을 length와 SHA-256 hash로 검증한다. StreamNode의 inbound 상한은 별도 계약이다. |
 | RM-C9 | 전환 필요 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복만 검증한다. non-blocking submit의 즉시 backpressure 결과와 blocking submit의 bounded admission 결과를 public send call에서 직접 대조해야 한다. |
 
 ## 검증 결과
 
-- 위 `RM-C8`의 통과 범위는 payload round-trip이다. MaxMessageSize 초과 거부는 .NET feature-map도
-  framework channel runtime 미배선 한계로 별도 한계라고 기록하므로 Kotlin에서 완료로 확장하지 않는다.
+- 위 `RM-C8`의 통과 범위는 RouteMesh SS payload round-trip이다. StreamNode의 Core STREAM inbound
+  상한은 이 scenario의 대상이 아니며, StreamNode runtime·unit test에서 별도로 검증한다.
 - 위 `RM-C9`는 one-way send pressure와 recovery 증거를 보존하되, public submit result 단언을
   추가한 후에만 완료로 바꾼다.
 - `all` runner는 Redis location store endpoint와 key prefix를 provider, consumer, workflow role에

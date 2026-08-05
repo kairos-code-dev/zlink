@@ -16,8 +16,7 @@ internal sealed record ConsumerOptions(
     string RouteChannelRole = "Client",
     int RouteChannelWeight = 100,
     bool RegisterIndependentTopologies = false,
-    bool RegisterWorkflowClient = false,
-    long MaxMessageSize = 32L * 1024 * 1024)
+    bool RegisterWorkflowClient = false)
 {
     public static ConsumerOptions Parse(string[] args)
         => E2eConfiguration.Load<ConsumerOptions>(args);

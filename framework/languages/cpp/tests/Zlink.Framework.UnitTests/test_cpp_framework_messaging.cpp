@@ -245,6 +245,7 @@ int main ()
         zlink::framework::runtime::messaging::request_failure_mapper_t mapper;
         using zlink::framework::framework_error_kind_t;
         using zlink::framework::runtime::messaging::map_request_result_exception;
+        using zlink::framework::runtime::messaging::map_submit_result_exception;
         using zlink::framework::runtime::messaging::map_submit_result_error_kind;
         if (map_submit_result_error_kind (zlink::submit_result_t::backpressured)
                 != framework_error_kind_t::capacity_exceeded
@@ -261,6 +262,24 @@ int main ()
             || map_submit_result_error_kind (zlink::submit_result_t::invalid_state)
                  != framework_error_kind_t::invalid_operation) {
             return 25;
+        }
+        const auto submit_backpressured = map_submit_result_exception (
+          zlink::submit_result_t::backpressured, "native submit");
+        const auto submit_disconnected = map_submit_result_exception (
+          zlink::submit_result_t::not_connected, "native submit");
+        const auto submit_shutdown = map_submit_result_exception (
+          zlink::submit_result_t::terminated, "native submit");
+        const auto submit_not_found = map_submit_result_exception (
+          zlink::submit_result_t::not_found, "native submit");
+        if (submit_backpressured.kind () != framework_error_kind_t::capacity_exceeded
+            || submit_disconnected.kind () != framework_error_kind_t::unavailable
+            || zlink::framework::detail::boundary_state (submit_disconnected)
+                 != zlink::framework::detail::boundary_error_t::disconnected
+            || submit_shutdown.kind () != framework_error_kind_t::shutting_down
+            || zlink::framework::detail::boundary_state (submit_shutdown)
+                 != zlink::framework::detail::boundary_error_t::shutdown
+            || submit_not_found.kind () != framework_error_kind_t::not_found) {
+            return 26;
         }
         const auto native_timeout = map_request_result_exception (
           zlink::request_result_t::timed_out, "native request");

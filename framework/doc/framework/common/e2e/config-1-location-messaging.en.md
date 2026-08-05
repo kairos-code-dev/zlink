@@ -539,38 +539,32 @@ does A process about 75% of the total over enough requests?
   Excluding/restoring weight at runtime is verified by
   [Config 5 RL-B4](config-5-resilience-lifecycle.en.md).
 
-#### RM-C8 Apply The Receive Message Size Ceiling
+#### RM-C8 Verify RouteMesh SS Payload Integrity
 
 Priority: `P1`
 
-Each MeshNode decides at startup the maximum size of a complete
-transport message it will receive. This value isn't a common ceiling
-negotiated with the sender. The receiver must not deliver only part of
-a message exceeding its own ceiling to the handler, and must keep
-processing normal-size messages even after a rejection.
+RouteMesh ServerServer (SS) doesn't provide a Framework-level
+`MaxMessageSize` setting. This scenario leaves the SS transport without a
+listener ceiling and verifies that payloads of several sizes round-trip
+without corruption. The Core STREAM inbound ceiling for a StreamNode is a
+separate contract and isn't tested by this scenario.
 
-**Verification question:** Is a payload sufficiently smaller than the
-receiver's `MaxMessageSize` processed without corruption, and is a
-payload larger than the ceiling rejected without running the handler?
+**Verification question:** Does RouteMesh SS process payloads of several
+sizes without a separate Framework message-size setting?
 
-- Start condition: The provider's `MaxMessageSize` is set to 32 MiB,
-  and payload length and checksum are recorded in the reply and
-  evidence.
-- Procedure: The client sends a 1 KiB and a 17 MiB JSON payload as
-  requests each. Then it sends a 33 MiB request, whose payload alone
-  exceeds the ceiling, followed again by a 1 KiB request. It doesn't
-  assume an exact 32 MiB boundary by computing the JSON envelope size.
-- Verification: The 1 KiB and 17 MiB requests receive a reply with the
-  same payload length and checksum, with the provider handler running
-  once each. The 33 MiB request doesn't run the handler, and ends in
-  `ProtocolError` if an error reply can be built, or in
-  `DeadlineExceeded` at the request deadline if even the header can't
-  be processed. The 1 KiB request after the rejection receives a
-  normal reply.
-- Detailed behavior: verifies
-  [RouteMesh Topology §8](../spec/07-channel-topology.en.md#8-message-size-the-router-can-receive)
-  and
-  [Error Model §5](../spec/32-framework-error-model.en.md#5-request-completion-and-failure).
+- Start condition: The provider and consumer configure only the public
+  RouteMesh topology and don't set a Framework `MaxMessageSize`. The
+  provider records payload length and checksum in the reply and evidence.
+- Procedure: The client sends 1 byte, 4 KiB, 256 KiB, and 1 MiB payloads as
+  requests, followed by one more normal 1 byte request.
+- Verification: Each payload request receives the same length and checksum,
+  with the provider handler running once for each request. The final normal
+  request also receives a reply, and no evidence shows a partial payload.
+- Detailed behavior: verifies the SS boundary in
+  [RouteMesh Topology §8](../spec/07-channel-topology.en.md#8-routemesh-ss-message-size),
+  where Framework doesn't provide a message-size setting. The StreamNode
+  ceiling is defined separately in
+  [STREAM Session §4](../spec/19-stream-session.en.md#4-stream-socket-message-size).
 
 #### RM-C9 Resume Receiving After Hitting Application HWM
 
@@ -586,8 +580,8 @@ Application HWM, does public status show receive-stopped, and does it
 show receive-resumed and normal request processing after the handler
 finishes?
 
-- Start condition: The provider's `ApplicationHwmBytes` is 1 MiB and
-  `MaxMessageSize` is 4 MiB. The provider handler doesn't finish
+- Start condition: The provider's `ApplicationHwmBytes` is 1 MiB. The
+  provider handler doesn't finish
   processing a 2 MiB command until released by the public application
   control endpoint. The baseline request has succeeded.
 - Procedure: The client sends a 2 MiB command via the consumer once.

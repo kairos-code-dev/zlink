@@ -640,6 +640,17 @@ public interface systems.zlink.framework.configuration.ZLinkWorkerOptions {
 }
 ```
 
+`ZLinkStreamNodeBuilder.configureSocket().setMaxMessageSize(...)` defaults
+to `64 KiB`. This setting is used only when a StreamNode's Core STREAM
+inbound path checks a complete client-to-server message. The size is header
+bytes plus payload bytes, excluding the 6-byte prefix. `0` maps to Core `-1`,
+so Framework adds no limit; a negative value is a startup configuration
+error. A message over the limit is never partly delivered to the handler. The
+server records `EMSGSIZE` and a diagnostic trace, then closes the connection.
+The raw client observes the close without a separate wire error code. The
+Framework limit doesn't apply to server-to-client outbound messages, and the
+setting isn't added to ClientServer or RouteMesh SS.
+
 ## Remaining Configuration Public Member `javap` Inventory
 
 The declarations below fix, in the binary signature format `javap`

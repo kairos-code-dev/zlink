@@ -46,6 +46,26 @@ map_submit_result_error_kind (zlink::submit_result_t result) noexcept
 }
 
 inline framework_exception_t
+map_submit_result_exception (zlink::submit_result_t result, std::string message)
+{
+    switch (result) {
+        case zlink::submit_result_t::not_connected:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected, std::move (message));
+        case zlink::submit_result_t::terminated:
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::shutdown, std::move (message));
+        case zlink::submit_result_t::ok:
+            break;
+        default:
+            return framework_exception_t (
+              map_submit_result_error_kind (result), std::move (message));
+    }
+    return framework_exception_t (
+      framework_error_kind_t::internal_failure, std::move (message));
+}
+
+inline framework_exception_t
 map_request_result_exception (zlink::request_result_t result, std::string message)
 {
     switch (result) {

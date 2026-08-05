@@ -99,6 +99,48 @@ export function encodeChannelEnvelopeParts(
   return [encodeChannelHeader(header), encoded.message];
 }
 
+/**
+ * Encodes an outbound channel envelope with a deadline that was established
+ * before synchronous payload encoding began. This is an internal runtime
+ * entry point for operations that must not extend their original deadline
+ * while the message is being serialized.
+ */
+export function encodeChannelEnvelopePartsAtDeadline(
+  kind: ZLinkChannelMessageKind,
+  channelName: string,
+  packetName: string | undefined,
+  payload: unknown,
+  deadlineUnixMs: number,
+  topic?: string,
+  codecs?: ZLinkChannelEnvelopeCodecRegistry,
+  correlationId?: string,
+  createFlow = true,
+  metadata: ReadonlyMap<string, string> = new Map()
+): readonly MessageLike[] {
+  if (!Number.isSafeInteger(deadlineUnixMs) || deadlineUnixMs <= 0) {
+    throw new RangeError('deadlineUnixMs must be a positive safe integer.');
+  }
+  const messageName = resolveFrameworkPacketName(payload, packetName, 'Channel');
+  const encoded = encodePayload(payload, codecsForFrameworkPacket(messageName, codecs));
+  const flow = currentOrCreateFlow('Application', createFlow);
+  const envelopeCorrelationId = correlationIdForOutboundKind(kind, correlationId);
+  const header: ZLinkChannelEnvelopeHeader = {
+    formatMarker: ZLINK_CHANNEL_FORMAT_MARKER,
+    kind,
+    channelName,
+    messageName,
+    contentType: encoded.contentType,
+    correlationId: envelopeCorrelationId,
+    deadline: new Date(deadlineUnixMs).toISOString(),
+    topic: topic ?? null,
+    errorCode: null,
+    errorMessage: null,
+    metadata: applicationMetadataRecord(metadata),
+    ...(flow ?? {})
+  };
+  return [encodeChannelHeader(header), encoded.message];
+}
+
 export function encodeChannelPublishEnvelopeParts(
   channelName: string,
   topic: string,
@@ -236,7 +278,9 @@ export function decodeChannelEnvelope(
   if (parts.length < 2) {
     throw new ZLinkConfigurationException('Channel envelope body part is missing.');
   }
-  return { header, packetName: header.messageName, payload: Buffer.from(parts[1].data()) };
+  // The owning receive loop keeps the Message open until dispatch completes.
+  // Borrow its Buffer so envelope admission does not copy the whole payload.
+  return { header, packetName: header.messageName, payload: parts[1].data() };
 }
 
 export function decodeChannelPayload(
@@ -249,8 +293,8 @@ export function decodeChannelPayload(
       return serializer.deserialize(ZLinkEncodedPayload.from(envelope.payload), Object as never);
     }
     if (envelope.header.contentType === BINARY_CONTENT_TYPE) {
-      // decodeChannelEnvelope owns this payload copy for the duration of
-      // dispatch, so another copy would only duplicate the same bytes.
+      // The receive loop owns the Message for the duration of dispatch, so
+      // the envelope's borrowed payload remains valid until this returns.
       return envelope.payload;
     }
     if (envelope.header.contentType === JSON_CONTENT_TYPE) {

@@ -276,6 +276,14 @@ public interface IZLinkMetadataPolicyBuilder
 
 ```
 
+`IZLinkStreamNodeBuilder.ConfigureSocket().MaxMessageSize`의 기본값은 `64 KiB`다. 이 값은
+StreamNode의 Core STREAM inbound에서 client→server complete message를 검사할 때만 사용하며,
+6-byte prefix를 제외한 header와 payload의 합으로 계산한다. `0`은 Core `-1`로 변환되어
+Framework 상한을 사용하지 않고, 음수는 startup configuration error다. 상한을 넘은 message는
+handler에 일부도 전달하지 않으며 server는 `EMSGSIZE`와 진단 trace를 남기고 연결을 종료한다.
+raw client는 별도 wire error code가 아니라 연결 종료를 관찰한다. server→client outbound에는
+이 Framework 상한을 적용하지 않는다. ClientServer와 RouteMesh SS에는 이 설정을 추가하지 않는다.
+
 `IZLinkCodecRegistryBuilder`와 codec extension의 정확한 선언은
 [Serialization](11-serialization.ko.md)이 소유한다.
 

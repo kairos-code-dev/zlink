@@ -49,7 +49,6 @@ export function createConsumerEndpoints(
       }
     },
     { method: 'POST', path: '/profile/payload', handle: (body) => requestPayload(channel, toPayloadReq(body)) },
-    { method: 'POST', path: '/profile/payload-over-limit', handle: (body) => requestPayloadFailure(channel, toPayloadReq(body)) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
     { method: 'POST', path: '/profile/backpressure/send', handle: (body) => submitProfileUnderPressure(channel, new ProfileMsg((body as ProfileMsg).commandId)) },
     { method: 'GET', path: '/route/status', handle: () => routeRuntime.snapshot('profile') },
@@ -133,18 +132,6 @@ async function requestPayload(channel: ZLinkRouteClient, request: PayloadReq): P
     .requestToChannel('profile', request)
     .timeout(10000)
     .submit<PayloadRes>();
-}
-
-async function requestPayloadFailure(channel: ZLinkRouteClient, request: PayloadReq): Promise<RequestFailureRes> {
-  try {
-    await channel
-      .requestToChannel('profile', request)
-      .timeout(5000)
-      .submit<PayloadRes>();
-    return { failed: false, failureType: '' };
-  } catch (error) {
-    return { failed: true, failureType: publicFailureType(error) };
-  }
 }
 
 async function requestProfileFailure(

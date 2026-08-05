@@ -13,7 +13,7 @@ marker는 관련 행의 부분 증거로만 기록한다.
 |---|---|---|---|
 | MON-A1 | 구현 | MeshNode의 peer lifecycle event와 후속 snapshot이 같은 RID·generation·endpoint를 나타내는지 확인했다. | 없음 |
 | MON-A2 | 구현 | 같은 RID의 정상 교체 전후 typed peer event와 snapshot에서 이전 generation이 ready로 남지 않는지 확인했다. | 없음 |
-| MON-A3 | 구현 | Spot subject 상태와 ChannelName 변경을 typed event와 snapshot으로 함께 확인했다. | 없음 |
+| MON-A3 | process 통과 | `logs/20260805-154113-2416959/`에서 A→B와 B→A 양방향 request가 각각 remote handler에서 처리되는 것을 확인했다. B의 weight를 `0`으로 바꾸면 A의 snapshot/event가 `ready=False|targets=0`으로 바뀌고, A request가 `NotFound`를 원인으로 HTTP 500 terminal에 도달했으며, weight 복구 뒤 양방향 선택이 다시 가능해졌다. Message trace와 서비스 file log를 함께 보존했다. | 없음 |
 | MON-A4A | source 구현·process 미검증 | `MonA4AvailabilityTransitionScenario`가 정상 replacement 뒤 readiness 복원, sequence 증가와 peer event 순서를 aggregate selector로 검사한다. | fresh actual-process runner 실행 log와 role server evidence를 추가해야 한다. |
 | MON-A4B | source 구현·process 미검증 | `MonA4AvailabilityTransitionScenario`가 service crash 뒤 stale peer 제거, bounded follow-up과 replacement readiness를 aggregate selector로 검사한다. | fresh actual-process runner 실행 log와 role server evidence를 추가해야 한다. |
 | MON-A5 | 구현 | location store 중단·복구 중 peer·channel messaging이 유지되고 location health event와 snapshot이 일치하는지 확인했다. | 없음 |

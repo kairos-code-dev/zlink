@@ -88,7 +88,10 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         receivePollers.get(router).ensureRegistered();
     }
 
-    boolean send(RouterSocket router, RoutingId target, List<byte[]> frames) {
+    synchronized boolean send(
+        RouterSocket router,
+        RoutingId target,
+        List<byte[]> frames) {
         ensureOwned(router);
         Objects.requireNonNull(target, "target");
         if (frames.isEmpty()) {
@@ -115,7 +118,7 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         }
     }
 
-    boolean sendCompletionControl(
+    synchronized boolean sendCompletionControl(
         RouterSocket router,
         RoutingId target,
         List<byte[]> frames) {
@@ -145,7 +148,7 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
             new ZLinkServiceWireFrame(command, flags, frames)));
     }
 
-    boolean request(
+    synchronized boolean request(
         RouterSocket router,
         RoutingId target,
         List<byte[]> frames,
@@ -186,7 +189,7 @@ final class ZLinkJavaRawServicePort implements AutoCloseable {
         }
     }
 
-    void reply(
+    synchronized void reply(
         RouterSocket router,
         RoutingId target,
         long requestSequence,

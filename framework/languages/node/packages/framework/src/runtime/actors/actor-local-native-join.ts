@@ -37,6 +37,8 @@ import type {
 } from './actor-source-transfer';
 import {
   buildRemoteActorJoinRequestPayload,
+  REMOTE_ACTOR_JOIN_ABORT,
+  REMOTE_ACTOR_JOIN_ADMISSION,
   REMOTE_ACTOR_JOIN_COMMIT,
   ZLINK_REMOTE_ACTOR_SOURCE_LEAVE_TERMINAL
 } from './actor-remote-wire';
@@ -83,87 +85,169 @@ export class ZLinkLocalNativeActorJoin {
     );
     let prepared: ZLinkPreparedActorSource | undefined;
     let transferId: string | undefined;
+    let admissionReply: Message | undefined;
+    let abortAdmission: (() => Promise<void>) | undefined;
+    const commitState = { attempted: false };
     let requestPayload = Buffer.from(request.data());
+    const actorType = state.actorType;
+    if (remote && (actorType === undefined || this.options.sourceTransfer === undefined)) {
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+        `Actor '${actor.context.actorId}' remote transfer state is not configured.`
+      );
+    }
     if (remote) {
-      const actorType = state.actorType;
-      if (actorType === undefined || this.options.sourceTransfer === undefined) {
-        throw createInternalFrameworkException(
-          ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
-          `Actor '${actor.context.actorId}' remote transfer state is not configured.`
-        );
-      }
-      prepared = await this.options.sourceTransfer.prepareSource(actor, state, signal, 'core');
-      await prepared.reserveTarget(target, signal);
       transferId = randomUUID();
-      requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
-        actorId: actor.context.actorId,
-        actorType,
-        actorRef,
-        expectedMembershipEpoch: state.spotMembershipEpoch,
-        actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
-        actorCreateRequest: state.createRequestPayload,
-        request,
-        targetSpotId: target.spotId,
-        routerChannelId: target.routerChannelId,
-        sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
-        boundSessionTarget: enrichBoundSessionTransferTarget(state),
-        phase: REMOTE_ACTOR_JOIN_COMMIT,
-        transferId,
-        transferAdapterKey: prepared.adapterKey,
-        transferState: prepared.stateReference === undefined
-          ? Buffer.from(prepared.state.toEncodedPayload().data())
-          : undefined,
-        transferStateReference: prepared.stateReference,
-        transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
-        handoffBacklog: prepared.handoffBacklog,
-        completionOperationId
-      })));
+      try {
+        const admissionPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+          actorId: actor.context.actorId,
+          actorType: actorType!,
+          actorRef,
+          expectedMembershipEpoch: state.spotMembershipEpoch,
+          actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+          actorCreateRequest: state.createRequestPayload,
+          request,
+          targetSpotId: target.spotId,
+          routerChannelId: target.routerChannelId,
+          sourceSpotId: state.spotId,
+          boundSessionTarget: enrichBoundSessionTransferTarget(state),
+          phase: REMOTE_ACTOR_JOIN_ADMISSION,
+          transferId,
+          completionOperationId
+        })));
+        const admissionCompletion = await this.waitForJoinCompletion(
+          () => node.joinActorSpot(
+            actorRef,
+            toBackendRoutingId(target.targetNodeRid),
+            toBackendRoutingId(target.spotId),
+            target.targetSpotGeneration,
+            admissionPayload,
+            timeoutMs
+          ),
+          completions,
+          timeoutMs,
+          signal
+        );
+        const admissionControl = admissionCompletion.kindData;
+        if (
+          admissionControl?.kind !== 'actorJoinCompletion'
+          || admissionControl.actor === null
+        ) {
+          closeMeshCompletion(admissionCompletion);
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+            `Actor admission failed for '${actor.context.actorId}' with result '${admissionCompletion.terminalResult}' and errno '${admissionCompletion.failureErrno}'.`
+          );
+        }
+        if (admissionControl.joinResult !== 0) {
+          try {
+            return {
+              accepted: false,
+              actor: toFrameworkActorRef(admissionControl.actor as never, actorMeshName),
+              reply: admissionCompletion.parts[0]
+            };
+          } finally {
+            disposeParts(admissionCompletion.parts.slice(1));
+          }
+        }
+        if (admissionCompletion.terminalResult !== 0 || admissionCompletion.failureErrno !== 0) {
+          closeMeshCompletion(admissionCompletion);
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+            `Actor admission failed for '${actor.context.actorId}' with result '${admissionCompletion.terminalResult}' and errno '${admissionCompletion.failureErrno}'.`
+          );
+        }
+        admissionReply = admissionCompletion.parts[0];
+        disposeParts(admissionCompletion.parts.slice(1));
+        abortAdmission = () => this.abortRemoteAdmission(
+          node,
+          completions,
+          actorRef,
+          target,
+          actor,
+          state,
+          request,
+          requireTransferId(transferId),
+          timeoutMs,
+          signal
+        );
+
+        prepared = await this.options.sourceTransfer!.prepareSource(
+          actor,
+          state,
+          signal,
+          'core',
+          completionOperationId === undefined
+            ? undefined
+            : deferredOperationKey(completionOperationId)
+        );
+        await prepared.reserveTarget(target, signal);
+        requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+          actorId: actor.context.actorId,
+          actorType: actorType!,
+          actorRef,
+          expectedMembershipEpoch: state.spotMembershipEpoch,
+          actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+          actorCreateRequest: state.createRequestPayload,
+          request,
+          targetSpotId: target.spotId,
+          routerChannelId: target.routerChannelId,
+          sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
+          boundSessionTarget: enrichBoundSessionTransferTarget(state),
+          phase: REMOTE_ACTOR_JOIN_COMMIT,
+          transferId,
+          transferAdapterKey: prepared.adapterKey,
+          transferState: prepared.stateReference === undefined
+            ? Buffer.from(prepared.state.toEncodedPayload().data())
+            : undefined,
+          transferStateReference: prepared.stateReference,
+          transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
+          handoffBacklog: prepared.handoffBacklog,
+          completionOperationId
+        })));
+      } catch (error) {
+        await this.abortRemoteAdmission(
+          node,
+          completions,
+          actorRef,
+          target,
+          actor,
+          state,
+          request,
+          requireTransferId(transferId),
+          timeoutMs,
+          signal
+        );
+        await prepared?.rollback();
+        admissionReply?.close();
+        throw error;
+      }
     }
     let completion: ZLinkMeshCompletion;
     try {
-      const connectDeadline = Date.now() + Math.min(timeoutMs ?? 5_000, 5_000);
-      for (;;) {
-        if (process.env.ZLINK_DEBUG_ACTOR_JOIN === '1') {
-          console.error(
-            `actor join attempt actor=${actor.context.actorId}`
-              + ` source=${String(node.status().routingId)}`
-              + ` target=${String(target.targetNodeRid)}`
-              + ` peers=${node.peers().map((peer) => `${String(peer.routingId)}:${peer.state}`).join(',')}`
-          );
-        }
-        const operationId = await submitJoinWhenConnected(
-          () => node.joinActorSpot(
+      completion = await this.waitForJoinCompletion(
+        () => {
+          const operationId = node.joinActorSpot(
             actorRef,
             toBackendRoutingId(target.targetNodeRid),
             toBackendRoutingId(target.spotId),
             target.targetSpotGeneration,
             requestPayload,
             timeoutMs
-          ),
-          timeoutMs,
-          signal
-        );
-        completion = await completions.wait(operationId, signal);
-        if (process.env.ZLINK_DEBUG_ACTOR_JOIN === '1') {
-          console.error(
-            `actor join result actor=${actor.context.actorId}`
-              + ` target=${String(target.targetNodeRid)}`
-              + ` terminal=${completion.terminalResult}`
-              + ` errno=${completion.failureErrno}`
-              + ` kind=${completion.kindData?.kind ?? 'none'}`
           );
-        }
-        if (
-          completion.terminalResult !== RequestResult.NotConnected
-          || Date.now() >= connectDeadline
-        ) {
-          break;
-        }
-        closeMeshCompletion(completion);
-        await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      }
+          commitState.attempted = true;
+          return operationId;
+        },
+        completions,
+        timeoutMs,
+        signal
+      );
     } catch (error) {
+      if (!commitState.attempted) {
+        await abortAdmission?.();
+      }
       await prepared?.rollback();
+      admissionReply?.close();
       throw error;
     }
     const control = completion.kindData;
@@ -172,6 +256,7 @@ export class ZLinkLocalNativeActorJoin {
       control.actor === null
     ) {
       await prepared?.rollback();
+      admissionReply?.close();
       closeMeshCompletion(completion);
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
@@ -180,6 +265,9 @@ export class ZLinkLocalNativeActorJoin {
     }
     if (control.joinResult !== 0) {
       try {
+        if (abortAdmission !== undefined) {
+          await abortAdmission();
+        }
         await prepared?.rollback();
         return {
           accepted: false,
@@ -188,10 +276,12 @@ export class ZLinkLocalNativeActorJoin {
         };
       } finally {
         disposeParts(completion.parts.slice(1));
+        admissionReply?.close();
       }
     }
     if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
       await prepared?.rollback();
+      admissionReply?.close();
       closeMeshCompletion(completion);
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
@@ -281,6 +371,7 @@ export class ZLinkLocalNativeActorJoin {
     await this.options.postCommitBinder?.bind(
       toFrameworkActorRef(control.actor as never, actorMeshName)
     );
+    const finalReply = admissionReply ?? completion.parts[0];
     try {
       return {
         accepted: true,
@@ -288,10 +379,14 @@ export class ZLinkLocalNativeActorJoin {
           control.actor as never,
           actorMeshName
         ),
-        reply: completion.parts[0]
+        reply: finalReply
       };
     } finally {
-      disposeParts(completion.parts.slice(1));
+      if (admissionReply === undefined) {
+        disposeParts(completion.parts.slice(1));
+      } else {
+        disposeParts(completion.parts);
+      }
     }
   }
 
@@ -322,6 +417,9 @@ export class ZLinkLocalNativeActorJoin {
     );
     let prepared: ZLinkPreparedActorSource | undefined;
     let transferId: string | undefined;
+    let admissionReply: Message | undefined;
+    let abortAdmission: (() => Promise<void>) | undefined;
+    const commitState = { attempted: false };
     let requestPayload = Buffer.from(request.data());
     if (remote) {
       const actorType = state.actorType;
@@ -331,60 +429,155 @@ export class ZLinkLocalNativeActorJoin {
           `Actor '${actor.context.actorId}' remote Entry Spot transfer state is not configured.`
         );
       }
-      prepared = await this.options.sourceTransfer.prepareSource(actor, state, signal, 'core');
-      await prepared.reserveTarget(spotRouteTarget, signal);
       transferId = randomUUID();
-      requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
-        actorId: actor.context.actorId,
-        actorType,
-        actorRef,
-        expectedMembershipEpoch: state.spotMembershipEpoch,
-        actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
-        actorCreateRequest: state.createRequestPayload,
-        request,
-        targetSpotId: spotRouteTarget.spotId,
-        routerChannelId: spotRouteTarget.routerChannelId,
-        sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
-        boundSessionTarget: enrichBoundSessionTransferTarget(state),
-        phase: REMOTE_ACTOR_JOIN_COMMIT,
-        transferId,
-        transferAdapterKey: prepared.adapterKey,
-        transferState: prepared.stateReference === undefined
-          ? Buffer.from(prepared.state.toEncodedPayload().data())
-          : undefined,
-        transferStateReference: prepared.stateReference,
-        transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
-        handoffBacklog: prepared.handoffBacklog,
-        completionOperationId
-      })));
+      try {
+        const admissionPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+          actorId: actor.context.actorId,
+          actorType,
+          actorRef,
+          expectedMembershipEpoch: state.spotMembershipEpoch,
+          actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+          actorCreateRequest: state.createRequestPayload,
+          request,
+          targetSpotId: spotRouteTarget!.spotId,
+          routerChannelId: spotRouteTarget!.routerChannelId,
+          sourceSpotId: state.spotId,
+          boundSessionTarget: enrichBoundSessionTransferTarget(state),
+          phase: REMOTE_ACTOR_JOIN_ADMISSION,
+          transferId,
+          completionOperationId
+        })));
+        const admissionCompletion = await this.waitForJoinCompletion(
+          () => node.joinActorEntrySpot(
+            actorRef,
+            toBackendRoutingId(targetNodeRid),
+            admissionPayload,
+            timeoutMs
+          ),
+          completions,
+          timeoutMs,
+          signal
+        );
+        const admissionControl = admissionCompletion.kindData;
+        if (
+          admissionControl?.kind !== 'actorJoinCompletion'
+          || admissionControl.actor === null
+        ) {
+          closeMeshCompletion(admissionCompletion);
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+            `Actor Entry Spot admission failed for '${actor.context.actorId}' with result '${admissionCompletion.terminalResult}' and errno '${admissionCompletion.failureErrno}'.`
+          );
+        }
+        if (admissionControl.joinResult !== 0) {
+          try {
+            return {
+              accepted: false,
+              actor: toFrameworkActorRef(admissionControl.actor as never, actorMeshName),
+              reply: admissionCompletion.parts[0]
+            };
+          } finally {
+            disposeParts(admissionCompletion.parts.slice(1));
+          }
+        }
+        if (admissionCompletion.terminalResult !== 0 || admissionCompletion.failureErrno !== 0) {
+          closeMeshCompletion(admissionCompletion);
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
+            `Actor Entry Spot admission failed for '${actor.context.actorId}' with result '${admissionCompletion.terminalResult}' and errno '${admissionCompletion.failureErrno}'.`
+          );
+        }
+        admissionReply = admissionCompletion.parts[0];
+        disposeParts(admissionCompletion.parts.slice(1));
+        abortAdmission = () => this.abortRemoteAdmission(
+          node,
+          completions,
+          actorRef,
+          spotRouteTarget!,
+          actor,
+          state,
+          request,
+          requireTransferId(transferId),
+          timeoutMs,
+          signal,
+          true
+        );
+        prepared = await this.options.sourceTransfer.prepareSource(
+          actor,
+          state,
+          signal,
+          'core',
+          completionOperationId === undefined
+            ? undefined
+            : deferredOperationKey(completionOperationId)
+        );
+        await prepared.reserveTarget(spotRouteTarget, signal);
+        requestPayload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+          actorId: actor.context.actorId,
+          actorType,
+          actorRef,
+          expectedMembershipEpoch: state.spotMembershipEpoch,
+          actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+          actorCreateRequest: state.createRequestPayload,
+          request,
+          targetSpotId: spotRouteTarget.spotId,
+          routerChannelId: spotRouteTarget.routerChannelId,
+          sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
+          boundSessionTarget: enrichBoundSessionTransferTarget(state),
+          phase: REMOTE_ACTOR_JOIN_COMMIT,
+          transferId,
+          transferAdapterKey: prepared.adapterKey,
+          transferState: prepared.stateReference === undefined
+            ? Buffer.from(prepared.state.toEncodedPayload().data())
+            : undefined,
+          transferStateReference: prepared.stateReference,
+          transferStateChecksumCrc32c: prepared.stateChecksumCrc32c,
+          handoffBacklog: prepared.handoffBacklog,
+          completionOperationId
+        })));
+      } catch (error) {
+        await this.abortRemoteAdmission(
+          node,
+          completions,
+          actorRef,
+          spotRouteTarget!,
+          actor,
+          state,
+          request,
+          requireTransferId(transferId),
+          timeoutMs,
+          signal,
+          true
+        );
+        await prepared?.rollback();
+        admissionReply?.close();
+        throw error;
+      }
     }
 
     let completion: ZLinkMeshCompletion;
     try {
-      const connectDeadline = Date.now() + Math.min(timeoutMs ?? 5_000, 5_000);
-      for (;;) {
-        const operationId = await submitJoinWhenConnected(
-          () => node.joinActorEntrySpot(
+      completion = await this.waitForJoinCompletion(
+        () => {
+          const operationId = node.joinActorEntrySpot(
             actorRef,
             toBackendRoutingId(targetNodeRid),
             requestPayload,
             timeoutMs
-          ),
-          timeoutMs,
-          signal
-        );
-        completion = await completions.wait(operationId, signal);
-        if (
-          completion.terminalResult !== RequestResult.NotConnected
-          || Date.now() >= connectDeadline
-        ) {
-          break;
-        }
-        closeMeshCompletion(completion);
-        await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      }
+          );
+          commitState.attempted = true;
+          return operationId;
+        },
+        completions,
+        timeoutMs,
+        signal
+      );
     } catch (error) {
+      if (!commitState.attempted) {
+        await abortAdmission?.();
+      }
       await prepared?.rollback();
+      admissionReply?.close();
       throw error;
     }
     const control = completion.kindData;
@@ -393,6 +586,7 @@ export class ZLinkLocalNativeActorJoin {
       control.actor === null
     ) {
       await prepared?.rollback();
+      admissionReply?.close();
       closeMeshCompletion(completion);
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
@@ -401,6 +595,9 @@ export class ZLinkLocalNativeActorJoin {
     }
     if (control.joinResult !== 0) {
       try {
+        if (abortAdmission !== undefined) {
+          await abortAdmission();
+        }
         await prepared?.rollback();
         return {
           accepted: false,
@@ -409,10 +606,12 @@ export class ZLinkLocalNativeActorJoin {
         };
       } finally {
         disposeParts(completion.parts.slice(1));
+        admissionReply?.close();
       }
     }
     if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
       await prepared?.rollback();
+      admissionReply?.close();
       closeMeshCompletion(completion);
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.ActorRouteNotFound,
@@ -442,6 +641,7 @@ export class ZLinkLocalNativeActorJoin {
           signal
         );
         prepared?.commit(spotRouteTarget!, nativeTargetActorRef, []);
+        admissionReply?.close();
         throw error;
       }
       await this.publishSourceLeaveTerminal(
@@ -489,6 +689,78 @@ export class ZLinkLocalNativeActorJoin {
       };
     } finally {
       disposeParts(completion.parts.slice(1));
+      admissionReply?.close();
+    }
+  }
+
+  private async waitForJoinCompletion(
+    submit: () => { readonly high: bigint; readonly low: bigint },
+    completions: ZLinkMeshCompletionTable,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined
+  ): Promise<ZLinkMeshCompletion> {
+    const operationId = await submitJoinWhenConnected(submit, timeoutMs, signal);
+    // The operation ID identifies one Core request. Once it is submitted, a
+    // NotConnected completion is terminal for that request; resubmitting it
+    // could execute the target lifecycle twice after a delayed reply.
+    return completions.wait(operationId, signal);
+  }
+
+  private async abortRemoteAdmission(
+    node: ZLinkBackendMeshNode,
+    completions: ZLinkMeshCompletionTable,
+    actorRef: ZLinkBackendActorRef,
+    target: ZLinkSpotRouteTarget,
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    request: Message,
+    transferId: string,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    entrySpot = false
+  ): Promise<void> {
+    try {
+      const actorType = state.actorType;
+      if (actorType === undefined || (!entrySpot && target.targetSpotGeneration === undefined)) return;
+      const payload = Buffer.from(JSON.stringify(buildRemoteActorJoinRequestPayload({
+        actorId: actor.context.actorId,
+        actorType,
+        actorRef,
+        expectedMembershipEpoch: state.spotMembershipEpoch,
+        actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
+        actorCreateRequest: state.createRequestPayload,
+        request,
+        targetSpotId: target.spotId,
+        routerChannelId: target.routerChannelId,
+        sourceSpotId: state.spotId ?? requireEntrySpotId(this.options, state.meshName),
+        boundSessionTarget: enrichBoundSessionTransferTarget(state),
+        phase: REMOTE_ACTOR_JOIN_ABORT,
+        transferId
+      })));
+      const operationId = await submitJoinWhenConnected(
+        () => entrySpot
+          ? node.joinActorEntrySpot(
+              actorRef,
+              toBackendRoutingId(target.targetNodeRid),
+              payload,
+              timeoutMs
+            )
+          : node.joinActorSpot(
+              actorRef,
+              toBackendRoutingId(target.targetNodeRid),
+              toBackendRoutingId(target.spotId),
+              target.targetSpotGeneration!,
+              payload,
+              timeoutMs
+            ),
+        timeoutMs,
+        signal
+      );
+      const completion = await completions.wait(operationId, signal);
+      closeMeshCompletion(completion);
+    } catch {
+      // Admission cleanup is best effort. The target registry also expires
+      // abandoned admissions so a disconnected source cannot retain state.
     }
   }
 
@@ -653,4 +925,10 @@ function disposeParts(parts: readonly Message[]): void {
   for (const part of parts) {
     part.close();
   }
+}
+
+function deferredOperationKey(
+  operationId: ZLinkActorJoinOperationId
+): string {
+  return `${operationId.high.toString(16)}:${operationId.low.toString(16)}`;
 }

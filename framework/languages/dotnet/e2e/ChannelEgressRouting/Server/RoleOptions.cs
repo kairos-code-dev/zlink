@@ -16,6 +16,8 @@ public sealed record RoleOptions(
     bool WorkflowServer = false,
     int WorkflowWeight = 100,
     string? WorkflowEndpoint = null,
+    string? RouteEndpoint = null,
+    string? RouteAdvertiseHost = null,
     string? InvalidMode = null)
 {
     public static RoleOptions Parse(string[] args) =>

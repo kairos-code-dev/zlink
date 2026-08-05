@@ -8,7 +8,6 @@ internal sealed record ServerOptions(
     string LogDir,
     string Rid,
     int Weight,
-    long MaxMessageSize,
     string? EvidenceFile = null,
     string? RedisEndpoint = null,
     string? RedisKeyPrefix = null,

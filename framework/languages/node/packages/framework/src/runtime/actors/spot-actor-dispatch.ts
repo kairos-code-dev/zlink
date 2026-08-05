@@ -184,14 +184,16 @@ export class ZLinkSpotActorDispatcher {
     packetName: string,
     request: TRequest,
     context: Partial<ZLinkMessageContext> = {},
-    afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult
+    afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult,
+    beforeReply?: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<void> | void
   ): Promise<TResult> {
     return this.dispatchRequestThenDecoded(
       actor,
       packetName,
       () => request,
       context,
-      afterReply
+      afterReply,
+      beforeReply
     );
   }
 
@@ -200,7 +202,8 @@ export class ZLinkSpotActorDispatcher {
     packetName: string,
     decode: () => TRequest,
     context: Partial<ZLinkMessageContext> = {},
-    afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult
+    afterReply: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<TResult> | TResult,
+    beforeReply?: (reply: TReply, options: ZLinkSpotActorReplyOptionsSnapshot) => Promise<void> | void
   ): Promise<TResult> {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Request, actor, packetName);
@@ -209,15 +212,24 @@ export class ZLinkSpotActorDispatcher {
         ZLinkSpotActorRequestHandler<ZLinkSpot, ZLinkActor, TRequest, TReply>,
         TResult
       >(actor, descriptor, (handler) =>
-        runActorHandlerWithDeferredJoins(() => handler.handle(
+        runActorHandlerWithDeferredJoins(
+          () => handler.handle(
             this.options.spot,
             actor,
             this.createContext(packetName, context),
             request
-          )).then((reply) => afterReply(reply, {
+          ),
+          (reply) => afterReply(reply, {
             metadata: new Map<string, string>(),
             compressPayload: false
-          })));
+          }),
+          beforeReply === undefined
+            ? undefined
+            : (reply) => beforeReply(reply, {
+                metadata: new Map<string, string>(),
+                compressPayload: false
+              })
+        ));
     });
   }
 

@@ -1515,6 +1515,76 @@ test('direct Spot ingress accepts a prior incarnation route for the current Read
   runtime.close();
 });
 
+test('direct Spot application admission accepts a StoreVersion-only authority advance', () => {
+  for (const operationKind of ['send', 'request'] as const) {
+    let ingress:
+      ((record: import('../../packages/framework/src/runtime/foundation/raw-service-mesh-runtime')
+        .RawServiceIngressRecord) => unknown) | undefined;
+    const admitted: unknown[] = [];
+    const replies: Buffer[][] = [];
+    const raw = {
+      mailbox: {
+        tryEnqueue(record: unknown) {
+          admitted.push(record);
+          return true;
+        }
+      },
+      topology: {
+        peer: () => undefined
+      },
+      setServiceIngress(handler: typeof ingress) {
+        ingress = handler;
+      },
+      replyService(_record: unknown, parts: readonly Buffer[]) {
+        replies.push([...parts]);
+      }
+    } as unknown as RawServiceMeshRuntime;
+    const runtime = new ServiceStatefulRuntime(raw, 'node-a', 3n);
+    runtime.restoreSpotAuthority('room', 'user_spot', 'Room', 9n, 13n);
+    const current = {
+      spot: { spotId: 'room', generation: 9n },
+      targetNodeRid: 'node-a',
+      targetNodeGeneration: 3n,
+      authorityOwnerGeneration: 13n,
+      ownerLeaseGeneration: 17n,
+      storeVersion: 'store-v9'
+    };
+    runtime.rememberSpotRoute(current);
+    const cached = { ...current, storeVersion: 'store-v8' };
+    const payload = encodeApplicationPayload({
+      packetName: 'CurrentObject',
+      contentType: 'application/octet-stream',
+      payload: Buffer.from('payload')
+    });
+    const request = operationKind === 'request';
+    assert.equal(ingress?.({
+      command: request
+        ? M6bServiceWireCommand.spotRequest
+        : M6bServiceWireCommand.spotSend,
+      flags: 0,
+      sourceRoutingId: 'source',
+      ...(request
+        ? {
+            sourceRoute: Buffer.from('reply-route'),
+            requestSequence: 1n
+          }
+        : {}),
+      parts: [
+        encodeSpotHeader(
+          request ? 'spotRequest' : 'spotSend',
+          'source-spot',
+          cached,
+          request ? 7n : undefined
+        ),
+        payload
+      ]
+    }), 'application');
+    assert.equal(admitted.length, 1);
+    assert.equal(replies.length, 0);
+    runtime.close();
+  }
+});
+
 test('direct Spot request maps an owner fence mismatch to Unavailable', () => {
   let ingress:
     ((record: import('../../packages/framework/src/runtime/foundation/raw-service-mesh-runtime')
@@ -1691,18 +1761,10 @@ test('Ready Instance application admission preserves generation and owner error 
   const storeMismatch = { ...current, storeVersion: 'store-v8' };
   assert.equal(
     storeHarness.ingress(storeHarness.request(storeMismatch, 'request')),
-    'infrastructure'
+    'application'
   );
-  const storeReply = decodeStatefulReply(
-    storeHarness.replies[0]![0]!,
-    2n,
-    'instanceSpotRequest'
-  );
-  assert.deepEqual(storeReply, {
-    correlation: 2n,
-    terminalResult: RequestResult.Conflict,
-    failureCode: 34
-  });
+  assert.equal(storeHarness.queued.length, 1);
+  assert.equal(storeHarness.replies.length, 0);
   storeHarness.runtime.close();
 });
 
@@ -1820,7 +1882,7 @@ test('Spot Message Follow holds ingress, relays with the committed fence, and re
       ...source,
       storeVersion: 'stale-store-version'
     }), payload]
-  }), 'protocolError');
+  }), 'application');
   const seal = runtime.sealSpotMessageFollowIngress(source);
   assert.ok(seal);
   assert.equal(ingress?.({
@@ -1920,7 +1982,7 @@ test('Spot Message Follow holds ingress, relays with the committed fence, and re
     parts: [encodeSpotHeader('spotSend', 'source-spot', abortSource), payload]
   }), 'application');
   assert.equal(runtime.abortSpotMessageFollowIngress(abortSeal), true);
-  assert.equal(restored.length, 1);
+  assert.equal(restored.length, 2);
   runtime.close();
 });
 
@@ -1931,9 +1993,10 @@ test('Instance activation encoding distinguishes absent metadata from explicit e
       peer: () => ({ descriptor: { lifecycleGeneration: 7n } })
     },
     setServiceIngress: () => {},
+    isPeerRouteReady: () => true,
     sendService: (target: string, parts: readonly Buffer[]) => {
       sent.push({ target, parts });
-      return true;
+      return false;
     }
   } as unknown as RawServiceMeshRuntime;
   const runtime = new ServiceStatefulRuntime(raw, 'source', 3n);
@@ -1949,24 +2012,110 @@ test('Instance activation encoding distinguishes absent metadata from explicit e
     contentType: 'application/octet-stream',
     payload: Buffer.from('open')
   };
-  runtime.sendToMissingInstanceSpot(
+  assert.equal(runtime.sendToMissingInstanceSpot(
     target,
     payload,
     BigInt(Date.now() + 1_000)
-  );
-  runtime.sendToMissingInstanceSpot(
+  ), SubmitResult.Backpressured);
+  assert.equal(runtime.sendToMissingInstanceSpot(
     target,
     payload,
     BigInt(Date.now() + 1_000),
     undefined,
     encodeServiceMetadataFrame(new Map())
-  );
+  ), SubmitResult.Backpressured);
   assert.equal(sent[0]?.parts.length, 2);
   assert.equal(sent[1]?.parts.length, 3);
   assert.deepEqual(
     validateServiceMetadataFrame(sent[1]!.parts[1]!),
     Buffer.from([1, 0])
   );
+  runtime.close();
+});
+
+test('Missing Instance bounded admission reuses one immutable operation envelope', () => {
+  const sent: Array<readonly Buffer[]> = [];
+  let attempts = 0;
+  const raw = {
+    topology: {
+      peer: () => ({ descriptor: { lifecycleGeneration: 7n } })
+    },
+    setServiceIngress: () => {},
+    isPeerRouteReady: () => true,
+    sendService: (_target: string, parts: readonly Buffer[]) => {
+      sent.push(parts);
+      attempts += 1;
+      return attempts > 1;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'source', 3n);
+  const target = {
+    targetNodeRid: 'target',
+    targetNodeGeneration: 7n,
+    targetSpotId: 'room',
+    stableType: 'Room',
+    descriptorVersion: '1'
+  };
+  const submit = runtime.prepareMissingInstanceSpotSend(
+    target,
+    {
+      packetName: 'Open',
+      contentType: 'application/octet-stream',
+      payload: Buffer.from('open')
+    },
+    BigInt(Date.now() + 1_000)
+  );
+
+  assert.equal(submit(), SubmitResult.Backpressured);
+  assert.equal(submit(), SubmitResult.Ok);
+  assert.equal(sent.length, 2);
+  assert.strictEqual(sent[0], sent[1]);
+  const first = decodeStatefulHeader(sent[0]![0]!);
+  const second = decodeStatefulHeader(sent[1]![0]!);
+  assert.equal(first.kind, 'instanceSpot');
+  assert.equal(second.kind, 'instanceSpot');
+  if (first.kind === 'instanceSpot' && second.kind === 'instanceSpot') {
+    assert.deepEqual(first.operation, second.operation);
+  }
+  runtime.close();
+});
+
+test('retained peer routes may submit while endpoint convergence reports not ready', () => {
+  const sent: Array<{ readonly target: string; readonly parts: readonly Buffer[] }> = [];
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'retained-peer'
+        ? { descriptor: { lifecycleGeneration: 7n } }
+        : undefined
+    },
+    setServiceIngress: () => {},
+    isPeerRouteReady: () => false,
+    sendService: (target: string, parts: readonly Buffer[]) => {
+      sent.push({ target, parts });
+      return true;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'source', 3n);
+  const actor = {
+    nodeRid: 'retained-peer',
+    actorId: 'actor-retained-route',
+    generation: 5n
+  };
+  runtime.rememberActorRoute({
+    actor,
+    targetNodeGeneration: 7n,
+    authorityOwnerGeneration: 11n
+  });
+
+  const result = runtime.sendToActor(actor, 7n, 5n, {
+    packetName: 'RetainedRoute',
+    contentType: 'application/octet-stream',
+    payload: Buffer.from('payload')
+  });
+
+  assert.equal(result, SubmitResult.Ok);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.target, 'retained-peer');
   runtime.close();
 });
 
@@ -3535,7 +3684,7 @@ test('authority reconciliation exact-reads complete scans and publishes only Rea
   });
 
   await runtime.reconcile();
-  assert.deepEqual(store.readKeys, ['row:tenant:42', 'row:tenant:cold']);
+  assert.deepEqual(store.readKeys, []);
   assert.equal(nodeA.remembered.length, 0);
   assert.equal(nodeB.remembered.length, 1);
   assert.equal(nodeB.remembered[0]!.route.spot.spotId, 'tenant:42');
@@ -3726,6 +3875,60 @@ test('authority reconciliation restores the durable Instance inbox before startu
   assert.equal(staleDescriptorNode.forgotten.length, 1);
 });
 
+test('authority reconciliation exact-reads Ready Instance activation recovery candidates', async () => {
+  const recovery = {
+    reference: 'relocation:stale-ready',
+    sha256: Buffer.alloc(32, 0x5a),
+    encodedSize: 256,
+    inboxSequence: 2n,
+    replayCursor: 1n
+  };
+  const scanSnapshot = instanceAuthoritySnapshot({
+    spotId: 'tenant:stale-ready',
+    meshName: 'mesh-a',
+    nodeRid: 'node-a',
+    storeVersion: 'store-scan',
+    authorityOwnerGeneration: 3n,
+    state: 'ready',
+    activationRecovery: recovery
+  });
+  const exactSnapshot = instanceAuthoritySnapshot({
+    spotId: 'tenant:stale-ready',
+    meshName: 'mesh-a',
+    nodeRid: 'node-a',
+    storeVersion: 'store-exact',
+    authorityOwnerGeneration: 4n,
+    state: 'ready'
+  });
+  const store = new ReconcileAuthorityStore([
+    ['row:tenant:stale-ready', exactSnapshot]
+  ]);
+  store.scanOverrides.set('row:tenant:stale-ready', scanSnapshot);
+  const node = new RecordingAuthorityNode('mesh-a', 'node-a');
+  const runtime = new ZLinkStatefulAuthorityRouteRuntime({
+    store,
+    relocationStore: {
+      put: async () => assert.fail('The exact Ready snapshot must not recover stale data.'),
+      read: async () => assert.fail('The exact Ready snapshot has no recovery pointer.'),
+      renew: async () => missingRenewal(),
+      delete: async () => assert.fail('The exact Ready snapshot has no recovery pointer.')
+    },
+    meshNodes: new Map([['mesh-a', node as unknown as ZLinkBackendMeshNode]]),
+    pollingIntervalMs: 60_000,
+    pageSize: 10,
+    reportError: (error) => {
+      throw error;
+    }
+  });
+
+  await runtime.reconcile(undefined, true);
+
+  assert.deepEqual(store.readKeys, ['row:tenant:stale-ready']);
+  assert.equal(node.recovered.length, 0);
+  assert.equal(node.intents.length, 1);
+  assert.equal(node.intents[0]!.route.storeVersion, 'store-exact');
+});
+
 test('authority reconciliation resumes an exact Pending Instance reservation', async () => {
   const recoveryEnvelope = encodeInstanceActivationRecoveryEnvelope({
     target: {
@@ -3763,8 +3966,9 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
     }
   });
   const node = new RecordingAuthorityNode('mesh-a', 'node-a');
+  const store = new ReconcileAuthorityStore([['row:tenant:pending', snapshot]]);
   const runtime = new ZLinkStatefulAuthorityRouteRuntime({
-    store: new ReconcileAuthorityStore([['row:tenant:pending', snapshot]]),
+    store,
     relocationStore: {
       put: async () => assert.fail('Recovery must not write a second root.'),
       read: async () => foundBlob(recoveryEnvelope),
@@ -3780,6 +3984,7 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
   });
 
   await runtime.reconcile(undefined, true);
+  assert.deepEqual(store.readKeys, ['row:tenant:pending']);
   assert.equal(node.recoveredPending.length, 1);
   assert.equal(
     node.recoveredPending[0]!.pending.reservationId,
@@ -4401,9 +4606,12 @@ test('public SpotId call reaches production host Missing Instance placement with
     selectObjectPlacement(stableType: string) {
       assert.equal(stableType, 'chat-room');
       return {
-        targetNodeRid: 'node-b',
-        targetNodeGeneration: 7n,
-        descriptorVersion: '11'
+        kind: 'selected',
+        target: {
+          targetNodeRid: 'node-b',
+          targetNodeGeneration: 7n,
+          descriptorVersion: '11'
+        }
       };
     },
     sendToMissingInstanceSpot(
@@ -4520,7 +4728,7 @@ test('public SpotId call reaches production host Missing Instance placement with
   assert.equal(requested, true);
 });
 
-test('Missing Instance with zero types or no eligible descriptor uses exact target-not-found results', async () => {
+test('Missing Instance distinguishes unsupported types from exhausted placement capacity', async () => {
   for (const mode of ['zeroTypes', 'noEligible'] as const) {
     const address = new ZLinkHostSpotAddressTransport({
       resolver: () => ({
@@ -4546,7 +4754,7 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
               return mode === 'zeroTypes' ? [] : ['room'];
             },
             selectObjectPlacement() {
-              return undefined;
+              return { kind: 'capacity' };
             }
           } as never),
       completions: () => undefined,
@@ -4557,19 +4765,32 @@ test('Missing Instance with zero types or no eligible descriptor uses exact targ
       initialMeshName: 'mesh',
       metadata: new Map<string, string>()
     };
-    assert.deepEqual(
-      await address.sendToSpotAddress('missing-room', { hello: true }, call),
-      { status: ZLinkSubmitStatus.TargetNotFound }
-    );
-    await assert.rejects(
-      () => address.requestToSpotAddress('missing-room', { hello: true }, call),
-      (error: unknown) => error instanceof ZLinkFrameworkException
-        && error.kind === ZLinkFrameworkErrorKind.NotFound
-    );
+    if (mode === 'zeroTypes') {
+      assert.deepEqual(
+        await address.sendToSpotAddress('missing-room', { hello: true }, call),
+        { status: ZLinkSubmitStatus.TargetNotFound }
+      );
+      await assert.rejects(
+        () => address.requestToSpotAddress('missing-room', { hello: true }, call),
+        (error: unknown) => error instanceof ZLinkFrameworkException
+          && error.kind === ZLinkFrameworkErrorKind.NotFound
+      );
+    } else {
+      await assert.rejects(
+        () => address.sendToSpotAddress('missing-room', { hello: true }, call),
+        (error: unknown) => error instanceof ZLinkFrameworkException
+          && error.kind === ZLinkFrameworkErrorKind.CapacityExceeded
+      );
+      await assert.rejects(
+        () => address.requestToSpotAddress('missing-room', { hello: true }, call),
+        (error: unknown) => error instanceof ZLinkFrameworkException
+          && error.kind === ZLinkFrameworkErrorKind.CapacityExceeded
+      );
+    }
   }
 });
 
-test('Missing Instance request waits for a target that becomes Ready before the deadline', async () => {
+test('Missing Instance placement capacity fails without polling or retaining a call timer', async () => {
   let selectionAttempts = 0;
   const node = {
     instanceSpotPlacementTypes() {
@@ -4578,11 +4799,8 @@ test('Missing Instance request waits for a target that becomes Ready before the 
     selectObjectPlacement(stableType: string) {
       assert.equal(stableType, 'chat-room');
       selectionAttempts += 1;
-      if (selectionAttempts < 3) return undefined;
       return {
-        targetNodeRid: 'node-b',
-        targetNodeGeneration: 7n,
-        descriptorVersion: '11'
+        kind: 'capacity'
       };
     },
     requestToMissingInstanceSpot() {
@@ -4635,18 +4853,17 @@ test('Missing Instance request waits for a target that becomes Ready before the 
   });
 
   class DelayedPing {}
-  const reply = await address.requestToSpotAddress(
-    'delayed-room',
-    new DelayedPing(),
-    {
+  await assert.rejects(
+    () => address.requestToSpotAddress('delayed-room', new DelayedPing(), {
       instanceSpot: true,
       instanceSpotType: 'chat-room',
       initialMeshName: 'mesh',
       timeoutMs: 200
-    }
+    }),
+    (error: unknown) => error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.CapacityExceeded
   );
-  assert.equal(reply, 'delayed-reply');
-  assert.ok(selectionAttempts >= 3);
+  assert.equal(selectionAttempts, 1);
 });
 
 test('Missing Instance request preserves target-not-found terminal results', async () => {
@@ -4657,9 +4874,12 @@ test('Missing Instance request preserves target-not-found terminal results', asy
     },
     selectObjectPlacement() {
       return {
-        targetNodeRid: 'node-b',
-        targetNodeGeneration: 7n,
-        descriptorVersion: '11'
+        kind: 'selected',
+        target: {
+          targetNodeRid: 'node-b',
+          targetNodeGeneration: 7n,
+          descriptorVersion: '11'
+        }
       };
     },
     requestToMissingInstanceSpot() {
@@ -4777,10 +4997,127 @@ test('Ready Instance request ends on a disconnected stale route without resubmis
       && error.kind === ZLinkFrameworkErrorKind.Unavailable
   );
   assert.equal(attempts, 1);
-  // Instance addressing refreshes the positive route before the single
-  // physical submit, then invalidates the failed route. That is two cache
-  // operations without a second delivery attempt.
-  assert.equal(invalidations, 2);
+  // The positive route is reused until a specified invalidation event or
+  // the failed physical admission invalidates it. The call never retries.
+  assert.equal(invalidations, 1);
+});
+
+test('Instance target-not-found refreshes a Missing authority into one cold activation', async () => {
+  let invalidations = 0;
+  let refreshReads = 0;
+  let directAttempts = 0;
+  let missingAttempts = 0;
+  const readyTarget = {
+    routerChannelId: 'mesh',
+    targetNodeRid: 'node-a',
+    spotId: 'instance-42',
+    spotKind: ZLinkSpotKind.Instance,
+    stableType: 'chat-room',
+    targetNodeGeneration: 7n,
+    targetSpotGeneration: 3n,
+    authorityOwnerGeneration: 4n,
+    targetOwnerId: 'owner-a',
+    ownerLeaseGeneration: 5n,
+    authorityStoreVersion: 'old'
+  };
+  const resolver = {
+    async resolve() {
+      if (invalidations === 0) return readyTarget;
+      refreshReads += 1;
+      if (refreshReads === 1) return readyTarget;
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
+        'authority is Missing after close'
+      );
+    },
+    invalidate() {
+      invalidations += 1;
+    }
+  };
+  const node = {
+    selectObjectPlacement(stableType: string) {
+      assert.equal(stableType, 'chat-room');
+      return {
+        kind: 'selected',
+        target: {
+          targetNodeRid: 'node-b',
+          targetNodeGeneration: 8n,
+          descriptorVersion: '12'
+        }
+      };
+    },
+    requestToMissingInstanceSpot(
+      target: { readonly targetNodeRid: string; readonly targetSpotId: string; readonly stableType: string }
+    ) {
+      missingAttempts += 1;
+      assert.deepEqual(target, {
+        targetNodeRid: 'node-b',
+        targetNodeGeneration: 8n,
+        targetSpotId: 'instance-42',
+        stableType: 'chat-room',
+        descriptorVersion: '12'
+      });
+      return { high: 9n, low: 1n };
+    }
+  } as unknown as ZLinkBackendMeshNode;
+  const address = new ZLinkHostSpotAddressTransport({
+    resolver: () => resolver,
+    routed: {
+      async sendToSpot() {
+        throw new Error('send is not used by this test.');
+      },
+      async requestToSpot() {
+        directAttempts += 1;
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.RequestTargetNotFound,
+          'closed target'
+        );
+      }
+    },
+    meshNames: () => ['mesh'],
+    meshNode: () => node,
+    completions: () => ({
+      async wait() {
+        return {
+          terminalResult: RequestResult.Ok,
+          failureErrno: 0,
+          operationKind: 39,
+          kindData: null,
+          parts: encodeChannelReplyParts({
+            formatMarker: 0xf2,
+            kind: ZLinkChannelMessageKind.Request,
+            channelName: 'mesh',
+            messageName: 'Lookup',
+            contentType: 'application/json',
+            correlationId: '1',
+            deadline: null,
+            topic: null,
+            metadata: {}
+          }, 'reactivated').map(part =>
+            part instanceof Message ? part : toBindingMessage(part)
+          )
+        };
+      }
+    }) as never,
+    defaultRequestTimeoutMs: 1_000
+  });
+
+  class Lookup {}
+  const reply = await address.requestToSpotAddress(
+    'instance-42',
+    new Lookup(),
+    {
+      instanceSpot: true,
+      instanceSpotType: 'chat-room',
+      initialMeshName: 'mesh'
+    }
+  );
+
+  assert.equal(reply, 'reactivated');
+  assert.equal(directAttempts, 1);
+  assert.equal(invalidations, 1);
+  assert.equal(refreshReads, 2);
+  assert.equal(missingAttempts, 1);
 });
 
 test('accepted Instance one-way admission keeps the positive route cache', async () => {
@@ -5378,6 +5715,7 @@ function instanceAuthoritySnapshot(options: {
 
 class ReconcileAuthorityStore implements ZLinkAuthorityStore {
   readonly readKeys: string[] = [];
+  readonly scanOverrides = new Map<string, ZLinkAuthoritySnapshot>();
   scanExpired = false;
   private readonly rows: Array<[string, ZLinkAuthoritySnapshot]>;
 
@@ -5413,8 +5751,7 @@ class ReconcileAuthorityStore implements ZLinkAuthorityStore {
       kind: 'page' as const,
       items: [{
         key: { value: row[0] } as ZLinkAuthorityKey,
-        // Deliberately stale: reconciliation must exact-read this key.
-        snapshot: this.rows[0]![1]
+        snapshot: this.scanOverrides.get(row[0]) ?? row[1]
       }],
       ...(index === 0
         ? { nextCursor: ZLinkAuthorityScanCursor.from('page-2') }

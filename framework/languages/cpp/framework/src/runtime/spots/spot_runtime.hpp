@@ -360,7 +360,7 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     }
 
     bool enter_callback ();
-    void leave_callback ();
+    void leave_callback () noexcept;
     bool is_current_callback_thread () const;
     bool admission_blocked () const noexcept
     {
@@ -694,11 +694,6 @@ class spot_node_runtime_t
     std::optional<std::uint64_t> resolve_spot_generation (
       const zlink::routing_id_t &target_node_rid,
       const spot_id_t &target_spot_id) const;
-    result_t<runtime::messaging::message_parts_t> request_spot_mesh_parts (
-      const zlink::routing_id_t &target_node_rid,
-      const spot_id_t &target_spot_id,
-      runtime::messaging::message_parts_t parts,
-      std::chrono::milliseconds timeout) const;
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,
@@ -710,7 +705,7 @@ class spot_node_runtime_t
                                           const std::vector<zlink::message_t> &parts,
                                           service_provider_t &services,
                                           serializer_registry_t &serializers) const;
-    std::size_t dispatch_multicast (
+    result_t<std::size_t> dispatch_multicast (
       std::string topic,
       const std::vector<zlink::message_t> &parts,
       service_provider_t &services,

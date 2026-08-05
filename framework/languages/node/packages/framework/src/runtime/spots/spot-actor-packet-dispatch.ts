@@ -42,6 +42,12 @@ export interface ZLinkActorResponseOptions {
   readonly compressPayload: boolean;
 }
 
+/** Internal two-phase terminal used when a routed request owns the reply. */
+export interface ZLinkActorRequestTerminal {
+  (response: unknown, preparedReply?: unknown): Promise<void> | void;
+  readonly prepare?: (response: unknown) => Promise<unknown> | unknown;
+}
+
 interface ZLinkSpotActorPacketDispatchOptions {
   readonly spot: ZLinkSpot;
   readonly spotId: () => string;
@@ -96,7 +102,7 @@ export class ZLinkSpotActorPacketDispatch {
     returnResponse = false,
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
-    requestTerminal?: (response: unknown) => Promise<void> | void
+    requestTerminal?: ZLinkActorRequestTerminal
   ): Promise<unknown> {
     if (parts.length < 2) {
       this.reportInvalidFrame(actorId, ZLinkDispatchMessageKind.ActorSend);
@@ -232,7 +238,7 @@ export class ZLinkSpotActorPacketDispatch {
     returnResponse: boolean,
     fallbackBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined,
     fallbackActorRef: ActorRef | undefined,
-    requestTerminal: ((response: unknown) => Promise<void> | void) | undefined,
+    requestTerminal: ZLinkActorRequestTerminal | undefined,
     workOptions: ZLinkSerialWorkOptions
   ): Promise<unknown> {
     const dispatcher = new ZLinkSpotActorDispatcher({
@@ -267,14 +273,21 @@ export class ZLinkSpotActorPacketDispatch {
       }
       const requestSeq = header.requestSeq;
       if (returnResponse && requestTerminal !== undefined) {
+        let preparedReply: unknown;
+        let preparedReplyReady = false;
         await dispatcher.dispatchRequestThenDecoded(actor, header.name, decodePayload, {
           meshName: this.options.spot.context.meshName,
           metadata: zlinkMessageMetadata(header.metadata),
           correlationId: header.correlationId ?? header.requestSeq.toString()
         }, async (response) => {
           this.trace(ZLinkMessageFlowOutcome.Replied, actorId, header, ZLinkDispatchMessageKind.ActorRequest);
-          await requestTerminal(response);
-        });
+          await requestTerminal(response, preparedReplyReady ? preparedReply : undefined);
+        }, requestTerminal.prepare === undefined
+          ? undefined
+          : async (response) => {
+              preparedReply = await requestTerminal.prepare!(response);
+              preparedReplyReady = true;
+            });
         return undefined;
       }
       if (returnResponse || this.options.actorResponseSender === undefined) {

@@ -84,9 +84,6 @@ function createProviderModule(): Function {
               .listen(options.channelEndpoint)
               .routingId(options.rid);
             profile.peerConnections();
-            if (options.maxMessageSize > 0) {
-              profile.configureRouterSocket().maxMessageSize = options.maxMessageSize;
-            }
             profile.channel('profile').server()
               .setWeight(options.weight)
               .addRequestHandler(PacketNames.profileReq, ProfileRequestHandler)

@@ -19,5 +19,5 @@
 | RM-C4 | 구현 | timeout 뒤 late reply 비오염 marker가 있다. |
 | RM-C5 | 구현 | 미등록 packet 처리 marker가 있다. |
 | RM-C7 | 구현 | `SetWeight`·descriptor `ChannelWeights`·runtime `Weight` 기반 75/25 분포 marker가 있다. |
-| RM-C8 | 구현 | 1B, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker를 확인하고, server socket `MaxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 검증한다. |
+| RM-C8 | 구현 | RouteMesh SS에 Framework-level `MaxMessageSize`를 설정하지 않고 1 byte, 4KiB, 256KiB, 1MiB payload 왕복 hash/length marker와 후속 정상 request를 검증한다. |
 | RM-C9 | 구현 | non-blocking 즉시 backpressure vs blocking bounded admission 대조와 회복 marker가 있다. |

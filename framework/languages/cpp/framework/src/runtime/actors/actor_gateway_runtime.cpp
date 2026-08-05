@@ -10,6 +10,7 @@
 
 #include <limits>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace zlink::framework
@@ -18,6 +19,31 @@ namespace zlink::framework
 using detail::stream_header_flags_t;
 using detail::stream_header_t;
 using detail::stream_message_kind_t;
+
+namespace
+{
+
+actor_ref_t merge_actor_type (const actor_ref_t &candidate,
+                              const actor_ref_t &current)
+{
+    const auto candidate_type = detail::actor_ref_access_t::actor_type (candidate);
+    const auto current_type = detail::actor_ref_access_t::actor_type (current);
+    if (candidate_type.empty () && !current_type.empty ()) {
+        return detail::actor_ref_access_t::with_actor_type (
+          candidate, std::string (current_type));
+    }
+    return candidate;
+}
+
+bool actor_types_compatible (const actor_ref_t &left,
+                             const actor_ref_t &right) noexcept
+{
+    const auto left_type = detail::actor_ref_access_t::actor_type (left);
+    const auto right_type = detail::actor_ref_access_t::actor_type (right);
+    return left_type.empty () || right_type.empty () || left_type == right_type;
+}
+
+} // namespace
 
 namespace detail
 {
@@ -218,9 +244,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
           framework_error_kind_t::not_configured,
           "bound session does not reference an actor")));
     }
-    std::function<task_t<void> (std::string,
-                                stream_codec_t,
-                                const zlink::message_t &)> sink;
+    std::shared_ptr<detail::bound_session_sink_t> sink;
     detail::actor_gateway_state_t::bound_session_sender_t remote_sender;
     stream_header_t header;
     {
@@ -239,8 +263,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
             header = stream_header_t (stream_message_kind_t::send, codec,
                                       stream_header_flags_t::none, std::nullopt, packet_name);
         }
-        else if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-                 != ::zlink::framework::detail::actor_ref_access_t::actor_type (*_actor_ref)) {
+        else if (!actor_types_compatible (found->second.ref, *_actor_ref)) {
             return bound_session_send_call_t (
               send_call_t (result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                                     "actor id is already bound to another type")));
@@ -251,15 +274,14 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
               "actor generation is stale")));
         }
         else {
-            found->second.ref = *_actor_ref;
+            found->second.ref = merge_actor_type (*_actor_ref, found->second.ref);
             header = stream_header_t (stream_message_kind_t::send, codec,
                                       stream_header_flags_t::none, std::nullopt, packet_name);
             _state->bound_session_pushes.push_back (
               detail::relayed_frame_t{found->second.ref, header, payload});
             const auto found_sink = _state->bound_session_sinks.find (actor_id);
-            if (found_sink != _state->bound_session_sinks.end ()) {
+            if (found_sink != _state->bound_session_sinks.end ())
                 sink = found_sink->second;
-            }
         }
     }
     if (!sink && !remote_sender) {
@@ -276,7 +298,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
                   const send_call_t::metadata_map_t &) mutable {
           try {
               if (sink)
-                  return sink (name, codec, payload).result ();
+                  return (*sink) (name, codec, payload).result ();
               return remote_sender (
                 actor_ref, expected_binding_generation, header, payload);
           }
@@ -331,8 +353,7 @@ bool actor_context_t::has_same_source_fence (const actor_context_t &other) const
 {
     return _state == other._state && _actor_ref && other._actor_ref
            && _actor_ref->node_rid ().value () == other._actor_ref->node_rid ().value ()
-           && ::zlink::framework::detail::actor_ref_access_t::actor_type (*_actor_ref)
-                == ::zlink::framework::detail::actor_ref_access_t::actor_type (*other._actor_ref)
+           && actor_types_compatible (*_actor_ref, *other._actor_ref)
            && _actor_ref->actor_id () == other._actor_ref->actor_id ()
            && _actor_ref->object_generation () == other._actor_ref->object_generation ()
            && _mesh_name == other._mesh_name;
@@ -916,11 +937,17 @@ result_t<session_actor_t> session_actor_manager_t::get_or_create_erased (
               found->second.bound && !found->second.binding_session_id.empty ()
               && !current_session_id.empty ()
               && found->second.binding_session_id != current_session_id;
-            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-                != actor_type) {
+            const auto stored_type =
+              ::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref);
+            if (!stored_type.empty () && stored_type != actor_type) {
                 return result_t<session_actor_t>::failure (
                   framework_error_kind_t::type_mismatch,
                   "actor id is already bound to another type");
+            }
+            if (stored_type.empty ()) {
+                found->second.ref =
+                  ::zlink::framework::detail::actor_ref_access_t::with_actor_type (
+                    found->second.ref, actor_type);
             }
             if (!found->second.disconnected && !bound_to_other_session) {
                 return result_t<session_actor_t>::success (
@@ -966,8 +993,7 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
             _state->actors_by_id.emplace (std::string (actor_ref.actor_id ().value ()),
                                           detail::actor_record_t{actor_ref, true, false});
         } else {
-            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-                != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
+            if (!actor_types_compatible (found->second.ref, actor_ref)) {
                 return request_call_t<session_actor_t> (
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::type_mismatch,
@@ -979,6 +1005,7 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
                     framework_error_kind_t::invalid_operation,
                     "actor generation is stale"));
             }
+            actor_ref = merge_actor_type (actor_ref, found->second.ref);
             found->second.ref = actor_ref;
             found->second.bound = true;
             found->second.disconnected = false;
@@ -1009,13 +1036,13 @@ request_call_t<session_actor_t> session_actor_manager_t::bind_or_get (actor_ref_
             _state->actors_by_id.emplace (std::string (actor_ref.actor_id ().value ()),
                                           detail::actor_record_t{actor_ref, true, false});
         } else {
-            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-                != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
+            if (!actor_types_compatible (found->second.ref, actor_ref)) {
                 return request_call_t<session_actor_t> (
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::type_mismatch,
                     "actor id is already bound to another type"));
             }
+            actor_ref = merge_actor_type (actor_ref, found->second.ref);
             if (found->second.ref.object_generation () <= actor_ref.object_generation ()) {
                 found->second.ref = actor_ref;
             }
@@ -1156,6 +1183,76 @@ void detail::session_actor_manager_access_t::disconnect (session_actor_manager_t
 namespace zlink::framework::detail
 {
 
+namespace
+{
+
+result_t<void> bind_session_components (
+  const std::shared_ptr<actor_gateway_state_t> &state,
+  actor_ref_t actor_ref,
+  bound_session_sink_t sink,
+  stream_codec_t codec,
+  bool replace_existing,
+  std::optional<actor_bound_session_route_t> route)
+{
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
+    const std::lock_guard lock (state->mutex);
+    auto found = state->actors_by_id.find (actor_id);
+    bool keep_existing_sink = false;
+    if (found == state->actors_by_id.end ()) {
+        actor_record_t record{actor_ref, true, false, codec};
+        if (route) {
+            route->object_generation = actor_ref.object_generation ();
+            record.bound_session_route = std::move (route);
+        }
+        state->actors_by_id.emplace (actor_id, std::move (record));
+    } else {
+        if (!actor_types_compatible (found->second.ref, actor_ref)) {
+            return result_t<void>::failure (
+              framework_error_kind_t::type_mismatch,
+              "actor id is already bound to another type");
+        }
+        if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale");
+        }
+        const auto existing_sink = state->bound_session_sinks.find (actor_id);
+        if (route && !replace_existing && found->second.bound
+            && !found->second.disconnected
+            && existing_sink != state->bound_session_sinks.end ()) {
+            /* A non-replacing route bind must preserve the complete existing
+             * sink/fence pair. Updating only the route would make later sends
+             * advance a new fence through the old sink. */
+            return result_t<void>::success ();
+        }
+        keep_existing_sink =
+          found->second.bound && !found->second.disconnected
+          && (found->second.bound_session_stream_sink || !replace_existing)
+          && existing_sink != state->bound_session_sinks.end ();
+        actor_ref = merge_actor_type (actor_ref, found->second.ref);
+        found->second.ref = actor_ref;
+        found->second.bound = true;
+        found->second.disconnected = false;
+        found->second.bound_session_codec = codec;
+        if (!keep_existing_sink)
+            found->second.bound_session_stream_sink = false;
+        if (route) {
+            if (route->binding_generation == 0)
+                route->binding_generation = found->second.source_binding_generation;
+            if (route->binding_token == 0)
+                route->binding_token = found->second.binding_token;
+            route->object_generation = actor_ref.object_generation ();
+            found->second.bound_session_route = std::move (route);
+        }
+    }
+    if (!keep_existing_sink)
+        state->bound_session_sinks[actor_id] =
+          std::make_shared<bound_session_sink_t> (std::move (sink));
+    return result_t<void>::success ();
+}
+
+} // namespace
+
 actor_gateway_runtime_t::actor_gateway_runtime_t () :
     _state (std::make_shared<actor_gateway_state_t> ())
 {
@@ -1189,8 +1286,7 @@ actor_gateway_runtime_t::bound_session_route (const actor_ref_t &actor_ref) cons
     const std::lock_guard lock (_state->mutex);
     const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
     if (found == _state->actors_by_id.end () || !found->second.bound
-        || ::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-             != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)
+        || !actor_types_compatible (found->second.ref, actor_ref)
         || found->second.ref.object_generation () != actor_ref.object_generation ()
         || (found->second.bound_session_route
             && found->second.bound_session_route->object_generation
@@ -1246,8 +1342,7 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
     if (found == _state->actors_by_id.end ()) {
         return result_t<void>::success ();
     }
-    if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-        != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
+    if (!actor_types_compatible (found->second.ref, actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                         "actor id is already bound to another type");
     }
@@ -1258,7 +1353,7 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
             + ", current=" + std::to_string (found->second.ref.object_generation ())
             + ", received=" + std::to_string (actor_ref.object_generation ()));
     }
-    found->second.ref = actor_ref;
+    found->second.ref = merge_actor_type (actor_ref, found->second.ref);
     return result_t<void>::success ();
 }
 
@@ -1273,8 +1368,7 @@ result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_
     if (found == _state->actors_by_id.end ()) {
         return result_t<void>::success ();
     }
-    if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-        != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
+    if (!actor_types_compatible (found->second.ref, actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                         "actor id is already bound to another type");
     }
@@ -1305,10 +1399,11 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
             found->second.binding_session_id = std::move (session_id);
             found->second.binding_token = binding_token;
         }
-        _state->bound_session_sinks[actor_id] = [stream = std::move (stream)] (
-                                                   std::string packet_name,
-                                                   stream_codec_t payload_codec,
-                                                   const zlink::message_t &payload) mutable {
+        _state->bound_session_sinks[actor_id] =
+          std::make_shared<detail::bound_session_sink_t> (
+            [stream = std::move (stream)] (std::string packet_name,
+                                           stream_codec_t payload_codec,
+                                           const zlink::message_t &payload) mutable {
             stream_header_t header (stream_message_kind_t::send, payload_codec,
                                     stream_header_flags_t::none, std::nullopt,
                                     std::move (packet_name));
@@ -1320,7 +1415,7 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
             catch (const framework_exception_t &error) {
                 return task_t<void> (detail::result_access_t::failure<void> (error));
             }
-        };
+          });
         registrar = _state->bound_session_registrar;
     }
     if (registrar && actor_ref
@@ -1335,16 +1430,19 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
     }
 }
 
-void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
-                                                  route_client_t route_client,
-                                                  std::string route_channel_name,
-                                                  zlink::routing_id_t target_node_rid,
-                                                  stream_codec_t codec,
-                                                  bool replace_existing)
+result_t<void> actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
+                                                            route_client_t route_client,
+                                                            std::string route_channel_name,
+                                                            zlink::routing_id_t target_node_rid,
+                                                            stream_codec_t codec,
+                                                            bool replace_existing,
+                                                            std::optional<zlink::routing_id_t> session_rid)
 {
     const auto actor_id = std::string (actor_ref.actor_id ().value ());
-    bind_session_sink (
-      std::move (actor_ref),
+    actor_bound_session_route_t route{
+      target_node_rid, std::move (session_rid), actor_ref.object_generation ()};
+    return bind_session_components (
+      _state, std::move (actor_ref),
       [state = _state, actor_id, route_client = std::move (route_client),
        route_channel_name = std::move (route_channel_name),
        target_node_rid = std::move (target_node_rid)] (
@@ -1375,10 +1473,10 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
                 detail::result_access_t::failure<void> (error));
           }
       },
-      codec, replace_existing);
+      codec, replace_existing, std::move (route));
 }
 
-void actor_gateway_runtime_t::bind_session_sink (
+result_t<void> actor_gateway_runtime_t::bind_session_sink (
   actor_ref_t actor_ref,
   std::function<task_t<void> (std::string,
                               stream_codec_t,
@@ -1386,37 +1484,21 @@ void actor_gateway_runtime_t::bind_session_sink (
   stream_codec_t codec,
   bool replace_existing)
 {
-    const auto actor_id = std::string (actor_ref.actor_id ().value ());
-    const std::lock_guard lock (_state->mutex);
-    auto found = _state->actors_by_id.find (actor_id);
-    if (found == _state->actors_by_id.end ()) {
-        _state->actors_by_id.emplace (actor_id, actor_record_t{actor_ref, true, false, codec});
-    } else {
-        const bool keep_existing_sink =
-          found->second.bound && !found->second.disconnected
-          && (found->second.bound_session_stream_sink || !replace_existing)
-          && _state->bound_session_sinks.find (actor_id) != _state->bound_session_sinks.end ();
-        found->second.ref = actor_ref;
-        found->second.bound = true;
-        found->second.disconnected = false;
-        found->second.bound_session_codec = codec;
-        if (keep_existing_sink) {
-            return;
-        }
-        found->second.bound_session_stream_sink = false;
-    }
-    _state->bound_session_sinks[actor_id] = std::move (sink);
+    return bind_session_components (
+      _state, std::move (actor_ref), std::move (sink), codec, replace_existing,
+      std::nullopt);
 }
 
-void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &actor_ref,
-                                                          zlink::routing_id_t node_rid,
-                                                          std::optional<zlink::routing_id_t> session_rid,
-                                                          std::uint64_t node_generation,
-                                                          std::uint64_t authority_owner_generation,
-                                                          std::uint64_t owner_lease_generation,
-                                                          std::uint64_t binding_generation,
-                                                          std::uint64_t binding_token,
-                                                          std::uint64_t session_sequence)
+result_t<void> actor_gateway_runtime_t::record_bound_session_route (
+  const actor_ref_t &actor_ref,
+  zlink::routing_id_t node_rid,
+  std::optional<zlink::routing_id_t> session_rid,
+  std::uint64_t node_generation,
+  std::uint64_t authority_owner_generation,
+  std::uint64_t owner_lease_generation,
+  std::uint64_t binding_generation,
+  std::uint64_t binding_token,
+  std::uint64_t session_sequence)
 {
     const auto actor_id = std::string (actor_ref.actor_id ().value ());
     const std::lock_guard lock (_state->mutex);
@@ -1427,9 +1509,20 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
                             actor_record_t{.ref = actor_ref, .bound = true, .disconnected = false})
                   .first;
     } else {
-        if (found->second.ref.object_generation () != actor_ref.object_generation ())
-            return;
-        found->second.ref = actor_ref;
+        if (!actor_types_compatible (found->second.ref, actor_ref)) {
+            return result_t<void>::failure (
+              framework_error_kind_t::type_mismatch,
+              "actor id is already bound to another type");
+        }
+        if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_operation,
+              "actor generation is stale");
+        }
+        if (actor_ref_access_t::actor_type (found->second.ref).empty ()
+            && !actor_ref_access_t::actor_type (actor_ref).empty ()) {
+            found->second.ref = merge_actor_type (actor_ref, found->second.ref);
+        }
         found->second.bound = true;
         found->second.disconnected = false;
     }
@@ -1442,6 +1535,7 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
       actor_ref.object_generation (), node_generation,
       authority_owner_generation, owner_lease_generation,
       binding_generation, binding_token, session_sequence};
+    return result_t<void>::success ();
 }
 
 void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id,
@@ -1471,9 +1565,7 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
   stream_codec_t codec,
   const zlink::message_t &payload) const
 {
-    std::function<task_t<void> (std::string,
-                                stream_codec_t,
-                                const zlink::message_t &)> sink;
+    std::shared_ptr<detail::bound_session_sink_t> sink;
     {
         const std::lock_guard lock (_state->mutex);
         const auto actor_id = std::string (actor_ref.actor_id ().value ());
@@ -1482,8 +1574,7 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
             return result_t<void>::failure (framework_error_kind_t::not_configured,
                                             "actor session is not bound");
         }
-        if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
-            != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
+        if (!actor_types_compatible (found->second.ref, actor_ref)) {
             return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                             "actor id is already bound to another type");
         }
@@ -1509,7 +1600,6 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
             }
             ++route.session_sequence;
         }
-        found->second.ref = actor_ref;
         const auto found_sink = _state->bound_session_sinks.find (actor_id);
         if (found_sink == _state->bound_session_sinks.end ()) {
             return result_t<void>::failure (framework_error_kind_t::not_configured,
@@ -1517,7 +1607,7 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
         }
         sink = found_sink->second;
     }
-    auto sent = sink (std::move (packet_name), codec, payload).result ();
+    auto sent = (*sink) (std::move (packet_name), codec, payload).result ();
     if (!sent) {
         return result_t<void>::failure (sent.error_kind (),
                                         sent.error () ? sent.error ()->what ()

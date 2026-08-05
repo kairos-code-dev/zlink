@@ -95,6 +95,47 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     public record LocalMoveSource(Object spotSurface, String spotId) {
     }
 
+    /**
+     * Framework-internal view of one captured Actor packet during a failed
+     * remote move. The host uses it to put the packet back through the normal
+     * local serial dispatch path.
+     */
+    public static final class TransferBacklogPacket implements AutoCloseable {
+        private final ZLinkStreamHeader header;
+        private final Message payload;
+        private final byte[] acceptedJournalRecord;
+
+        private TransferBacklogPacket(ZLinkActorHandoffPacket packet) {
+            this.header = packet.header();
+            this.payload = Message.from(packet.payload());
+            this.acceptedJournalRecord = packet.acceptedJournalRecord();
+        }
+
+        public ZLinkStreamHeader header() {
+            return header;
+        }
+
+        public Message payload() {
+            return payload;
+        }
+
+        public byte[] acceptedJournalRecord() {
+            return acceptedJournalRecord.clone();
+        }
+
+        @Override
+        public void close() {
+            payload.close();
+        }
+    }
+
+    @FunctionalInterface
+    public interface TransferBacklogRestorer {
+        CompletionStage<Optional<Message>> restore(
+            ZLinkActor actor,
+            TransferBacklogPacket packet);
+    }
+
     public interface LocalJoinCompleter {
         CompletionStage<Void> complete(ZLinkActor actor);
 
@@ -160,6 +201,10 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         ignored -> CompletableFuture.completedFuture(null);
     private SourceActorLeaver sourceActorLeaver =
         ignored -> CompletableFuture.completedFuture(null);
+    private volatile TransferBacklogRestorer transferBacklogRestorer =
+        (ignoredActor, ignoredPacket) -> CompletableFuture.failedFuture(
+            new ZLinkConfigurationException(
+                "remote Actor move backlog restorer is not configured"));
     private LocalJoinCompleter localJoinCompleter =
         unavailableLocalJoinCompleter();
     private Function<String, ZLinkSpot<?>> spotResolver = ignored -> null;
@@ -287,6 +332,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                     "deferred Actor Join relocation recovery is unavailable"));
         }
         return recovery.awaitTargetCommit(manifest, actor, timeout);
+    }
+
+    CompletionStage<Void> awaitDeferredJoinTargetCompletion(
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        ZLinkBackendActorRef actor,
+        java.time.Duration timeout) {
+        ZLinkDeferredJoinAcceptedRecovery recovery =
+            deferredJoinAcceptedRecovery;
+        if (recovery == null || manifest == null) {
+            return CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "deferred Actor Join relocation recovery is unavailable"));
+        }
+        return recovery.awaitTargetCompletion(manifest, actor, timeout);
     }
 
     public CompletionStage<Void> awaitDeferredJoinSourceCleanup(
@@ -1527,6 +1586,87 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return handoff.finish(actor.context().actorId());
     }
 
+    CompletionStage<Void> restoreRemoteMoveBacklog(
+        ZLinkActor actor,
+        List<ZLinkActorHandoffPacket> committedBacklog) {
+        DefaultActorContext context = requireContext(actor);
+        List<ZLinkActorHandoffPacket> packets = handoff.takeForRestore(
+            actor.context().actorId(), committedBacklog);
+        CompletionStage<Void> replay = CompletableFuture.completedFuture(null);
+        for (int index = 0; index < packets.size(); index++) {
+            ZLinkActorHandoffPacket packet = packets.get(index);
+            int remainingStart = index + 1;
+            replay = replay
+                .thenCompose(ignored -> restoreRemoteMovePacket(actor, packet))
+                .whenComplete((ignored, error) -> {
+                    if (error != null && remainingStart < packets.size()) {
+                        failHandoffPackets(
+                            packets.subList(remainingStart, packets.size()),
+                            unwrapTransferFailure(error));
+                    }
+                });
+        }
+        return replay.whenComplete((ignored, error) -> {
+            if (error == null) {
+                context.endMove();
+            } else {
+                context.failMove(unwrapTransferFailure(error));
+            }
+        });
+    }
+
+    private CompletionStage<Void> restoreRemoteMovePacket(
+        ZLinkActor actor,
+        ZLinkActorHandoffPacket packet) {
+        TransferBacklogPacket view = new TransferBacklogPacket(packet);
+        CompletionStage<Optional<Message>> restored;
+        try {
+            restored = Objects.requireNonNull(
+                transferBacklogRestorer.restore(actor, view),
+                "remote Actor move backlog restorer returned null");
+        } catch (Throwable failure) {
+            view.close();
+            if (packet.fail(failure)) {
+                packet.close();
+            }
+            return CompletableFuture.failedFuture(failure);
+        }
+        return restored.handle((reply, error) -> {
+            try {
+                if (error != null) {
+                    if (packet.fail(unwrapTransferFailure(error))) {
+                        packet.close();
+                    }
+                    throw new CompletionException(unwrapTransferFailure(error));
+                }
+                packet.complete(reply == null ? Optional.empty() : reply);
+                return null;
+            } finally {
+                view.close();
+            }
+        });
+    }
+
+    private static void failHandoffPackets(
+        List<ZLinkActorHandoffPacket> packets,
+        Throwable error) {
+        packets.forEach(packet -> {
+            if (packet.fail(error)) {
+                packet.close();
+            }
+        });
+    }
+
+    private static Throwable unwrapTransferFailure(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException
+                || current instanceof java.util.concurrent.ExecutionException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
     public boolean claimAcceptedHandoffOperation(
         ZLinkActor actor,
         long operationHigh,
@@ -1621,6 +1761,25 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     CompletionStage<Void> leaveSourceForCoreRemoteMove(ZLinkActor actor) {
         DefaultActorContext context = requireContext(actor);
         return sourceActorLeaver.leave(actor).thenRun(context::markLeft);
+    }
+
+    /**
+     * Dispatches the source lifecycle notification after the remote location
+     * commit. The notification is deliberately one-way: the source context
+     * must stop advertising its old membership without making the committed
+     * target wait for the callback result.
+     */
+    void notifySourceForCoreRemoteMove(ZLinkActor actor) {
+        DefaultActorContext context = requireContext(actor);
+        try {
+            CompletionStage<Void> notification = sourceActorLeaver.leave(actor);
+            if (notification != null) {
+                notification.exceptionally(ignored -> null);
+            }
+        } catch (Throwable ignored) {
+            // Source OnLeaveActor is a one-way notification after commit.
+        }
+        context.markLeft();
     }
 
     void cancelRemoteMove(ZLinkActor actor) {
@@ -1738,6 +1897,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     }
 
     public void traceActorTransferMarker(String marker, String actorId, String correlationId) {
+        if (STREAM_TRACE) {
+            LOGGER.warning(
+                "[zlink-java-stream-trace] actor-transfer marker=" + marker
+                    + " actor=" + actorId
+                    + " correlation=" + correlationId);
+        }
         if (flow == null
             || !flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.DISPATCHED)) {
             return;
@@ -3195,6 +3360,20 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.sourceActorLeaver = sourceActorLeaver == null
             ? ignored -> CompletableFuture.completedFuture(null)
             : sourceActorLeaver;
+    }
+
+    /**
+     * Installs the host-owned local dispatch path used to restore packets
+     * after a remote move fails before the target membership commit.
+     * This is runtime wiring; it is not an application Actor contract.
+     */
+    public void setTransferBacklogRestorer(
+        TransferBacklogRestorer transferBacklogRestorer) {
+        this.transferBacklogRestorer = transferBacklogRestorer == null
+            ? (ignoredActor, ignoredPacket) -> CompletableFuture.failedFuture(
+                new ZLinkConfigurationException(
+                    "remote Actor move backlog restorer is not configured"))
+            : transferBacklogRestorer;
     }
 
     public void setLocalJoinCompleter(LocalJoinCompleter localJoinCompleter) {

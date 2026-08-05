@@ -49,7 +49,8 @@ function createZoneNodeModule(includeZoneRuntime = true) {
           builder.addRelocationStore(createZoneWorldRelocationStore(config.shared));
           zoneWorldLocationOptions(builder.configureLocations());
           builder.configureDispatch()
-            .messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
+            .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+            .traceLogFile(`${config.shared.logDirectory}/flow-${node.nodeId}.log`)
             .traceLabel(node.nodeId);
 
           if (zonesOf(node.nodeId).length === 0) {

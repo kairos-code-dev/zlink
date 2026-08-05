@@ -80,7 +80,8 @@ export class ZLinkSourceSpotRouter {
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal,
-    metadata?: ReadonlyMap<string, string>
+    metadata?: ReadonlyMap<string, string>,
+    timeoutMs?: number
   ): Promise<void> {
     throwIfAborted(signal);
     const parts = [encodeSpotDirectEnvelope(
@@ -93,7 +94,7 @@ export class ZLinkSourceSpotRouter {
     try {
       await this.submitWhenReady(
         () => sourceSpot.sendToSpot(target.targetNodeRid, target.spotId, parts, 0),
-        undefined,
+        timeoutMs,
         signal,
         this.notReady(target.routerChannelId, 'send')
       );

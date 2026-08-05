@@ -167,15 +167,33 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     {
         activation.EnsureOperationAllowed();
         using var operation = runtime.EnterOperation();
-        return await ZLinkLogicalMulticastSubmitter.SubmitAsync(
-                runtime.WorkerPool,
-                () => outbound.PublishCurrent(channelName, topic, parts, metadata),
-                cancellationToken,
-                runtime.ShutdownToken,
-                runtime.Registration.DefaultSocketSendTimeout,
-                release,
-                errorSink)
-            .ConfigureAwait(false);
+        var backgroundOperation = runtime.RetainOperationForBackgroundWork();
+        var released = 0;
+
+        void ReleaseWorkerResources()
+        {
+            if (Interlocked.Exchange(ref released, 1) != 0) return;
+            release();
+            backgroundOperation.Dispose();
+        }
+
+        try
+        {
+            return await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+                    runtime.LogicalMulticastWorkerPool,
+                    () => outbound.PublishCurrent(channelName, topic, parts, metadata),
+                    cancellationToken,
+                    runtime.ShutdownToken,
+                    runtime.Registration.DefaultSocketSendTimeout,
+                    ReleaseWorkerResources,
+                    errorSink)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            ReleaseWorkerResources();
+            throw;
+        }
     }
 
     /// <summary>Performs the first non-blocking spot-send admission attempt.

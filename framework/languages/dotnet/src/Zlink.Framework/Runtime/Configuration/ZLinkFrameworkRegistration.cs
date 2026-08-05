@@ -304,7 +304,8 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public string? AdvertiseHost { get; set; }
 
-    public ZLinkSocketConfig SocketConfig { get; } = new();
+    public ZLinkSocketConfig SocketConfig { get; } =
+        new(ZLinkSocketConfig.DefaultStreamMaxMessageSize);
 
     public bool ActorDispatchEnabled { get; set; }
 

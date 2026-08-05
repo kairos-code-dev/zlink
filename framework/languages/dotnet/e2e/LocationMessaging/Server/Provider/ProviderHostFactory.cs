@@ -80,7 +80,6 @@ internal static class ProviderHostFactory
                 var profile = profileMesh.Channel("profile").Server().SetWeight(options.Weight);
                 var serverSocket = profileMesh.ConfigureRouterSocket();
                 serverSocket.ReceiveHighWaterMark = 4;
-                if (options.MaxMessageSize > 0) serverSocket.MaxMessageSize = options.MaxMessageSize;
                 profile.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
                 profile.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
                 profile.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");

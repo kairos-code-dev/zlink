@@ -409,10 +409,14 @@ static void RegisterMesh(
         && !objectServer && !objectClient)
         return;
 
-    var mesh = framework.AddRouteMesh(meshName)
-        .Listen()
+    var mesh = framework.AddRouteMesh(meshName);
+    if (string.IsNullOrWhiteSpace(options.RouteEndpoint))
+        mesh.Listen();
+    else
+        mesh.Listen(options.RouteEndpoint);
+    mesh
         .SetBindHost("127.0.0.1")
-        .SetAdvertiseHost("127.0.0.1")
+        .SetAdvertiseHost(options.RouteAdvertiseHost ?? "127.0.0.1")
         .SetRoutingIdPrefix(ridPrefix);
     if (objectServer)
     {

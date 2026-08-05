@@ -85,6 +85,7 @@ class client_server_location_runtime_t final : public client_server_runtime_t
     void reconcile_channel (client_channel_t &channel);
     void publish_servers ();
     void pump ();
+    void refresh_client_pump_snapshot ();
     void publish_snapshot_changes ();
     void dispatch_server (server_entry_t &server);
     void stop_servers () noexcept;
@@ -145,6 +146,8 @@ class client_server_location_runtime_t final : public client_server_runtime_t
     std::map<std::string, std::vector<std::weak_ptr<observer_t>>> _observers;
     std::size_t _server_pump_cursor = 0;
     std::size_t _client_pump_cursor = 0;
+    std::vector<server_entry_t *> _server_pump_snapshot;
+    std::vector<std::shared_ptr<raw_client_server_client_t>> _client_pump_snapshot;
     std::unique_ptr<zlink::poller_t> _transport_poller;
     eventing::runtime_wake_pipe_t _wake_pipe;
     std::atomic_bool _stop{false};

@@ -97,6 +97,9 @@ import {
 } from '../streams/protocol';
 import {
   REMOTE_ACTOR_JOIN_PACKET,
+  REMOTE_ACTOR_JOIN_ABORT,
+  REMOTE_ACTOR_JOIN_ADMISSION,
+  REMOTE_ACTOR_JOIN_COMMIT,
   type ZLinkRemoteActorJoinWirePayload
 } from '../actors/actor-remote-wire';
 import { replayActorHandoffBacklog, type ZLinkActorHandoffPacket } from '../actors/actor-handoff';
@@ -138,6 +141,11 @@ import {
 } from './spot-activation';
 import { ZLinkSpotActorMembership, type ZLinkActorJoinRollback } from './spot-actor-membership';
 import { ZLinkFormalRemoteActorTransferRegistry } from './formal-remote-actor-transfer-registry';
+import {
+  ZLinkFormalRemoteActorAdmissionRegistry,
+  type ZLinkFormalRemoteActorAdmissionResult,
+  type ZLinkFormalRemoteActorAdmissionRecord
+} from './formal-remote-actor-admission-registry';
 import type {
   ZLinkSpotActorHandoffRuntime,
   ZLinkSpotActorTransferRuntime,
@@ -285,6 +293,7 @@ export class DefaultZLinkSpotManager {
   private readonly actorMembership: ZLinkSpotActorMembership;
   private readonly activationLifecycle: ZLinkSpotActivationLifecycle;
   private readonly formalRemoteTransfers = new ZLinkFormalRemoteActorTransferRegistry();
+  private readonly formalRemoteActorAdmissions = new ZLinkFormalRemoteActorAdmissionRegistry();
   private readonly pendingInstanceMaterializations = new Map<
     string,
     Promise<ZLinkSpotActivation>
@@ -1532,16 +1541,32 @@ export class DefaultZLinkSpotManager {
         } as ActorRef
       : resolvedActorRef;
     const ownerActorRef = responseActorRef;
-    const requestTerminalState = { submitted: false };
+    const requestTerminalState = { prepared: false, submitted: false };
     const requestTerminal = request
-      ? (response: unknown) => {
-          requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
-            record.parts[0],
-            ZLinkStreamMessageKind.Response,
-            response
-          )));
-          requestTerminalState.submitted = true;
-        }
+      ? Object.assign(
+          (response: unknown, preparedReply?: unknown) => {
+            const encoded = preparedReply === undefined
+              ? this.encodeMeshActorReply(
+                  record.parts[0],
+                  ZLinkStreamMessageKind.Response,
+                  response
+                )
+              : preparedReply as readonly Buffer[];
+            requireMeshSpotReply(record.reply(encoded));
+            requestTerminalState.submitted = true;
+          },
+          {
+            prepare: (response: unknown): readonly Buffer[] => {
+              const encoded = this.encodeMeshActorReply(
+                record.parts[0],
+                ZLinkStreamMessageKind.Response,
+                response
+              );
+              requestTerminalState.prepared = true;
+              return encoded;
+            }
+          }
+        )
       : undefined;
     try {
       if (this.formalRemoteTransfers.has(actor.actorId)) {
@@ -1583,7 +1608,7 @@ export class DefaultZLinkSpotManager {
       if (!request) {
         throw error;
       }
-      if (requestTerminalState.submitted) {
+      if (requestTerminalState.prepared || requestTerminalState.submitted) {
         throw error;
       }
       requireMeshSpotReply(record.reply(this.encodeMeshActorReply(
@@ -1616,6 +1641,15 @@ export class DefaultZLinkSpotManager {
     const transferRequest = record.parts.length === 0
       ? undefined
       : decodeFormalRemoteTransferRequest(record.parts[0]!);
+    const remoteJoinPhase = transferRequest?.phase;
+    const isRemoteAdmission = remoteJoinPhase === REMOTE_ACTOR_JOIN_ADMISSION;
+    const isRemoteCommit = remoteJoinPhase === REMOTE_ACTOR_JOIN_COMMIT;
+    const isRemoteAbort = remoteJoinPhase === REMOTE_ACTOR_JOIN_ABORT;
+    let admissionRecord = transferRequest !== undefined
+      ? this.formalRemoteActorAdmissions.get(transferRequest.transferId)
+      : undefined;
+    let pendingAdmission = isRemoteCommit ? admissionRecord : undefined;
+    let commitAdmissionMissing = isRemoteCommit && admissionRecord === undefined;
     const applicationClaim = transferRequest === undefined
       ? this.options.admission?.claim(meshName, 'Actor join dispatch')
       : undefined;
@@ -1631,6 +1665,9 @@ export class DefaultZLinkSpotManager {
       // reply can commit the return transaction.
       actor = lifecycleActor;
     }
+    if (actor === undefined && admissionRecord?.actor !== undefined) {
+      actor = admissionRecord.actor;
+    }
     let callbackRequest: Message | undefined = record.parts.length === 0
       ? undefined
       : record.parts[0]!;
@@ -1639,7 +1676,32 @@ export class DefaultZLinkSpotManager {
     let reply: Message | undefined;
     let deferredJoinRoot: ZLinkDeferredJoinAcceptedRoot | undefined;
     let preparedTransferState: Message | undefined;
+    let admissionOutcome: ZLinkFormalRemoteActorAdmissionResult | undefined;
+    let accepted = false;
+    let committedAdmissionReplay = isRemoteCommit
+      && admissionRecord?.state === 'committed';
+    let targetCommitPublished: boolean | undefined;
+    const actorJoinIsCurrent = (): boolean => (
+      (record.deadlineUnixMs === undefined || record.deadlineUnixMs > BigInt(Date.now()))
+      && (record.isPending?.() ?? true)
+    );
+    const abandonStaleAdmission = (): void => {
+      if (isRemoteAdmission && transferRequest !== undefined) {
+        this.formalRemoteActorAdmissions.abort(transferRequest.transferId);
+      }
+    };
     try {
+      if (!isRemoteAbort && !actorJoinIsCurrent()) {
+        abandonStaleAdmission();
+        return;
+      }
+      if (isRemoteAbort) {
+        if (transferRequest !== undefined) {
+          this.formalRemoteActorAdmissions.abort(transferRequest.transferId);
+        }
+        requireMeshSpotReply(record.replyActorJoin(1, []));
+        return;
+      }
       if (transferRequest !== undefined) {
         ownedCallbackRequest = RuntimeMessage.from(
           Buffer.from(transferRequest.request, 'base64')
@@ -1647,15 +1709,136 @@ export class DefaultZLinkSpotManager {
         callbackRequest = ownedCallbackRequest;
       }
       if (
+        transferRequest !== undefined
+        && !targetsEntrySpot
+        && remoteJoinPhase === undefined
+      ) {
+        // User Spot transfers must carry the private admission/commit phases.
+        // A legacy one-phase request would otherwise read relocation state
+        // before the target application has accepted the Actor.
+        requireMeshSpotReply(record.replyActorJoin(1, []));
+        return;
+      }
+      if (isRemoteAdmission && transferRequest !== undefined) {
+        const rawActorRef = transferRequest.actorRef ?? control.currentActor ?? undefined;
+        if (rawActorRef === undefined) {
+          throw new ZLinkConfigurationException(`Actor '${actorId}' join record has no ActorRef.`);
+        }
+        const actorRef = toFrameworkRemoteAdmissionActorRef(rawActorRef, meshName);
+        const admission = this.formalRemoteActorAdmissions.begin({
+          actorId,
+          actorType: transferRequest.actorType,
+          actorRef,
+          spotId,
+          targetSpotGeneration: control.currentSpotGeneration,
+          expectedMembershipEpoch: transferRequest.expectedMembershipEpoch,
+          requestFingerprint: transferRequest.request,
+          transferId: transferRequest.transferId
+        });
+        admissionRecord = admission.record;
+        if (admission.created) {
+          try {
+            if (targetsEntrySpot) {
+              admissionOutcome = {
+                accepted: this.options.dispatchEntryActorJoin !== undefined,
+                actorRef
+              };
+            } else if (activation === undefined) {
+              admissionOutcome = { accepted: false, actorRef };
+            } else {
+              if (!actorJoinIsCurrent()) {
+                abandonStaleAdmission();
+                return;
+              }
+              const response: ZLinkSpotActorJoinResult = await activation.serial.execute(async () =>
+                activation.spot.onActorJoin(
+                  actorRef.actorId,
+                  wrapFrameworkPayloadMessage(ownedCallbackRequest!, this.options.messageSerializers)
+                )
+              );
+              let encodedReply: Message | undefined;
+              try {
+                encodedReply = response.reply === undefined
+                  ? undefined
+                  : encodeFrameworkPayloadMessage(response.reply, this.options.messageSerializers);
+                if (
+                  response.accepted
+                  && transferRequest.completionOperationId !== undefined
+                  && this.options.actorTransferRuntime !== undefined
+                ) {
+                  deferredJoinRoot = await this.options.actorTransferRuntime
+                    .prepareDeferredJoinAccepted(
+                      actorId,
+                      transferRequest.completionOperationId,
+                      actorRef,
+                      encodedReply?.data() ?? Buffer.alloc(0),
+                      undefined,
+                      {
+                        targetMeshName: meshName,
+                        targetSpotId: String(spotId),
+                        targetSpotGeneration: control.currentSpotGeneration,
+                        membershipEpoch: control.currentMembershipEpoch,
+                        request: Buffer.from(record.parts[0]!.data())
+                      }
+                    );
+                  this.options.runtimeEventPublisher?.publish({
+                    sourceName: 'zlink.framework.actor-handoff',
+                    timestamp: new Date(),
+                    marker: 'deferred_completion_staged',
+                    actorId
+                  });
+                }
+                admissionOutcome = {
+                  accepted: response.accepted,
+                  actorRef,
+                  ...(encodedReply === undefined
+                    ? {}
+                    : { reply: Buffer.from(encodedReply.data()) })
+                };
+              } finally {
+                encodedReply?.close();
+              }
+              if (!actorJoinIsCurrent()) {
+                abandonStaleAdmission();
+                return;
+              }
+            }
+            this.formalRemoteActorAdmissions.complete(
+              transferRequest.transferId,
+              admissionOutcome
+            );
+          } catch (error) {
+            this.formalRemoteActorAdmissions.fail(transferRequest.transferId, error);
+            throw error;
+          }
+        }
+        admissionOutcome = await admissionRecord.resultTask;
+        if ('error' in admissionOutcome) {
+          throw admissionOutcome.error;
+        }
+        accepted = admissionOutcome.accepted;
+        reply = admissionOutcome.reply === undefined
+          ? undefined
+          : RuntimeMessage.from(admissionOutcome.reply);
+      }
+      if (isRemoteCommit && admissionRecord !== undefined) {
+        admissionOutcome = await admissionRecord.resultTask;
+        if ('error' in admissionOutcome) {
+          throw admissionOutcome.error;
+        }
+      }
+      if (
         actor === undefined
         && transferRequest !== undefined
         && this.options.actorTransferRuntime !== undefined
+        && !isRemoteAdmission
+        && !commitAdmissionMissing
+        && admissionRecord?.state !== 'committed'
         && (targetsEntrySpot || activation !== undefined)
       ) {
-        // Read the immutable relocation payload before running application
-        // admission. The source may roll back and delete the reference after
-        // its Core request becomes disconnected; target admission must not
-        // leave the payload read until after an arbitrary Spot callback.
+        // The admission phase has already completed before this point. The
+        // source may roll back and delete the reference after its Core request
+        // becomes disconnected, so the commit phase owns this read.
         preparedTransferState = RuntimeMessage.from(
           transferRequest.transferStateReference === undefined
             ? Buffer.from(transferRequest.transferState!, 'base64')
@@ -1665,8 +1848,17 @@ export class DefaultZLinkSpotManager {
               )
         );
       }
-      let accepted = false;
-      if (targetsEntrySpot) {
+      if (isRemoteAdmission && targetsEntrySpot) {
+        accepted = admissionOutcome !== undefined
+          && !('error' in admissionOutcome)
+          && admissionOutcome.accepted;
+      } else if (isRemoteCommit && pendingAdmission !== undefined) {
+        validateRemoteAdmissionCommit(pendingAdmission, transferRequest!, actorId, control);
+        accepted = pendingAdmission.state === 'admitted'
+          || pendingAdmission.state === 'committed';
+      } else if (commitAdmissionMissing) {
+        accepted = false;
+      } else if (targetsEntrySpot) {
         // Entry Spot return joins have no application admission callback. The
         // actor-manager transaction is committed after the Core reply below.
         // A formal transfer payload materializes the existing actor state at
@@ -1674,10 +1866,13 @@ export class DefaultZLinkSpotManager {
         accepted = actor !== undefined
           || (transferRequest !== undefined && this.options.actorTransferRuntime !== undefined);
       } else if (
+        !isRemoteAdmission
+        &&
         activation !== undefined
         && callbackRequest !== undefined
         && (actor !== undefined || transferRequest !== undefined)
       ) {
+        if (!actorJoinIsCurrent()) return;
         const request = callbackRequest;
         const rawActorRef = transferRequest?.actorRef ?? control.currentActor ?? undefined;
         if (rawActorRef === undefined) {
@@ -1697,6 +1892,7 @@ export class DefaultZLinkSpotManager {
             wrapFrameworkPayloadMessage(request, this.options.messageSerializers)
           )
         );
+        if (!actorJoinIsCurrent()) return;
         accepted = response.accepted;
         reply = response.reply === undefined
           ? undefined
@@ -1731,10 +1927,12 @@ export class DefaultZLinkSpotManager {
       }
       if (
         accepted
+        && !isRemoteAdmission
         && actor === undefined
         && transferRequest !== undefined
         && this.options.actorTransferRuntime !== undefined
       ) {
+        if (!actorJoinIsCurrent()) return;
         const transferState = preparedTransferState;
         preparedTransferState = undefined;
         if (transferState === undefined) {
@@ -1754,11 +1952,17 @@ export class DefaultZLinkSpotManager {
         } finally {
           transferState.close();
         }
+        if (!actorJoinIsCurrent()) {
+          await this.options.actorTransferRuntime.rollbackRoutedActor(actor);
+          materialized = false;
+          return;
+        }
       }
       if (
         accepted
         && transferRequest !== undefined
         && this.options.actorTransferRuntime !== undefined
+        && !isRemoteAdmission
       ) {
         // A lightweight Core actor-join notification can create the Actor
         // before the formal transfer request reaches this branch. Preserve
@@ -1769,7 +1973,13 @@ export class DefaultZLinkSpotManager {
           transferRequest.remoteBoundSessionTarget
         );
       }
-      if (accepted && actor !== undefined && transferRequest !== undefined) {
+      if (
+        accepted
+        && actor !== undefined
+        && transferRequest !== undefined
+        && !isRemoteAdmission
+        && !committedAdmissionReplay
+      ) {
         this.formalRemoteTransfers.begin({
           actor,
           spotId,
@@ -1777,31 +1987,48 @@ export class DefaultZLinkSpotManager {
           handoffBacklog: transferRequest.handoffBacklog,
           deferredJoinRoot
         });
+        if (isRemoteCommit && admissionRecord !== undefined) {
+          this.formalRemoteActorAdmissions.markCommitted(
+            transferRequest.transferId,
+            actor
+          );
+        }
       }
-      const replyActorJoin = (): void => {
+      const replyActorJoin = (): boolean => {
+        if (!actorJoinIsCurrent()) return false;
         const joinReplyResult = record.replyActorJoin(
           accepted ? 0 : 1,
           reply === undefined ? [] : [reply.data()]
         );
+        if (accepted && !isRemoteAdmission && joinReplyResult === SubmitResult.Ok) {
+          // Core commits the target membership while it accepts this reply.
+          // From this call onward a later callback/transport failure is
+          // post-commit and must not roll the materialized Actor back.
+          targetCommitPublished = true;
+        }
         requireMeshSpotReply(joinReplyResult);
+        return true;
       };
       if (accepted && targetsEntrySpot && actor !== undefined) {
         const entryActor = actor;
         const pendingTransfer = transferRequest === undefined
           ? undefined
           : this.formalRemoteTransfers.get(actorId);
-        if (pendingTransfer === undefined) {
+        if (committedAdmissionReplay) {
+          if (!replyActorJoin()) return;
+        } else if (pendingTransfer === undefined) {
+          if (!actorJoinIsCurrent()) return;
           await this.options.dispatchEntryActorJoin?.(meshName, entryActor);
           // The Entry path performs its lifecycle commit directly because it
           // must wait for OnJoinedActor before the native join completion is
           // released. Do not leave a second Entry Joined control behind the
           // same mailbox turn.
-          replyActorJoin();
+          if (!replyActorJoin()) return;
         } else {
           // A formal transfer must acknowledge the target admission before
           // waiting for the source terminal; that terminal is what permits
           // the detached target commit below to proceed.
-          replyActorJoin();
+          if (!replyActorJoin()) return;
           const commitEntryTransfer = async (): Promise<void> => {
             const sourceLeaveSucceeded = await pendingTransfer.sourceLeaveTerminal;
             if (!sourceLeaveSucceeded) {
@@ -1825,16 +2052,16 @@ export class DefaultZLinkSpotManager {
           }
         }
       } else {
-        replyActorJoin();
+        if (!replyActorJoin()) return;
       }
     } catch (error) {
-      if (deferredJoinRoot !== undefined) {
+      if (deferredJoinRoot !== undefined && targetCommitPublished !== true) {
         await this.options.actorTransferRuntime?.discardDeferredJoinAccepted(
           deferredJoinRoot
         );
       }
-      if (materialized && actor !== undefined) {
-        await this.options.actorTransferRuntime?.rollbackRoutedActor(actor);
+      if (materialized && targetCommitPublished !== true) {
+        await this.options.actorTransferRuntime?.rollbackRoutedActor(actor!);
       }
       throw error;
     } finally {
@@ -2398,6 +2625,8 @@ function instanceDispatchErrorReason(error: unknown): ZLinkDispatchErrorReason {
 
 interface ZLinkFormalRemoteTransferRequest {
   readonly actorType: string;
+  readonly actorId?: string;
+  readonly phase?: 'admission' | 'commit' | 'abort';
   readonly transferId: string;
   readonly transferAdapterKey?: string;
   readonly transferState?: string;
@@ -2435,10 +2664,20 @@ function decodeFormalRemoteTransferRequestBytes(
     || typeof payload.actorType !== 'string'
     || typeof payload.transferId !== 'string'
     || !(
+      payload.phase === REMOTE_ACTOR_JOIN_ADMISSION
+      || payload.phase === REMOTE_ACTOR_JOIN_ABORT
+      || payload.phase === REMOTE_ACTOR_JOIN_COMMIT
+      || payload.phase === undefined
+    )
+    || !(
+      payload.phase === REMOTE_ACTOR_JOIN_ADMISSION
+      || payload.phase === REMOTE_ACTOR_JOIN_ABORT
+      || (
       typeof payload.transferState === 'string'
       || (
         typeof payload.transferStateReference === 'string'
         && typeof payload.transferStateChecksumCrc32c === 'number'
+      )
       )
     )
     || typeof payload.request !== 'string'
@@ -2447,6 +2686,12 @@ function decodeFormalRemoteTransferRequestBytes(
   }
   return {
     actorType: payload.actorType,
+    actorId: typeof payload.actorId === 'string' ? payload.actorId : undefined,
+    phase: payload.phase === REMOTE_ACTOR_JOIN_ADMISSION
+      || payload.phase === REMOTE_ACTOR_JOIN_COMMIT
+      || payload.phase === REMOTE_ACTOR_JOIN_ABORT
+      ? payload.phase
+      : undefined,
     transferId: payload.transferId,
     transferAdapterKey: typeof payload.transferAdapterKey === 'string'
       ? payload.transferAdapterKey
@@ -2517,10 +2762,59 @@ function decodeFormalRemoteActorRef(
   };
 }
 
+
 function requireMeshSpotReply(result: number): void {
   if (result !== SubmitResult.Ok) {
     throw new ZLinkConfigurationException(
       `MeshNode reply was not accepted (submit result ${result}).`
+    );
+  }
+}
+
+function toFrameworkRemoteAdmissionActorRef(
+  rawActorRef: {
+    readonly actorId: string;
+    readonly nodeRid: unknown;
+    readonly objectGeneration?: bigint;
+    readonly generation?: bigint;
+  },
+  meshName: string
+): ActorRef {
+  const objectGeneration = rawActorRef.objectGeneration ?? rawActorRef.generation;
+  if (objectGeneration === undefined) {
+    throw new ZLinkConfigurationException(
+      `Actor '${rawActorRef.actorId}' join record has no ObjectGeneration.`
+    );
+  }
+  return {
+    actorId: rawActorRef.actorId,
+    objectGeneration,
+    meshName,
+    nodeRid: rawActorRef.nodeRid as RoutingId
+  };
+}
+
+function validateRemoteAdmissionCommit(
+  admission: ZLinkFormalRemoteActorAdmissionRecord,
+  request: ZLinkFormalRemoteTransferRequest,
+  actorId: string,
+  control: { readonly currentSpotGeneration?: bigint }
+): void {
+  const expected = admission.admission;
+  const actorRef = request.actorRef;
+  if (
+    expected.actorId !== actorId
+    || expected.actorType !== request.actorType
+    || expected.expectedMembershipEpoch !== request.expectedMembershipEpoch
+    || expected.requestFingerprint !== request.request
+    || expected.targetSpotGeneration !== (control.currentSpotGeneration ?? 0n)
+    || actorRef === undefined
+    || actorRef.actorId !== expected.actorRef.actorId
+    || String(actorRef.nodeRid) !== String(expected.actorRef.nodeRid)
+    || actorRef.objectGeneration !== expected.actorRef.objectGeneration
+  ) {
+    throw new ZLinkConfigurationException(
+      `Remote Actor '${actorId}' commit does not match its target admission.`
     );
   }
 }

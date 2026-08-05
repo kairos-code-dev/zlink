@@ -65,7 +65,9 @@ internal retry count와 log 순서는 판정에 사용하지 않는다.
 **검증 질문:** Session과 Play가 서로의 ChannelName으로 보낸 request를 상대 handler가 각각 한 번
 처리하는가.
 
-- 시작 조건: Session의 `game.session`과 Play의 `game.play`가 public status에서 ready다.
+- 시작 조건: Session의 `game.play`와 Play의 `game.session`이 public status에서 ready다. 각 process의
+  local Server membership은 자기 RouteMesh 후보가 아니므로, 호출자가 사용하는 remote Server 경로를
+  확인한다.
 - 절차: Session이 `game.play` request를, Play가 `game.session` request를 각각 한 번 보낸다.
 - 검증: 각 request는 상대 역할의 marker가 포함된 reply를 하나만 받는다. 두 handler는 자기 request를
   각각 한 번 처리하며 다른 역할의 handler에는 같은 operation ID가 기록되지 않는다.

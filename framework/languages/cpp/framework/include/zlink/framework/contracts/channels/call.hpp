@@ -111,6 +111,7 @@ template <typename TReply> class request_call_t
         if (!turn_plan) {
             return _submit (_packet_name, _timeout, _metadata);
         }
+        const auto ambient_context = detail::capture_ambient_context ();
         // The transport submit may block its calling thread. It therefore runs
         // outside the serial executor even when submit keeps the logical turn.
         auto source =
@@ -119,7 +120,9 @@ template <typename TReply> class request_call_t
         auto pending = source->task ();
         if (!detail::submit_blocking_call (
               [source, submit = _submit, packet_name = _packet_name,
-               timeout = _timeout, metadata = _metadata] () mutable {
+               timeout = _timeout, metadata = _metadata,
+               ambient_context] () mutable {
+            const auto ambient_guard = detail::enter_ambient_context (ambient_context);
             try {
                 source->complete (submit (packet_name, timeout, metadata).result ());
             }
@@ -211,6 +214,7 @@ class channel_request_call_t
         if (!turn_plan) {
             reply = co_await submit (packet_name, timeout, metadata);
         } else {
+            const auto ambient_context = detail::capture_ambient_context ();
             auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> (
               std::move (turn_plan->scheduler));
             auto pending = source->task ();
@@ -220,7 +224,9 @@ class channel_request_call_t
                 return submit (packet_name, timeout, metadata).result ();
             };
             if (!detail::submit_blocking_call ([source,
-                                                submit = std::move (blocking_submit)] () mutable {
+                                                submit = std::move (blocking_submit),
+                                                ambient_context] () mutable {
+                const auto ambient_guard = detail::enter_ambient_context (ambient_context);
                 try {
                     source->complete (submit ());
                 }

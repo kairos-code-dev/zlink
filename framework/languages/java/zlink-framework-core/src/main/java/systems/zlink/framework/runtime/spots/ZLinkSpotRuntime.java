@@ -1773,6 +1773,12 @@ public final class ZLinkSpotRuntime
             },
             this::spotFor,
             this::meshNameForSpot);
+        actorRuntime.setTransferBacklogRestorer((actor, packet) ->
+            dispatchTransferBacklog(
+                actorRuntime.currentRef(actor),
+                packet.header(),
+                packet.payload(),
+                packet.acceptedJournalRecord()));
         ZLinkInternalMeshNode relocationMesh =
             routeMeshNodesByName.get(primaryNodeSourceName);
         actorAdmissions.attach(

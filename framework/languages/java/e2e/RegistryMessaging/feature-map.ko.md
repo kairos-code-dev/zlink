@@ -44,9 +44,9 @@ public HTTP client만 사용한다.
   observer가 남긴 `HANDLER_MISSING`/`REPLY_ERROR`, `HANDLER_MISSING`/`DROP` evidence도 확인한다.
 - `RM-C7`: provider 시작 시 public runtime socket option으로 weight 75/25를 설정하고, manual
   multi-endpoint client 요청이 높은 weight provider 쪽으로 더 많이 분산되는지 검증한다.
-- `RM-C8`: public typed client로 1 byte, 4 KiB, 256 KiB, 1 MiB payload 왕복을 검증한다. max size 초과
-  거부는 framework channel runtime의 max message size 적용이 public typed channel 경로에 배선된
-  뒤 같은 scenario의 추가 marker로 확장한다.
+- `RM-C8`: RouteMesh SS에 Framework-level `MaxMessageSize`를 설정하지 않고 public typed client로
+  1 byte, 4 KiB, 256 KiB, 1 MiB payload의 length/hash 왕복과 후속 정상 request를 검증한다.
+  StreamNode의 inbound 상한은 별도 계약이다.
 
 ## Backpressure 범위
 

@@ -613,7 +613,10 @@ internal sealed class ZLinkRouteMeshRuntimeService : IZLinkRouteMeshRuntime, IDi
             .Select(channelName =>
             {
                 var localWeight = localMemberships.GetValueOrDefault(channelName);
-                var readyMembers = localWeight > 0 ? 1 : 0;
+                // RouteMesh select-one sends through an admitted peer. The
+                // local Server membership is published for remote callers,
+                // but this node is not its own peer target.
+                var readyMembers = 0;
                 for (var index = 0; index < peers.Count; index++)
                 {
                     if (peers[index].State != MeshPeerState.Admitted)

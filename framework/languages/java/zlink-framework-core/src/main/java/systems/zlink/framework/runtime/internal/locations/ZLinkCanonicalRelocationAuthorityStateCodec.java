@@ -112,6 +112,18 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         }
     }
 
+    /** Returns the committed marker's initial root projection. */
+    public static ZLinkAggregateProgress progress(byte[] authorityPayload) {
+        Published publication = decodeStrict(authorityPayload);
+        return new ZLinkAggregateProgress(
+            publication.reference(),
+            publication.checksumCrc32c(),
+            publication.sourceCleanupCompleted() ? 8 : 4,
+            publication.sourceCleanupCompleted(),
+            publication.terminalCompletionCount(),
+            publication.pendingRelayCount());
+    }
+
     private static Published decodeStrict(byte[] authorityPayload) {
         Slot slot = slot(authorityPayload);
         if (!slot.present()) {
@@ -130,7 +142,9 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
             current.targetNodeGeneration(),
             current.targetOwnerId(), current.targetOwnerLeaseGeneration(),
             replace(slot, EMPTY),
-            current.sourceCleanupCompleted());
+            current.sourceCleanupCompleted(),
+            current.terminalCompletionCount(),
+            current.pendingRelayCount());
     }
 
     static byte[] replaceRoot(
@@ -240,7 +254,7 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         long applicationVersion = body.u64();
         if (applicationVersion < 0) throw invalid();
         int progress = body.u32();
-        if (progress < 0 || progress > 1024) throw invalid();
+        if (progress < 0 || progress > body.remaining() / 24) throw invalid();
         long previousParticipantId = 0;
         for (int index = 0; index < progress; index++) {
             long participantId = body.nonzeroU64();
@@ -252,7 +266,9 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
             }
             previousParticipantId = participantId;
         }
-        body.u32(); body.u32();
+        int terminalCompletionCount = body.u32();
+        int pendingRelayCount = body.u32();
+        if (pendingRelayCount > terminalCompletionCount) throw invalid();
         int cleanupState = body.u8();
         if (cleanupState != 0 && cleanupState != 1
             || cleanupState == 1 && phase != 8
@@ -270,7 +286,8 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
             placementReservationToken,
             capacityOwnerId, capacityOwnerLeaseGeneration,
             capacityDescriptorRid, capacityDescriptorGeneration,
-            phase, reference, checksumCrc32c, sourceCleanupCompleted);
+            phase, reference, checksumCrc32c, sourceCleanupCompleted,
+            terminalCompletionCount, pendingRelayCount);
     }
 
     private static void validateSuccessor(
@@ -428,6 +445,7 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         int objectKind = body.u8();
         Reader object = body.reader(body.u16());
         int objectState;
+        int authoritySpotKind = 0;
         if (objectKind == 1) {
             object.text8();
             object.text8();
@@ -442,6 +460,7 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
             }
         } else if (objectKind == 2) {
             int spotKind = object.u8();
+            authoritySpotKind = spotKind;
             Reader spot = object.reader(object.u16());
             if (spotKind == 2) {
                 spot.text8();
@@ -484,7 +503,8 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         body.text8();
         RoutingId.from(body.sized8());
         body.nonzeroU64();
-        return new AuthorityShape(operationKind, objectKind, objectState);
+        return new AuthorityShape(
+            operationKind, objectKind, objectState, authoritySpotKind);
     }
 
     private static void validateActivationRecovery(
@@ -498,6 +518,7 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         }
         if (present != 1
             || shape.objectKind() != 2
+            || shape.spotKind() != 3
             || shape.objectState() != 1
             || shape.operationKind() != 0) {
             throw invalid();
@@ -530,7 +551,9 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         String targetOwnerId,
         long targetOwnerLeaseGeneration,
         byte[] applicationPayload,
-        boolean sourceCleanupCompleted) {
+        boolean sourceCleanupCompleted,
+        int terminalCompletionCount,
+        int pendingRelayCount) {
         Published { applicationPayload = applicationPayload.clone(); }
         @Override public byte[] applicationPayload() {
             return applicationPayload.clone();
@@ -556,14 +579,17 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         int phase,
         String reference,
         long checksumCrc32c,
-        boolean sourceCleanupCompleted) {}
+        boolean sourceCleanupCompleted,
+        int terminalCompletionCount,
+        int pendingRelayCount) {}
     private record Owner(String ownerId, long ownerLeaseGeneration,
                          String meshName, RoutingId nodeRid,
                          long nodeGeneration) {}
     private record AuthorityShape(
         int operationKind,
         int objectKind,
-        int objectState) {}
+        int objectState,
+        int spotKind) {}
     private record Slot(
         byte[] body, int start, int end, byte[] state, boolean present) {}
 
@@ -620,6 +646,7 @@ public final class ZLinkCanonicalRelocationAuthorityStateCodec {
         void skip(int n){ take(n); }
         byte[] take(int n){ require(n); byte[] v=java.util.Arrays.copyOfRange(bytes,offset,offset+n); offset+=n; return v; }
         int offset(){ return offset; }
+        int remaining(){ return bytes.length - offset; }
         byte[] bytes(){ return bytes; }
         boolean end(){ return offset==bytes.length; }
         void require(int n){ if(n<0||offset+n>bytes.length) throw invalid(); }

@@ -1064,6 +1064,14 @@ internal sealed class ZLinkCanonicalRelocationReservationOwner
                     .ConfigureAwait(false);
             terminal?.MarkCompletionApplied();
         }
+        catch (Exception exception)
+        {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"canonical_complete_failed relocation={complete.RelocationId.High:x16}{complete.RelocationId.Low:x16} "
+                + $"attempt={complete.TargetAttemptGeneration} "
+                + $"error={exception.GetType().Name} message={exception.Message}");
+            throw;
+        }
         finally
         {
             completionGate.Release();

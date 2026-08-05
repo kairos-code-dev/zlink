@@ -118,6 +118,7 @@ struct stream_snapshot_t {
     std::string tls_certificate_file;
     std::string tls_private_key_file;
     bool tls_require_client_certificate;
+    std::int64_t max_message_size = 64 * 1024;
 };
 
 class stream_compression_options_builder_t {
@@ -127,6 +128,10 @@ public:
     stream_compression_options_builder_t &use(
       std::shared_ptr<const stream_compression_codec_t> codec);
     stream_compression_options_builder_t &disable();
+};
+
+struct stream_socket_config_t {
+    std::int64_t max_message_size = 64 * 1024;
 };
 
 class stream_node_options_builder_t {
@@ -139,6 +144,7 @@ public:
       std::string certificate_file,
       std::string private_key_file,
       bool require_client_certificate = false);
+    stream_socket_config_t &configure_socket() noexcept;
     stream_node_options_builder_t &enable_actor_dispatch();
     stream_node_options_builder_t &register_session(std::string session_name);
 
@@ -147,6 +153,17 @@ public:
     stream_node_options_builder_t &register_session();
 };
 ```
+
+`configure_socket().max_message_size` is the StreamNode's Core STREAM
+inbound ceiling. It defaults to `64 KiB`; a complete message is measured
+as header bytes plus payload bytes, excluding the 6-byte prefix. The
+ceiling applies only to messages received from client to server, not to
+messages sent from server to client. `0` means that Framework adds no
+separate ceiling, while a positive value is finite. A negative value is a
+startup configuration error. When a client message exceeds the ceiling,
+Core rejects it with `EMSGSIZE` and the server closes that connection. The
+server callback receives no partial message. A raw client observes the
+connection close and doesn't receive a wire error code.
 
 `stream_error_t` only exposes a provider-neutral error kind and
 description. The native transport error code is runtime-internal

@@ -157,6 +157,54 @@ test('in-flight handoff preserves moving packet arrival order in the commit back
   ]);
 });
 
+test('provisional Join ingress replays one-way packets through the source mailbox in order', async () => {
+  const { coordinator } = harness();
+  const replayed = [];
+  const replay = async (parts) => {
+      replayed.push(parts[1].data().toString());
+  };
+  coordinator.beginProvisional('actor-1', 'join-1', 1n, 'source-node');
+  for (const value of ['P1', 'P2']) {
+    const parts = frame(value);
+    await coordinator.capture(
+      'actor-1',
+      parts,
+      false,
+      undefined,
+      actorRef(),
+      undefined,
+      undefined,
+      replay
+    );
+    parts.forEach((part) => part.close());
+  }
+
+  await coordinator.releaseDeferred('actor-1', 'join-1');
+  assert.deepEqual(replayed, ['P1', 'P2']);
+  assert.equal(coordinator.isActive('actor-1'), false);
+});
+
+test('provisional Join ingress preserves request completion when replayed locally', async () => {
+  const { coordinator } = harness();
+  const parts = frame('request');
+  const ref = contextRef(parts, { request: true });
+  coordinator.beginProvisional('actor-1', 'join-2', 1n, 'source-node');
+  const pending = coordinator.capture(
+    'actor-1',
+    parts,
+    true,
+    undefined,
+    ref,
+    undefined,
+    undefined,
+    async (_parts, returnResponse) => returnResponse ? 'local-reply' : undefined
+  );
+  parts.forEach((part) => part.close());
+
+  await coordinator.releaseDeferred('actor-1', 'join-2');
+  assert.equal(await pending, 'local-reply');
+});
+
 test('Message Follow preserves operation identity and rejects an exhausted hop with its marker', async () => {
   const { coordinator, messageFollowPayloads, markers } = harness();
   coordinator.begin('actor-1', 1n);

@@ -92,6 +92,25 @@ test('channel correlation follows the request versus one-way contract', () => {
   }
 });
 
+test('channel envelope keeps an absolute deadline established before payload encoding', () => {
+  const deadlineUnixMs = Date.now() + 5_000;
+  const parts = envelope.encodeChannelEnvelopePartsAtDeadline(
+    1,
+    'api',
+    'Lookup',
+    { id: 'a' },
+    deadlineUnixMs
+  );
+  try {
+    assert.equal(
+      Date.parse(envelope.decodeChannelHeader(readable(parts)).deadline),
+      deadlineUnixMs
+    );
+  } finally {
+    envelope.closeMessages(parts);
+  }
+});
+
 test('channel header rejects correlation values that do not match the message kind', () => {
   const commandWithCorrelation = readable([
     Buffer.from(JSON.stringify({
@@ -153,6 +172,29 @@ test('channel header treats nullable flow fields as absent', () => {
 
   assert.equal(envelope.decodeChannelHeader(header).flowId, undefined);
   assert.equal(envelope.decodeChannelHeader(header).flowOrigin, undefined);
+});
+
+test('channel envelope borrows the received payload until dispatch closes it', () => {
+  const payload = Buffer.from('{"value":"borrowed"}');
+  const parts = [
+    { data: () => Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 3,
+      channelName: 'api',
+      messageName: 'Notice',
+      contentType: 'application/json',
+      correlationId: null,
+      deadline: null,
+      topic: null,
+      metadata: {}
+    })) },
+    { data: () => payload }
+  ];
+
+  const decoded = envelope.decodeChannelEnvelope(parts);
+
+  assert.strictEqual(decoded.payload, payload);
+  assert.deepEqual(JSON.parse(decoded.payload.toString()), { value: 'borrowed' });
 });
 
 test('IMP-ND-03 channel Error preserves the public framework kind without retry hints', () => {

@@ -78,6 +78,10 @@ class stream_session_registry_t
       std::uint64_t target_node_generation = 0,
       std::uint64_t owner_lease_generation = 0);
     stateful_error_t unbind (const stream_binding_t &binding);
+    /* Restores a binding that was displaced by a later bind operation. This
+     * is an internal transaction-compensation step for a failed owner-layer
+     * route update; it does not create a new binding generation. */
+    stateful_error_t restore (const stream_binding_t &binding);
     std::pair<stateful_error_t, std::optional<stream_dispatch_t>>
     admit_inbound (const stream_binding_t &binding);
     stateful_error_t complete_inbound (const stream_dispatch_t &dispatch);

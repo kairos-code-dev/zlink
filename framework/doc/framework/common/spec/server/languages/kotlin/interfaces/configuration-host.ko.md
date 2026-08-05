@@ -109,6 +109,15 @@ public interface systems.zlink.framework.configuration.ZLinkStreamSocketConfig {
 }
 ```
 
+Kotlin은 Java `ZLinkStreamNodeBuilder.configureSocket()`와
+`ZLinkStreamSocketConfig.setMaxMessageSize(...)`를 그대로 사용한다. 기본값은 `64 KiB`이며,
+StreamNode의 Core STREAM inbound에서 client→server complete message에만 적용한다. 크기는
+6-byte prefix를 제외한 header와 payload의 합이다. `0`은 Core `-1`로 변환되어 Framework
+상한을 사용하지 않고, 음수는 startup configuration error다. 상한을 넘은 message는 handler에
+일부도 전달하지 않으며 server는 `EMSGSIZE`와 진단 trace를 남기고 연결을 종료한다. raw client는
+별도 wire error code가 아니라 연결 종료를 관찰한다. server→client outbound에는 상한을 적용하지
+않으며 ClientServer와 RouteMesh SS에는 이 설정을 추가하지 않는다.
+
 Kotlin은 Java runtime의 managed heap 상한(`Runtime.maxMemory()`)을 사용한다. `processMemoryLimitBytes()`가
 비어 있으면 process에 적용된 유한한 OS 상한과 JVM managed heap 상한을 함께 확인하고, 둘 다 있으면 더 작은
 값을 Auto 계산의 기준으로 사용한다. 둘 다 확인할 수 없으면 시스템 물리 메모리 총량을 사용한다. 이 규칙과

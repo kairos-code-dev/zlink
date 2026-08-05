@@ -17,6 +17,7 @@ export type {
   ZLinkNetworkOptions,
   ZLinkMetadataPolicyBuilder,
   ZLinkStreamCompressionBuilder,
+  ZLinkStreamSocketConfig,
   ZLinkStreamNodeBuilder
 } from './Builders';
 export type {

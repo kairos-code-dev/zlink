@@ -2863,6 +2863,46 @@ int main ()
         return 62;
     }
 
+    public_route.set_request_backend (
+      [&envelope_codec] (
+        const zlink::routing_id_t &, const std::optional<std::string> &,
+        const zlink::framework::runtime::messaging::message_parts_t &parts,
+        std::chrono::milliseconds)
+        -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
+          const auto request_header = envelope_codec.decode_header (parts);
+          if (!request_header) {
+              return zlink::framework::result_t<
+                zlink::framework::runtime::messaging::message_parts_t>::failure (
+                zlink::framework::framework_error_kind_t::internal_failure,
+                "route error regression received an invalid request");
+          }
+          zlink::framework::runtime::messaging::envelope_header_t error_header;
+          error_header.kind =
+            zlink::framework::runtime::messaging::message_kind_t::error;
+          error_header.channel_name = "public.route";
+          error_header.message_name = request_header.value ().message_name;
+          error_header.correlation_id = request_header.value ().correlation_id;
+          error_header.error_code = "handler_not_found";
+          error_header.error_message = "missing route handler";
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::success (
+            envelope_codec.encode_raw_body_parts (error_header, zlink::message_t::from ("")));
+      });
+    const auto missing_route_handler =
+      public_route_client
+        .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
+                          request_t{52})
+        .timeout (std::chrono::milliseconds (50))
+        .submit<reply_t> ()
+        .result ();
+    if (missing_route_handler
+        || missing_route_handler.error_kind ()
+             != zlink::framework::framework_error_kind_t::not_found
+        || missing_route_handler.error () == nullptr
+        || std::string (missing_route_handler.error ()->what ()) != "missing route handler") {
+        return 78;
+    }
+
     std::atomic_int spot_send_backend_seen = 0;
     public_route.set_send_backend (
       [&spot_send_backend_seen, &envelope_codec] (

@@ -709,15 +709,54 @@ zlink::message_t message_from_bytes (const std::vector<std::uint8_t> &bytes)
     return zlink::message_t::from (bytes);
 }
 
-constexpr std::size_t default_stream_max_frame_bytes = 16u * 1024u * 1024u;
-
-void validate_stream_frame_size (std::size_t header_size, std::size_t payload_size)
+bool stream_frame_exceeds_limit (std::size_t header_size,
+                                 std::size_t payload_size,
+                                 std::int64_t max_message_size) noexcept
 {
-    if (header_size > default_stream_max_frame_bytes - 6
-        || payload_size > default_stream_max_frame_bytes - 6 - header_size) {
-        throw framework_exception_t (
-          framework_error_kind_t::protocol_error,
-          "STREAM frame exceeds the configured message size");
+    if (max_message_size <= 0) {
+        return false;
+    }
+    const auto limit = static_cast<std::uint64_t> (max_message_size);
+    if (header_size > limit) {
+        return true;
+    }
+    return payload_size > limit - static_cast<std::uint64_t> (header_size);
+}
+
+class stream_message_size_exceeded_t final : public std::runtime_error
+{
+  public:
+    stream_message_size_exceeded_t (std::int64_t max_message_size,
+                                    std::size_t header_size,
+                                    std::size_t payload_size) :
+        std::runtime_error ("STREAM frame exceeds the configured message size"),
+        _max_message_size (max_message_size),
+        _header_size (header_size),
+        _payload_size (payload_size)
+    {
+    }
+
+    std::int64_t max_message_size () const noexcept { return _max_message_size; }
+    std::size_t header_size () const noexcept { return _header_size; }
+    std::size_t payload_size () const noexcept { return _payload_size; }
+
+  private:
+    std::int64_t _max_message_size;
+    std::size_t _header_size;
+    std::size_t _payload_size;
+};
+
+void validate_stream_frame_size (std::size_t header_size,
+                                 std::size_t payload_size,
+                                 std::int64_t max_message_size)
+{
+    if (header_size > std::numeric_limits<std::size_t>::max () - payload_size
+        || 6u > std::numeric_limits<std::size_t>::max () - header_size - payload_size) {
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
+                                     "STREAM frame size overflows the local size type");
+    }
+    if (stream_frame_exceeds_limit (header_size, payload_size, max_message_size)) {
+        throw stream_message_size_exceeded_t (max_message_size, header_size, payload_size);
     }
 }
 
@@ -736,6 +775,11 @@ class malformed_core_stream_frame_t final : public std::runtime_error
 class core_stream_frame_assembler_t
 {
   public:
+    explicit core_stream_frame_assembler_t (std::int64_t max_message_size) :
+        _max_message_size (max_message_size)
+    {
+    }
+
     struct frame_view_t
     {
         std::size_t header_size = 0;
@@ -756,9 +800,10 @@ class core_stream_frame_assembler_t
                                   | (static_cast<std::size_t> (_bytes[3]) << 16)
                                   | (static_cast<std::size_t> (_bytes[4]) << 8)
                                   | static_cast<std::size_t> (_bytes[5]);
-        if (header_size + payload_size > default_stream_max_frame_bytes - 6) {
-            throw malformed_core_stream_frame_t (
-              "STREAM frame exceeds the configured message size");
+        validate_stream_frame_size (header_size, payload_size, _max_message_size);
+        if (header_size > std::numeric_limits<std::size_t>::max () - payload_size
+            || 6u > std::numeric_limits<std::size_t>::max () - header_size - payload_size) {
+            throw malformed_core_stream_frame_t ("STREAM frame size overflows the local size type");
         }
         const auto frame_size = 6u + header_size + payload_size;
         if (_bytes.size () < frame_size) {
@@ -776,10 +821,9 @@ class core_stream_frame_assembler_t
         if (part.empty ()) {
             return;
         }
-        if (part.size () > default_stream_max_frame_bytes
-            || _bytes.size () > default_stream_max_frame_bytes - part.size ()) {
+        if (_bytes.size () > std::numeric_limits<std::size_t>::max () - part.size ()) {
             throw malformed_core_stream_frame_t (
-              "STREAM receive buffer exceeds the configured message size");
+              "STREAM receive buffer size overflows the local size type");
         }
         const auto *begin = reinterpret_cast<const std::uint8_t *> (part.data ());
         _bytes.insert (_bytes.end (), begin, begin + part.size ());
@@ -804,6 +848,7 @@ class core_stream_frame_assembler_t
     void reset () noexcept { _bytes.clear (); }
 
   private:
+    std::int64_t _max_message_size;
     std::vector<std::uint8_t> _bytes;
 };
 
@@ -1381,6 +1426,8 @@ class stream_host_service_t::listener_t
         try {
             _core_socket =
               std::make_unique<zlink::stream_socket_t> (_mesh_node->native_context ());
+            _core_socket->options ().max_message_size (zlink::byte_size_t::bytes (
+              _stream.max_message_size > 0 ? _stream.max_message_size : -1));
             runtime::messaging::activate_submit_owner (_core_socket.get ());
             _core_socket->set_send_ready_handler ([this] {
                 runtime::messaging::notify_submit_ready (_core_socket.get ());
@@ -1434,6 +1481,7 @@ class stream_host_service_t::listener_t
                 const int receive_result =
                   _core_socket->recv (received, zlink::recv_flags_t::dontwait);
                 if (receive_result != 0) {
+                    const int receive_errno = errno;
                     received.close ();
                     if (_stop->load (std::memory_order_acquire)
                         || receive_result
@@ -1442,6 +1490,13 @@ class stream_host_service_t::listener_t
                     }
                     if (receive_result
                         == static_cast<int> (zlink::recv_result_t::no_data)) {
+                        continue;
+                    }
+                    if (receive_result == -1 && receive_errno == EMSGSIZE) {
+                        trace_stream_host (
+                          "core-recv-size-rejected", _stream, std::nullopt,
+                          "errno=EMSGSIZE limit="
+                            + std::to_string (_stream.max_message_size));
                         continue;
                     }
                     throw std::runtime_error ("Framework STREAM recv failed");
@@ -1531,6 +1586,9 @@ class stream_host_service_t::listener_t
                     framework_error_kind_t::not_configured,
                     "Framework STREAM actor authority is unavailable");
               }
+              const auto previous_binding =
+                _mesh_node->native_node ().sessions ().current_binding (
+                  std::string (actor.actor_id ().value ()));
               const auto [error, binding] =
                 _mesh_node->native_node ().sessions ().bind (
                   transport_connection, *resolved);
@@ -1539,11 +1597,23 @@ class stream_host_service_t::listener_t
                     framework_error_kind_t::not_configured,
                     "Framework rejected STREAM actor binding");
               }
-              (void) binding;
-              _services->get_required<detail::actor_gateway_runtime_t> ()
-                .record_bound_session_route (
-                  actor, *local_node, std::nullopt);
-              return result_t<void>::success ();
+              auto recorded = _services->get_required<detail::actor_gateway_runtime_t> ()
+                .record_bound_session_route (actor, *local_node, std::nullopt);
+              if (!recorded) {
+                  const auto rollback = _mesh_node->native_node ().sessions ().unbind (binding);
+                  auto restore_error = rollback;
+                  if (restore_error == runtime::stateful::stateful_error_t::none
+                      && previous_binding) {
+                      restore_error = _mesh_node->native_node ().sessions ().restore (
+                        *previous_binding);
+                  }
+                  if (restore_error != runtime::stateful::stateful_error_t::none) {
+                      return result_t<void>::failure (
+                        framework_error_kind_t::internal_failure,
+                        "Framework STREAM actor binding rollback failed");
+                  }
+              }
+              return recorded;
           });
         _runtime.attach_transport_writer (
           stream, [this, rid] (const stream_header_t &header,
@@ -1818,13 +1888,27 @@ class stream_host_service_t::listener_t
         }
         const auto rid = *received.routing_id ();
         const auto key = core_session_key (rid);
-        auto &assembler = _core_frame_assemblers[key];
+        auto [assembler_found, inserted] = _core_frame_assemblers.try_emplace (
+          key, _stream.max_message_size);
+        (void) inserted;
+        auto &assembler = assembler_found->second;
         _core_frame_routing_ids.insert_or_assign (key, rid);
         try {
             for (const auto &part : received.parts ()) {
                 assembler.append (part.bytes ());
             }
             process_core_frames (budget);
+        }
+        catch (const stream_message_size_exceeded_t &error) {
+            trace_stream_host (
+              "core-recv-size-rejected", _stream, std::nullopt,
+              "errno=EMSGSIZE limit=" + std::to_string (error.max_message_size ())
+                + " header_bytes=" + std::to_string (error.header_size ())
+                + " payload_bytes=" + std::to_string (error.payload_size ())
+                + " rid=" + rid.to_hex ());
+            disconnect_core_peer (rid, "protocol_error");
+            _core_frame_assemblers.erase (key);
+            _core_frame_routing_ids.erase (key);
         }
         catch (const malformed_core_stream_frame_t &) {
             disconnect_core_peer (rid, "protocol_error");
@@ -2162,7 +2246,7 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (prefix[3]) << 16)
                                   | (static_cast<std::size_t> (prefix[4]) << 8)
                                   | static_cast<std::size_t> (prefix[5]);
-        validate_stream_frame_size (header_size, payload_size);
+        validate_stream_frame_size (header_size, payload_size, _stream.max_message_size);
         auto header_bytes = read_exact (socket, header_size);
         auto header = _runtime.decode_header (header_bytes);
         if (!header) {
@@ -2203,7 +2287,7 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (bytes[3]) << 16)
                                   | (static_cast<std::size_t> (bytes[4]) << 8)
                                   | static_cast<std::size_t> (bytes[5]);
-        validate_stream_frame_size (header_size, payload_size);
+        validate_stream_frame_size (header_size, payload_size, _stream.max_message_size);
         if (bytes.size () != 6 + header_size + payload_size) {
             throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "STREAM WebSocket message size does not match its prefix");
@@ -2297,7 +2381,7 @@ class stream_host_service_t::listener_t
                                   | (static_cast<std::size_t> (prefix[3]) << 16)
                                   | (static_cast<std::size_t> (prefix[4]) << 8)
                                   | static_cast<std::size_t> (prefix[5]);
-        validate_stream_frame_size (header_size, payload_size);
+        validate_stream_frame_size (header_size, payload_size, _stream.max_message_size);
         return connection.receive_buffer.size () >= 6u + header_size + payload_size;
     }
 
@@ -2315,7 +2399,7 @@ class stream_host_service_t::listener_t
                                           | (static_cast<std::size_t> (prefix[3]) << 16)
                                           | (static_cast<std::size_t> (prefix[4]) << 8)
                                           | static_cast<std::size_t> (prefix[5]);
-                validate_stream_frame_size (header_size, payload_size);
+                validate_stream_frame_size (header_size, payload_size, _stream.max_message_size);
                 const auto frame_size = 6u + header_size + payload_size;
                 if (connection.receive_buffer.size () >= frame_size) {
                     std::vector<std::uint8_t> header_bytes (
@@ -2696,6 +2780,13 @@ class stream_host_service_t::listener_t
                           << " error=\"" << error.what () << "\"" << std::endl;
             }
         }
+        catch (const stream_message_size_exceeded_t &error) {
+            trace_stream_host (
+              "message-size-rejected", _stream, std::nullopt,
+              "errno=EMSGSIZE limit=" + std::to_string (error.max_message_size ())
+                + " header_bytes=" + std::to_string (error.header_size ())
+                + " payload_bytes=" + std::to_string (error.payload_size ()));
+        }
         catch (const framework_exception_t &error) {
             if (stream_trace_enabled ()) {
                 std::cerr << "zlink-cpp-stream-trace side=server stage=connection-error stream="
@@ -2954,6 +3045,13 @@ class stream_host_service_t::listener_t
                 session_transport_error.emplace (stream_session_error_t::transport_error,
                                                  error.what ());
             }
+        }
+        catch (const stream_message_size_exceeded_t &error) {
+            trace_stream_host (
+              "message-size-rejected", _stream, std::nullopt,
+              "errno=EMSGSIZE limit=" + std::to_string (error.max_message_size ())
+                + " header_bytes=" + std::to_string (error.header_size ())
+                + " payload_bytes=" + std::to_string (error.payload_size ()));
         }
         catch (const framework_exception_t &) {
         }

@@ -24,9 +24,12 @@ void submit_raw_reply (detail::operation_state_t &state_)
           return zlink_router_reply_part (state_.raw.socket, &first_rid,
                                           state_.reply.request_seq, part_out_, part_flag_);
       });
-    if (rc != 0) {
+    if (rc == -1)
         throw last_error ();
-    }
+
+    const submit_result_t result = static_cast<submit_result_t> (rc);
+    if (result != submit_result_t::ok)
+        throw submit_error_t (result, zlink_errno ());
 }
 
 } // namespace

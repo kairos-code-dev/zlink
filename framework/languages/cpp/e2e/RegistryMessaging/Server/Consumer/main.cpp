@@ -60,8 +60,6 @@ int main (int argc, char **argv)
               .map_post<rm_consumer::missing_request_handler_t> ("/profile/missing-request")
               .map_post<rm_consumer::missing_command_handler_t> ("/profile/missing-command")
               .map_post<rm_consumer::payload_request_handler_t> ("/profile/payload")
-              .map_post<rm_consumer::payload_over_limit_handler_t> (
-                "/profile/payload-over-limit")
               .map_post<rm_consumer::backpressure_reset_handler_t> (
                 "/profile/backpressure/reset")
               .map_post<rm_consumer::backpressure_send_handler_t> (

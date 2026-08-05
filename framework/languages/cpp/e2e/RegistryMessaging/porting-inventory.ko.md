@@ -41,7 +41,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
 | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm_c4_timeout_isolation_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C4 timeout/late-reply isolation을 검증한다. |
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm_c5_missing_packet_scenario.hpp` | scenario | done | store consumer HTTP role을 거쳐 RM-C5 missing packet negative path를 검증한다. |
 | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm_c7_weighted_provider_scenario.hpp` | scenario | done | RM-C7 weighted provider distribution을 provider HTTP endpoint로 실행하고 high-weight provider 선호를 검증한다. |
-| `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | scenario | blocked | Payload round-trip과 max-size oracle은 작성되어 있다. 공통 E2E가 요구하는 ClientServer listener `MaxMessageSize` 설정 경계가 .NET·C++ exact interface에 없어 max-size 하위 흐름을 완료 증거로 실행하지 않는다. |
+| `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm_c8_payload_round_trip_scenario.hpp` | scenario | done | RouteMesh SS payload length·SHA-256 왕복과 후속 정상 request를 검증한다. StreamNode Core STREAM inbound 상한은 별도 runtime·unit contract다. |
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm_c9_backpressure_scenario.hpp` | scenario | done | one-way send pressure 제출과 recovery evidence를 검증한다. public send는 bounded-failure oracle을 노출하지 않는다. |
 | `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer_options.hpp` | consumer-role | done | consumer HTTP endpoint, Redis location store endpoint/key prefix, direct provider endpoints를 env에서 읽는다. 미적용 `clientMaxMessageSize` 입력은 제거했다. |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/main.cpp` | consumer-role | done | C++ consumer role은 exact ClientServer `client()`를 한 번 등록한다. Config 1의 기본 consumer는 Redis Location Store automatic discovery를 사용하고, manual topology 시나리오만 endpoint마다 `connect()`를 사용한다. |
@@ -99,7 +99,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
     `logs/20260708-132039-64754`(RM-C7), `logs/20260708-132114-67294`(RM-C9)
   - 의미: parent runner가 Redis container 하나를 준비하고 child scenario가 같은 Redis endpoint를
     공유하는 형태로 RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2, RM-C3, RM-C4,
-    RM-C5, RM-C7, RM-C8, RM-C8-max, RM-C9 sweep를 모두 통과했다. cleanup 중 provider가
+    RM-C5, RM-C7, RM-C8, RM-C9 sweep를 모두 통과했다. cleanup 중 provider가
     segmentation fault 같은 비정상 종료를 내면 runner가 실패하도록 보강한 뒤의 증거다.
 - 2026-06-30: `./framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: 통과
@@ -128,7 +128,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
   - parent 로그: `logs/20260701-141526-48855`
   - RM-C9 child 로그: `logs/20260701-141721-60851`
   - 의미: RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2, RM-C1, RM-C2,
-    RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C8-max, RM-C9 sweep가 모두 통과한다.
+    RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C9 sweep가 모두 통과한다.
 - 2026-07-02: `timeout 420s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: 통과, exit 0
   - parent 로그: `logs/20260702-064828-39071`
@@ -136,7 +136,7 @@ C++ config-1 E2E의 대응 파일과 남은 gap을 기록한다. C++ 디렉터�
     `logs/20260702-064946-48026`(RM-C2), `logs/20260702-065108-55565`(RM-C8),
     `logs/20260702-065126-56684`(RM-C9)
   - 의미: C++ client를 HTTP-only driver로 바꾼 뒤에도 RM-A1, RM-A2, RM-A4, RM-A6, RM-B1, RM-B2,
-    RM-C1, RM-C2, RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C8-max, RM-C9 sweep가 모두 통과한다.
+    RM-C1, RM-C2, RM-C3, RM-C4, RM-C5, RM-C7, RM-C8, RM-C9 sweep가 모두 통과한다.
 - 2026-07-03:
   `ZLINK_CPP_E2E_BUILD_DIR=framework/languages/cpp/build-redis-vcpkg timeout 560s framework/languages/cpp/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: 통과, exit 0

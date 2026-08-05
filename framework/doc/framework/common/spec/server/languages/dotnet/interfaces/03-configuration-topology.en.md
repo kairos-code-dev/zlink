@@ -278,6 +278,17 @@ public interface IZLinkMetadataPolicyBuilder
 
 ```
 
+`IZLinkStreamNodeBuilder.ConfigureSocket().MaxMessageSize` defaults to
+`64 KiB`. It is used only when a StreamNode's Core STREAM inbound path checks
+a complete client-to-server message, measured as header bytes plus payload
+bytes and excluding the 6-byte prefix. `0` maps to Core `-1`, so Framework
+adds no limit; a negative value is a startup configuration error. A message
+over the limit is never partly delivered to the handler. The server records
+`EMSGSIZE` and a diagnostic trace, then closes the connection. The raw client
+observes the close rather than a separate wire error code. The Framework
+limit doesn't apply to server-to-client outbound messages. ClientServer and
+RouteMesh SS don't gain this setting.
+
 The exact declaration of `IZLinkCodecRegistryBuilder` and the codec
 extension is owned by [Serialization](11-serialization.ko.md).
 

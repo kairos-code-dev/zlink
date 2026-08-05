@@ -89,6 +89,63 @@ test('deferred Actor Join starts after the handler continuation and preserves it
   assert.equal(context.objectGeneration, 1n);
 });
 
+test('deferred Actor Join starts admission before the original reply but completes after it', async () => {
+  const events = [];
+  const state = new ZLinkActorRuntimeState('alice');
+  const actorRef = { nodeRid: 'node-a', actorId: 'alice', generation: 7n };
+  const coordinator = {
+    beginDeferredJoin() {
+      events.push('join:barrier');
+    },
+    async joinSpot() {
+      events.push('join:start');
+      return { accepted: true, actor: actorRef, reply: Message.from('joined') };
+    },
+    async joinEntrySpot() {
+      throw new Error('unexpected Entry Spot join');
+    },
+    async abortDeferredJoin() {
+      events.push('join:abort');
+    }
+  };
+  const context = new DefaultZLinkActorContext(
+    state,
+    coordinator,
+    undefined,
+    undefined,
+    () => 'game',
+    undefined
+  );
+  const actor = {
+    actorId: 'alice',
+    context,
+    async onJoinCompleted(completion) {
+      events.push(`completion:${completion.status}`);
+    }
+  };
+  state.bindActor(actor, context);
+
+  const result = await runActorHandlerWithDeferredJoins(() => {
+    events.push('handler:start');
+    context.joinSpot('room-a').defer();
+    events.push('handler:end');
+    return 'handled';
+  }, (reply) => {
+    events.push(`reply:${reply}`);
+    return reply;
+  });
+
+  assert.equal(result, 'handled');
+  assert.deepEqual(events, [
+    'handler:start',
+    'handler:end',
+    'join:barrier',
+    'join:start',
+    'reply:handled',
+    'completion:accepted'
+  ]);
+});
+
 test('deferred Actor Join barrier keeps the next Actor mailbox turn behind completion', async () => {
   const events = [];
   const mailbox = new ZLinkActorDispatchMailbox();
@@ -195,7 +252,7 @@ test('SpotWide deferred Actor Join yields the shared Spot gate while waiting for
   ]);
 });
 
-test('Core-routed Actor request submits its reply exactly once after deferred Join completion', async () => {
+test('Core-routed Actor request submits its reply before deferred Join completion', async () => {
   const events = [];
   class PlayerActor {
     constructor() {
@@ -258,9 +315,143 @@ test('Core-routed Actor request submits its reply exactly once after deferred Jo
   assert.equal(replies, 1);
   assert.deepEqual(events, [
     'handler',
-    'completion:0123456789abcdef:fedcba9876543210',
-    'reply:true'
+    'reply:true',
+    'completion:0123456789abcdef:fedcba9876543210'
   ]);
+});
+
+test('deferred Join is discarded before target admission when reply encoding fails', async () => {
+  const events = [];
+
+  await assert.rejects(
+    runActorHandlerWithDeferredJoins(
+      () => {
+        deferActorJoin({
+          requestBytes: 0,
+          prepare() {
+            events.push('join:prepare');
+          },
+          discard() {
+            events.push('join:discard');
+          },
+          async execute() {
+            events.push('join:execute');
+          }
+        });
+        return 'reply';
+      },
+      () => {
+        events.push('reply:send');
+      },
+      () => {
+        events.push('reply:encode');
+        throw new Error('reply encoding failed');
+      }
+    ),
+    /reply encoding failed/
+  );
+
+  assert.deepEqual(events, ['reply:encode', 'join:discard']);
+});
+
+test('deferred Join continues after reply transport fails once encoding succeeded', async () => {
+  const events = [];
+
+  await assert.rejects(
+    runActorHandlerWithDeferredJoins(
+      () => {
+        deferActorJoin({
+          requestBytes: 0,
+          prepare() {
+            events.push('join:prepare');
+          },
+          discard() {
+            events.push('join:discard');
+          },
+          async execute() {
+            events.push('join:execute');
+          }
+        });
+        return 'reply';
+      },
+      () => {
+        events.push('reply:transport');
+        throw new Error('reply transport failed');
+      },
+      () => {
+        events.push('reply:encode');
+      }
+    ),
+    /reply transport failed/
+  );
+
+  assert.deepEqual(events, [
+    'reply:encode',
+    'join:prepare',
+    'reply:transport',
+    'join:execute'
+  ]);
+});
+
+test('deferred Actor Join is discarded when request reply encoding fails', async () => {
+  const events = [];
+  class PlayerActor {
+    constructor() {
+      this.actorId = 'alice';
+    }
+  }
+  class JoinHandler {
+    async handle() {
+      deferActorJoin({
+        requestBytes: 0,
+        discard() {
+          events.push('discard');
+        },
+        async execute() {
+          events.push('execute');
+        }
+      });
+      return { accepted: true };
+    }
+  }
+  const actor = new PlayerActor();
+  const registry = new framework.ZLinkSpotActorHandlerRegistryRuntime().addPacket({
+    kind: framework.ZLinkActorPacketKind.Request,
+    packetName: 'JoinRoom',
+    actorType: PlayerActor,
+    handlerType: JoinHandler
+  });
+  const dispatch = new ZLinkSpotActorPacketDispatch({
+    spot: { context: { meshName: 'game' } },
+    spotId: () => 'entry-a',
+    registry,
+    resolveActor: () => actor,
+    onDisconnectActor: async () => {}
+  });
+  const parts = [
+    Message.from(Buffer.from(streamProtocol.encodeStreamHeader({
+      kind: streamProtocol.ZLinkStreamMessageKind.Request,
+      codec: streamProtocol.ZLinkStreamCodec.Json,
+      flags: streamProtocol.ZLinkStreamHeaderFlags.None,
+      requestSeq: 1n,
+      name: 'JoinRoom',
+      metadata: new Map()
+    }))),
+    Message.from(Buffer.from('{}'))
+  ];
+
+  await assert.rejects(
+    dispatch.dispatch(
+      'alice',
+      parts,
+      true,
+      undefined,
+      undefined,
+      () => { throw new Error('reply encoding failed'); }
+    ),
+    /reply encoding failed/
+  );
+  assert.deepEqual(events, ['discard']);
 });
 
 test('deferred Actor Join is discarded when the handler fails', async () => {

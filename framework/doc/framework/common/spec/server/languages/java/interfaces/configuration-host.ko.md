@@ -564,6 +564,14 @@ public interface systems.zlink.framework.configuration.ZLinkWorkerOptions {
 }
 ```
 
+`ZLinkStreamNodeBuilder.configureSocket().setMaxMessageSize(...)`의 기본값은 `64 KiB`다. 이
+설정은 StreamNode의 Core STREAM inbound에서 client→server complete message를 검사할 때만
+사용하며, 크기는 6-byte prefix를 제외한 header와 payload의 합이다. `0`은 Core `-1`로
+변환되어 Framework 상한을 사용하지 않고, 음수는 startup configuration error다. 상한을 넘은
+message는 handler에 일부도 전달하지 않으며 server는 `EMSGSIZE`와 진단 trace를 남긴 뒤 연결을
+종료한다. raw client는 별도 wire error code가 아니라 연결 종료를 관찰한다. server→client
+outbound에는 이 Framework 상한을 적용하지 않으며 ClientServer와 RouteMesh SS에는 이 설정이 없다.
+
 ## 나머지 구성 public member `javap` inventory
 
 아래 선언은 위 inventory에 포함하지 않은 application-facing configuration type을 `javap`가 출력하는

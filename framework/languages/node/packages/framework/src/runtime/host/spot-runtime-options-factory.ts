@@ -1,14 +1,12 @@
-import type {
-  ActorRef
-} from '../../contracts';
 import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
 import {
   ZLinkSpotRelocationReadinessMode,
   ZLinkUserSpotExecutionMode
 } from '../../contracts';
-import type {
-  DefaultZLinkActorManager,
-  ZLinkActorHandoffCoordinator
+import {
+  toFrameworkActorRef,
+  type DefaultZLinkActorManager,
+  type ZLinkActorHandoffCoordinator
 } from '../actors';
 import {
   DefaultZLinkChannelClient,
@@ -212,7 +210,9 @@ export class ZLinkSpotRuntimeOptionsFactory {
         this.options.actorManager()?.getState(actorId)?.actor,
       actorDispatchOwnerResolver: (actorId) => {
         const state = this.options.actorManager()?.getState(actorId);
-        const actorRef = state?.nativeActorRef as ActorRef | undefined;
+        const actorRef = state?.nativeActorRef === undefined
+          ? undefined
+          : toFrameworkActorRef(state.nativeActorRef, state.meshName ?? '');
         const localNodeRid = this.primaryNodeRoutingId();
         if (
           state?.actor === undefined

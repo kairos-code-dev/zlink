@@ -717,15 +717,7 @@ void client_server_location_runtime_t::run ()
                   server->owner->next_liveness_activity ())
                 wake_at = std::min (wake_at, *activity);
         }
-        std::vector<std::shared_ptr<raw_client_server_client_t>> clients;
-        {
-            std::lock_guard lock (_gate);
-            for (auto &[_, channel] : _clients) {
-                for (auto &[__, connection] : channel->connections)
-                    clients.push_back (connection.owner);
-            }
-        }
-        for (const auto &client : clients) {
+        for (const auto &client : _client_pump_snapshot) {
             if (const auto activity = client->next_liveness_activity ())
                 wake_at = std::min (wake_at, *activity);
         }
@@ -844,7 +836,6 @@ void client_server_location_runtime_t::reconcile_channel (
         }
     }
     std::vector<std::shared_ptr<raw_client_server_client_t>> close;
-    bool selector_changed = false;
     for (const auto &[key, descriptor] : desired) {
         bool exists = false;
         {
@@ -858,8 +849,8 @@ void client_server_location_runtime_t::reconcile_channel (
                          != descriptor.lifecycle_generation
                     || found->second.descriptor.weight != descriptor.weight
                     || found->second.descriptor.state != descriptor.state) {
+                    channel.selector_dirty = true;
                     found->second.descriptor = descriptor;
-                    selector_changed = true;
                 }
                 exists = true;
             } else if (!key.starts_with ("manual|")) {
@@ -867,11 +858,11 @@ void client_server_location_runtime_t::reconcile_channel (
                   manual_connection_key (descriptor.endpoint));
                 if (manual != channel.connections.end ()) {
                     auto connection = std::move (manual->second);
+                    channel.selector_dirty = true;
                     channel.connections.erase (manual);
                     connection.descriptor = descriptor;
                     channel.connections.emplace (
                       key, std::move (connection));
-                    selector_changed = true;
                     exists = true;
                 }
             }
@@ -908,9 +899,9 @@ void client_server_location_runtime_t::reconcile_channel (
           std::move (options));
         raw->start ();
         std::lock_guard lock (_gate);
+        channel.selector_dirty = true;
         channel.connections.emplace (
           key, client_connection_t{descriptor, std::move (raw)});
-        selector_changed = true;
     }
 
     {
@@ -938,30 +929,31 @@ void client_server_location_runtime_t::reconcile_channel (
                 continue;
             }
             close.push_back (it->second.owner);
+            channel.selector_dirty = true;
             it = channel.connections.erase (it);
-            selector_changed = true;
         }
     }
     for (auto &owner : close)
         owner->close ();
-    if (selector_changed) {
-        std::lock_guard lock (_gate);
-        channel.selector_dirty = true;
-    }
 }
 
 void client_server_location_runtime_t::pump ()
 {
+    /* One stable client snapshot serves both pumping and the liveness wake-up
+     * calculation in run(). Rebuilding it here avoids a second shared_ptr
+     * copy in the same loop iteration. */
+    refresh_client_pump_snapshot ();
     const auto now =
       mesh::service_liveness_registry_t::clock_t::now ();
-    std::vector<server_entry_t *> servers;
-    servers.reserve (_servers.size ());
+    _server_pump_snapshot.clear ();
+    _server_pump_snapshot.reserve (_servers.size ());
     for (auto &[_, server] : _servers)
-        servers.push_back (server.get ());
-    if (!servers.empty ()) {
-        const auto start = _server_pump_cursor % servers.size ();
-        for (std::size_t offset = 0; offset < servers.size (); ++offset) {
-            auto &server = *servers[(start + offset) % servers.size ()];
+        _server_pump_snapshot.push_back (server.get ());
+    if (!_server_pump_snapshot.empty ()) {
+        const auto start = _server_pump_cursor % _server_pump_snapshot.size ();
+        for (std::size_t offset = 0; offset < _server_pump_snapshot.size (); ++offset) {
+            auto &server = *_server_pump_snapshot[
+              (start + offset) % _server_pump_snapshot.size ()];
             (void) server.owner->drain_monitor_events (now);
             receive_batch_budget_t budget;
             while (budget.can_receive ()) {
@@ -976,20 +968,13 @@ void client_server_location_runtime_t::pump ()
             (void) server.owner->tick_liveness (now);
             dispatch_server (server);
         }
-        _server_pump_cursor = (start + 1) % servers.size ();
+        _server_pump_cursor = (start + 1) % _server_pump_snapshot.size ();
     }
-    std::vector<std::shared_ptr<raw_client_server_client_t>> clients;
-    {
-        std::lock_guard lock (_gate);
-        for (auto &[_, channel] : _clients) {
-            for (auto &[__, connection] : channel->connections)
-                clients.push_back (connection.owner);
-        }
-    }
-    if (!clients.empty ()) {
-        const auto start = _client_pump_cursor % clients.size ();
-        for (std::size_t offset = 0; offset < clients.size (); ++offset) {
-            auto &client = clients[(start + offset) % clients.size ()];
+    if (!_client_pump_snapshot.empty ()) {
+        const auto start = _client_pump_cursor % _client_pump_snapshot.size ();
+        for (std::size_t offset = 0; offset < _client_pump_snapshot.size (); ++offset) {
+            auto &client = _client_pump_snapshot[
+              (start + offset) % _client_pump_snapshot.size ()];
             (void) client->drain_monitor_events (now);
             receive_batch_budget_t budget;
             while (budget.can_receive ()) {
@@ -1005,7 +990,7 @@ void client_server_location_runtime_t::pump ()
             (void) client->expire_requests (
               foundation::operation_registry_t::clock_t::now ());
         }
-        _client_pump_cursor = (start + 1) % clients.size ();
+        _client_pump_cursor = (start + 1) % _client_pump_snapshot.size ();
     }
     std::lock_guard lock (_gate);
     for (auto &[_, channel] : _clients) {
@@ -1022,6 +1007,16 @@ void client_server_location_runtime_t::pump ()
         }
     }
     _ready.notify_all ();
+}
+
+void client_server_location_runtime_t::refresh_client_pump_snapshot ()
+{
+    _client_pump_snapshot.clear ();
+    std::lock_guard lock (_gate);
+    for (auto &[_, channel] : _clients) {
+        for (auto &[__, connection] : channel->connections)
+            _client_pump_snapshot.push_back (connection.owner);
+    }
 }
 
 void client_server_location_runtime_t::dispatch_server (
@@ -1373,7 +1368,13 @@ client_server_location_runtime_t::select_ready (
           framework_error_kind_t::not_found,
           "ClientServer has no ready target before the bounded wait expired");
     }
-    auto &channel = *_clients.at (channel_name);
+    const auto channel_it = _clients.find (channel_name);
+    if (channel_it == _clients.end ()) {
+        return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+          framework_error_kind_t::not_found,
+          "ClientServer channel is not registered");
+    }
+    auto &channel = *channel_it->second;
     if (channel.selector_dirty) {
         channel.selector_candidates.clear ();
         channel.selector_candidates.reserve (channel.connections.size ());
@@ -1398,8 +1399,15 @@ client_server_location_runtime_t::select_ready (
           framework_error_kind_t::not_found,
           "ClientServer has no selectable target snapshot");
     }
+    const auto connection = channel.connections.find (*selected);
+    if (connection == channel.connections.end ()) {
+        channel.selector_dirty = true;
+        return result_t<std::shared_ptr<raw_client_server_client_t>>::failure (
+          framework_error_kind_t::unavailable,
+          "ClientServer selected target is no longer registered");
+    }
     return result_t<std::shared_ptr<raw_client_server_client_t>>::success (
-      channel.connections.at (*selected).owner);
+      connection->second.owner);
 }
 
 void client_server_location_runtime_t::stop () noexcept
@@ -1446,6 +1454,7 @@ void client_server_location_runtime_t::stop_clients () noexcept
             channel->connections.clear ();
         }
         _clients.clear ();
+        _client_pump_snapshot.clear ();
     }
     for (auto &client : clients)
         client->close ();
@@ -1498,6 +1507,7 @@ void client_server_location_runtime_t::stop_servers () noexcept
         server->owner->close ();
     }
     _servers.clear ();
+    _server_pump_snapshot.clear ();
 }
 
 std::uint64_t

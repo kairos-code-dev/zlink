@@ -234,6 +234,50 @@ public sealed class ActorHandlerActivationTests
     }
 
     [Fact]
+    public async Task Runtime_Generation_Reset_Waits_For_Existing_Terminal_Cleanup()
+    {
+        var probe = new LifetimeProbe();
+        await using var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddScoped<ScopedDependency>()
+            .BuildServiceProvider();
+        var registry = new ZLinkActorSessionRegistry(services);
+        var state = registry.GetOrCreate("actor-reset-terminal");
+        var handler = state.HandlerInstances.Resolve<BlockingHandler>();
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "reset-terminal",
+            ZlinkStreamMetadata.Empty);
+
+        var dispatch = state.ExecuteDispatchAsync(
+                header,
+                handler.HandleAsync,
+                CancellationToken.None)
+            .AsTask();
+        await handler.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var terminal = state.BeginHandlerActivationCompletion(
+            () =>
+            {
+                state.ClearAfterDestroy();
+                return true;
+            });
+        var reset = registry.ResetGenerationAsync().AsTask();
+
+        Assert.False(reset.IsCompleted);
+        handler.Release.TrySetResult();
+
+        await dispatch.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(await terminal.Completion.WaitAsync(TimeSpan.FromSeconds(5)));
+        await reset.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, handler.DisposeCount);
+        Assert.Equal(1, handler.Dependency.DisposeCount);
+    }
+
+    [Fact]
     public async Task Terminal_Barrier_Runs_After_Already_Accepted_Turns_And_Closes_Admission()
     {
         var mailbox = new ZLinkActorDispatchMailbox();

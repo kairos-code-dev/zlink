@@ -109,6 +109,10 @@ export interface ZLinkMeshNodeSocketConfig {
   sendTimeoutMs?: number;
 }
 
+export interface ZLinkStreamSocketConfig {
+  maxMessageSize: number;
+}
+
 export interface ZLinkMeshNodeBuilder {
   channel(channelName: string): ZLinkMeshChannelBuilder;
   listen(endpoint: string): this;
@@ -189,6 +193,7 @@ export interface ZLinkStreamNodeBuilder {
   bind(endpointOrPort?: string | number): this;
   setBindHost(bindHost: string): this;
   setAdvertiseHost(advertiseHost: string): this;
+  configureSocket(): ZLinkStreamSocketConfig;
   enableActorDispatch(): this;
   setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
   registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;

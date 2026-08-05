@@ -12,6 +12,7 @@
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
+#include "runtime/messaging/submit_result_mapper.hpp"
 
 #include <zlink/Contracts/Eventing/poller.hpp>
 #include <zlink/Contracts/Core/context.hpp>
@@ -186,18 +187,20 @@ framework_exception_t map_native_request_exception (const std::exception &error)
                                           "channel request timed out");
         }
         if (request_error->result () == zlink::request_result_t::not_connected) {
-            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
-                                          "channel request timed out");
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
+              "channel request target is not connected");
         }
         if (request_error->internal_errno () == ECONNREFUSED
             || request_error->internal_errno () == ENOTCONN
             || request_error->internal_errno () == EHOSTUNREACH
             || request_error->internal_errno () == ENETUNREACH) {
-            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
-                                          "channel request timed out");
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
+              "channel request target is not connected");
         }
-        return framework_exception_t (framework_error_kind_t::internal_failure,
-                                      request_error->what ());
+        return runtime::messaging::map_request_result_exception (
+          request_error->result (), request_error->what ());
     }
     if (const auto *recv_error = dynamic_cast<const zlink::recv_error_t *> (&error);
         recv_error != nullptr) {
@@ -216,18 +219,20 @@ framework_exception_t map_native_request_exception (const std::exception &error)
                                           "channel request timed out");
         }
         if (submit_error->result () == zlink::submit_result_t::not_connected) {
-            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
-                                          "channel request timed out");
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
+              "channel request target is not connected");
         }
         if (submit_error->internal_errno () == ECONNREFUSED
             || submit_error->internal_errno () == ENOTCONN
             || submit_error->internal_errno () == EHOSTUNREACH
             || submit_error->internal_errno () == ENETUNREACH) {
-            return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
-                                          "channel request timed out");
+            return detail::make_boundary_exception (
+              detail::boundary_error_t::disconnected,
+              "channel request target is not connected");
         }
-        return framework_exception_t (framework_error_kind_t::internal_failure,
-                                      submit_error->what ());
+        return runtime::messaging::map_submit_result_exception (
+          submit_error->result (), submit_error->what ());
     }
     return framework_exception_t (framework_error_kind_t::internal_failure, error.what ());
 }
@@ -382,11 +387,10 @@ class channel_native_client_t
                     return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, "channel request timed out");
                 }
                 if (completion->result != zlink::request_result_t::ok) {
-                    if (completion->result == zlink::request_result_t::timed_out) {
-                        return detail::boundary_failure<runtime::messaging::message_parts_t> (detail::boundary_error_t::timed_out, "channel request timed out");
-                    }
-                    return result_t<runtime::messaging::message_parts_t>::failure (
-                      framework_error_kind_t::internal_failure, "channel native request failed");
+                    return detail::result_access_t::failure<
+                      runtime::messaging::message_parts_t> (
+                      runtime::messaging::map_request_result_exception (
+                        completion->result, "channel native request failed"));
                 }
                 return result_t<runtime::messaging::message_parts_t>::success (
                   runtime::messaging::message_parts_t (std::move (completion->reply)));

@@ -249,7 +249,10 @@ fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "metrics" ]]; then
   # OBS-B subset — spot.created/spot.count with kind label and
   # channel.request.duration samples appear in the evidence collector.
-  write_trigger_config "$CONFIG_DIR/trigger-metrics.json" flow "$SPOT_ID"
+  # The aggregate run has already applied the flow action to this room. Use
+  # the accumulating action assertion so the metrics probe does not depend on
+  # whether it runs alone or after OBS-A1.
+  write_trigger_config "$CONFIG_DIR/trigger-metrics.json" fanout "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-metrics.json" >"$LOG_DIR/trigger-metrics.log" 2>&1
   write_trigger_config "$CONFIG_DIR/trigger-metrics-error.json" error "$SPOT_ID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-metrics-error.json" >"$LOG_DIR/trigger-metrics-error.log" 2>&1

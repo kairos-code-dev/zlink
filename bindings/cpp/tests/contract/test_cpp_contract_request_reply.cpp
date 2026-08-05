@@ -297,6 +297,24 @@ void test_received_reply_rejects_non_none_flags ()
     router_done.get ();
 }
 
+void test_raw_router_reply_maps_submit_result ()
+{
+    zlink::context_t ctx;
+    zlink::router_socket_t router_socket (ctx);
+    const zlink::routing_id_t routing_id = zlink::routing_id_t::from ("raw-reply-client");
+    zlink::message_t reply = make_request_message ("reply:invalid-sequence");
+
+    try {
+        // Core reports this invalid request sequence as a submit result, not as a native errno.
+        router_socket.reply (routing_id, 0).message (reply).submit ();
+        assert (false && "invalid raw reply sequence must fail");
+    }
+    catch (const zlink::submit_error_t &error) {
+        assert (error.result () == zlink::submit_result_t::invalid_argument);
+        assert (error.internal_errno () == EINVAL);
+    }
+}
+
 void test_router_completion_control_uses_existing_completion_connection ()
 {
     zlink::context_t ctx;
@@ -421,6 +439,7 @@ int main ()
     test_request_wait_for_zero_pumps_progress ();
     test_request_router_preserves_data_recv_surface ();
     test_received_reply_rejects_non_none_flags ();
+    test_raw_router_reply_maps_submit_result ();
     test_router_completion_control_uses_existing_completion_connection ();
     std::quick_exit (0);
 }

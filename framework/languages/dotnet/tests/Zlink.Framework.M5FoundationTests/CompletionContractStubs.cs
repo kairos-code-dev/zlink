@@ -31,3 +31,20 @@ namespace Zlink.Framework.Runtime.Backend.DotNet
         }
     }
 }
+
+namespace Zlink.Framework.Runtime.Diagnostics
+{
+    // M5 compiles the completion table as an isolated source slice. Keep the
+    // slice independent of the full runtime metrics graph; the production
+    // project supplies the real implementation.
+    internal static class ZLinkRuntimeMetrics
+    {
+        internal static void RecordMessageDropped(
+            string meshName,
+            string surface,
+            string kind,
+            string reason)
+        {
+        }
+    }
+}

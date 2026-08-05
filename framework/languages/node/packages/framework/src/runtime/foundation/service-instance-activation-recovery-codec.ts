@@ -30,40 +30,89 @@ export function encodeInstanceActivationRecoveryEnvelope(
 ): Buffer {
   requireOperation(value);
   validateApplicationPayloadFrame(value.applicationPayloadFrame);
-  const applicationPayload = Buffer.from(value.applicationPayloadFrame);
-  const body = concat(
-    text8(value.target.targetSpotId, 'targetSpotId'),
-    text8(value.target.stableType, 'stableType'),
-    text8(value.targetMeshName, 'targetMeshName'),
-    text8(value.target.targetNodeRid, 'targetNodeRid'),
-    u64(value.target.targetNodeGeneration, 'targetNodeGeneration'),
-    text8(value.target.descriptorVersion, 'targetDescriptorVersion'),
-    text8(value.sourceNodeRid, 'sourceNodeRid'),
-    u64(value.sourceNodeGeneration, 'sourceNodeGeneration'),
-    optionalText8(value.sourceSpotId, 'sourceSpotId'),
-    Buffer.of(value.operationKind === 'send' ? 1 : 2),
-    u64Any(value.operation.high, 'operation.high'),
-    u64Any(value.operation.low, 'operation.low'),
-    ...(value.operationKind === 'request'
-      ? [u64(value.replyRouteId!, 'replyRouteId')]
-      : []),
-    u64(value.deadlineUnixMs, 'deadlineUnixMs'),
-    ...(value.metadataFrame === undefined
-      ? [Buffer.of(0)]
-      : [Buffer.of(1), validateServiceMetadataFrame(value.metadataFrame)]),
-    applicationPayload
-  );
-  const envelope = concat(
-    MAGIC,
-    Buffer.of(VERSION),
-    u16(FLAGS),
-    u32(body.byteLength),
-    body
-  );
-  const encoded = concat(envelope, u32(crc32c(envelope)));
-  if (encoded.byteLength > MAX_ENCODED_BYTES) {
+  const targetSpotId = textBytes(value.target.targetSpotId, 'targetSpotId');
+  const stableType = textBytes(value.target.stableType, 'stableType');
+  const targetMeshName = textBytes(value.targetMeshName, 'targetMeshName');
+  const targetNodeRid = textBytes(value.target.targetNodeRid, 'targetNodeRid');
+  const descriptorVersion = textBytes(value.target.descriptorVersion, 'targetDescriptorVersion');
+  const sourceNodeRid = textBytes(value.sourceNodeRid, 'sourceNodeRid');
+  const sourceSpotId = value.sourceSpotId === undefined
+    ? undefined
+    : textBytes(value.sourceSpotId, 'sourceSpotId');
+  validatePositiveU64(value.target.targetNodeGeneration, 'targetNodeGeneration');
+  validatePositiveU64(value.sourceNodeGeneration, 'sourceNodeGeneration');
+  validateU64(value.operation.high, 'operation.high');
+  validateU64(value.operation.low, 'operation.low');
+  if (value.operationKind === 'request') {
+    validatePositiveU64(value.replyRouteId!, 'replyRouteId');
+  }
+  validatePositiveU64(value.deadlineUnixMs, 'deadlineUnixMs');
+  const metadataFrame = value.metadataFrame === undefined
+    ? undefined
+    : validateServiceMetadataFrame(value.metadataFrame);
+  const bodyLength =
+    text8Size(targetSpotId)
+    + text8Size(stableType)
+    + text8Size(targetMeshName)
+    + text8Size(targetNodeRid)
+    + 8
+    + text8Size(descriptorVersion)
+    + text8Size(sourceNodeRid)
+    + 8
+    + 1 + (sourceSpotId === undefined ? 0 : text8Size(sourceSpotId))
+    + 1
+    + 8
+    + 8
+    + (value.operationKind === 'request' ? 8 : 0)
+    + 8
+    + 1 + (metadataFrame?.byteLength ?? 0)
+    + value.applicationPayloadFrame.byteLength;
+  const envelopeLength = 4 + 1 + 2 + 4 + bodyLength;
+  const encodedLength = envelopeLength + 4;
+  if (encodedLength > MAX_ENCODED_BYTES) {
     throw new RangeError('Instance activation recovery envelope exceeds 1 MiB.');
   }
+  const encoded = Buffer.allocUnsafe(encodedLength);
+  let offset = 0;
+  encoded.set(MAGIC, offset);
+  offset += MAGIC.byteLength;
+  encoded.writeUInt8(VERSION, offset);
+  offset += 1;
+  encoded.writeUInt16BE(FLAGS, offset);
+  offset += 2;
+  encoded.writeUInt32BE(bodyLength, offset);
+  offset += 4;
+  offset = writeText8(encoded, offset, targetSpotId);
+  offset = writeText8(encoded, offset, stableType);
+  offset = writeText8(encoded, offset, targetMeshName);
+  offset = writeText8(encoded, offset, targetNodeRid);
+  offset = writePositiveU64(encoded, offset, value.target.targetNodeGeneration);
+  offset = writeText8(encoded, offset, descriptorVersion);
+  offset = writeText8(encoded, offset, sourceNodeRid);
+  offset = writePositiveU64(encoded, offset, value.sourceNodeGeneration);
+  encoded.writeUInt8(sourceSpotId === undefined ? 0 : 1, offset);
+  offset += 1;
+  if (sourceSpotId !== undefined) offset = writeText8(encoded, offset, sourceSpotId);
+  encoded.writeUInt8(value.operationKind === 'send' ? 1 : 2, offset);
+  offset += 1;
+  offset = writeU64(encoded, offset, value.operation.high);
+  offset = writeU64(encoded, offset, value.operation.low);
+  if (value.operationKind === 'request') {
+    offset = writePositiveU64(encoded, offset, value.replyRouteId!);
+  }
+  offset = writePositiveU64(encoded, offset, value.deadlineUnixMs);
+  encoded.writeUInt8(metadataFrame === undefined ? 0 : 1, offset);
+  offset += 1;
+  if (metadataFrame !== undefined) {
+    encoded.set(metadataFrame, offset);
+    offset += metadataFrame.byteLength;
+  }
+  encoded.set(value.applicationPayloadFrame, offset);
+  offset += value.applicationPayloadFrame.byteLength;
+  if (offset !== envelopeLength) {
+    throw new Error('Instance activation recovery envelope length calculation is invalid.');
+  }
+  encoded.writeUInt32BE(crc32c(encoded.subarray(0, envelopeLength)), envelopeLength);
   return encoded;
 }
 
@@ -150,49 +199,44 @@ function requireOperation(value: ServiceInstanceActivationRecoveryEnvelope): voi
   }
 }
 
-function text8(value: string, name: string): Buffer {
+function textBytes(value: string, name: string): Buffer {
   const bytes = Buffer.from(value, 'utf8');
   if (bytes.byteLength < 1 || bytes.byteLength > 255 || bytes.includes(0)) {
     throw new RangeError(`${name} must contain 1..255 UTF-8 bytes without NUL.`);
   }
-  return concat(Buffer.of(bytes.byteLength), bytes);
+  return bytes;
 }
 
-function optionalText8(value: string | undefined, name: string): Buffer {
-  return value === undefined ? Buffer.of(0) : concat(Buffer.of(1), text8(value, name));
+function text8Size(value: Uint8Array): number {
+  return 1 + value.byteLength;
 }
 
-function u16(value: number): Buffer {
-  const result = Buffer.allocUnsafe(2);
-  result.writeUInt16BE(value);
-  return result;
+function writeText8(target: Buffer, offset: number, value: Uint8Array): number {
+  target.writeUInt8(value.byteLength, offset);
+  target.set(value, offset + 1);
+  return offset + 1 + value.byteLength;
 }
 
-function u32(value: number): Buffer {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 0xffff_ffff) {
-    throw new RangeError('u32 value is out of range.');
+function validatePositiveU64(value: bigint, name: string): void {
+  if (value <= 0n || value > 0xffff_ffff_ffff_ffffn) {
+    throw new RangeError(`${name} is out of range.`);
   }
-  const result = Buffer.allocUnsafe(4);
-  result.writeUInt32BE(value);
-  return result;
 }
 
-function u64(value: bigint, name: string): Buffer {
-  if (value <= 0n) throw new RangeError(`${name} must be positive.`);
-  return u64Any(value, name);
-}
-
-function u64Any(value: bigint, name: string): Buffer {
+function validateU64(value: bigint, name: string): void {
   if (value < 0n || value > 0xffff_ffff_ffff_ffffn) {
     throw new RangeError(`${name} is out of range.`);
   }
-  const result = Buffer.allocUnsafe(8);
-  result.writeBigUInt64BE(value);
-  return result;
 }
 
-function concat(...values: readonly Uint8Array[]): Buffer {
-  return Buffer.concat(values.map(value => Buffer.from(value)));
+function writeU64(target: Buffer, offset: number, value: bigint): number {
+  target.writeBigUInt64BE(value, offset);
+  return offset + 8;
+}
+
+function writePositiveU64(target: Buffer, offset: number, value: bigint): number {
+  target.writeBigUInt64BE(value, offset);
+  return offset + 8;
 }
 
 class RecoveryReader {

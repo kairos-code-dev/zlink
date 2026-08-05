@@ -1603,6 +1603,68 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
     `join timeout ${joinTimeouts[0]} must be within (0, 25]`);
 });
 
+test('ZLinkActorNativeJoinCoordinator does not resubmit a joined operation after NotConnected', async () => {
+  let joinCalls = 0;
+  const actorRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
+  class PlayerActor {
+    constructor(actorId, context) {
+      this.actorId = actorId;
+      this.context = context;
+    }
+  }
+  class PlayerFactory {
+    create(context) {
+      return new PlayerActor(context.actorId, context);
+    }
+  }
+  const node = createMockSpotNode({
+    actorLookup() {
+      return undefined;
+    },
+    createActor() {
+      return actorRef;
+    },
+    joinActor(_actor, targetNodeRid, targetSpotId, _request, callback) {
+      joinCalls += 1;
+      callback({
+        result: zlink.RequestResult.NotConnected,
+        joinResultCode: 0,
+        actor: actorRef,
+        targetNodeRid,
+        joinedSpotId: targetSpotId,
+        joinEpoch: 2n,
+        flags: 0
+      }, []);
+      return true;
+    }
+  });
+  const manager = createActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    joinCoordinator: new framework.ZLinkActorNativeJoinCoordinator({
+      node,
+      completionTableProvider: () => node.completionTable,
+      spotRouteResolver: {
+        async resolve(spotId) {
+          return {
+            routerChannelId: 'play',
+            targetNodeRid: rid('node-a'),
+            spotId: rid(String(spotId)),
+            spotKind: framework.ZLinkSpotKind.User,
+            targetSpotGeneration: 1n
+          };
+        }
+      }
+    })
+  });
+  const actor = await manager.getOrCreateActor('alice', 'player');
+
+  await assert.rejects(
+    () => submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', encodedMessage('payload')).timeout(25)),
+    /Deferred Actor Join failed/
+  );
+  assert.equal(joinCalls, 1);
+});
+
 test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remote join', async () => {
   const events = [];
   const coordinatorTimeouts = [];
@@ -1860,7 +1922,19 @@ test('remote transfer failures before commit preserve source ownership and never
       createActor(actorId) {
         return { nodeRid: rid('node-source'), actorId, generation: 1n };
       },
-      joinActor() {
+      joinActor(actorRef, targetNodeRid, targetSpotId, request, callback) {
+        const payload = JSON.parse(request.data().toString());
+        if (payload.phase === 'admission') {
+          events.push('formalJoin:admission');
+          callback({
+            result: 0,
+            joinResultCode: 0,
+            actor: { ...actorRef, nodeRid: targetNodeRid, generation: 2n },
+            joinedSpotId: targetSpotId,
+            joinEpoch: 1n
+          }, []);
+          return true;
+        }
         events.push('formalJoin:failed');
         throw new Error(`injected ${failurePoint} failure`);
       }
@@ -1947,11 +2021,13 @@ test('remote transfer failures before commit preserve source ownership and never
   }
 
   assert.deepEqual(await runFailure('transferOut'), [
+    'formalJoin:admission',
     'move:start',
     'transferOut',
     'move:cancel'
   ]);
   assert.deepEqual(await runFailure('prepare'), [
+    'formalJoin:admission',
     'move:start',
     'transferOut',
     'prepare',
@@ -1972,11 +2048,12 @@ test('formal remote join rejection rolls back prepared source movement and prese
   const node = createMockSpotNode({
     routingId: rid('node-source'),
     createActor(actorId) { return { nodeRid: rid('node-source'), actorId, generation: 1n }; },
-    joinActor(actorRef, _targetNodeRid, targetSpotId, _request, callback) {
+    joinActor(actorRef, targetNodeRid, targetSpotId, request, callback) {
+      const payload = JSON.parse(request.data().toString());
       callback({
-        result: 1,
-        joinResultCode: 1,
-        actor: actorRef,
+        result: 0,
+        joinResultCode: payload.phase === 'admission' ? 0 : 1,
+        actor: { ...actorRef, nodeRid: targetNodeRid, generation: 2n },
         joinedSpotId: targetSpotId,
         joinEpoch: 1n
       }, []);
@@ -2238,6 +2315,7 @@ test('source command 42 seal publishes a durable accepted journal and rollback a
     locationLifecycle: () => undefined,
     actorHandoff: {
       begin() {},
+      isActive() { return false; },
       snapshotCoreBacklog() { return [{ index: 0, header: 'aA==', payload: 'Yg==', returnResponse: false }]; },
       cancel() {},
       pendingCount() { return 1; }
@@ -2795,12 +2873,16 @@ test('ZLinkActorNativeJoinCoordinator uses formal transfer when replacement proc
     },
     joinActorEntrySpot(actorRef, nodeRid, request, callback) {
       const wire = JSON.parse(request.getString('utf8'));
-      assert.equal(wire.phase, 'commit');
       assert.equal(wire.actorType, 'player');
       assert.equal(wire.sourceSpotId, 'room-1');
       assert.equal(wire.spotId, 'node-entry');
       assert.equal(typeof wire.transferId, 'string');
-      assert.equal(typeof wire.transferState, 'string');
+      if (wire.phase === 'admission') {
+        assert.equal(wire.transferState, undefined);
+      } else {
+        assert.equal(wire.phase, 'commit');
+        assert.equal(typeof wire.transferState, 'string');
+      }
       events.push(`joinEntry:${String(nodeRid)}:${wire.phase}:${wire.sourceSpotId}`);
       callback({
         result: 0,
@@ -2894,6 +2976,7 @@ test('ZLinkActorNativeJoinCoordinator uses formal transfer when replacement proc
   assert.equal(accepted, true);
   assert.deepEqual(events, [
     'resolve:node-entry',
+    'joinEntry:node-entry:admission:room-1',
     'prepare:core',
     'reserveTarget',
     'joinEntry:node-entry:commit:room-1',

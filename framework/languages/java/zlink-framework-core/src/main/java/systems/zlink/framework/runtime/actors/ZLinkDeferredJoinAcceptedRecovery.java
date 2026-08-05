@@ -165,6 +165,27 @@ final class ZLinkDeferredJoinAcceptedRecovery {
             timeout);
     }
 
+    CompletionStage<Void> awaitTargetCompletion(
+        Manifest manifest,
+        ZLinkBackendActorRef actor,
+        Duration timeout) {
+        if (authorityJournal == null || !manifest.hasAggregateFence()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "direct Actor Join relocation fence is missing"));
+        }
+        return authorityJournal.awaitTargetCompletion(
+            new UUID(
+                manifest.aggregateIdHigh(),
+                manifest.aggregateIdLow()),
+            manifest.aggregateGeneration(),
+            new ZLinkActorJoinOperationId(
+                manifest.operationIdHigh(),
+                manifest.operationIdLow()),
+            actor,
+            timeout);
+    }
+
     CompletionStage<Void> awaitSourceCleanup(
         Manifest manifest,
         ZLinkBackendActorRef actor,

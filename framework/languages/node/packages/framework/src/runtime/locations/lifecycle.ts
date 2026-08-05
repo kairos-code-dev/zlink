@@ -44,13 +44,15 @@ export class ZLinkLocationLifecycle {
     actorStore: ZLinkActorLocationStore,
     entryMeshName = '',
     authorityStore?: ZLinkAuthorityStore,
-    spotStore?: ZLinkSpotLocationStore
+    spotStore?: ZLinkSpotLocationStore,
+    invalidateSpotRoute?: (spotId: RoutingId) => void
   ) {
     this.actorClaims = new ZLinkActorLocationClaims(runtime, actorStore, entryMeshName, authorityStore);
     this.spotClaims = new ZLinkSpotLocationClaims(
       runtime,
       authorityStore,
-      spotStore ?? inferSpotStore(actorStore)
+      spotStore ?? inferSpotStore(actorStore),
+      invalidateSpotRoute
     );
     this.actorSessionRoutes = new ZLinkActorSessionRouteClaims(runtime);
     this.runtime.addOwnershipLostHandler(this.ownershipLostHandler);

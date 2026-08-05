@@ -413,6 +413,7 @@ class mesh_node_runtime_t
     std::map<std::string, std::uint64_t> _peer_connection_intents;
     std::mutex _completion_mutex;
     std::condition_variable _completion_ready;
+    std::atomic_bool _stopping{false};
     zlink::framework::runtime::exactly_once_table_t<
       host::operation_id_t,
       operation_completion_t,

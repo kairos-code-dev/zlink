@@ -179,6 +179,7 @@ void mesh_node_runtime_t::start ()
     if (_node) {
         return;
     }
+    _stopping.store (false, std::memory_order_release);
     runtime::messaging::activate_submit_owner (this);
 
     std::lock_guard lock (_state->mutex);
@@ -1094,6 +1095,8 @@ bool mesh_node_runtime_t::send_instance_spot_activation_remote (
 
 void mesh_node_runtime_t::stop () noexcept
 {
+    _stopping.store (true, std::memory_order_release);
+    _completion_ready.notify_all ();
     runtime::messaging::shutdown_submit_owner (this);
     {
         std::lock_guard lock (_completion_mutex);
@@ -2444,9 +2447,18 @@ mesh_node_runtime_t::wait_for_completion (
 {
     std::unique_lock lock (_completion_mutex);
     if (!_completion_ready.wait_for (
-          lock, timeout, [&] { return _completed_operations.contains (operation); })) {
-        return result_t<operation_completion_t>::failure (
-          framework_error_kind_t::internal_failure, "MeshNode operation timed out");
+          lock, timeout, [&] {
+              return _completed_operations.contains (operation)
+                     || _stopping.load (std::memory_order_acquire);
+          })) {
+        return detail::boundary_failure<operation_completion_t> (
+          detail::boundary_error_t::timed_out,
+          "MeshNode operation timed out");
+    }
+    if (!_completed_operations.contains (operation)) {
+        return detail::boundary_failure<operation_completion_t> (
+          detail::boundary_error_t::shutdown,
+          "MeshNode operation stopped because the runtime is shutting down");
     }
     operation_completion_t completion;
     if (!_completed_operations.take (operation, completion)) {

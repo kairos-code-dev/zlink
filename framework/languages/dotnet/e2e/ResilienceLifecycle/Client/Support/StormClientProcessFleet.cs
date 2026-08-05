@@ -18,6 +18,8 @@ namespace ResilienceLifecycle.Client.Support;
 internal sealed class StormClientProcessFleet : IAsyncDisposable
 {
     private const int ClientCount = 100;
+    private const int StartupBatchSize = 8;
+    private const int ShutdownBatchSize = 4;
     private readonly StormProcess[] _workers;
 
     private StormClientProcessFleet(StormProcess[] workers)
@@ -30,24 +32,36 @@ internal sealed class StormClientProcessFleet : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         var assemblyPath = Assembly.GetExecutingAssembly().Location;
-        var workers = Enumerable.Range(0, ClientCount)
-            .Select(index => StormProcess.Start(
-                assemblyPath,
-                options.RedisEndpoint,
-                options.RedisKeyPrefix,
-                options.LogDir,
-                index))
-            .ToArray();
-        var fleet = new StormClientProcessFleet(workers);
+        var workers = new List<StormProcess>(ClientCount);
         try
         {
-            await Task.WhenAll(workers.Select(worker =>
-                worker.WaitStartedAsync(cancellationToken)));
-            return fleet;
+            for (var firstIndex = 0; firstIndex < ClientCount; firstIndex += StartupBatchSize)
+            {
+                var batch = new List<StormProcess>(
+                    Math.Min(StartupBatchSize, ClientCount - firstIndex));
+                for (var index = firstIndex;
+                     index < Math.Min(firstIndex + StartupBatchSize, ClientCount);
+                     index++)
+                {
+                    var worker = StormProcess.Start(
+                        assemblyPath,
+                        options.RedisEndpoint,
+                        options.RedisKeyPrefix,
+                        options.LogDir,
+                        index);
+                    workers.Add(worker);
+                    batch.Add(worker);
+                }
+
+                await Task.WhenAll(batch.Select(worker =>
+                    worker.WaitStartedAsync(cancellationToken)));
+            }
+
+            return new StormClientProcessFleet(workers.ToArray());
         }
         catch
         {
-            await fleet.DisposeAsync();
+            await DisposeWorkersAsync(workers);
             throw;
         }
     }
@@ -68,7 +82,49 @@ internal sealed class StormClientProcessFleet : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await Task.WhenAll(_workers.Select(static worker => worker.DisposeAsync().AsTask()));
+        var failures = await DisposeWorkersAsync(_workers);
+        if (failures.Count != 0)
+            throw new AggregateException(
+                "One or more storm clients failed during teardown.",
+                failures);
+    }
+
+    private static async Task<List<Exception>> DisposeWorkersAsync(
+        IReadOnlyList<StormProcess> workers)
+    {
+        var failures = new List<Exception>();
+        for (var firstIndex = 0;
+             firstIndex < workers.Count;
+             firstIndex += ShutdownBatchSize)
+        {
+            var batchEnd = Math.Min(firstIndex + ShutdownBatchSize, workers.Count);
+            var results = new Task<Exception?>[batchEnd - firstIndex];
+            for (var index = firstIndex; index < batchEnd; index++)
+            {
+                results[index - firstIndex] = DisposeWorkerAsync(workers[index]);
+            }
+
+            foreach (var failure in await Task.WhenAll(results))
+            {
+                if (failure is not null)
+                    failures.Add(failure);
+            }
+        }
+
+        return failures;
+    }
+
+    private static async Task<Exception?> DisposeWorkerAsync(StormProcess worker)
+    {
+        try
+        {
+            await worker.DisposeAsync();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 
     private sealed class StormProcess : IAsyncDisposable
@@ -166,27 +222,38 @@ internal sealed class StormClientProcessFleet : IAsyncDisposable
 
         public async ValueTask DisposeAsync()
         {
-            if (!_process.HasExited)
+            try
             {
-                try
+                if (!_process.HasExited)
                 {
-                    await WriteLineAsync("EXIT", CancellationToken.None);
-                    await _process.WaitForExitAsync()
-                        .WaitAsync(TimeSpan.FromSeconds(5));
+                    try
+                    {
+                        await WriteLineAsync("EXIT", CancellationToken.None);
+                        await _process.WaitForExitAsync()
+                            .WaitAsync(TimeSpan.FromSeconds(5));
+                    }
+                    catch
+                    {
+                        if (!_process.HasExited)
+                            _process.Kill(entireProcessTree: true);
+                    }
                 }
-                catch
-                {
-                    if (!_process.HasExited)
-                        _process.Kill(entireProcessTree: true);
-                }
-            }
 
-            if (!_process.HasExited)
-                await _process.WaitForExitAsync();
-            var stderr = await _stderr;
-            if (!string.IsNullOrEmpty(stderr))
-                await File.WriteAllTextAsync(_stderrLogPath, stderr);
-            _process.Dispose();
+                if (!_process.HasExited)
+                    await _process.WaitForExitAsync();
+                var exitCode = _process.ExitCode;
+                var stderr = await _stderr;
+                if (!string.IsNullOrEmpty(stderr))
+                    await File.WriteAllTextAsync(_stderrLogPath, stderr);
+                if (exitCode != 0)
+                    throw new InvalidOperationException(
+                        $"Storm client {_index} exited with code {exitCode}. "
+                        + $"See '{_stderrLogPath}'.");
+            }
+            finally
+            {
+                _process.Dispose();
+            }
         }
 
         private async Task WriteLineAsync(string line, CancellationToken cancellationToken)
@@ -302,7 +369,7 @@ internal static class StormClientWorker
             var peer = status.Peers
                 .FirstOrDefault(candidate =>
                     candidate.State == ZLinkPeerState.Ready
-                    && candidate.NodeRid == RoutingId.From("api-b")
+                    && IsProviderRid(candidate.NodeRid)
                     && (previousGeneration is null
                         || status.Sequence != previousGeneration.Value));
             if (peer is not null)
@@ -311,5 +378,12 @@ internal static class StormClientWorker
         }
 
         throw new TimeoutException("Storm worker did not observe provider api-b ready.");
+    }
+
+    private static bool IsProviderRid(RoutingId nodeRid)
+    {
+        var value = nodeRid.ToString();
+        return value.Equals("api-b", StringComparison.Ordinal)
+               || value.StartsWith("api-b-", StringComparison.Ordinal);
     }
 }

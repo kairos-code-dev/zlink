@@ -17,6 +17,7 @@ export class ZLinkFormalRemoteActorTransferRegistry {
     readonly transfer: ZLinkFormalRemoteActorTransfer;
     readonly resolveSourceLeaveTerminal: (succeeded: boolean) => void;
   }>();
+  private readonly transfersById = new Map<string, ZLinkFormalRemoteActorTransfer>();
 
   has(actorId: string): boolean {
     return this.transfers.has(actorId);
@@ -26,6 +27,10 @@ export class ZLinkFormalRemoteActorTransferRegistry {
     return this.transfers.get(actorId)?.transfer;
   }
 
+  getByTransferId(transferId: string): ZLinkFormalRemoteActorTransfer | undefined {
+    return this.transfersById.get(transferId);
+  }
+
   begin(input: {
     readonly actor: ZLinkActor;
     readonly spotId: RoutingId;
@@ -33,6 +38,22 @@ export class ZLinkFormalRemoteActorTransferRegistry {
     readonly handoffBacklog: readonly ZLinkActorHandoffPacket[];
     readonly deferredJoinRoot?: ZLinkDeferredJoinAcceptedRoot;
   }): ZLinkFormalRemoteActorTransfer {
+    const existingByActor = this.transfers.get(input.actor.context.actorId)?.transfer;
+    if (existingByActor !== undefined) {
+      if (existingByActor.transferId !== input.transferId) {
+        throw new Error(
+          `Actor '${input.actor.context.actorId}' already has a different formal transfer.`
+        );
+      }
+      return existingByActor;
+    }
+    const existingById = this.transfersById.get(input.transferId);
+    if (existingById !== undefined) {
+      if (existingById.actor.context.actorId !== input.actor.context.actorId) {
+        throw new Error(`Formal actor transfer '${input.transferId}' does not match its Actor.`);
+      }
+      return existingById;
+    }
     let resolveSourceLeaveTerminal!: (succeeded: boolean) => void;
     const sourceLeaveTerminal = new Promise<boolean>((resolve) => {
       resolveSourceLeaveTerminal = resolve;
@@ -45,11 +66,16 @@ export class ZLinkFormalRemoteActorTransferRegistry {
       transfer,
       resolveSourceLeaveTerminal
     });
+    this.transfersById.set(input.transferId, transfer);
     return transfer;
   }
 
   delete(actorId: string): void {
-    this.transfers.delete(actorId);
+    const pending = this.transfers.get(actorId);
+    if (pending !== undefined) {
+      this.transfersById.delete(pending.transfer.transferId);
+      this.transfers.delete(actorId);
+    }
   }
 
   completeSourceLeaveTerminal(

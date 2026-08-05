@@ -767,6 +767,16 @@ stream_builder_t &stream_builder_t::set_advertise_host (std::string host)
     return *this;
 }
 
+stream_builder_t &stream_builder_t::set_max_message_size (std::int64_t value)
+{
+    if (value < 0) {
+        throw framework_exception_t (framework_error_kind_t::protocol_error,
+                                     "STREAM MaxMessageSize must be zero or positive");
+    }
+    _state->snapshot.max_message_size = value;
+    return *this;
+}
+
 stream_builder_t &stream_builder_t::configure_tls_server (
   std::string certificate_file,
   std::string private_key_file,

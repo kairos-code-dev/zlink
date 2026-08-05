@@ -109,6 +109,10 @@ export class OperationRegistry<T> {
     return this.fail(id, new OperationCancelledError(id, message));
   }
 
+  isPending(id: bigint): boolean {
+    return this.entries.has(id);
+  }
+
   close(reason = 'Operation registry closed.'): void {
     if (this.closed) return;
     this.closed = true;

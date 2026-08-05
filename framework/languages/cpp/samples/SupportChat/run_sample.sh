@@ -8,7 +8,6 @@ source "$CPP_ROOT/samples/sample-build-common.sh"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-KEEP_FAILURE_LOGS="${ZLINK_CPP_KEEP_FAILURE_LOGS:-0}"
 zlink_cpp_sample_prepare_build "$CPP_ROOT"
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_supportchat_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_supportchat_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -49,10 +48,6 @@ cleanup() {
   done
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
-  fi
-  if [[ "$code" -ne 0 && "$KEEP_FAILURE_LOGS" == "1" ]]; then
-    rm -rf "$FLOW_LOG_DIR/last-failure"
-    cp -a "$RUN_DIR" "$FLOW_LOG_DIR/last-failure"
   fi
   rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then

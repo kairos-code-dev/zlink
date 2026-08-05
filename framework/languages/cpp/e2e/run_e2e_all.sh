@@ -34,7 +34,9 @@ CONFIGS=(
   ToActorMessaging
   SpotActorTransfer
   ObservabilityOps
+  ChannelEgressRouting
   SubmitAdmission
+  InstanceSpot
 )
 
 START_ORDER_VARIANTS=(
@@ -112,6 +114,7 @@ SELECTED_CONFIGS=()
 SELECTED_SCENARIOS=()
 
 if [[ "$#" -eq 0 ]]; then
+  "${SCRIPT_DIR}/verify_common_inventory.sh"
   for config in "${CONFIGS[@]}"; do
     SELECTED_CONFIGS+=("${config}")
     SELECTED_SCENARIOS+=("all")

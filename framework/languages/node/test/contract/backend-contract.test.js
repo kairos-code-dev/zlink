@@ -471,6 +471,98 @@ test('backend mesh dispatch pump yields between continuous ready batches without
   }
 });
 
+test('backend mesh dispatch pump bounds lifecycle priority so application work is not starved', async () => {
+  let readyHandler;
+  const lifecycle = Array.from({ length: 8 }, (_, index) => `lifecycle-${index}`);
+  const application = ['application-0'];
+  const order = [];
+
+  function createClaim(label) {
+    let consumed = false;
+    return {
+      recvBatch() {
+        if (consumed) return { ok: false, records: [] };
+        consumed = true;
+        return {
+          ok: true,
+          records: [{
+            parts: [zlink.Message.from(label)],
+            operationKind: 0
+          }]
+        };
+      },
+      release() {}
+    };
+  }
+
+  const node = {
+    setReadyHandler(handler) { readyHandler = handler; },
+    createReadyBatch(capacity) {
+      const batch = {
+        records: [],
+        claims: [],
+        get full() { return this.records.length >= capacity; },
+        push(record, claim) {
+          this.records.push(record);
+          this.claims.push(claim);
+        },
+        reset() {
+          this.records.length = 0;
+          this.claims.length = 0;
+        },
+        takeClaim(index) { return this.claims[index]; },
+        close() {}
+      };
+      return batch;
+    },
+    createReceiveBatch() {
+      return { reset() {}, close() {} };
+    },
+    drainReady(domain, batch) {
+      const queue = domain === framework.ReadyDomain.Infrastructure ? lifecycle : application;
+      while (queue.length > 0 && !batch.full) {
+        const label = queue.shift();
+        batch.push(
+          { ownerKind: framework.ReadyOwnerKind.Node, domain },
+          createClaim(label)
+        );
+      }
+      return {
+        ok: true,
+        hasResidue: (domain === framework.ReadyDomain.Infrastructure
+          ? lifecycle
+          : application).length > 0,
+        records: batch.records
+      };
+    }
+  };
+  const pump = new backend.ZLinkMeshDispatchPump(node, {
+    dispatch(_owner, record) {
+      order.push(record.parts[0].getString('utf8'));
+    }
+  });
+
+  try {
+    pump.start();
+    readyHandler(framework.ReadyDomain.Infrastructure | framework.ReadyDomain.Application);
+    for (let turn = 0; turn < 100 && order.length < 9; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await pump.dispose();
+  } finally {
+    await pump.dispose();
+  }
+
+  assert.deepEqual(order.slice(0, 5), [
+    'lifecycle-0',
+    'lifecycle-1',
+    'lifecycle-2',
+    'lifecycle-3',
+    'application-0'
+  ]);
+  assert.equal(order.length, 9);
+});
+
 test('backend mesh dispatch pump yields before recursively signaled dispatch work', async () => {
   const totalDispatches = 64;
   let readyHandler;

@@ -70,9 +70,14 @@ export interface ZLinkStreamNodeBuilder {
     bind(port?: number): this;
     setBindHost(bindHost: string): this;
     setAdvertiseHost(advertiseHost: string): this;
+    configureSocket(): ZLinkStreamSocketConfig;
     enableActorDispatch(): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
+}
+
+export interface ZLinkStreamSocketConfig {
+    maxMessageSize: number;
 }
 
 export declare function ZLinkStreamPacket(): MethodDecorator;
@@ -96,6 +101,14 @@ export interface ZLinkTimerOptions {
     stopOnUnhandledException?: boolean;
 }
 ```
+
+`configureSocket().maxMessageSize`의 기본값은 `64 KiB`다. 이 상한은 StreamNode가
+Core STREAM에서 client→server로 받는 complete message에만 적용하며, 크기는 6-byte
+prefix를 제외한 header와 payload의 합으로 계산한다. `0`은 Framework 상한을 사용하지
+않도록 Core의 `-1`로 변환하고, 음수는 startup configuration error다. 상한을 넘은
+message는 session handler에 일부도 전달하지 않고 server에서 `EMSGSIZE`와 진단 trace를
+남긴 뒤 연결을 종료한다. raw client는 별도 wire error code를 받지 않고 연결 종료를
+관찰한다. server→client outbound에는 이 Framework 상한을 적용하지 않는다.
 
 ## 3. Timer scheduling과 worker
 

@@ -373,6 +373,9 @@ final class ZLinkUserSpotRetireTargetEndpoint
             expected = expectedParticipants(request);
         return coordinator.updateCanonicalReplay(
                 expected,
+                new ZLinkAggregateFence(
+                    request.fence().aggregateId(),
+                    request.fence().aggregateGeneration()),
                 owner,
                 current -> ZLinkServiceRelocationEnvelopeCodec.advanceReplay(
                     current,
@@ -534,6 +537,9 @@ final class ZLinkUserSpotRetireTargetEndpoint
                 }
                 return coordinator.updateCanonicalReplay(
                         participants,
+                        new ZLinkAggregateFence(
+                            request.fence().aggregateId(),
+                            request.fence().aggregateGeneration()),
                         owner,
                         current -> ZLinkServiceRelocationEnvelopeCodec
                             .completeDelivery(

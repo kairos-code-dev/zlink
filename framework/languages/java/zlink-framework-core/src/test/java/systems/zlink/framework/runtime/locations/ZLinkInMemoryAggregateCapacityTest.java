@@ -124,6 +124,8 @@ final class ZLinkInMemoryAggregateCapacityTest {
         ZLinkAggregateParticipant participant =
             new ZLinkAggregateParticipant(
                 fixture.key,
+                fixture.current.objectGeneration(),
+                fixture.current.authorityOwnerGeneration(),
                 fixture.current.storeVersion(),
                 ZLinkAuthorityGenerationTransition.PRESERVE,
                 new byte[] {2},
@@ -280,6 +282,8 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         2,
                         List.of(new ZLinkAggregateParticipant(
                             fixture.key,
+                            before.objectGeneration(),
+                            before.authorityOwnerGeneration(),
                             before.storeVersion(),
                             ZLinkAuthorityGenerationTransition.PRESERVE,
                             new byte[] {8},
@@ -446,6 +450,8 @@ final class ZLinkInMemoryAggregateCapacityTest {
             1,
             List.of(new ZLinkAggregateParticipant(
                 "zla1:a:4:mesh:7:actor-1",
+                current.objectGeneration(),
+                current.authorityOwnerGeneration(),
                 current.storeVersion(),
                 ZLinkAuthorityGenerationTransition.NEW_OWNER,
                 payload,

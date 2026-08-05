@@ -48,6 +48,8 @@ internal sealed class ZLinkMeshNodeOwnedMailbox(
     {
         lock (_gate)
         {
+            if (record.PendingBytes == ulong.MaxValue)
+                return false;
             if ((ulong)_records.Count >= messageBudget
                 || record.PendingBytes > byteBudget - Math.Min(
                     _pendingBytes,
@@ -76,7 +78,7 @@ internal sealed class ZLinkMeshNodeOwnedMailbox(
         }
 
         if (!inboundDispatchBudget.TryTrack(
-                candidate.PendingBytes,
+                candidate.PayloadBytes,
                 out var lease))
         {
             lock (_gate)
@@ -115,7 +117,7 @@ internal sealed class ZLinkMeshNodeOwnedMailbox(
                 return false;
             }
             var candidate = _records.Peek();
-            if (!batch.CanAdd(checked((long)candidate.PendingBytes)))
+            if (!batch.CanAdd(checked((long)candidate.PayloadBytes)))
             {
                 record = null!;
                 return false;
@@ -153,10 +155,46 @@ internal sealed class ZLinkMeshQueuedRecord(
     MeshReceiveRecord record,
     IReadOnlyList<Message> parts) : IDisposable
 {
+    // The mailbox contract accounts for the retained payload, application
+    // metadata, and a fixed envelope/queue-node cost. The inbound application
+    // HWM uses PayloadBytes separately because the wire receive contract counts
+    // payload bytes only.
+    internal const ulong FixedRecordBytes = 256;
     private IReadOnlyList<Message>? _parts = parts;
     internal MeshReceiveRecord Record { get; private set; } = record;
-    internal ulong PendingBytes =>
-        checked((ulong)(_parts?.Sum(static part => part.Size) ?? 0));
+    internal ulong PayloadBytes
+    {
+        get
+        {
+            var total = 0UL;
+            var owned = _parts;
+            if (owned is null)
+                return 0;
+            foreach (var part in owned)
+            {
+                var size = (ulong)Math.Max(part.Size, 0);
+                if (size > ulong.MaxValue - total)
+                    return ulong.MaxValue;
+                total += size;
+            }
+            return total;
+        }
+    }
+
+    internal ulong PendingBytes
+    {
+        get
+        {
+            var payload = PayloadBytes;
+            if (payload > ulong.MaxValue - FixedRecordBytes)
+                return ulong.MaxValue;
+            var total = payload + FixedRecordBytes;
+            var metadata = (ulong)(Record.ApplicationMetadata?.Length ?? 0);
+            return metadata > ulong.MaxValue - total
+                ? ulong.MaxValue
+                : total + metadata;
+        }
+    }
 
     internal IReadOnlyList<Message> TakeParts() =>
         Interlocked.Exchange(ref _parts, null) ?? Array.Empty<Message>();

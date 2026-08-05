@@ -117,6 +117,7 @@ struct stream_snapshot_t {
     std::string tls_certificate_file;
     std::string tls_private_key_file;
     bool tls_require_client_certificate;
+    std::int64_t max_message_size = 64 * 1024;
 };
 
 class stream_compression_options_builder_t {
@@ -126,6 +127,10 @@ public:
     stream_compression_options_builder_t &use(
       std::shared_ptr<const stream_compression_codec_t> codec);
     stream_compression_options_builder_t &disable();
+};
+
+struct stream_socket_config_t {
+    std::int64_t max_message_size = 64 * 1024;
 };
 
 class stream_node_options_builder_t {
@@ -138,6 +143,7 @@ public:
       std::string certificate_file,
       std::string private_key_file,
       bool require_client_certificate = false);
+    stream_socket_config_t &configure_socket() noexcept;
     stream_node_options_builder_t &enable_actor_dispatch();
     stream_node_options_builder_t &register_session(std::string session_name);
 
@@ -146,6 +152,14 @@ public:
     stream_node_options_builder_t &register_session();
 };
 ```
+
+`configure_socket().max_message_size`는 StreamNode의 Core STREAM inbound 상한이다. 기본값은
+`64 KiB`이며 complete message 크기를 6-byte prefix를 제외한 header byte와 payload byte의 합으로
+계산한다. 상한은 client에서 server로 수신하는 message에만 적용하고 server에서 client로 보내는
+message에는 적용하지 않는다. `0`은 별도 Framework 상한을 사용하지 않는 값이고, 양수는 유한한
+상한이다. 음수는 startup configuration error다. 상한을 넘는 client message는 Core가 `EMSGSIZE`로
+거부하고 server가 해당 연결을 종료한다. Server callback에는 부분 message를 전달하지 않으며, raw
+client는 wire error code를 받지 않고 연결 종료를 관측한다.
 
 `stream_error_t`는 provider-neutral error 종류와 설명만 공개한다. Native transport error code는
 runtime 내부 진단 정보이며 public contract에 포함하지 않는다.

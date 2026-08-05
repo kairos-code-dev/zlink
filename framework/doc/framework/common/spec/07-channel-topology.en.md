@@ -379,10 +379,12 @@ multicast to all four Servers.
 ChannelName, since `Server` role already includes the functionality to
 start a Channel call.
 
-If the `match` Server role is registered on the current MeshNode, and the
-local MeshNode is ready with weight greater than 0, this node is also
-included in the Server candidate list. So its own node can be selected in
-a select-one call it started itself.
+If the `match` Server role is registered on the current MeshNode, that node
+can start a Channel call without registering the Client role again. The
+current MeshNode is not included in its own RouteMesh candidate list. Its
+Server membership remains available for callers on other MeshNodes, while
+only admitted remote Server peers with positive weight are candidates for
+this call.
 
 ```mermaid
 flowchart LR
@@ -390,26 +392,26 @@ flowchart LR
 
     subgraph ServerTargets[" "]
         direction TB
-        SA["server A<br/>own node · selected for this call"]
-        SB["server B"]
+        SB["server B<br/>selected for this call"]
         SC["server C"]
         SD["server D"]
     end
 
-    Caller -->|own node can also be selected in select-one| SA
+    Caller -->|selects one remote Server| SB
 
     style ServerTargets fill:transparent,stroke:transparent
 ```
 
 The left circle represents the send capability included in server A's
-Server role, not a separately registered Client role. Servers A through D
-are all select-one candidates, and the example shows server A — the one
-that started the call — being selected.
+Server role, not a separately registered Client role. Server A starts the
+call, but it is not a candidate for its own RouteMesh call. The example
+shows remote server B being selected.
 
-If its own node is selected, it submits to the local `match` Channel queue.
 If a remote Server is selected, it uses the existing RouteMesh peer
-connection from the §4.2.1 diagram. In either case, Channel registration
-doesn't create a new socket.
+connection from the §4.2.1 diagram. Channel registration doesn't create a
+new socket. If no admitted remote Server has positive weight, the call
+ends with no target instead of invoking the local handler. An application
+that needs same-process local selection uses a ClientServer channel.
 
 [Logical Multicast](01-glossary.en.md#logical-multicast) selects every
 remote Server membership satisfying the same condition, and is separately
@@ -660,28 +662,27 @@ Multicast remote targets. The termination rule for already-submitted work
 and RID direct is defined by
 [Graceful Drain](28-graceful-drain-handoff.en.md).
 
-## 8. Message Size The ROUTER Can Receive
+## 8. RouteMesh SS Message Size
 
-A MeshNode's transport configuration is fixed before startup. Only
-ChannelName weight can be changed at runtime.
+A RouteMesh MeshNode has no Framework-level `MaxMessageSize` setting. The
+RouteMesh ServerServer (SS) transport doesn't expose a listener message-size
+setter, and the Framework doesn't reject a complete message solely because
+of a Framework-level `MaxMessageSize`.
 
-[`MaxMessageSize`](01-glossary.en.md#max-message-size) is the byte cap on a
-complete transport message that can be received.
+Messages still follow the representation limits of the transport and the
+service-wire protocol, as well as the memory available to the process. If
+one of those lower-level limits rejects a message, the framework doesn't
+deliver a partial payload to the handler and the request ends with the
+terminal result defined by the [error model](32-framework-error-model.en.md).
+An application handler checking the decoded payload length doesn't replace
+those lower-level limits.
 
-| Value | Behavior |
-|---|---|
-| Positive | Rejects a message exceeding that byte count. |
-| `0` | The framework doesn't add a separate cap. The actual transport representation limit is kept. |
-| Negative | An invalid configuration — fails startup. |
-
-A message exceeding the cap doesn't have any partial payload delivered to
-the handler. If the request header also isn't complete and an error reply
-can't be built, the caller completes via request timeout.
-
-Even after rejecting one large message, processing of subsequent
-normal-size messages on the same RouteMesh must be able to continue. An
-application handler checking the decoded payload length doesn't substitute
-for the transport cap.
+ClientServer keeps the regular application-listener `MaxMessageSize` contract
+defined by [Framework API §6](06-framework-api.en.md). It doesn't inherit the
+StreamNode's `64 KiB` default or its Core STREAM direction rule. The only
+Framework message-size rule added by this section is that RouteMesh SS has no
+separate listener setting; the StreamNode Core STREAM inbound limit is defined
+by [STREAM session §4](19-stream-session.en.md#4-stream-socket-message-size).
 
 ## 9. The Boundary With Classic Fanout
 
@@ -771,8 +772,9 @@ The implementation and contract test must verify the following conditions.
 - Weight 0 and drain only apply to new ChannelName selection.
 - Logical Multicast sends exactly once per eligible remote member,
   regardless of the magnitude of positive weight.
-- Verify `MaxMessageSize` boundary values and normal request processing
-  continues after rejecting a large message.
+- Verify RouteMesh processes normal messages without a Framework-level
+  message-size setting and doesn't deliver a partial payload when a lower
+  transport or protocol limit rejects a message.
 - An automatic fanout subscriber only connects to publishers of the same
   ChannelName.
 - Automatic fanout subscribers don't create physical connections among

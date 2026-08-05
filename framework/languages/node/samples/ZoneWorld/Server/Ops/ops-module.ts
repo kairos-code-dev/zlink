@@ -24,7 +24,10 @@ function createOpsModule() {
         const builder = zlinkFramework();
         builder.addLocationStore(createZoneWorldLocationStore(config.shared));
         zoneWorldLocationOptions(builder.configureLocations());
-        builder.configureDispatch().messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly).traceLabel('ops');
+        builder.configureDispatch()
+          .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+          .traceLogFile(`${config.shared.logDirectory}/flow-ops.log`)
+          .traceLabel('ops');
         builder.addStreamNode(ZoneWorldNames.opsStreamNode)
           .bind(ops.streamEndpoint)
           .registerSession(OpsSessionFactory);

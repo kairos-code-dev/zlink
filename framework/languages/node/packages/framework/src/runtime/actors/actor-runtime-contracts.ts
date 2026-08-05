@@ -21,6 +21,8 @@ export interface ZLinkActorJoinRuntimeResult<TReply> {
   readonly accepted: boolean;
   readonly actor?: import('../../contracts').ActorRef;
   readonly reply?: TReply;
+  /** Internal terminal work that must run after the completion callback. */
+  readonly finalizeDeferredJoin?: () => Promise<void>;
 }
 
 export interface ZLinkActorManagerOptions {
@@ -82,6 +84,21 @@ export interface ZLinkActorRuntimeLocationLookup {
 export type ZLinkActorBoundSessionFactory = (actorId: string) => ZLinkBoundSession;
 
 export interface ZLinkActorJoinCoordinator {
+  /**
+   * Starts the internal packet handoff before a Deferred Join performs target
+   * lookup. This is an internal ordering fence; it is not part of the public
+   * actor context contract.
+   */
+  beginDeferredJoin?(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: import('../../contracts').ZLinkActorJoinOperationId
+  ): void;
+  abortDeferredJoin?(
+    actor: ZLinkActor,
+    state: ZLinkActorRuntimeState,
+    operationId: import('../../contracts').ZLinkActorJoinOperationId
+  ): Promise<void>;
   joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,

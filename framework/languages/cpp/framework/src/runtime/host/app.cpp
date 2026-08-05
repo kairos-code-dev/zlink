@@ -1970,11 +1970,14 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               }
               if (completion.value ().record.terminal_result
                   != static_cast<int> (zlink::request_result_t::ok)) {
-                  return result_t<runtime::messaging::message_parts_t>::failure (
-                    framework_error_kind_t::internal_failure,
-                    "MeshNode '" + mesh->mesh_name ()
-                      + "' Spot request returned terminal result "
-                      + std::to_string (completion.value ().record.terminal_result));
+                  return detail::result_access_t::failure<
+                    runtime::messaging::message_parts_t> (
+                    runtime::messaging::request_failure_mapper_t{}.reply_header_exception (
+                      static_cast<std::uint32_t> (
+                        completion.value ().record.terminal_result),
+                      static_cast<std::uint32_t> (
+                        completion.value ().record.failure_errno),
+                      "MeshNode Spot request"));
               }
               return result_t<runtime::messaging::message_parts_t>::success (
                 runtime::messaging::message_parts_t (

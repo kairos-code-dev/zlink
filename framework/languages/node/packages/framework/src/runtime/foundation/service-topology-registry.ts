@@ -55,6 +55,12 @@ export type PeerAdmissionResult =
   | 'invalidDescriptor'
   | 'staleDescriptor';
 
+export type ServiceObjectPlacementStatus =
+  | 'available'
+  | 'unsupported'
+  | 'capacity'
+  | 'unavailable';
+
 const REQUIRED_CAPABILITY = 'framework-service-v11';
 const MAX_CAPACITY = 0x7fff_ffff;
 const MAX_PUBLIC_WEIGHT = 10_000;
@@ -348,6 +354,29 @@ export class ServiceTopologyRegistry {
       (left, right) => left.nodeRoutingId.localeCompare(right.nodeRoutingId),
       isReady
     );
+  }
+
+  objectPlacementStatus(
+    stableType: string,
+    isReady: (descriptor: ServiceNodeDescriptor) => boolean = () => true
+  ): ServiceObjectPlacementStatus {
+    requireText(stableType, 'stableType');
+    const capability = `object-type:${stableType}`;
+    const supported = [this.local, ...[...this.peersByRid.values()].map(peer => peer.descriptor)]
+      .filter(descriptor =>
+        descriptor.state === 'serving'
+        && descriptor.objectRole === 'server'
+        && descriptor.protocolCapabilities.includes(capability)
+      );
+    if (supported.length === 0) return 'unsupported';
+    const withCapacity = supported.filter(descriptor =>
+      descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
+      && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit
+    );
+    if (withCapacity.length === 0) return 'capacity';
+    const weighted = withCapacity.filter(descriptor => descriptor.placementWeight > 0);
+    if (weighted.length === 0) return 'unsupported';
+    return weighted.some(isReady) ? 'available' : 'unavailable';
   }
 
   instanceSpotPlacementTypes(): readonly string[] {

@@ -444,7 +444,16 @@ export class ZLinkEntrySpotActivation {
       remoteBoundSessionTarget,
       fallbackActorRef,
       undefined,
-      messageFollowOrigin
+      messageFollowOrigin,
+      (replayedParts, replayReturnResponse, replayRemoteBoundSessionTarget, replayFallbackActorRef) =>
+        this.actorPacketMailboxes.submit(actorId, () =>
+          this.dispatchActorPacketInsideMailbox(
+            actorId,
+            replayedParts,
+            replayReturnResponse,
+            replayRemoteBoundSessionTarget,
+            replayFallbackActorRef
+          ))
     );
     if (handoff !== undefined) return await handoff;
     return this.actorPacketMailboxes.submit(actorId, () =>

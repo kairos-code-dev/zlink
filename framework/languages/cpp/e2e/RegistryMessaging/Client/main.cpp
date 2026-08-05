@@ -61,8 +61,6 @@ int main (int argc, char **argv)
         rm_client::run_rm_c7_weighted_provider_scenario (options);
     } else if (scenario == "rm-c8") {
         rm_client::run_rm_c8_payload_round_trip_scenario (options);
-    } else if (scenario == "rm-c8-max" || scenario == "max-size") {
-        rm_client::run_rm_c8_max_message_size_scenario (options);
     } else if (scenario == "rm-c9" || scenario == "backpressure") {
         rm_client::run_rm_c9_backpressure_scenario (options);
     } else {

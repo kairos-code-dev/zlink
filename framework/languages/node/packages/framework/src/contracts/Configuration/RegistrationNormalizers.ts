@@ -22,6 +22,7 @@ import type {
 import type { ZLinkNetworkOptions } from './Builders';
 import {
   defaultWorkerMaxThreads,
+  DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE,
   DEFAULT_WORKER_IDLE_TIMEOUT_MS,
   DEFAULT_WORKER_MIN_THREADS,
   DEFAULT_WORKER_QUEUE_LENGTH
@@ -73,10 +74,13 @@ export function toStreamNodeMap(
   streamNodes: ZLinkFrameworkRegistrationOptions['streamNodes'],
   network: ZLinkNetworkOptions
 ): Map<string, ZLinkStreamNodeOptions> {
-  return new Map(Object.entries(streamNodes ?? {}).map(([name, streamNode]) => [
-    name,
-    normalizeListener(streamNode, network)
-  ]));
+  return new Map(Object.entries(streamNodes ?? {}).map(([name, streamNode]) => {
+    const normalized = normalizeListener(streamNode, network);
+    return [name, {
+      ...normalized,
+      maxMessageSize: streamNode.maxMessageSize ?? DEFAULT_STREAM_NODE_MAX_MESSAGE_SIZE
+    }];
+  }));
 }
 
 export function toRouteChannelOptions(

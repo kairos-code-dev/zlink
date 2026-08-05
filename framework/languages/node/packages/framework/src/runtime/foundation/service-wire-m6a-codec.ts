@@ -138,17 +138,68 @@ export function encodeApplicationPayload(payload: ServiceApplicationPayload): Bu
   const packetName = encodeText8(payload.packetName, 'packetName');
   const contentType = encodeText8(payload.contentType, 'contentType');
   if (payload.payload.byteLength > MAX_U32) fail('Application payload exceeds u32.');
-  const body = Buffer.alloc(packetName.byteLength + contentType.byteLength + 4 + payload.payload.byteLength);
-  let offset = 0;
-  offset += packetName.copy(body, offset);
-  offset += contentType.copy(body, offset);
-  body.writeUInt32BE(payload.payload.byteLength, offset);
-  offset += 4;
-  Buffer.from(payload.payload).copy(body, offset);
-  const result = Buffer.alloc(5 + body.byteLength);
+  const bodyLength = packetName.byteLength
+    + contentType.byteLength
+    + 4
+    + payload.payload.byteLength;
+  if (bodyLength > MAX_U32) fail('Application payload body exceeds u32.');
+  const result = Buffer.alloc(5 + bodyLength);
   result[0] = 1;
-  result.writeUInt32BE(body.byteLength, 1);
-  body.copy(result, 5);
+  result.writeUInt32BE(bodyLength, 1);
+  let offset = 5;
+  offset += packetName.copy(result, offset);
+  offset += contentType.copy(result, offset);
+  result.writeUInt32BE(payload.payload.byteLength, offset);
+  offset += 4;
+  Buffer.from(
+    payload.payload.buffer,
+    payload.payload.byteOffset,
+    payload.payload.byteLength
+  ).copy(result, offset);
+  return result;
+}
+
+/**
+ * Encodes the framework multipart payload directly into its M6A application
+ * frame. The caller supplies borrowed message views; this function performs
+ * the single ownership copy needed for the outbound frame.
+ */
+export function encodeMultipartApplicationPayload(
+  parts: readonly Uint8Array[],
+  packetName: string,
+  contentType: string
+): Buffer {
+  if (parts.length === 0) fail('Multipart payload must contain at least one part.');
+  if (parts.length > MAX_U32) fail('Multipart part count exceeds u32.');
+  const packetNameBytes = encodeText8(packetName, 'packetName');
+  const contentTypeBytes = encodeText8(contentType, 'contentType');
+  let multipartLength = 4;
+  for (const part of parts) {
+    if (part.byteLength > MAX_U32) fail('Multipart part exceeds u32.');
+    multipartLength += 4 + part.byteLength;
+    if (multipartLength > MAX_U32) fail('Multipart payload exceeds u32.');
+  }
+  const bodyLength = packetNameBytes.byteLength
+    + contentTypeBytes.byteLength
+    + 4
+    + multipartLength;
+  if (bodyLength > MAX_U32) fail('Application payload body exceeds u32.');
+  const result = Buffer.alloc(5 + bodyLength);
+  result[0] = 1;
+  result.writeUInt32BE(bodyLength, 1);
+  let offset = 5;
+  offset += packetNameBytes.copy(result, offset);
+  offset += contentTypeBytes.copy(result, offset);
+  result.writeUInt32BE(multipartLength, offset);
+  offset += 4;
+  result.writeUInt32BE(parts.length, offset);
+  offset += 4;
+  for (const part of parts) {
+    result.writeUInt32BE(part.byteLength, offset);
+    offset += 4;
+    Buffer.from(part.buffer, part.byteOffset, part.byteLength).copy(result, offset);
+    offset += part.byteLength;
+  }
   return result;
 }
 

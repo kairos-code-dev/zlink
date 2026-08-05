@@ -100,6 +100,13 @@ export interface ZLinkActorHandoffResult {
   readonly errorKind?: ZLinkFrameworkInternalErrorKind;
 }
 
+export type ZLinkActorHandoffDispatch = (
+  parts: readonly Message[],
+  returnResponse: boolean,
+  remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
+  fallbackActorRef?: ActorRef
+) => Promise<unknown>;
+
 interface PendingPacket {
   readonly packet: ZLinkActorHandoffPacket;
   readonly resolve?: (value: unknown) => void;
@@ -122,6 +129,9 @@ interface ActiveHandoff {
   readonly oldGeneration: bigint;
   readonly oldNodeRid?: string;
   readonly sourceOwner: ZLinkActorMessageFollowOwnerFence;
+  phase: 'provisional' | 'relocating';
+  readonly operationId?: string;
+  replay?: ZLinkActorHandoffDispatch;
   readonly pending: PendingPacket[];
   nextIndex: number;
   snapshotIndex: number;
@@ -225,11 +235,106 @@ export class ZLinkActorHandoffCoordinator {
       oldGeneration,
       oldNodeRid,
       sourceOwner,
+      phase: 'relocating',
       pending: [],
       nextIndex: 0,
       snapshotIndex: -1,
       pendingBytes: 0
     });
+  }
+
+  beginProvisional(
+    actorId: string,
+    operationId: string,
+    oldGeneration: bigint,
+    oldNodeRid?: string,
+    sourceAuthorityOwnerGeneration = 1n,
+    sourceOwnerLeaseGeneration?: bigint
+  ): void {
+    if (this.active.has(actorId)) {
+      throw new Error(`Actor '${actorId}' already has an active packet handoff.`);
+    }
+    const source = this.options.requestSource?.();
+    const sourceOwner = ownerFence({
+      ownerId: source?.ownerId ?? 'legacy-source-owner',
+      ownerLeaseGeneration: sourceOwnerLeaseGeneration
+        ?? source?.ownerLeaseGeneration
+        ?? 1n,
+      nodeRid: oldNodeRid ?? source?.nodeRid ?? 'legacy-source-node',
+      nodeGeneration: source?.nodeGeneration ?? 1n,
+      authorityOwnerGeneration: sourceAuthorityOwnerGeneration
+    });
+    this.active.set(actorId, {
+      oldGeneration,
+      oldNodeRid,
+      sourceOwner,
+      phase: 'provisional',
+      operationId,
+      pending: [],
+      nextIndex: 0,
+      snapshotIndex: -1,
+      pendingBytes: 0
+    });
+  }
+
+  isActive(actorId: string): boolean {
+    return this.active.has(actorId);
+  }
+
+  isProvisional(actorId: string): boolean {
+    return this.active.get(actorId)?.phase === 'provisional';
+  }
+
+  promoteProvisional(actorId: string, operationId: string): void {
+    const handoff = this.active.get(actorId);
+    if (handoff === undefined) {
+      throw new Error(`Actor '${actorId}' does not have a provisional packet handoff.`);
+    }
+    if (handoff.phase !== 'provisional' || handoff.operationId !== operationId) {
+      throw new Error(`Actor '${actorId}' packet handoff belongs to another operation.`);
+    }
+    handoff.phase = 'relocating';
+  }
+
+  async releaseDeferred(
+    actorId: string,
+    operationId: string,
+    dispatch?: ZLinkActorHandoffDispatch
+  ): Promise<void> {
+    const handoff = this.active.get(actorId);
+    if (handoff === undefined) return;
+    if (handoff.operationId !== operationId) {
+      throw new Error(`Actor '${actorId}' packet handoff belongs to another operation.`);
+    }
+    this.active.delete(actorId);
+    const replay = dispatch ?? handoff.replay;
+    if (handoff.pending.length === 0) return;
+    if (replay === undefined) {
+      const error = new Error(`Actor '${actorId}' provisional packet handoff has no replay target.`);
+      for (const pending of handoff.pending) {
+        if (pending.packet.source !== undefined) {
+          this.removeReplyRoute(pending.packet.source.replyRouteId);
+        }
+        pending.reject?.(error);
+      }
+      throw error;
+    }
+    const results = await replayActorHandoffBacklog(
+      handoff.pending.map((pending) => pending.packet),
+      replay
+    );
+    const byIndex = new Map(results.map((result) => [result.index, result]));
+    for (const pending of handoff.pending) {
+      if (pending.packet.source !== undefined) {
+        this.removeReplyRoute(pending.packet.source.replyRouteId);
+      }
+      const result = byIndex.get(pending.packet.index);
+      if (result?.ok === true) {
+        pending.resolve?.(result.response);
+      } else {
+        pending.reject?.(new Error(result?.error ?? 'Actor provisional packet replay failed.'));
+      }
+    }
   }
 
   cancel(actorId: string): void {
@@ -252,7 +357,8 @@ export class ZLinkActorHandoffCoordinator {
     remoteBoundSessionTarget?: ZLinkRemoteBoundSessionTarget,
     fallbackActorRef?: ActorRef,
     deadlineUnixMs?: number,
-    messageFollowOrigin?: ZLinkMessageFollowOrigin
+    messageFollowOrigin?: ZLinkMessageFollowOrigin,
+    provisionalReplay?: ZLinkActorHandoffDispatch
   ): Promise<unknown> | undefined {
     const incomingContext = actorMessageFollowContext(fallbackActorRef);
     const originalDeadlineUnixMs = deadlineUnixMs
@@ -261,6 +367,9 @@ export class ZLinkActorHandoffCoordinator {
     const handoff = this.active.get(actorId);
     if (handoff !== undefined) {
       if (parts.length < 2) return Promise.resolve(undefined);
+      if (handoff.phase === 'provisional' && handoff.replay === undefined) {
+        handoff.replay = provisionalReplay;
+      }
       const context = incomingContext ?? this.createInitialIngressContext(
         handoff.sourceOwner,
         handoff.oldGeneration,
@@ -464,7 +573,14 @@ export class ZLinkActorHandoffCoordinator {
         this.removeReplyRoute(pending.packet.source.replyRouteId);
       }
       void this.enqueueMessageFollow(followRoute, actorId, pending.packet)
-        .then(pending.resolve, pending.reject);
+        .then(
+          value => {
+            pending.resolve?.(value);
+          },
+          error => {
+            pending.reject?.(error);
+          }
+        );
     }
   }
 

@@ -170,13 +170,21 @@ options
     .Bind(7400)
     .SetBindHost("0.0.0.0")
     .SetAdvertiseHost("node-a.example.net")
-    .ConfigureSocket().MaxMessageSize = 16 * 1024 * 1024; // HWM validation에 사용하는 유한한 application message 상한이다.
+    .ConfigureSocket().MaxMessageSize = 64 * 1024; // client에서 server로 받는 complete STREAM message의 기본 상한이다.
     .SetTlsServer(
         "server.crt",
         "server.key",
         requireClientCertificate: true)
     .AddSession<GatewaySession>(); // 이 node에서 사용할 session type 하나를 등록한다.
 ```
+
+`ConfigureSocket().MaxMessageSize`는 이 StreamNode의 Core STREAM inbound option이다. 기본값은
+`64 KiB`이며 complete message의 크기를 6-byte prefix를 제외한 header byte와 payload byte의 합으로
+계산한다. 이 상한은 client에서 server로 들어오는 message에만 적용하고 server에서 client로 보내는
+message에는 적용하지 않는다. `0`은 별도 Framework 상한을 사용하지 않도록 Core에 `-1`을 전달하며,
+양수는 유한한 상한이다. 음수는 startup configuration error다. 상한을 넘은 message는 session handler에
+일부도 전달하지 않고 server 측에 `EMSGSIZE`를 기록한 뒤 연결을 종료한다. raw client에는 error code를
+보내지 않으므로 client는 연결 종료만 관찰한다.
 
 등록 표면의 축:
 

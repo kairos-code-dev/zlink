@@ -780,11 +780,14 @@ test('location lifecycle durably closes an exact Ready Instance before deleting 
       };
     }
   };
+  const invalidated = [];
   const lifecycle = new internal.ZLinkLocationLifecycle(
     runtime,
     locationStore,
     'play',
-    authorityStore
+    authorityStore,
+    undefined,
+    (spotId) => invalidated.push(String(spotId))
   );
   lifecycle.trackInstanceSpot({
     meshName: 'play',
@@ -801,6 +804,7 @@ test('location lifecycle durably closes an exact Ready Instance before deleting 
 
   assert.equal(await lifecycle.beginInstanceSpotClosing('play', 'room-1'), true);
   assert.equal(internal.decodeServiceInstanceAuthorityPayload(current.payload).state, 'closing');
+  assert.deepEqual(invalidated, ['room-1']);
   assert.equal(mutations[0].expectedVersion, 'authority-v1');
   assert.equal(mutations[0].mutation.generationTransition, 'preserve');
 
@@ -808,6 +812,7 @@ test('location lifecycle durably closes an exact Ready Instance before deleting 
   assert.equal(mutations[1].expectedVersion, 'authority-v2');
   assert.deepEqual(mutations[1].mutation, { kind: 'delete' });
   assert.equal(current.kind, 'missing');
+  assert.deepEqual(invalidated, ['room-1', 'room-1']);
 });
 
 test('location lifecycle ignores an old Instance generation release after authority replacement', async () => {

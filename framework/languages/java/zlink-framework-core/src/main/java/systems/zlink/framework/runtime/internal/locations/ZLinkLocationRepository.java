@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.internal.locations;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.locations.*;
@@ -129,6 +130,46 @@ public interface ZLinkLocationRepository {
     CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation);
+
+    /** Reads the private committed aggregate marker, if one exists. */
+    default CompletionStage<Optional<ZLinkAggregateProgressSnapshot>>
+        readAggregateProgress(
+            ZLinkAggregateFence fence,
+            ZLinkStoreCancellation cancellation) {
+        return CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "aggregate progress is not supported by this repository"));
+    }
+
+    /** Performs the single StoreVersion CAS for a committed aggregate root. */
+    default CompletionStage<ZLinkAggregateProgressWriteResult>
+        compareExchangeAggregateProgress(
+            ZLinkAggregateFence fence,
+            String expectedStoreVersion,
+            ZLinkAggregateProgress progress,
+            ZLinkStoreCancellation cancellation) {
+        return CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "aggregate progress is not supported by this repository"));
+    }
+
+    /** Lists committed aggregate markers for restart reconciliation. */
+    default CompletionStage<List<ZLinkAggregateProgressSnapshot>>
+        listAggregateProgress(ZLinkStoreCancellation cancellation) {
+        return CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "aggregate progress is not supported by this repository"));
+    }
+
+    /** Releases a marker after participant rows are steady and verified. */
+    default CompletionStage<Boolean> removeAggregateProgress(
+        ZLinkAggregateFence fence,
+        String expectedStoreVersion,
+        ZLinkStoreCancellation cancellation) {
+        return CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "aggregate progress is not supported by this repository"));
+    }
 
     CompletionStage<Long> removeAllByOwner(ZLinkLocationOwnerToken owner);
 

@@ -254,7 +254,6 @@ if uses_common_roles "${SCENARIO}"; then
     --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
     --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --channel-endpoint "${API_A}" \
-    --max-message-size 2097152 \
     "${API_A_ROUTE_ARGS[@]}" \
     --route-peer-rid api-b \
     --evidence-file "${LOG_DIR}/api-a.evidence.log" \
@@ -267,7 +266,6 @@ if uses_common_roles "${SCENARIO}"; then
     --redis-location-endpoint "${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
     --location-key-prefix "${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
     --channel-endpoint "${API_B}" \
-    --max-message-size 2097152 \
     "${API_B_ROUTE_ARGS[@]}" \
     --route-peer-rid api-a \
     --evidence-file "${LOG_DIR}/api-b.evidence.log" \

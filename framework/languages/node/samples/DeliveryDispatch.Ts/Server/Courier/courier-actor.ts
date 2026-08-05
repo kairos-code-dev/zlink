@@ -21,9 +21,9 @@ class CourierActor implements ZLinkActor {
     return { courierId: this.actorId };
   }
 
-  offer(request: OfferDeliveryMsg): void {
+  async offer(request: OfferDeliveryMsg): Promise<void> {
     this.offers.set(request.deliveryId, request.attempt);
-    this.context.boundSession.send(new OfferDeliveryNotify(
+    await this.context.boundSession.send(new OfferDeliveryNotify(
       request.courierId,
       request.deliveryId,
       request.pickupAddress,

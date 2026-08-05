@@ -30,6 +30,14 @@ class actor_ref_access_t final
         return actor._actor_type;
     }
 
+    static actor_ref_t with_actor_type (const actor_ref_t &actor,
+                                        std::string actor_type)
+    {
+        actor_ref_t result = actor;
+        result._actor_type = std::move (actor_type);
+        return result;
+    }
+
     static bool empty (const actor_ref_t &actor) noexcept
     {
         return actor._actor_id.value ().empty ();

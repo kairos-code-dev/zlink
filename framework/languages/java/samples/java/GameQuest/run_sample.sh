@@ -164,6 +164,12 @@ wait_port "$mission_b_channel"
 wait_http "$api_a_http"
 wait_http "$api_b_http"
 wait_framework_ready_logs "$LOG_DIR" 1
+wait_framework_peer_ready_counts \
+  "$LOG_DIR" \
+  mission-a.log:3 \
+  mission-b.log:3 \
+  api-a.log:3 \
+  api-b.log:3
 
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"$LOG_DIR/client.log" 2>&1

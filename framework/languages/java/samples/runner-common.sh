@@ -192,7 +192,7 @@ wait_framework_ready_logs() {
     for log_file in "${log_dir}"/*.log; do
       [[ -f "${log_file}" ]] || continue
       case "$(basename "${log_file}")" in
-        build.log|client.log|*-client.log|flow-*.log)
+        build.log|client.log|*-client.log|api.log|play.log|flow-*.log)
           continue
           ;;
       esac
@@ -207,7 +207,7 @@ wait_framework_ready_logs() {
       for log_file in "${log_dir}"/*.log; do
         [[ -f "${log_file}" ]] || continue
         case "$(basename "${log_file}")" in
-          build.log|client.log|*-client.log|flow-*.log)
+        build.log|client.log|*-client.log|api.log|play.log|flow-*.log)
             continue
             ;;
         esac

@@ -1604,15 +1604,26 @@ message를 받을 수 있는 target이다.
 ### MaxMessageSize
 
 Listener가 받을 수 있는 complete transport message의 byte 상한이다. 상한을 넘긴
-message의 일부 payload를 handler에 전달하지 않는다.
+message의 일부 payload를 handler에 전달하지 않는다. 일반 application listener는
+자신이 소유한 socket option의 값을 사용한다. StreamNode는 이 일반 listener 설정과
+별도로 Core STREAM inbound에 적용하는 전용 규칙을 가진다.
+
+StreamNode의 `MaxMessageSize`는 client에서 server로 들어오는 complete message의
+header와 payload 합을 검사하며 6-byte prefix는 포함하지 않는다. 기본값은 `64 KiB`
+(`65,536` bytes)다. `0`은 별도 Framework 상한을 사용하지 않고 Core의
+`ZLINK_OPT_MAXMSGSIZE = -1`로 변환한다. 양수는 유한한 상한이고 음수는 startup
+configuration error다. 이 상한은 server에서 client로 보내는 outbound message에는
+적용하지 않는다. 상한을 넘은 message는 일부도 session handler에 전달하지 않으며,
+server는 `EMSGSIZE`를 기록하고 연결을 종료한다. raw client에는 별도 error code를
+보내지 않고 연결 종료만 관찰된다.
 
 | 항목 | 내용 |
 |---|---|
 | 형태 | Byte-size configuration limit |
-| .NET 표기 | `long MaxMessageSize` |
-| 공개 구성 | Complete message 전체에 적용할 byte 수 하나다. `0`은 binding 또는 transport 기본값을 사용한다. |
-| 생성·관리 | Application이 startup 전에 listener option에 지정한다. |
-| 수명 | Listener lifecycle 동안 고정되며 실행 중 setter를 제공하지 않는다. |
+| .NET 표기 | 일반 socket은 `long MaxMessageSize`, StreamNode는 `ConfigureSocket().MaxMessageSize`다. |
+| 공개 구성 | Listener가 소유한 socket의 complete message에 적용한다. 일반 socket의 `0`은 binding 또는 transport 기본값을 사용하고, StreamNode의 `0`은 Core `-1`로 변환한다. |
+| 생성·관리 | Application이 startup 전에 해당 listener 또는 StreamNode socket option에 지정한다. |
+| 수명 | Listener lifecycle 동안 고정되며 StreamNode 값은 startup 뒤 바뀌지 않는다. StreamNode 전용 상한은 ClientServer listener와 RouteMesh SS transport에 추가하지 않으며, ClientServer는 일반 application listener 규칙을 유지한다. |
 
 ## 7. Channel 메시징
 

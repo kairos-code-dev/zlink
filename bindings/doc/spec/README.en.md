@@ -3987,164 +3987,193 @@ SpotNode's node-level options are handled through the
 
 ## Option Policy
 
-### 공개 옵션 표면
-- **public raw `setOption(key, value)` / `getOption(key)` bag 은 금지.**
-- **public raw `setsockopt/getsockopt` bag 도 금지.**
-- 공용 옵션은 언어에 맞는 typed surface (facade) 로만 노출한다.
-- 특화 옵션도 언어에 맞는 역할 surface (facade) 로만 노출한다.
-- raw enum key + 범용 setter/getter 를 돌리는 public 경로가 spec 에
-  남아 있으면 정책 위반. (`set_option(ZLINK_OPT_*, value)` 같은 C 계약이
-  바인딩 public API 로 올라오면 안 됨. 바인딩 내부에서 native 호출 경로는
-  허용.)
-- typed facade 가 이미 있으면 **raw 경로를 중복 노출하지 않는다** — 사용자가
-  두 방식 중 고를 필요 없게 한다.
-- 예:
+### Public Option Surface
+- **A public raw `setOption(key, value)`/`getOption(key)` bag is
+  forbidden.**
+- **A public raw `setsockopt`/`getsockopt` bag is also forbidden.**
+- Common options are exposed only through a per-language typed surface
+  (facade).
+- Specialized options are also exposed only through a per-language role
+  surface (facade).
+- If a spec still has a public path that rotates a raw enum key plus a
+  generic setter/getter, that's a policy violation. (A C contract such
+  as `set_option(ZLINK_OPT_*, value)` must not surface as binding public
+  API. A native call path used internally by the binding is allowed.)
+- Once a typed facade exists, **the raw path is not exposed
+  redundantly** — a user should never have to choose between the two.
+- Examples:
   - Java/.NET: `CommonSocketOptions`, `RouterSocketOptions`
-  - Go: typed method set, 역할 interface
+  - Go: typed method set, role interface
   - Rust: typed builder, method set, newtype
-  - Python/Node: property, namespace object, 역할 object, typed method set
+  - Python/Node: property, namespace object, role object, typed method
+    set
 
-#### Option Facade Canonical 타입 이름
-- 각 바인딩은 아래 canonical facade 타입을 제공해야 한다.
-- 타입 이름은 언어 케이싱 관례만 변형한다.
+#### Option Facade Canonical Type Names
+- Every binding must provide the canonical facade types below.
+- The type name varies only in language casing convention.
 
-| Facade | 내용 | 적용 소켓 |
+| Facade | Contents | Applies to |
 |---|---|---|
-| `CommonSocketOptions` | linger, sendHighWaterMark, receiveHighWaterMark, sendTimeout, receiveTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepAlive, heartbeatInterval/Ttl/Timeout, maxMessageSize, backlog, reconnectInterval/Max, submitRetryMode, submitRetryTimeout, submitRetryAttempts | 전체 |
+| `CommonSocketOptions` | linger, sendHighWaterMark, receiveHighWaterMark, sendTimeout, receiveTimeout, immediate, connectTimeout, ipv6, tcpNoDelay, tcpKeepAlive, heartbeatInterval/Ttl/Timeout, maxMessageSize, backlog, reconnectInterval/Max, submitRetryMode, submitRetryTimeout, submitRetryAttempts | All |
 | `RouterSocketOptions` | mandatory (bool), handover (bool), probe (bool), connectRoutingId (RoutingId), requestTimeout (Duration), peerWeight (int, read/write) | Router |
 | `DealerSocketOptions` | probe (bool), requestTimeout (Duration), peerWeight (int, read/write) | Dealer |
 | `StreamSocketOptions` | notify (bool) | Stream |
 | `PubSocketOptions` | verbose (bool), verboser (bool), noDrop (bool), manual (bool) | Pub, XPub |
 | `SubSocketOptions` | topicsCount (int, read-only) | Sub, XSub |
 
-- 각 facade의 option 항목은 `core/include/zlink.h`의 해당 option enum 값을
-  기준으로 한다.
-- facade 내 option 값 타입은 Option Value Types 정책을 따른다.
-- submit retry option은 raw socket facade에서 기본값을 off/0ms/0회로 노출한다.
-  managed SPOT/service 내부 profile은 `LOCAL_FAILURE`/100ms/2회를 사용할 수 있지만,
-  raw socket option 기본값을 바꾸지 않는다. `DONTWAIT` 호출, backpressure, admission
-  거절, request submit 성공 뒤의 reply timeout은 submit retry 대상이 아니다.
+- Each facade's option items are based on the matching option enum value
+  in `core/include/zlink.h`.
+- The option value type inside a facade follows the Option Value Types
+  policy.
+- A submit retry option exposes off/0ms/0 attempts as the default on the
+  raw socket facade. A managed SPOT/service internal profile may use
+  `LOCAL_FAILURE`/100ms/2 attempts, but this does not change the raw
+  socket option default. A `DONTWAIT` call, backpressure, admission
+  rejection, and the reply timeout after a successful request submit are
+  not subject to submit retry.
 
-### 옵션 값 타입
-- option 값은 가능한 한 의미 기반 타입으로 노출한다.
-- 정책:
-  - `0/1` 옵션: `boolean`
-  - 유한 상태 집합: `enum`
-  - 시간 의미: `Duration` 또는 언어 표준 시간 타입
-  - binary identifier: `RoutingId` 같은 value object
-  - 진짜 수치 설정: `int`/`long`
-  - 문자열/바이트: `String`/`byte[]`
-- option 이름만 enum이고 값은 raw `int`인 형태는 충분하지 않다.
+### Option Value Types
+- Expose an option value as a meaning-based type wherever possible.
+- Policy:
+  - a `0/1` option: `boolean`
+  - a finite state set: `enum`
+  - time meaning: `Duration` or that language's standard time type
+  - a binary identifier: a value object such as `RoutingId`
+  - a genuinely numeric setting: `int`/`long`
+  - string/bytes: `String`/`byte[]`
+- An option whose name alone is an enum while the value is a raw `int`
+  is not sufficient.
 
-## 성능 정책
-- 성능은 별도 최적화 항목이 아니라 public API 설계의 일부다.
-- canonical hot path는 숨은 비용이 가장 적은 경로여야 한다.
-- hot path에서는 다음을 기본적으로 금지한다.
-  - 숨은 payload 복사
-  - 숨은 배열/리스트 재할당
-  - 불필요한 UTF-8 인코딩/디코딩
-  - 바인딩 레이어의 중복 포장
-  - 결과를 만들기 위한 불필요한 boxing/unboxing
-- 편의 API는 기본 경로보다 비용이 더 크면 문서화해야 한다.
-- callback path와 direct receive path는 payload shape뿐 아니라 비용 모델도
-  과도하게 벌어지면 안 된다.
-- zero-copy, borrowed, owned 경로가 다르면 ownership과 함께 비용 모델도
-  문서화해야 한다.
-- 성능 검증 강도는 언어와 런타임 특성에 따라 달라질 수 있다.
-- 다만 모든 바인딩은 hot path에서 불필요한 복사, 할당, 변환을 줄이는 방향을
-  기본 정책으로 삼아야 한다.
+## Performance Policy
+- Performance is not a separate optimization item — it's part of the
+  public API design.
+- The canonical hot path must be the path with the fewest hidden costs.
+- The following are forbidden by default on the hot path:
+  - a hidden payload copy
+  - a hidden array/list reallocation
+  - unnecessary UTF-8 encoding/decoding
+  - redundant wrapping at the binding layer
+  - unnecessary boxing/unboxing just to build a result
+- A convenience API must be documented if it costs more than the default
+  path.
+- The callback path and the direct receive path must not diverge
+  excessively — not just in payload shape, but in cost model too.
+- If a zero-copy, borrowed, or owned path differs, the cost model must
+  be documented together with ownership.
+- The intensity of performance verification can vary by language and
+  runtime characteristics.
+- Still, every binding must adopt, as a baseline policy, reducing
+  unnecessary copies, allocations, and conversions on the hot path.
 
-### 고성능 버퍼 생태계 정책 (Recommended)
-- canonical public contract 는 계속 `Message` / `List<Message>` / `Received` /
-  `TopicMessage` 를 기준으로 유지한다.
-- 다만 send / publish / request / reply 입력 경로에서는, **해당 언어에서 사실상
-  표준급이고 copy 감소 효과가 큰 버퍼 생태계 타입**을 adapter surface 로
-  지원하는 것을 권장한다.
-- 이 지원은 canonical contract 를 대체하지 않는다.
-  - recv 결과를 외부 라이브러리 타입으로 바꾸지 않는다.
-  - domain object 필드 타입을 외부 라이브러리 타입으로 바꾸지 않는다.
-  - 지원하더라도 `Message` 생성 / 입력 adapter / `from_*` helper /
-    `impl IntoMultipart` 같은 진입점으로 제한한다.
-- 지원 기준:
-  - 그 언어의 네트워킹/IO 생태계에서 널리 쓰이는가
-  - zero-copy 또는 copy 감소 효과가 실질적인가
-  - 특정 프레임워크 종속을 public surface 전체에 강제하지 않는가
-- 비기준:
-  - niche 라이브러리
-  - 특정 회사/프로젝트 내부에서만 주로 쓰는 버퍼 타입
-  - canonical type 을 대체하려는 wrapper
+### High-Performance Buffer Ecosystem Policy (Recommended)
+- The canonical public contract keeps `Message`/`List<Message>`/
+  `Received`/`TopicMessage` as its baseline.
+- On the send/publish/request/reply input path, however, it's
+  recommended to support, as an adapter surface, **a buffer ecosystem
+  type that is effectively standard in that language and gives a large
+  copy-reduction benefit**.
+- This support does not replace the canonical contract.
+  - It does not change a recv result into an external library type.
+  - It does not change a domain object's field type into an external
+    library type.
+  - Even where supported, it's limited to an entrypoint such as
+    `Message` construction, an input adapter, a `from_*` helper, or
+    `impl IntoMultipart`.
+- Criteria for support:
+  - Is it widely used in that language's networking/IO ecosystem?
+  - Is the zero-copy or copy-reduction benefit substantial?
+  - Does it avoid forcing dependency on a specific framework across the
+    entire public surface?
+- Not criteria:
+  - a niche library
+  - a buffer type used mainly inside a specific company/project
+  - a wrapper that tries to replace the canonical type
 
-권장 우선순위:
+Recommended priority:
 
-| 언어 | 권장 지원 | 수준 | 비고 |
+| Language | Recommended support | Level | Notes |
 |---|---|---|---|
-| Java | Netty `ByteBuf` | Recommended | 네트워크 스택에서 매우 흔하고 direct/off-heap 경로 가치가 큼 |
-| Java | Agrona `DirectBuffer` | Optional | 저지연 계열에서 유용하지만 Netty보다 우선순위는 낮음 |
-| .NET | `ReadOnlyMemory<byte>` / `ReadOnlySequence<byte>` / `IBufferWriter<byte>` | Recommended | 표준 버퍼 생태계. copy 감소 효과가 큼 |
-| .NET | `PipeReader` / `PipeWriter` | Optional | `System.IO.Pipelines` 사용자층에 유용 |
-| Rust | `bytes::Bytes` / `BytesMut` | Recommended | async/network 생태계에서 사실상 표준급 |
-| Python | buffer protocol / `memoryview` | Recommended | `bytes` / `bytearray` 외 zero-copy 입력 경로 확보 |
-| Node | `Buffer` / `Uint8Array` | Baseline | 사실상 기본 지원 범주 |
-| Go | `[]byte` / `[][]byte` | Baseline | 언어 기본 경로가 이미 hot path 표준 |
+| Java | Netty `ByteBuf` | Recommended | Very common in network stacks; the direct/off-heap path has significant value |
+| Java | Agrona `DirectBuffer` | Optional | Useful in low-latency contexts, but lower priority than Netty |
+| .NET | `ReadOnlyMemory<byte>` / `ReadOnlySequence<byte>` / `IBufferWriter<byte>` | Recommended | The standard buffer ecosystem; large copy-reduction benefit |
+| .NET | `PipeReader` / `PipeWriter` | Optional | Useful for the `System.IO.Pipelines` user base |
+| Rust | `bytes::Bytes` / `BytesMut` | Recommended | Effectively standard in the async/network ecosystem |
+| Python | buffer protocol / `memoryview` | Recommended | Secures a zero-copy input path beyond `bytes`/`bytearray` |
+| Node | `Buffer` / `Uint8Array` | Baseline | Effectively the default supported category |
+| Go | `[]byte` / `[][]byte` | Baseline | The language's default path is already the hot-path standard |
 
-- 설계 규칙:
-  - adapter 는 input-side convenience 여야 한다. canonical return type 을
-    바꾸지 않는다.
-  - 언어 표준 라이브러리나 런타임이 아닌 **third-party buffer type** 은
-    가능하면 core binding 이 아니라 별도 extension module 로 분리한다.
-    예를 들어 Java `ByteBuffer` 는 core 에 둘 수 있지만, Netty `ByteBuf` 는
-    별도 Netty extension 에 두는 방향이 맞다.
-  - adapter 지원 여부 때문에 overload 폭이 과도하게 늘어나면 안 된다.
-    가능하면 `MessageLike`, `IntoMultipart`, buffer protocol 같은 **한 개의
-    통합 진입점**으로 흡수한다.
-  - 외부 버퍼 타입을 받더라도 ownership / retain / release 규칙은 바인딩이
-    문서로 명확히 정의해야 한다.
-  - 프레임워크별 객체 수명 규칙 (`ByteBuf.retain/release`, pooled buffer 등)을
-    사용자가 추측하게 두면 안 된다.
-  - "지원 가능" 과 "zero-copy 보장" 을 혼동하지 않는다. zero-copy 보장이
-    불가능하면 문서에 copy 가능성을 명시한다.
+- Design rules:
+  - An adapter must be an input-side convenience. It does not change the
+    canonical return type.
+  - A **third-party buffer type** that is not the language's standard
+    library or runtime should be split into a separate extension module
+    rather than the core binding, where possible. For example, Java's
+    `ByteBuffer` can stay in core, but Netty's `ByteBuf` belongs in a
+    separate Netty extension.
+  - Adapter support must not excessively widen the overload surface.
+    Absorb it, where possible, into **one unified entrypoint** such as
+    `MessageLike`, `IntoMultipart`, or the buffer protocol.
+  - Even when accepting an external buffer type, the binding must
+    clearly define the ownership/retain/release rules in documentation.
+  - A user must not be left to guess a framework-specific object
+    lifetime rule (`ByteBuf.retain/release`, a pooled buffer, and so
+    on).
+  - Do not confuse "can be supported" with "zero-copy is guaranteed."
+    When a zero-copy guarantee isn't possible, document the possibility
+    of a copy.
 
-### Codec / Serializer Extension 모듈 정책
+### Codec/Serializer Extension Module Policy
 - `Message` 와 multipart transport 자체는 계속 canonical binding core contract 다.
-- protobuf / json / messagepack codec-aware domain conversion 은
-  **binding core 위에 올라가는 정식 별도 extension contract** 로 취급한다.
-- 단, `C` binding 은 예외다. `C`는 raw transport contract 를 기본 public surface 로
-  유지하며, codec-aware domain conversion 을 기본 binding contract 로 요구하지
-  않는다.
-- 따라서 `Parse(...)`, `Serialize(...)`, `ToMessage(...)`, `FromMessage(...)`
-  같은 helper 를 public 으로 노출할 수 있다. 다만 이 helper 는 binding core
-  package/module 에 섞으면 안 된다.
+- protobuf/json/messagepack codec-aware domain conversion is treated as
+  **a formal, separate extension contract layered on top of the binding
+  core**.
+- The `C` binding is the exception. `C` keeps the raw transport contract
+  as its default public surface, and does not require codec-aware
+  domain conversion as part of the default binding contract.
+- So it may expose a helper such as `Parse(...)`, `Serialize(...)`,
+  `ToMessage(...)`, or `FromMessage(...)` publicly. This helper must not
+  be mixed into the binding core package/module, however.
 - Required rules:
-  - binding core package/module 은 codec-agnostic 해야 한다.
-  - binding core 가 protobuf/json/messagepack dependency 를 필수 의존성으로
-    끌고 들어오면 안 된다.
-  - `C` binding 은 raw byte/message contract 만 정식으로 유지하면 되며,
-    protobuf/json helper 를 public contract 로 추가할 의무가 없다.
-  - `C`를 제외한 binding 은 codec extension layer 를 public contract 로 두며,
-    `protobuf`, `json`, `messagepack` 세 codec 을 지원해야 한다.
-  - `C`를 제외한 binding 의 `protobuf`, `json`, `messagepack` extension 은
-    각각 **core binding 과 별도 배포 단위** 로 제공해야 한다.
-  - third-party buffer adapter extension 도 같은 원칙을 따른다.
-    core binding 과 별도 배포 단위로 제공해야 하며, core binding 이 그
-    extension dependency 를 필수로 요구하면 안 된다.
-  - codec extension 은 core binding 에 의존할 수 있지만, core binding 이 codec
-    extension 에 의존하면 안 된다.
-  - codec extension 이 추가되어도 canonical recv/request/reply contract 는 계속
-    `Message`, `List<Message>`, `Received`, `TopicMessage` 기준으로 유지한다.
-  - codec extension 은 object <-> `Message` encode/decode helper 계약만 정의한다.
-    payload 타입에 필요한 parser, schema, generated type 입력을 받는 것은 허용된다.
-  - codec extension 은 transport 결과 타입을 domain object 로 바꾸는 helper 를
-    추가할 수 있지만, raw transport contract 자체를 대체하면 안 된다.
-  - codec extension 문서는 packet name 추론 규칙, high-level outbound serializer
-    lookup, typed request/reply decode 정책을 정의하지 않는다.
-  - framework 가 존재하는 언어에서는 위 정책을 framework 문서가 담당한다.
-    codec extension 문서는 low-level encode/decode helper 입력 조건만 설명한다.
-- 이유:
-  - raw transport 사용자에게 특정 codec dependency 를 강제하지 않기 위함이다.
-  - 언어별 codec 생태계 선택이 다르므로 core binding 이 한 구현체에 잠기지
-    않게 하기 위함이다.
-  - high-level domain helper 와 low-level transport ownership 계약을 분리해서
-    변경 파급을 줄이기 위함이다.
+  - The binding core package/module must be codec-agnostic.
+  - The binding core must not pull in a protobuf/json/messagepack
+    dependency as a required dependency.
+  - The `C` binding only needs to keep the raw byte/message contract
+    formal, and has no obligation to add a protobuf/json helper as a
+    public contract.
+  - Every binding except `C` keeps the codec extension layer as a public
+    contract, and must support the three codecs `protobuf`, `json`,
+    `messagepack`.
+  - For every binding except `C`, the `protobuf`, `json`, and
+    `messagepack` extensions must each be provided as **a distribution
+    unit separate from the core binding**.
+  - A third-party buffer adapter extension follows the same principle.
+    It must be provided as a distribution unit separate from the core
+    binding, and the core binding must not require that extension
+    dependency.
+  - A codec extension can depend on the binding core, but the binding
+    core must not depend on a codec extension.
+  - Even once a codec extension is added, the canonical recv/request/
+    reply contract stays based on `Message`, `List<Message>`,
+    `Received`, `TopicMessage`.
+  - A codec extension defines only the object <-> `Message` encode/
+    decode helper contract. It's allowed to take a parser, schema, or
+    generated-type input needed for the payload type.
+  - A codec extension can add a helper that turns a transport result
+    type into a domain object, but it must not replace the raw
+    transport contract itself.
+  - A codec extension document does not define packet-name inference
+    rules, high-level outbound serializer lookup, or a typed
+    request/reply decode policy.
+  - In a language that has a framework, the framework documentation
+    owns the policy above. The codec extension document describes only
+    the low-level encode/decode helper's input conditions.
+- Reasons:
+  - To avoid forcing a specific codec dependency on a raw-transport
+    user.
+  - Because codec-ecosystem choice differs by language, to keep the
+    binding core from locking onto one implementation.
+  - To separate the high-level domain helper from the low-level
+    transport ownership contract, reducing change amplification.
 
 JSON codec baseline by language:
 
@@ -4159,12 +4188,14 @@ JSON codec baseline by language:
 | Go | `encoding/json` |
 | Rust | `serde_json` |
 
-- 이 표는 "json codec extension 을 public 으로 노출할 때 기본으로 삼는 구현체"를
-  뜻한다.
-- 다른 json 라이브러리를 추가 지원할 수는 있다. 다만 public contract 와 sample,
-  test, 기본 동작 기준은 위 표를 따른다.
-- Node 는 built-in JSON 이 plain object encode/decode 의 기준이며, typed
-  validation 은 별도 schema/parser object 위에 얹을 수 있다.
+- This table means "the implementation treated as the default when
+  exposing a json codec extension publicly."
+- Additional support for a different json library is possible. But the
+  public contract, samples, tests, and default-behavior baseline follow
+  the table above.
+- On Node, the built-in JSON is the baseline for plain-object encode/
+  decode, and typed validation can be layered on top of a separate
+  schema/parser object.
 
 MessagePack codec baseline by language:
 
@@ -4179,136 +4210,158 @@ MessagePack codec baseline by language:
 | Go | `vmihailenco/msgpack/v5` |
 | Rust | `rmp-serde` |
 
-Bindings는 더 이상 codec extension 배포 단위를 정의하지 않는다.
+Bindings no longer define a codec extension distribution unit.
 
-| Language | Core binding root | Binding-owned codec package 정책 |
+| Language | Core binding root | Binding-owned codec package policy |
 |---|---|---|
-| C | `bindings/c/include/zlink/`, `bindings/c/src/` | 없음 |
-| C++ | `bindings/cpp/include/zlink/` | 없음. framework 직렬화는 `framework/languages/cpp/extensions/`에서 다룬다 |
-| .NET | `bindings/dotnet/src/Zlink/` | 없음. framework 직렬화는 `framework/languages/dotnet/src/`에서 다룬다 |
-| Java | `bindings/java/src/main/java/systems/zlink/` | 없음. framework 직렬화는 `framework/languages/java/`에서 다룬다 |
-| Node | `bindings/node/src/` | 없음. framework 직렬화는 `framework/languages/node/packages/`에서 다룬다 |
-| Python | `bindings/python/src/zlink/` | 없음. raw `Message`/bytes만 유지한다 |
-| Go | `bindings/go/` | 없음. raw `Message`/bytes만 유지한다 |
-| Rust | `bindings/rust/src/` | 없음. raw `Message`/bytes만 유지한다 |
+| C | `bindings/c/include/zlink/`, `bindings/c/src/` | None |
+| C++ | `bindings/cpp/include/zlink/` | None. Framework serialization is handled in `framework/languages/cpp/extensions/` |
+| .NET | `bindings/dotnet/src/Zlink/` | None. Framework serialization is handled in `framework/languages/dotnet/src/` |
+| Java | `bindings/java/src/main/java/systems/zlink/` | None. Framework serialization is handled in `framework/languages/java/` |
+| Node | `bindings/node/src/` | None. Framework serialization is handled in `framework/languages/node/packages/` |
+| Python | `bindings/python/src/zlink/` | None. Keeps only raw `Message`/bytes |
+| Go | `bindings/go/` | None. Keeps only raw `Message`/bytes |
+| Rust | `bindings/rust/src/` | None. Keeps only raw `Message`/bytes |
 
-- 배치 규칙:
-  - codec helper source를 core socket/message namespace와 같은 디렉터리에 직접 섞지 않는다.
-  - 언어별 codec spec 문서는 raw-only 정책을 설명하고, 해당 언어가 framework target이면
-    framework codec extension 위치를 안내한다.
-  - binding sample과 test는 raw `Message`/bytes 동작을 검증한다.
+- Placement rules:
+  - Do not mix codec helper source directly into the same directory as
+    the core socket/message namespace.
+  - A per-language codec spec document explains the raw-only policy, and
+    if that language is a framework target, points to the framework
+    codec extension's location.
+  - Binding samples and tests verify raw `Message`/bytes behavior.
 
-### 외부 버퍼 Attach / Release Hook 정책
-- C API 의 `zlink_msg_init_data(..., zlink_free_fn*, hint)` 는 **external buffer
-  attach + release hook** 능력을 제공한다.
-- 바인딩은 이 능력을 **언어 관용구와 메모리 모델에 맞을 때만** public 으로
-  노출한다.
-- 기본 원칙:
-  - **copy-based `Message` 생성 경로는 모든 바인딩에서 Required**
-  - **VM 또는 GC 기반 언어(Java, .NET, Go, Python, Node)는 VM-managed
-    buffer를 native queue에 borrowed/zero-copy 로 넘기는 public API 를
-    제공하지 않는다**
-  - **release hook 없는 borrowed zero-copy wrap API 는 managed 언어 public
-    surface, default send path, perf 전용 fast path 에 두지 않는다**
-  - VM 언어의 성능 경로는 caller buffer 를 native queue 에 빌려주는 방식이
-    아니라, native-owned `Message` 를 만들고 그 payload 를 채운 뒤 part 기반
-    send/recv API 로 넘기는 방식이어야 한다.
-  - external buffer attach 는 **release 시점을 public contract 로 닫을 수 있을
-    때만** 허용한다
-- 허용:
+### External Buffer Attach/Release Hook Policy
+- The C API's `zlink_msg_init_data(..., zlink_free_fn*, hint)` provides
+  the capability to **attach an external buffer plus a release hook**.
+- A binding exposes this capability publicly **only when it fits that
+  language's idiom and memory model**.
+- Base principles:
+  - **A copy-based `Message` construction path is Required in every
+    binding.**
+  - **A VM- or GC-based language (Java, .NET, Go, Python, Node) does not
+    provide a public API that hands a VM-managed buffer to the native
+    queue borrowed/zero-copy.**
+  - **A borrowed zero-copy wrap API without a release hook does not
+    belong on a managed language's public surface, default send path, or
+    perf-only fast path.**
+  - A VM language's performance path must build a native-owned `Message`,
+    fill its payload, and hand it to the part-based send/recv API —
+    rather than lending the caller's buffer to the native queue.
+  - External buffer attach is allowed **only when the release point can
+    be closed by the public contract.**
+- Allowed:
   - C++
-    - `from_external(..., zlink_free_fn*, hint)` 같은 형태로 external attach 허용
-    - release hook 이 explicit 하므로 public contract 로 닫을 수 있다
-- 비권장/금지:
+    - Allows external attach in a shape such as
+      `from_external(..., zlink_free_fn*, hint)`.
+    - Because the release hook is explicit, it can be closed by the
+      public contract.
+- Discouraged/forbidden:
   - Java / .NET / Go / Rust / Python / Node
-    - generic public borrowed wrap (`wrapDirect`, `wrapNative`, `wrap_buffer`
-      등) 금지
-    - VM-managed buffer 를 `zlink_msg_init_data(..., NULL, NULL)` 로 native
-      queue 에 넘기는 send/publish/request/reply fast path 금지
-    - VM-managed buffer 를 pin 한 뒤 release callback 으로 풀어 주는 public 또는
-      default fast path 금지
-    - 이유: send 후 backing buffer lifetime, retain/release, arena/session,
-      GC 와의 상호작용을 public contract 로 안전하게 닫기 어렵다
-- 예외:
-  - C++처럼 caller 가 release hook 과 lifetime 을 명시적으로 소유하는 언어만
-    advanced external attach 를 둘 수 있다.
-  - VM 또는 GC 기반 언어에서 이 예외를 추가하려면 별도 draft spec, public
-    lifetime contract, 회귀 테스트, perf 비교가 먼저 필요하다. 정식 spec 과
-    구현에는 바로 추가하지 않는다.
+    - A generic public borrowed wrap (`wrapDirect`, `wrapNative`,
+      `wrap_buffer`, and so on) is forbidden.
+    - A send/publish/request/reply fast path that hands a VM-managed
+      buffer to the native queue via
+      `zlink_msg_init_data(..., NULL, NULL)` is forbidden.
+    - A public or default fast path that pins a VM-managed buffer and
+      then releases it via a release callback is forbidden.
+    - Reason: it's hard to safely close, through a public contract, the
+      backing buffer's lifetime after send, retain/release, arena/
+      session, and its interaction with the GC.
+- Exception:
+  - Only a language where the caller explicitly owns the release hook
+    and lifetime, like C++, can offer advanced external attach.
+  - Adding this exception in a VM- or GC-based language first requires a
+    separate draft spec, a public lifetime contract, a regression test,
+    and a perf comparison. It is not added directly to the formal spec
+    and implementation.
 
-## 경계 비용 정책
-- 경계 검증은 가장 이른 안전한 위치에서 한 번 수행하는 것을 우선한다.
-- 같은 검증을 여러 레이어에서 반복하면 이유가 명확해야 한다.
-- 고정 크기 native struct에 들어가는 값은 truncation 대신 즉시 오류를 반환한다.
-- 문자열, topic, routing id, metadata 같은 경계 값은 다음을 함께 고려한다.
-  - 길이 상한
-  - 인코딩 비용
-  - 복사 횟수
-  - 재할당 정책
-- core의 고정 크기 struct 필드에 대응하는 바인딩 입력의 길이 상한:
+## Boundary Cost Policy
+- Prefer performing boundary validation once, at the earliest safe
+  location.
+- If the same validation repeats across multiple layers, the reason must
+  be clear.
+- A value going into a fixed-size native struct returns an immediate
+  error instead of truncating.
+- A boundary value such as a string, topic, routing id, or metadata must
+  consider all of the following together:
+  - the length limit
+  - the encoding cost
+  - the copy count
+  - the reallocation policy
+- Length limits for binding input that map to core's fixed-size struct
+  fields:
 
-  | 필드 | C struct 크기 | 바인딩 검증 책임 |
+  | Field | C struct size | Binding validation responsibility |
   |------|--------------|----------------|
-  | `RoutingId` | `data[255]` | 값 객체 생성 시 255바이트 초과 시 즉시 오류 반환 |
-  | topic / filter | C 문자열 (null-terminated) | 바인딩은 embedded null 문자 포함 시 즉시 오류 반환. 길이 상한은 core가 처리하므로 바인딩에서 별도 길이 검증하지 않는다 |
-  | channel_name | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
-  | endpoint | `char[256]` | 255바이트 초과 시 즉시 오류 반환 |
-  | metadata | `zlink_msg_t` (가변) | core가 처리, 바인딩은 null 검증만 |
+  | `RoutingId` | `data[255]` | Returns an immediate error when constructing the value object if it exceeds 255 bytes |
+  | topic / filter | a C string (null-terminated) | The binding returns an immediate error if it contains an embedded null character. Core handles the length limit, so the binding does not separately validate length |
+  | channel_name | `char[256]` | Returns an immediate error if it exceeds 255 bytes |
+  | endpoint | `char[256]` | Returns an immediate error if it exceeds 255 bytes |
+  | metadata | `zlink_msg_t` (variable) | Handled by core; the binding validates only null |
 
-- 바인딩은 고정 크기 필드에 들어가는 값이 상한을 넘으면 truncation 없이
-  즉시 예외/오류를 반환한다.
-- public 도메인 객체를 만들 때 불필요한 중간 컬렉션 생성은 피한다.
-- helper나 sample이 느린 경로를 canonical path처럼 보이게 만들면 안 된다.
+- When a value going into a fixed-size field exceeds the limit, a
+  binding returns an immediate exception/error without truncation.
+- Avoid unnecessary intermediate collection construction when building a
+  public domain object.
+- A helper or sample must not make a slow path look like the canonical
+  path.
 
-## Peer 가중치 정책
+## Peer Weight Policy
 
-peer 가중치는 peer-level outbound 선택 비율과 drain 상태를 제어하는 canonical
-surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개해야 한다.
+Peer weight is the canonical surface that controls the peer-level
+outbound selection ratio and drain state. Every binding must expose this
+for the handles it implements.
 
-핵심 API/계약:
+Core API/contract:
 - `ZLINK_ROUTER_OPT_WEIGHT`
 - `ZLINK_DEALER_OPT_WEIGHT`
-- 값 범위 `0..10000`, 기본값 `100`
-- submit 결과 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) — target peer 가중치가 `0`이면 반환
-- socket monitor 이벤트 `ZLINK_EVENT_PEER_WEIGHT_CHANGED` (bit 15)
-- `zlink_spot_node_peer_entry_t.weight` / `zlink_member_peer_entry_t.weight`
+- Value range `0..10000`, default `100`
+- The submit result `ZLINK_SUBMIT_NOT_ADMITTED` (value 13) — returned
+  when the target peer's weight is `0`
+- The socket monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED` (bit 15)
+- `zlink_spot_node_peer_entry_t.weight` /
+  `zlink_member_peer_entry_t.weight`
 
-바인딩 규칙:
-- `weight`는 언어 관례에 맞는 typed option/property surface로 노출한다.
-  설정 대상은 `ROUTER`, `DEALER`이다. `SpotNode`와 `Spot`에는 weight 설정
-  surface를 노출하지 않는다.
-- `NOT_ADMITTED` 를 `SubmitError` 계열에 포함하여 caller 가
-  가중치 `0` 거부를 구분할 수 있게 한다.
-- `PEER_WEIGHT_CHANGED` 이벤트 bit 은 기존 socket monitor / service
-  monitor surface 에 typed value 로 노출한다. `value`는 새 `0..10000`
-  가중치다.
-- `SpotNodePeerEntry` / `MemberPeerEntry` 도메인 객체는 `weight` 필드를
-  포함해야 한다.
+Binding rules:
+- `weight` is exposed through a per-language typed option/property
+  surface. It applies to `ROUTER` and `DEALER`. A weight-setting surface
+  is not exposed on `SpotNode` or `Spot`.
+- Include `NOT_ADMITTED` in the `SubmitError` family so a caller can
+  distinguish a weight-`0` rejection.
+- The `PEER_WEIGHT_CHANGED` event bit is exposed as a typed value on the
+  existing socket monitor/service monitor surface. `value` is the new
+  weight, `0..10000`.
+- The `SpotNodePeerEntry`/`MemberPeerEntry` domain object must include a
+  `weight` field.
 
-## Monitor 정책
-- monitor plane도 같은 규칙을 따른다.
-- public monitor receive는 `recv()` 하나로 제공한다.
-  - blocking/non-blocking 은 flags 파라미터 또는 언어별 관례로 제어한다.
-- monitor event는 data plane과 별도지만, blocking/non-blocking 구분 방식은
-  동일해야 한다.
-- monitor는 socket의 상태 변화, readiness 변화, lifecycle event를 관찰하는
-  별도 plane 이다.
-- monitor payload는 message data plane payload와 혼동되면 안 된다.
-- monitor event type은 typed event surface 또는 동등한 의미 surface로
-  노출해야 한다.
-- monitor consumer는 raw integer mask만이 아니라 event 의미를 읽을 수 있어야
-  한다.
-- monitor lifecycle은 관찰 대상 socket lifecycle과의 관계가 설명 가능해야 한다.
-  - monitor open 시점
-  - monitor close 시점
-  - observed socket close 이후의 동작
-- monitor는 data plane을 대체하는 API가 아니다.
-- monitor의 readiness/state event 의미는 data plane contract와 충돌하지
-  않아야 한다.
-- monitor sample과 test는 다음을 보여야 한다.
-  - event 수신 성공 경로
-  - non-blocking empty 경로
-  - socket state 변화와 monitor event의 관계
+## Monitor Policy
+- The monitor plane also follows the same rules.
+- A public monitor receive is provided as a single `recv()`.
+  - Blocking/non-blocking is controlled by a flags parameter or
+    per-language convention.
+- A monitor event is separate from the data plane, but the way
+  blocking/non-blocking is distinguished must be the same.
+- Monitor is a separate plane for observing a socket's state changes,
+  readiness changes, and lifecycle events.
+- A monitor payload must not be confused with the message data-plane
+  payload.
+- A monitor event type must be exposed as a typed event surface or an
+  equivalent meaning-carrying surface.
+- A monitor consumer must be able to read the event's meaning, not just
+  a raw integer mask.
+- The monitor lifecycle's relationship to the observed socket's
+  lifecycle must be explainable:
+  - when the monitor opens
+  - when the monitor closes
+  - what happens after the observed socket closes
+- Monitor is not an API that replaces the data plane.
+- A monitor's readiness/state event meaning must not conflict with the
+  data-plane contract.
+- A monitor sample and test must show:
+  - the successful event-receive path
+  - the non-blocking empty path
+  - the relationship between a socket state change and a monitor event
 
 ## 오류 정책
 

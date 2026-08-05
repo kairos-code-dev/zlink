@@ -182,14 +182,6 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     request: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<TReply> {
-    return this.requestToSpotAddressOnce<TReply>(spotId, request, call);
-  }
-
-  private async requestToSpotAddressOnce<TReply>(
-    spotId: RoutingId,
-    request: unknown,
-    call: ZLinkSpotAddressCallOptions
-  ): Promise<TReply> {
     const existing = await this.resolveExisting(spotId, call.signal, call.instanceSpot);
     if (existing !== undefined) {
       this.validateExisting(existing, call);

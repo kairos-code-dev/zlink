@@ -4,7 +4,7 @@
 
 [Guide Home](../index.en.md) | [Common Spec](../common/README.ko.md)
 
-[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.en.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.en.md) | [Regression Matrix](internals/regression-test-matrix.en.md) | [Backend Policy](internals/backend-dependency-policy.en.md)
 
 # ZLink Framework for .NET
 
@@ -17,7 +17,7 @@
 > | [`guide/server/`](guide/server/01-overview.en.md) | The **framework (server)** usage guide |
 > | [`guide/http-client/`](guide/http-client/README.ko.md) | The **HTTP client** usage guide |
 > | [`guide/stream-connector/`](guide/stream-connector/README.ko.md) | The **Stream connector** usage guide (including Unity/Godot) |
-> | [`internals/`](internals/regression-test-matrix.ko.md) | Implementation and verification criteria |
+> | [`internals/`](internals/regression-test-matrix.en.md) | Implementation and verification criteria |
 >
 > **The public contract doesn't live here.** It's owned by the [spec tree](../common/spec/README.ko.md) —
 > [server/languages/dotnet](../common/spec/server/languages/dotnet/README.ko.md),
@@ -44,7 +44,7 @@ the Framework.
 The current implementation backend uses `bindings/dotnet` as-is. Even so, it's a principle
 to keep the public contract the framework shows users separate from the backend
 implementation. The exact criteria are covered in
-[backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md).
+[backend-dependency-policy.ko.md](internals/backend-dependency-policy.en.md).
 
 Sample and E2E config files, the ban on environment variables, and Options-binding
 criteria follow the [Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
@@ -184,9 +184,9 @@ follow each feature's spec.
 | Document | Scope |
 |------|------------|
 | [Common Internals](../common/internals/README.en.md) | Runtime architecture decisions shared across all four languages |
-| [regression-test-matrix.ko.md](internals/regression-test-matrix.ko.md) | The regression test items that must always be kept, CI tiers, release gate |
-| [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) | Backend dependency relationships and the boundary for replacing low-level libraries |
-| [public-symbol-delta-v11.ko.md](internals/public-symbol-delta-v11.ko.md) | Zero internal migrations and the minimal-public-delta classification for maintenance |
+| [regression-test-matrix.ko.md](internals/regression-test-matrix.en.md) | The regression test items that must always be kept, CI tiers, release gate |
+| [backend-dependency-policy.ko.md](internals/backend-dependency-policy.en.md) | Backend dependency relationships and the boundary for replacing low-level libraries |
+| [public-symbol-delta-v11.ko.md](internals/public-symbol-delta-v11.en.md) | Zero internal migrations and the minimal-public-delta classification for maintenance |
 
 ### 2.4 Sample Documents
 

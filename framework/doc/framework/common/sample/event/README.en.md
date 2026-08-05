@@ -18,7 +18,7 @@ read model.
 
 | Sample | Purpose | Event Authoritative Path | ZLink Role |
 |------|------|----------------|------------|
-| [ShoppingMall](shoppingmall.ko.md) | Separates `CommerceApi` (the HTTP edge) from `OrderWorkflow` (the order owner) to build a robust event-sourced order workflow. | ZLink owner routing + OrderEventStore | event sourcing, workflow owner spot, projection lookup |
+| [ShoppingMall](shoppingmall.en.md) | Separates `CommerceApi` (the HTTP edge) from `OrderWorkflow` (the order owner) to build a robust event-sourced order workflow. | ZLink owner routing + OrderEventStore | event sourcing, workflow owner spot, projection lookup |
 | [GameQuest](gamequest.en.md) | Gathers gameplay events into a per-player owner spot to update an event-sourced quest aggregate. | ZLink owner routing + QuestEventStore | owner spot serialization, event sourcing, WebSocket notify |
 
 ShoppingMall doesn't just clone Kafka. Even a commerce service starting at a small scale must handle

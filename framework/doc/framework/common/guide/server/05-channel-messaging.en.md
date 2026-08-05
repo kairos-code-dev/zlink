@@ -2099,7 +2099,7 @@ To increase throughput, run several providers that own the same MeshName and Cha
 The calling node registers provider endpoints via location-store auto-connect or
 `PeerConnections.Connect(...)`.
 
-> **See it in a sample — [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md).**
+> **See it in a sample — [ShoppingMall](../../../common/sample/event/shoppingmall.en.md).**
 > Two `CommerceApi` and two `OrderWorkflow` instances run at once to verify this section's
 > scaling. The caller doesn't know how many providers there are and calls only by channel
 > name -- no matter which instance receives a request, the same `OrderId` always arrives at

@@ -302,7 +302,7 @@ previous owner is still lingering with an expected version, and a stalled order 
 explicit resume command. If the read model breaks, it's rebuilt by replaying the events.
 
 - Paired chapters: [06-spot](06-spot.ko.md), [12-operations](12-operations.ko.md)
-- Scenario: [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md) · payload JSON
+- Scenario: [ShoppingMall](../../../common/sample/event/shoppingmall.en.md) · payload JSON
 - Event sourcing itself isn't a framework feature — it's a shape the application builds on
   top of a Spot.
 

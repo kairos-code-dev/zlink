@@ -657,7 +657,7 @@ export class StartOrderWorkflowHandler
 }
 ```
 
-Runnable reference sample: [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md) —
+Runnable reference sample: [ShoppingMall](../../../common/sample/event/shoppingmall.en.md) —
 the reference sample for this exact situation, built with no real-time push at all, just an
 HTTP API + order workflow. It verifies order state transitions, compensation flow, duplicate
 prevention, and projection rebuild, all on top of owner routing.
@@ -893,7 +893,7 @@ To see ZLink's use concretely, as a business flow, look at the
 [common samples](../../../common/sample/README.ko.md). See the real-time game server shape
 in [TicTacToe](../../../common/sample/tictactoe/README.ko.md) and
 [Bingo](../../../common/sample/bingo/README.ko.md).
-[ShoppingMall](../../../common/sample/event/shoppingmall.ko.md),
+[ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md),
 [GameQuest](../../../common/sample/event/gamequest.en.md), and
 [SupportChat](../../../common/sample/supportchat/README.ko.md) are end-to-end samples that

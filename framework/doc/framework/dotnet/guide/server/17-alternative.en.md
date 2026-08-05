@@ -349,7 +349,7 @@ difference from how much is a difference in whether this kind of pre-built tooli
 ① **Actor state persistence** — lifecycle hooks like `OnCreateAsync`/`OnClosingAsync` are provided,
 but which DB to use and how to store into it is left to the application to decide. This
 means there's no bundle of pre-built storage connectors
-([ShoppingMall](../../../common/sample/event/shoppingmall.ko.md) is an example of this).
+([ShoppingMall](../../../common/sample/event/shoppingmall.en.md) is an example of this).
 
 ② **Reminder** — the application configures a distributed scheduler, such as Quartz.NET
 Clustered or Hangfire, to run an Actor `GetOrCreate` or message at a scheduled time.

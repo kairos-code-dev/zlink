@@ -41,6 +41,6 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `Contracts/Messaging/`: `message.hpp`, `received.hpp`, `topic_message.hpp`, `subscription_event.hpp`, `operation_contracts.hpp`, `request_result.hpp`(`lazy_message_parts.hpp`와 `operation_builder_base.hpp`는 `detail`이라 public 항목 없음) |
 | [Sockets](03-sockets.ko.md) | 작성 완료 | `Contracts/Sockets/`: `socket_contracts.hpp`, `message_socket_contracts.hpp`, `routed_socket_contracts.hpp`, `pubsub_socket_contracts.hpp`, `stream_socket.hpp`, `socket_options.hpp`, `results.hpp` |
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `Contracts/Eventing/`: `monitor.hpp`, `status.hpp`, `poller.hpp`, `poll_event.hpp`, `timers.hpp`, `events.hpp` |
-| Errors | 미착수 | `Contracts/Errors/`: `errors.hpp`, `results.hpp` |
+| [Errors](05-errors.ko.md) | 작성 완료 | `Contracts/Errors/`: `errors.hpp`, `results.hpp` |
 
 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.

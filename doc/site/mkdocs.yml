@@ -124,7 +124,9 @@ exclude_docs: |
   common/guide/
   # 문서 작성 규약이다. 독자용이 아니다.
   guide/EXAMPLES.ko.md
+  guide/EXAMPLES.en.md
   guide/STYLE.ko.md
+  guide/STYLE.en.md
   # 확정 전 초안.
   spec/draft/
   # 작업이 끝나면 사라지는 임시 문서다. nav에도 없다.
@@ -312,8 +314,8 @@ nav:
         - Overview: guide/01-overview.md
         - Concepts:
           - Socket Pattern Selection: guide/03-0-socket-patterns.md
-          - Reliability & Delivery: guide/reliability.ko.md
-          - Design Rationale: guide/design-rationale.ko.md
+          - Reliability & Delivery: guide/reliability.md
+          - Design Rationale: guide/design-rationale.md
           - Message API & Ownership: guide/09-message-api.md
           - Thread Safety: guide/11-thread-safety.md
         - Messaging Patterns:
@@ -332,9 +334,9 @@ nav:
         - Reference:
           - Core C API: guide/02-core-api.md
           - Socket Options: guide/12-socket-options.md
-          - ZMP Protocol: guide/zmp-protocol.ko.md
-          - Glossary: guide/glossary.ko.md
-          - Shared Scenarios: guide/scenarios.ko.md
+          - ZMP Protocol: guide/zmp-protocol.md
+          - Glossary: guide/glossary.md
+          - Shared Scenarios: guide/scenarios.md
       - 스펙:
         - Overview: spec/core/README.md
         - Public Contract Governance: spec/core/00-public-contract-governance.md
@@ -364,11 +366,11 @@ nav:
         - I/O Thread: internals/io-thread.md
         - Design Decisions: internals/design-decisions.md
         - POSD Module Structure: internals/posd-module-structure.md
-        - Source Layout: internals/core-source-layout.ko.md
+        - Source Layout: internals/core-source-layout.md
         - Stream Socket: internals/stream-socket.md
         - Socket Options: internals/socket-option-defaults.md
         - Connection Memory: internals/connection-memory.md
-        - Multipart Atomicity: internals/multipart-atomicity.ko.md
+        - Multipart Atomicity: internals/multipart-atomicity.md
         - Runtime Boundary: internals/runtime-boundary.md
         - Protocol ZMP: internals/protocol-zmp.md
         - Protocol Raw: internals/protocol-raw.md

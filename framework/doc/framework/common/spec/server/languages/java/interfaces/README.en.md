@@ -10,7 +10,7 @@ package, organized per feature. Common behavior is owned by the
 - [Configuration And Host](configuration-host.ko.md)
 - [Channel Messaging](channel-messaging.ko.md)
 - [Spot](spots.ko.md)
-- [Actor](actors.ko.md)
+- [Actor](actors.en.md)
 - [STREAM Session](stream-session.en.md)
 - [Location And Maintenance](location-maintenance.ko.md)
 - [Monitoring](monitoring.en.md)

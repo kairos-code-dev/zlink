@@ -5,7 +5,7 @@
 This category covers the external entry points `ZLinkActorManager`/`ZLinkActorClient` provide,
 the entry point for joining a Spot from inside Actor code via `ZLinkActorContext`, and relocation
 policy selection. The exact signatures are owned by the
-[Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.ko.md)
+[Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.en.md)
 (Korean-only).
 
 ---
@@ -179,5 +179,5 @@ per call afterward.
 ---
 
 See the
-[Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.ko.md)
+[Java Actor exact interface](../../common/spec/server/languages/java/interfaces/actors.en.md)
 (Korean-only) for the full rationale.

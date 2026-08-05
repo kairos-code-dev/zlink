@@ -6,7 +6,7 @@ feature in the
 
 - [Channel Messaging](interfaces/channel-messaging.ko.md)
 - [Spot](interfaces/spots.ko.md)
-- [Actor](interfaces/actors.ko.md)
+- [Actor](interfaces/actors.en.md)
 - [STREAM Session](interfaces/stream-session.en.md)
 - [Monitoring](interfaces/monitoring.en.md)
 

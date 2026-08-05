@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Previous: Spot Actor Relocation](config-10-spot-actor-relocation.ko.md) |
+[E2E table of contents](README.en.md) | [Previous: Spot Actor Relocation](config-10-spot-actor-relocation.en.md) |
 [Next: Channel Egress Routing](config-12-channel-egress-routing.en.md)
 <!-- framework-adapter-nav:end -->
 

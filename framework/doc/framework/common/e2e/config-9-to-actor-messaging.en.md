@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Previous: Execution Turn And Terminator](config-8-execution-turn.ko.md) | [Next: Spot Actor Join/Relocation](config-10-spot-actor-relocation.ko.md)
+[E2E table of contents](README.en.md) | [Previous: Execution Turn And Terminator](config-8-execution-turn.en.md) | [Next: Spot Actor Join/Relocation](config-10-spot-actor-relocation.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 9 — Sending A Message Directly By ActorId

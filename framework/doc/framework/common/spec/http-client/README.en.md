@@ -40,11 +40,11 @@ following document.
 
 | Language | Document |
 |------|------|
-| C++ | [languages/cpp](languages/cpp/cpp-http-client.ko.md) |
-| `.NET` | [languages/dotnet](languages/dotnet/dotnet-http-client.ko.md) |
-| Java | [languages/java](languages/java/java-http-client.ko.md) |
-| Kotlin | [languages/kotlin](languages/kotlin/kotlin-http-client.ko.md) |
-| Node.js | [languages/node](languages/node/node-http-client.ko.md) |
+| C++ | [languages/cpp](languages/cpp/cpp-http-client.en.md) |
+| `.NET` | [languages/dotnet](languages/dotnet/dotnet-http-client.en.md) |
+| Java | [languages/java](languages/java/java-http-client.en.md) |
+| Kotlin | [languages/kotlin](languages/kotlin/kotlin-http-client.en.md) |
+| Node.js | [languages/node](languages/node/node-http-client.en.md) |
 
 ## Contract Change Procedure
 

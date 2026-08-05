@@ -21,7 +21,7 @@
 >
 > **The public contract doesn't live here.** It's owned by the [spec tree](../common/spec/README.ko.md) —
 > [server/languages/dotnet](../common/spec/server/languages/dotnet/README.ko.md),
-> [http-client/languages/dotnet](../common/spec/http-client/languages/dotnet/dotnet-http-client.ko.md),
+> [http-client/languages/dotnet](../common/spec/http-client/languages/dotnet/dotnet-http-client.en.md),
 > [stream-connector/languages/dotnet](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md).
 > Where the guide and the contract diverge, **the contract wins.**
 

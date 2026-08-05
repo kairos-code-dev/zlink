@@ -23,7 +23,7 @@ framework provides host, DI, configuration, logging, and HTTP directly.**
 
 | Artifact | Documentation |
 |--------|------|
-| HTTP client (`zlink::http_client`) | [Guide](guide/http-client/README.ko.md) · [Spec](../common/spec/http-client/languages/cpp/cpp-http-client.ko.md) |
+| HTTP client (`zlink::http_client`) | [Guide](guide/http-client/README.ko.md) · [Spec](../common/spec/http-client/languages/cpp/cpp-http-client.en.md) |
 | Stream connector (`zlink::stream_connector`) | [User guide](guide/stream-connector/INDEX.ko.md) |
 
 ## Internals List

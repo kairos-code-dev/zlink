@@ -26,24 +26,37 @@ try (SocketMonitor monitor = socket.monitorOpen(MonitorEventType.CONNECTED)) { /
 socket.close();
 ```
 
-**Options.** `options()` (returns `CommonSocketOptions`, below), `monitorOpen()`/
-`monitorOpen(MonitorEventType... events)`, `setTlsServer(String certPem, String keyPem, boolean
-requireClientCert)`, `setTlsClient(String caCertPem, String hostname, boolean trustSystem)`,
-`setSendReadyHandler(SendReadyHandler)`, `close()`. Note `Socket` itself declares no `bind`/
-`connect` — each concrete socket interface below redeclares its own lifecycle methods.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `options()` | returns `CommonSocketOptions` (below) |
+| `monitorOpen()` | opens a monitor subscribed to every event |
+| `monitorOpen(MonitorEventType... events)` | opens a monitor subscribed only to the given events — varargs, not a bitmask flags parameter |
+| `setTlsServer(String certPem, String keyPem, boolean requireClientCert)` | apply before `bind` |
+| `setTlsClient(String caCertPem, String hostname, boolean trustSystem)` | apply before `connect` |
+| `setSendReadyHandler(SendReadyHandler handler)` | registers a back-pressure-cleared callback |
+| `close()` | closes the native socket |
+
+`Socket` itself declares no `bind`/`connect` — each concrete socket interface below redeclares its
+own lifecycle methods.
 
 **Completion result.** All members are synchronous with no return value except `options()`/
-`monitorOpen()`. `Socket extends AutoCloseable`.
+`monitorOpen(...)` (returns `SocketMonitor`, Eventing category). `Socket extends AutoCloseable`.
 
 **When to use.** Call `setTlsServer`/`setTlsClient` before `bind`/`connect` respectively.
 
 ---
 
-## `CommonSocketOptions` and per-type option facades
+## `CommonSocketOptions`
 
-The typed options facade shared by every socket type, reached via `socket.options()`. **Many
-methods declared on `CommonSocketOptions` in source have no `public` modifier and are not
-reachable from application code** — this entry lists only the public surface.
+The typed options facade shared by every socket type, reached via `socket.options()`. **Only the
+members below are `public`** — `CommonSocketOptions` also declares `affinity`, `rate`,
+`recoveryInterval`, `handshakeInterval`, `routeValueMaxSize`, `tos`, `multicastHops`,
+`multicastMaxTpdu`, `bindToDevice`, `tcpKeepaliveCount`, `tcpKeepaliveIdle`,
+`tcpKeepaliveInterval`, `tcpMaxRt`, `conflate`, `blocky`, `invertMatching`, `fd`, `events`,
+`socketType`, and `zmpMetadata`, but every one of those is package-private and unreachable from
+application code — a materially narrower public surface than dotnet/cpp's equivalent facade.
 
 ```java
 socket.options().sendHwm(100_000L);
@@ -51,48 +64,38 @@ socket.options().linger(Duration.ofSeconds(1));
 socket.options().submitRetryMode(SubmitRetryMode.LOCAL_FAILURE);
 ```
 
-**Options — public.** `linger()`/`linger(Duration)`, `sendHwm()`/`sendHwm(long)` and
-`recvHwm()`/`recvHwm(long)` (unsigned 64-bit accounted-byte HWM; use `Long.toUnsignedString(long)`
-above `Long.MAX_VALUE`), `sendBuffer()`/`sendBuffer(int)`, `recvBuffer()`/`recvBuffer(int)`,
-`sendTimeout()`/`sendTimeout(Duration)`, `recvTimeout()`/`recvTimeout(Duration)`,
-`immediate()`/`immediate(boolean)`, `ridDuplicatePolicy()`/`ridDuplicatePolicy(RidDuplicatePolicy)`,
-`connectTimeout()`/`connectTimeout(Duration)`, `ipv6()`/`ipv6(boolean)`,
-`tcpNoDelay()`/`tcpNoDelay(boolean)`, `tcpKeepalive()`/`tcpKeepalive(int)`,
-`maxMessageSize()`/`maxMessageSize(long)`, `backlog()`/`backlog(int)`,
-`reconnectInterval()`/`reconnectInterval(Duration)`,
-`reconnectIntervalMax()`/`reconnectIntervalMax(Duration)`,
-`submitRetryMode()`/`submitRetryMode(SubmitRetryMode)`,
-`submitRetryTimeout()`/`submitRetryTimeout(Duration)`,
-`submitRetryAttempts()`/`submitRetryAttempts(int)`, `lastEndpoint()` (read-only).
+**Options.**
 
-**Options — declared but package-private (not reachable):** `affinity`, `rate`,
-`recoveryInterval`, `handshakeInterval`, `routeValueMaxSize`, `tos`, `multicastHops`,
-`multicastMaxTpdu`, `bindToDevice`, `tcpKeepaliveCount`, `tcpKeepaliveIdle`, `tcpKeepaliveInterval`,
-`tcpMaxRt`, `conflate`, `blocky`, `invertMatching`, `fd`, `events`, `socketType`, `zmpMetadata`.
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `linger()`/`linger(Duration)` | `Duration` | upper bound on how long `close()` waits for pending sends to flush |
+| `sendHwm()`/`sendHwm(long)` | `long`, unsigned 64-bit bit pattern | outbound accounted-byte HWM; `0` means unlimited; use `Long.toUnsignedString(long)` to display values above `Long.MAX_VALUE` |
+| `recvHwm()`/`recvHwm(long)` | `long`, unsigned 64-bit bit pattern | inbound accounted-byte HWM; same shape as `sendHwm` |
+| `sendBuffer()`/`sendBuffer(int)` | `int` | OS-level socket send buffer size |
+| `recvBuffer()`/`recvBuffer(int)` | `int` | OS-level socket receive buffer size |
+| `sendTimeout()`/`sendTimeout(Duration)` | `Duration` | upper bound on how long a blocking send waits |
+| `recvTimeout()`/`recvTimeout(Duration)` | `Duration` | upper bound on how long a blocking receive waits |
+| `immediate()`/`immediate(boolean)` | `boolean` | whether a send requires a live connection now, instead of queueing until one exists |
+| `ridDuplicatePolicy()`/`ridDuplicatePolicy(RidDuplicatePolicy)` | `RidDuplicatePolicy` | what happens when a peer reuses an existing routing id |
+| `connectTimeout()`/`connectTimeout(Duration)` | `Duration` | upper bound on how long connect handshake waits |
+| `ipv6()`/`ipv6(boolean)` | `boolean` | whether the socket accepts IPv6 connections |
+| `tcpNoDelay()`/`tcpNoDelay(boolean)` | `boolean` | disables Nagle's algorithm when `true` |
+| `tcpKeepalive()`/`tcpKeepalive(int)` | `int` (tri-state, not `boolean`) | OS TCP keepalive mode |
+| `maxMessageSize()`/`maxMessageSize(long)` | `long` | maximum size in bytes of a single accepted message |
+| `backlog()`/`backlog(int)` | `int` | pending-connection queue length for a listening socket |
+| `reconnectInterval()`/`reconnectInterval(Duration)` | `Duration` | delay between reconnect attempts |
+| `reconnectIntervalMax()`/`reconnectIntervalMax(Duration)` | `Duration` | cap on the reconnect delay |
+| `submitRetryMode()`/`submitRetryMode(SubmitRetryMode)` | `SubmitRetryMode` | whether a failed submit retries automatically on local back-pressure |
+| `submitRetryTimeout()`/`submitRetryTimeout(Duration)` | `Duration` | retry timeout when `submitRetryMode()` is `LOCAL_FAILURE` |
+| `submitRetryAttempts()`/`submitRetryAttempts(int)` | `int` | retry attempt cap when `submitRetryMode()` is `LOCAL_FAILURE` |
+| `lastEndpoint()` | `String`, read-only | the concrete resolved bind address |
 
-**Options — per-type subclasses.** `DealerSocketOptions`: `probe()`/`probe(boolean)` (both
-public), `requestTimeout(Duration)` (**set-only, no getter**), `peerWeight(int)` (**set-only, no
-getter** — unlike dotnet, whose `PeerWeight` has both). `RouterSocketOptions`: `mandatory()`/
-`mandatory(boolean)`, `handover()`/`handover(boolean)` (shorthand over `ridDuplicatePolicy`),
-`probe()`/`probe(boolean)`, `connectRoutingId()` (`Optional<RoutingId>`, read-only)/
-`setConnectRoutingId(RoutingId)`, `requestTimeout()`/`requestTimeout(Duration)` (both directions,
-unlike Dealer's), `peerWeight()`/`peerWeight(int)` (both directions). `StreamSocketOptions`:
-`notifyEnabled()`/`notify(boolean)` (asymmetric getter/setter names — not `notify()`/`notify(...)`).
-`PubSocketOptions`: `verbose()`/`verbose(boolean)`, `verboser()`/`verboser(boolean)`,
-`noDrop()`/`noDrop(boolean)`, `manual()`/`manual(boolean)` (**the getter reads a client-side cached
-field, not the native option** — see below), `manualLastValue()`/`manualLastValue(boolean)`,
-`approveSubscribe(RoutingId)`/`rejectSubscribe(RoutingId)`, `welcomeMessage()`/
-`welcomeMessage(Message)`, `topicsCount()` (read-only). `SubSocketOptions`: `topicsCount()` only.
+**Completion result.** Every getter/setter is synchronous.
 
-**Completion result.** Every property get/set is synchronous. `PubSocketOptions.manual()`'s getter
-returns the last value passed to `manual(boolean)` on this facade instance rather than reading the
-native socket option back — if the option were ever changed through another path, this getter would
-not reflect it.
-
-**When to use.** Set `sendHwm`/`recvHwm` and `linger` before the socket starts exchanging messages
-when the defaults don't fit the deployment. Treat the package-private options as unavailable to
-application code — a spec-level question outside this reference's scope, not something to route
-around.
+**When to use.** Set `sendHwm`/`recvHwm` and `linger` before the socket starts exchanging
+messages when the defaults don't fit the deployment. Treat the package-private options as
+unavailable to application code — a spec-level question outside this reference's scope, not
+something to route around.
 
 ---
 
@@ -108,9 +111,15 @@ try (PairSocket pair = context.createPairSocket()) {
 }
 ```
 
-**Options.** `bind(String)`, `connect(String)`, `unbind(String)`, `disconnect(String)`,
-`disconnectRid(RoutingId)`, `send()` (starts the shared `SendOperation` builder), `recv(Received
-result, RecvFlags flags)`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `bind(String)` / `unbind(String)` | starts/stops listening on an address |
+| `connect(String)` / `disconnect(String)` | connects/disconnects to a peer address |
+| `disconnectRid(RoutingId)` | disconnects the peer identified by that routing id |
+| `send()` | starts the shared `SendOperation` builder |
+| `recv(Received result, RecvFlags flags)` | populates `result` with the next message |
 
 **Completion result.** `recv` returns `boolean` — `false` only when `RecvFlags.DONT_WAIT` is set
 and no message is available.
@@ -131,10 +140,15 @@ try (DealerSocket dealer = context.createDealerSocket()) {
 }
 ```
 
-**Options.** `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid` (same shape as `PairSocket`),
-`setRoutingId(RoutingId)`/`getRoutingId()`, `send()`, `recv(Received, RecvFlags)`, `request()`
-(starts the shared `RequestOperation` builder — no target parameter, since DEALER has no
-API-level peer routing id), `options()` (overridden to return `DealerSocketOptions`).
+**Options.** Adds to `Socket`'s shared surface:
+
+| Member | Meaning |
+| --- | --- |
+| `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid` | same shape as `PairSocket` |
+| `setRoutingId(RoutingId)` / `getRoutingId()` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `send()` / `recv(Received, RecvFlags)` | same shape as `PairSocket` |
+| `request()` | starts the shared `RequestOperation` builder; no target parameter — DEALER has no API-level peer routing id |
+| `options()` | overridden to return `DealerSocketOptions`: `probe()`/`probe(boolean)` (sends an empty probe on connect); `requestTimeout(Duration)` — **set-only, no getter**; `peerWeight(int)` — **set-only, no getter**, load-balancing weight, unlike dotnet's `PeerWeight` which has both |
 
 **Completion result.** `recv` follows the same `boolean` convention as `PairSocket`.
 
@@ -155,13 +169,19 @@ try (RouterSocket router = context.createRouterSocket()) {
 }
 ```
 
-**Options.** `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid`, `setRoutingId(RoutingId)`/
-`getRoutingId()`, `send(RoutingId)`, `recv(Received, RecvFlags)`, `request(RoutingId)` (the
-Messaging category's `RequestOperation`, addressed to a specific peer), `reply(RoutingId, long
-requestSequence)` (the Messaging category's `ReplyOperation`), `trySendCompletionControl(RoutingId
-peerRid, List<Message> parts)` (does not consume `parts`), `setCompletionControlHandler
-(CompletionControlHandler)` (the callback owns every message in `parts` and must close it once),
-`options()` (returns `RouterSocketOptions`).
+**Options.** Adds to `Socket`'s shared surface:
+
+| Member | Meaning |
+| --- | --- |
+| `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid` | same shape as `PairSocket` |
+| `setRoutingId(RoutingId)` / `getRoutingId()` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `send(RoutingId)` | starts the shared `SendOperation`, addressed to that peer |
+| `recv(Received, RecvFlags)` | same shape as `PairSocket` |
+| `request(RoutingId)` | Messaging category's `RequestOperation`, addressed to a specific peer |
+| `reply(RoutingId, long requestSequence)` | Messaging category's `ReplyOperation`, answering that peer's request |
+| `trySendCompletionControl(RoutingId peerRid, List<Message> parts)` | sends an opaque control record to a peer over its existing connection; does not consume `parts` |
+| `setCompletionControlHandler(CompletionControlHandler handler)` | registers the callback that receives incoming completion-control records; the callback owns every message in `parts` and must close it once |
+| `options()` | returns `RouterSocketOptions`: `mandatory()`/`mandatory(boolean)` (error instead of silent drop on an unknown route); `handover()`/`handover(boolean)` (shorthand over `ridDuplicatePolicy`); `probe()`/`probe(boolean)`; `connectRoutingId()` (`Optional<RoutingId>`, read-only)/`setConnectRoutingId(RoutingId)` — asymmetric naming between getter and setter; `requestTimeout()`/`requestTimeout(Duration)` — **both directions, unlike Dealer's set-only**; `peerWeight()`/`peerWeight(int)` — **both directions, unlike Dealer's set-only** |
 
 **Completion result.** `trySendCompletionControl` returns `boolean` — `false` only when the
 completion connection is back-pressured. `recv` follows the `boolean` convention above.
@@ -175,8 +195,8 @@ independent from application-level receive.
 
 ## `PubSocket` / `XPubSocket`
 
-PUB publishes topic-filtered messages, dropping ones with no matching subscriber; XPUB additionally
-surfaces subscriber subscription/unsubscription events.
+PUB publishes topic-filtered messages, dropping ones with no matching subscriber; XPUB
+additionally surfaces subscriber subscription/unsubscription events.
 
 ```java
 try (PubSocket pub = context.createPubSocket()) {
@@ -189,19 +209,22 @@ try (XPubSocket xpub = context.createXPubSocket()) {
 }
 ```
 
-**Options.** `PubSocket`: `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid`,
-`setRoutingId(RoutingId)` (**no `getRoutingId()`** — set-only, unlike dotnet's `IPubSocket` which
-has both), `publish(String topicId)` (starts the shared `SendOperation` builder), `options()`
-(returns `PubSocketOptions`). `XPubSocket`: the same `bind`/`connect`/`unbind`/`disconnect`/
-`disconnectRid`/`setRoutingId`/`publish`/`options()` (also `PubSocketOptions` — the same facade
-type) plus `receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)`.
+**Options.**
 
-**Completion result.** `receiveSubscriptionEvent` returns `boolean` (same convention as `recv`
-above).
+| Member | Meaning |
+| --- | --- |
+| `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid` | same shape as `PairSocket` |
+| `setRoutingId(RoutingId)` | `PubSocket` only — **has no matching `getRoutingId()`**, set-only, unlike dotnet's `IPubSocket` which has both; `XPubSocket` has neither `setRoutingId` nor `getRoutingId` at all |
+| `publish(String topicId)` | starts the shared `SendOperation`; `XPubSocket` redeclares its own copy of this method |
+| `receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)` | `XPubSocket` only; populates `result` with the next subscribe/unsubscribe |
+| `options()` | both return `PubSocketOptions` (the same facade type — not two separate ones): `verbose()`/`verbose(boolean)`, `verboser()`/`verboser(boolean)` (deliver every (un)subscribe message, including duplicates); `noDrop()`/`noDrop(boolean)` (error instead of silent drop on back-pressure); `manual()`/`manual(boolean)` (subscriptions require `approveSubscribe`/`rejectSubscribe` instead of auto-accept — the getter returns a client-side cached value set by `manual(boolean)`, not a native read-back of the socket option); `manualLastValue()`/`manualLastValue(boolean)` (manual mode that also replays the last cached message per topic to a newly accepted subscriber); `welcomeMessage()`/`welcomeMessage(Message)` (sent automatically to each newly connected subscriber); `topicsCount()` — read-only; `approveSubscribe(RoutingId)`/`rejectSubscribe(RoutingId)` — **set-only, no getters** |
+
+**Completion result.** `receiveSubscriptionEvent` returns `boolean` — same convention as `recv`
+above.
 
 **When to use.** Use `XPubSocket` specifically to observe subscriber churn via
-`receiveSubscriptionEvent`, or manual admission via `PubSocketOptions.manual()`/`approveSubscribe`/
-`rejectSubscribe`; otherwise the two behave the same for publishing.
+`receiveSubscriptionEvent`, or manual admission via `PubSocketOptions.manual()`/
+`approveSubscribe`/`rejectSubscribe`; otherwise the two behave the same for publishing.
 
 ---
 
@@ -218,15 +241,21 @@ try (SubSocket sub = context.createSubSocket()) {
 }
 ```
 
-**Options.** `SubSocket`: `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid`,
-`setSubscription(String filter)`/`unsetSubscription(String filter)` (subscriptions accumulate),
-`subscriptionAt(int index)` (`Optional<SubscriptionEntry>`), `subscribe(TopicMessage result,
-RecvFlags flags)`, `options()` (returns `SubSocketOptions`). **`XSubSocket` has the identical member
-set** — every method independently redeclared with the same signatures; the only difference between
-the two types is what SUB/XSUB themselves mean at the wire level, not anything visible in this
-contract.
+**Options.**
 
-**Completion result.** `subscribe` returns `boolean` (same convention as `recv` above).
+| Member | Meaning |
+| --- | --- |
+| `bind`/`connect`/`unbind`/`disconnect`/`disconnectRid` | same shape as `PairSocket` |
+| `setSubscription(String filter)` / `unsetSubscription(String filter)` | adds/removes a topic filter; subscriptions accumulate |
+| `subscriptionAt(int index)` | `Optional<SubscriptionEntry>` — the filter at that index, empty when out of range |
+| `subscribe(TopicMessage result, RecvFlags flags)` | populates `result` with the next matching publish |
+| `options()` | returns `SubSocketOptions`: `topicsCount()` only, read-only — the only per-type option either socket has |
+
+**`XSubSocket` has the identical member set** — every method independently redeclared with the
+same signatures; the only difference between the two types is what SUB/XSUB themselves mean at
+the wire level, not anything visible in this contract.
+
+**Completion result.** `subscribe` returns `boolean` — same convention as `recv` above.
 
 **When to use.** Use `SubSocket` for the common case; use `XSubSocket` specifically when
 subscriptions must be carried as ordinary messages instead.
@@ -235,8 +264,8 @@ subscriptions must be carried as ordinary messages instead.
 
 ## `StreamSocket`
 
-Exchanges framed packets directly with raw TCP peers, outside the zlink wire protocol used by every
-other socket type.
+Exchanges framed packets directly with raw TCP peers, outside the zlink wire protocol used by
+every other socket type.
 
 ```java
 try (StreamSocket stream = context.createStreamSocket()) {
@@ -244,11 +273,16 @@ try (StreamSocket stream = context.createStreamSocket()) {
 }
 ```
 
-**Options.** `bind(String)`, `unbind(String)` (no `connect`/`disconnect`/`disconnectRid` on this
-interface, unlike every other socket type here), `setRoutingId(RoutingId)`/`getRoutingId()`,
-`send(RoutingId)`, `recv(Received result, RecvFlags flags)`, `onPacket(StreamPacketHandler
-handler)` (the handler receives `(RoutingId routingId, Message header, Message body)`), `options()`
-(returns `StreamSocketOptions`).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `bind(String)` / `unbind(String)` | starts/stops listening on an address — **no `connect`/`disconnect`/`disconnectRid` on this interface**, unlike every other socket type above |
+| `setRoutingId(RoutingId)` / `getRoutingId()` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `send(RoutingId)` | starts the shared `SendOperation`, addressed to that peer |
+| `recv(Received result, RecvFlags flags)` | populates `result` with the next packet |
+| `onPacket(StreamPacketHandler handler)` | registers a callback-driven packet loop; the handler receives `(RoutingId routingId, Message header, Message body)` and owns both |
+| `options()` | returns `StreamSocketOptions`: `notifyEnabled()`/`notify(boolean)` — **the getter and setter have different names** (`notifyEnabled()`, not `notify()`); delivers peer connect/disconnect as application messages when enabled |
 
 **Completion result.** `recv` follows the `boolean` convention above.
 
@@ -277,7 +311,7 @@ Shared enums referenced across every entry above.
 |---|---|---|
 | `SocketType` | Internal socket-kind identification | `ANY`, `PAIR`, `PUB`, `SUB`, `DEALER`, `ROUTER`, `XPUB`, `XSUB`, `STREAM` |
 | `AutoHwmProfile` | `ContextOptions.autoHwmProfile` (Core category) | `COMPACT`, `LOW_LATENCY`, `BALANCED`, `THROUGHPUT` |
-| `AutoHwmRecalcReason` | Monitor status (Eventing category) — its `value()`/`fromValue()` helpers are package-private | `NONE`, `INITIAL`, `ROLE_CHANGE`, `POLICY_TOGGLE`, `REFRESH`, `DEFERRED_SHRINK` |
+| `AutoHwmRecalcReason` | Monitor status (Eventing category); its `value()`/`fromValue()` helpers are package-private | `NONE`, `INITIAL`, `ROLE_CHANGE`, `POLICY_TOGGLE`, `REFRESH`, `DEFERRED_SHRINK` |
 | `RidDuplicatePolicy` | `CommonSocketOptions.ridDuplicatePolicy`, `RouterSocketOptions.handover` | `REJECT`, `HANDOVER` |
 | `SubmitRetryMode` | `CommonSocketOptions.submitRetryMode` | `OFF`, `LOCAL_FAILURE` |
 | `SendFlags` | Every send/request/reply builder's `.flags(...)` stage (Messaging category) | `NONE`, `DONT_WAIT` |

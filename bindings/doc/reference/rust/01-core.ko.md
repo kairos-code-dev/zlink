@@ -76,19 +76,25 @@ options.set_auto_hwm_profile(AutoHwmProfile::LowLatency)?;
 options.add_thread_affinity(2)?;
 ```
 
-**Options.** 짝을 이루는 getter/setter 메서드, 전부 `Result<T, ConfigError>`
-반환: `io_threads()`/`set_io_threads(i32)`, `max_sockets()`/
-`set_max_sockets(i32)`, `socket_limit()`(읽기 전용),
-`thread_priority()`/`set_thread_priority(i32)`,
-`thread_scheduling_policy()`/`set_thread_scheduling_policy(i32)`,
-`max_message_size()`/`set_max_message_size(i32)`, `msg_t_size()`(읽기
-전용), `blocky()`/`set_blocky(bool)`,
-`thread_name_prefix()`/`set_thread_name_prefix(&str)`,
-`auto_hwm_enabled()`/`set_auto_hwm_enabled(bool)`,
-`auto_hwm_recalc_debounce()`/`set_auto_hwm_recalc_debounce(Duration)`,
-`auto_hwm_profile()`/`set_auto_hwm_profile(AutoHwmProfile)`,
-`auto_hwm_msg_unit_bytes()`/`set_auto_hwm_msg_unit_bytes(u64)`. setter만:
-`add_thread_affinity(i32)`/`remove_thread_affinity(i32)`.
+**Options.** 아래 모든 getter/setter는 `Result<T, ConfigError>`를 반환한다.
+
+| Member | 의미 |
+| --- | --- |
+| `io_threads()` / `set_io_threads(i32)` | I/O thread 개수 |
+| `max_sockets()` / `set_max_sockets(i32)` | context 전체 socket 상한 |
+| `socket_limit()` | 읽기 전용, `max_sockets`의 빌드상 하드 상한 |
+| `thread_priority()` / `set_thread_priority(i32)` | dispatch thread 우선순위 |
+| `thread_scheduling_policy()` / `set_thread_scheduling_policy(i32)` | dispatch thread scheduling policy |
+| `max_message_size()` / `set_max_message_size(i32)` | 메시지 하나의 크기 상한 |
+| `msg_t_size()` | 읽기 전용, native message struct 크기, 진단 전용 |
+| `blocky()` / `set_blocky(bool)` | blocking 호출이 실제로 block하는지 fail fast하는지 |
+| `thread_name_prefix()` / `set_thread_name_prefix(&str)` | OS에 보이는 dispatch thread 이름 접두사 |
+| `auto_hwm_enabled()` / `set_auto_hwm_enabled(bool)` | auto-HWM sizing 활성 여부 |
+| `auto_hwm_recalc_debounce()` / `set_auto_hwm_recalc_debounce(Duration)` | 자동 재계산 사이 최소 간격 |
+| `auto_hwm_profile()` / `set_auto_hwm_profile(AutoHwmProfile)` | automatic HWM sizing profile — Sockets category 참고 |
+| `auto_hwm_msg_unit_bytes()` / `set_auto_hwm_msg_unit_bytes(u64)` | auto-HWM용 accounted-byte 단위; `0`은 socket-type 기본값 선택 |
+| `add_thread_affinity(i32)` | setter만, I/O thread를 CPU에 고정 |
+| `remove_thread_affinity(i32)` | setter만, I/O thread의 CPU 고정을 해제 |
 
 **Completion result.** 모든 getter/setter는 동기이며 `Result<_,
 ConfigError>`를 반환한다(진짜 예외적인 에러에서만 throw하는 언어와 달리,
@@ -132,16 +138,24 @@ let restored = RoutingId::from_hex(&previously_printed.to_hex())?;
 
 **Options.** static factory 메서드가 아니라 Rust `From<T>` trait
 구현이다 — `.into()`나 `RoutingId::from(...)`로 도달하는 관용적 변환
-메커니즘: `From<&[u8]>`, `From<&[u8; N]>`(임의 고정 크기 배열), `From<&str>`
-(UTF-8 인코딩), `From<u32>`(4-byte big-endian), `From<[u8; 16]>`(16-byte,
-예: UUID byte) — **이들 전부 빈 입력이나 길이 초과 입력에서 `Result`를
-반환하는 게 아니라 panic한다**. `from_hex(&str)`도 같은 방식으로
-panic한다. `try_from_hex(&str) -> Result<Self, ConfigError>`는 hex
-디코딩 전용으로 panic하지 않는 대안이다. Instance member:
-`MAX_LEN`(`usize` 상수, `255`), `as_bytes()`, `size()`, `is_empty()`,
-`to_hex()`, `Display`(printable UTF-8, 그 다음 4-byte를 `u32`로, 그 다음
-16-byte를 UUID 포맷으로, 마지막 `hex:` 접두 fallback로 포맷),
-`PartialEq`/`Eq`/`Hash`/`Copy`/`Clone`(derive됨).
+메커니즘이다. **모든 `From` 변환과 `from_hex`는 빈 입력이나 길이 초과
+입력에서 `Result`를 반환하는 게 아니라 panic한다.**
+
+| Member | 의미 |
+| --- | --- |
+| `From<&[u8]>` / `From<&[u8; N]>` | slice/고정 크기 배열 전체를 그대로 복사 |
+| `From<&str>` | UTF-8 인코딩 |
+| `From<u32>` | 4-byte big-endian |
+| `From<[u8; 16]>` | 16-byte, 예: UUID byte |
+| `from_hex(&str)` | `to_hex()`가 출력한 byte를 복원; 잘못된 입력에 panic |
+| `try_from_hex(&str) -> Result<Self, ConfigError>` | hex 디코딩 전용으로 panic하지 않는 대안 |
+| `MAX_LEN` | `usize` 상수, `255` |
+| `as_bytes()` | bytes의 방어적 복사 |
+| `size()` | byte 길이, 1-255 |
+| `is_empty()` | `size()`가 0인지 |
+| `to_hex()` | hex 인코딩, `from_hex`/`try_from_hex`와 왕복 가능 |
+| `Display` | printable UTF-8, 그 다음 4-byte를 `u32`로, 그 다음 16-byte를 UUID 포맷으로, 마지막 `hex:` 접두 fallback로 포맷 |
+| `PartialEq`/`Eq`/`Hash`/`Copy`/`Clone` | derive된 값 동등성 |
 
 **Completion result.** 모든 `From` 변환과 `from_hex`는 동기이며 잘못된
 입력에 panic한다. `try_from_hex`만 panic 대신 `Result<Self,
@@ -165,9 +179,13 @@ let has_tls = has("tls");
 let message = strerror(errnum);
 ```
 
-**Options.** `has(capability: &str)` — 인식하는 이름은 `"tcp"`, `"ipc"`,
-`"tls"`, `"ws"`, `"wss"`; 다른 문자열은 `false`를 반환한다.
-`strerror(errnum: i32)`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `version()` | `{major, minor, patch}`의 `(i32, i32, i32)` tuple |
+| `has(capability: &str)` | 지정한 선택적 역할이 이 빌드에 컴파일돼 있는지 — 인식하는 이름은 `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; 다른 문자열은 `false`를 반환한다 |
+| `strerror(errnum: i32)` | 해당 native error code의 메시지 텍스트 |
 
 **Completion result.** 모두 동기이며 error 경로가 없다. `version()`은
 `(i32, i32, i32)`를 반환한다. `has`는 `bool`을 반환한다. `strerror`는
@@ -198,13 +216,21 @@ let mut thread = Thread::start(|| do_work())?;
 thread.join();
 ```
 
-**Options.** `Stopwatch::start()`/`AtomicCounter::new()`는 인자 없음.
-`Thread::start<F>(task: F)`(`F: FnOnce() + Send + 'static`)는 새 스레드에서
-task를 즉시 실행한다. `Stopwatch`: `intermediate()`/`stop()`(둘 다 `u64`
-마이크로초, `&mut self` — `stop`은 handle을 무효화함), `close()`.
-`AtomicCounter`: `set(i32)`, `increment()`/`decrement()`(counter의 *새*
-값을 반환), `value()`, `close()`. `Thread`: `join(&mut self)`(task가
-panic했으면 `resume_unwind`로 그 panic을 다시 일으킴), `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `Stopwatch::start()` | 인자 없음 |
+| `Stopwatch.intermediate()` / `stop()` | 생성 이후 경과 마이크로초(`u64`), `&mut self` — `stop`은 handle을 무효화함 |
+| `Stopwatch.close()` | stopwatch를 해제 |
+| `AtomicCounter::new()` | 인자 없음 |
+| `AtomicCounter.set(i32)` | counter 값을 지정 |
+| `AtomicCounter.increment()` / `decrement()` | counter를 1 조정, *새* 값을 반환 |
+| `AtomicCounter.value()` | 현재 값을 읽음 |
+| `AtomicCounter.close()` | counter를 해제 |
+| `Thread::start<F>(task: F)`(`F: FnOnce() + Send + 'static`) | 새 스레드에서 `task`를 즉시 실행 |
+| `Thread.join(&mut self)` | task가 끝날 때까지 block; task가 panic했으면 `resume_unwind`로 그 panic을 다시 일으킴 |
+| `Thread.close()` | thread handle을 해제 |
 
 **Completion result.** 세 생성자 모두 `Result<Self, ConfigError>`를
 반환한다. 각 타입은 `Drop`도 구현해서 아직 닫히지 않았으면 자동으로
@@ -233,14 +259,15 @@ multipart_close(&mut parts);
 let ready = poll(&mut items, 1000)?;
 ```
 
-**Options.** `proxy(frontend: &dyn Pollable, backend: &dyn Pollable,
-capture: Option<&dyn Pollable>)`와 `proxy_steerable(..., control: &dyn
-Pollable)`은 구체 socket 타입이 아니라 `&dyn Pollable` trait object를
-받는다 — 모든 내장 socket type이 sealed `Pollable` trait(Eventing
-category)을 구현한다. `sleep(seconds: i32)`는 초 단위를 직접 받는다.
-`multipart_close(parts: &mut [Message])`. `poll(items: &mut [PollItem],
-timeout_ms: i64)`는 `Poller`(Eventing category)와 구별되는 standalone
-one-shot poll helper다 — 각 `PollItem`의 `revents`를 그 자리에서 채운다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `proxy(frontend: &dyn Pollable, backend: &dyn Pollable, capture: Option<&dyn Pollable>)` | `capture`는 선택 사항; 셋 다 구체 socket 타입이 아니라 `&dyn Pollable` trait object를 받는다 — 모든 내장 socket type이 sealed `Pollable` trait(Eventing category)을 구현한다 |
+| `proxy_steerable(..., control: &dyn Pollable)` | 필수 `control` source를 더함, 같은 `Pollable` 형태 |
+| `sleep(seconds: i32)` | 호출 스레드를 block; 초 단위를 직접 받는다 |
+| `multipart_close(parts: &mut [Message])` | 모든 part를 한 번에 닫음 |
+| `poll(items: &mut [PollItem], timeout_ms: i64)` | `Poller`(Eventing category)와 구별되는 standalone one-shot poll helper; 각 `PollItem`의 `revents`를 그 자리에서 채운다 |
 
 **Completion result.** `proxy`/`proxy_steerable`은 `Result<(),
 ConfigError>`를 반환한다 — **여기선 실패할 수 있다**, 다른 언어에서

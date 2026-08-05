@@ -71,17 +71,25 @@ options.set_auto_hwm_profile(AutoHwmProfile::LowLatency)?;
 options.add_thread_affinity(2)?;
 ```
 
-**Options.** Paired getter/setter methods, every one returning `Result<T, ConfigError>`:
-`io_threads()`/`set_io_threads(i32)`, `max_sockets()`/`set_max_sockets(i32)`, `socket_limit()`
-(read-only), `thread_priority()`/`set_thread_priority(i32)`,
-`thread_scheduling_policy()`/`set_thread_scheduling_policy(i32)`,
-`max_message_size()`/`set_max_message_size(i32)`, `msg_t_size()` (read-only),
-`blocky()`/`set_blocky(bool)`, `thread_name_prefix()`/`set_thread_name_prefix(&str)`,
-`auto_hwm_enabled()`/`set_auto_hwm_enabled(bool)`,
-`auto_hwm_recalc_debounce()`/`set_auto_hwm_recalc_debounce(Duration)`,
-`auto_hwm_profile()`/`set_auto_hwm_profile(AutoHwmProfile)`,
-`auto_hwm_msg_unit_bytes()`/`set_auto_hwm_msg_unit_bytes(u64)`. Setter-only:
-`add_thread_affinity(i32)`/`remove_thread_affinity(i32)`.
+**Options.** Every getter/setter below returns `Result<T, ConfigError>`.
+
+| Member | Meaning |
+| --- | --- |
+| `io_threads()` / `set_io_threads(i32)` | I/O thread count |
+| `max_sockets()` / `set_max_sockets(i32)` | context-wide socket cap |
+| `socket_limit()` | read-only, build's hard cap on `max_sockets` |
+| `thread_priority()` / `set_thread_priority(i32)` | dispatch thread priority |
+| `thread_scheduling_policy()` / `set_thread_scheduling_policy(i32)` | dispatch thread scheduling policy |
+| `max_message_size()` / `set_max_message_size(i32)` | per-message size cap |
+| `msg_t_size()` | read-only, native message struct size, diagnostic only |
+| `blocky()` / `set_blocky(bool)` | whether blocking calls actually block vs. fail fast |
+| `thread_name_prefix()` / `set_thread_name_prefix(&str)` | OS-visible dispatch thread name prefix |
+| `auto_hwm_enabled()` / `set_auto_hwm_enabled(bool)` | whether auto-HWM sizing is active |
+| `auto_hwm_recalc_debounce()` / `set_auto_hwm_recalc_debounce(Duration)` | minimum interval between automatic recalculations |
+| `auto_hwm_profile()` / `set_auto_hwm_profile(AutoHwmProfile)` | automatic HWM sizing profile — see Sockets category |
+| `auto_hwm_msg_unit_bytes()` / `set_auto_hwm_msg_unit_bytes(u64)` | accounted-byte unit for auto-HWM; `0` selects the socket-type default |
+| `add_thread_affinity(i32)` | setter-only, pins an I/O thread to a CPU |
+| `remove_thread_affinity(i32)` | setter-only, unpins an I/O thread from a CPU |
 
 **Completion result.** Every getter/setter is synchronous, returning `Result<_, ConfigError>` (every
 option access can fail, unlike languages where the getter/setter throws only on a genuinely
@@ -124,15 +132,24 @@ let restored = RoutingId::from_hex(&previously_printed.to_hex())?;
 ```
 
 **Options.** Rust `From<T>` trait implementations rather than static factory methods — the
-idiomatic conversion mechanism, reached via `.into()` or `RoutingId::from(...)`: `From<&[u8]>`,
-`From<&[u8; N]>` (any fixed-size array), `From<&str>` (UTF-8 encode), `From<u32>` (4-byte
-big-endian), `From<[u8; 16]>` (16-byte, e.g. UUID bytes) — **every one of these panics** on empty or
-over-length input rather than returning a `Result`. `from_hex(&str)` panics the same way;
-`try_from_hex(&str) -> Result<Self, ConfigError>` is the non-panicking alternative for hex decoding
-specifically. Instance members: `MAX_LEN` (`usize` constant, `255`), `as_bytes()`, `size()`,
-`is_empty()`, `to_hex()`, `Display` (formats as printable UTF-8, then 4-byte-as-`u32`, then
-16-byte-as-UUID-format, then a `hex:`-prefixed fallback), `PartialEq`/`Eq`/`Hash`/`Copy`/`Clone`
-(derived).
+idiomatic conversion mechanism, reached via `.into()` or `RoutingId::from(...)`. **Every `From`
+conversion and `from_hex` panics** on empty or over-length input rather than returning a `Result`.
+
+| Member | Meaning |
+| --- | --- |
+| `From<&[u8]>` / `From<&[u8; N]>` | copies the full slice/fixed-size array as-is |
+| `From<&str>` | UTF-8 encode |
+| `From<u32>` | 4-byte big-endian |
+| `From<[u8; 16]>` | 16-byte, e.g. UUID bytes |
+| `from_hex(&str)` | restores bytes `to_hex()` printed; panics on malformed input |
+| `try_from_hex(&str) -> Result<Self, ConfigError>` | the non-panicking alternative for hex decoding specifically |
+| `MAX_LEN` | `usize` constant, `255` |
+| `as_bytes()` | defensive copy of the bytes |
+| `size()` | byte length, 1-255 |
+| `is_empty()` | whether `size()` is zero |
+| `to_hex()` | hex encoding, round-trippable with `from_hex`/`try_from_hex` |
+| `Display` | formats as printable UTF-8, then 4-byte-as-`u32`, then 16-byte-as-UUID-format, then a `hex:`-prefixed fallback |
+| `PartialEq`/`Eq`/`Hash`/`Copy`/`Clone` | derived value semantics |
 
 **Completion result.** Every `From` conversion and `from_hex` is synchronous and panics on invalid
 input. Only `try_from_hex` returns `Result<Self, ConfigError>` instead of panicking.
@@ -155,8 +172,13 @@ let has_tls = has("tls");
 let message = strerror(errnum);
 ```
 
-**Options.** `has(capability: &str)` — recognized names include `"tcp"`, `"ipc"`, `"tls"`, `"ws"`,
-`"wss"`; any other string returns `false`. `strerror(errnum: i32)`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `version()` | `(i32, i32, i32)` tuple of `{major, minor, patch}` |
+| `has(capability: &str)` | whether the named optional capability is compiled into this build — recognized names are `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; any other string returns `false` |
+| `strerror(errnum: i32)` | the message text for that native error code |
 
 **Completion result.** All are synchronous with no error path. `version()` returns `(i32, i32,
 i32)`. `has` returns `bool`. `strerror` returns `&'static str`.
@@ -184,12 +206,21 @@ let mut thread = Thread::start(|| do_work())?;
 thread.join();
 ```
 
-**Options.** `Stopwatch::start()`/`AtomicCounter::new()` take no parameters. `Thread::start<F>(task:
-F)` where `F: FnOnce() + Send + 'static` runs the task immediately on the new thread. `Stopwatch`:
-`intermediate()`/`stop()` (both `u64` microseconds, `&mut self` — `stop` invalidates the handle),
-`close()`. `AtomicCounter`: `set(i32)`, `increment()`/`decrement()` (return the counter's *new*
-value), `value()`, `close()`. `Thread`: `join(&mut self)` (re-raises the task's panic via
-`resume_unwind` if it panicked), `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `Stopwatch::start()` | no parameters |
+| `Stopwatch.intermediate()` / `stop()` | both `u64` microseconds since construction, `&mut self`; `stop` invalidates the handle |
+| `Stopwatch.close()` | releases the stopwatch |
+| `AtomicCounter::new()` | no parameters |
+| `AtomicCounter.set(i32)` | assigns the counter's value |
+| `AtomicCounter.increment()` / `decrement()` | adjusts the counter by one, returning the counter's *new* value |
+| `AtomicCounter.value()` | reads the current value |
+| `AtomicCounter.close()` | releases the counter |
+| `Thread::start<F>(task: F)` where `F: FnOnce() + Send + 'static` | runs `task` immediately on the new thread |
+| `Thread.join(&mut self)` | blocks until the task finishes; re-raises the task's panic via `resume_unwind` if it panicked |
+| `Thread.close()` | releases the thread handle |
 
 **Completion result.** All three constructors return `Result<Self, ConfigError>`. Each type also
 implements `Drop`, calling `close()` automatically if not already closed.
@@ -215,12 +246,15 @@ multipart_close(&mut parts);
 let ready = poll(&mut items, 1000)?;
 ```
 
-**Options.** `proxy(frontend: &dyn Pollable, backend: &dyn Pollable, capture: Option<&dyn
-Pollable>)` and `proxy_steerable(..., control: &dyn Pollable)` take `&dyn Pollable` trait objects
-rather than concrete socket types — any built-in socket type implements the sealed `Pollable` trait
-(Eventing category). `sleep(seconds: i32)` takes whole seconds directly. `multipart_close(parts:
-&mut [Message])`. `poll(items: &mut [PollItem], timeout_ms: i64)` is a standalone one-shot poll
-helper distinct from `Poller` (Eventing category) — it fills `revents` on each `PollItem` in place.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `proxy(frontend: &dyn Pollable, backend: &dyn Pollable, capture: Option<&dyn Pollable>)` | `capture` is optional; all three take `&dyn Pollable` trait objects rather than concrete socket types — any built-in socket type implements the sealed `Pollable` trait (Eventing category) |
+| `proxy_steerable(..., control: &dyn Pollable)` | adds a required `control` source, same `Pollable` shape |
+| `sleep(seconds: i32)` | blocks the calling thread; takes whole seconds directly |
+| `multipart_close(parts: &mut [Message])` | closes every part in one call |
+| `poll(items: &mut [PollItem], timeout_ms: i64)` | a standalone one-shot poll helper distinct from `Poller` (Eventing category); fills `revents` on each `PollItem` in place |
 
 **Completion result.** `proxy`/`proxy_steerable` return `Result<(), ConfigError>` — **fallible here**,
 unlike other languages where the equivalent call has no error path and simply blocks until

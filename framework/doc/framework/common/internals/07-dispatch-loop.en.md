@@ -4,7 +4,7 @@ title: "7. Receive And Dispatch Loop"
 
 # 7. Receive And Dispatch Loop
 
-[Internal structure table of contents](README.en.md) · [Previous: 6. Target Selection And Route Cache](06-routing-and-cache.en.md) · [Next: 8. Object Kind And Activation](08-object-lifecycle.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 6. Target Selection And Route Cache](06-routing-and-cache.en.md) · [Next: 8. Object Kind And Activation](08-object-lifecycle.en.md)
 
 > **What this chapter answers** — the span that carries a received
 > message to the execution gate.
@@ -73,7 +73,7 @@ Within one span, handle the following in order.
 3. Is it not sealed for a move / not waiting for creation / not
    waiting for a session connection
 4. Is there a queue slot available (the byte bound from
-   [8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가))
+   [8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.en.md#6-which-unit-memory-accounting-uses))
 5. Enqueue, and if a previously empty queue is now filled, put it into
    §1's ready set
 
@@ -120,7 +120,7 @@ so, process the next item, and if not, put the remaining work back
 into the set and release authority.
 
 Don't use item count as the basis — same reason as
-[8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가).
+[8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.en.md#6-which-unit-memory-accounting-uses).
 Even the same 100 items, some handlers finish in 1 ms and some take a
 second. Count can't predict occupancy time.
 
@@ -375,4 +375,4 @@ and a call not waiting ends with only a record left.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 6. Target Selection And Route Cache](06-routing-and-cache.en.md) · [Next: 8. Object Kind And Activation](08-object-lifecycle.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 6. Target Selection And Route Cache](06-routing-and-cache.en.md) · [Next: 8. Object Kind And Activation](08-object-lifecycle.en.md)

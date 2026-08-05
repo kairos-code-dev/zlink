@@ -251,7 +251,7 @@ is a different value if the purpose differs.
 | Pending during a move | Both count and bytes | 1,024 items / 16 MiB per move |
 
 Why the bound is measured in bytes rather than count is covered by
-[8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.ko.md#6-메모리-회계를-어느-단위로-하는가).
+[8. Object Kind And Activation 「6. Which Unit Memory Accounting Uses」](08-object-lifecycle.en.md#6-which-unit-memory-accounting-uses).
 
 The basis for the pending-during-a-move bound is
 [Host Relocate And Shutdown 「9. Moving Pending Messages, Timers, And Sessions」](../spec/28-graceful-drain-handoff.en.md#9-moving-pending-messages-timers-and-sessions),

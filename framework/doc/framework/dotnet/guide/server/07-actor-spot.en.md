@@ -38,7 +38,7 @@ Register an Entry Spot and an Actor factory together on the Object Server. Any `
 node that registers `actorType` becomes a creation candidate.
 
 Below is the Play server registration from the
-[Bingo sample](../../../common/sample/bingo/README.ko.md).
+[Bingo sample](../../../common/sample/bingo/README.en.md).
 
 ```csharp
 mesh.Objects().Server()
@@ -117,7 +117,7 @@ relocation. Relocation keeps membership exactly as it is and only moves the exec
 location, so from the application's point of view it's not an event of "coming in" or
 "going out."
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the Entry Spot a player first enters. Actual code from the repository.
 
 ```csharp
@@ -299,7 +299,7 @@ one-way packet addressed to a member Actor
 packet during the configuration phase. After `Defer()`, there's nothing left to do except
 let this handler end normally.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the handler where a player schedules entering a room. Actual code from the repository.
 
 ```csharp
@@ -450,7 +450,7 @@ The adapter saves and restores only the Actor instance's application state, as a
 Location authority, queue, timer, the accepted journal, and the session route are all
 handled by the Framework.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is the adapter that packs and unpacks a player Actor's state. Actual code from the
 > repository.
 

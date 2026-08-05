@@ -142,7 +142,7 @@ keeps the same field and wire names.
 - Paired chapters: [06-spot](06-spot.ko.md) (all three Spot kinds appear),
   [07-actor-spot](07-actor-spot.ko.md), [08-actor-session](08-actor-session.ko.md),
   [10-location](10-location.ko.md)
-- Scenario: [Bingo](../../../common/sample/bingo/README.ko.md) · payload Protobuf
+- Scenario: [Bingo](../../../common/sample/bingo/README.en.md) · payload Protobuf
 - The registration-code examples in chapters 06 and 07 come from this sample.
 
 ## 4. SupportChat — Building A Live Chat Support System

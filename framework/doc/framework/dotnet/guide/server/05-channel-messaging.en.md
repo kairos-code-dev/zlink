@@ -849,7 +849,7 @@ options.Codecs.Use(ZLinkMessagePackCodec.Default);
 A payload has to be a DTO the codec can serialize. If the root/element type is
 abstract/interface, it's a configuration error without an explicit codec.
 
-> **See it in a sample — when to specify a codec.** Only [Bingo](../../../common/sample/bingo/README.ko.md),
+> **See it in a sample — when to specify a codec.** Only [Bingo](../../../common/sample/bingo/README.en.md),
 > a real-time game that needs to cut packet size and encoding cost, registers the Protobuf
 > codec and defines its DTOs with `.proto`. The rest of the
 > [samples](../../../common/sample/README.en.md) don't register a codec and use the

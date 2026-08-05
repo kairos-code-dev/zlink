@@ -227,7 +227,7 @@ There's no need to rebuild from the socket for each one.
   ([07](07-actor-spot.ko.md)) instead. [ZoneWorld](../../../common/sample/zoneworld/README.en.md)
   is exactly this approach.
 - **② Lobby + room** — entry/matching is the Entry Spot, and a room is a room spot created
-  with `GetOrCreate`. [Bingo](../../../common/sample/bingo/README.ko.md) is exactly this
+  with `GetOrCreate`. [Bingo](../../../common/sample/bingo/README.en.md) is exactly this
   approach.
 - **③ Matchmaker + dedicated** — matching is implemented as a channel handler (HTTP, etc.).
   **Instead of spinning up a new process per match**, the client connects over STREAM to the
@@ -464,7 +464,7 @@ every message for one room (requests, subscription events, timer ticks, actor pa
 — it's **serialization of execution order** ([06 §3](06-spot.ko.md)).
 
 Runnable reference samples: [TicTacToe](../../../common/sample/tictactoe/README.en.md) ·
-[Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.en.md)
+[Bingo](../../../common/sample/bingo/README.en.md) · [GameQuest](../../../common/sample/event/gamequest.en.md)
 
 ### Concurrent Access To One Entity
 
@@ -1682,7 +1682,7 @@ The main readers are:
 To see ZLink's use concretely, as a business flow, look at the
 [common samples](../../../common/sample/README.en.md). See the real-time game server shape
 in [TicTacToe](../../../common/sample/tictactoe/README.en.md) and
-[Bingo](../../../common/sample/bingo/README.ko.md).
+[Bingo](../../../common/sample/bingo/README.en.md).
 [ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md),
 [GameQuest](../../../common/sample/event/gamequest.en.md), and

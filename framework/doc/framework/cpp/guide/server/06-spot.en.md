@@ -72,7 +72,7 @@ instance or creates one wherever needed, then processes that same message.
 
 ### 1.1 Seeing It In A Real Sample
 
-The [Bingo sample](../../../common/sample/bingo/README.ko.md) uses all three kinds. The
+The [Bingo sample](../../../common/sample/bingo/README.en.md) uses all three kinds. The
 Play server registers an Entry Spot and a User Spot to hold rooms; the Matchmaking server
 registers an Instance Spot to hold the matching queue.
 
@@ -255,7 +255,7 @@ if (created.state == spot_create_state_t::rejected)
 auto spot_id = created.spot.spot_id (); // Use only the global SpotId for messaging from here on.
 ```
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** This
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** This
 > is where the API server receives `POST /games` and creates a room on the Play server.
 > Below is that call taken straight from the actual sample in the repository.
 
@@ -348,7 +348,7 @@ itself is the kind.
 A handler takes the target Spot instance as its first argument. It runs inside the Spot, so
 it touches state directly, with no lock.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** The
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** The
 > handler where the player in the room makes a move. It handles a request addressed to a
 > member Actor, receiving the Spot and the Actor together. Actual code from the repository.
 
@@ -632,7 +632,7 @@ co_await _game_tick.cancel (); // When it's no longer needed. The Framework clea
 
 The handler is a separate class that receives the Spot and tick info.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** The
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** The
 > timer handler that advances the board every second. Taken as-is from the actual code in
 > the repository.
 

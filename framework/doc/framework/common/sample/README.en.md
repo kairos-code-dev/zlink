@@ -28,7 +28,7 @@ difference, no per-language sample document is created.
 
 | Sample | Purpose | Server Composition | Connection Method | Handler Registration Method | Default Payload Codec |
 |------|------|-----------|-----------|-------------------|--------------------|
-| [Bingo](bingo/README.ko.md) | Shows a level-based matchmaking Instance Spot, session gateway, actor binding, room User Spot, timer, and bound push in one flow. | `Session`, `Api`, `Matchmaking`, `Play` separated | Location-store-based automatic connection | **automatic registration** | Protobuf |
+| [Bingo](bingo/README.en.md) | Shows a level-based matchmaking Instance Spot, session gateway, actor binding, room User Spot, timer, and bound push in one flow. | `Session`, `Api`, `Matchmaking`, `Play` separated | Location-store-based automatic connection | **automatic registration** | Protobuf |
 | [TicTacToe](tictactoe/README.en.md) | Shows manual endpoint scale-out with 2 APIs and 2 Plays, room routing based on the official Redis Location Store, and a realtime game flow. | 2 `Api`, 2 `Play`, `Play` owns the stream session together, with no separate `Session` server | **manual endpoint connection** | **automatic registration** | JSON |
 | [SupportChat](supportchat/README.en.md) | A customer and an agent talk in the same conversation Spot, confirming reconnect, idle timer, close, and bound push. | `Session`, `Api`, `Support` separated | Location-store-based automatic connection | **automatic registration** | JSON |
 | [DeliveryDispatch](deliverydispatch/README.en.md) | Confirms delivery assignment, timeout reassignment, status push, and customer stream push. | `Dispatch`, `CourierSession`, 2 `CourierMeshNode`, `Tracking`, `CustomerGateway` separated | Location-store-based automatic connection | **automatic registration** | JSON |
@@ -287,8 +287,8 @@ The samples' standard usage sites are as follows.
 
 | Sample | Location | Terminator |
 |------|------|-----------|
-| [Bingo](bingo/README.ko.md) §7.1 | The room Spot's actor join/leave queries and records the player's record on the Api server | **`yield`** |
-| [Bingo](bingo/README.ko.md) §3.1 | The Matchmaker Instance Spot decides the same bucket's next state from the Redis reservation result | `async` |
+| [Bingo](bingo/README.en.md) §7.1 | The room Spot's actor join/leave queries and records the player's record on the Api server | **`yield`** |
+| [Bingo](bingo/README.en.md) §3.1 | The Matchmaker Instance Spot decides the same bucket's next state from the Redis reservation result | `async` |
 | [DeliveryDispatch](deliverydispatch/README.en.md) §6.1 | The Entry Spot initializes the application state of a newly delivered Actor | `async` |
 | TicTacToe | Game join leads directly into the game-state flow | `async` |
 

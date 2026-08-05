@@ -2172,301 +2172,332 @@ The builder's callback submit method (`submit(callback)`).
   failure is also handled in a return-based way (Go: returns
   `*SubmitError`; Rust: returns `Result<_, SubmitError>`).
 
-## 도메인 객체 정책
-- Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
-  도메인 객체를 우선한다.
-- 최소 핵심 도메인 모델:
+## Domain Object Policy
+- Java, C#, Go, Rust, Node, and Python prefer a domain object over an
+  `out` parameter or a raw tuple where possible.
+- The minimum core domain model:
   - `Message`
   - `RoutingId`
   - `Received`
   - `TopicMessage`
   - `SubscriptionEvent`
-  - `SubmitResult` (C / Go / Rust — return-based 언어에서 반환 객체/에러에
-    포함. exception 언어에서는 예외 객체 `.code` 로 노출)
-- 결과 객체는 payload shape, ownership, optional routing metadata를 함께
-  설명해야 한다.
-- 편의 기능은 결과 객체 메서드로 둔다.
-  - 예: `singlePartOrThrow()`
+  - `SubmitResult` (C / Go / Rust — included in the return object/error
+    for return-based languages; exposed as the exception object's
+    `.code` for exception languages)
+- A result object must describe payload shape, ownership, and optional
+  routing metadata together.
+- A convenience feature is a method on the result object.
+  - example: `singlePartOrThrow()`
 
-### 도메인 객체 Canonical Shape (모든 바인딩 공통)
+### Domain Object Canonical Shape (Shared By Every Binding)
 
-각 도메인 객체는 아래 canonical field/method 집합을 **그대로** 노출한다.
-언어별로 명명법(camelCase / snake_case / PascalCase) 만 변환하고,
-**필드 타입과 메서드 의미는 바꾸지 않는다.** 언어별 관용 편의 메서드를
-추가할 수는 있지만, canonical 메서드를 대체하거나 일부만 생략하면 안 된다.
+Every domain object exposes the canonical field/method set below **as
+is**. Only the naming convention (camelCase / snake_case / PascalCase)
+is converted per language — **the field type and method meaning do not
+change.** A per-language idiomatic convenience method can be added, but
+it must not replace or partially omit a canonical method.
 
 #### `Message`
 
-transport payload 를 담는 단일 message part 다. 모든 send/request/reply/publish
-builder 는 하나 이상의 `Message` 를 누적해서 multipart payload 를 만든다.
+A single message part that carries a transport payload. Every send/
+request/reply/publish builder accumulates one or more `Message`s to
+build a multipart payload.
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| empty constructor | ctor/static | zero-length message 생성 |
-| `allocate(size)` | static/ctor | `size` bytes payload buffer 생성 |
-| `from(bytes)` | static/ctor | bytes-like 입력을 message-owned storage 로 복사 |
-| `from(string)` | static/ctor | 사용자 문자열을 UTF-8 payload 로 인코딩 |
-| `copy()` / `from(Message)` | `Message` | source payload 를 새 message 로 복사 |
-| `move()` / consume path | `Message` / builder step | 명시적 ownership 이전. 호출 뒤 source 는 재사용 불가 |
-| `size` | `int` / `usize` | payload byte length |
+| empty constructor | ctor/static | Creates a zero-length message |
+| `allocate(size)` | static/ctor | Creates a `size`-byte payload buffer |
+| `from(bytes)` | static/ctor | Copies bytes-like input into message-owned storage |
+| `from(string)` | static/ctor | Encodes a user string as a UTF-8 payload |
+| `copy()` / `from(Message)` | `Message` | Copies the source payload into a new message |
+| `move()` / consume path | `Message` / builder step | An explicit ownership transfer; the source cannot be reused after the call |
+| `size` | `int` / `usize` | Payload byte length |
 | `is_empty()` | `bool` | `size == 0` |
-| `to_bytes()` | `bytes` / `byte[]` / `Vec<u8>` | payload snapshot copy |
-| `data` / `as_bytes()` | view | payload read view. close 이후 lifetime 보장 없음 |
-| `mutable_data` / `as_mut_bytes()` | mutable view | allocated payload 를 채우는 mutable view |
-| `copy_to(destination)` | `int` / `bool` | caller-provided buffer 로 payload 복사 |
-| `to_string()` / `as_str()` | `string` / result | UTF-8 decode convenience |
-| `get_property(name)` | `string?` / result | native message string property 조회 |
-| `ref_count()` | `int` | native storage reference count 진단값 |
-| `close()` / `Dispose()` / `Drop` | — | native storage 정리. 언어별 lifecycle 관용구 적용 |
+| `to_bytes()` | `bytes` / `byte[]` / `Vec<u8>` | A snapshot copy of the payload |
+| `data` / `as_bytes()` | view | A read view of the payload; no lifetime guarantee after close |
+| `mutable_data` / `as_mut_bytes()` | mutable view | A mutable view for filling an allocated payload |
+| `copy_to(destination)` | `int` / `bool` | Copies the payload into a caller-provided buffer |
+| `to_string()` / `as_str()` | `string` / result | A UTF-8 decode convenience |
+| `get_property(name)` | `string?` / result | Looks up a native message string property |
+| `ref_count()` | `int` | A native-storage reference-count diagnostic value |
+| `close()` / `Dispose()` / `Drop` | — | Cleans up native storage, per each language's lifecycle idiom |
 
-언어별 이름은 관용구를 따른다. 의미는 아래 슬롯에 맞춘다.
+The name follows per-language idiom. The meaning fits the slots below.
 
-| 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
+| Meaning | .NET | Java | Node | Python | Rust | C++ | Go |
 |------|------|------|------|--------|------|-----|----|
-| 빈 message | `new Message()` | `new Message()` | `Message.from(Buffer.alloc(0))` 또는 equivalent | `Message()` | `Message::new()` | `message_t()` | `NewMessage(nil)` |
-| 크기 allocation | `Allocate(size)` | `allocate(size)` | `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
-| bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
-| UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` 또는 equivalent | `from(std::string)` | `NewMessageString` |
-| external buffer copy | — | `from(ByteBuffer)` / `from(ByteBuf)` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
-| message copy | `Copy()` | `from(Message)` | `copy()` 또는 `from(Message)` | `copy()` | `Clone` 또는 `try_clone()` | copy constructor | `Clone()` / `Copy()` |
-| explicit move | `Move()` / `MoveMessage(...)` | `move()` / `moveMessage(...)` | `moveMessage(...)` | `move_message(...)` | move-by-value | move constructor / rvalue builder | `MoveMessage(...)` |
-| bytes snapshot | `ToArray()` | `toByteArray()` | `toBytes()` | `to_bytes()` | `to_vec()` | `to_bytes()` | `BytesCopy()` 또는 equivalent |
-| read view | `AsReadOnlySpan()` | `dataBuffer()` | `data()` | `data` | `as_bytes()` | `bytes()` | `Data()` |
-| mutable view | `AsSpan()` | `mutableDataBuffer()` | `data()` | `data` | `data_mut()` | `bytes()` / `data()` | `Data()` |
+| Empty message | `new Message()` | `new Message()` | `Message.from(Buffer.alloc(0))` or equivalent | `Message()` | `Message::new()` | `message_t()` | `NewMessage(nil)` |
+| Sized allocation | `Allocate(size)` | `allocate(size)` | `allocate(size)` | `allocate(size)` | `with_size(size)` / `allocate(size)` | `allocate(size)` | `NewMessageWithSize(size)` |
+| Bytes copy | `From(bytes)` | `from(byte[])` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
+| UTF-8 string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `TryFrom<&str>` or equivalent | `from(std::string)` | `NewMessageString` |
+| External buffer copy | — | `from(ByteBuffer)` / `from(ByteBuf)` | `from(BufferLike)` | `from_(buffer)` | `try_from(bytes)` | `from(...)` | `NewMessage(data)` |
+| Message copy | `Copy()` | `from(Message)` | `copy()` or `from(Message)` | `copy()` | `Clone` or `try_clone()` | copy constructor | `Clone()` / `Copy()` |
+| Explicit move | `Move()` / `MoveMessage(...)` | `move()` / `moveMessage(...)` | `moveMessage(...)` | `move_message(...)` | move-by-value | move constructor / rvalue builder | `MoveMessage(...)` |
+| Bytes snapshot | `ToArray()` | `toByteArray()` | `toBytes()` | `to_bytes()` | `to_vec()` | `to_bytes()` | `BytesCopy()` or equivalent |
+| Read view | `AsReadOnlySpan()` | `dataBuffer()` | `data()` | `data` | `as_bytes()` | `bytes()` | `Data()` |
+| Mutable view | `AsSpan()` | `mutableDataBuffer()` | `data()` | `data` | `data_mut()` | `bytes()` / `data()` | `Data()` |
 | UTF-8 decode | `GetString()` | `toUtf8String()` | `toString()` / `getString()` | `to_string()` / `decode` helper | `as_str()` | `to_string()` | `String()` / `Text()` |
-| property | `GetProperty(name)` | `getProperty(name)` | `getProperty(name)` | `get_property(name)` | `get_property(name)` | `property(name)` | `GetProperty(name)` |
-| refcount | `RefCount` | `refCount()` | `refCount()` | `ref_count()` | `ref_count()` | `ref_count()` | `RefCount()` |
+| Property | `GetProperty(name)` | `getProperty(name)` | `getProperty(name)` | `get_property(name)` | `get_property(name)` | `property(name)` | `GetProperty(name)` |
+| Refcount | `RefCount` | `refCount()` | `refCount()` | `ref_count()` | `ref_count()` | `ref_count()` | `RefCount()` |
 
-규칙:
-- `from(bytes)` 계열은 항상 message-owned storage 로 복사한다. caller 는 입력
-  buffer 를 이후 자유롭게 변경하거나 해제할 수 있어야 한다.
-- Java `from(ByteBuf)` 는 Netty `ByteBuf` 의 readable bytes 를 복사하되
-  `readerIndex` 를 변경하지 않는다. `copyTo(ByteBuf)` 는 destination 의
-  writable 영역에 쓰고 `writerIndex` 를 증가시킨다.
-- borrowed / zero-copy 생성자는 canonical public contract 가 아니다. 특정
-  바인딩이 내부 최적화로 쓰더라도 public API 에서 lifetime 책임을 caller 에게
-  떠넘기면 안 된다.
-- `message(...)` builder 단계는 원본 보존 계약을 따른다. submit 실패 뒤에도
-  caller 가 넘긴 message 를 다시 사용할 수 있어야 한다.
-- ownership 이전은 `move`, `MoveMessage`, move-by-value 처럼 이름에서 consume
-  의미가 드러나는 별도 경로에서만 허용한다. 이 경로는 submit 실패 뒤에도 원본
-  message 를 재사용할 수 없다는 계약을 문서화해야 한다.
-- `to_bytes()` 는 snapshot copy 다. allocation 없는 payload 접근은 read view
-  API(`data`, `as_bytes`, `AsReadOnlySpan` 등)로 분리한다.
-- read / mutable view 는 message 가 close / dispose / drop 되기 전까지만
-  유효하다. 바인딩은 close 뒤 view 사용을 보장하지 않는다.
-- `get_property(name)` 은 native message metadata 를 읽는 진단/interop API 다.
-  property 쓰기 API 는 공통 필수 계약이 아니다.
-- `ref_count()` 는 진단값이다. reference count 값으로 ownership 정책이나 send
-  가능 여부를 판단하는 public contract 를 만들면 안 된다.
-- RAII 언어(C++, Rust)는 `close()`를 명시 노출하지 않아도 된다. 명시 lifecycle
-  언어(.NET, Java, Python, Go)는 idempotent close/dispose 를 제공해야 한다.
-- closed / moved-from message 에 대한 `size`, `data`, `get_property` 동작은
-  언어별 관례를 따르되, 빈 값 반환인지 예외/에러인지 문서화해야 한다.
+Rules:
+- The `from(bytes)` family always copies into message-owned storage. The
+  caller must be free to change or release the input buffer afterward.
+- Java's `from(ByteBuf)` copies a Netty `ByteBuf`'s readable bytes
+  without changing `readerIndex`. `copyTo(ByteBuf)` writes into the
+  destination's writable region and advances `writerIndex`.
+- A borrowed/zero-copy constructor is not part of the canonical public
+  contract. Even if a particular binding uses one as an internal
+  optimization, the public API must not push lifetime responsibility
+  onto the caller.
+- The `message(...)` builder step follows the original-preservation
+  contract. The caller must be able to reuse the message it passed even
+  after a submit failure.
+- Ownership transfer is allowed only through a separate path whose name
+  reveals consume semantics — `move`, `MoveMessage`, move-by-value. This
+  path must document that the original message cannot be reused even
+  after a submit failure.
+- `to_bytes()` is a snapshot copy. Allocation-free payload access is kept
+  separate as a read-view API (`data`, `as_bytes`, `AsReadOnlySpan`, and
+  so on).
+- A read/mutable view is valid only until the message is closed,
+  disposed, or dropped. A binding does not guarantee view usage after
+  close.
+- `get_property(name)` is a diagnostic/interop API for reading native
+  message metadata. A property-write API is not part of the shared
+  required contract.
+- `ref_count()` is a diagnostic value. Do not build a public contract
+  that judges ownership policy or send eligibility from the reference
+  count.
+- An RAII language (C++, Rust) does not have to explicitly expose
+  `close()`. An explicit-lifecycle language (.NET, Java, Python, Go)
+  must provide an idempotent close/dispose.
+- The behavior of `size`, `data`, and `get_property` on a closed or
+  moved-from message follows per-language convention, but must document
+  whether it returns an empty value or throws an exception/error.
 
 #### `TopicMessage`
 
-raw `SUB` / `XSUB` 와 `Spot subscribe` 의 recv 결과다.
-raw pub/sub 는 C API `zlink_subscribe_part()` 를, Spot subscribe 는
-`zlink_spot_subscribe_part()` 를 바인딩 도메인 객체 하나로 감싼다. 바인딩
-public API는 part helper 호출 결과를 언어별 multipart 객체로 조립해서 돌려준다.
+The recv result for raw `SUB`/`XSUB` and `Spot subscribe`. Raw pub/sub
+wraps C API `zlink_subscribe_part()`, and Spot subscribe wraps
+`zlink_spot_subscribe_part()`, into a single binding domain object. The
+binding's public API assembles the part-helper call result into a
+per-language multipart object and returns it.
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `routing_id` | `RoutingId?` (optional) | 송신자 routing id. transport 가 carry 안 하면 null/None/empty |
-| `topic` | **`string` (UTF-8)** | 매칭된 topic. **bytes 가 아니다.** |
-| `parts` | `List<Message>` / `Vec<Message>` | multipart payload |
+| `routing_id` | `RoutingId?` (optional) | The sender's routing id; null/None/empty if the transport doesn't carry one |
+| `topic` | **`string` (UTF-8)** | The matched topic. **Not bytes.** |
+| `parts` | `List<Message>` / `Vec<Message>` | The multipart payload |
 | `is_single_part()` | `bool` | `parts.size() == 1` |
-| `first_part()` | `Message` | `parts[0]`; 비어있으면 에러/예외 |
-| `single_part_or_throw()` | `Message` | `is_single_part()` 면 part 반환, 아니면 에러/예외 |
-| `close()` / `Dispose()` / `Drop` | — | 보유 parts 정리. 언어별 lifecycle 관용구 적용 |
+| `first_part()` | `Message` | `parts[0]`; error/exception if empty |
+| `single_part_or_throw()` | `Message` | Returns the part if `is_single_part()`, else error/exception |
+| `close()` / `Dispose()` / `Drop` | — | Cleans up held parts, per each language's lifecycle idiom |
 
-규칙:
-- `Subscribed` 나 그와 유사한 subclass 를 만들지 않는다. `TopicMessage`
-  하나만 노출한다.
-- Spot subscribe 결과는 `topic + parts` 를 함께 노출한다. channel 은
-  `Spot` handle 이 이미 묶인 `SpotNode` 쪽 상태이므로 메시지 결과 필드로
-  반복하지 않는다.
-- `topic` 은 UTF-8 `string` 이다. `bytes` / `byte[]` / `Vec<u8>` 으로
-  노출하지 않는다 (내부적으로 raw bytes 로 왔더라도 공개 API 는 decode).
-- `RoutingId` 필드는 typed `RoutingId` 하나만 둔다. `RoutingId: string` +
-  `RoutingIdValue: RoutingId?` 같은 이중 property 금지.
+Rules:
+- Do not create `Subscribed` or a similar subclass. Expose only
+  `TopicMessage`.
+- A Spot subscribe result exposes `topic + parts` together. The channel
+  is state that already lives on the `SpotNode` the `Spot` handle is
+  bound to, so it is not repeated as a message result field.
+- `topic` is a UTF-8 `string`. It is not exposed as `bytes`/`byte[]`/
+  `Vec<u8>` (even if it arrives internally as raw bytes, the public API
+  decodes it).
+- Keep only a single typed `RoutingId` field. Do not create a dual
+  property such as `RoutingId: string` plus `RoutingIdValue: RoutingId?`.
 
 #### `Received`
 
-PAIR / DEALER / ROUTER / STREAM / SPOT routed recv 결과를 담는 단일 canonical
-도메인 객체다. topic 필드가 없는 점 외에는 `TopicMessage` 와 동일한 편의
-메서드 집합을 가진다. routed recv 결과는 일반 응답 전송용 `send()` operation
-builder 를 제공하고, request-reply 결과는 `reply()` builder 도 함께 제공한다.
-두 entrypoint 모두 `Operation Builder Policy` 를 따라 payload 와 옵션을
-builder 단계로 누적한다.
+The single canonical domain object that carries a PAIR / DEALER / ROUTER
+/ STREAM / SPOT routed recv result. Other than lacking a topic field, it
+has the same convenience-method set as `TopicMessage`. A routed recv
+result provides a `send()` operation builder for sending an ordinary
+response, and a request-reply result also provides a `reply()` builder.
+Both entrypoints accumulate payload and options through builder steps,
+per the `Operation Builder Policy`.
 
-`Received` 는 socket 종류별 message wrapper 가 아니다. request 의 의미는
-DEALER, ROUTER, SPOT 에서 동일하며, `request_seq` 와 reply context 로만
-표현한다. binding 은 `DealerReceived` / `RouterReceived` / `SpotReceived` 같은
-protocol-specific public 결과 타입을 새 canonical 표면으로 추가하면 안 된다.
-기존 binding 에 이런 타입이 있으면 제거하고, 새 코드, sample, perf, framework
-연동은 `Received` 를 사용해야 한다.
+`Received` is not a per-socket-kind message wrapper. Request meaning is
+the same across DEALER, ROUTER, and SPOT, and is expressed only through
+`request_seq` and reply context. A binding must not add a
+protocol-specific public result type such as `DealerReceived`/
+`RouterReceived`/`SpotReceived` as a new canonical surface. If an
+existing binding has such a type, remove it, and new code, samples,
+perf, and framework integrations must use `Received`.
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `routing_id` | `RoutingId?` | 송신자 routing id (router=peer_rid, spot=source_node_rid) |
-| `spot_rid` | `RoutingId?` | SPOT routed recv 에서만 설정 (source_spot_rid) |
-| `request_seq` | `uint64?` | request-reply 모드일 때 설정, 아니면 null |
-| `parts` | `List<Message>` | multipart payload |
-| `is_single_part()` | `bool` | 동일 |
-| `first_part()` | `Message` | 동일 |
-| `single_part_or_throw()` | `Message` | 동일 |
-| `send()` | `SendOp` | 이 `Received` 의 송신자에게 일반 routed message 를 보내는 operation builder. routed source context 가 없으면 submit 시점에 `SubmitError` |
-| `reply()` | `ReplyOp` | request 였을 때만 유효한 reply operation builder. `request_seq` 없거나 reply context 가 invalid 하면 submit 시점에 `SubmitError` |
-| `close()` / 동등 | — | 동일 |
+| `routing_id` | `RoutingId?` | The sender's routing id (router = `peer_rid`, spot = `source_node_rid`) |
+| `spot_rid` | `RoutingId?` | Set only for SPOT routed recv (`source_spot_rid`) |
+| `request_seq` | `uint64?` | Set in request-reply mode; otherwise null |
+| `parts` | `List<Message>` | The multipart payload |
+| `is_single_part()` | `bool` | Same as above |
+| `first_part()` | `Message` | Same as above |
+| `single_part_or_throw()` | `Message` | Same as above |
+| `send()` | `SendOp` | An operation builder that sends an ordinary routed message back to this `Received`'s sender; `SubmitError` at submit time if there's no routed source context |
+| `reply()` | `ReplyOp` | A reply operation builder valid only when this was a request; `SubmitError` at submit time if `request_seq` is absent or the reply context is invalid |
+| `close()` / equivalent | — | Same as above |
 
-.NET 에서는 `Received.Create()` 가 caller-provided recv 저장소를 만드는
-canonical 생성 경로다. `Received` 는 public concrete contract 타입으로 유지한다.
+In .NET, `Received.Create()` is the canonical construction path for
+caller-provided recv storage. `Received` stays a public concrete
+contract type.
 
-`request_seq` 규칙:
-- `null` / `None` / empty `Optional` / `hasRequestSeq == false` 는 ordinary
-  receive 결과를 뜻한다.
-- `0` 은 public high-level `Received` 에서 "request 있음"으로 노출하지 않는다.
-  core out-param 의 `request_seq == 0` 은 high-level binding 에서 absent 로
-  변환한다.
-- non-zero `request_seq` 는 request-reply context 가 있는 수신 결과를 뜻한다.
-  이 의미는 DEALER / ROUTER / SPOT 에서 동일하다.
-- request/reply message type 같은 substrate 세부 구분은 public `Received`
-  의미를 갈라서는 안 된다. 그런 값이 실제 public 계약으로 필요하면
-  protocol-specific 결과 타입이 아니라 `Received` 의 공통 metadata 로만
-  노출한다.
+`request_seq` rules:
+- `null`/`None`/an empty `Optional`/`hasRequestSeq == false` means an
+  ordinary receive result.
+- `0` is not exposed as "has a request" on the public high-level
+  `Received`. A high-level binding converts a core out-param's
+  `request_seq == 0` into absent.
+- A non-zero `request_seq` means a receive result that has request-reply
+  context. This meaning is the same across DEALER / ROUTER / SPOT.
+- A substrate-level distinction such as a request/reply message type must
+  not split the public `Received` meaning. If such a value is genuinely
+  needed as a public contract, expose it only as `Received`'s shared
+  metadata, not as a protocol-specific result type.
 
-`send()` 규칙:
-- request 여부와 무관하다. `request_seq` 가 없어도 routed source context 가
-  있으면 호출할 수 있다.
-- `send()` 는 request-reply 의미를 갖지 않는다. 단순히 이 `Received` 를 보낸
-  쪽으로 일반 routed message 를 보낸다.
-- `ROUTER` 와 `STREAM` 수신 결과는 peer routing id 로 보낸다.
-  `SPOT` routed 수신 결과는 source node rid 와 source spot rid 로 보낸다.
-- payload 누적과 `flags(...)` 같은 옵션은 `SendOp` builder 단계로 표현하며,
-  `DONTWAIT` 같은 non-blocking submit flag 도 builder 의 `.flags(...)`
-  단계로 전달한다.
+`send()` rules:
+- Independent of whether it was a request. It can be called as long as
+  routed source context exists, even without `request_seq`.
+- `send()` has no request-reply meaning. It simply sends an ordinary
+  routed message back toward whoever sent this `Received`.
+- A `ROUTER` and `STREAM` receive result sends by peer routing id. A
+  `SPOT` routed receive result sends by source node rid and source spot
+  rid.
+- Payload accumulation and options such as `flags(...)` are expressed
+  through `SendOp` builder steps, and a non-blocking submit flag such as
+  `DONTWAIT` is also delivered through the builder's `.flags(...)` step.
 
-`reply()` 규칙:
-- **`request_seq` 가 `null` 이면 호출 금지**. 호출 시 builder 의 submit 단계에서
-  `SubmitError` 계열로 처리한다. `request_seq == 0`, 잘못된 `(routing_id,
-  request_seq)` 조합 등 invalid reply context 도 같은 submit domain 으로
-  본다.
-- `Received` 가 내부적으로 source socket 참조를 보유한다 (binding 이 recv /
-  handler 에서 Received 를 만들 때 주입).
-- socket 이 close 된 후 `reply().submit()` 호출하면 `SubmitError(TERMINATED)`.
-- 서버 측 사용자가 `(peerRid, requestSeq)` 를 따로 보관할 필요 없음 —
-  `Received` 하나로 완결.
-- 별도 `router.reply(peerRid, seq).message(...).submit()` 경로도 pull-mode
-  호환성 위해 남겨두되, **권장 경로는 `received.reply().message(...).submit()`**.
+`reply()` rules:
+- **Calling it is forbidden when `request_seq` is `null`.** Calling it
+  anyway is handled as a `SubmitError`-family failure at the builder's
+  submit step. An invalid reply context — `request_seq == 0`, an invalid
+  `(routing_id, request_seq)` combination, and so on — is treated as the
+  same submit domain.
+- `Received` internally holds a reference to the source socket (injected
+  by the binding when it builds `Received` inside recv/handler).
+- Calling `reply().submit()` after the socket has closed returns
+  `SubmitError(TERMINATED)`.
+- The server-side user does not need to separately store
+  `(peerRid, requestSeq)` — `Received` alone is self-contained.
+- A separate `router.reply(peerRid, seq).message(...).submit()` path is
+  also kept for pull-mode compatibility, but **the recommended path is
+  `received.reply().message(...).submit()`**.
 
 #### `SubscriptionEvent`
 
-XPub 이 받는 subscribe/unsubscribe 이벤트와 Spot subscription event recv 결과다.
+The subscribe/unsubscribe event XPub receives, and the recv result for a
+Spot subscription event.
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `routing_id` | `RoutingId?` | 구독자 routing id |
-| `topic` | `string` (UTF-8) | 구독/해제 topic |
-| `subscribed` | `bool` | true=subscribe, false=unsubscribe |
+| `routing_id` | `RoutingId?` | The subscriber's routing id |
+| `topic` | `string` (UTF-8) | The subscribed/unsubscribed topic |
+| `subscribed` | `bool` | true = subscribe, false = unsubscribe |
 
-규칙:
-- value object 로만 노출한다 (메서드 없음, 필드만).
-- `close()` 등 lifecycle 없음 (값 타입).
-- Spot subscription event 결과는 `topic + subscribed` 를 노출한다.
+Rules:
+- Expose it only as a value object (no methods, fields only).
+- No lifecycle such as `close()` (it's a value type).
+- A Spot subscription event result exposes `topic + subscribed`.
 
 #### `RoutingId`
 
-Routing id value object. Binary-safe (1-255 bytes).
+A routing-id value object. Binary-safe (1–255 bytes).
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | raw bytes (immutable view) |
-| `size` | `int` (1-255) | byte length |
-| `from(bytes)` | static/ctor | raw bytes 로 생성 |
-| `from(value: string)` | static/ctor | 사용자 문자열을 UTF-8 bytes 로 인코딩 |
-| `from_hex(value)` | static/ctor | `to_hex()` 로 만든 hex 문자열을 다시 생성 |
-| `from(value: uint32)` | static/ctor | 4바이트 big-endian `uint32` routing id 생성 |
-| `from(value: guid)` | static/ctor | 16바이트 UUID routing id 생성 |
-| `to_bytes()` | `bytes` | 원본 바이트 반환 |
-| `to_hex()` | `string` | raw bytes 를 hex 문자열로 표시 |
-| equality / hash | — | 언어별 관용구 (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
+| `bytes` / `data` | `bytes` / `byte[]` / `Vec<u8>` / `Buffer` | The raw bytes (an immutable view) |
+| `size` | `int` (1–255) | The byte length |
+| `from(bytes)` | static/ctor | Builds from raw bytes |
+| `from(value: string)` | static/ctor | Encodes a user string as UTF-8 bytes |
+| `from_hex(value)` | static/ctor | Rebuilds from a hex string produced by `to_hex()` |
+| `from(value: uint32)` | static/ctor | Builds a 4-byte big-endian `uint32` routing id |
+| `from(value: guid)` | static/ctor | Builds a 16-byte UUID routing id |
+| `to_bytes()` | `bytes` | Returns the original bytes |
+| `to_hex()` | `string` | Displays the raw bytes as a hex string |
+| equality / hash | — | Per-language idiom (`equals`/`hashCode`, `__eq__`/`__hash__`, `PartialEq+Eq+Hash`) |
 
-언어별 이름은 관용구를 따른다. 의미는 아래 슬롯에 맞춘다.
+The name follows per-language idiom. The meaning fits the slots below.
 
-| 의미 | .NET | Java | Node | Python | Rust | C++ | Go |
+| Meaning | .NET | Java | Node | Python | Rust | C++ | Go |
 |------|------|------|------|--------|------|-----|----|
-| 사용자 문자열 | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `From<&str>` | `from(std::string)` | `NewRoutingIDString` |
-| raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_(bytes)` | `From<&[u8]>` | `from(bytes)` | `NewRoutingID` |
-| hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` / `try_from_hex` | `from_hex` | `NewRoutingIDFromHex` |
+| User string | `From(string)` | `from(String)` | `from(string)` | `from_(str)` | `From<&str>` | `from(std::string)` | `NewRoutingIDString` |
+| Raw bytes | `From(bytes)` | `from(byte[])` | `from(Buffer)` | `from_(bytes)` | `From<&[u8]>` | `from(bytes)` | `NewRoutingID` |
+| Hex round-trip | `FromHex` | `fromHex` | `fromHex` | `from_hex` | `from_hex` / `try_from_hex` | `from_hex` | `NewRoutingIDFromHex` |
 | uint32 | `From(uint)` | `from(long)` | `from(number)` | `from_(int)` | `From<u32>` | `from(uint32_t)` | `NewRoutingIDUint32` |
 | UUID | `From(Guid)` | `from(UUID)` | 16-byte `from(Buffer)` | `from_(uuid.UUID)` | `From<[u8; 16]>` | `from(std::array<uint8_t, 16>)` | `NewRoutingIDUUIDBytes` |
 
-규칙:
-- **binary-safe value type**. 사용자 설정 routing id 는 보통 사람이 읽는
-  문자열이므로 string overload `from(value)` 는 UTF-8 인코딩을 뜻한다.
-  native/core 에서 받은 임의 bytes 는 bytes overload `from(bytes)` 로 보존한다.
-- `from_hex(value)` 입력은 hex 문자만 허용한다. hex 문자열은 최대
-  510자이며, 디코딩된 routing id가 255 bytes를 넘으면 언어별
-  예외나 에러 코드로 실패해야 한다.
-- 4바이트 STREAM routing id 처럼 core 가 `uint32_t`로 다루는 값은
-  `from(value: uint32)` / `try_to_uint32(out value)` 같은 typed API로 다룬다.
-- 16바이트 UUID 값은 `from(value: guid)` / `try_to_guid(out value)` 같은
-  typed API로 다룬다.
-- `to_string()` / `String()` 은 언어별 표시용 문자열이다. printable UTF-8이면
-  그대로, 4바이트 `uint32`이면 숫자 문자열, 16바이트 UUID이면 UUID 문자열,
-  그 외에는 `hex:` 접두어가 붙은 hex 표시를 권장한다. round-trip 저장에는
-  `to_hex()` / `from_hex(value)` 를 사용한다.
-- 불변 (immutable). 한 번 생성하면 내용 변경 불가.
-- 캐싱은 관찰 가능한 계약이 아니다. 바인딩은 필요하면 hash, native struct,
-  recv hot path 의 짧은 lived cache 를 내부에서 사용할 수 있지만, 동등성은
-  항상 bytes 값으로 판단해야 하며 cache hit 여부가 API 동작을 바꾸면 안 된다.
-- Node 에서는 raw `Buffer` 대신 `RoutingId` 래퍼 타입을 그대로 노출한다.
+Rules:
+- **A binary-safe value type.** Because a user-set routing id is usually
+  a human-readable string, the string overload `from(value)` means UTF-8
+  encoding. Arbitrary bytes received from native/core are preserved
+  through the bytes overload `from(bytes)`.
+- A `from_hex(value)` input allows only hex characters. A hex string is
+  at most 510 characters, and it must fail with a per-language exception
+  or error code if the decoded routing id exceeds 255 bytes.
+- A value core treats as `uint32_t`, such as a 4-byte STREAM routing id,
+  is handled through a typed API such as `from(value: uint32)`/
+  `try_to_uint32(out value)`.
+- A 16-byte UUID value is handled through a typed API such as
+  `from(value: guid)`/`try_to_guid(out value)`.
+- `to_string()`/`String()` is a per-language display string. It's
+  recommended to show printable UTF-8 as-is, a 4-byte `uint32` as a
+  numeric string, a 16-byte UUID as a UUID string, and anything else as a
+  hex display prefixed with `hex:`. Use `to_hex()`/`from_hex(value)` for
+  round-trip storage.
+- Immutable. Once created, its content cannot change.
+- Caching is not an observable contract. A binding can internally use a
+  hash, a native struct, or a short-lived cache on the recv hot path if
+  needed, but equality must always be judged by the bytes value, and a
+  cache hit must not change API behavior.
+- On Node, expose the `RoutingId` wrapper type as-is instead of a raw
+  `Buffer`.
 
 #### `MonitorEvent`
 
-socket monitor 가 방출하는 이벤트. 모든 바인딩이 **필수 노출**.
+An event a socket monitor emits. **Required for every binding to
+expose.**
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `event` | `MonitorEventType` (enum) | 이벤트 종류 (CONNECTION_READY, CONNECTED, DISCONNECTED 등) |
-| `value` | `uint32` | 이벤트 별 상세 값 (예: DISCONNECTED 시 reason code) |
-| `routing_id` | `RoutingId?` | 해당 peer routing id (없는 이벤트는 null) |
-| `local_addr` | `string` | 로컬 endpoint |
-| `remote_addr` | `string` | 원격 endpoint |
+| `event` | `MonitorEventType` (enum) | The event kind (CONNECTION_READY, CONNECTED, DISCONNECTED, and so on) |
+| `value` | `uint32` | A per-event detail value (for example, the reason code on DISCONNECTED) |
+| `routing_id` | `RoutingId?` | The matching peer routing id (null for an event without one) |
+| `local_addr` | `string` | The local endpoint |
+| `remote_addr` | `string` | The remote endpoint |
 
 #### `MonitorStatus`
 
-socket monitor 가 제공하는 런타임 상태 스냅샷. 모든 바인딩이 **필수 노출**.
+The runtime status snapshot a socket monitor provides. **Required for
+every binding to expose.**
 
-| 구성 | 타입 | 의미 |
+| Member | Type | Meaning |
 |------|------|------|
-| `source_kind` | enum | 모니터 대상 종류 |
-| `state_flags` | enum flags | 상태 비트마스크 |
-| `detail_flags` | enum flags | 세부 비트마스크 |
-| `snd_pending_msgs` | `uint64` | 송신 큐 대기 메시지 수 |
-| `rcv_pending_msgs` | `uint64` | 수신 큐 대기 메시지 수 |
-| `auto_hwm_*` diagnostic fields | enum / number / bigint | C `zlink_monitor_status_t`의 canonical auto-HWM 필드를 같은 의미로 노출해야 한다. enabled, profile(enum), role, policy class, unit budget, size cap, socket message slots, effective message bytes, applied HWM, applied buffer, 최근 재계산 이유(enum), deferred shrink, blocked ratio를 포함한다 |
-| `is_ready()` | `bool` | raw socket monitor source에서만 `state_flags` 의 ready 비트 확인 편의 메서드 |
+| `source_kind` | enum | The kind of monitored target |
+| `state_flags` | enum flags | The state bitmask |
+| `detail_flags` | enum flags | The detail bitmask |
+| `snd_pending_msgs` | `uint64` | The number of messages pending in the send queue |
+| `rcv_pending_msgs` | `uint64` | The number of messages pending in the receive queue |
+| `auto_hwm_*` diagnostic fields | enum / number / bigint | Must expose the canonical auto-HWM fields of C's `zlink_monitor_status_t` with the same meaning. Includes enabled, profile (enum), role, policy class, unit budget, size cap, socket message slots, effective message bytes, applied HWM, applied buffer, the recent recalculation reason (enum), deferred shrink, and blocked ratio |
+| `is_ready()` | `bool` | A convenience method that checks the ready bit in `state_flags`, for a raw socket monitor source only |
 
-#### 서비스 계층 엔트리 객체
+#### Service-Layer Entry Objects
 
-아래는 service-layer snapshot/query 에서 반환되는 value object 들.
-모든 바인딩이 **필드 목록을 spec 에 명시**해야 한다 (C 구조체를 그대로
-노출하면 안 되며 언어별 named field 로 래핑).
+The following are value objects returned from service-layer snapshot/
+query calls. Every binding must **spell out the field list in its
+spec** (a raw C struct must not be exposed as-is — wrap it in
+per-language named fields).
 
-- `SpotNodeStatus` — spot node 상태 스냅샷
-- `SpotNodePeerEntry` — spot node peer 엔트리.
-  `weight` 를 포함해야 한다.
-- `SpotNodeSubjectEntry` — spot node subject 엔트리
+- `SpotNodeStatus` — a spot node status snapshot
+- `SpotNodePeerEntry` — a spot node peer entry. Must include `weight`.
+- `SpotNodeSubjectEntry` — a spot node subject entry
 
-각 spec 은 이들 타입의 필드를 표 또는 코드 블록으로 명시한다. `Cpp` 는
-raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `class
-<name>_t { ... }` 형식으로 래핑한다.
+Each spec spells out these types' fields as a table or code block. `C++`
+wraps the raw `zlink_*_t` struct as `class <name>_t { ... }` rather than
+exposing it directly on the binding API surface.
 
-위 canonical 을 벗어난 추가 메서드/필드는 정책 위반이다. 언어별 spec 에서
-누락이 발견되면 canonical 기준으로 채워 넣고, 추가된 비표준 메서드는 삭제한다.
+An extra method/field beyond the canonical set above is a policy
+violation. When a per-language spec is found missing one, fill it in
+against the canonical baseline, and remove any added non-standard
+method.
 
 ## 소켓 타입 능력 정책
 - 소켓 타입별 능력은 타입 자체에만 노출한다.

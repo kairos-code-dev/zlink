@@ -23,16 +23,23 @@ const copy = Message.from('payload');
 const copyOfBuffer = Message.from(rawBuffer);
 ```
 
-**Options.** Static factories: `Message.from(buffer: BufferLike | Message)` (a `string` is UTF-8
-encoded, a `Buffer`/`Uint8Array` is copied, another `Message` is deep-copied), `Message.allocate(size:
-number)` (writable storage, throws `RangeError` on a negative or unsafe-integer size). Instance
-members: `data()` (returns a `Buffer` backed by this message's storage), `toBytes()` (independent
-copy), `copy()` (equivalent to `Message.from(this)`), `size()`, `isEmpty()`, `copyTo(destination,
-sourceOffset?, destinationOffset?, length?)` (returns bytes written, throws `RangeError` out of
-range), `tryCopyTo(destination)` (returns `boolean`, no exception on a too-small destination),
-`getString(encoding = 'utf8')`, `toString()` (equivalent to `getString()`), `refCount()` (a
-diagnostic only), `getProperty(name)` (returns `string | null` — **native message metadata is
-reserved but not populated yet**, so this always returns `null` today), `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `Message.from(buffer: BufferLike \| Message)` | a `string` is UTF-8 encoded, a `Buffer`/`Uint8Array` is copied, another `Message` is deep-copied |
+| `Message.allocate(size: number)` | writable storage; throws `RangeError` on a negative or unsafe-integer size |
+| `data()` | returns a `Buffer` backed by this message's storage |
+| `toBytes()` | independent copy of the payload |
+| `copy()` | equivalent to `Message.from(this)` |
+| `size()` | payload length in bytes |
+| `isEmpty()` | whether `size()` is zero |
+| `copyTo(destination, sourceOffset?, destinationOffset?, length?)` | copies the payload (or a range) into a caller-provided buffer, returns bytes written; throws `RangeError` out of range |
+| `tryCopyTo(destination)` | bounds-checked variant, returns `boolean` instead of throwing on a too-small destination |
+| `getString(encoding = 'utf8')` / `toString()` | payload decoded as text; `toString()` is equivalent to `getString()` |
+| `refCount()` | native reference count, diagnostic only |
+| `getProperty(name)` | returns `string \| null` — **native message metadata is reserved but not populated yet**, so this always returns `null` today |
+| `close()` | releases the message |
 
 **Completion result.** Every member is synchronous. `close()` on a frozen (factory-created) message
 is a no-op; on a runtime-received message it releases native storage, resetting the instance to an
@@ -50,9 +57,15 @@ currently non-functional — it is reserved surface, not a working metadata look
 The exported abstract base both `Received` and `TopicMessage` extend — a Node-specific public base
 class (unlike java's/cpp's non-public equivalents).
 
-**Options.** `parts` (`Message[]`, owned by the envelope). Methods: `isSinglePart()`, `firstPart()`
-(throws when the envelope has no parts), `singlePartOrThrow()` (throws unless exactly one part),
-`close()` (closes every part).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `parts` | `Message[]`, owned by the envelope |
+| `isSinglePart()` | whether `parts` has exactly one element |
+| `firstPart()` | the first part, without transferring ownership; throws when the envelope has no parts |
+| `singlePartOrThrow()` | the single part; throws unless exactly one part |
+| `close()` | closes every part |
 
 **Completion result.** All members are synchronous.
 
@@ -77,11 +90,14 @@ if (dealer.recv(received)) {
 ```
 
 **Options.** Constructor takes no arguments (throws `TypeError` if called with any). Extends
-`MessagePartsEnvelope`. Additional members: `routingId` (`RoutingId | null`), `requestSeq` (`bigint
-| null`), `reply()` (starts the shared `ReplyOperation` builder — throws `SubmitError` when the
-envelope has no request sequence/reply context), `send()` (starts the shared `SendOperation`
-builder, addressed to this envelope's captured source route — throws `SubmitError` when the
-envelope carries no send context).
+`MessagePartsEnvelope`.
+
+| Member | Meaning |
+| --- | --- |
+| `routingId` | `RoutingId \| null`, present when the receive path provides one |
+| `requestSeq` | `bigint \| null`, present when replyable |
+| `reply()` | starts the shared `ReplyOperation` builder; throws `SubmitError` when the envelope has no request sequence/reply context |
+| `send()` | starts the shared `SendOperation` builder, addressed to this envelope's captured source route; throws `SubmitError` when the envelope carries no send context |
 
 **Completion result.** All members are synchronous.
 
@@ -101,8 +117,12 @@ if (sub.subscribe(published)) {
 }
 ```
 
-**Options.** No-argument constructor. Extends `MessagePartsEnvelope`. Additional members:
-`routingId` (`RoutingId | null`), `topic` (`string`, plain mutable field rather than a getter).
+**Options.** No-argument constructor. Extends `MessagePartsEnvelope`.
+
+| Member | Meaning |
+| --- | --- |
+| `routingId` | `RoutingId \| null`, the publisher's routing id, present when the receive path provides one |
+| `topic` | `string`, the topic this publish was sent on — a plain mutable field rather than a getter |
 
 **Completion result.** Synchronous.
 
@@ -121,9 +141,15 @@ if (xpub.receiveSubscriptionEvent(evt)) { /* ... */ }
 ```
 
 **Options.** `SubscriptionEvent` is a plain class with a no-argument constructor and mutable
-fields: `routingId` (`RoutingId | null`), `topic` (`string`), `subscribed` (`boolean`).
-`SubscriptionEntry` is a plain interface (not a class): `readonly filter: string`, `readonly
-isPattern: boolean`.
+fields; `SubscriptionEntry` is a plain interface (not a class) with `readonly` fields.
+
+| Type | Member | Meaning |
+| --- | --- | --- |
+| `SubscriptionEvent` | `routingId` (`RoutingId \| null`) | the subscriber's routing id, present when the receive path provides one |
+| | `topic` (`string`) | the topic that was subscribed or unsubscribed |
+| | `subscribed` (`boolean`) | `true` for a subscribe, `false` for an unsubscribe |
+| `SubscriptionEntry` | `readonly filter: string` | the subscription filter text |
+| | `readonly isPattern: boolean` | whether `filter` is a pattern match rather than a literal prefix |
 
 **Completion result.** Both are plain data holders with no async behavior; `SubscriptionEvent` has
 no `close()` — it owns no native resources.
@@ -152,18 +178,18 @@ const reply = await dealer.request()
 received.reply().message(Message.from('ok')).submit();
 ```
 
-**Options.** `SendOperation extends PartBuilder<SendSubmitOperation>` starts the chain;
-`SendSubmitOperation` extends `PartBuilder<SendSubmitOperation>` and `Flaggable<SendSubmitOperation>`
-plus `submit(): boolean`. `RequestOperation extends PartBuilder<RequestSubmitOperation>`;
-`RequestSubmitOperation` extends `PartBuilder`/`Timeoutable` (both `<RequestSubmitOperation>`) plus
-two overloaded meanings: `flags(f): RequestCallbackSubmitOperation` (narrows the builder, dropping
-the Promise-returning path) and two `submit` overloads — `submit(): Promise<Message[]>` or
-`submit(callback: RequestCallback): boolean`. Once `.flags(...)` is called, only
-`RequestCallbackSubmitOperation`'s `submit(callback): boolean` remains reachable — the
-`Promise`-returning path is gone. `ReplyOperation extends PartBuilder<ReplySubmitOperation>`;
-`ReplySubmitOperation` extends `PartBuilder`/`Flaggable` (both `<ReplySubmitOperation>`) plus
-`submit(): void`. `timeout(timeoutMs: number)` takes plain milliseconds as a `number`, not a
-Duration-like type.
+**Options.**
+
+| Stage | Member | Meaning |
+| --- | --- | --- |
+| `SendOperation` | `extends PartBuilder<SendSubmitOperation>` | `.message(m)` starts the chain |
+| `SendSubmitOperation` | `.message(...)` / `.flags(f)` / `submit(): boolean` | add parts, set flags, terminal |
+| `RequestOperation` | `extends PartBuilder<RequestSubmitOperation>` | `.message(m)` starts the chain |
+| `RequestSubmitOperation` | `.message(...)` / `.timeout(timeoutMs: number)` | mirrors the send chain, adding a reply-wait timeout in plain milliseconds (not a Duration-like type) |
+| `RequestSubmitOperation.flags(f)` | narrows to `RequestCallbackSubmitOperation` | drops the `Promise`-returning `submit()` — only `submit(callback: RequestCallback): boolean` remains reachable |
+| `RequestSubmitOperation.submit()` | no-argument overload | returns `Promise<Message[]>` |
+| `ReplyOperation` | `extends PartBuilder<ReplySubmitOperation>` | `.message(m)` starts the chain |
+| `ReplySubmitOperation` | `.message(...)` / `.flags(f)` / `submit(): void` | mirrors `Send`, no timeout stage |
 
 **Completion result.** `SendSubmitOperation.submit()` returns `boolean` synchronously (`false` only
 when `SendFlags.DontWait` is set and the send would have blocked — other failures throw a typed

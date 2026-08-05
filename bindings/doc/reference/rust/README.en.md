@@ -46,7 +46,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 | Category | Status | Contract source (verified against `src/contracts/` + `src/lib.rs`) |
 |---|---|---|
 | [Core](01-core.en.md) | Drafted | `src/lib.rs` (free functions); `contracts/core/`: `context.rs`, `routing_id.rs`, `utilities.rs` |
-| Messaging | Not started | `contracts/messaging/`: `message.rs`, `received.rs`, `topic_message.rs`, `subscription_event.rs`, `operation_contracts.rs`, `operations.rs` |
+| [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `message.rs`, `received.rs`, `topic_message.rs`, `subscription_event.rs`, `operation_contracts.rs`, `operations.rs` |
 | Sockets | Not started | `contracts/sockets/`: `socket.rs`, `message_socket_contracts.rs`, `routed_socket_contracts.rs`, `pubsub_socket_contracts.rs`, `stream_socket.rs`, `socket_options.rs` |
 | Eventing | Not started | `contracts/eventing/`: `poller.rs` (also owns `Timer`), `monitor.rs` |
 | Errors | Not started | `contracts/errors/`: `errors.rs`, `results.rs` |

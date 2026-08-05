@@ -55,8 +55,8 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [Context](01-context.en.md) | Drafted | 01-context |
 | [Message](02-message.en.md) | Drafted | 02-message |
 | [Socket lifecycle](03-socket-lifecycle.en.md) | Drafted | socket/README §Functions (create/bind/connect/disconnect/close) |
-| Socket options and identity | Not started | socket/README §Socket Options, §Dedicated Functions |
-| Raw receive | Not started | socket/README §Receive Model Summary, 03-errors §4 |
+| [Socket options and identity](04-socket-options.en.md) | Drafted | socket/README §Socket Options, §Dedicated Functions |
+| [Raw receive](05-raw-receive.en.md) | Drafted | socket/README §Receive Model Summary, 03-errors §4 |
 | PAIR | Not started | socket/01-pair |
 | PUB | Not started | socket/02-pub |
 | SUB | Not started | socket/03-sub |

@@ -17,6 +17,11 @@
     정해지지 않아 링크할 수 없지만, 생성판은 정해져 있다.
   - 그 언어의 읽는 순서대로 앞뒤 장 nav를 붙인다. 순서는 각 언어 README의 표가 소유한다.
 
+`common/guide/server/*.ko.md`와 `*.en.md`를 각각 독립된 로케일로 처리한다. 두 언어 모두
+같은 파일 이름 규칙(`NN-slug.<ko|en>.md`)을 쓰고, 언어별 디렉터리에 같은 확장자로 생성한다.
+소스 디렉터리에 어느 한쪽 로케일 파일이 아직 없으면 그 로케일은 조용히 건너뛴다 — `en`
+소스가 아직 없는 초기 상태에서도 `ko` 생성은 그대로 동작해야 한다.
+
 상대 링크는 손대지 않는다. `common/guide/server/`와 `<lang>/guide/server/`는 깊이가 같아
 `../../../common/spec/...` 같은 링크가 그대로 성립한다.
 
@@ -48,30 +53,56 @@ LANGUAGES = {
     "Node/TypeScript": "node",
 }
 
-#  front matter의 title은 검색 결과에 쓰인다. 같은 장이 다섯 언어로 있으므로
-#  언어를 붙이지 않으면 검색 결과에 같은 제목이 다섯 번 나온다. 사이드바 라벨은
-#  mkdocs nav가 따로 정하므로 여기 언어를 붙여도 사이드바는 깔끔하게 남는다.
-FRONT_MATTER = "---\ntitle: \"{title} · {label}\"\n---\n\n"
-
-BANNER = (
-    "<!-- generated:start -->\n"
-    "<!-- 이 파일은 `common/guide/server/{source}`에서 생성한다."
-    " 직접 고치지 않는다.\n"
-    "     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/"
-    "generate_language_guides.py`로 다시 만든다. -->\n"
-    "<!-- generated:end -->\n"
-)
+#  로케일별 산문 문자열. 생성판 자체가 en/ko 어느 쪽이냐에 따라 안내 문구도 그 언어로
+#  나가야 읽는 사람이 어색하지 않다.
+STRINGS = {
+    "ko": {
+        "front_matter": "---\ntitle: \"{title} · {label}\"\n---\n\n",
+        "banner": (
+            "<!-- generated:start -->\n"
+            "<!-- 이 파일은 `common/guide/server/{source}`에서 생성한다."
+            " 직접 고치지 않는다.\n"
+            "     고칠 곳은 공통 소스이고, `python3 doc/site/scripts/"
+            "generate_language_guides.py`로 다시 만든다. -->\n"
+            "<!-- generated:end -->\n"
+        ),
+        "switch_label": "다른 언어로 보기",
+        "guide_home": "가이드 홈",
+        "prev": "이전",
+        "next": "다음",
+        "chapter_ref": re.compile(r"`(\d\d)\. ([^`]+)` 장"),
+        "redirect_ext": re.compile(r"\]\(([^)#\s]+\.ko\.md)\)"),
+        "no_order_table": "{readme}에 읽는 순서 표가 없다",
+    },
+    "en": {
+        "front_matter": "---\ntitle: \"{title} · {label}\"\n---\n\n",
+        "banner": (
+            "<!-- generated:start -->\n"
+            "<!-- This file is generated from `common/guide/server/{source}`."
+            " Do not edit directly.\n"
+            "     Edit the common source instead, then regenerate with"
+            " `python3 doc/site/scripts/"
+            "generate_language_guides.py`. -->\n"
+            "<!-- generated:end -->\n"
+        ),
+        "switch_label": "View in another language",
+        "guide_home": "Guide Home",
+        "prev": "Previous",
+        "next": "Next",
+        "chapter_ref": re.compile(r"`(\d\d)\. ([^`]+)` chapter"),
+        "redirect_ext": re.compile(r"\]\(([^)#\s]+\.en\.md)\)"),
+        "no_order_table": "{readme} has no reading-order table",
+    },
+}
 
 TAB_RE = re.compile(r'^=== +"(.+)"\s*$')
 ORDER_RE = re.compile(r"^\| \d+ \| \[[^\]]+\]\(([^)]+)\)")
-#  `11. Monitoring` 장 → 그 언어의 실제 장 링크. 공통 소스에서만 쓰는 표기다.
-CHAPTER_REF_RE = re.compile(r"`(\d\d)\. ([^`]+)` 장")
 NAV_RE = re.compile(
     r"<!-- framework-adapter-nav:start -->.*?<!-- framework-adapter-nav:end -->\n",
     re.S)
 
 
-def language_switch(current: str, name: str) -> str:
+def language_switch(current: str, name: str, suffix: str) -> str:
     """같은 장의 다른 언어로 가는 줄.
 
     탭에서는 한 번 눌러 언어를 바꿀 수 있었다. 생성판은 언어별 파일이라 그 경로가
@@ -84,20 +115,22 @@ def language_switch(current: str, name: str) -> str:
         else:
             parts.append(f"[{label}](../../../{lang}/guide/server/{name})")
     return ("<!-- language-switch:start -->\n"
-            "다른 언어로 보기 — " + " · ".join(parts)
+            f"{STRINGS[suffix]['switch_label']} — " + " · ".join(parts)
             + "\n<!-- language-switch:end -->\n\n")
 
 
-def reading_order(lang_dir: str) -> list[str]:
+def reading_order(lang_dir: str, suffix: str) -> list[str]:
     """그 언어 README의 읽는 순서 표에서 장 파일 목록을 읽는다."""
-    readme = FRAMEWORK / lang_dir / "guide" / "server" / "README.ko.md"
+    readme = FRAMEWORK / lang_dir / "guide" / "server" / f"README.{suffix}.md"
+    if not readme.exists():
+        raise SystemExit(STRINGS[suffix]["no_order_table"].format(readme=readme))
     order = []
     for line in readme.read_text(encoding="utf-8").splitlines():
         m = ORDER_RE.match(line)
         if m:
             order.append(m.group(1))
     if not order:
-        raise SystemExit(f"{readme}에 읽는 순서 표가 없다")
+        raise SystemExit(STRINGS[suffix]["no_order_table"].format(readme=readme))
     return order
 
 
@@ -148,15 +181,15 @@ def strip_tabs(text: str, label: str) -> str:
     return "\n".join(out)
 
 
-def link_chapter_refs(text: str, available: dict[str, str]) -> str:
-    """`11. Monitoring` 장 → [11. Monitoring](11-monitoring.ko.md)."""
+def link_chapter_refs(text: str, available: dict[str, str], suffix: str) -> str:
+    """`` `11. Monitoring` 장/chapter `` → 실제 링크."""
     def repl(m: re.Match) -> str:
         number, title = m.group(1), m.group(2)
         target = available.get(number)
         if target is None:
             return m.group(0)
         return f"[{number}. {title}]({target})"
-    return CHAPTER_REF_RE.sub(repl, text)
+    return STRINGS[suffix]["chapter_ref"].sub(repl, text)
 
 
 #  Kotlin 가이드는 Java 런타임을 공유하므로 Java 문서를 그대로 가리키는 장이 있다
@@ -165,7 +198,7 @@ def link_chapter_refs(text: str, available: dict[str, str]) -> str:
 SHARES_WITH = {"kotlin": "java"}
 
 
-def redirect_missing(text: str, lang_dir: str) -> str:
+def redirect_missing(text: str, lang_dir: str, suffix: str) -> str:
     donor = SHARES_WITH.get(lang_dir)
     if donor is None:
         return text
@@ -184,37 +217,39 @@ def redirect_missing(text: str, lang_dir: str) -> str:
         depth = len(target_dir.relative_to(FRAMEWORK).parts)
         return m.group(0).replace(link, "../" * depth + str(resolved))
 
-    return re.sub(r"\]\(([^)#\s]+\.ko\.md)\)", repl, text)
+    return STRINGS[suffix]["redirect_ext"].sub(repl, text)
 
 
-def nav_block(order: list[str], name: str, titles: dict[str, str]) -> str:
+def nav_block(order: list[str], name: str, titles: dict[str, str], suffix: str) -> str:
     """그 언어의 읽는 순서 기준 앞뒤 장 nav."""
     try:
         index = order.index(name)
     except ValueError:
         return ""
-    parts = ["[가이드 홈](README.ko.md)"]
+    s = STRINGS[suffix]
+    parts = [f"[{s['guide_home']}](README.{suffix}.md)"]
     if index > 0:
         prev = order[index - 1]
-        parts.append(f"[이전: {titles.get(prev, prev)}]({prev})")
+        parts.append(f"[{s['prev']}: {titles.get(prev, prev)}]({prev})")
     if index + 1 < len(order):
         nxt = order[index + 1]
-        parts.append(f"[다음: {titles.get(nxt, nxt)}]({nxt})")
+        parts.append(f"[{s['next']}: {titles.get(nxt, nxt)}]({nxt})")
     return ("<!-- framework-adapter-nav:start -->\n"
             + " | ".join(parts)
             + "\n<!-- framework-adapter-nav:end -->\n\n")
 
 
-def generate(check_only: bool) -> int:
-    sources = sorted(COMMON.glob("*.ko.md"))
+def generate_locale(suffix: str, check_only: bool) -> tuple[int, list[str]]:
+    sources = sorted(COMMON.glob(f"*.{suffix}.md"))
     if not sources:
-        raise SystemExit(f"공통 소스가 없다: {COMMON}")
+        return 0, []
 
+    s = STRINGS[suffix]
     stale: list[str] = []
     written = 0
     for label, lang_dir in LANGUAGES.items():
         target_dir = FRAMEWORK / lang_dir / "guide" / "server"
-        raw_order = reading_order(lang_dir)
+        raw_order = reading_order(lang_dir, suffix)
         #  순서 표는 공통 장을 `../../../common/guide/server/...`로 가리킨다. 그 장들은
         #  이 디렉터리에 생성되므로 형제가 된다. 다른 언어를 가리키는 항목(kotlin의
         #  Java 16장)만 외부 링크로 남는다.
@@ -245,13 +280,13 @@ def generate(check_only: bool) -> int:
             body = strip_tabs(src.read_text(encoding="utf-8"), label)
             body = NAV_RE.sub("", body)
             body, _ = surface_terms.translate(body, label)
-            body = link_chapter_refs(body, available)
-            body = redirect_missing(body, lang_dir)
-            content = (FRONT_MATTER.format(
+            body = link_chapter_refs(body, available, suffix)
+            body = redirect_missing(body, lang_dir, suffix)
+            content = (s["front_matter"].format(
                            title=chapter_title(src), label=label)
-                       + BANNER.format(source=src.name) + "\n"
-                       + nav_block(order, src.name, titles)
-                       + language_switch(lang_dir, src.name) + body)
+                       + s["banner"].format(source=src.name) + "\n"
+                       + nav_block(order, src.name, titles, suffix)
+                       + language_switch(lang_dir, src.name, suffix) + body)
             content = re.sub(r"\n{3,}", "\n\n", content).rstrip() + "\n"
 
             out = target_dir / src.name
@@ -264,18 +299,32 @@ def generate(check_only: bool) -> int:
             out.write_text(content, encoding="utf-8")
             written += 1
 
+    return written, stale
+
+
+def generate(check_only: bool) -> int:
+    total_written = 0
+    total_stale: list[str] = []
+    total_sources = 0
+    for suffix in ("ko", "en"):
+        written, stale = generate_locale(suffix, check_only)
+        total_written += written
+        total_stale.extend(stale)
+        total_sources += len(list(COMMON.glob(f"*.{suffix}.md")))
+
     if check_only:
-        if stale:
-            print(f"생성물이 소스와 다르다 {len(stale)}건:", file=sys.stderr)
-            for s in stale:
-                print(f"  - {s}", file=sys.stderr)
+        if total_stale:
+            print(f"생성물이 소스와 다르다 {len(total_stale)}건:", file=sys.stderr)
+            for path in total_stale:
+                print(f"  - {path}", file=sys.stderr)
             print("\n`python3 doc/site/scripts/generate_language_guides.py`를 "
                   "실행하고 결과를 커밋한다.", file=sys.stderr)
             return 1
         print("OK — 언어별 가이드가 공통 소스와 일치한다")
         return 0
 
-    print(f"생성: {written}개 갱신 (언어 {len(LANGUAGES)} × 공통 {len(sources)}장)")
+    print(f"생성: {total_written}개 갱신 "
+          f"(언어 {len(LANGUAGES)} × 공통 소스 파일 {total_sources}개)")
     return 0
 
 

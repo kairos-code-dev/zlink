@@ -14,7 +14,7 @@ snapshot. `topology_state_t` represents one registered topology's
 availability and isn't reused as host lifecycle status.
 
 RouteMesh peer status uses
-[Channel messaging](03-channel-messaging.ko.md)'s `peer_state_t`.
+[Channel messaging](03-channel-messaging.en.md)'s `peer_state_t`.
 `not_connected` is a state where connection is needed but there's no
 ready connection. `not_required` is a normal state where connection
 isn't needed because neither Object Client has RouteMesh Channel

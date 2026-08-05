@@ -72,7 +72,7 @@ doesn't expose typed state, a separate contract identifier, or a
 message wrapper.
 
 The exact declaration of the factory registration member is owned by
-[Channel messaging](03-channel-messaging.ko.md)'s
+[Channel messaging](03-channel-messaging.en.md)'s
 `mesh_node_builder_t`.
 
 ## 2. Spot Framework API

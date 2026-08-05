@@ -5,7 +5,7 @@
 This category covers the topology registration entry points `zlink_framework_options_t` provides,
 and the entry points that query RouteMesh/ClientServer/Fanout operational status. The exact
 signatures are owned by the
-[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
+[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 and the
 [Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
 (Korean-only). Every registration entry point is a call made at host configuration time.
@@ -414,7 +414,7 @@ or `status()` (observability-diagnostics category).
 ---
 
 See the
-[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
+[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 and the
 [Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
 (Korean-only) for the full rationale.

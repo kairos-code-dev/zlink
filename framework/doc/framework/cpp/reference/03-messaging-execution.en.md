@@ -4,7 +4,7 @@
 
 This category covers the entry points `route_client_t` and `publisher_t` provide. The exact
 signatures are owned by the
-[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
+[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 (Korean-only). This document does not repeat those signatures — it collects only what you need to
 actually call each entry point, in complete form.
 
@@ -203,7 +203,7 @@ These apply in common to every entry point in this category and are not repeated
   (`not_found`/`unavailable`/`deadline_exceeded`/`shutting_down`), but distinguished by `kind()`.
 
 See the
-[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
+[Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 and the
 [Common runtime exact interface](../../common/spec/server/languages/cpp/interfaces/01-common-runtime.en.md)
 (Korean-only) for the full rationale.

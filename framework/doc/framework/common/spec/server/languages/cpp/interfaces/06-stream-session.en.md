@@ -175,7 +175,7 @@ The exact Actor-interworking member of `bound_session_t`,
 [Actor interface](05-actors.en.md). The metadata/compression/
 `submit()` member of `stream_send_call_t` and `stream_write_call_t`
 keeps the same admission contract as the call family in
-[Channel messaging](03-channel-messaging.ko.md).
+[Channel messaging](03-channel-messaging.en.md).
 STREAM application callback, send/reply, and compression extension use
 `zlink::framework::message_t`, not the binding message. Framework's
 codec registry converts a typed payload and this message boundary.

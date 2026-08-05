@@ -5,7 +5,7 @@
 This category covers the external entry points `actor_manager_t`/`actor_client_t` provide, the
 entry point for joining a Spot from inside Actor code via `actor_context_t`, and relocation policy
 selection. The exact signatures are owned by the
-[Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.ko.md)
+[Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.en.md)
 (Korean-only).
 
 ---
@@ -185,5 +185,5 @@ per call afterward.
 ---
 
 See the
-[Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.ko.md)
+[Actor exact interface](../../common/spec/server/languages/cpp/interfaces/05-actors.en.md)
 (Korean-only) for the full rationale.

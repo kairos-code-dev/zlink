@@ -4363,316 +4363,337 @@ Binding rules:
   - the non-blocking empty path
   - the relationship between a socket state change and a monitor event
 
-## 오류 정책
+## Error Policy
 
-### 바인딩 검증 vs Native 오류
-- 입력 값의 형식/범위 오류는 바인딩이 즉시 막는다.
-- socket 상태, 연결 상태, transport 상태, protocol 상태 오류는 코어가
-  결정하고 바인딩은 그대로 caller에 전달한다.
+### Binding Validation vs Native Error
+- The binding immediately blocks a format/range error in an input
+  value.
+- Core decides socket-state, connection-state, transport-state, and
+  protocol-state errors, and the binding delivers them to the caller
+  as-is.
 
-### 바인딩이 검증해야 하는 항목
-- truncation 가능성이 있는 값
-- overflow 가능성이 있는 값
-- fixed-size native struct에 들어가는 값
-- 명백한 길이 상한이 있는 값
-- offset/length 범위 오류
-- null 불가 인자
-- enum 범위 밖의 값
+### What A Binding Must Validate
+- a value that risks truncation
+- a value that risks overflow
+- a value going into a fixed-size native struct
+- a value with an obvious length limit
+- an offset/length range error
+- a non-nullable argument
+- a value outside an enum's range
 
-이 경우 바인딩 예외를 사용한다.
+For these, use a binding exception.
 - Java: `IllegalArgumentException`, `IndexOutOfBoundsException`,
   `NullPointerException`
 - .NET: `ArgumentException`, `ArgumentOutOfRangeException`,
   `ArgumentNullException`
-- Go: 즉시 `error` 반환 또는 `panic` (프로그래머 오류)
-- Rust: compile-time 보장 (`NonZero`, newtype) 또는 `panic!` / `Result<T, E>`
+- Go: an immediate `error` return, or `panic` (a programmer error)
+- Rust: a compile-time guarantee (`NonZero`, newtype), or
+  `panic!`/`Result<T, E>`
 
-### Native 가 결정하는 항목
-- peer 없음
+### What Native Decides
+- no peer
 - backpressure
-- readiness 부족
-- callback mode와 direct recv 충돌
-- socket type/state/runtime 문제
-- transport, TLS, endpoint, protocol 오류
+- insufficient readiness
+- a conflict between callback mode and direct recv
+- a socket type/state/runtime problem
+- a transport, TLS, endpoint, or protocol error
 
-이 경우 바인딩은 native 오류를 언어별 관용구로 변환하여 caller에 전달한다.
-Exception 언어는 예외를 던지고, return-based 언어는 에러 값을 반환한다.
+For these, a binding converts the native error into that language's
+idiom and delivers it to the caller. An exception language throws; a
+return-based language returns an error value.
 - C++: `throw zlink_error_t`
 - Java: `throw ZlinkException`
 - .NET: `throw ZlinkException`
 - Node: `throw ZlinkError` (extends `Error`)
 - Python: `raise ZlinkError` (extends `Exception`)
-- Go: `return err` (`ZlinkError` 또는 동등한 typed error)
-- Rust: `Err(E)` (`Result<T, E>`; 여러 함수군이 섞일 때만 `ZlinkError`)
+- Go: `return err` (`ZlinkError` or an equivalent typed error)
+- Rust: `Err(E)` (`Result<T, E>`; `ZlinkError` only when multiple
+  function families mix)
 
-### Error Code 표
+### Error Code Table
 
-zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별 에러 타입에
-매핑하여 caller 가 원인을 구분할 수 있게 한다.
+The codes zlink uses and their meaning. A binding maps these codes onto
+its per-language error type, so a caller can distinguish the cause.
 
-코드는 두 계층으로 나뉜다.
+Codes split into two layers.
 
-1. **Public result enum 코드 (0–706)** — 공개 C API 함수의 반환 enum 값.
-   바인딩이 직접 마주하고 언어별 에러 타입으로 노출해야 하는 값이다.
-   전체 정의는 [core/errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 참조.
-2. **Internal errno** — `zlink_errno()` 로 조회되는 내부 raw errno.
-   `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용. 바인딩은 이 값을
-   `internalErrno` / `internal_errno` 필드로 노출한다 (디버깅 전용).
+1. **Public result enum codes (0–706)** — the return enum value of a
+   public C API function. A binding faces these directly and must
+   expose them as a per-language error type. See
+   [core/errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/)
+   for the full definition.
+2. **Internal errno** — the internal raw errno looked up with
+   `zlink_errno()`. Used to look up the detailed cause behind a coarse
+   bucket such as `INTERNAL_ERROR`. A binding exposes this value through
+   an `internalErrno`/`internal_errno` field (for debugging only).
 
-#### Public Result Enum 카탈로그
+#### Public Result Enum Catalog
 
-바인딩은 아래 8 개 enum 의 **모든 값을 누락 없이** 언어별 표현으로 매핑해야
-한다. OK (0) 는 모든 enum 에 공통이며 에러로 취급하지 않는다.
+A binding must map **every value, without omission**, of the 8 enums
+below into a per-language representation. OK (0) is shared by every enum
+and is not treated as an error.
 
 ##### `zlink_submit_result_t` (send, request submit, reply submit)
 
-| 값 | 상수 | 내부 errno | 분류 | 의미 |
+| Value | Constant | Internal errno | Category | Meaning |
 |----|------|-----------|------|------|
-| 0 | `OK` | — | 성공 | 제출 성공 |
-| 1 | `BACKPRESSURED` | `EAGAIN` | 제어 흐름 | send 큐 포화 (HWM) |
-| 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 제어 흐름 | 대상 peer/경로 미연결 |
-| 3 | `NOT_FOUND` | `ENOENT` | 제어 흐름 | 대상 peer/spot/route 없음 |
-| 13 | `NOT_ADMITTED` | `ECONNREFUSED` 계열 | 제어 흐름 | target peer 가중치가 `0`이라 신규 submit 거부 |
-| 4 | `TERMINATED` | `ETERM` | 런타임/생명주기 | context 종료됨 |
-| 5 | `INVALID_HANDLE` | `EFAULT` | caller 계약 위반 | NULL handle / invalid pointer |
-| 6 | `INVALID_ARGUMENT` | `EINVAL` | caller 계약 위반 | 잘못된 인자 |
-| 7 | `NOT_SUPPORTED` | `ENOTSUP` | caller 계약 위반 | 해당 소켓 타입에서 지원 안 함 |
-| 8 | `INVALID_STATE` | `EFSM`, `EBUSY` | caller 계약 위반 | 소켓/handle 상태 오류 |
-| 9 | `THREAD_VIOLATION` | `EMTHREAD` | caller 계약 위반 | 잘못된 스레드에서 접근 |
-| 10 | `OUT_OF_MEMORY` | `ENOMEM` | 내부 실패 | 메모리 할당 실패 |
-| 11 | `SEQ_EXHAUSTED` | `EBUSY` | 내부 실패 | request seq 공간 고갈 |
-| 12 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 실패 | 내부 submit 실패 (상세는 `zlink_errno()`) |
+| 0 | `OK` | — | success | submit succeeded |
+| 1 | `BACKPRESSURED` | `EAGAIN` | control flow | the send queue is saturated (HWM) |
+| 2 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | control flow | the target peer/path is not connected |
+| 3 | `NOT_FOUND` | `ENOENT` | control flow | the target peer/spot/route does not exist |
+| 13 | `NOT_ADMITTED` | `ECONNREFUSED` family | control flow | a new submit was rejected because the target peer's weight is `0` |
+| 4 | `TERMINATED` | `ETERM` | runtime/lifecycle | the context has terminated |
+| 5 | `INVALID_HANDLE` | `EFAULT` | caller contract violation | a NULL handle / invalid pointer |
+| 6 | `INVALID_ARGUMENT` | `EINVAL` | caller contract violation | an invalid argument |
+| 7 | `NOT_SUPPORTED` | `ENOTSUP` | caller contract violation | not supported on that socket type |
+| 8 | `INVALID_STATE` | `EFSM`, `EBUSY` | caller contract violation | a socket/handle state error |
+| 9 | `THREAD_VIOLATION` | `EMTHREAD` | caller contract violation | accessed from the wrong thread |
+| 10 | `OUT_OF_MEMORY` | `ENOMEM` | internal failure | a memory allocation failure |
+| 11 | `SEQ_EXHAUSTED` | `EBUSY` | internal failure | the request seq space is exhausted |
+| 12 | `INTERNAL_ERROR` | `EPROTO`, and so on | internal failure | an internal submit failure (see `zlink_errno()` for detail) |
 
 ##### `zlink_request_result_t` (request completion callback)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | `0` | reply payload 수신 성공 |
-| 101 | `TIMED_OUT` | `ETIMEDOUT` | `timeout_ms` 내 reply 미도착 |
-| 102 | `NOT_FOUND` | `ENOENT` | 대상 없음, 에러 reply 로 완료 |
-| 103 | `TERMINATED` | `ETERM` | (예약) 명시적 종료 완료 경로 |
-| 104 | `PROTOCOL_ERROR` | `EPROTO` | reply envelope / error reply payload 손상 |
-| 105 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 request 실패 (상세는 `zlink_errno()`) |
-| 106 | `REJECTED` | `EACCES`, `ECONNREFUSED` | 대상이 request를 명시적으로 거절 |
-| 107 | `CONFLICT` | `ESTALE` | request 대상 또는 상태 충돌 |
-| 108 | `BUSY` | `EBUSY` | request 처리 경로가 일시적으로 바쁨 |
-| 109 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer/경로 미연결 |
-| 110 | `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | request 인자 또는 envelope 오류 |
-| 111 | `INVALID_STATE` | `EFSM` | request를 받을 수 없는 handle 상태 |
-| 112 | `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | request 미지원 대상 |
+| 0 | `OK` | `0` | successfully received the reply payload |
+| 101 | `TIMED_OUT` | `ETIMEDOUT` | reply did not arrive within `timeout_ms` |
+| 102 | `NOT_FOUND` | `ENOENT` | target not found; completed with an error reply |
+| 103 | `TERMINATED` | `ETERM` | (reserved) an explicit termination completion path |
+| 104 | `PROTOCOL_ERROR` | `EPROTO` | the reply envelope or error reply payload is corrupt |
+| 105 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal request failure (see `zlink_errno()` for detail) |
+| 106 | `REJECTED` | `EACCES`, `ECONNREFUSED` | the target explicitly rejected the request |
+| 107 | `CONFLICT` | `ESTALE` | a conflict on the request target or state |
+| 108 | `BUSY` | `EBUSY` | the request-processing path is temporarily busy |
+| 109 | `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | the target peer/path is not connected |
+| 110 | `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | a request argument or envelope error |
+| 111 | `INVALID_STATE` | `EFSM` | the handle state cannot accept a request |
+| 112 | `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | request is not supported on this target |
 
 ##### `zlink_recv_result_t` (recv, subscribe, subscription event, monitor recv, timer recv)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | 수신 성공 |
-| 201 | `NO_DATA` | `EAGAIN` | non-blocking recv 데이터 없음 / source 고갈 |
-| 202 | `BUSY` | `EBUSY` | handler 이미 attach 됨 |
-| 203 | `TERMINATED` | `ETERM` | context 종료됨 |
-| 204 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 205 | `NOT_SUPPORTED` | `ENOTSUP` | recv 미지원 소켓 타입 |
-| 206 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 recv 실패 (상세는 `zlink_errno()`) |
+| 0 | `OK` | — | receive succeeded |
+| 201 | `NO_DATA` | `EAGAIN` | non-blocking recv has no data / the source is exhausted |
+| 202 | `BUSY` | `EBUSY` | a handler is already attached |
+| 203 | `TERMINATED` | `ETERM` | the context has terminated |
+| 204 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 205 | `NOT_SUPPORTED` | `ENOTSUP` | recv is not supported on this socket type |
+| 206 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal recv failure (see `zlink_errno()` for detail) |
 
-##### `zlink_handler_result_t` (handler 등록)
+##### `zlink_handler_result_t` (handler registration)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | handler 등록 성공 |
-| 301 | `INVALID_ARGUMENT` | `EINVAL` | NULL handler |
-| 302 | `BUSY` | `EBUSY` | handler 이미 attach 됨 |
-| 303 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 subject |
-| 304 | `DEADLOCK` | `EDEADLK` | reentrant 호출 (send-ready handler 전용) |
-| 305 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 306 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 handler 등록 실패 (상세는 `zlink_errno()`) |
+| 0 | `OK` | — | handler registration succeeded |
+| 301 | `INVALID_ARGUMENT` | `EINVAL` | a NULL handler |
+| 302 | `BUSY` | `EBUSY` | a handler is already attached |
+| 303 | `NOT_SUPPORTED` | `ENOTSUP` | an unsupported subject |
+| 304 | `DEADLOCK` | `EDEADLK` | a reentrant call (send-ready handler only) |
+| 305 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 306 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal handler-registration failure (see `zlink_errno()` for detail) |
 
 ##### `zlink_close_result_t` (close, destroy)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | close/destroy 성공 |
-| 401 | `BUSY` | `EBUSY` | in-flight callback / API 호출 |
-| 402 | `SHUTDOWN` | `ESHUTDOWN` | 이미 close 됨 |
-| 403 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 404 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 close 실패 (상세는 `zlink_errno()`) |
+| 0 | `OK` | — | close/destroy succeeded |
+| 401 | `BUSY` | `EBUSY` | an in-flight callback / API call |
+| 402 | `SHUTDOWN` | `ESHUTDOWN` | already closed |
+| 403 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 404 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal close failure (see `zlink_errno()` for detail) |
 
 ##### `zlink_bind_result_t` (bind)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | bind 성공 |
-| 501 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
-| 502 | `ADDR_IN_USE` | `EADDRINUSE` | 주소 이미 사용 중 |
-| 503 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
-| 504 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 505 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 bind 실패 (상세는 `zlink_errno()`) |
+| 0 | `OK` | — | bind succeeded |
+| 501 | `INVALID_ARGUMENT` | `EINVAL` | an invalid endpoint |
+| 502 | `ADDR_IN_USE` | `EADDRINUSE` | the address is already in use |
+| 503 | `NOT_SUPPORTED` | `ENOTSUP` | an unsupported transport |
+| 504 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 505 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal bind failure (see `zlink_errno()` for detail) |
 
 ##### `zlink_connect_result_t` (connect, disconnect, unbind)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | connect/disconnect/unbind 성공 |
-| 601 | `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
-| 602 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 transport |
-| 603 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 604 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 connect/disconnect 실패 (상세는 `zlink_errno()`) |
-| 605 | `NOT_FOUND` | `ENOENT` | endpoint 또는 peer routing id 없음 |
-| 606 | `CONFLICT` | `EADDRINUSE` | peer routing id가 둘 이상의 pipe와 충돌 |
-| 607 | `BUSY` | `EBUSY` | lifecycle owner가 수동 변경을 거절 |
+| 0 | `OK` | — | connect/disconnect/unbind succeeded |
+| 601 | `INVALID_ARGUMENT` | `EINVAL` | an invalid endpoint |
+| 602 | `NOT_SUPPORTED` | `ENOTSUP` | an unsupported transport |
+| 603 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 604 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal connect/disconnect failure (see `zlink_errno()` for detail) |
+| 605 | `NOT_FOUND` | `ENOENT` | the endpoint or peer routing id does not exist |
+| 606 | `CONFLICT` | `EADDRINUSE` | the peer routing id conflicts with two or more pipes |
+| 607 | `BUSY` | `EBUSY` | the lifecycle owner rejected a manual change |
 
 ##### `zlink_config_result_t` (option set/get, message lifecycle, snapshot, poller mutation, proxy, timer config)
 
-| 값 | 상수 | 내부 errno | 의미 |
+| Value | Constant | Internal errno | Meaning |
 |----|------|-----------|------|
-| 0 | `OK` | — | 설정 성공 |
-| 701 | `INVALID_HANDLE` | `EFAULT` | NULL / invalid handle |
-| 702 | `INVALID_ARGUMENT` | `EINVAL`, `EBUSY` | 잘못된 인자 또는 config 계층 conflict |
-| 703 | `NOT_SUPPORTED` | `ENOTSUP` | 미지원 옵션 |
-| 704 | `INTERNAL_ERROR` | `EPROTO` 등 | 내부 config 실패 (상세는 `zlink_errno()`) |
-| 705 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | lifecycle 상태가 config를 거절 |
-| 706 | `NOT_FOUND` | `ENOENT` | local lookup 대상 없음 |
+| 0 | `OK` | — | configuration succeeded |
+| 701 | `INVALID_HANDLE` | `EFAULT` | a NULL / invalid handle |
+| 702 | `INVALID_ARGUMENT` | `EINVAL`, `EBUSY` | an invalid argument, or a config-layer conflict |
+| 703 | `NOT_SUPPORTED` | `ENOTSUP` | an unsupported option |
+| 704 | `INTERNAL_ERROR` | `EPROTO`, and so on | an internal config failure (see `zlink_errno()` for detail) |
+| 705 | `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | the lifecycle state rejects the config |
+| 706 | `NOT_FOUND` | `ENOENT` | the local lookup target does not exist |
 
-##### Non-OK 값 총합
+##### Non-OK Value Total
 
-- 총 **59 개** non-OK 코드 (submit 13 + request 12 + recv 6 + handler 6 +
-  close 4 + bind 5 + connect 7 + config 6 = 59). 값 범위:
-  1–13, 101–112, 201–206, 301–306, 401–404, 501–505, 601–607, 701–706.
-- 값 범위는 enum 간 겹치지 않으므로 단일 `int` 로 유일하게 구분된다.
-- 바인딩은 59 개 값 모두에 대해 언어별 에러 표현을 제공해야 한다. 누락 시
-  caller 가 해당 원인을 구분할 방법이 없다.
+- **59** non-OK codes in total (submit 13 + request 12 + recv 6 +
+  handler 6 + close 4 + bind 5 + connect 7 + config 6 = 59). The value
+  ranges are: 1–13, 101–112, 201–206, 301–306, 401–404, 501–505,
+  601–607, 701–706.
+- Because the value ranges don't overlap across enums, a single `int`
+  uniquely identifies the code.
+- A binding must provide a per-language error representation for all 59
+  values. If one is missing, the caller has no way to distinguish that
+  cause.
 
-언어별 enum/상수 매핑 스타일은 아래 `언어별 ErrorCode 매핑` 절을 참조한다.
+See the `Per-Language ErrorCode Mapping` section below for per-language
+enum/constant mapping style.
 
-#### POSIX 표준 errno
+#### Standard POSIX errno
 
-POSIX 에서 해당 상수가 정의되지 않은 플랫폼에서는 `ZLINK_HAUSNUMERO` 기반
-대체 값을 사용한다. 바인딩은 상수 이름으로 비교해야 하며 정수 값에 직접
-의존하면 안 된다.
+On a platform where POSIX doesn't define the matching constant, a
+`ZLINK_HAUSNUMERO`-based substitute value is used. A binding must compare
+by constant name and must not depend directly on the integer value.
 
-| errno | 대체 값 (POSIX 미정의 시) | 의미 | 대표 발생 상황 |
+| errno | Substitute value (when POSIX doesn't define it) | Meaning | Representative situation |
 |-------|-------------------------|------|--------------|
-| `ENOTSUP` | HAUSNUMERO + 1 | 지원하지 않는 작업 | 해당 소켓 타입에서 불가능한 작업 |
-| `EPROTONOSUPPORT` | HAUSNUMERO + 2 | 프로토콜 미지원 | 지원하지 않는 프로토콜 요청 |
-| `ENOBUFS` | HAUSNUMERO + 3 | 버퍼 공간 부족 | 내부 버퍼 할당 실패 |
-| `ENETDOWN` | HAUSNUMERO + 4 | 네트워크가 다운됨 | transport 레이어 장애 |
-| `EADDRINUSE` | HAUSNUMERO + 5 | 주소가 이미 사용 중 | bind 시 endpoint 충돌 |
-| `EADDRNOTAVAIL` | HAUSNUMERO + 6 | 주소를 사용할 수 없음 | 잘못된 endpoint 형식 |
-| `ECONNREFUSED` | HAUSNUMERO + 7 | 연결 거부됨 | 대상이 연결을 거부 |
-| `EINPROGRESS` | HAUSNUMERO + 8 | 작업 진행 중 | 비동기 연결 진행 중 |
-| `ENOTSOCK` | HAUSNUMERO + 9 | 소켓이 아닌 대상 | 잘못된 handle 전달 |
-| `EMSGSIZE` | HAUSNUMERO + 10 | 메시지 크기 초과 | 메시지가 설정된 최대 크기 초과 |
-| `EAFNOSUPPORT` | HAUSNUMERO + 11 | 주소 체계 미지원 | 지원하지 않는 주소 체계 |
-| `ENETUNREACH` | HAUSNUMERO + 12 | 네트워크에 도달 불가 | 라우팅 불가 |
-| `ECONNABORTED` | HAUSNUMERO + 13 | 연결이 중단됨 | 연결이 비정상 종료 |
-| `ECONNRESET` | HAUSNUMERO + 14 | 연결이 재설정됨 | peer 가 연결을 강제 종료 |
-| `ENOTCONN` | HAUSNUMERO + 15 | 연결되지 않은 상태 | 연결 전에 send/recv 시도 |
-| `ETIMEDOUT` | HAUSNUMERO + 16 | 작업 시간 초과 | request reply timeout, 연결 timeout |
-| `EHOSTUNREACH` | HAUSNUMERO + 17 | 대상에 도달할 수 없음 | peer 미연결, 라우팅 불가 |
-| `ENETRESET` | HAUSNUMERO + 18 | 네트워크가 재설정됨 | 네트워크 연결 끊김 |
-| `EAGAIN` | (POSIX 표준) | 자원이 일시적으로 사용 불가 | non-blocking send 시 HWM 도달 (backpressure) |
-| `EINVAL` | (POSIX 표준) | 잘못된 인자 | 범위 초과, 잘못된 옵션 값 |
-| `ECANCELED` | (POSIX 표준) | 작업이 취소됨 | caller 가 request 를 취소 |
+| `ENOTSUP` | HAUSNUMERO + 1 | an unsupported operation | an operation impossible on that socket type |
+| `EPROTONOSUPPORT` | HAUSNUMERO + 2 | protocol not supported | a request for an unsupported protocol |
+| `ENOBUFS` | HAUSNUMERO + 3 | insufficient buffer space | an internal buffer allocation failure |
+| `ENETDOWN` | HAUSNUMERO + 4 | the network is down | a transport-layer failure |
+| `EADDRINUSE` | HAUSNUMERO + 5 | the address is already in use | an endpoint conflict on bind |
+| `EADDRNOTAVAIL` | HAUSNUMERO + 6 | the address cannot be used | an invalid endpoint format |
+| `ECONNREFUSED` | HAUSNUMERO + 7 | the connection was refused | the target refused the connection |
+| `EINPROGRESS` | HAUSNUMERO + 8 | the operation is in progress | an async connect in progress |
+| `ENOTSOCK` | HAUSNUMERO + 9 | not a socket target | an invalid handle was passed |
+| `EMSGSIZE` | HAUSNUMERO + 10 | the message size was exceeded | the message exceeds the configured max size |
+| `EAFNOSUPPORT` | HAUSNUMERO + 11 | address family not supported | an unsupported address family |
+| `ENETUNREACH` | HAUSNUMERO + 12 | the network is unreachable | routing is impossible |
+| `ECONNABORTED` | HAUSNUMERO + 13 | the connection was aborted | the connection ended abnormally |
+| `ECONNRESET` | HAUSNUMERO + 14 | the connection was reset | the peer forcibly closed the connection |
+| `ENOTCONN` | HAUSNUMERO + 15 | not connected | a send/recv attempt before connecting |
+| `ETIMEDOUT` | HAUSNUMERO + 16 | the operation timed out | a request-reply timeout, a connect timeout |
+| `EHOSTUNREACH` | HAUSNUMERO + 17 | the target is unreachable | the peer isn't connected; routing is impossible |
+| `ENETRESET` | HAUSNUMERO + 18 | the network was reset | the network connection dropped |
+| `EAGAIN` | (POSIX standard) | the resource is temporarily unavailable | the HWM was reached on a non-blocking send (backpressure) |
+| `EINVAL` | (POSIX standard) | an invalid argument | out of range, an invalid option value |
+| `ECANCELED` | (POSIX standard) | the operation was canceled | the caller canceled the request |
 
-`ZLINK_HAUSNUMERO` 값은 `156384712` 이다.
+The `ZLINK_HAUSNUMERO` value is `156384712`.
 
-#### zlink 전용 errno
+#### zlink-Specific errno
 
-zlink 고유 오류 코드. POSIX errno 와 충돌하지 않도록 `ZLINK_HAUSNUMERO`
-기반 오프셋을 사용한다.
+zlink's own error codes. Uses a `ZLINK_HAUSNUMERO`-based offset so it
+does not collide with POSIX errno.
 
-| 대체 값 | 상수 | 의미 | 대표 발생 상황 |
+| Substitute value | Constant | Meaning | Representative situation |
 |--------|------|------|--------------|
-| HAUSNUMERO + 51 | `EFSM` | 유한 상태 기계 오류 | 소켓 상태에서 허용되지 않는 작업 (예: callback 모드에서 direct recv) |
-| HAUSNUMERO + 52 | `ENOCOMPATPROTO` | 호환되지 않는 프로토콜 | 서로 다른 프로토콜 버전의 peer 연결 |
-| HAUSNUMERO + 53 | `ETERM` | 컨텍스트/소켓 종료 | context 또는 소켓이 close 된 상태에서 작업 시도 |
-| HAUSNUMERO + 54 | `EMTHREAD` | I/O 스레드 부족 | context 의 I/O 스레드가 부족 |
+| HAUSNUMERO + 51 | `EFSM` | a finite-state-machine error | an operation not allowed in the socket's state (for example, direct recv in callback mode) |
+| HAUSNUMERO + 52 | `ENOCOMPATPROTO` | an incompatible protocol | a peer connection using a different protocol version |
+| HAUSNUMERO + 53 | `ETERM` | context/socket terminated | an operation attempted while the context or socket is closed |
+| HAUSNUMERO + 54 | `EMTHREAD` | insufficient I/O threads | the context's I/O threads are insufficient |
 
-#### 언어별 ErrorCode 매핑
+#### Per-Language ErrorCode Mapping
 
-각 바인딩은 Public Result Enum 카탈로그의 59 개 non-OK 코드를 언어별
-enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
+Each binding maps the Public Result Enum Catalog's 59 non-OK codes onto
+a per-language enum/constant, providing type-safe branching.
 
-| 언어 | 처리 | ErrorCode 타입 | 접근 방식 |
+| Language | Handling | ErrorCode type | Access |
 |------|------|---------------|----------|
-| C | return | 함수별 typed enum (`zlink_*_result_t`) | 반환값 자체 |
-| C++ | throw | 통합 `ErrorCode` enum | `zlink_error_t.code()` |
-| Java | throw | 통합 `ErrorCode` enum | `ZlinkException.getCode()` |
-| .NET | throw | 통합 `ErrorCode` enum | `ZlinkException.Code` |
-| Node | throw | 통합 `ErrorCode` enum (또는 string 상수) | `ZlinkError.code` |
-| Python | throw | 통합 `ErrorCode` enum | `ZlinkError.code` |
-| Go | return | 통합 `ErrorCode` typed int 상수 | `ZlinkError.Code()` |
-| Rust | return (`Result`) | 통합 `ErrorCode` enum variant | `ZlinkError.code()` |
+| C | return | a per-function typed enum (`zlink_*_result_t`) | the return value itself |
+| C++ | throw | a unified `ErrorCode` enum | `zlink_error_t.code()` |
+| Java | throw | a unified `ErrorCode` enum | `ZlinkException.getCode()` |
+| .NET | throw | a unified `ErrorCode` enum | `ZlinkException.Code` |
+| Node | throw | a unified `ErrorCode` enum (or string constant) | `ZlinkError.code` |
+| Python | throw | a unified `ErrorCode` enum | `ZlinkError.code` |
+| Go | return | a unified `ErrorCode` typed int constant | `ZlinkError.Code()` |
+| Rust | return (`Result`) | a unified `ErrorCode` enum variant | `ZlinkError.code()` |
 
-- 통합 enum 의 각 variant 는 Public Result Enum 카탈로그의 59 개 값과
-  1:1 대응한다. 원본 C 의 enum 분리 (submit / recv / handler / close /
-  bind / connect / config / request) 를 유지하거나, 언어 관용구에 따라
-  단일 enum 으로 통합해도 된다. 둘 중 어떤 스타일이든 **값은 누락 없이 모두
-  표현해야 한다**.
-- 상수/variant 이름은 원본 `UPPER_SNAKE_CASE` 를 그대로 쓰거나 언어 스타일
-  (`PascalCase` / `camelCase`) 로 변환한다. 숫자 값과 의미는 고정이다.
-- `internalErrno` / `internal_errno` 필드는 별도로 제공하며, 주로
-  `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용이다.
+- Each variant of the unified enum maps 1:1 to one of the Public Result
+  Enum Catalog's 59 values. A binding can either keep the original C
+  enum split (submit / recv / handler / close / bind / connect / config
+  / request), or unify it into a single enum per language idiom. Either
+  style must **express every value without omission**.
+- A constant/variant name can either keep the original
+  `UPPER_SNAKE_CASE` or convert to that language's style
+  (`PascalCase`/`camelCase`). The numeric value and meaning are fixed.
+- An `internalErrno`/`internal_errno` field is provided separately,
+  mainly for looking up the detailed cause behind a coarse bucket such
+  as `INTERNAL_ERROR`.
 
-### Request-Reply 오류 정책
+### Request-Reply Error Policy
 
-request-reply 는 Per-Function Error Type Hierarchy 의 **`RequestError`**
-(request completion) 과 **`SubmitError`** (request submit) 두 하위 타입을
-사용한다. `RequestError` 는 `zlink_request_result_t` 에 대응하며,
-`SubmitError` 는 `zlink_submit_result_t` 에 대응한다.
+Request-reply uses two subtypes from the Per-Function Error Type
+Hierarchy: **`RequestError`** (request completion) and **`SubmitError`**
+(request submit). `RequestError` maps to `zlink_request_result_t`, and
+`SubmitError` maps to `zlink_submit_result_t`.
 
-오류 코드는 두 계층으로 나뉜다.
+Error codes split into two layers.
 
-**Wire error reply 코드** — peer 가 보내는 protocol-level error reply.
-wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSUPP`, `EINVAL`.
+**Wire error reply codes** — a protocol-level error reply the peer
+sends. Only 3 errno values are usable on the wire: `ENOENT`,
+`EOPNOTSUPP`, `EINVAL`.
 
-**API/completion 코드** — core 가 callback 에 전달하는 errno:
+**API/completion codes** — the errno core delivers to the callback:
 
-| errno | 발생 시점 |
+| errno | When it occurs |
 |-------|----------|
-| `ENOENT` | 대상 peer/spot 을 찾지 못함 (wire 또는 local) |
-| `EOPNOTSUPP` | peer 종류 불일치 또는 지원 안 함 |
-| `EINVAL` | 잘못된 파라미터 |
-| `ETIMEDOUT` | reply 대기 중 timeout 초과 |
-| `EPROTO` | envelope parse 실패 또는 잘못된 remote reply |
-| `EBUSY` | 수신 표면 충돌 (handler 중복 등록) |
+| `ENOENT` | the target peer/spot could not be found (wire or local) |
+| `EOPNOTSUPP` | a peer-kind mismatch, or not supported |
+| `EINVAL` | an invalid parameter |
+| `ETIMEDOUT` | the reply wait exceeded the timeout |
+| `EPROTO` | envelope parse failure, or an invalid remote reply |
+| `EBUSY` | a receive-surface conflict (duplicate handler registration) |
 
-**request 오류 (`RequestError`):**
+**Request errors (`RequestError`):**
 
-| 상황 | `request()` |
+| Situation | `request()` |
 |------|------------|
-| backpressure | writable 대기 (timeout 에 합산) |
+| backpressure | waits for writable (added to the timeout) |
 | timeout | `RequestError(TIMED_OUT)` |
-| 대상 없음 | `RequestError(NOT_FOUND)` |
-| remote error reply | `RequestError(해당 코드)` |
-| 소켓 close | `RequestError(TERMINATED)` |
-| protocol error | `RequestError(PROTOCOL_ERROR)` |
-| pending map 에 없는 reply | 무시 |
+| target not found | `RequestError(NOT_FOUND)` |
+| a remote error reply | `RequestError(<matching code>)` |
+| the socket closed | `RequestError(TERMINATED)` |
+| a protocol error | `RequestError(PROTOCOL_ERROR)` |
+| a reply not in the pending map | ignored |
 
-**reply 오류 (`SubmitError`):**
+**Reply errors (`SubmitError`):**
 
-| 상황 | `reply()` |
+| Situation | `reply()` |
 |------|-----------|
-| 성공 | 정상 반환 |
+| success | returns normally |
 | backpressure | `SubmitError(BACKPRESSURED)` |
 | not connected | `SubmitError(NOT_CONNECTED)` |
-| 기타 실패 | `SubmitError(해당 submit 코드)` |
+| any other failure | `SubmitError(<matching submit code>)` |
 
-- async request 는 완료 실패를 async completion 경로 (Future reject / await
-  error) 로 전달한다.
-- callback request 는 **submit 실패를 즉시 throw/return** 하고, submit 성공 후의
-  완료 실패만 callback 의 `RequestResult` / `RequestError` 로 전달한다.
-- 함수군별 하위 에러 타입을 사용한다 (Per-Function Error Type Hierarchy 참조).
-  - submit 실패: `SubmitException` / `SubmitError`
-  - request 완료 실패: `RequestException` / `RequestError`
-- 언어별 표현:
-  - Java: `SubmitException` / `RequestException` — `getCode()` 로 원인 구분 (unchecked)
-  - .NET: `ZlinkSubmitException` / `ZlinkRequestException` — `Code` property
-  - Node: `SubmitError` / `RequestError` — `code` property
-  - Python: `SubmitError` / `RequestError` — `code` attribute
-  - C++: `submit_error_t` / `request_error_t` — `.code()` 메서드
-  - Go: `*SubmitError` / `*RequestError` — `Code()` 메서드 (interface)
-  - Rust: `Err(SubmitError{..})` / `Err(RequestError{..})`, 또는 다중 함수군
-    경계에서는 `Err(ZlinkError::Submit(..))` / `Err(ZlinkError::Request(..))`
-    — `.code()` 메서드
+- An async request delivers a completion failure through the async
+  completion path (a Future reject / an await error).
+- A callback request **throws/returns a submit failure immediately**,
+  and delivers only a post-submit-success completion failure through the
+  callback's `RequestResult`/`RequestError`.
+- Uses the per-function-family subtype error (see Per-Function Error
+  Type Hierarchy).
+  - a submit failure: `SubmitException`/`SubmitError`
+  - a request completion failure: `RequestException`/`RequestError`
+- Per-language representation:
+  - Java: `SubmitException`/`RequestException` — distinguish the cause
+    with `getCode()` (unchecked)
+  - .NET: `ZlinkSubmitException`/`ZlinkRequestException` — the `Code`
+    property
+  - Node: `SubmitError`/`RequestError` — the `code` property
+  - Python: `SubmitError`/`RequestError` — the `code` attribute
+  - C++: `submit_error_t`/`request_error_t` — the `.code()` method
+  - Go: `*SubmitError`/`*RequestError` — the `Code()` method (interface)
+  - Rust: `Err(SubmitError{..})`/`Err(RequestError{..})`, or at a
+    multi-function-family boundary,
+    `Err(ZlinkError::Submit(..))`/`Err(ZlinkError::Request(..))` — the
+    `.code()` method
 
 ## 길이와 범위 경계 정책
 - 검증 책임은 두 층으로 나눈다.

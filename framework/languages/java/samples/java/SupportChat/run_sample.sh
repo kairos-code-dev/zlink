@@ -122,7 +122,10 @@ wait_port "$support_router_endpoint"
 wait_port "$api_channel_endpoint"
 wait_port "$session_router_endpoint"
 wait_port "$session_stream_endpoint"
-wait_framework_ready_logs "$LOG_DIR" 1
+wait_framework_ready_logs "$LOG_DIR"
+wait_framework_peer_ready_counts "$LOG_DIR" \
+  "session.log:1" \
+  "support.log:1"
 echo "topology=ready"
 
 "$ROOT_DIR/Client/build/install/Client/bin/Client" \

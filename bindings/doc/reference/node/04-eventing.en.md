@@ -25,9 +25,14 @@ monitor.onEvent(event => logger.info(`${event.event} ${event.remoteAddr}`));
 const status = monitor.status();
 ```
 
-**Options.** `recv(flags?: number)` (returns `MonitorEvent | null` — `null` when nothing pending
-under a non-blocking flag), `onEvent(handler: (event: MonitorEvent) => void)`, `status()` (returns
-`MonitorStatus`), `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `recv(flags?: number)` | pulls the next event; returns `MonitorEvent \| null` — `null` when nothing pending under a non-blocking flag |
+| `onEvent(handler: (event: MonitorEvent) => void)` | registers a passive lifecycle-event callback |
+| `status()` | returns a `MonitorStatus` point-in-time snapshot |
+| `close()` | closes the monitor |
 
 **Completion result.** All members are synchronous.
 
@@ -43,9 +48,14 @@ A single socket connection-lifecycle event reported by a monitor. A `class` with
 constructor — instances are created only by monitor `recv`/`onEvent` operations, never
 directly.
 
-**Options.** No parameters — read-only fields: `event` (`MonitorEventType`), `value` (`number`, an
-event-specific value such as an error code or reconnect interval), `routingId` (`RoutingId | null`),
-`localAddr`/`remoteAddr` (`string`).
+**Options.** No parameters — obtained via a monitor's `recv`/`onEvent`, not constructed directly.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `event` | `MonitorEventType` | the kind of lifecycle event |
+| `value` | `number` | an event-specific value such as an error code or reconnect interval |
+| `routingId` | `RoutingId \| null` | the peer routing id, present when the event provides one |
+| `localAddr` / `remoteAddr` | `string` | the local/remote address associated with the event |
 
 **Completion result.** N/A — an immutable value delivered by the monitor.
 
@@ -93,12 +103,17 @@ const events = createPollEvents(8);
 const ready = poller.wait(events, 1000);
 ```
 
-**Options.** `size` (read-only). `add(socket: BaseSocket, events: readonly PollEventFlagValue[],
-slot: number)` — **events are supplied as a `readonly` array parameter**, not varargs (java) or a
-combined bitmask (dotnet/cpp); `add(timer: Timer, slot: number)`. `modify(socket, events)`,
-`modifyFd(fd, events)`. `remove(socket)`/`remove(timer)`/`removeFd(fd)` (each returns `boolean`,
-true when it was registered). `addFd(fd, events, slot)`. `wait(events: PollEvents, timeoutMs:
-number)` — a negative timeout blocks indefinitely.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `size` | read-only, the number of currently registered sources |
+| `add(socket: BaseSocket, events: readonly PollEventFlagValue[], slot: number)` | registers a socket; **events are supplied as a `readonly` array parameter**, not varargs (java) or a combined bitmask (dotnet/cpp) |
+| `addFd(fd, events, slot)` | registers a raw file descriptor, same array/slot shape |
+| `add(timer: Timer, slot: number)` | registers a timer to be multiplexed alongside sockets/fds |
+| `modify(socket, events)` / `modifyFd(fd, events)` | replaces the watched events for an already-registered socket/fd |
+| `remove(socket)` / `remove(timer)` / `removeFd(fd)` | unregisters the source; returns `boolean`, `true` when it was actually registered |
+| `wait(events: PollEvents, timeoutMs: number)` | blocks up to `timeoutMs`, populating `events` in place; a negative timeout blocks indefinitely |
 
 **Completion result.** Registration/removal members are synchronous. `wait` blocks up to
 `timeoutMs`, filling `events` in place and returning the ready count as `number`.
@@ -123,13 +138,23 @@ for (let i = 0; i < events.readyCount; i++) {
 }
 ```
 
-**Options.** `PollEvents`: `capacity` (read-only `number`), `readyCount` (read-only `number`),
-`sourceKind(index)`/`slot(index)`/`revents(index)`/`fd(index)` (each returns `number`),
-`hasEvent(index, event: PollEventFlagValue)` (convenience bit-test, `boolean`), `close()`.
-`PollEvent` is a plain read-only interface — `sourceKind`, `slot`, `revents`, `fd` (all `number`) —
-distinct from `PollEvents` and not directly produced by any entry documented in this reference
-tier (unlike java's `PollEvents.eventAt(index)`, there is no equivalent materializing method
-declared on this binding's `PollEvents`).
+**Options — `PollEvents`.**
+
+| Member | Meaning |
+| --- | --- |
+| `capacity` | read-only `number`, the fixed capacity passed to `createPollEvents(...)` |
+| `readyCount` | read-only `number`, how many of the slots hold a ready event after the last `wait` |
+| `sourceKind(index)` | `number`, the ready source's kind at that index |
+| `slot(index)` | `number`, the caller token supplied when that source was registered |
+| `revents(index)` | `number`, raw poll-event bitmask for that index |
+| `fd(index)` | `number`, the file descriptor at that index, populated for FD-kind sources |
+| `hasEvent(index, event: PollEventFlagValue)` | convenience bit-test over `revents(index)`, returns `boolean` |
+| `close()` | releases the buffer |
+
+**Options — `PollEvent`.** A plain read-only interface — `sourceKind`, `slot`, `revents`, `fd` (all
+`number`) — distinct from `PollEvents` and not directly produced by any entry documented in this
+reference tier (unlike java's `PollEvents.eventAt(index)`, there is no equivalent materializing
+method declared on this binding's `PollEvents`).
 
 **Completion result.** All `PollEvents` accessors are synchronous. `PollEvent` is a plain read-only
 value shape with no accessor methods of its own.

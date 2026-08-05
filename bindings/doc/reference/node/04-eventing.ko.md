@@ -27,10 +27,14 @@ monitor.onEvent(event => logger.info(`${event.event} ${event.remoteAddr}`));
 const status = monitor.status();
 ```
 
-**Options.** `recv(flags?: number)`(`MonitorEvent | null` 반환 —
-non-blocking flag 아래 대기 중인 게 없으면 `null`),
-`onEvent(handler: (event: MonitorEvent) => void)`, `status()`
-(`MonitorStatus` 반환), `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `recv(flags?: number)` | 다음 event를 가져옴; `MonitorEvent \| null` 반환 — non-blocking flag 아래 대기 중인 게 없으면 `null` |
+| `onEvent(handler: (event: MonitorEvent) => void)` | 수동적 lifecycle-event 콜백을 등록 |
+| `status()` | 시점 스냅샷 `MonitorStatus`를 반환 |
+| `close()` | monitor를 닫음 |
 
 **Completion result.** 모든 member는 동기다.
 
@@ -47,9 +51,15 @@ monitor가 보고하는 socket connection-lifecycle event 하나. private
 생성자를 가진 `class`다 — instance는 monitor `recv`/`onEvent`
 operation으로만 생성되며 직접 생성할 수 없다.
 
-**Options.** 인자 없음 — 읽기 전용 필드: `event`(`MonitorEventType`),
-`value`(`number`, 에러 코드나 reconnect interval 같은 event별 값),
-`routingId`(`RoutingId | null`), `localAddr`/`remoteAddr`(`string`).
+**Options.** 인자 없음 — 직접 생성하지 않고 monitor의 `recv`/`onEvent`로
+얻는다.
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `event` | `MonitorEventType` | lifecycle event의 종류 |
+| `value` | `number` | 에러 코드나 reconnect interval 같은 event별 값 |
+| `routingId` | `RoutingId \| null` | event가 제공할 때만 존재하는 peer routing id |
+| `localAddr` / `remoteAddr` | `string` | event에 결부된 local/remote 주소 |
 
 **Completion result.** 해당 없음 — monitor가 전달하는 불변 값.
 
@@ -99,14 +109,17 @@ const events = createPollEvents(8);
 const ready = poller.wait(events, 1000);
 ```
 
-**Options.** `size`(읽기 전용). `add(socket: BaseSocket, events:
-readonly PollEventFlagValue[], slot: number)` — **event는 varargs(java)나
-결합된 bitmask(dotnet/cpp)가 아니라 `readonly` 배열 인자로 주어진다**;
-`add(timer: Timer, slot: number)`. `modify(socket, events)`,
-`modifyFd(fd, events)`. `remove(socket)`/`remove(timer)`/
-`removeFd(fd)`(각각 `boolean` 반환, 등록돼 있었으면 true). `addFd(fd,
-events, slot)`. `wait(events: PollEvents, timeoutMs: number)` — 음수
-timeout은 무기한 block한다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `size` | 읽기 전용, 현재 등록된 source 개수 |
+| `add(socket: BaseSocket, events: readonly PollEventFlagValue[], slot: number)` | socket을 등록; **event는 varargs(java)나 결합된 bitmask(dotnet/cpp)가 아니라 `readonly` 배열 인자로 주어진다** |
+| `addFd(fd, events, slot)` | raw file descriptor를 등록, 같은 배열/slot 형태 |
+| `add(timer: Timer, slot: number)` | timer를 socket/fd와 함께 multiplex하도록 등록 |
+| `modify(socket, events)` / `modifyFd(fd, events)` | 이미 등록된 socket/fd의 감시 event를 교체 |
+| `remove(socket)` / `remove(timer)` / `removeFd(fd)` | source 등록을 해제; `boolean` 반환, 실제로 등록돼 있었으면 `true` |
+| `wait(events: PollEvents, timeoutMs: number)` | `timeoutMs`까지 block하며 `events`를 그 자리에서 채움; 음수 timeout은 무기한 block |
 
 **Completion result.** 등록/제거 member는 동기다. `wait`는
 `timeoutMs`까지 block하며, `events`를 그 자리에서 채우고 준비된 개수를
@@ -133,13 +146,22 @@ for (let i = 0; i < events.readyCount; i++) {
 }
 ```
 
-**Options.** `PollEvents`: `capacity`(읽기 전용 `number`),
-`readyCount`(읽기 전용 `number`), `sourceKind(index)`/`slot(index)`/
-`revents(index)`/`fd(index)`(각각 `number` 반환), `hasEvent(index,
-event: PollEventFlagValue)`(편의 bit-test, `boolean`), `close()`.
-`PollEvent`는 순수 읽기 전용 interface다 — `sourceKind`, `slot`,
-`revents`, `fd`(전부 `number`) — `PollEvents`와 구별되며, 이 레퍼런스
-tier에 문서화된 어떤 진입점으로도 직접 생성되지 않는다(java의
+**Options — `PollEvents`.**
+
+| Member | 의미 |
+| --- | --- |
+| `capacity` | 읽기 전용 `number`, `createPollEvents(...)`에 넘긴 고정 용량 |
+| `readyCount` | 읽기 전용 `number`, 마지막 `wait` 이후 몇 개 slot이 준비된 event를 담고 있는지 |
+| `sourceKind(index)` | `number`, 해당 index의 준비된 source 종류 |
+| `slot(index)` | `number`, 그 source 등록 시 넘긴 caller token |
+| `revents(index)` | `number`, 해당 index의 raw poll-event bitmask |
+| `fd(index)` | `number`, 해당 index의 file descriptor, FD kind source에서만 채워짐 |
+| `hasEvent(index, event: PollEventFlagValue)` | `revents(index)`에 대한 편의 bit-test, `boolean` 반환 |
+| `close()` | buffer를 해제 |
+
+**Options — `PollEvent`.** 순수 읽기 전용 interface다 — `sourceKind`,
+`slot`, `revents`, `fd`(전부 `number`) — `PollEvents`와 구별되며, 이
+레퍼런스 tier에 문서화된 어떤 진입점으로도 직접 생성되지 않는다(java의
 `PollEvents.eventAt(index)`와 달리, 이 binding의 `PollEvents`엔 대응하는
 materialize 메서드가 선언돼 있지 않다).
 

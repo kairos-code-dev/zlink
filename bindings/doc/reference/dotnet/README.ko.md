@@ -24,13 +24,29 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 
 ## Category
 
-| Category | 상태 | Contract 원본 |
+[.NET 바인딩 스펙](../../spec/dotnet/README.ko.md)은 `Contracts/Service/`(SPOT node, Spot,
+Actor)를 포함한 6개 category를 정의한다. 그 category는 스펙이 binding이 "정렬됐다"고
+간주하기 위한 필수 목표 형태로 기술하고 있어, 이 레퍼런스 트리가 임의로 목표 형태에서
+빼버릴 수 있는 게 아니다. 하지만 현재 `bindings/dotnet/src/Zlink/Contracts/`에는
+`Service/` 폴더가 없다 — SPOT/Actor는 framework 계층(`Systems.Zlink.Framework`)에만
+다른 타입 이름으로 존재한다. 레퍼런스 tier는 caller가 실제로 호출할 수 있는 표면을
+문서화한다는 원칙(core 레퍼런스를 열망적 스펙 문구가 아니라 `zlink.h` 기준으로 작성했던
+것과 같은 원칙)에 따라, **`Contracts/Service/`가 소스에 존재하기 전까지 이 트리는
+6개가 아니라 5개 category만 갖는다.** 이 공백이 미구현 목표인지 framework 계층으로
+영구히 옮겨간 설계인지는 스펙 차원의 질문이며 이 문서의 범위 밖이다.
+
+| Category | 상태 | Contract 원본(`Contracts/` 대조 확인) |
 |---|---|---|
-| [Core](01-core.ko.md) | 작성 완료 | `Contracts/Core/`(`Context.cs`, `ContextOptions.cs`, `RoutingId.cs`, `Zlink.cs`) |
-| Messaging | 미착수 | `Contracts/Messaging/`(`Message.cs`, `Received.cs`, `TopicMessage.cs`, `SubscriptionEvent.cs`, `OperationContracts.cs`) |
-| Sockets | 미착수 | `Contracts/Sockets/`(`ISocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `IStreamSocket.cs`, `SocketOptionFacades.cs`) |
-| Eventing | 미착수 | `Contracts/Eventing/`(`Monitor.cs`, `Poller.cs`, `PollEvent.cs`, `Timer.cs`, `ZlinkPoll.cs`) |
-| Service | 미착수 | `Contracts/Service/`(`SpotNode.cs`, `Spot.cs`, `Actor.cs`, `SpotNodeModels.cs`) |
-| Errors | 미착수 | `Contracts/Errors/`(`Errors.cs`) |
+| [Core](01-core.ko.md) | 작성 완료 | `Contracts/Core/`: `Context.cs`, `ContextOptions.cs`, `RoutingId.cs`, `Zlink.cs`, `AtomicCounter.cs`, `ZlinkStopwatch.cs`, `ZlinkThread.cs` |
+| Messaging | 미착수 | `Contracts/Messaging/`: `Message.cs`, `MessageEnvelopeParts.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` |
+| Sockets | 미착수 | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
+| Eventing | 미착수 | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
+| Errors | 미착수 | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
+
+"Core" 표기에 대해: 이는 문자 그대로 소스 폴더 이름 `Contracts/Core/`(context lifecycle,
+context option, `RoutingId`, utility resource)를 가리키는 것이지, 이 저장소의 `core/` C
+library가 아니다. 이름 충돌은 실재하며, 모든 wrapper 언어의 레퍼런스 트리가 이 이름을
+쓰게 되면 모호하게 읽힐 수 있다 — 그렇다면 이는 이 트리가 일방적으로 바꿀 일이 아니라
+bindings 스펙 소유자가 판단할 이름 문제다.
 
 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.

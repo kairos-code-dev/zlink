@@ -29,21 +29,23 @@ const monitor = socket.monitorOpen(SOCKET_MONITOR_EVENT_ALL);
 socket.close();
 ```
 
-**Options.** `Socket`: `bind(endpoint: string)`, `unbind(endpoint:
-string)`, `close()`, `monitorOpen(events?: number, handler?:
-SocketMonitorHandler)`(지금까지 다룬 다른 모든 언어와 달리, **handler를
-open 시점에 이 메서드의 두 번째 인자로 직접 등록할 수 있다**, 항상 이후에
-별도의 `onEvent` 스타일 호출이 필요한 게 아니라), `setTlsServer(cert,
-key, requireClientCert?)`, `setTlsClient(ca, hostname, trustSystem?)`.
-`ConnectableSocket extends Socket`은 `connect(endpoint: string)`,
-`disconnect(endpoint: string)`, `disconnectRid(routingId: RoutingId)`를
-더한다. 아래 모든 구체 socket type은 **`StreamSocket`을 제외하고**
+**Options.** 아래 모든 구체 socket type은 **`StreamSocket`을 제외하고**
 `ConnectableSocket`을 확장한다 — `StreamSocket`은 `Socket`을 직접
 확장하고 자신의 `disconnectRid`를 독립적으로 선언한다(아래 참고).
 `BaseSocket` union 타입(`PairSocket | PubSocket | SubSocket |
 DealerSocket | RouterSocket | XPubSocket | XSubSocket | StreamSocket`)은
 `proxy`/`proxySteerable`(Core category)처럼 임의 구체 socket type을
 받는 API를 위해 export된다.
+
+| Member | 의미 |
+| --- | --- |
+| `bind(endpoint: string)` / `unbind(endpoint: string)` | 주소에서 listen을 시작/중단 |
+| `close()` | native socket을 닫는다 |
+| `monitorOpen(events?: number, handler?: SocketMonitorHandler)` | monitor를 연다; 지금까지 다룬 다른 모든 언어와 달리 **handler를 open 시점에 이 메서드의 두 번째 인자로 직접 등록할 수 있다**, 항상 이후에 별도의 `onEvent` 스타일 호출이 필요한 게 아니라 |
+| `setTlsServer(cert, key, requireClientCert?)` | `bind` 전에 적용 |
+| `setTlsClient(ca, hostname, trustSystem?)` | `connect` 전에 적용 |
+| `ConnectableSocket.connect(endpoint: string)` / `disconnect(endpoint: string)` | peer 주소로 connect/disconnect |
+| `ConnectableSocket.disconnectRid(routingId: RoutingId)` | 해당 routing id로 식별되는 peer를 disconnect |
 
 **Completion result.** `monitorOpen`을 제외한 모든 member는 반환값 없이
 동기다. `monitorOpen`은 `MonitorSocket`(Eventing category)을 동기로
@@ -67,29 +69,46 @@ socket.options.linger = 1000;
 socket.options.submitRetryMode = SubmitRetryMode.LocalFailure;
 ```
 
-**Options.** `linger`(`number`, ms), `sendHwm`/`recvHwm`(`bigint`,
-accounted-byte HWM — `0n`은 무제한), `sendTimeout`/`recvTimeout`/
-`connectTimeout`(`number`, ms), `immediate`(`boolean`),
-`ridDuplicatePolicy`(`RidDuplicatePolicyValue`),
-`ipv6`/`tcpNoDelay`(`boolean`), `tcpKeepalive`(`number`, -1/0/1),
-`maxMsgSize`(`bigint`, `-1n`은 제한 없음), `lastEndpoint`(`string`, 읽기
-전용), `backlog`(`number`), `reconnectInterval`/
-`reconnectIntervalMax`(`number`, ms), `submitRetryMode`(**순수 `number`로
-타입 지정, `SubmitRetryModeValue`가 아님** — `ridDuplicatePolicy`의 typed
-property와 비교하면 비일관적), `submitRetryTimeout`(`number`, ms),
-`submitRetryAttempts`(`number`). 타입별 확장: `DealerSocketOptions`는
-`probe`(`boolean`), `requestTimeout`(`number`, ms),
-`peerWeight`(`number`, 0-100)를 더한다. `RouterSocketOptions`는
-`mandatory`/`handover`/`probe`(`boolean`), `connectRoutingId`
-(`RoutingId | null`, 읽기 전용)에 더해 `setConnectRoutingId
-(routingId)`, `requestTimeout`/`peerWeight`(Dealer와 같은 형태)를
-더한다. `StreamSocketOptions`는 `notify`(`boolean`)를 더한다.
-`PubSocketOptions`는 `verbose`/`verboser`/`noDrop`/`manual`/
-`manualLastValue`(`boolean`), `topicsCount`(`number`, 읽기 전용),
-`welcomeMessage()`(`Message` 반환, caller가 소유)/
-`setWelcomeMessage(message: MessageLike)`,
-`approveSubscribe(routingId)`/`rejectSubscribe(routingId)`(`manual`
-필요)를 더한다. `SubSocketOptions`는 `topicsCount`(읽기 전용)만 더한다.
+**Options — `CommonSocketOptions`.**
+
+| Member | 타입 | 의미 |
+| --- | --- | --- |
+| `linger` | `number`, ms | `close()`가 대기 중인 send를 flush하기 위해 기다리는 상한 |
+| `sendHwm` / `recvHwm` | `bigint`, accounted-byte HWM | outbound/inbound HWM; `0n`은 무제한 |
+| `sendTimeout` / `recvTimeout` / `connectTimeout` | `number`, ms | blocking send/receive/connect handshake가 기다리는 상한 |
+| `immediate` | `boolean` | send가 지금 당장 살아있는 연결을 요구하는지, 아니면 연결이 생길 때까지 큐잉하는지 |
+| `ridDuplicatePolicy` | `RidDuplicatePolicyValue` | peer가 기존 routing id를 재사용할 때 벌어지는 일 |
+| `ipv6` | `boolean` | socket이 IPv6 연결을 받아들이는지 |
+| `tcpNoDelay` | `boolean` | `true`면 Nagle 알고리즘을 비활성화 |
+| `tcpKeepalive` | `number`, -1/0/1 | OS TCP keepalive 모드 |
+| `maxMsgSize` | `bigint` | 수신 허용하는 메시지 한 건의 최대 바이트 크기; `-1n`은 제한 없음 |
+| `lastEndpoint` | `string`, 읽기 전용 | 실제로 해석된 bind 주소 |
+| `backlog` | `number` | listening socket의 대기 연결 큐 길이 |
+| `reconnectInterval` / `reconnectIntervalMax` | `number`, ms | 재연결 시도 사이 간격 / 그 간격의 상한 |
+| `submitRetryMode` | **순수 `number`로 타입 지정, `SubmitRetryModeValue`가 아님** — `ridDuplicatePolicy`의 typed property와 비교하면 비일관적 | local back-pressure에서 실패한 submit이 자동 재시도되는지 |
+| `submitRetryTimeout` | `number`, ms | `submitRetryMode`가 요청할 때의 재시도 timeout |
+| `submitRetryAttempts` | `number` | `submitRetryMode`가 요청할 때의 재시도 횟수 상한 |
+
+**Options — 타입별 확장.**
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `DealerSocketOptions` | `probe`(`boolean`) | connect 시 빈 probe 전송 |
+| | `requestTimeout`(`number`, ms) | request timeout |
+| | `peerWeight`(`number`, 0-100) | load-balancing 가중치 |
+| `RouterSocketOptions` | `mandatory`(`boolean`) | 알 수 없는 route에서 조용히 버리는 대신 오류 |
+| | `handover`(`boolean`) | `ridDuplicatePolicy`의 편의 wrapper |
+| | `probe`(`boolean`) | connect 시 빈 probe 전송 |
+| | `connectRoutingId`(`RoutingId \| null`, 읽기 전용) / `setConnectRoutingId(routingId)` | getter·setter 이름이 비대칭 |
+| | `requestTimeout` / `peerWeight` | Dealer와 같은 형태, 양방향 모두 |
+| `StreamSocketOptions` | `notify`(`boolean`) | 활성화 시 peer connect/disconnect를 application 메시지로 전달 |
+| `PubSocketOptions` | `verbose` / `verboser`(`boolean`) | 중복 포함 모든 (un)subscribe 메시지를 전달 |
+| | `noDrop`(`boolean`) | back-pressure에서 조용히 버리는 대신 오류 |
+| | `manual` / `manualLastValue`(`boolean`) | 구독이 `approveSubscribe`/`rejectSubscribe`를 요구; `manualLastValue`는 새로 승인된 구독자에게 topic별 마지막 캐시 메시지도 재전송 |
+| | `topicsCount`(`number`, 읽기 전용) | 활성 구독 개수 |
+| | `welcomeMessage()` / `setWelcomeMessage(message: MessageLike)` | 새로 연결된 구독자 각각에게 자동 전송; getter는 caller가 소유하는 `Message`를 반환 |
+| | `approveSubscribe(routingId)` / `rejectSubscribe(routingId)` | `manual` 필요; set-only, getter 없음 |
+| `SubSocketOptions` | `topicsCount`(읽기 전용) | 이 socket이 가진 유일한 타입별 option |
 
 **Completion result.** 모든 property 읽기/쓰기는 동기다.
 
@@ -113,9 +132,14 @@ const received = new Received();
 if (pair.recv(received)) { /* ... */ }
 ```
 
-**Options.** `options`(`CommonSocketOptions`), `send()`(공유
-`SendOperation` builder 시작), `recv(result: Received, flags?:
-RecvFlags)`, `setSendReadyHandler(handler: () => void)`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `CommonSocketOptions` |
+| `send()` | 공유 `SendOperation` builder를 시작 |
+| `recv(result: Received, flags?: RecvFlags)` | `result`를 다음 메시지로 채움 |
+| `setSendReadyHandler(handler: () => void)` | back-pressure 해제 콜백을 등록 |
 
 **Completion result.** `recv`는 `boolean`을 반환한다 —
 `RecvFlags.DontWait`가 설정되고 메시지가 없을 때만 `false`다.
@@ -137,10 +161,13 @@ dealer.setRoutingId(RoutingId.from('worker-3'));
 const reply = await dealer.request().message(Message.from('payload')).submit();
 ```
 
-**Options.** `PairSocket`의 모든 것에 더해: `options`
-(`DealerSocketOptions`로 override됨), `setRoutingId(routingId)`/
-`getRoutingId()`, `request()`(공유 `RequestOperation` builder 시작 —
-target 인자 없음, DEALER는 API 레벨 peer routing id가 없기 때문).
+**Options.** `PairSocket`의 모든 것에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `DealerSocketOptions`로 override됨 |
+| `setRoutingId(routingId)` / `getRoutingId()` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `request()` | 공유 `RequestOperation` builder를 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없기 때문 |
 
 **Completion result.** (상속된) `recv`는 `PairSocket`과 같은 `boolean`
 관례를 따른다.
@@ -164,16 +191,19 @@ router.send(peerRid).message(Message.from('hello')).submit();
 router.setCompletionControlHandler((rid, parts) => { /* ... */ });
 ```
 
-**Options.** `options`(`RouterSocketOptions`), `send(routingId)`,
-`recv(result: Received, flags?: RecvFlags)`,
-`setSendReadyHandler(handler)`, `setRoutingId(routingId)`/
-`getRoutingId()`, `request(peerRid)`(Messaging category의
-`RequestOperation`, 특정 peer로 향함), `reply(peerRid, requestSeq:
-bigint)`(Messaging category의 `ReplyOperation`),
-`trySendCompletionControl(peerRid, parts: readonly MessageLike[])`
-(`parts`를 소비하지 않음), `setCompletionControlHandler(handler:
-(sourceRoutingId, parts: Message[]) => void)`(handler가 수신 메시지를
-소유).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `RouterSocketOptions` |
+| `send(routingId)` | 공유 `SendOperation`을 그 peer로 향해 시작 |
+| `recv(result: Received, flags?: RecvFlags)` | `result`를 다음 메시지로 채움 |
+| `setSendReadyHandler(handler)` | back-pressure 해제 콜백을 등록 |
+| `setRoutingId(routingId)` / `getRoutingId()` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `request(peerRid)` | Messaging category의 `RequestOperation`, 특정 peer로 향함 |
+| `reply(peerRid, requestSeq: bigint)` | Messaging category의 `ReplyOperation`, 해당 peer의 request에 응답 |
+| `trySendCompletionControl(peerRid, parts: readonly MessageLike[])` | peer의 기존 연결로 opaque control record를 전송; `parts`를 소비하지 않음 |
+| `setCompletionControlHandler(handler: (sourceRoutingId, parts: Message[]) => void)` | 들어오는 completion-control record를 받는 콜백을 등록; handler가 수신 메시지를 소유 |
 
 **Completion result.** `trySendCompletionControl`은 `boolean`을
 반환한다 — completion connection이 back-pressure일 때만 `false`다.
@@ -202,13 +232,17 @@ const evt = new SubscriptionEvent();
 if (xpub.receiveSubscriptionEvent(evt)) { /* ... */ }
 ```
 
-**Options.** `PubSocket extends ConnectableSocket`: `options`
-(`PubSocketOptions`), `publish(topic: string)`(공유 `SendOperation`
-builder 시작), `setSendReadyHandler(handler)`. **`PubSocket`엔
-`setRoutingId`/`getRoutingId`가 없다**(둘 다 있는 dotnet의
-`IPubSocket`과 다름). `XPubSocket extends PubSocket`은
-`receiveSubscriptionEvent(result: SubscriptionEvent, flags?:
-RecvFlags)`만 더한다.
+**Options.** `PubSocket extends ConnectableSocket`; `XPubSocket extends PubSocket`.
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `PubSocketOptions` |
+| `publish(topic: string)` | 공유 `SendOperation` builder를 시작 |
+| `setSendReadyHandler(handler)` | back-pressure 해제 콜백을 등록 |
+| `receiveSubscriptionEvent(result: SubscriptionEvent, flags?: RecvFlags)` | `XPubSocket`에만 있음; `result`를 다음 subscribe/unsubscribe로 채움 |
+
+**`PubSocket`엔 `setRoutingId`/`getRoutingId`가 없다**(둘 다 있는 dotnet의
+`IPubSocket`과 다름).
 
 **Completion result.** `receiveSubscriptionEvent`는 위와 같은 관례로
 `boolean`을 반환한다.
@@ -234,12 +268,17 @@ const msg = new TopicMessage();
 if (sub.subscribe(msg)) { /* ... */ }
 ```
 
-**Options.** `SubSocket extends ConnectableSocket`: `options`
-(`SubSocketOptions`), `setSubscription(filter: string)`/
-`unsetSubscription(filter: string)`(구독은 누적된다),
-`subscriptionAt(index: number)`(`SubscriptionEntry | null`),
-`subscribe(result: TopicMessage, flags?: RecvFlags)`. `XSubSocket`은
-아무것도 더하지 않는다 — 모든 member가 상속된 `SubSocket` 표면 그대로다.
+**Options.** `SubSocket extends ConnectableSocket`.
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `SubSocketOptions` |
+| `setSubscription(filter: string)` / `unsetSubscription(filter: string)` | topic filter를 추가/제거; 구독은 누적된다 |
+| `subscriptionAt(index: number)` | `SubscriptionEntry \| null` — 해당 index의 filter |
+| `subscribe(result: TopicMessage, flags?: RecvFlags)` | `result`를 다음 매칭 publish로 채움 |
+
+`XSubSocket`은 아무것도 더하지 않는다 — 모든 member가 상속된 `SubSocket`
+표면 그대로다.
 
 **Completion result.** `subscribe`는 위와 같은 관례로 `boolean`을
 반환한다.
@@ -262,13 +301,17 @@ const stream = createStreamSocket(ctx);
 stream.setPacketHandler((sourceRid, header, body) => { /* header/body 소유 */ });
 ```
 
-**Options.** `options`(`StreamSocketOptions`), `send(routingId)`,
-`recv(result: Received, flags?: RecvFlags)`,
-`setPacketHandler(handler: StreamPacketHandler)`,
-`setSendReadyHandler(handler)`, `setRoutingId(routingId)`/
-`getRoutingId()`, `disconnectRid(routingId)`(`StreamSocket`이
-`ConnectableSocket`의 사본을 상속하지 않으므로 이 interface에 직접
-선언됨).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `options` | `StreamSocketOptions` |
+| `send(routingId)` | 공유 `SendOperation`을 그 peer로 향해 시작 |
+| `recv(result: Received, flags?: RecvFlags)` | `result`를 다음 packet으로 채움 |
+| `setPacketHandler(handler: StreamPacketHandler)` | callback 기반 packet loop를 등록 |
+| `setSendReadyHandler(handler)` | back-pressure 해제 콜백을 등록 |
+| `setRoutingId(routingId)` / `getRoutingId()` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `disconnectRid(routingId)` | `StreamSocket`이 `ConnectableSocket`의 사본을 상속하지 않으므로 이 interface에 직접 선언됨 |
 
 **Completion result.** `recv`는 위 `boolean` 관례를 따른다. packet
 handler는 수신하는 `header`와 `body` 메시지를 둘 다 소유한다.

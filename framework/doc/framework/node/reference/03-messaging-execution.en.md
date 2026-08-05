@@ -193,5 +193,5 @@ These apply in common to every entry point in this category and are not repeated
 See the
 [Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.en.md)
 and the
-[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
+[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md)
 (Korean-only) for the full rationale.

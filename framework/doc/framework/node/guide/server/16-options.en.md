@@ -9,7 +9,7 @@ title: "16. Options — Setting List And Defaults · Node/TypeScript"
 # 16. Options — Setting List And Defaults
 
 > **The document that owns this chapter's contract** —
-> covered by the [Node.js foundation and configuration public contract](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md).
+> covered by the [Node.js foundation and configuration public contract](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md).
 > This chapter organizes that surface as a list, showing what you can set and what happens
 > when you don't.
 
@@ -228,7 +228,7 @@ alive as-is.
 
 ## 10. Related Documents
 
-- The formal contract: [Node.js foundation and configuration public contract](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
+- The formal contract: [Node.js foundation and configuration public contract](../../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md)
 - What each cap changes: [4. Backpressure](04-backpressure.en.md)
 - The procedure for draining traffic with weights: [12. Operations](12-operations.en.md)
 - Injection token list: [13. Key Interface Usage Index](13-interface-catalog.en.md) §1

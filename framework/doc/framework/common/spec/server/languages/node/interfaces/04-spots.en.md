@@ -145,7 +145,7 @@ export interface ZLinkInstanceSpotContext
 ```
 
 The canonical declaration of `SpotId` and `SpotRef` is owned by
-[Foundation Types And Configuration](01-foundation-configuration.ko.md).
+[Foundation Types And Configuration](01-foundation-configuration.en.md).
 This document doesn't redeclare that type — it only fixes where it's
 used in the Spot lifecycle.
 

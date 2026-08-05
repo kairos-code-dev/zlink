@@ -6,7 +6,7 @@ This category covers `ZLinkDispatchOptionsBuilder`/`ZLinkDiagnosticsOptions`, wh
 trace/metric/log recording level, the `ZLinkFrameworkErrorKind` correspondence table used to
 judge failures across every category, and the handler filter contract. The exact signatures are
 owned by the
-[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
+[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md)
 and the
 [Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only).
@@ -104,7 +104,7 @@ that directly, checking the operation's completion condition, idempotency, and b
 ---
 
 See the
-[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
+[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md)
 and the
 [Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only) for the full rationale.

@@ -13,7 +13,7 @@ owned by each package's separate spec.
 
 | No. | Document | Scope |
 |---:|---|---|
-| 01 | [Foundation Types And Configuration](01-foundation-configuration.ko.md) | Global ID/ref, object role/capacity, Actor/Spot relocation adapter and explicit policy |
+| 01 | [Foundation Types And Configuration](01-foundation-configuration.en.md) | Global ID/ref, object role/capacity, Actor/Spot relocation adapter and explicit policy |
 | 02 | [Channel, Request, And Routing](02-channel-messaging.en.md) | Entry Spot actor messaging, Channel/Fanout/RouteMesh calls and handlers |
 | 03 | [Location, Host Lifecycle, And Observability](03-location-observability.en.md) | Operational queries, relocation mode/target version, runtime events, metrics, and tracing |
 | 04 | [Spot And Instance Spot](04-spots.en.md) | [Spot](../../../../01-glossary.en.md#spot) lifecycle, [User Spot](../../../../01-glossary.en.md#entry-user-instance-spot) manager, and the Instance cold-activation fluent call |

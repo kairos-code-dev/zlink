@@ -5,7 +5,7 @@
 This category covers the topology registration entry points `zlinkFramework()`
 (`ZLinkNestFrameworkOptionsBuilder`) provides, and the entry points that query
 RouteMesh/ClientServer/Fanout operational status. The exact signatures are owned by the
-[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md),
+[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md),
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
@@ -397,7 +397,7 @@ host-lifecycle category.
 ---
 
 See the
-[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md),
+[Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.en.md),
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the

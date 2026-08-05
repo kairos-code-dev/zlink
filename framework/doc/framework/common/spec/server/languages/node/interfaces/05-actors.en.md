@@ -80,7 +80,7 @@ export type ZLinkActorJoinCompletion =
 ```
 
 The canonical declaration of `ActorId` and `ActorRef` is owned by
-[Foundation Types And Configuration](01-foundation-configuration.ko.md).
+[Foundation Types And Configuration](01-foundation-configuration.en.md).
 This document only fixes the exact location where the Actor lifecycle
 and manager use that type.
 

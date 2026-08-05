@@ -53,8 +53,8 @@ client.Send().Message(Message.From("PING")).Submit();
   guide's matching code block.
 - This means the guide code is **auto-generated from the sample**, making
   drift structurally impossible.
-- The current documentation build uses the `--8<-- "…:doc"` snippet-path
-  approach; automatic `#region guide` extraction needs an extraction
+- The current documentation build uses the `--8<--` snippet-path directive
+  (a quoted `path:section` argument); automatic `#region guide` extraction needs an extraction
   script and a CI step, so it's left as follow-up work.
 
 ## 3. Verification (Regression)

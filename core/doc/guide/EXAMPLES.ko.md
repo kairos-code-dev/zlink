@@ -43,7 +43,7 @@ client.Send().Message(Message.From("PING")).Submit();
 
 - 빌드 시 `#region guide:<name>` 블록을 가이드의 대응 코드 블록에 주입.
 - 이러면 가이드 코드가 **샘플에서 자동 생성**되어 drift가 구조적으로 불가능해진다.
-- 현재 문서 빌드는 `--8<-- "…:doc"` snippet 경로 방식을 쓰며, `#region guide` 자동 추출은
+- 현재 문서 빌드는 `--8<--` snippet 경로 지시자(따옴표로 감싼 `path:section` 인자)를 쓰며, `#region guide` 자동 추출은
   추출 스크립트와 CI 단계가 필요하므로 후속 작업으로 둔다.
 
 ## 3. 검증 (회귀)

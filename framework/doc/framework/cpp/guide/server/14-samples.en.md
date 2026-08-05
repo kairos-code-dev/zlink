@@ -95,7 +95,7 @@ receives it and pushes it to spectating clients.
 
 - Paired chapters: [05-channel-messaging](05-channel-messaging.ko.md) (ClientServer channel),
   [06-spot](06-spot.ko.md) (creating a User Spot), [09-stream](09-stream.ko.md)
-- Scenario: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) · payload JSON
+- Scenario: [TicTacToe](../../../common/sample/tictactoe/README.en.md) · payload JSON
 - The [02. Getting Started](02-getting-started.en.md) follows this sample. If this is your first read, start
   here.
 
@@ -263,7 +263,7 @@ timeout-reassignment flows.
 
 - Paired chapters: [05-channel-messaging](05-channel-messaging.ko.md),
   [07-actor-spot](07-actor-spot.ko.md), [09-stream](09-stream.ko.md)
-- Scenario: [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md) · payload JSON
+- Scenario: [DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md) · payload JSON
 
 ## 6. ShoppingMall — Building An Order-Processing System
 

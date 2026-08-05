@@ -31,7 +31,7 @@ difference, no per-language sample document is created.
 | [Bingo](bingo/README.ko.md) | Shows a level-based matchmaking Instance Spot, session gateway, actor binding, room User Spot, timer, and bound push in one flow. | `Session`, `Api`, `Matchmaking`, `Play` separated | Location-store-based automatic connection | **automatic registration** | Protobuf |
 | [TicTacToe](tictactoe/README.ko.md) | Shows manual endpoint scale-out with 2 APIs and 2 Plays, room routing based on the official Redis Location Store, and a realtime game flow. | 2 `Api`, 2 `Play`, `Play` owns the stream session together, with no separate `Session` server | **manual endpoint connection** | **automatic registration** | JSON |
 | [SupportChat](supportchat/README.ko.md) | A customer and an agent talk in the same conversation Spot, confirming reconnect, idle timer, close, and bound push. | `Session`, `Api`, `Support` separated | Location-store-based automatic connection | **automatic registration** | JSON |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) | Confirms delivery assignment, timeout reassignment, status push, and customer stream push. | `Dispatch`, `CourierSession`, 2 `CourierMeshNode`, `Tracking`, `CustomerGateway` separated | Location-store-based automatic connection | **automatic registration** | JSON |
+| [DeliveryDispatch](deliverydispatch/README.en.md) | Confirms delivery assignment, timeout reassignment, status push, and customer stream push. | `Dispatch`, `CourierSession`, 2 `CourierMeshNode`, `Tracking`, `CustomerGateway` separated | Location-store-based automatic connection | **automatic registration** | JSON |
 | [ShoppingMall](event/shoppingmall.en.md) | Separates `CommerceApi` (the HTTP edge) from `OrderWorkflow` (the order owner) to build event-sourced order processing and a lookup model. | `CommerceApi`, `OrderWorkflow` separated | Location-store-based automatic connection | **automatic registration** | JSON |
 | [GameQuest](event/gamequest.en.md) | Gathers gameplay events into a per-player owner spot to update an event-sourced quest aggregate and lookup model. | `Session Server`, `PlayerQuestSpot` owner distributed across MeshNodes | Location-store-based automatic connection | **automatic registration** | JSON |
 | [ZoneWorld](zoneworld/README.ko.md) | Shows, via a browser UI, a zone-partitioned MMORPG's boundary crossing (actor relocation), boundary sync, bots (actors with no bound session), and the operations console managing it (runtime events, fanout announcements, node targeting). | `Gateway`, 2 `ZoneNode`, `Ops` separated | Location-store-based automatic connection | **automatic registration** | JSON |
@@ -289,7 +289,7 @@ The samples' standard usage sites are as follows.
 |------|------|-----------|
 | [Bingo](bingo/README.ko.md) §7.1 | The room Spot's actor join/leave queries and records the player's record on the Api server | **`yield`** |
 | [Bingo](bingo/README.ko.md) §3.1 | The Matchmaker Instance Spot decides the same bucket's next state from the Redis reservation result | `async` |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | The Entry Spot initializes the application state of a newly delivered Actor | `async` |
+| [DeliveryDispatch](deliverydispatch/README.en.md) §6.1 | The Entry Spot initializes the application state of a newly delivered Actor | `async` |
 | TicTacToe | Game join leads directly into the game-state flow | `async` |
 
 **Workers and the HTTP client are the same axis** ([04 §1.2](../spec/05-async-execution-policy.en.md),

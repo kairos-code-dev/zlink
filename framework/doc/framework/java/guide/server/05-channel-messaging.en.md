@@ -300,7 +300,7 @@ dependencies only live until that dispatch finishes.
 
 A handler implements an interface and returns its result as the return value.
 
-> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.ko.md).** The
+> **See it in a sample — [TicTacToe](../../../common/sample/tictactoe/README.en.md).** The
 > request handler where the API server receives an authentication request and returns
 > player info. Actual code from the repository.
 
@@ -607,7 +607,7 @@ public final class ProfileService {
   for events you can't afford to miss with a separate resync (e.g., a one-time request for
   current state after reconnecting).
 
-> **See it in a sample — [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md).**
+> **See it in a sample — [DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md).**
 > An order taken over HTTP is delegated to the dispatch server via a channel call, and
 > delivery-status changes are propagated to control and customer-push subscribers via
 > fanout publish. A representative example where the request/send/publish surfaces are all

@@ -169,7 +169,7 @@ There's no need to rebuild from the socket for each one.
 - **③ Matchmaker + dedicated** — matching is implemented as a channel handler (HTTP, etc.).
   **Instead of spinning up a new process per match**, the client connects over STREAM to the
   room spot that was `getOrCreate`d as the matching result.
-  [TicTacToe](../../../common/sample/tictactoe/README.ko.md) is closest to this flow —
+  [TicTacToe](../../../common/sample/tictactoe/README.en.md) is closest to this flow —
   matching request → room/connection info response → connect to the already-prepared room
   spot.
 - **④ Actor service** — an **Instance Spot** is cold-activated by entity ID, processing an
@@ -293,7 +293,7 @@ every message for one room (requests, subscription events, timer ticks, actor pa
 **a single execution line and runs them in order.** Here, "serial" isn't codec serialization
 — it's **serialization of execution order** ([06 §3](06-spot.ko.md)).
 
-Runnable reference samples: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) ·
+Runnable reference samples: [TicTacToe](../../../common/sample/tictactoe/README.en.md) ·
 [Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.en.md)
 
 ### Concurrent Access To One Entity
@@ -499,7 +499,7 @@ await actor.context.boundSession.send(orderStatusChanged(orderId, status)).submi
 ```
 
 Runnable reference samples: [SupportChat](../../../common/sample/supportchat/README.ko.md) ·
-[DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md)
+[DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md)
 
 ### Simplifying Event-Driven Business Processing
 
@@ -891,10 +891,10 @@ The main readers are:
 
 To see ZLink's use concretely, as a business flow, look at the
 [common samples](../../../common/sample/README.en.md). See the real-time game server shape
-in [TicTacToe](../../../common/sample/tictactoe/README.ko.md) and
+in [TicTacToe](../../../common/sample/tictactoe/README.en.md) and
 [Bingo](../../../common/sample/bingo/README.ko.md).
 [ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
-[DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md),
+[DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md),
 [GameQuest](../../../common/sample/event/gamequest.en.md), and
 [SupportChat](../../../common/sample/supportchat/README.ko.md) are end-to-end samples that
 go all the way to the business domain — order workflow, assignment/status tracking, game

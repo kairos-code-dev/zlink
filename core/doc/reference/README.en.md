@@ -65,8 +65,8 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [DEALER](11-dealer.en.md) | Drafted | socket/06-dealer |
 | [ROUTER](12-router.en.md) | Drafted | socket/07-router |
 | [STREAM](13-stream.en.md) | Drafted | socket/08-stream |
-| Socket monitor | Not started | 07-monitoring, 05-events |
-| Polling and pollers | Not started | 06-polling, 05-events |
+| [Socket monitor](14-socket-monitor.en.md) | Drafted | 07-monitoring, 05-events |
+| [Polling and pollers](15-polling.en.md) | Drafted | 06-polling, 05-events |
 | Timers | Not started | 08-utilities §Timers |
 | Utilities | Not started | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
 | Errors, results, and version | Not started | 03-errors, 04-errno-map |

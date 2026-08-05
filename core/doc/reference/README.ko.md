@@ -62,8 +62,8 @@ Core의 공개 표면은 framework의 정제된 8개 category보다 훨씬 세�
 | [DEALER](11-dealer.ko.md) | 작성 완료 | socket/06-dealer |
 | [ROUTER](12-router.ko.md) | 작성 완료 | socket/07-router |
 | [STREAM](13-stream.ko.md) | 작성 완료 | socket/08-stream |
-| Socket monitor | 미착수 | 07-monitoring, 05-events |
-| Polling and pollers | 미착수 | 06-polling, 05-events |
+| [Socket monitor](14-socket-monitor.ko.md) | 작성 완료 | 07-monitoring, 05-events |
+| [Polling and pollers](15-polling.ko.md) | 작성 완료 | 06-polling, 05-events |
 | Timers | 미착수 | 08-utilities §Timers |
 | Utilities | 미착수 | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
 | Errors, results, and version | 미착수 | 03-errors, 04-errno-map |

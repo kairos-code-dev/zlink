@@ -33,4 +33,4 @@ dotnet 8 categories. This is a C++-only extension outside dotnet framework's par
 is not included in this reference — if an HTTP hosting reference is needed, discuss it as a
 separate category.
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+ko and en are both complete. This document tree is wired into `mkdocs.yml` nav.

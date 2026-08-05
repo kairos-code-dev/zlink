@@ -44,4 +44,4 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Eventing](04-eventing.en.md) | Drafted | `Contracts/Eventing/`: `monitor.hpp`, `status.hpp`, `poller.hpp`, `poll_event.hpp`, `timers.hpp`, `events.hpp` |
 | [Errors](05-errors.en.md) | Drafted | `Contracts/Errors/`: `errors.hpp`, `results.hpp` |
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+This document tree is wired into `mkdocs.yml` nav.

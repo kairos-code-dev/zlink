@@ -52,4 +52,4 @@ collision is real; if it reads as ambiguous once every wrapper language's refere
 that is a naming call for whoever owns the bindings spec, not something this tree renames
 unilaterally.
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+This document tree is wired into `mkdocs.yml` nav.

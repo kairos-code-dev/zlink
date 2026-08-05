@@ -18,13 +18,13 @@
 
 | Category | 상태 | Kotlin 고유 진입점 |
 |---|---|---|
-| [Host lifecycle](01-host-lifecycle.ko.md) | 작성 완료(ko) | `CompletionStage<T>.await()` 브리지 |
-| [Topology discovery](02-topology-discovery.ko.md) | 작성 완료(ko) | `routeMesh { }`/`channel { }` DSL, `useCoroutineHandlers(...)` |
-| [Messaging execution](03-messaging-execution.ko.md) | 작성 완료(ko) | `ZLinkKotlinClient`/`ZLinkKotlinRouteClient`/`ZLinkKotlinFanoutClient`의 `await()`/`yield()` |
-| [Spot instance](04-spot-instance.ko.md) | 작성 완료(ko) | `ZLinkSuspendingSpot`/`ZLinkSuspendingEntrySpot`/`ZLinkSuspendingInstanceSpot`, `ZLinkKotlinSpotManager` |
-| [Actor relocation](05-actor-relocation.ko.md) | 작성 완료(ko) | `ZLinkSuspendingActor`/`ZLinkSuspendingActorFactory`, `ZLinkKotlinActorManager`/`ZLinkKotlinActorClient` |
-| [Stream session](06-stream-session.ko.md) | 작성 완료(ko) | `ZLinkSuspendingSession`, `ZLinkKotlinSessionClient`, `bindOrGetActor(...)` |
-| [Location authority](07-location-authority.ko.md) | 작성 완료(ko) | `suspend fun status()`/`listTopology(...)`, `Flow<T>` projection |
-| [Observability diagnostics](08-observability-diagnostics.ko.md) | 작성 완료(ko) | `onMessageFlow { }`, Java `ZLinkFrameworkErrorKind` 재사용 |
+| [Host lifecycle](01-host-lifecycle.ko.md) | 작성 완료 | `CompletionStage<T>.await()` 브리지 |
+| [Topology discovery](02-topology-discovery.ko.md) | 작성 완료 | `routeMesh { }`/`channel { }` DSL, `useCoroutineHandlers(...)` |
+| [Messaging execution](03-messaging-execution.ko.md) | 작성 완료 | `ZLinkKotlinClient`/`ZLinkKotlinRouteClient`/`ZLinkKotlinFanoutClient`의 `await()`/`yield()` |
+| [Spot instance](04-spot-instance.ko.md) | 작성 완료 | `ZLinkSuspendingSpot`/`ZLinkSuspendingEntrySpot`/`ZLinkSuspendingInstanceSpot`, `ZLinkKotlinSpotManager` |
+| [Actor relocation](05-actor-relocation.ko.md) | 작성 완료 | `ZLinkSuspendingActor`/`ZLinkSuspendingActorFactory`, `ZLinkKotlinActorManager`/`ZLinkKotlinActorClient` |
+| [Stream session](06-stream-session.ko.md) | 작성 완료 | `ZLinkSuspendingSession`, `ZLinkKotlinSessionClient`, `bindOrGetActor(...)` |
+| [Location authority](07-location-authority.ko.md) | 작성 완료 | `suspend fun status()`/`listTopology(...)`, `Flow<T>` projection |
+| [Observability diagnostics](08-observability-diagnostics.ko.md) | 작성 완료 | `onMessageFlow { }`, Java `ZLinkFrameworkErrorKind` 재사용 |
 
-En 번역은 다음 단계다. 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.
+ko·en 모두 갖췄다. `mkdocs.yml` nav에 올라가 있다.

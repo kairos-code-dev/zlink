@@ -33,4 +33,4 @@ parity-reference lane), and each entry was written by cross-checking the Node.js
 applications mostly encounter, and raw clients (`ZLinkRouteClient`, `ZLinkActorManager`, etc.) are
 injected via their DI token and called directly.
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+ko and en are both complete. This document tree is wired into `mkdocs.yml` nav.

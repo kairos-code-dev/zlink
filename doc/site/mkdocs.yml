@@ -244,6 +244,46 @@ nav:
               - "06. Stream session": dotnet/reference/06-stream-session.md
               - "07. Location authority": dotnet/reference/07-location-authority.md
               - "08. Observability diagnostics": dotnet/reference/08-observability-diagnostics.md
+          - C++:
+              - "Reference home": cpp/reference/README.md
+              - "01. Host lifecycle": cpp/reference/01-host-lifecycle.md
+              - "02. Topology discovery": cpp/reference/02-topology-discovery.md
+              - "03. Messaging execution": cpp/reference/03-messaging-execution.md
+              - "04. Spot instance": cpp/reference/04-spot-instance.md
+              - "05. Actor relocation": cpp/reference/05-actor-relocation.md
+              - "06. Stream session": cpp/reference/06-stream-session.md
+              - "07. Location authority": cpp/reference/07-location-authority.md
+              - "08. Observability diagnostics": cpp/reference/08-observability-diagnostics.md
+          - Java:
+              - "Reference home": java/reference/README.md
+              - "01. Host lifecycle": java/reference/01-host-lifecycle.md
+              - "02. Topology discovery": java/reference/02-topology-discovery.md
+              - "03. Messaging execution": java/reference/03-messaging-execution.md
+              - "04. Spot instance": java/reference/04-spot-instance.md
+              - "05. Actor relocation": java/reference/05-actor-relocation.md
+              - "06. Stream session": java/reference/06-stream-session.md
+              - "07. Location authority": java/reference/07-location-authority.md
+              - "08. Observability diagnostics": java/reference/08-observability-diagnostics.md
+          - Kotlin:
+              - "Reference home": kotlin/reference/README.md
+              - "01. Host lifecycle": kotlin/reference/01-host-lifecycle.md
+              - "02. Topology discovery": kotlin/reference/02-topology-discovery.md
+              - "03. Messaging execution": kotlin/reference/03-messaging-execution.md
+              - "04. Spot instance": kotlin/reference/04-spot-instance.md
+              - "05. Actor relocation": kotlin/reference/05-actor-relocation.md
+              - "06. Stream session": kotlin/reference/06-stream-session.md
+              - "07. Location authority": kotlin/reference/07-location-authority.md
+              - "08. Observability diagnostics": kotlin/reference/08-observability-diagnostics.md
+          - Node.js:
+              - "Reference home": node/reference/README.md
+              - "01. Host lifecycle": node/reference/01-host-lifecycle.md
+              - "02. Topology discovery": node/reference/02-topology-discovery.md
+              - "03. Messaging execution": node/reference/03-messaging-execution.md
+              - "04. Spot instance": node/reference/04-spot-instance.md
+              - "05. Actor relocation": node/reference/05-actor-relocation.md
+              - "06. Stream session": node/reference/06-stream-session.md
+              - "07. Location authority": node/reference/07-location-authority.md
+              - "08. Observability diagnostics": node/reference/08-observability-diagnostics.md
       - 스펙:
           - "공통 스펙": common/README.ko.md
           - 작성 기준과 공통 용어:
@@ -309,6 +349,57 @@ nav:
         - Python: bindings/guide/python/index.ko.md
         - Go: bindings/guide/go/index.ko.md
         - Rust: bindings/guide/rust/index.ko.md
+      - Reference:
+        - C: bindings/reference/c/README.md
+        - .NET:
+          - "Reference home": bindings/reference/dotnet/README.md
+          - "01. Core": bindings/reference/dotnet/01-core.md
+          - "02. Messaging": bindings/reference/dotnet/02-messaging.md
+          - "03. Sockets": bindings/reference/dotnet/03-sockets.md
+          - "04. Eventing": bindings/reference/dotnet/04-eventing.md
+          - "05. Errors": bindings/reference/dotnet/05-errors.md
+        - C++:
+          - "Reference home": bindings/reference/cpp/README.md
+          - "01. Core": bindings/reference/cpp/01-core.md
+          - "02. Messaging": bindings/reference/cpp/02-messaging.md
+          - "03. Sockets": bindings/reference/cpp/03-sockets.md
+          - "04. Eventing": bindings/reference/cpp/04-eventing.md
+          - "05. Errors": bindings/reference/cpp/05-errors.md
+        - Java:
+          - "Reference home": bindings/reference/java/README.md
+          - "01. Core": bindings/reference/java/01-core.md
+          - "02. Messaging": bindings/reference/java/02-messaging.md
+          - "03. Sockets": bindings/reference/java/03-sockets.md
+          - "04. Eventing": bindings/reference/java/04-eventing.md
+          - "05. Errors": bindings/reference/java/05-errors.md
+        - Node.js:
+          - "Reference home": bindings/reference/node/README.md
+          - "01. Core": bindings/reference/node/01-core.md
+          - "02. Messaging": bindings/reference/node/02-messaging.md
+          - "03. Sockets": bindings/reference/node/03-sockets.md
+          - "04. Eventing": bindings/reference/node/04-eventing.md
+          - "05. Errors": bindings/reference/node/05-errors.md
+        - Python:
+          - "Reference home": bindings/reference/python/README.md
+          - "01. Core": bindings/reference/python/01-core.md
+          - "02. Messaging": bindings/reference/python/02-messaging.md
+          - "03. Sockets": bindings/reference/python/03-sockets.md
+          - "04. Eventing": bindings/reference/python/04-eventing.md
+          - "05. Errors": bindings/reference/python/05-errors.md
+        - Go:
+          - "Reference home": bindings/reference/go/README.md
+          - "01. Core": bindings/reference/go/01-core.md
+          - "02. Messaging": bindings/reference/go/02-messaging.md
+          - "03. Sockets": bindings/reference/go/03-sockets.md
+          - "04. Eventing": bindings/reference/go/04-eventing.md
+          - "05. Errors": bindings/reference/go/05-errors.md
+        - Rust:
+          - "Reference home": bindings/reference/rust/README.md
+          - "01. Core": bindings/reference/rust/01-core.md
+          - "02. Messaging": bindings/reference/rust/02-messaging.md
+          - "03. Sockets": bindings/reference/rust/03-sockets.md
+          - "04. Eventing": bindings/reference/rust/04-eventing.md
+          - "05. Errors": bindings/reference/rust/05-errors.md
       - 스펙:
         - Overview: bindings/spec/README.md
         - Async & Coroutine Policy: bindings/spec/async-coroutine-policy.md
@@ -348,6 +439,26 @@ nav:
           - ZMP Protocol: guide/zmp-protocol.md
           - Glossary: guide/glossary.md
           - Shared Scenarios: guide/scenarios.md
+      - API Reference:
+        - "Reference home": reference/README.md
+        - "01. Context": reference/01-context.md
+        - "02. Message": reference/02-message.md
+        - "03. Socket lifecycle": reference/03-socket-lifecycle.md
+        - "04. Socket options and identity": reference/04-socket-options.md
+        - "05. Raw receive": reference/05-raw-receive.md
+        - "06. PAIR": reference/06-pair.md
+        - "07. PUB": reference/07-pub.md
+        - "08. SUB": reference/08-sub.md
+        - "09. XPUB": reference/09-xpub.md
+        - "10. XSUB": reference/10-xsub.md
+        - "11. DEALER": reference/11-dealer.md
+        - "12. ROUTER": reference/12-router.md
+        - "13. STREAM": reference/13-stream.md
+        - "14. Socket monitor": reference/14-socket-monitor.md
+        - "15. Polling and pollers": reference/15-polling.md
+        - "16. Timers": reference/16-timers.md
+        - "17. Utilities": reference/17-utilities.md
+        - "18. Errors, results, and version": reference/18-errors.md
       - 스펙:
         - Overview: spec/core/README.md
         - Public Contract Governance: spec/core/00-public-contract-governance.md

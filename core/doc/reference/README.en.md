@@ -74,4 +74,4 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 Filenames follow `NN-slug.en.md`/`NN-slug.ko.md` in the numbering above once drafted; the table
 only links a category once its file exists, so this table never carries a dangling link.
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+This document tree is wired into `mkdocs.yml` nav.

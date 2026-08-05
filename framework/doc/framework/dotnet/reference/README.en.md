@@ -48,5 +48,6 @@ This taxonomy is already verified across languages, so this tree does not invent
 
 Numbering follows this same order (the same order contract-inventory uses for its categories).
 
-This document tree is not yet wired into `mkdocs.yml` nav. It stays unwired until the same
-structure is extended to the remaining four framework languages, then goes live in one pass.
+ko and en are both complete, and the same structure has been extended to the remaining four
+framework languages (C++, Java, Kotlin, Node.js). This document tree is wired into `mkdocs.yml`
+nav.

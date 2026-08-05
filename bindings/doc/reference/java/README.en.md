@@ -44,4 +44,4 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing/`: `Poller.java`, `ZlinkTimer.java`, `SocketMonitor.java`, `EventEnums/*.java`, `EventHandlers/*.java`, `EventModels/*.java` |
 | [Errors](05-errors.en.md) | Drafted | `contracts/errors/`: `ErrorCategory.java`, `Errors/*.java` (exception classes + result enums) |
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+This document tree is wired into `mkdocs.yml` nav.

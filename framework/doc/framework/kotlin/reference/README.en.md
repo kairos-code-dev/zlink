@@ -32,4 +32,4 @@ The exact signatures are owned by the
 | [Location authority](07-location-authority.en.md) | Drafted | `suspend fun status()`/`listTopology(...)`, `Flow<T>` projection |
 | [Observability diagnostics](08-observability-diagnostics.en.md) | Drafted | `onMessageFlow { }`, reuses Java `ZLinkFrameworkErrorKind` |
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+ko and en are both complete. This document tree is wired into `mkdocs.yml` nav.

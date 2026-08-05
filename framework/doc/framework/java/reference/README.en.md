@@ -33,4 +33,4 @@ client/runtime access uses beans Spring injects (`ZLinkFrameworkRuntime`, `ZLink
 The Kotlin framework reuses this Java surface as-is and does not have a separate reference tree
 (only its guide covers Kotlin-specific idiom).
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+ko and en are both complete. This document tree is wired into `mkdocs.yml` nav.

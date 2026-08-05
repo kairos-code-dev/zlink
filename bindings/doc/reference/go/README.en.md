@@ -56,4 +56,4 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing.go` → `internal/native/monitor.go`, `poller_timer.go` |
 | [Errors](05-errors.en.md) | Drafted | `contracts/errors.go` → `internal/native/error.go`, `result_codes.go` |
 
-This document tree is not yet listed in the `mkdocs.yml` nav.
+This document tree is wired into `mkdocs.yml` nav.

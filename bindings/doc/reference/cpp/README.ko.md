@@ -43,4 +43,4 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `Contracts/Eventing/`: `monitor.hpp`, `status.hpp`, `poller.hpp`, `poll_event.hpp`, `timers.hpp`, `events.hpp` |
 | [Errors](05-errors.ko.md) | 작성 완료 | `Contracts/Errors/`: `errors.hpp`, `results.hpp` |
 
-이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.
+이 문서 트리는 `mkdocs.yml` nav에 올라가 있다.

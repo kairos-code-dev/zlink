@@ -1632,101 +1632,120 @@ placement follows the `Actor Dispatch Policy` section below.
   documentation.
 
 
-## 문서 해석 규칙
-- 이 문서의 정책 본문은 기본적으로 규범 문서다.
-- 아래 용어는 다음 의미로 해석한다.
-  - `Required`: 현재 리뷰와 구현에서 반드시 지켜야 하는 항목.
-    미준수 시 리뷰에서 차단된다.
-  - `Recommended`: 강하게 권장하지만, 바인딩 특성에 따라 단계적으로 적용할
-    수 있는 항목. 미준수 시 리뷰에서 사유를 요구하지만 차단하지 않는다.
-  - `Target`: 장기적으로 맞춰가야 하는 목표 항목. 해당 바인딩이 이
-    컴포넌트를 구현하기로 결정한 경우에만 적용된다. 구현하지 않기로
-    결정한 경우 리뷰에서 요구하지 않는다.
-  - `Internal-only`: 바인딩 구현 내부에서는 사용할 수 있지만 public API,
-    sample, guide, spec signature 로 노출하면 안 되는 항목이다.
-- 별도 표시가 없으면 정책 본문은 `Required`로 본다.
-- 섹션 제목에 `(Target)` 또는 `(Recommended)`가 표시된 경우, 해당 섹션
-  전체는 표시된 수준으로 해석한다. 무표시 기본값(`Required`)보다 우선한다.
-- `Implementation Review Checklist` 섹션은 새 API를 추가하는 설계 초안이
-  아니라, 이미 정의된 public API 계약을 구현이 지키는지 확인하는 기준이다.
-- checklist 항목은 문서 본문의 의미 계약을 대체하지 않는다.
+## Document Interpretation Rules
+- This document's policy body is a normative document by default.
+- The terms below carry the following meaning.
+  - `Required`: an item that must be followed in the current review and
+    implementation. Non-compliance blocks the review.
+  - `Recommended`: an item strongly recommended, but which can be applied
+    in stages depending on the binding's characteristics. Non-compliance
+    requires a reason during review but does not block it.
+  - `Target`: a goal item to align to over the long term. It applies only
+    once a given binding decides to implement that component. If a
+    binding decides not to implement it, review does not require it.
+  - `Internal-only`: an item that can be used inside a binding's
+    implementation, but must not be exposed through the public API,
+    samples, guides, or spec signatures.
+- Absent a separate marker, treat the policy body as `Required`.
+- If a section title is marked `(Target)` or `(Recommended)`, that whole
+  section is interpreted at the marked level. This takes priority over
+  the unmarked default (`Required`).
+- The `Implementation Review Checklist` section is not a design draft for
+  adding a new API — it's the standard for confirming an implementation
+  follows an already-defined public API contract.
+- A checklist item does not replace the semantic contract defined in the
+  document body.
 
-## 핵심 원칙
-- 코어 계약은 `zlink.h`의 `*_part` substrate가 단일 기준이다.
-- send/recv/request/reply/publish/subscribe 계열의 내부 구현은 반드시 core `*_part`
-  substrate를 사용한다. aggregate 형태의 core 함수를 binding 내부에서 직접 호출하지 않는다.
-- public API는 multipart 모델을 기준으로 설계한다.
-- blocking과 non-blocking은 이름으로 구분할 수 있다.
-- 동일한 능력을 여러 방식으로 중복 노출하지 않는다.
-- 값의 의미는 `int`가 아니라 enum, boolean, value object로 올린다.
-- raw option bag은 public에 노출하지 않는다.
-- 바인딩은 코어의 상태 오류를 추론하지 않는다.
-- 입력 값의 형식, 범위, overflow, truncation 위험은 바인딩이 먼저 막는다.
-- 구조는 POSD 원칙에 따라 깊은 모듈, 정보 은닉, 낮은 변경 파급을
-  우선한다.
-- 이 문서는 의미 계약을 우선 정의한다.
-- 언어별 표면은 각 언어 관례에 맞게 달라질 수 있지만, 의미 계약은 같아야
-  한다.
+## Core Principles
+- The core contract's single baseline is `zlink.h`'s `*_part` substrate.
+- The internal implementation of the send/recv/request/reply/publish/
+  subscribe family must use the core `*_part` substrate. It does not call
+  an aggregate-shaped core function directly from inside a binding.
+- The public API is designed around a multipart model.
+- Blocking and non-blocking can be distinguished by name.
+- The same capability is not exposed redundantly through multiple paths.
+- Value meaning is raised into an enum, boolean, or value object, not
+  left as `int`.
+- A raw option bag is not exposed publicly.
+- A binding does not infer core's state errors.
+- A binding blocks an input value's format, range, overflow, and
+  truncation risk up front.
+- Structure follows POSD principles, prioritizing deep modules,
+  information hiding, and low change amplification.
+- This document defines the semantic contract first.
+- A per-language surface can differ to fit each language's convention,
+  but the semantic contract must be the same.
 
-## Monitor Ready 계약
-- `*_READY_CHANGED` monitor event 의 `value` 는 aggregate ready count 계약이 아니다.
-- binding public API는 monitor snapshot 에 ready-count surface 가 있다고
-  가정하면 안 된다.
-- readiness gate 가 필요하면 low-cost event edge 를 직접 사용해야 한다.
-- raw perf/샘플은 `CONNECTION_READY` event counting 을 사용한다.
-- SPOT perf/샘플은 별도 서비스 이벤트 gate 를 사용하지 않는다.
-- SPOT perf 는 explicit `READY/START` barrier protocol 을 사용한다.
-- delivery-ready/count 계열 monitor event 를 새 gate contract 로 만들면 안 된다.
+## Monitor Ready Contract
+- The `value` of a `*_READY_CHANGED` monitor event is not an aggregate
+  ready-count contract.
+- A binding's public API must not assume a monitor snapshot has a
+  ready-count surface.
+- When a readiness gate is needed, use the low-cost event edge directly.
+- Raw perf/samples use `CONNECTION_READY` event counting.
+- SPOT perf/samples do not use a separate service event gate.
+- SPOT perf uses an explicit `READY`/`START` barrier protocol.
+- Do not turn a delivery-ready/count-family monitor event into a new gate
+  contract.
 
-## POSD 구조 정책
-- 바인딩 설계는 John Ousterhout의 POSD 원칙을 따른다.
-- public API는 사용자가 알아야 할 개념 수를 줄여야 한다.
-- 내부 구현 복잡도는 facade, value object, domain object 뒤로 숨겨야 한다.
-- 얕은 래퍼(shallow wrapper)는 지양한다.
-  - 단순히 native 함수 이름만 바꾸고 새 의미를 추가하지 못하는 public
-    wrapper는 늘리지 않는다.
-- 같은 능력을 여러 타입과 여러 이름으로 반복 노출하지 않는다.
-- 변화가 한 곳에서 끝나야 할 규칙은 한 모듈에 모은다.
-  - 예: routing id 길이 제한
-  - 예: send failure contract
-  - 예: typed option ownership
-- 여러 언어가 공유하는 역할, owner, no-data, error, naming 규칙은 이
-  정책 문서가 한 번만 소유한다. 언어별 spec 은 같은 규칙을 다시 설계하지
-  않고, 이 문서의 계약을 언어 관례에 맞게 표현한다.
-- 언어별 spec 이 이 문서와 다른 규칙을 필요로 하면, 개별 문서부터 바꾸지
-  않는다. 먼저 이 정책 문서에 예외 사유와 적용 범위를 적고, 그 다음 해당
-  언어 문서를 갱신한다. 그래야 같은 설계 결정이 여러 문서에 흩어지지 않는다.
-- 시간 순서에 의존하는 분해(temporal decomposition)를 줄인다.
-  - 예: 사용자가 `setOption` 조합 순서를 기억해야 하는 API 금지
-- public API는 "무엇을 할 수 있는지"를 드러내고, "내부에서 어떻게 배선되는지"를
-  드러내지 않아야 한다.
-- 값 객체와 결과 객체는 깊은 모듈로 취급한다.
-  - 호출자에게는 작은 인터페이스를 주고, 내부에서는 검증, ownership, shape
-    규칙을 함께 캡슐화해야 한다
+## POSD Structure Policy
+- Binding design follows John Ousterhout's POSD principles.
+- A public API must reduce the number of concepts a user needs to know.
+- Internal implementation complexity must be hidden behind a facade,
+  value object, or domain object.
+- Avoid a shallow wrapper.
+  - Do not multiply a public wrapper that only renames a native function
+    without adding new meaning.
+- Do not repeatedly expose the same capability through multiple types and
+  multiple names.
+- Gather a rule whose change must end in one place into a single module.
+  - Example: a routing-id length limit
+  - Example: the send-failure contract
+  - Example: typed-option ownership
+- A role, owner, no-data, error, or naming rule shared across languages
+  is owned exactly once by this policy document. A per-language spec does
+  not redesign the same rule — it expresses this document's contract in
+  that language's convention.
+- If a per-language spec needs a rule that differs from this document, do
+  not change the individual document first. First write the exception
+  reason and scope into this policy document, then update that language
+  document. This keeps the same design decision from scattering across
+  multiple documents.
+- Reduce temporal decomposition.
+  - Example: forbid an API where a user must remember the order in which
+    to combine `setOption` calls
+- A public API reveals "what it can do," not "how it's wired internally."
+- Treat a value object and a result object as deep modules.
+  - Give the caller a small interface, while encapsulating validation,
+    ownership, and shape rules together internally.
 
-## 공개 표면 규칙
+## Public Surface Rules
 
-### 기반 타입 노출
-- 가능하면 컴파일 단계에서 사용자가 concrete socket type만 직접 쓰게 해야 한다.
-- 사용자가 generic root base, raw compat base, shared base를 concrete socket
-  type 대신 직접 쓰는 구조는 피한다.
-- static typed binding은 public type/export/visibility를 이용해 이 규칙을
-  강제해야 한다.
-- dynamic binding은 export 제한과 surface test로 같은 규칙을 강제해야 한다.
-- generic root base 또는 raw compat base는 공통 lifecycle과 공통 관리 기능만
-  외부에 노출한다.
-- 역할-specific shared base는 모든 descendant가 공통으로 가지는 능력만
-  외부에 노출할 수 있다.
-- socket-type-specific 역할을 generic root base나 raw compat base로
-  올리면 안 된다.
-- public base에서 외부 접근을 허용해도 되는 공통 기능 예:
+### Base Type Exposure
+- Where possible, let a user directly use only a concrete socket type at
+  compile time.
+- Avoid a structure where a user directly uses a generic root base, a raw
+  compat base, or a shared base instead of a concrete socket type.
+- A statically typed binding must enforce this rule using public
+  type/export/visibility.
+- A dynamic binding must enforce the same rule with export restrictions
+  and surface tests.
+- A generic root base or raw compat base exposes only the common
+  lifecycle and common management functionality externally.
+- A role-specific shared base may expose externally only the capability
+  every descendant has in common.
+- A socket-type-specific role must not be promoted to a generic root base
+  or a raw compat base.
+- Example common functionality a public base may allow external access
+  to:
   - `bind`, `unbind`
   - `connect`, `disconnect`, `disconnectRid` on connectable base only
   - `close` / `dispose`
   - common typed options
-  - `monitorOpen` 또는 동등한 monitor 진입점
-  - `setTlsServer`, `setTlsClient` 또는 동등한 TLS helper
-- generic root base 또는 raw compat base에서 외부 접근을 허용하면 안 되는 기능:
+  - `monitorOpen`, or an equivalent monitor entry point
+  - `setTlsServer`, `setTlsClient`, or an equivalent TLS helper
+- Functionality a generic root base or raw compat base must not allow
+  external access to:
   - `send(...)`
   - `send(routingId, ...)`
   - `sendParts(...)`
@@ -1735,7 +1754,7 @@ placement follows the `Actor Dispatch Policy` section below.
   - `recv(flags)` / `recv(size, flags)`
   - `recvInto(...)`
   - `recvMsgInto(...)`
-  - routed receive alias (`receiveRouted` 등)
+  - a routed-receive alias (`receiveRouted`, and so on)
   - `publish(...)`
   - `setSubscription(...)`
   - `unsetSubscription(...)`
@@ -1748,96 +1767,112 @@ placement follows the `Actor Dispatch Policy` section below.
   - `attachStreamRaw(...)`, `detachStream()`
   - `streamAttach(...)`, `streamAttachRaw(...)`, `streamDetach()`
   - `streamPeerRoutingId(...)`, `streamSend(...)`
-  - raw option bag (`setOption`, `getOption`, `setSockOpt`, `getSockOpt` 등)
-  - topic/socket-type-specific option facade
-  - canonical 이름을 우회하는 legacy alias
-    - 예: `recvHandler(...)`, `subscribeHandler(...)`
-- 역할-specific shared base는 descendant 전부에 공통인 역할에 한해
-  허용할 수 있다.
-  - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
-    `subscribe`
-  - 예: publisher-only base의 `publish`, `setSendReadyHandler`
-- 위 역할은 역할 matrix에서 `Y`인 concrete socket type에만
-  public으로 존재해야 한다.
-- 역할 matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
-  안 된다.
-- perf, sample, helper, compat layer도 canonical public surface 규칙을
-  우회하는 base entry를 새 기준처럼 사용하면 안 된다.
-- deprecated compat API가 필요하더라도 canonical public API와 분리된 compat
-  namespace 또는 internal surface로 격리한다.
-- 사용자가 `SocketType`과 raw flag 조합을 기억해서 올바른 send/recv 계열을
-  선택해야 하는 구조는 POSD 위반으로 본다.
+  - a raw option bag (`setOption`, `getOption`, `setSockOpt`,
+    `getSockOpt`, and so on)
+  - a topic/socket-type-specific option facade
+  - a legacy alias that bypasses the canonical name
+    - example: `recvHandler(...)`, `subscribeHandler(...)`
+- A role-specific shared base can allow a role only when it's common to
+  every descendant.
+  - example: `setSubscription`, `unsetSubscription`, `subscribe` on a
+    subscriber-only base
+  - example: `publish`, `setSendReadyHandler` on a publisher-only base
+- The roles above must exist as public only on a concrete socket type
+  marked `Y` in the role matrix.
+- A base-mediated bypass call must not be possible for a socket type
+  marked `—` in the role matrix.
+- Perf, sample, helper, and compat layers must not treat a base entry
+  that bypasses the canonical public surface rule as a new baseline
+  either.
+- Even when a deprecated compat API is needed, isolate it into a compat
+  namespace or internal surface separate from the canonical public API.
+- A structure where a user must remember a `SocketType` and a raw flag
+  combination to pick the right send/recv family is treated as a POSD
+  violation.
 
-### Multipart 전용
-- send/receive public surface는 multipart 기준으로 통일한다.
-- 단일 메시지 수신 편의 오버로드는 public에 두지 않는다.
-- 단일 part 전송 편의 메서드는 허용할 수 있다.
-  - 예: `send(Message part)`는 `send(List<Message> parts)`의 간편 오버로드
-- 수신 결과는 언어에 맞는 도메인 객체 또는 동등한 multipart 표현으로
-  반환한다.
+### Multipart Only
+- Unify the send/receive public surface around multipart.
+- Do not put a single-message-receive convenience overload in the public
+  surface.
+- A single-part send convenience method can be allowed.
+  - example: `send(Message part)` as a convenience overload of
+    `send(List<Message> parts)`
+- A receive result is returned as a language-appropriate domain object or
+  an equivalent multipart representation.
 
-### 오류 처리 정책
+### Error Handling Policy
 
-모든 데이터 경로 함수 (`send`, `recv`, `request`, `reply`, `subscribe`,
-`publish`) 는 동일한 에러 처리 원칙을 따른다.
+Every data-path function (`send`, `recv`, `request`, `reply`,
+`subscribe`, `publish`) follows the same error-handling principle.
 
-#### 원칙
+#### Principles
 
-1. **Exception 언어는 반환값으로 에러를 전달하지 않는다.**
-   - 대상: C++, Java, .NET, Node, Python.
-   - 성공 시 결과를 반환하거나 void 반환한다.
-   - 실패 시 예외를 던진다.
-   - 예외에는 `int code` (0–706 범위) 를 포함하여 호출자가 실패 원인을
-     구분할 수 있게 한다.
-   - `BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND` 를 포함한 모든 실패는
-     예외로 전달한다. 이들은 반환값이 아니다.
-2. **C / Go / Rust 는 exception 이 없으므로 return-based 계약을 따른다.**
-   바인딩은 각 언어 관용구에 맞는 스타일로 처리한다.
-   - C: 함수별 typed result enum 반환
+1. **A language with exceptions does not deliver an error through a
+   return value.**
+   - Applies to: C++, Java, .NET, Node, Python.
+   - Returns a result, or void, on success.
+   - Throws an exception on failure.
+   - The exception carries an `int code` (in the 0–706 range) so the
+     caller can distinguish the failure cause.
+   - Every failure including `BACKPRESSURED`, `NOT_CONNECTED`, and
+     `NOT_FOUND` is delivered as an exception. These are never return
+     values.
+2. **C / Go / Rust have no exceptions, so they follow a return-based
+   contract.** A binding handles it in the style each language's idiom
+   fits.
+   - C: returns a per-function typed result enum
      (`zlink_submit_result_t`, `zlink_recv_result_t`,
       `zlink_handler_result_t`, `zlink_close_result_t`,
       `zlink_bind_result_t`, `zlink_connect_result_t`,
       `zlink_config_result_t`).
-   - Go: `(T, error)` 반환. error 객체에 `int` 코드를 포함한다.
-   - Rust: `Result<T, E>` 반환. `E` 는 가능한 한 함수군별 구체 에러
-     (`BindError`, `SubmitError` 등)를 쓰고, 여러 함수군이 섞이는 경계에서만
-     `ZlinkError` 로 승격한다. 에러 값에는 `int` 코드가 포함된다.
-     `?` 연산자로 호출측 전파를 쓴다.
-3. **`Try*` 대신 `flags` 와 반환 규칙으로 blocking 여부를 표현한다.**
-   - C 는 C ABI 함수형 계약을 유지한다.
-   - Go / Rust 는 return-based 오류 전달을 유지하되, wrapper binding의
-     ref-out recv와 operation builder 규칙은 그대로 적용한다.
-   - `.NET` / `Java` / `Node` / `Python` / `C++` 는 public
-     `trySend`, `tryRecv`, `tryRequest` 를 두지 않는다.
-   - C ABI 는 blocking 과 non-blocking 을 함수 인자의 `flags` 로 표현한다.
-   - wrapper binding 의 send/publish/request/reply 계열은 builder 의
-     `.flags(...)` 단계로 non-blocking submit 을 표현한다. operation 시작점
-     시그니처에 별도 `flags` 인자를 늘리지 않는다.
-   - wrapper binding 의 data-plane `recv`, routed recv, `subscribe` 는
-     caller-provided result storage 를 채우고, 반환값은 "데이터를 받았는가"만
-     표현한다.
-   - non-blocking receive 에서 현재 읽을 데이터가 없으면 `false` / `nil,false` /
-     `Ok(false)` 같은 언어별 no-data 표현을 반환하고, 진짜 오류만 예외 또는
-     반환 에러로 전달한다.
-   - 비동기 request 는 같은 `request` operation builder 의 완료 객체 반환 단계로
-     선택하고, submit flags 를 받지 않는다.
-   - `sendNoWait`, `recvNoWait`, `publishNoWait` 같은 transport-style 이름은
-     공개 surface 에 두지 않는다.
-4. **`INTERNAL_ERROR` 상세 조회.**
-   - result code 가 `INTERNAL_ERROR` 계열
-     (12, 105, 206, 306, 404, 505, 604, 704 등) 이면
-     `zlink_errno()` 로 내부 raw errno 를 조회할 수 있다.
-   - 바인딩의 에러 타입(exception 언어는 예외 객체, return-based 언어는
-     에러 값)은 `internalErrno` / `internal_errno` 필드로 이를 노출한다
-     (디버깅 전용).
-   - 그 외 result code 에서는 `zlink_errno()` 호출이 불필요하다.
+   - Go: returns `(T, error)`. The error object carries an `int` code.
+   - Rust: returns `Result<T, E>`. `E` is, where possible, a concrete
+     per-function-family error (`BindError`, `SubmitError`, and so on),
+     promoted to `ZlinkError` only at a boundary where multiple function
+     families mix. An error value carries an `int` code. Callers use the
+     `?` operator to propagate.
+3. **Express blocking-vs-non-blocking through `flags` and the return
+   rule, instead of a `Try*` name.**
+   - C keeps the C ABI functional contract.
+   - Go / Rust keep return-based error delivery, but still apply the
+     wrapper binding's ref-out recv and operation builder rules.
+   - `.NET` / `Java` / `Node` / `Python` / `C++` do not add a public
+     `trySend`, `tryRecv`, or `tryRequest`.
+   - The C ABI expresses blocking vs. non-blocking through a function
+     argument `flags`.
+   - A wrapper binding's send/publish/request/reply family expresses a
+     non-blocking submit through the builder's `.flags(...)` step. It
+     does not add a separate `flags` argument to the operation
+     start-point signature.
+   - A wrapper binding's data-plane `recv`, routed recv, and `subscribe`
+     fill caller-provided result storage, and the return value expresses
+     only "was data received."
+   - When a non-blocking receive currently has no data, it returns a
+     per-language no-data representation such as `false`, `nil, false`,
+     or `Ok(false)`, and only a real error is delivered as an exception
+     or a return error.
+   - An async request is selected through the same `request` operation
+     builder's completion-object-return step, and it does not take
+     submit flags.
+   - A transport-style name such as `sendNoWait`, `recvNoWait`, or
+     `publishNoWait` does not belong on the public surface.
+4. **Looking up `INTERNAL_ERROR` detail.**
+   - When the result code is in the `INTERNAL_ERROR` family (12, 105,
+     206, 306, 404, 505, 604, 704, and so on), the internal raw errno can
+     be looked up with `zlink_errno()`.
+   - The binding's error type (an exception object for exception
+     languages, an error value for return-based languages) exposes this
+     through an `internalErrno`/`internal_errno` field (for debugging
+     only).
+   - For every other result code, calling `zlink_errno()` is
+     unnecessary.
 
-#### 언어별 에러 표현
+#### Per-Language Error Representation
 
-| 언어 | 처리 방식 | 에러 타입 | 코드 접근 | 내부 errno |
+| Language | Handling | Error type | Code access | Internal errno |
 |---|---|---|---|---|
-| C | return | 함수별 result enum 반환 | enum 값 자체 | `zlink_errno()` |
-| C++ | return / throw | caller-provided recv는 `int`, 그 외 실패는 `zlink_error_t` | recv는 반환값, 예외는 `.code()` | recv `-1`일 때 `errno`, 예외는 `.internal_errno()` |
+| C | return | per-function result enum | the enum value itself | `zlink_errno()` |
+| C++ | return / throw | caller-provided recv returns `int`; other failures use `zlink_error_t` | recv: the return value; exception: `.code()` | recv: `errno` when `-1`; exception: `.internal_errno()` |
 | Java | throw | `ZlinkException` | `.getCode()` | `.getInternalErrno()` |
 | .NET | throw | `ZlinkException` | `.Code` | `.InternalErrno` |
 | Go | return | `error` | `.Code()` | `.InternalErrno()` |
@@ -1845,153 +1880,175 @@ placement follows the `Actor Dispatch Policy` section below.
 | Node | throw | `ZlinkError` | `.code` | `.internalErrno` |
 | Python | throw | `ZlinkError` | `.code` | `.internal_errno` |
 
-- `return` 그룹(C / Go / Rust) 은 호출자가 반환값을 명시적으로 검사한다.
-  Go 는 `if err != nil`, Rust 는 `match` / `?` 연산자 관용구를 쓴다.
-- `throw` 그룹(C++ / Java / .NET / Node / Python) 은 예외를 전파한다. caller
-  는 언어별 `try`/`catch` 또는 상위 propagation 에서 처리한다.
+- The `return` group (C / Go / Rust) has the caller explicitly check the
+  return value. Go uses `if err != nil`; Rust uses the `match`/`?`
+  operator idiom.
+- The `throw` group (C++ / Java / .NET / Node / Python) propagates an
+  exception. The caller handles it with a per-language `try`/`catch` or
+  by propagating further up.
 
 #### Error Codes
 
-- C API 는 함수별 typed result enum 을 반환한다.
-- 모든 enum 값은 0–706 범위에서 겹치지 않는다.
-- 바인딩은 이 코드를 언어별 에러 타입의 `int code` 에 포함시킨다
-  (exception 언어는 예외 객체, return-based 언어는 반환 에러 값).
-- 전체 enum 정의는
-  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 를 참조한다.
+- The C API returns a per-function typed result enum.
+- Every enum value is unique across the 0–706 range.
+- A binding includes this code in its per-language error type's `int
+  code` (an exception object for exception languages, a return error
+  value for return-based languages).
+- For the full enum definition, see
+  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/).
 
-#### 함수별 에러 타입 계층
+#### Per-Function Error Type Hierarchy
 
-C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 계승**한다.
-단일 `ZlinkException` / `ZlinkError` 만 두면 시그니처만으로 발생 가능한 에러
-집합을 알 수 없기 때문이다.
+**Every binding inherits the C API's per-function typed-result-enum
+structure as-is.** With only a single `ZlinkException`/`ZlinkError`, a
+caller could not know the set of possible errors from the signature
+alone.
 
-각 바인딩은 8 개의 함수군 에러 타입을 `ZlinkException` / `ZlinkError` 의
-하위 타입으로 제공한다. 메서드 시그니처는 해당 함수군의 구체 에러 타입을
-노출해야 한다.
+Each binding provides 8 function-family error types as subtypes of
+`ZlinkException`/`ZlinkError`. A method signature must expose that
+function family's concrete error type.
 
-| C result enum | 함수군 | 하위 에러 타입 (의미 계약) |
+| C result enum | Function family | Subtype (semantic contract) |
 |--------------|--------|--------------------------|
 | `zlink_submit_result_t` | send / publish / request submit / reply submit | `SubmitError` |
 | `zlink_request_result_t` | request completion (callback) | `RequestError` |
 | `zlink_recv_result_t` | recv / subscribe / subscription event / monitor recv / timer recv | `RecvError` |
-| `zlink_handler_result_t` | handler 등록 | `HandlerError` |
+| `zlink_handler_result_t` | handler registration | `HandlerError` |
 | `zlink_close_result_t` | close / destroy | `CloseError` |
 | `zlink_bind_result_t` | bind | `BindError` |
 | `zlink_connect_result_t` | connect / disconnect / unbind | `ConnectError` |
 | `zlink_config_result_t` | option set/get, snapshot, poller mutation, proxy, timer config | `ConfigError` |
 
-##### 언어별 네이밍
+##### Per-Language Naming
 
-| 언어 | 최상위 타입 | 하위 타입 네이밍 | 기반 타입 | 예시 시그니처 |
+| Language | Top-level type | Subtype naming | Base type | Example signature |
 |------|-----------|----------------|----------|-------------|
-| C | — | 함수별 typed enum 그대로 | — | `zlink_bind_result_t zlink_bind(...)` |
-| C++ | `zlink_error_t` | `zlink::<category>_error_t` (snake_case + `_t`) | `std::runtime_error` 계열 | `void bind(...) /* @throws bind_error_t */` |
+| C | — | the per-function typed enum as-is | — | `zlink_bind_result_t zlink_bind(...)` |
+| C++ | `zlink_error_t` | `zlink::<category>_error_t` (snake_case + `_t`) | the `std::runtime_error` family | `void bind(...) /* @throws bind_error_t */` |
 | Java | `ZlinkException` | `<Category>Exception` | **unchecked** (`RuntimeException`) | `void bind(...) /* @throws BindException */` |
-| .NET | `ZlinkException` | `Zlink<Category>Exception` | `System.Exception` (unchecked; .NET 의 모든 exception 은 unchecked) | `void Bind(...) /* throws ZlinkBindException */` |
+| .NET | `ZlinkException` | `Zlink<Category>Exception` | `System.Exception` (unchecked; every .NET exception is unchecked) | `void Bind(...) /* throws ZlinkBindException */` |
 | Node | `ZlinkError` | `<Category>Error` | `Error` | `bind(ep): void /* @throws BindError */` |
 | Python | `ZlinkError` | `<Category>Error` | `Exception` | `def bind(ep): ...  # raises BindError` |
-| Go | `error` (interface) | `*<Category>Error` (typed error struct) | `error` 인터페이스 구현 | `func (s) Bind(ep) error  // returns *BindError` |
-| Rust | `ZlinkError` (enum) | `<Category>Error` (variant 또는 별도 타입) | `std::error::Error` 구현 | `fn bind(ep) -> Result<(), BindError>` |
+| Go | `error` (interface) | `*<Category>Error` (typed error struct) | implements the `error` interface | `func (s) Bind(ep) error  // returns *BindError` |
+| Rust | `ZlinkError` (enum) | `<Category>Error` (a variant or a separate type) | implements `std::error::Error` | `fn bind(ep) -> Result<(), BindError>` |
 
-- `Category` 는 `Submit`/`Request`/`Recv`/`Handler`/`Close`/`Bind`/`Connect`/
-  `Config` 의 8 개.
-- `ZlinkException` / `ZlinkError` 는 모든 하위 타입의 부모로서 "모두 잡기"
-  관용구를 유지한다. caller 는 세분화가 필요하면 하위 타입으로, 아니면
-  부모로 캐치한다.
-- 각 하위 에러 타입은 해당 함수군의 `ErrorCode` 중첩 enum 을 전용으로
-  가진다. 다른 함수군 코드는 그 타입에서 표현되지 않는다.
-- **Java / .NET 은 unchecked exception 체계를 따른다.** 메서드 시그니처에
-  `throws` 절을 강제하지 않는다. 발생 가능 exception 은 Javadoc `@throws`
-  / XML doc `/// <exception cref="...">` 로 명시한다.
-- Rust / Go 는 반환 타입으로 구체 하위 에러를 선언한다. 동적 언어
-  (Node/Python) 는 TSDoc `@throws` / Python docstring `Raises:` 로 동일
-  정보를 제공한다.
+- `Category` is one of 8: `Submit`/`Request`/`Recv`/`Handler`/`Close`/
+  `Bind`/`Connect`/`Config`.
+- `ZlinkException`/`ZlinkError` stays the parent of every subtype,
+  preserving the "catch-all" idiom. A caller catches the subtype when it
+  needs granularity, or the parent otherwise.
+- Each subtype error has its own dedicated `ErrorCode` nested enum for
+  that function family. Another function family's codes are not
+  expressed in that type.
+- **Java / .NET follow the unchecked-exception system.** A method
+  signature does not force a `throws` clause. A possible exception is
+  documented with Javadoc `@throws` / XML doc
+  `/// <exception cref="...">`.
+- Rust / Go declare the concrete subtype error as the return type. A
+  dynamic language (Node/Python) provides the same information with
+  TSDoc `@throws` / a Python docstring `Raises:`.
 
-##### 시그니처 선언 규칙
+##### Signature Declaration Rules
 
-- 메서드가 단일 함수군 에러만 던질/반환할 수 있으면 구체 하위 타입만
-  명시한다.
-  - Java: `@throws BindException` (Javadoc, 시그니처에 `throws` 절 불필요)
+- When a method can throw/return only a single function family's error,
+  declare only that concrete subtype.
+  - Java: `@throws BindException` (Javadoc; no `throws` clause needed in
+    the signature)
   - .NET: `/// <exception cref="ZlinkBindException">`
-  - C++: `/// @throws bind_error_t` (noexcept 로 표시하지 않음)
+  - C++: `/// @throws bind_error_t` (do not mark it `noexcept`)
   - Node: TSDoc `@throws {BindError}`
   - Python: docstring `Raises: BindError`
-  - Go: 반환 타입 문서 `returns *BindError`
-  - Rust: 반환 타입 `Result<T, BindError>`
-- 메서드가 여러 함수군에 걸칠 경우 (예: service 계층 조합 호출) 공통 부모
-  `ZlinkException` / `ZlinkError` 를 선언하고 doc 에 실제 발생 가능한
-  하위 타입을 나열한다.
-- validation 예외 (language-native `IllegalArgumentException` 등) 는 위 체계
-  와 별도이며, `ZlinkException` / `ZlinkError` 계층에 들어가지 않는다.
+  - Go: document the return type as `returns *BindError`
+  - Rust: return type `Result<T, BindError>`
+- When a method spans multiple function families (for example, a service
+  layer's combined call), declare the shared parent
+  `ZlinkException`/`ZlinkError` and list the subtypes that can actually
+  occur in the doc.
+- A validation exception (a language-native `IllegalArgumentException`,
+  and so on) is separate from the system above and does not enter the
+  `ZlinkException`/`ZlinkError` hierarchy.
 
-### Flags 정책
+### Flags Policy
 
-모든 데이터 경로 함수는 `flags` 선택 항목을 갖는다. 일반 socket 함수는
-언어별 시그니처의 `flags` 파라미터로 표현하고, SPOT operation builder 대상
-함수는 builder의 `flags(...)` 단계로 표현한다.
+Every data-path function has a `flags` option. An ordinary socket
+function expresses it as a per-language signature's `flags` parameter,
+and a function targeting a SPOT operation builder expresses it as the
+builder's `flags(...)` step.
 
-| 함수 계열 | flags 용도 |
+| Function family | `flags` usage |
 |---|---|
 | `send`, `publish`, `reply` | `DONTWAIT` — non-blocking submit |
 | `recv`, `subscribe`, `receiveSubscriptionEvent` | `DONTWAIT` — non-blocking receive |
 | `request` (callback) | `DONTWAIT` — non-blocking submit |
-| `request` (비동기 완료) | flags 없음 — 언어별 완료 객체 반환 경로를 사용 |
+| `request` (async completion) | No flags — uses the per-language completion-object-return path |
 
-- flags 기본값은 `0` (blocking).
-- non-blocking 호출의 temporary 상태는 언어별 public 계약에 맞춰 전달한다.
+- The default `flags` value is `0` (blocking).
+- A non-blocking call's temporary state is delivered per each language's
+  public contract.
   - `.NET` / `Java` / `Node` / `Python`
-    - `send`, `publish`, callback `request`: temporary backpressure 면
-      `false`
+    - `send`, `publish`, callback `request`: `false` on temporary
+      backpressure
     - caller-provided `recv`, `subscribe`,
-      `receiveSubscriptionEvent`: 현재 데이터가 없으면 `false`
-    - 그 외 실패: typed exception
+      `receiveSubscriptionEvent`: `false` when there is currently no
+      data
+    - Any other failure: a typed exception
   - C++
-    - operation builder `send` / `publish` / callback `request`: temporary
-      backpressure 면 `false`
+    - operation builder `send` / `publish` / callback `request`: `false`
+      on temporary backpressure
     - caller-provided `recv` / `subscribe` /
-      `receive_subscription_event`: 현재 데이터가 없으면 `recv_result_t::no_data`
-      정수값 반환
-    - binding-local 실패만 `-1`을 반환하고 `errno`를 설정
-  - return-based 언어 (C/Go/Rust): 에러 반환 (C=result enum,
-    Go=`error`, Rust=`Err(E)`).
-- 언어별 flags 표현:
-  - C: `int flags = 0` (C ABI는 builder 정책 적용 안 됨)
-  - C++ / Java / .NET / Node / Python / Go / Rust 송신·요청·응답·게시·Actor
-    attach 표면: builder의 `.flags(...)` 단계로 표현한다. operation 시작점
-    시그니처에 별도 `flags` 인자나 `_with_flags` 변형을 두지 않는다.
-  - C++ / Java / .NET / Node / Python / Go / Rust data-plane recv/subscribe 표면:
-    caller-provided output storage와 함께 `flags` 인자를 받는다.
+      `receive_subscription_event`: returns the `recv_result_t::no_data`
+      integer value when there is currently no data
+    - only a binding-local failure returns `-1` and sets `errno`
+  - Return-based languages (C/Go/Rust): return the error (C = result
+    enum, Go = `error`, Rust = `Err(E)`).
+- Per-language `flags` representation:
+  - C: `int flags = 0` (the C ABI does not apply the builder policy)
+  - C++ / Java / .NET / Node / Python / Go / Rust send/request/reply/
+    publish/Actor-attach surfaces: expressed through the builder's
+    `.flags(...)` step. No separate `flags` argument or `_with_flags`
+    variant is added to the operation start-point signature.
+  - C++ / Java / .NET / Node / Python / Go / Rust data-plane
+    recv/subscribe surfaces: take a `flags` argument together with
+    caller-provided output storage.
 
-### 네이밍 정책
+### Naming Policy
 
-#### 생성 함수 네이밍
+#### Creation Function Naming
 
-`Message`와 `RoutingId`처럼 입력 값에서 새 객체를 만드는 공개 함수는 `.NET`
-바인딩의 `From(...)` 의미를 기준으로 맞춘다. 입력 타입이 함수 이름에 들어가면
-같은 개념이 언어마다 여러 이름으로 갈라지므로 피한다.
+A public function that builds a new object from an input value, such as
+`Message` and `RoutingId`, aligns to the `.NET` binding's `From(...)`
+meaning. Avoid putting the input type into the function name — doing so
+splits the same concept into multiple names across languages.
 
-- 일반 생성은 `from(...)` 또는 언어별 동등 이름 하나로 모은다.
-  `from_bytes`, `from_string`, `from_u32`, `from_uuid` 같은 타입 suffix 이름은
-  canonical public API 로 쓰지 않는다.
-- hex 디코딩은 사람이 읽는 문자열 디코딩이라는 의미가 다르므로
-  `from_hex` 계열을 예외로 허용한다. 언어별 표기는 `FromHex`, `fromHex`,
-  `from_hex`, `NewRoutingIDFromHex`처럼 관용구를 따른다.
-- Python은 `from`이 예약어이므로 `from_(...)`를 사용한다.
-- Rust는 routing id에 표준 `From` 구현을 사용하고, 실패 가능한 message
-  생성에는 `try_from` 관용구를 사용할 수 있다. 입력 타입 이름을 붙인
-  `from_bytes` / `from_string` 계열 public helper는 두지 않는다.
-- Go는 오버로드가 없으므로 `NewRoutingID(...)`, `NewRoutingIDString(...)`,
-  `NewRoutingIDUint32(...)`, `NewRoutingIDUUIDBytes(...)`처럼 typed constructor를
-  허용한다. 이 예외는 Go의 정적 타입 스타일을 유지하기 위한 것이며,
-  `NewRoutingIDFromString`처럼 `From`과 타입 이름을 함께 반복하지 않는다.
-- allocation은 source 변환이 아니므로 `allocate(...)` 또는 언어별 생성자
-  관용구(`NewMessageWithSize(...)` 등)를 사용한다.
+- Gather ordinary construction under a single `from(...)`, or that
+  language's equivalent name. A type-suffixed name such as `from_bytes`,
+  `from_string`, `from_u32`, or `from_uuid` is not used as canonical
+  public API.
+- Hex decoding is allowed as an exception, under the `from_hex` family,
+  because it carries a distinct meaning — decoding a human-readable
+  string. The per-language spelling follows idiom: `FromHex`, `fromHex`,
+  `from_hex`, `NewRoutingIDFromHex`.
+- Python uses `from_(...)` because `from` is a reserved word.
+- Rust uses the standard `From` implementation for a routing id, and can
+  use the `try_from` idiom for a message construction that can fail. It
+  does not add an input-type-named public helper such as `from_bytes`/
+  `from_string`.
+- Because Go has no overloads, it allows a typed constructor such as
+  `NewRoutingID(...)`, `NewRoutingIDString(...)`,
+  `NewRoutingIDUint32(...)`, and `NewRoutingIDUUIDBytes(...)`. This
+  exception exists to preserve Go's static-typing style, and it does not
+  repeat both `From` and the type name together, as in
+  `NewRoutingIDFromString`.
+- Allocation is not a source conversion, so it uses `allocate(...)` or a
+  per-language constructor idiom (`NewMessageWithSize(...)`, and so on).
 
-#### 한 entrypoint, 빌더 단계로 변형 표현
+#### One Entrypoint, Variation Expressed As Builder Steps
 
-같은 작업의 변형(async/callback, single/multipart, flags 유무, timeout 유무)은
-동일한 entrypoint 이름을 사용하고, 변형은 builder 단계로 표현한다. 별도 이름
-(`request_callback`, `send_nonblocking`, `send_with_flags` 등)을 만들지 않는다.
+Variations of the same operation — async/callback, single/multipart,
+with or without flags, with or without a timeout — use the same
+entrypoint name, and the variation is expressed as a builder step. Do not
+create a separate name such as `request_callback`, `send_nonblocking`, or
+`send_with_flags`.
 
 ```
 // GOOD: one name, builder absorbs the form.
@@ -2010,102 +2067,110 @@ request_to_channel(channel, parts, timeout)
 request_to_channel_callback(channel, parts, callback, flags, timeout)
 ```
 
-#### 공통 결과 타입 이름
+#### Shared Result Type Names
 
-공통 결과 타입은 owner 이름을 반복하지 않는다. 타입 이름은 값이 나타내는
-도메인 개념을 직접 드러낸다.
+A shared result type does not repeat its owner's name. The type name
+reveals the domain concept the value represents, directly.
 
-- Poller 대기 결과 타입의 canonical 이름은 `PollEvent` 이다.
-  C++은 `poll_event_t`, Java/.NET은 `PollEvent`, Node/TypeScript는
-  `PollEvent` 형태를 사용한다. `PollerEvent`처럼 owner를 한 번 더 붙인
-  이름은 canonical public API 로 쓰지 않는다.
-- Timer, monitor, dispatch 결과도 같은 규칙을 따른다. owner가 이미
-  반환 타입이나 네임스페이스에서 드러나면 타입 이름에 owner를 반복하지 않는다.
+- The canonical name for a poller wait-result type is `PollEvent`. C++
+  uses `poll_event_t`; Java/.NET use `PollEvent`; Node/TypeScript use
+  `PollEvent`. A name that appends the owner a second time, like
+  `PollerEvent`, is not used as canonical public API.
+- Timer, monitor, and dispatch results follow the same rule. When the
+  owner is already clear from the return type or namespace, the type
+  name does not repeat it.
 
-#### SPOT 대상 네이밍
+#### SPOT Target Naming
 
-SPOT routed 네이밍은 pub/sub 와 대상 지정 messaging 을 분리한다.
+SPOT routed naming separates pub/sub from targeted messaging.
 
-- **channel-aware 경로**
+- **Channel-aware path**
   - `send_to_channel(channel_name) -> SendOp`
   - `request_to_channel(channel_name) -> RequestOp`
-- **SPOT topic 경로**
+- **SPOT topic path**
   - `publish(topic) -> SendOp`
-    - receiver가 이미 publish-capable socket 또는 `Spot` 이므로 `publish_spot`,
-      `publish_to_topic`처럼 owner나 파라미터 의미를 반복하지 않는다.
-- **direct routed 경로**
+    - The receiver is already a publish-capable socket or `Spot`, so it
+      does not repeat owner or parameter meaning, as in `publish_spot`
+      or `publish_to_topic`.
+- **Direct routed path**
   - `send_to_spot(dest_node_rid, dest_spot_rid) -> SendOp`
   - `request_to_spot(dest_node_rid, dest_spot_rid) -> RequestOp`
   - `request_to_router(peer_rid) -> RequestOp`
-- **reply 경로**
+- **Reply path**
   - `reply_to_spot(dest_node_rid, dest_spot_rid, request_seq) -> ReplyOp`
   - `reply_to_router(peer_rid, request_seq) -> ReplyOp`
 
-`SendOp`, `RequestOp`, `ReplyOp`의 payload와 option은
-`Operation Builder Policy` 절이 정한 `message(...)`, `flags(...)`,
-`timeout(...)`, `submit...` 단계로 표현한다. 따라서 새 canonical SPOT
-surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `timeout`
-조합 오버로드를 추가하지 않는다.
+The payload and options of `SendOp`, `RequestOp`, and `ReplyOp` are
+expressed through the `message(...)`, `flags(...)`, `timeout(...)`, and
+`submit...` steps the `Operation Builder Policy` section defines. So a
+new canonical SPOT surface does not add a `Message`/`List<Message>`/
+`flags`/`timeout` combination overload on the same start point.
 
-새 SPOT 바인딩 표면에서는 예전 `send_service` / `request_service` 대신
-`send_to_channel` / `request_to_channel` / `publish(...)` 를 기본 경로로
-본다. 직접 주소 지정 경로는 코어가 제공하는 typed routed surface 로서 별도
-지원할 수 있다.
+On a new SPOT binding surface, `send_to_channel`/`request_to_channel`/
+`publish(...)` are treated as the default path, instead of the old
+`send_service`/`request_service`. A direct address-targeted path can be
+separately supported as core's typed routed surface.
 
-언어별 관례에 따라 camelCase / PascalCase / snake_case 로 변환한다.
+Convert to camelCase / PascalCase / snake_case per each language's
+convention.
 
-### Request 정책
+### Request Policy
 
-request 는 언어별 async 완료와 callback 완료 방식을 제공할 수 있으며, 두 방식
-모두 동일한 `request` entrypoint 가 반환하는 `RequestOp` operation builder
-의 submit 단계로 선택한다. 별도 이름 (`request_callback`, `requestAsync` 등)
-을 만들지 않는다.
+A request can offer both a per-language async-completion form and a
+callback-completion form, and both are selected at the submit step of
+the same `RequestOp` operation builder the `request` entrypoint returns.
+Do not create a separate name (`request_callback`, `requestAsync`, and
+so on).
 
-SPOT operation builder 대상의 작업 시작점은 `requestToChannel` /
-`requestToSpot` / `requestToRouter` 이고, raw `DealerSocket` /
-`RouterSocket` 의 작업 시작점은 `request` / `request(peer)` 이다. 어느
-시작점이든 완료 방식은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에
-정의한 언어별 마지막 실행 메서드로 선택한다.
-- **성공 시 reply payload 의 `List<Message>` 만 반환한다.** caller 는 이미
-  자기가 보낸 request 의 routing_id 와 request_seq 를 알고 있으므로
-  `Received` 를 되돌려 받을 필요가 없다. 별도 `Reply` 타입은 만들지 않는다.
-- multipart reply 가 가능하므로 단일 `Message` 가 아닌 `List<Message>` 를
-  반환한다. 단일 part reply 는 `list[0]` 으로 꺼낸다.
+For a SPOT operation builder target, the work start point is
+`requestToChannel`/`requestToSpot`/`requestToRouter`; for a raw
+`DealerSocket`/`RouterSocket`, the work start point is
+`request`/`request(peer)`. Regardless of the start point, the completion
+mode is selected through the per-language final execution method the
+[bindings async execution surface policy](async-coroutine-policy.md)
+defines.
+- **On success, it returns only the reply payload's `List<Message>`.**
+  The caller already knows the `routing_id` and `request_seq` of the
+  request it sent, so it does not need `Received` back. A separate
+  `Reply` type is not created.
+- Because multipart reply is possible, it returns `List<Message>`, not a
+  single `Message`. A single-part reply is retrieved with `list[0]`.
 
-#### Callback request
+#### Callback Request
 
-builder의 callback submit 메서드 (`submit(callback)`).
+The builder's callback submit method (`submit(callback)`).
 
-- flags 파라미터 있음. builder의 `.flags(...)` 단계로 전달하며,
-  `DONTWAIT` 으로 non-blocking submit 가능.
-- timeout 은 builder의 `.timeout(...)` 단계로 전달한다. 지정하지 않으면 소켓
-  기본 timeout 을 사용한다.
-- submit 단계는 아래처럼 해석한다.
-  - exception 기반 언어:
-    blocking 성공=`true`, non-blocking temporary backpressure=`false`,
-    그 외 submit 실패=예외
-  - return-based 언어:
-    기존 에러 반환 계약 유지
-  실패 시 callback 은 등록되지 않는다.
-- submit 성공 시 callback 이 정확히 한 번 호출된다.
-  - 성공: `result = OK`, reply parts 포함
-  - 실패: `result != OK` (TIMED_OUT 등), parts 는 empty / null / None /
-    `Option::None`
-- callback 시그니처는 언어 관용구를 따르며 **reply payload 는 `List<Message>`**
-  로 전달한다 (`Received` 가 아니다):
-  - 공통 패턴 (C++/Java/.NET/Node/Python/Go):
-    `(RequestResult result, List<Message> parts)` — 결과 enum 과 parts 리스트
-  - Rust 관용구: `FnOnce(Result<Vec<Message>, RequestError>)` — `Result` 타입
-    이 Rust 에서 에러 + 값을 표현하는 표준 방식이므로 이 패턴을 허용한다.
-    `RequestError::code` 는 `RequestResult` enum 값과 1:1 대응한다.
+- Takes a flags parameter. Delivered through the builder's `.flags(...)`
+  step; a non-blocking submit is possible with `DONTWAIT`.
+- The timeout is delivered through the builder's `.timeout(...)` step. If
+  not specified, it uses the socket's default timeout.
+- The submit step is interpreted as follows.
+  - Exception-based languages: blocking success = `true`, non-blocking
+    temporary backpressure = `false`, any other submit failure = an
+    exception
+  - Return-based languages: keeps the existing error-return contract
+  On failure, the callback is not registered.
+- On submit success, the callback is called exactly once.
+  - Success: `result = OK`, includes reply parts
+  - Failure: `result != OK` (`TIMED_OUT`, and so on), parts is
+    empty/null/None/`Option::None`
+- The callback signature follows language idiom, and **delivers the
+  reply payload as `List<Message>`** (not `Received`):
+  - The common pattern (C++/Java/.NET/Node/Python/Go):
+    `(RequestResult result, List<Message> parts)` — a result enum and a
+    parts list
+  - Rust idiom: `FnOnce(Result<Vec<Message>, RequestError>)` — this
+    pattern is allowed because `Result` is Rust's standard way to
+    express an error plus a value. `RequestError::code` maps 1:1 to the
+    `RequestResult` enum value.
 
-#### 공통
+#### Shared
 
-- `zlink_request_result_t` 전체 정의는
-  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 를 참조한다.
-- Go / Rust 는 exception 이 없으므로 callback request 의 submit 실패도
-  return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
-  `Result<_, SubmitError>` 반환).
+- For the full `zlink_request_result_t` definition, see
+  [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/).
+- Because Go / Rust have no exceptions, a callback request's submit
+  failure is also handled in a return-based way (Go: returns
+  `*SubmitError`; Rust: returns `Result<_, SubmitError>`).
 
 ## 도메인 객체 정책
 - Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다

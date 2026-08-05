@@ -36,6 +36,6 @@ This tree only owns the **contract**. For usage, check the
 per-language guide:
 [C++](../../../cpp/guide/stream-connector/README.ko.md),
 [.NET](../../../dotnet/guide/stream-connector/README.ko.md),
-[Java](../../../java/guide/stream-connector/README.ko.md),
-[Kotlin](../../../kotlin/guide/stream-connector/README.ko.md),
+[Java](../../../java/guide/stream-connector/README.en.md),
+[Kotlin](../../../kotlin/guide/stream-connector/README.en.md),
 [Node.js/TypeScript](../../../node/guide/stream-connector/README.ko.md).

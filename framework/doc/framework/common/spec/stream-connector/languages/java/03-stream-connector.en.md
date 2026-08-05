@@ -36,9 +36,9 @@ responsible for a game engine or browser.
 Since there's only one target, this assignment leaves no effect on the
 Java/Kotlin surface. The usage guide only separately describes the
 per-language async usage in the
-[Java guide](../../../../../java/guide/stream-connector/README.ko.md)
+[Java guide](../../../../../java/guide/stream-connector/README.en.md)
 and the
-[Kotlin guide](../../../../../kotlin/guide/stream-connector/README.ko.md).
+[Kotlin guide](../../../../../kotlin/guide/stream-connector/README.en.md).
 
 ## 2. Module
 

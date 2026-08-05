@@ -4,7 +4,7 @@ title: "5. Message Continuity During A Move"
 
 # 5. Message Continuity During A Move
 
-[Internal structure table of contents](README.en.md) · [Previous: 4. Operation Completion Confirmation — Only One Finalizes](04-completion.en.md) · [Next: 6. Target Selection And Route Cache](06-routing-and-cache.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 4. Operation Completion Confirmation — Only One Finalizes](04-completion.en.md) · [Next: 6. Target Selection And Route Cache](06-routing-and-cache.en.md)
 
 > **What this chapter answers** — where a message addressed to an
 > object goes while that object is moving to another node.
@@ -188,4 +188,4 @@ decides.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 4. Operation Completion Confirmation](04-completion.en.md) · [Next: 6. Target Selection And Route Cache](06-routing-and-cache.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 4. Operation Completion Confirmation](04-completion.en.md) · [Next: 6. Target Selection And Route Cache](06-routing-and-cache.en.md)

@@ -3220,66 +3220,72 @@ compatibility alias as current API.
 - Unregistering a callback by setting it to `null`/`None` is not
   allowed. A callback is unregistered only by closing the socket.
 
-## 코어 API 추가 사항
+## Core API Additions
 
-이 섹션은 `core/include/zlink.h`에 추가된 core API를 정리한다.
-각 바인딩은 이 API를 언어별 typed surface로 노출해야 한다.
+This section summarizes the core APIs added to `core/include/zlink.h`.
+Each binding must expose these APIs as a per-language typed surface.
 
-### Request-Reply 정책
+### Request-Reply Policy
 
-> 언어별 인터페이스 시그니처와 사용 예는
-> `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
+> See `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` for
+> per-language interface signatures and usage examples.
 
-#### 설계 원칙
+#### Design Principles
 
-- request-reply 는 ZMP protocol envelope 로 처리한다.
-  `zlink_msg_t` 에 request 표시를 붙이는 방식은 사용하지 않는다.
-- dispatch, pending map, timeout, reply 매칭은 core C API 에서 처리한다.
-  바인딩은 이 로직을 다시 구현하지 않는다.
-- core 는 callback 기반 비동기 모델을 제공한다.
-  바인딩은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에 따라
-  callback 위에 언어별 완료 객체 반환 표면을 얹을 수 있다. coroutine 연결은 framework가
-  맡는다.
-- `request()` 는 thread blocking API 가 아니다.
-- request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
-  별도 추상 레이어가 아니라 기존 표면에 역할을 얹는다.
+- Request-reply is handled through the ZMP protocol envelope. It does
+  not use a scheme that attaches a request marker to `zlink_msg_t`.
+- Dispatch, the pending map, timeout, and reply matching are all handled
+  in the core C API. A binding does not reimplement this logic.
+- Core provides a callback-based async model. A binding can layer a
+  per-language completion-object-return surface on top of the callback,
+  per the
+  [bindings async execution surface policy](async-coroutine-policy.md).
+  A coroutine connection is the framework's responsibility.
+- `request()` is not a thread-blocking API.
+- Request-reply is a capability extension of the Router/Dealer sockets
+  and SPOT — not a separate abstraction layer; it layers a role on top of
+  the existing surface.
 
-#### 공개 표면에 두지 않는 API
+#### APIs Not On The Public Surface
 
-message-level request-reply marker API 와 per-message metadata API 는
-public surface 의 일부가 아니다. 바인딩은 다음 함수나 상수를 public 으로
-노출하지 않고, `Message` 객체 안에 request marker 상태를 두지 않는다.
+The message-level request-reply marker API and the per-message metadata
+API are not part of the public surface. A binding does not expose the
+following functions or constants publicly, and does not keep request
+marker state inside a `Message` object.
 
-- `zlink_msg_set_request`, `zlink_msg_set_reply`, `zlink_msg_get_request_info`
-- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`, `zlink_msg_clear_metadata`
+- `zlink_msg_set_request`, `zlink_msg_set_reply`,
+  `zlink_msg_get_request_info`
+- `zlink_msg_set_metadata`, `zlink_msg_get_metadata`,
+  `zlink_msg_clear_metadata`
 
-#### 유효한 Request-Reply 조합
+#### Valid Request-Reply Combinations
 
-**Socket 경로:**
+**Socket paths:**
 
-| 요청자 | 응답자 | 가능 | reply 경로 |
+| Requester | Responder | Possible | Reply path |
 |--------|--------|------|-----------|
-| Dealer | Router | Y | Router 가 Dealer 의 routing_id 로 회신 |
-| Router | Router | Y | 서로 routing_id 로 회신 |
-| Dealer | Dealer | **N** | 양쪽 다 routing_id 없음 |
-| Router | Dealer | **N** | Dealer 가 특정 peer 에 회신 불가 |
+| Dealer | Router | Y | Router replies using the Dealer's routing_id |
+| Router | Router | Y | Both sides reply using routing_id |
+| Dealer | Dealer | **N** | Neither side has a routing_id |
+| Router | Dealer | **N** | Dealer cannot reply to a specific peer |
 
-**SPOT 경로:**
+**SPOT paths:**
 
-| 요청자 | 응답자 | 가능 | reply 경로 |
+| Requester | Responder | Possible | Reply path |
 |--------|--------|------|-----------|
-| Spot | Spot | Y | 상대 주소 + request_seq 로 회신 |
-| Spot | Router | Y | Spot 이 Router 에 request, Router 가 Spot 에 reply |
-| Router | Spot | Y | Router 가 Spot 에 request, Spot 이 Router 에 reply |
+| Spot | Spot | Y | Replies with the peer's address + request_seq |
+| Spot | Router | Y | Spot requests Router; Router replies to Spot |
+| Router | Spot | Y | Router requests Spot; Spot replies to Router |
 
-`DealerSocket.request()` 연결 제약:
-- 연결 대상은 전부 Router 여야 한다.
-  Dealer 에 Router 와 Dealer 가 섞이면 request 가 실패할 수 있다.
-- 바인딩은 이 제약을 런타임에 검증하지 않는다. 사용자 책임이며 API 문서에 명시한다.
+`DealerSocket.request()` connection constraints:
+- Every connected target must be a Router. If Router and Dealer are
+  mixed on a Dealer's connections, request can fail.
+- A binding does not validate this constraint at runtime. It is the
+  user's responsibility, and it is documented in the API docs.
 
-#### C API 표면
+#### C API Surface
 
-**공통 타입:**
+**Shared type:**
 
 ```c
 typedef void (*zlink_reply_handler_fn)(
@@ -3290,8 +3296,8 @@ typedef void (*zlink_reply_handler_fn)(
 
 ```
 
-callback 으로 전달된 `parts` 는 borrowed view 다.
-callback 반환 시점까지만 유효하다. 밖에서 유지하려면 복사한다.
+The `parts` delivered to a callback is a borrowed view. It's valid only
+until the callback returns. Copy it to keep it beyond that.
 
 **Socket API:**
 
@@ -3341,127 +3347,149 @@ zlink_recv_result_t zlink_spot_recv_part(void *spot, ...);
 zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot, ...);
 ```
 
-전체 시그니처는 `core/include/zlink.h` 를 참조한다.
+See `core/include/zlink.h` for the full signatures.
 
-#### 수신 Dispatch 모델
+#### Receive Dispatch Model
 
-core 가 request-reply dispatch 를 처리한다. 바인딩은 dispatch owner 를 구현하지 않는다.
+Core handles request-reply dispatch. A binding does not implement a
+dispatch owner.
 
-- `request_seq = 0` 이면 ordinary message.
-- `request_seq != 0` 이면 request-reply message.
-- core 가 pending map 에서 `source_node_rid + request_seq` 로 매칭한다.
-- 매칭 실패한 reply (stray/late reply) 는 drop 한다.
-- ROUTER 는 generic `zlink_recv_part()` 대신 `zlink_router_recv_part()` typed surface 를
-  사용한다. generic `zlink_recv_part()` 호출 시 `EOPNOTSUPP`.
-- ROUTER 의 routed 수신 plane 은 **단일 표면**이다. 일반 ROUTER 트래픽과
-  spot-origin routed 트래픽 모두 `zlink_router_recv_part()` 하나로 받는다.
-  `source_spot_rid` 가 `NULL` 이면 일반 ROUTER 트래픽, 채워져 있으면
-  spot-origin 트래픽이다.
+- `request_seq = 0` means an ordinary message.
+- `request_seq != 0` means a request-reply message.
+- Core matches by `source_node_rid + request_seq` in the pending map.
+- A reply that fails to match (a stray/late reply) is dropped.
+- ROUTER uses the typed surface `zlink_router_recv_part()` instead of
+  the generic `zlink_recv_part()`. Calling the generic
+  `zlink_recv_part()` returns `EOPNOTSUPP`.
+- ROUTER's routed receive plane is a **single surface**. Both ordinary
+  ROUTER traffic and spot-origin routed traffic are received through the
+  one `zlink_router_recv_part()`. A `NULL` `source_spot_rid` means
+  ordinary ROUTER traffic; a filled-in one means spot-origin traffic.
 
-#### Request API 변형
+#### Request API Variants
 
-request 는 두 완료 방식을 가진다.
+A request has two completion modes.
 
-비동기 request와 callback completion request는 모두 `request`
-entrypoint가 반환하는 `RequestOp` operation builder를 통해 노출된다. 완료 방식별
-flags, timeout, 실패 전달 규칙은 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
-따른다.
+Both async request and callback-completion request are exposed through
+the `RequestOp` operation builder the `request` entrypoint returns. The
+per-completion-mode flags, timeout, and failure-delivery rules follow the
+[bindings async execution surface policy](async-coroutine-policy.md).
 
-C binding 은 `zlink_*_request_part(..., flags, part_flag, timeout, ...)`
-substrate 형태를 유지한다. C ABI에는 wrapper builder 정책을 적용하지 않는다.
+The C binding keeps the substrate shape
+`zlink_*_request_part(..., flags, part_flag, timeout, ...)`. The wrapper
+builder policy does not apply to the C ABI.
 
-- 에러 처리는 Error Handling Policy 를 따른다.
-  callback request 의 submit 실패도 언어 관용구를 그대로 적용한다:
-  exception 언어 (C++/Java/.NET/Node/Python) 는 예외, return-based 언어
-  (C/Go/Rust) 는 에러 반환.
-- reply 결과는 callback 이 정확히 한 번 전달한다.
+- Error handling follows the Error Handling Policy. A callback request's
+  submit failure applies language idiom as-is: an exception for
+  exception languages (C++/Java/.NET/Node/Python), a returned error for
+  return-based languages (C/Go/Rust).
+- A reply result is delivered by the callback exactly once:
   `(RequestResult result, List<Message> parts)`
 
 #### SPOT Request-Reply
 
-SPOT 직접 전달 위에서도 같은 request-reply 프로토콜을 사용한다.
-`SPOT routed envelope -> request-reply envelope -> payload` 순서로 싣는다.
-SPOT reply 도 ctx 없이 상대 주소 + request_seq 로 보낸다.
-같은 Spot 에서 여러 request 를 동시에 outstanding 상태로 둘 수 있다.
-high-level request 완료는 첫 reply 1건으로 끝난다.
+The same request-reply protocol is used on top of SPOT direct delivery.
+It's layered as `SPOT routed envelope -> request-reply envelope ->
+payload`. A SPOT reply is also sent with the peer's address +
+request_seq, without a ctx. Multiple requests can be outstanding
+concurrently on the same Spot. A high-level request's completion ends
+with the first reply.
 
 #### Timeout
 
-- timeout 은 core 가 관리한다. 바인딩은 timeout 로직을 구현하지 않는다.
-- 기본 timeout: `5000ms`. per-call > socket default > 구현 기본 `5000ms`.
-- `timeout_ms = 0` 이면 socket default timeout 을 사용한다.
-- timeout 은 send 대기 + reply 대기를 합산한 전체 경과 시간에 적용된다.
-- timeout 시 core 가 pending map 에서 제거하고 callback 에 `ZLINK_REQUEST_TIMED_OUT` 전달.
-- timeout 후 late reply 는 core 가 drop 한다.
+- Timeout is managed by core. A binding does not implement timeout
+  logic.
+- The default timeout is `5000ms`. Priority: per-call > socket default >
+  the implementation default `5000ms`.
+- `timeout_ms = 0` uses the socket's default timeout.
+- Timeout applies to the total elapsed time — send wait plus reply
+  wait combined.
+- On timeout, core removes the entry from the pending map and delivers
+  `ZLINK_REQUEST_TIMED_OUT` to the callback.
+- Core drops a late reply that arrives after timeout.
 
-#### Pending map
+#### Pending Map
 
-- `request_seq` 채번, pending 등록, reply 매칭, timeout 제거 모두 core 에서 한다.
-- 바인딩은 pending map 을 별도로 유지하지 않는다.
-- 바인딩이 유지하는 것은 callback → Future/Promise resolve 매핑뿐이다.
+- Assigning `request_seq`, pending registration, reply matching, and
+  timeout removal are all done in core.
+- A binding does not maintain a separate pending map.
+- The only thing a binding maintains is the callback → Future/Promise
+  resolve mapping.
 
-#### Wire format
+#### Wire Format
 
-- `request_seq` 는 부호 없는 64비트 정수 (8바이트, network byte order).
-- 시작값 `1`. `0` 은 ordinary message 예약값.
-- overflow 시 `1` 로 wrap. outstanding 충돌값은 건너뛴다.
-- envelope 은 4개 control part: protocol id, version, message type, request_seq.
-- SPOT routed 조합 시 8개 SPOT control part + 4개 request-reply control part + payload.
-- 바인딩은 envelope 을 직접 파싱하지 않는다. core 가 처리한다.
+- `request_seq` is an unsigned 64-bit integer (8 bytes, network byte
+  order).
+- The starting value is `1`. `0` is reserved to mean an ordinary
+  message.
+- On overflow, it wraps to `1`. A value that collides with an
+  outstanding one is skipped.
+- The envelope has 4 control parts: protocol id, version, message type,
+  request_seq.
+- When combined with SPOT routed, it's 8 SPOT control parts + 4
+  request-reply control parts + payload.
+- A binding does not parse the envelope directly. Core handles it.
 
-#### 반환 타입
+#### Return Type
 
-- `request()` 성공 시 **reply payload `List<Message>` 만** 반환한다
-  (`Vec<Message>` / `IReadOnlyList<Message>` / `Message[]` /
-  `tuple[Message, ...]` 등 언어별 리스트 타입).
-- caller 는 이미 자기가 보낸 request 의 대상 routing_id 와 request_seq 를
-  알고 있으므로, 그걸 wrap 한 `Received` 를 되돌려받을 필요가 없다.
-- 별도 `Reply` 타입은 만들지 않는다.
-- multipart reply 지원이 목적이므로 단일 `Message` 가 아닌 리스트 형태다.
-  단일 part reply 는 `parts[0]` 으로 꺼낸다.
-- request handler (서버 측) 는 `peer_rid`, `request_seq`, payload 를 함께
-  전달한다. 별도 `Request` 타입이나 `onRequest` 전용 callback 은 만들지
-  않는다. (server 측은 누가 어떤 request_seq 로 보냈는지 알아야 하므로
-  차이가 있다.)
+- On success, `request()` returns **only the reply payload's
+  `List<Message>`** (a per-language list type such as `Vec<Message>`,
+  `IReadOnlyList<Message>`, `Message[]`, or `tuple[Message, ...]`).
+- The caller already knows the target routing_id and request_seq of the
+  request it sent, so it does not need a `Received` wrapping that back.
+- A separate `Reply` type is not created.
+- Because multipart reply support is the goal, it's a list shape rather
+  than a single `Message`. A single-part reply is retrieved with
+  `parts[0]`.
+- A request handler (server side) delivers `peer_rid`, `request_seq`,
+  and the payload together. A separate `Request` type or a dedicated
+  `onRequest` callback is not created. (This differs because the server
+  side needs to know who sent which request_seq.)
 
-#### 소유권
+#### Ownership
 
-- `request()` / `reply()` 호출 시 메시지 ownership 은 기존 send 계약을 따른다.
-- request callback 으로 전달된 `parts` 는 borrowed view 다.
-  callback 반환 후 무효. 바인딩은 이를 복사해 언어별 리스트 타입 또는
-  `Vec<Message>` 로 전달한다.
-- 소켓 close 시 core 가 pending map 의 모든 미완료 request 를 `ZLINK_REQUEST_TERMINATED` callback 으로 reject 한다.
+- Message ownership on a `request()`/`reply()` call follows the existing
+  send contract.
+- The `parts` delivered to a request callback is a borrowed view.
+  Invalid after the callback returns. A binding copies it and delivers a
+  per-language list type or `Vec<Message>`.
+- On socket close, core rejects every outstanding request in the pending
+  map with a `ZLINK_REQUEST_TERMINATED` callback.
 
-#### Callback 계약
+#### Callback Contract
 
-- callback 은 정확히 한 번 호출된다.
-  성공이면 `result = OK` + reply parts, 실패면 `result != OK` +
-  empty/null/Err 경로로 전달된다.
-- core callback 시그니처: `void(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)`
-- 언어별 패턴 (per-function `RequestError` 계승):
+- The callback is called exactly once. On success it's delivered as
+  `result = OK` plus reply parts; on failure, `result != OK` plus an
+  empty/null/Err path.
+- The core callback signature:
+  `void(zlink_request_result_t result_, zlink_msg_t *parts_, size_t part_count_, void *userdata_)`
+- Per-language patterns (inheriting the per-function `RequestError`):
   - C++: `std::function<void(request_result_t, std::vector<message_t>)>`
   - Java: `BiConsumer<RequestResult, List<Message>>`
   - .NET: `Action<RequestResult, IReadOnlyList<Message>>`
   - Node: `(result: RequestResult, parts: Message[]) => void`
   - Python: `callback(result: RequestResult, parts: list[Message])`
-  - Go: `func(RequestResult, []*Message)` (실패 시 nil/empty 허용)
-  - Rust: `FnOnce(Result<Vec<Message>, RequestError>)` (Rust 관용구;
-    `RequestError::code` 가 `RequestResult` 에 대응)
+  - Go: `func(RequestResult, []*Message)` (nil/empty allowed on failure)
+  - Rust: `FnOnce(Result<Vec<Message>, RequestError>)` (Rust idiom;
+    `RequestError::code` maps to `RequestResult`)
 
-### SPOT Messaging 정책
+### SPOT Messaging Policy
 
-> 언어별 SPOT 인터페이스는 `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
+> See `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` for
+> the per-language SPOT interfaces.
 
-SPOT public surface 는 두 이름 축을 분리한다. `sendToChannel(...)` 과
-`requestToChannel(...)` 은 channel-aware 직접 메시징 경로이고,
-`publish(topic, ...)` 는 `Spot` 자신이 속한 topic plane 에 발행한다.
-직접 주소 지정 routed messaging 은 선택적으로 추가할 수 있는 보조 typed surface 다. request-reply 는
-routed messaging 위에 얹어진다.
+The SPOT public surface separates two naming axes. `sendToChannel(...)`
+and `requestToChannel(...)` are the channel-aware direct messaging path,
+while `publish(topic, ...)` publishes to the topic plane the `Spot`
+itself belongs to. Direct address-targeted routed messaging is an
+optional supplementary typed surface. Request-reply is layered on top
+of routed messaging.
 
-#### Pub/Sub 메시징
+#### Pub/Sub Messaging
 
-SPOT pub/sub 는 `Spot` handle 이 속한 channel 과 `topic` 기반 발행/구독 모델이다.
-발행 호출자는 channel 이름을 별도 인자로 전달하지 않는다.
+SPOT pub/sub is a publish/subscribe model based on the channel a `Spot`
+handle belongs to and a `topic`. The publish caller does not pass the
+channel name as a separate argument.
 
 ```c
 /* publish */
@@ -3485,28 +3513,35 @@ zlink_config_result_t zlink_unset_subscription(
     const char *filter);
 ```
 
-바인딩 규칙:
-- C API 는 publish 를 위한 별도 no-wait 함수 이름을 따로 두지 않는다.
-- non-blocking publish 는 `zlink_spot_publish_part(..., ZLINK_DONTWAIT, ...)` 를 호출하고
-  errno 를 `zlink_submit_result_t` 로 분류한다. 바인딩은 별도 `tryPublish` 나
-  `publishNoWait` 를 두지 않는다.
-- `subscribe` 수신은 `topic + parts` 를 돌려주는 typed receive surface 로
-  노출한다.
-- topic filter 설정은 typed subscription API 로 노출한다.
-- channel-aware send/request 와 topic publish 의 실패는 `SubmitError` 로 승격된다.
-  - `NOT_FOUND`: channel-aware send/request 는 해당 `channel_name` 또는 attach 대상이 없음.
-    topic publish 는 발행 가능한 topic plane 대상이 없음.
-  - `NOT_CONNECTED`: attachment 는 있으나 active/send-ready 경로가 없음
-  - `BACKPRESSURED`: 경로는 있으나 HWM 도달
-  - `NOT_ADMITTED`: 대상 peer 가 drain 상태라 신규 submit 거부
+Binding rules:
+- The C API does not have a separate no-wait function name for publish.
+- A non-blocking publish calls
+  `zlink_spot_publish_part(..., ZLINK_DONTWAIT, ...)` and classifies
+  errno into `zlink_submit_result_t`. A binding does not add a separate
+  `tryPublish` or `publishNoWait`.
+- A `subscribe` receive is exposed as a typed receive surface that
+  returns `topic + parts`.
+- Topic filter configuration is exposed as a typed subscription API.
+- A channel-aware send/request or topic publish failure is promoted to
+  `SubmitError`.
+  - `NOT_FOUND`: for channel-aware send/request, no matching
+    `channel_name` or attach target exists; for topic publish, there is
+    no target on the topic plane to publish to.
+  - `NOT_CONNECTED`: an attachment exists, but there is no active/
+    send-ready path
+  - `BACKPRESSURED`: a path exists, but the HWM has been reached
+  - `NOT_ADMITTED`: the target peer is draining, so a new submit is
+    rejected
 
 #### Routed Direct Messaging
 
-SPOT routed direct messaging 은 특정 Spot 또는 Router peer, routed reply 대상에
-직접 메시지를 보낸다. Core substrate는 아래 part 기반 C 함수로 표현된다.
-고수준 바인딩의 `Spot` facade와 `RouterSocket`의 router-to-spot helper 모두
-이 기능을 `Operation Builder Policy`에 맞춘 operation builder 시작점으로
-노출한다. raw socket의 일반 send/request/reply도 동일한 builder 패턴을 따른다.
+SPOT routed direct messaging sends a message directly to a specific Spot
+or Router peer, or a routed reply target. The core substrate is
+expressed through the part-based C functions below. Both the high-level
+binding's `Spot` facade and `RouterSocket`'s router-to-spot helper expose
+this capability as an operation builder start point that fits the
+`Operation Builder Policy`. A raw socket's ordinary send/request/reply
+also follows the same builder pattern.
 
 ```c
 /* spot -> spot */
@@ -3524,15 +3559,17 @@ zlink_submit_result_t zlink_router_send_spot_part(void *router,
     zlink_part_flag_t part_flag);
 ```
 
-바인딩 규칙:
-- C ABI는 part 기반 함수형 계약을 유지한다.
-- 고수준 바인딩의 `Spot` endpoint, `RouterSocket`의 router-to-spot helper,
-  그리고 raw `DealerSocket`/`RouterSocket`/`PubSocket`/`StreamSocket` 등의
-  일반 send/request/reply/publish 표면 모두 이 문서의
-  `Operation Builder Policy`를 따른다.
-- 목적지 주소·요청 시퀀스는 builder 시작점 인자로 받고, payload·flags·timeout·
-  callback은 builder 단계로 표현한다.
-- routed recv 는 아래 Event Dispatcher 의 handler/recv surface 를 사용한다.
+Binding rules:
+- The C ABI keeps a part-based functional contract.
+- The high-level binding's `Spot` endpoint, `RouterSocket`'s
+  router-to-spot helper, and every ordinary send/request/reply/publish
+  surface on raw `DealerSocket`/`RouterSocket`/`PubSocket`/`StreamSocket`
+  all follow this document's `Operation Builder Policy`.
+- The destination address/request sequence is taken as a builder
+  start-point argument, and payload/flags/timeout/callback are expressed
+  as builder steps.
+- Routed recv uses the handler/recv surface of the Event Dispatcher
+  below.
 
 #### SPOT Lifecycle / Bridge / Deprecated Attachment
 
@@ -3601,13 +3638,14 @@ int zlink_spot_node_publisher_publish(
 int zlink_spot_node_publisher_close(void *publisher);
 ```
 
-`options == NULL` 또는 `options->mode == 0`은 모든 SPOT 기능을 켠다. 바인딩은
-각 언어의 기본 생성자에서 이 기본값을 사용하고, mode를 노출하는 경우
-`PUBSUB`, `ROUTED`, `ALL` 값을 C 계약과 같은 의미로 매핑한다. 내부 socket
-관찰 API는 `zlink_spot_node_internal_sockets()`을 기준으로 하며,
-이미 생성된 socket만 반환한다.
+`options == NULL` or `options->mode == 0` turns on every SPOT
+capability. A binding uses this default in each language's default
+constructor, and where it exposes `mode`, it maps `PUBSUB`, `ROUTED`, and
+`ALL` to the same meaning as the C contract. The internal socket
+observation API is based on `zlink_spot_node_internal_sockets()`, and
+returns only already-created sockets.
 
-SpotNode option facade는 core의 여섯 public option을 빠뜨리지 않아야 한다.
+The SpotNode option facade must not omit core's six public options.
 
 | Core option | Binding surface |
 |-------------|-----------------|
@@ -3618,45 +3656,55 @@ SpotNode option facade는 core의 여섯 public option을 빠뜨리지 않아야
 | `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | minimum dispatch callback workers |
 | `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | maximum dispatch callback workers |
 
-dispatch worker min/max는 `SpotNode` dispatch callback 실행 pool 설정이다.
-data-plane thread나 transport I/O thread 수를 바꾸는 옵션으로 설명하면 안 된다.
-값 검증은 core와 동일하게 `min >= 1`, `max >= min`이다. 바인딩은 각 언어의
-typed option/property로 이 두 값을 노출하고, raw option bag을 canonical 경로로
-되살리면 안 된다.
+Dispatch worker min/max configures `SpotNode`'s dispatch-callback
+execution pool. It must not be described as an option that changes the
+data-plane thread count or transport I/O thread count. Value validation
+matches core: `min >= 1`, `max >= min`. A binding exposes these two
+values as a per-language typed option/property, and must not revive a
+raw option bag as the canonical path.
 
-바인딩 규칙:
-- `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
-- `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
-- Spot에서 다른 channel로 보내거나 `ROUTER` channel에서 Spot relay packet을 받을 때는
-  `SpotRouteBridge`를 사용한다. bridge에 등록되는 `ROUTER` socket은 caller 또는
-  channel runtime이 계속 소유한다.
-- raw Core socket에는 logical channel metadata를 설정하거나 조회하는 API가
-  없다. channel name은 `SpotRouteBridge`의 typed operation이 받는 논리적
-  routing 값으로만 사용한다.
-- bridge의 `handle_router_received()`는 channel runtime의 receive loop에서 호출한다.
-  `handled == true`이면 payload 소유권은 bridge가 가져가며, caller는 같은 received
-  object를 다시 처리하지 않는다.
-- `SpotNodePublisher`는 외부 코드가 raw `PUB` socket을 `SpotNode`에 attach하지 않고
-  SpotNode의 topic publish ingress로 publish하기 위한 handle이다.
-- `Spot.publish(topic).message(...).submit()`은 `SpotNode` 자신의 topic publish
-  ingress queue로 들어가는 channel-aware topic plane이다. 외부 channel 호출은
-  `SpotRouteBridge`와 channel runtime 소유 socket 경로로 설명한다.
-- `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
-  path 다. channel-aware public surface 의 중심 API 로 설명하면 안 된다.
+Binding rules:
+- `SpotNode` and `Spot` are exposed as separate typed handles.
+- `Spot` is a facade layered on top of `SpotNode`. When `SpotNode` is
+  released, `Spot` also becomes invalid.
+- Use `SpotRouteBridge` to send from Spot to a different channel, or to
+  receive a Spot relay packet on a `ROUTER` channel. The `ROUTER` socket
+  registered with the bridge continues to be owned by the caller or the
+  channel runtime.
+- A raw Core socket has no API to set or query logical channel metadata.
+  A channel name is used only as the logical routing value
+  `SpotRouteBridge`'s typed operations accept.
+- The bridge's `handle_router_received()` is called from the channel
+  runtime's receive loop. When `handled == true`, the bridge takes
+  payload ownership, and the caller does not process the same received
+  object again.
+- `SpotNodePublisher` is a handle for publishing to SpotNode's topic
+  publish ingress without external code attaching a raw `PUB` socket to
+  `SpotNode`.
+- `Spot.publish(topic).message(...).submit()` is the channel-aware topic
+  plane that enters `SpotNode`'s own topic publish ingress queue. An
+  external channel call is described through `SpotRouteBridge` and the
+  channel-runtime-owned socket path.
+- `connect_peer`/`disconnect_peer` are control paths exclusive to raw
+  peer topology. They must not be described as the central API of the
+  channel-aware public surface.
 
-### SPOT Event Dispatcher 정책
+### SPOT Event Dispatcher Policy
 
-core 는 callback 기반 event dispatcher 모델을 제공한다.
-하나의 I/O thread context 안에서 여러 이벤트 소스
-(sub recv, routed recv, timer, send-ready) 를 동기화 없이 처리할 수 있다.
+Core provides a callback-based event dispatcher model. It can handle
+multiple event sources (sub recv, routed recv, timer, send-ready)
+without synchronization, inside a single I/O thread context.
 
-핵심 원리:
-- handler callback 을 등록하면 core I/O thread 가 이벤트 발생 시 callback 을 호출한다.
-- 모든 callback 은 같은 thread context 에서 실행되므로 lock 없이 상태를 공유할 수 있다.
-- callback 안에서 recv, send, reply 를 호출해도 동기화 문제가 없다.
-- timer 도 같은 context 에서 실행된다.
+Core principles:
+- Once a handler callback is registered, the core I/O thread calls the
+  callback when the event occurs.
+- Because every callback runs in the same thread context, state can be
+  shared without a lock.
+- Calling recv, send, or reply inside the callback has no
+  synchronization issue.
+- The timer also runs in the same context.
 
-#### Callback 등록 API
+#### Callback Registration API
 
 ```c
 /* raw STREAM direct recv callback */
@@ -3672,35 +3720,40 @@ zlink_handler_result_t zlink_send_ready_handler(void *s,
     zlink_send_ready_handler_fn handler, void *userdata);
 ```
 
-규칙:
-- core C attach 함수는 한 subject 당 활성 handler 하나만 허용한다.
-  이미 native handler가 attach된 상태에서 다시 attach하면 `EBUSY`가 날 수 있다.
-  public binding의 `set...Handler` 표면은 이 raw attach 함수를 직접 반복 노출하지
-  않고, 현재 public handler를 저장하거나 교체하는 의미로 제공한다.
-- `zlink_recv_handler()` 는 raw `STREAM` 에만 허용한다.
-- `zlink_stream_packet_handler()` 도 raw `STREAM` 에만 허용하며,
-  `recv` / raw callback / packet callback 세 모드는 서로 배타적이다.
-- raw `PAIR`, `DEALER`, `ROUTER`, `SUB`, `XSUB` 는 direct receive callback
-  install surface 를 두지 않는다. `PAIR`, `DEALER`, `ROUTER` 는 공개
-  recv 메서드로만 수신하고, `SUB`, `XSUB` 는 topic subscribe 수신 표면으로만
-  수신한다.
-- callback 등록 후 같은 subject 에 대한 direct recv 와 해당 data-plane
-  `ZLINK_POLLIN` 등록은 `EBUSY` 로 실패할 수 있다. 정확한 적용 범위는
-  STREAM / SPOT 의 타입별 규칙을 따른다.
-- public callback setter는 replace-only다. `NULL` 전달은 허용하지 않는다.
+Rules:
+- A core C attach function allows only one active handler per subject.
+  Attaching again while a native handler is already attached can return
+  `EBUSY`. A public binding's `set...Handler` surface does not directly
+  repeat this raw attach function — it provides the meaning of storing
+  or replacing the current public handler.
+- `zlink_recv_handler()` is allowed only on raw `STREAM`.
+- `zlink_stream_packet_handler()` is also allowed only on raw `STREAM`,
+  and the three modes — `recv`/raw callback/packet callback — are
+  mutually exclusive.
+- Raw `PAIR`, `DEALER`, `ROUTER`, `SUB`, `XSUB` do not have a direct
+  receive callback install surface. `PAIR`, `DEALER`, `ROUTER` receive
+  only through a public recv method, and `SUB`, `XSUB` receive only
+  through the topic subscribe receive surface.
+- After a callback is registered, a direct recv on the same subject and
+  registering that data-plane `ZLINK_POLLIN` can fail with `EBUSY`. The
+  exact scope follows STREAM/SPOT's per-type rules.
+- A public callback setter is replace-only. Passing `NULL` is not
+  allowed.
 
 #### Spot Dispatch Event Handler
 
-Spot 의 핵심 event dispatcher 는 `zlink_spot_dispatch_event_handler()` 다.
-이 handler 를 등록하면 Spot 에 관련된 모든 이벤트가 하나의 callback 으로 올라온다.
-같은 `spot` 에 대해서는 callback 이 순차적으로 전달되어야 한다. 구현은 같은
-`spot` 의 dispatch callback 을 동시에 호출하거나 재진입 호출해서는 안 된다.
-callback 안에서 event 종류를 확인하고 recv 를 호출하면서 Spot 메시징을
-순차적으로 처리할 수 있어야 한다.
+Spot's core event dispatcher is `zlink_spot_dispatch_event_handler()`.
+Once this handler is registered, every event related to the Spot arrives
+through a single callback. Callbacks for the same `spot` must be
+delivered in order. The implementation must not call the same `spot`'s
+dispatch callback concurrently or reentrantly. Inside the callback, a
+caller must be able to check the event kind and process Spot messaging
+sequentially by calling recv.
 
-이 직렬화는 `spot` 단위다. 서로 다른 `spot` 사이에는 전역 직렬화를 요구하지
-않는다. 구현은 다른 Spot 들을 병렬로 처리할 수 있어야 하며, 그 과정에서도
-같은 `spot` 의 순차 처리 계약은 유지되어야 한다.
+This serialization is per-`spot`. It does not require global
+serialization across different `spot`s. The implementation must be able
+to process different Spots in parallel, while still preserving the
+sequential-processing contract for the same `spot`.
 
 ```c
 typedef enum zlink_spot_dispatch_event_t {
@@ -3732,34 +3785,46 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
     zlink_spot_dispatch_event_handler_fn handler, void *userdata);
 ```
 
-사용 패턴:
-- dispatch event handler 를 등록한다.
-- callback 이 호출되면 `info->event`, `info->subject_kind`, `info->subject`를 확인한다.
-- 같은 `spot` 의 활성 dispatch callback 안에서는 기본 recv surface 를 사용할 수 있다.
-- `SUBSCRIBE_READABLE` 이면 `zlink_spot_subscribe_part()` 또는
-  `zlink_spot_recv_subscription_event()` 로 pub/sub plane 을 drain 한다.
-- `ROUTED_READABLE` 이면 `zlink_spot_recv_part()` 로 routed/request 메시지를 recv 한다.
-- `TIMER_READABLE` 이면 `info->subject` timer handle에 대해 `zlink_timer_recv()` 로 timer fire 를 recv 한다.
-- `CHANNEL_REPLY_READABLE` 은 readiness 신호일 뿐이며 별도 public drain API 는
-  없다. reply 는 `zlink_spot_request_channel_part()` 호출 시 등록한
-  `zlink_reply_handler_fn` 을 통해 core 가 자동으로 전달한다. `info->subject`
-  dealer handle 은 deprecated dealer attach 경로에서만 의미가 있는 진단 정보다.
-- `ACTOR_READABLE` 이면 `info->subject` 로 전달된 Actor subject를 기준으로
-  `zlink_spot_node_actor_recv_part()` 를 drain 한다. public API는 raw subject
-  pointer나 part loop를 노출하지 않고 `ActorReceived` 또는 동등한 aggregate
-  값 객체를 돌려준다.
-- `ACTOR_JOIN_READABLE` 이면 `zlink_spot_actor_join_recv()` 로 join request
-  plane 을 drain 한다.
-- dispatch event 는 readable 알림이다. callback 1회가 메시지 1개를 뜻하지는 않는다.
-- callback 안에서는 해당 plane 을 더 이상 읽을 것이 없을 때까지 drain 할 수 있어야 한다.
-- `zlink_spot_recv_part()` 의 첫 호출은 hidden activation, hidden queue open, hidden registration 을 수행하면 안 된다.
-- 같은 `spot` 의 dispatch callback 은 직렬화되므로 Spot 메시징을 순차적으로 처리할 수 있다.
-- 서로 다른 `spot` 은 병렬 처리될 수 있으므로 고성능 room 실행 모델을 구성할 수 있다.
+Usage pattern:
+- Register a dispatch event handler.
+- When the callback fires, check `info->event`, `info->subject_kind`,
+  and `info->subject`.
+- Inside the active dispatch callback for the same `spot`, the ordinary
+  recv surfaces can be used.
+- On `SUBSCRIBE_READABLE`, drain the pub/sub plane with
+  `zlink_spot_subscribe_part()` or
+  `zlink_spot_recv_subscription_event()`.
+- On `ROUTED_READABLE`, recv the routed/request message with
+  `zlink_spot_recv_part()`.
+- On `TIMER_READABLE`, recv the timer fire with `zlink_timer_recv()`
+  against the `info->subject` timer handle.
+- `CHANNEL_REPLY_READABLE` is only a readiness signal — there is no
+  separate public drain API. The reply is delivered automatically by
+  core through the `zlink_reply_handler_fn` registered when
+  `zlink_spot_request_channel_part()` was called. The `info->subject`
+  dealer handle is diagnostic information meaningful only on the
+  deprecated dealer attach path.
+- On `ACTOR_READABLE`, drain `zlink_spot_node_actor_recv_part()` keyed on
+  the Actor subject delivered via `info->subject`. The public API does
+  not expose the raw subject pointer or the part loop — it returns an
+  `ActorReceived` or an equivalent aggregate value object.
+- On `ACTOR_JOIN_READABLE`, drain the join request plane with
+  `zlink_spot_actor_join_recv()`.
+- A dispatch event is a readable notification. One callback does not
+  mean one message.
+- Inside the callback, a caller must be able to drain that plane until
+  there's nothing left to read.
+- The first call to `zlink_spot_recv_part()` must not perform hidden
+  activation, hidden queue open, or hidden registration.
+- Because dispatch callbacks for the same `spot` are serialized, Spot
+  messaging can be processed sequentially.
+- Because different `spot`s can be processed in parallel, a
+  high-performance room execution model can be built.
 
 #### Spot Timer API
 
-Spot 소유 timer 는 `zlink_spot_timer_new(spot)` 로 생성하고, 이후 공통
-`zlink_timer_*` 함수로 제어한다.
+A Spot-owned timer is created with `zlink_spot_timer_new(spot)`, and
+controlled afterward through the common `zlink_timer_*` functions.
 
 ```c
 void *zlink_spot_timer_new(void *spot);
@@ -3778,22 +3843,29 @@ zlink_handler_result_t zlink_timer_handler(void *timer,
 zlink_recv_result_t zlink_timer_recv(void *timer, uint64_t *fire_count_out);
 ```
 
-규칙:
-- timer 는 `zlink_spot_timer_new(spot)` 로 Spot 에 종속하여 생성한다.
-- 생성 후에는 `zlink_timer_start`, `zlink_timer_stop`, `zlink_timer_recv`,
-  `zlink_timer_handler`, `zlink_timer_destroy` 공통 API로 제어한다.
-- `interval_ns` 는 나노초 단위다. `repeat_count = 0` 이면 무한 반복.
-- timer fire 는 dispatch event handler 에 `TIMER_READABLE` 로 올라온다.
-- timer handler callback 을 직접 등록하거나 `zlink_timer_recv()` 로 polling 할 수 있다.
-- dispatch callback 안에서는 `zlink_timer_recv()` 로 pending fire 를 순차 처리할 수 있다.
+Rules:
+- A timer is created dependent on a Spot, via
+  `zlink_spot_timer_new(spot)`.
+- After creation, it's controlled through the common
+  `zlink_timer_start`, `zlink_timer_stop`, `zlink_timer_recv`,
+  `zlink_timer_handler`, and `zlink_timer_destroy` APIs.
+- `interval_ns` is in nanoseconds. `repeat_count = 0` means infinite
+  repeat.
+- A timer fire arrives at the dispatch event handler as
+  `TIMER_READABLE`.
+- A timer handler callback can be registered directly, or polled with
+  `zlink_timer_recv()`.
+- Inside the dispatch callback, a pending fire can be processed
+  sequentially with `zlink_timer_recv()`.
 
-바인딩 규칙:
-- timer 는 typed wrapper 로 노출한다.
-- `interval_ns` 는 언어별 Duration 타입으로 변환한다.
-- timer 와 dispatch event 를 통합하여, 사용자는 callback 등록만으로
-  sub recv + routed recv + timer 를 동기화 없이 처리할 수 있어야 한다.
+Binding rules:
+- A timer is exposed as a typed wrapper.
+- `interval_ns` is converted to that language's Duration type.
+- Timer and dispatch event are unified, so a user must be able to handle
+  sub recv + routed recv + timer without synchronization, just by
+  registering a callback.
 
-#### Dispatch 모델 요약
+#### Dispatch Model Summary
 
 ```
 zlink_spot_dispatch_event_handler callback
@@ -3807,44 +3879,48 @@ zlink_spot_dispatch_event_handler callback
   `-- ACTOR_JOIN_READABLE -> zlink_spot_actor_join_recv()
 ```
 
-같은 `spot` 에 대해서는 이 callback 안에서 recv, send, reply 를 순차적으로
-처리할 수 있어야 한다.
-서로 다른 `spot` 은 필요하면 병렬로 실행될 수 있어야 한다.
-callback 안에서는 event 로 알려진 plane 을 drain 할 수 있어야 한다.
+For the same `spot`, a caller must be able to process recv, send, and
+reply sequentially inside this callback. Different `spot`s must be able
+to run in parallel where needed. Inside the callback, a caller must be
+able to drain the plane the event announced.
 
-#### Receive-model 요약
+#### Receive-Model Summary
 
-| 소켓 타입 | 수신 경로 |
+| Socket type | Receive path |
 |-----------|----------|
-| `PAIR` / `DEALER` | runtime은 `zlink_recv_part()` 를 사용하고 public 표면은 aggregate recv |
-| `SUB` / `XSUB` | runtime은 `zlink_subscribe_part()` 를 사용하고 public 표면은 aggregate topic recv |
-| `ROUTER` | runtime은 `zlink_router_recv_part()` 를 사용하고 public 표면은 aggregate routed recv. request completion 은 `zlink_reply_handler_fn` 으로 유지 |
-| `STREAM` | 아래 세 모드 중 하나 (상호 배타). raw recv / `zlink_recv_handler()` / `zlink_stream_packet_handler()` |
-| `SPOT` | `zlink_spot_recv_part()` + `zlink_spot_subscribe_part()` + `zlink_spot_recv_subscription_event()` + `zlink_spot_recv_actor_lifecycle()` + `zlink_spot_dispatch_event_handler()`. direct routed callback은 노출하지 않는다 |
+| `PAIR` / `DEALER` | The runtime uses `zlink_recv_part()`; the public surface is aggregate recv |
+| `SUB` / `XSUB` | The runtime uses `zlink_subscribe_part()`; the public surface is aggregate topic recv |
+| `ROUTER` | The runtime uses `zlink_router_recv_part()`; the public surface is aggregate routed recv. Request completion stays on `zlink_reply_handler_fn` |
+| `STREAM` | One of three modes below (mutually exclusive). Raw recv / `zlink_recv_handler()` / `zlink_stream_packet_handler()` |
+| `SPOT` | `zlink_spot_recv_part()` + `zlink_spot_subscribe_part()` + `zlink_spot_recv_subscription_event()` + `zlink_spot_recv_actor_lifecycle()` + `zlink_spot_dispatch_event_handler()`. Does not expose a direct routed callback |
 
-바인딩은 위 계약을 구현에 그대로 반영한다. public 소켓 클래스에는 aggregate
-recv 표면만 노출하고, 금지된 callback install surface 는 base 클래스 어디에서도 우회 접근되지
-않도록 한다.
+A binding reflects the contract above in its implementation as-is. A
+public socket class exposes only the aggregate recv surface, and a
+forbidden callback install surface must not be reachable by a bypass
+through any base class.
 
 #### Typed Receive Surface
 
-SPOT 수신은 여러 typed surface 를 제공한다.
-바인딩은 이 typed surface 위에 언어별 handler/callback 표면을 얹는다.
+SPOT receive provides several typed surfaces. A binding layers a
+per-language handler/callback surface on top of these typed surfaces.
 
-#### Spot 수신
+#### Spot Receive
 
 ```c
 zlink_recv_result_t zlink_spot_recv_part(void *spot, ...);
 zlink_recv_result_t zlink_spot_recv_actor_lifecycle(void *spot, ...);
 ```
 
-- `request_seq = 0` 이면 ordinary routed message다.
-- `request_seq != 0` 이면 request-reply message다.
-- `source_rid + spot_rid` 는 발신자 주소이며 reply target 으로 사용한다.
-- 바인딩 public API는 part helper 대신 aggregate `Received` 또는 언어별 동등 타입을 노출한다.
-- Actor lifecycle은 dispatch event 뒤 `zlink_spot_recv_actor_lifecycle()`로 drain한다.
+- `request_seq = 0` means an ordinary routed message.
+- `request_seq != 0` means a request-reply message.
+- `source_rid + spot_rid` is the sender's address, used as the reply
+  target.
+- A binding's public API exposes an aggregate `Received` or a
+  per-language equivalent type, instead of the part helper.
+- Actor lifecycle is drained with `zlink_spot_recv_actor_lifecycle()`
+  after a dispatch event.
 
-#### Router 수신 (routed 통합 recv 표면)
+#### Router Receive (unified routed recv surface)
 
 ```c
 zlink_recv_result_t zlink_router_recv_part(void *router,
@@ -3855,21 +3931,24 @@ zlink_recv_result_t zlink_router_recv_part(void *router,
     zlink_recv_flags_t flags);
 ```
 
-- ROUTER 의 routed 수신은 단일 plane 이다. 일반 ROUTER 트래픽과
-  spot-origin routed 트래픽을 하나의 recv 로 받는다.
-- `source_spot_rid == NULL` 이면 일반 ROUTER 트래픽 (reply 는
-  `zlink_router_reply_part` 사용). `source_spot_rid` 가 채워져 있으면
-  spot-origin 트래픽 (reply 는 `zlink_router_reply_spot_part` 사용).
-- `request_seq == 0` 이면 fire-and-forget. `request_seq != 0` 이면 request.
-- 바인딩은 ROUTER data-plane callback install surface 를 별도로 노출하지 않는다.
-  request completion callback 은 `request(...)` 경로에서만 유지한다.
+- ROUTER's routed receive is a single plane. Both ordinary ROUTER
+  traffic and spot-origin routed traffic are received through one recv.
+- `source_spot_rid == NULL` means ordinary ROUTER traffic (reply uses
+  `zlink_router_reply_part`). A filled-in `source_spot_rid` means
+  spot-origin traffic (reply uses `zlink_router_reply_spot_part`).
+- `request_seq == 0` means fire-and-forget. `request_seq != 0` means a
+  request.
+- A binding does not separately expose a ROUTER data-plane callback
+  install surface. The request completion callback stays only on the
+  `request(...)` path.
 
-#### Pub/Sub 수신
+#### Pub/Sub Receive
 
-- raw `SUB`, `XSUB` 는 수신 전용 topic socket 이다.
-- 바인딩은 `zlink_subscribe_part()` typed receive substrate 위에 언어별
-  aggregate topic receive surface 를 노출한다.
-- direct topic callback install surface 는 raw pub/sub family 에 두지 않는다.
+- Raw `SUB`, `XSUB` are receive-only topic sockets.
+- A binding exposes a per-language aggregate topic receive surface on
+  top of the `zlink_subscribe_part()` typed receive substrate.
+- A direct topic callback install surface is not placed on the raw
+  pub/sub family.
 
 #### SPOT Snapshot Query
 
@@ -3895,16 +3974,18 @@ zlink_config_result_t zlink_spot_actors(void *spot,
     zlink_actor_ref_t *entries, size_t *count);
 ```
 
-바인딩 규칙:
-- snapshot 결과는 언어별 typed domain object 배열로 변환한다.
-- filter query 는 typed filter builder 또는 struct 로 노출한다.
-- 반환된 배열의 메모리는 바인딩이 적절히 해제해야 한다.
+Binding rules:
+- A snapshot result is converted into a per-language typed domain object
+  array.
+- A filter query is exposed as a typed filter builder or struct.
+- A binding must properly release the memory of a returned array.
 
-### SpotNode Node-Level 옵션
+### SpotNode Node-Level Options
 
-SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬다.
+SpotNode's node-level options are handled through the
+`zlink_set_spot_node_option()` family.
 
-## 옵션 정책
+## Option Policy
 
 ### 공개 옵션 표면
 - **public raw `setOption(key, value)` / `getOption(key)` bag 은 금지.**

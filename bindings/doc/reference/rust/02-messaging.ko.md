@@ -24,17 +24,22 @@ let sized = Message::with_size(4096)?;
 let copy: Message = "payload".try_into()?;
 ```
 
-**Options.** 생성자, 전부 `Result<Self, ConfigError>` 반환: `Message::new()`
-(빈 메시지), `Message::with_size(size: usize)`(쓰기 가능, 초기화 안 된
-storage), `Message::allocate(size)`(`with_size`의 alias),
-`Message::try_from<T: AsRef<[u8]>>(data)`. Trait 구현: `TryFrom<&[u8]>`,
-`TryFrom<Vec<u8>>`, `TryFrom<&str>`(전부 `Result<Self, ConfigError>` 반환,
-입력을 복사). Instance member: `as_bytes()`/`data_mut()`(byte-slice view),
-`size()`, `is_empty()`, `as_str() -> Result<&str, std::str::Utf8Error>`,
-`to_vec()`, `copy_to(&mut [u8]) -> Result<usize, ConfigError>`(destination
-이 너무 작으면 error — 다른 언어와 달리 error 없는 `try_copy_to`
-변형이 여기엔 없다), `ref_count()`(진단 전용), `try_clone() -> Result<Self,
-ConfigError>`(독립된 payload 복사).
+**Options.** 생성자와 변환은 전부 `Result<Self, ConfigError>`를 반환하며,
+해당하는 경우 입력을 복사한다.
+
+| Member | 의미 |
+| --- | --- |
+| `Message::new()` | 빈 메시지 |
+| `Message::with_size(size: usize)` / `Message::allocate(size)` | 쓰기 가능, 초기화 안 된 storage; `allocate`는 `with_size`의 alias |
+| `Message::try_from<T: AsRef<[u8]>>(data)` / `TryFrom<&[u8]>` / `TryFrom<Vec<u8>>` / `TryFrom<&str>` | 입력을 message가 소유하는 storage로 복사 |
+| `as_bytes()` / `data_mut()` | 이 instance의 storage에 backing된 읽기 전용/쓰기 가능 byte-slice view |
+| `size()` | payload 바이트 길이 |
+| `is_empty()` | `size()`가 0인지 |
+| `as_str() -> Result<&str, std::str::Utf8Error>` | payload를 UTF-8로 디코딩 |
+| `to_vec()` | payload의 `Vec<u8>` 복사 |
+| `copy_to(&mut [u8]) -> Result<usize, ConfigError>` | payload를 caller가 제공한 slice로 복사; destination이 너무 작으면 error — 다른 언어와 달리 error 없는 `try_copy_to` 변형이 여기엔 없다 |
+| `ref_count()` | native reference count, 진단 전용 |
+| `try_clone() -> Result<Self, ConfigError>` | 독립된 payload 복사 |
 
 **Completion result.** 모든 member는 동기다. `Message`는 `Drop`을
 구현해서 native storage를 자동으로 해제한다. 메시지를 보내면 native
@@ -65,17 +70,21 @@ if dealer.recv(&mut received, RecvFlags::NONE)? {
 }
 ```
 
-**Options.** `Received::empty()` — caller-provided 재사용 storage를 위한
-유일한 public 생성자. Instance member: `is_single_part()`, `routing_id()`
-(`Option<&RoutingId>`), `request_seq()`(`Option<u64>`), `parts()`
-(`&[Message]`), `first_part() -> Result<&Message, RecvError>`(소유권
-이전 없음), `single_part()`/`single_part_or_error()`(동등 — 둘 다 `self`를
-소비하고 `Result<Message, RecvError>`를 반환, 정확히 하나가 아니면
-error), `into_parts() -> Vec<Message>`(`self`를 소비하며 모든 part의
-소유권을 이전), `close(self) -> Result<(), CloseError>`(`self`를 소비),
-`reply()`(공유 `ReplyOp<Empty>` builder 시작 — request sequence가 있는
-envelope에서만 유효), `send()`(공유 `SendOp<Empty>` builder 시작, 이
-envelope이 포착한 source route로 향함).
+**Options.** `Received::empty()`가 caller-provided 재사용 storage를 위한
+유일한 public 생성자다.
+
+| Member | 의미 |
+| --- | --- |
+| `is_single_part()` | `parts()`가 정확히 하나인지 |
+| `routing_id()` | `Option<&RoutingId>`, receive 경로가 제공할 때만 존재 |
+| `request_seq()` | `Option<u64>`, reply 가능할 때만 존재 |
+| `parts()` | `&[Message]`, 이 envelope이 담은 모든 message part |
+| `first_part() -> Result<&Message, RecvError>` | 소유권 이전 없이 첫 part |
+| `single_part()` / `single_part_or_error()` | 동등 — 둘 다 `self`를 소비하고 `Result<Message, RecvError>`를 반환, 정확히 하나가 아니면 error |
+| `into_parts() -> Vec<Message>` | `self`를 소비하며 모든 part의 소유권을 이전 |
+| `close(self) -> Result<(), CloseError>` | `self`를 소비, 소유한 모든 part를 닫음 |
+| `reply()` | 공유 `ReplyOp<Empty>` builder를 시작; request sequence가 있는 envelope에서만 유효 |
+| `send()` | 공유 `SendOp<Empty>` builder를 시작, 이 envelope이 포착한 source route로 향함 |
 
 **Completion result.** 모든 member는 동기다. 여러 메서드(`single_part`,
 `into_parts`, `close`)가 `self`를 값으로 받아 envelope을 소비한다 —
@@ -101,11 +110,16 @@ if sub.subscribe(&mut published, RecvFlags::NONE)? {
 }
 ```
 
-**Options.** `TopicMessage::empty()` — 유일한 public 생성자. Instance
-member는 `Received`의 형태를 그대로 반영한다: `is_single_part()`,
-`topic() -> &str`, `routing_id()`(`Option<&RoutingId>`), `parts()`
-(`&[Message]`), `first_part()`, `single_part()`/`single_part_or_error()`,
-`into_parts()`, `close(self)`.
+**Options.** `TopicMessage::empty()`가 유일한 public 생성자다. Instance
+member는 `Received`의 형태를 그대로 반영한다.
+
+| Member | 의미 |
+| --- | --- |
+| `is_single_part()` | `parts()`가 정확히 하나인지 |
+| `topic() -> &str` | 이 publish가 전송된 topic |
+| `routing_id()` | `Option<&RoutingId>`, publisher의 routing id, receive 경로가 제공할 때만 존재 |
+| `parts()` | `&[Message]`, 이 publish가 담은 모든 message part |
+| `first_part()` / `single_part()` / `single_part_or_error()` / `into_parts()` / `close(self)` | `Received`와 같은 형태 |
 
 **Completion result.** 동기다. `Received`와 같은 소비/비소비 member
 구분이다.
@@ -124,9 +138,13 @@ let mut evt = SubscriptionEvent::empty();
 if xpub.receive_subscription_event(&mut evt, RecvFlags::NONE)? { /* ... */ }
 ```
 
-**Options.** `SubscriptionEvent::empty()` — 유일한 public 생성자.
-Instance member: `routing_id()`(`Option<&RoutingId>`), `topic() -> &str`,
-`is_subscribed() -> bool`.
+**Options.** `SubscriptionEvent::empty()`가 유일한 public 생성자다.
+
+| Member | 의미 |
+| --- | --- |
+| `routing_id()` | `Option<&RoutingId>`, 구독자의 routing id, receive 경로가 제공할 때만 존재 |
+| `topic() -> &str` | subscribe/unsubscribe된 topic |
+| `is_subscribed() -> bool` | subscribe면 `true`, unsubscribe면 `false` |
 
 **Completion result.** 동기다. `close()`가 없다 — 이 타입은 자신의
 native resource를 소유하지 않는다.
@@ -140,8 +158,14 @@ category)에서 구독자 변동을 관찰할 때 쓴다.
 
 non-blocking send의 결과, 작은 standalone enum으로.
 
-**Options.** `Sent`, `Backpressured`, `NotReady`. 편의:
-`is_sent() -> bool`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `Sent` | send가 즉시 완료됨 |
+| `Backpressured` | send가 block됐을 것 |
+| `NotReady` | destination이 아직 send를 받을 준비가 안 됨 |
+| `is_sent() -> bool` | `matches!(self, SendResult::Sent)`의 편의 축약형 |
 
 **Completion result.** 해당 없음 — 이 레퍼런스 tier에 문서화된 어떤
 진입점도 이걸 직접 반환하지 않는 순수 값 타입이다. 이 category
@@ -180,23 +204,16 @@ dealer.request()
 received.reply().message(Message::try_from("ok")?).submit()?;
 ```
 
-**Options.** `SendOp<Empty>::message(self, Message) -> SendOp<Ready>`가
-chain을 시작한다(`self`를 소비하고 다음 단계 타입을 반환).
-`SendOp<Ready>::message(self, Message) -> Self`가 part를 더 추가하고,
-`.flags(self, SendFlags) -> Self`, `.submit(self) -> Result<bool,
-SubmitError>`. `RequestOp`는 같은 형태(`Empty` → `Ready`)에
-`.timeout(self, Duration) -> Self`를 더한 것이다. `RequestOp<Ready>`
-에서 `.flags(self, SendFlags)`를 호출하면 타입이
-`RequestOp<CallbackReady>`로 좁혀지며, 여기서도 같은
-`message`/`timeout`/`flags`/`submit` 메서드를 다시 노출한다(그 단계에서
-flag를 여러 번 설정할 수 있다). **`RequestOp<Ready>::submit`과
-`RequestOp<CallbackReady>::submit` 둘 다 callback 전용이다** —
-`submit<F>(self, callback: F) -> Result<(), SubmitError> where F:
-FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static` — 지금까지
-다룬 다른 모든 언어와 달리 이 binding의 public contract엔
-`Future`/async를 반환하는 overload가 없다. `ReplyOp`는 `SendOp`를
-반영하지만 `.flags(self, SendFlags) -> Self` 외엔 자신만의 flags-narrowing
-동작이 없다. `.submit(self) -> Result<(), SubmitError>`.
+**Options.**
+
+| Stage | Member | 의미 |
+| --- | --- | --- |
+| `SendOp<Empty>` | `.message(self, Message) -> SendOp<Ready>` | chain을 시작, `self`를 소비하고 다음 단계 타입을 반환 |
+| `SendOp<Ready>` | `.message(...)` / `.flags(self, SendFlags) -> Self` / `.submit(self) -> Result<bool, SubmitError>` | part 추가, flag 설정, terminal |
+| `RequestOp<Empty>` → `RequestOp<Ready>` | `SendOp`와 같음 + `.timeout(self, Duration) -> Self` | send chain을 미러링하며 reply-wait timeout을 더함 |
+| `RequestOp<Ready>.flags(self, SendFlags)` | `RequestOp<CallbackReady>`로 좁혀짐 | 같은 `message`/`timeout`/`flags`/`submit` 메서드를 다시 노출 — 그 단계에서 flag를 여러 번 설정할 수 있다 |
+| `RequestOp<Ready>::submit` / `RequestOp<CallbackReady>::submit` | `submit<F>(self, callback: F) -> Result<(), SubmitError> where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static` | **둘 다 callback 전용** — 지금까지 다룬 다른 모든 언어와 달리 이 binding의 public contract엔 `Future`/async를 반환하는 overload가 없다 |
+| `ReplyOp<Empty>` → `ReplyOp<Ready>` | `SendOp`를 반영, `.submit(self) -> Result<(), SubmitError>` | `.flags(self, SendFlags) -> Self` 외엔 자신만의 flags-narrowing 동작이 없다 |
 
 **Completion result.** `SendOp::submit()`은 `Result<bool, SubmitError>`
 를 반환한다 — 내부 `bool`은 `SendFlags::DONT_WAIT`가 설정되고 send가

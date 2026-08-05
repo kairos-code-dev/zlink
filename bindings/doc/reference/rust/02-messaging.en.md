@@ -21,15 +21,22 @@ let sized = Message::with_size(4096)?;
 let copy: Message = "payload".try_into()?;
 ```
 
-**Options.** Constructors, both returning `Result<Self, ConfigError>`: `Message::new()` (empty),
-`Message::with_size(size: usize)` (writable, uninitialized storage), `Message::allocate(size)`
-(alias for `with_size`), `Message::try_from<T: AsRef<[u8]>>(data)`. Trait implementations:
-`TryFrom<&[u8]>`, `TryFrom<Vec<u8>>`, `TryFrom<&str>` (all return `Result<Self, ConfigError>`,
-copying the input). Instance members: `as_bytes()`/`data_mut()` (byte-slice views), `size()`,
-`is_empty()`, `as_str() -> Result<&str, std::str::Utf8Error>`, `to_vec()`, `copy_to(&mut
-[u8]) -> Result<usize, ConfigError>` (errors if the destination is too small — no `try_copy_to`
-non-erroring variant exists here, unlike other languages), `ref_count()` (a diagnostic only),
-`try_clone() -> Result<Self, ConfigError>` (independent payload copy).
+**Options.** Constructors and conversions all return `Result<Self, ConfigError>`, copying the
+input where applicable.
+
+| Member | Meaning |
+| --- | --- |
+| `Message::new()` | empty |
+| `Message::with_size(size: usize)` / `Message::allocate(size)` | writable, uninitialized storage; `allocate` is an alias for `with_size` |
+| `Message::try_from<T: AsRef<[u8]>>(data)` / `TryFrom<&[u8]>` / `TryFrom<Vec<u8>>` / `TryFrom<&str>` | copies the input into message-owned storage |
+| `as_bytes()` / `data_mut()` | read-only / writable byte-slice views backed by this instance's storage |
+| `size()` | payload length in bytes |
+| `is_empty()` | whether `size()` is zero |
+| `as_str() -> Result<&str, std::str::Utf8Error>` | payload decoded as UTF-8 |
+| `to_vec()` | copy of the payload as `Vec<u8>` |
+| `copy_to(&mut [u8]) -> Result<usize, ConfigError>` | copies the payload into a caller-provided slice; errors if the destination is too small — no `try_copy_to` non-erroring variant exists here, unlike other languages |
+| `ref_count()` | native reference count, diagnostic only |
+| `try_clone() -> Result<Self, ConfigError>` | independent payload copy |
 
 **Completion result.** Every member is synchronous. `Message` implements `Drop`, releasing native
 storage automatically; sending a message transfers its native frame to the socket (consuming it in
@@ -57,15 +64,21 @@ if dealer.recv(&mut received, RecvFlags::NONE)? {
 }
 ```
 
-**Options.** `Received::empty()` — the only public constructor, for caller-provided reusable
-storage. Instance members: `is_single_part()`, `routing_id()` (`Option<&RoutingId>`),
-`request_seq()` (`Option<u64>`), `parts()` (`&[Message]`), `first_part() -> Result<&Message,
-RecvError>` (no ownership transfer), `single_part()`/`single_part_or_error()` (equivalent — both
-consume `self` and return `Result<Message, RecvError>`, erroring unless exactly one part),
-`into_parts() -> Vec<Message>` (consumes `self`, transferring ownership of every part), `close(self)
--> Result<(), CloseError>` (consumes `self`), `reply()` (starts the shared `ReplyOp<Empty>` builder
-— valid only for envelopes with a request sequence), `send()` (starts the shared `SendOp<Empty>`
-builder, addressed to this envelope's captured source route).
+**Options.** `Received::empty()` is the only public constructor, for caller-provided reusable
+storage.
+
+| Member | Meaning |
+| --- | --- |
+| `is_single_part()` | whether `parts()` has exactly one element |
+| `routing_id()` | `Option<&RoutingId>`, present when the receive path provides one |
+| `request_seq()` | `Option<u64>`, present when replyable |
+| `parts()` | `&[Message]`, every message part this envelope holds |
+| `first_part() -> Result<&Message, RecvError>` | the first part, without transferring ownership |
+| `single_part()` / `single_part_or_error()` | equivalent — both consume `self` and return `Result<Message, RecvError>`, erroring unless exactly one part |
+| `into_parts() -> Vec<Message>` | consumes `self`, transferring ownership of every part |
+| `close(self) -> Result<(), CloseError>` | consumes `self`, closes every owned part |
+| `reply()` | starts the shared `ReplyOp<Empty>` builder; valid only for envelopes with a request sequence |
+| `send()` | starts the shared `SendOp<Empty>` builder, addressed to this envelope's captured source route |
 
 **Completion result.** All members are synchronous. Several methods (`single_part`, `into_parts`,
 `close`) take `self` by value, consuming the envelope — Rust's ownership system enforces at compile
@@ -90,10 +103,16 @@ if sub.subscribe(&mut published, RecvFlags::NONE)? {
 }
 ```
 
-**Options.** `TopicMessage::empty()` — the only public constructor. Instance members mirror
-`Received`'s shape: `is_single_part()`, `topic() -> &str`, `routing_id()` (`Option<&RoutingId>`),
-`parts()` (`&[Message]`), `first_part()`, `single_part()`/`single_part_or_error()`, `into_parts()`,
-`close(self)`.
+**Options.** `TopicMessage::empty()` is the only public constructor. Instance members mirror
+`Received`'s shape.
+
+| Member | Meaning |
+| --- | --- |
+| `is_single_part()` | whether `parts()` has exactly one element |
+| `topic() -> &str` | the topic this publish was sent on |
+| `routing_id()` | `Option<&RoutingId>`, the publisher's routing id, present when the receive path provides one |
+| `parts()` | `&[Message]`, every message part this publish holds |
+| `first_part()` / `single_part()` / `single_part_or_error()` / `into_parts()` / `close(self)` | same shape as `Received` |
 
 **Completion result.** Synchronous; the same consuming-vs-non-consuming member split as `Received`.
 
@@ -110,8 +129,13 @@ let mut evt = SubscriptionEvent::empty();
 if xpub.receive_subscription_event(&mut evt, RecvFlags::NONE)? { /* ... */ }
 ```
 
-**Options.** `SubscriptionEvent::empty()` — the only public constructor. Instance members:
-`routing_id()` (`Option<&RoutingId>`), `topic() -> &str`, `is_subscribed() -> bool`.
+**Options.** `SubscriptionEvent::empty()` is the only public constructor.
+
+| Member | Meaning |
+| --- | --- |
+| `routing_id()` | `Option<&RoutingId>`, the subscriber's routing id, present when the receive path provides one |
+| `topic() -> &str` | the topic that was subscribed or unsubscribed |
+| `is_subscribed() -> bool` | `true` for a subscribe, `false` for an unsubscribe |
 
 **Completion result.** Synchronous; no `close()` — this type owns no native resources of its own.
 
@@ -124,7 +148,14 @@ observe subscriber churn.
 
 The outcome of a non-blocking send, as a small standalone enum.
 
-**Options.** `Sent`, `Backpressured`, `NotReady`. Convenience: `is_sent() -> bool`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `Sent` | the send completed immediately |
+| `Backpressured` | the send would have blocked |
+| `NotReady` | the destination is not yet ready to accept a send |
+| `is_sent() -> bool` | convenience shorthand for `matches!(self, SendResult::Sent)` |
 
 **Completion result.** N/A — a plain value type, not itself returned by any entry point documented
 in this reference tier; it exists as a public type in this category's source, distinct from the
@@ -159,18 +190,16 @@ dealer.request()
 received.reply().message(Message::try_from("ok")?).submit()?;
 ```
 
-**Options.** `SendOp<Empty>::message(self, Message) -> SendOp<Ready>` starts the chain (consumes
-`self`, returns the next-stage type). `SendOp<Ready>::message(self, Message) -> Self` adds further
-parts; `.flags(self, SendFlags) -> Self`; `.submit(self) -> Result<bool, SubmitError>`. `RequestOp`
-mirrors this shape (`Empty` → `Ready`) plus `.timeout(self, Duration) -> Self`; calling
-`.flags(self, SendFlags)` on `RequestOp<Ready>` narrows the type to `RequestOp<CallbackReady>`,
-which exposes the same `message`/`timeout`/`flags`/`submit` methods again (flags may be set more
-than once at that stage). **`RequestOp<Ready>::submit` and `RequestOp<CallbackReady>::submit` are
-both callback-only** — `submit<F>(self, callback: F) -> Result<(), SubmitError> where F:
-FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static` — there is no `Future`/async-returning
-overload in this binding's public contract, unlike every other language covered so far. `ReplyOp`
-mirrors `SendOp` but has no flags-narrowing behavior of its own beyond `.flags(self, SendFlags) ->
-Self`; `.submit(self) -> Result<(), SubmitError>`.
+**Options.**
+
+| Stage | Member | Meaning |
+| --- | --- | --- |
+| `SendOp<Empty>` | `.message(self, Message) -> SendOp<Ready>` | starts the chain, consumes `self`, returns the next-stage type |
+| `SendOp<Ready>` | `.message(...)` / `.flags(self, SendFlags) -> Self` / `.submit(self) -> Result<bool, SubmitError>` | add parts, set flags, terminal |
+| `RequestOp<Empty>` → `RequestOp<Ready>` | same as `SendOp` + `.timeout(self, Duration) -> Self` | mirrors the send chain, adding a reply-wait timeout |
+| `RequestOp<Ready>.flags(self, SendFlags)` | narrows to `RequestOp<CallbackReady>` | exposes the same `message`/`timeout`/`flags`/`submit` methods again — flags may be set more than once at that stage |
+| `RequestOp<Ready>::submit` / `RequestOp<CallbackReady>::submit` | `submit<F>(self, callback: F) -> Result<(), SubmitError> where F: FnOnce(Result<Vec<Message>, RequestError>) + Send + 'static` | **both callback-only** — there is no `Future`/async-returning overload in this binding's public contract, unlike every other language covered so far |
+| `ReplyOp<Empty>` → `ReplyOp<Ready>` | mirrors `SendOp`, `.submit(self) -> Result<(), SubmitError>` | no flags-narrowing behavior of its own beyond `.flags(self, SendFlags) -> Self` |
 
 **Completion result.** `SendOp::submit()` returns `Result<bool, SubmitError>` — the inner `bool` is
 `false` only when `SendFlags::DONT_WAIT` was set and the send would have blocked (back-pressure);

@@ -51,7 +51,7 @@ Core의 공개 표면은 framework의 정제된 8개 category보다 훨씬 세�
 |---|---|---|
 | [Context](01-context.ko.md) | 작성 완료 | 01-context |
 | [Message](02-message.ko.md) | 작성 완료 | 02-message |
-| Socket lifecycle | 미착수 | socket/README §Functions(create/bind/connect/disconnect/close) |
+| [Socket lifecycle](03-socket-lifecycle.ko.md) | 작성 완료 | socket/README §Functions(create/bind/connect/disconnect/close) |
 | Socket options and identity | 미착수 | socket/README §Socket Options, §Dedicated Functions |
 | Raw receive | 미착수 | socket/README §Receive Model Summary, 03-errors §4 |
 | PAIR | 미착수 | socket/01-pair |

@@ -9,7 +9,7 @@ package, organized per feature. Common behavior is owned by the
 - [Common Runtime](common-runtime.en.md)
 - [Configuration And Host](configuration-host.ko.md)
 - [Channel Messaging](channel-messaging.en.md)
-- [Spot](spots.ko.md)
+- [Spot](spots.en.md)
 - [Actor](actors.en.md)
 - [STREAM Session](stream-session.en.md)
 - [Location And Maintenance](location-maintenance.en.md)

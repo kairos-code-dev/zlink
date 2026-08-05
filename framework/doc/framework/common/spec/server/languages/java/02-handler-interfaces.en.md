@@ -5,7 +5,7 @@ feature in the
 [exact interface table of contents](interfaces/README.ko.md).
 
 - [Channel Messaging](interfaces/channel-messaging.en.md)
-- [Spot](interfaces/spots.ko.md)
+- [Spot](interfaces/spots.en.md)
 - [Actor](interfaces/actors.en.md)
 - [STREAM Session](interfaces/stream-session.en.md)
 - [Monitoring](interfaces/monitoring.en.md)

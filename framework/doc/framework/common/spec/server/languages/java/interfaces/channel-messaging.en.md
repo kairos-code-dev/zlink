@@ -135,7 +135,7 @@ as not-found. Existing [authority](../../../../01-glossary.en.md#authority)
 uses the stored kind/stable type and current owner, so it doesn't require
 type or Mesh again. The detailed members and
 [cold activation](../../../../01-glossary.en.md#cold-activation) selection
-rules are owned by the [Java Spot Interface](spots.ko.md).
+rules are owned by the [Java Spot Interface](spots.en.md).
 
 On the [RouteMesh](../../../../01-glossary.en.md#routemesh) builder
 `channel(channelName)` returns, select exactly one of `client()` or

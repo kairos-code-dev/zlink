@@ -50,7 +50,7 @@ relocation registry separate from the factory isn't provided. The
 `adapterClass` of `preserveStateWith(...)` must implement
 `ZLinkActorRelocationAdapter<TActor>` for that Actor type. Adapter type
 validation for User/Instance Spot policy is owned by the
-[Spot Interface](spots.ko.md). Taking `Class<?>` is a representation to
+[Spot Interface](spots.en.md). Taking `Class<?>` is a representation to
 keep the policy value common due to Java type erasure, and the framework
 checks whether the factory type and adapter generic target match before
 socket bind. A mismatch is a startup configuration error.

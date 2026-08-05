@@ -5,7 +5,7 @@
 This category covers the external entry points `ZLinkSpotManager`/`ZLinkRouteClient`/
 `ZLinkSpotPublisherClient` provide, and the entry points used inside Spot code via
 `ZLinkSpotContext`/`ZLinkInstanceSpotContext`. The exact signatures are owned by the
-[Java Spot exact interface](../../common/spec/server/languages/java/interfaces/spots.ko.md)
+[Java Spot exact interface](../../common/spec/server/languages/java/interfaces/spots.en.md)
 (Korean-only).
 
 ---
@@ -354,5 +354,5 @@ to a specific turn boundary. This call is not needed under the default `ANY_TURN
 ---
 
 See the
-[Java Spot exact interface](../../common/spec/server/languages/java/interfaces/spots.ko.md)
+[Java Spot exact interface](../../common/spec/server/languages/java/interfaces/spots.en.md)
 (Korean-only) for the full rationale.

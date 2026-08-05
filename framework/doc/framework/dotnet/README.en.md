@@ -4,7 +4,7 @@
 
 [Guide Home](../index.en.md) | [Common Spec](../common/README.ko.md)
 
-[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
@@ -22,7 +22,7 @@
 > **The public contract doesn't live here.** It's owned by the [spec tree](../common/spec/README.ko.md) —
 > [server/languages/dotnet](../common/spec/server/languages/dotnet/README.ko.md),
 > [http-client/languages/dotnet](../common/spec/http-client/languages/dotnet/dotnet-http-client.en.md),
-> [stream-connector/languages/dotnet](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md).
+> [stream-connector/languages/dotnet](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md).
 > Where the guide and the contract diverge, **the contract wins.**
 
 ## 1. Purpose
@@ -169,7 +169,7 @@ exact interface table of contents.
 |------|------------|
 | [configuration-host.ko.md](../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md) | ASP.NET Core host registration, bootstrap, DI, lifecycle, and startup validation |
 | [interfaces/README.ko.md](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | The full table of contents for public interfaces/contexts/handlers/clients/providers/observation categories |
-| [32-stream-connector.ko.md](../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | The separate client connector's lifecycle, dispatch, codec, transport, and termination reasons |
+| [32-stream-connector.ko.md](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | The separate client connector's lifecycle, dispatch, codec, transport, and termination reasons |
 | [Public contract](../common/spec/server/languages/dotnet/README.ko.md) | The documentation contract and the exact verification procedure against actual assembly/NuGet artifacts |
 
 **The meaning and behavioral rules of a feature are owned by the [common spec](../common/spec/README.ko.md).**

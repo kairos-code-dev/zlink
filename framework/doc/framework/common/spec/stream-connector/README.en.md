@@ -21,10 +21,10 @@ server session a connector connects to is owned by
 
 | Language | Document |
 |------|------|
-| C++ | [03 Stream Connector](languages/cpp/03-stream-connector.ko.md) defines the exact public interface of plain C++, Unreal, Godot, and Cocos/Axmol. |
-| `.NET` | [03 Stream Connector](languages/dotnet/03-stream-connector.ko.md) defines the exact public interface of .NET, Unity, and Godot. |
-| Java | [03 Stream Connector](languages/java/03-stream-connector.ko.md) defines Java's exact public interface. |
-| TypeScript | [languages/typescript](languages/typescript/README.ko.md) defines the browser connector's exact public interface. |
+| C++ | [03 Stream Connector](languages/cpp/03-stream-connector.en.md) defines the exact public interface of plain C++, Unreal, Godot, and Cocos/Axmol. |
+| `.NET` | [03 Stream Connector](languages/dotnet/03-stream-connector.en.md) defines the exact public interface of .NET, Unity, and Godot. |
+| Java | [03 Stream Connector](languages/java/03-stream-connector.en.md) defines Java's exact public interface. |
+| TypeScript | [languages/typescript](languages/typescript/README.en.md) defines the browser connector's exact public interface. |
 
 The browser connector and Node.js Framework are different packages.
 The browser connector isn't a public interface of the Node.js host

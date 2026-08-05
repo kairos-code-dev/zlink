@@ -15,7 +15,7 @@ types, methods, generic constraints, nullable, and async return types.
 | [Host monitoring](interfaces/10-topology-monitoring.en.md) | Defines host state, Relocate/Shutdown results, and operational status. |
 
 The Stream connector client is a separate package, and the
-[.NET Stream Connector Contract](../../../stream-connector/languages/dotnet/03-stream-connector.ko.md)
+[.NET Stream Connector Contract](../../../stream-connector/languages/dotnet/03-stream-connector.en.md)
 owns its exact interface.
 
 ## Contract Application Rules

@@ -578,11 +578,11 @@ interfaces.
 
 | Language | server root registration | Stream Connector registration | exact interface owner |
 |---|---|---|---|
-| `.NET` | `Codecs.Use(extension)` | `ZlinkStreamConnectorOptions.PayloadCodec` | [server](server/languages/dotnet/interfaces/11-serialization.ko.md), [connector](stream-connector/languages/dotnet/03-stream-connector.ko.md) |
-| Java | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/java/interfaces/README.ko.md), [connector](stream-connector/languages/java/03-stream-connector.ko.md) |
-| Kotlin | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/kotlin/interfaces/README.ko.md), [Java/Kotlin connector](stream-connector/languages/java/03-stream-connector.ko.md) |
-| Node.js | `codecs().use(extension)` | connector's `codec` option | [server](server/languages/node/interfaces/README.ko.md), [connector](stream-connector/languages/typescript/03-stream-connector.ko.md) |
-| C++ | `codecs().use(extension)` | `connector_options_t::typed_codec` | [server](server/languages/cpp/interfaces/01-common-runtime.en.md), [connector](stream-connector/languages/cpp/03-stream-connector.ko.md) |
+| `.NET` | `Codecs.Use(extension)` | `ZlinkStreamConnectorOptions.PayloadCodec` | [server](server/languages/dotnet/interfaces/11-serialization.ko.md), [connector](stream-connector/languages/dotnet/03-stream-connector.en.md) |
+| Java | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/java/interfaces/README.ko.md), [connector](stream-connector/languages/java/03-stream-connector.en.md) |
+| Kotlin | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/kotlin/interfaces/README.ko.md), [Java/Kotlin connector](stream-connector/languages/java/03-stream-connector.en.md) |
+| Node.js | `codecs().use(extension)` | connector's `codec` option | [server](server/languages/node/interfaces/README.ko.md), [connector](stream-connector/languages/typescript/03-stream-connector.en.md) |
+| C++ | `codecs().use(extension)` | `connector_options_t::typed_codec` | [server](server/languages/cpp/interfaces/01-common-runtime.en.md), [connector](stream-connector/languages/cpp/03-stream-connector.en.md) |
 
 Both registration surfaces project the same typed-payload contract, but that doesn't mean
 the concrete types of the server extension object and connector option must also match. The

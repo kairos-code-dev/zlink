@@ -24,7 +24,7 @@
 > document only defines the Node framework's system structure and
 > package boundary — it doesn't include usage examples or tutorials.
 > The client connector is owned by
-> [stream-connector](../../../stream-connector/languages/typescript/03-stream-connector.ko.md).
+> [stream-connector](../../../stream-connector/languages/typescript/03-stream-connector.en.md).
 
 ## 1. Package Structure
 
@@ -72,7 +72,7 @@
 entrypoint uses the platform `WebSocket` in a browser-family client. A
 separate browser subpath from the connector running in Node.js isn't
 provided. The exact contract is owned by
-[TypeScript Stream Connector](../../../stream-connector/languages/typescript/03-stream-connector.ko.md).
+[TypeScript Stream Connector](../../../stream-connector/languages/typescript/03-stream-connector.en.md).
 
 ## 3. Module Bootstrap
 

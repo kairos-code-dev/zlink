@@ -20,7 +20,7 @@ reference.
 | Document | Scope |
 |---|---|
 | [Per-Feature Interfaces](interfaces/README.ko.md) | Exact signature for runtime, configuration, Channel, Spot, Actor, STREAM, Location/maintenance, and monitoring |
-| [Stream Connector](../../../stream-connector/languages/java/03-stream-connector.ko.md) | The client connector's public surface |
+| [Stream Connector](../../../stream-connector/languages/java/03-stream-connector.en.md) | The client connector's public surface |
 
 **The meaning and behavioral rules of a feature are owned by the
 [common spec](../../../README.en.md).** This directory only fixes the

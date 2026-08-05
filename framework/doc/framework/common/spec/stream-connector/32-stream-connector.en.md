@@ -10,10 +10,10 @@
 >
 > The per-language public type and signature is fixed by
 > [`languages/<lang>/`](README.en.md) —
-> [cpp](languages/cpp/03-stream-connector.ko.md) ·
-> [dotnet](languages/dotnet/03-stream-connector.ko.md) ·
-> [java](languages/java/03-stream-connector.ko.md) ·
-> [typescript](languages/typescript/README.ko.md). This document
+> [cpp](languages/cpp/03-stream-connector.en.md) ·
+> [dotnet](languages/dotnet/03-stream-connector.en.md) ·
+> [java](languages/java/03-stream-connector.en.md) ·
+> [typescript](languages/typescript/README.en.md). This document
 > defines **what is guaranteed**, and the per-language spec defines
 > **what shape that meaning takes in that language**
 > ([Public Contract Governance](../00-public-contract-governance.en.md)).
@@ -353,7 +353,7 @@ The following C# excerpt is a non-normative example to explain how
 connection, manual dispatch, and close look in one connector interface.
 It doesn't require the same signature in other languages, and the
 exact .NET signature is defined by the
-[.NET Stream Connector contract](languages/dotnet/03-stream-connector.ko.md).
+[.NET Stream Connector contract](languages/dotnet/03-stream-connector.en.md).
 
 ```csharp
 public interface IZlinkStreamConnector : IAsyncDisposable

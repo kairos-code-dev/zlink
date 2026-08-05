@@ -11,7 +11,7 @@ waiting on a Java API is also included in this directory's formal
 contract. Kotlin source and contract tests must follow this contract.
 The client Stream Connector's coroutine wrapper and `Flow` surface are
 owned by a separate
-[Java/Kotlin Stream Connector Contract](../../../stream-connector/languages/java/03-stream-connector.ko.md).
+[Java/Kotlin Stream Connector Contract](../../../stream-connector/languages/java/03-stream-connector.en.md).
 
 Host relocation uses Java's mode/options/result types unchanged.
 Planned maintenance only uses the same application version as source,

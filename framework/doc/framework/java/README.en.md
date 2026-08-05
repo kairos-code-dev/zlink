@@ -35,7 +35,7 @@ implementation. The public contract for every framework language is managed toge
 |------|------|
 | [Spec table of contents](../common/spec/server/languages/java/README.ko.md) | The list of Java/Kotlin public-contract documents |
 | [Java interfaces](../common/spec/server/languages/java/interfaces/README.ko.md) | The exact public signature per feature and the Spring host lifecycle |
-| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | The client connector |
+| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.en.md) | The client connector |
 
 **The meaning and behavioral rules of a feature are owned by the [common spec](../common/spec/README.ko.md).**
 Language-specific documents only fix what shape that meaning takes in Java/Kotlin.

@@ -54,7 +54,7 @@ Kotlin follow the Kotlin spec.
 | [Spot](../common/spec/server/languages/java/interfaces/spots.en.md) | Spot lifecycle and factory |
 | [Actor](../common/spec/server/languages/java/interfaces/actors.en.md) | The actor factory, relocation adapter, and bound session |
 | [STREAM](../common/spec/server/languages/java/interfaces/stream-session.en.md) | The stream node and header session |
-| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | The Java/Kotlin Stream Connector |
+| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.en.md) | The Java/Kotlin Stream Connector |
 | [Location and maintenance](../common/spec/server/languages/java/interfaces/location-maintenance.en.md) | Discovery, authority, and relocation |
 | [Monitoring](../common/spec/server/languages/java/interfaces/monitoring.en.md) | Runtime events and typed handlers |
 

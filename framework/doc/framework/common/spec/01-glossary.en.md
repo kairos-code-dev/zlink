@@ -35,7 +35,7 @@ same line.
 
 The single source of truth for the actual .NET declarations is the
 [.NET Server exact interface](server/languages/dotnet/interfaces/README.ko.md) and the
-[.NET Stream Connector exact interface](stream-connector/languages/dotnet/03-stream-connector.ko.md).
+[.NET Stream Connector exact interface](stream-connector/languages/dotnet/03-stream-connector.en.md).
 The .NET notation in this glossary is a supplementary notation for reading the common
 contract concretely.
 

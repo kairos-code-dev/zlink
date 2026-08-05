@@ -79,15 +79,18 @@ if errors.As(err, &zerr) {
 }
 ```
 
-**Options.** `ZlinkError`는 Go `interface`다(struct나 enum이 아니라),
-다음과 같이 선언돼 있다: `error`(표준 error interface를
-embed, 즉 `Error() string`을 요구), `Code() int`,
-`InternalErrno() int`. **`Unwrap() error`는 `ZlinkError` interface
-자체의 일부가 아니다** — 각 concrete struct가 이를 구현하지만,
-`ZlinkError` 타입 값만 가진 caller는 그 interface를 통해 직접
-`Unwrap()`을 호출할 수 없다; `errors.Is`/`errors.As`는 표준
-라이브러리 자신의 관례에 따라 밑바탕 concrete 값에 대한 reflection을
-통해 여전히 그것을 찾아낸다.
+**Options.** `ZlinkError`는 Go `interface`다(struct나 enum이 아니라).
+**`Unwrap() error`는 `ZlinkError` interface 자체의 일부가 아니다** —
+각 concrete struct가 이를 구현하지만, `ZlinkError` 타입 값만 가진
+caller는 그 interface를 통해 직접 `Unwrap()`을 호출할 수 없다;
+`errors.Is`/`errors.As`는 표준 라이브러리 자신의 관례에 따라 밑바탕
+concrete 값에 대한 reflection을 통해 여전히 그것을 찾아낸다.
+
+| Member | 의미 |
+| --- | --- |
+| `error` | 표준 error interface를 embed, 즉 `Error() string`을 요구 |
+| `Code() int` | 실패를 분류하는 zlink result code |
+| `InternalErrno() int` | 밑에 깔린 native errno |
 
 **Completion result.** N/A — 순수 interface 타입, 직접 생성되는 일은
 없다.

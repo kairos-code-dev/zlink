@@ -68,12 +68,17 @@ if errors.As(err, &zerr) {
 }
 ```
 
-**Options.** `ZlinkError` is a Go `interface` (not a struct or enum), declared as: `error` (embeds
-the standard error interface, i.e. requires `Error() string`), `Code() int`, `InternalErrno()
-int`. **`Unwrap() error` is not part of the `ZlinkError` interface itself** — every concrete
-struct implements it, but a caller holding only a `ZlinkError`-typed value cannot call `Unwrap()`
-directly through that interface; `errors.Is`/`errors.As` still find it via reflection on the
-concrete value underneath, per the standard library's own convention.
+**Options.** `ZlinkError` is a Go `interface` (not a struct or enum). **`Unwrap() error` is not
+part of the `ZlinkError` interface itself** — every concrete struct implements it, but a caller
+holding only a `ZlinkError`-typed value cannot call `Unwrap()` directly through that interface;
+`errors.Is`/`errors.As` still find it via reflection on the concrete value underneath, per the
+standard library's own convention.
+
+| Member | Meaning |
+| --- | --- |
+| `error` | embeds the standard error interface, i.e. requires `Error() string` |
+| `Code() int` | the zlink result code that classifies the failure |
+| `InternalErrno() int` | the underlying native errno |
 
 **Completion result.** N/A — a pure interface type, never constructed directly.
 

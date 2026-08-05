@@ -1,148 +1,232 @@
-[English](README.en.md) | [한국어](README.ko.md)
+---
+title: "Bindings API Policy"
+---
 
-[Spec Index](https://kairos-code-dev.github.io/zlink/en/spec/)
+<!-- bindings-nav:start -->
+[Spec index](README.md)
+<!-- bindings-nav:end -->
 
 # Bindings API Policy
 
-> request-reply, SPOT routed, Actor dispatch 구현 기준은
-> `core/include/zlink.h` 의 현재 공개 계약을 따른다.
-> Actor dispatch는 SPOT처럼 service layer의 독립 공개 기능이며,
-> 언어별 문서에 적힌 공개 표면도 이 공통 계약을 기준으로 정렬한다.
-> 언어별 인터페이스 시그니처와 사용 예는
-> `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
+> **What this chapter defines** — the public API policy that applies across
+> all of `bindings/`. The per-language documents (`c/`, `cpp/`, `java/`,
+> `dotnet/`, `node/`, `python/`, `go/`, `rust/`) align to this policy.
 
-## 목적
-이 문서는 `bindings/` 전체의 public API 정책을 정의한다.
+> The implementation baseline for request-reply, SPOT routed, and Actor
+> dispatch follows the current public contract in `core/include/zlink.h`.
+> Actor dispatch is an independent public service-layer capability, like
+> SPOT, and the public surface described in each per-language document
+> aligns to this shared contract as well.
+> See `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/`
+> for the per-language interface signatures and usage examples.
 
-이 문서의 목적은 각 언어 바인딩이 제각각 다른 표면과 예외 규칙을 갖는 것을
-막고, `core/include/zlink.h`를 기준으로 설명 가능하고 일관된 공통 계약을
-강제하는 데 있다.
+| Section | Covers |
+|---|---|
+| [Purpose](#purpose) | This document's scope and the meaning of the Required/Target notation |
+| [Binding Contract Category Policy](#binding-contract-category-policy) | Contract category classification |
+| [Binding Runtime Category Policy](#binding-runtime-category-policy) | Runtime category classification |
+| [Actor/Spot Route Surface](#actorspot-route-surface) | Route lookup result types, and Actor-targeted send/request |
+| [High-Performance Binding Policy](#high-performance-binding-policy) | Hot-path constraints |
+| [Substrate vs Public Binding Surface](#substrate-vs-public-binding-surface) | The boundary between the part substrate and the aggregate public surface |
+| [`*_part` Substrate Usage Requirement (Required)](#_part-substrate-usage-requirement-required) | Why an aggregate implementation must use the `*_part` API |
+| [Spot Get-Or-Create Mapping](#spot-get-or-create-mapping) | The `zlink_spot_node_spot_get_or_new` mapping rule |
+| [Public vs Internal API Boundary](#public-vs-internal-api-boundary) | The contract/runtime separation principle and its test |
+| [Core Alignment Rules](#core-alignment-rules) | Alignment rules against the core contract |
+| [Actor Dispatch Binding Contract](#actor-dispatch-binding-contract) | The public Actor dispatch surface |
+| [Document Interpretation Rules](#document-interpretation-rules) | How to read the Required/Target notation |
+| [Core Principles](#core-principles) | The core principles that run through this whole policy |
+| [Monitor Ready Contract](#monitor-ready-contract) | The meaning of monitor readiness |
+| [POSD Structure Policy](#posd-structure-policy) | The deep-module, low-change-amplification structural standard |
+| [Public Surface Rules](#public-surface-rules) | Operation naming, builder, and terminator rules |
+| [Domain Object Policy](#domain-object-policy) | The value-type-vs-interface test |
+| [Socket Type Capability Policy](#socket-type-capability-policy) | The capabilities each socket family exposes |
+| [Per-Language Spec File Compliance Rule](#per-language-spec-file-compliance-rule) | The relationship between the per-language documents and this document |
+| [Service Layer Policy](#service-layer-policy) | The public contract for the SPOT/Actor service layer |
+| [Core API Additions](#core-api-additions) | Binding coverage for recently added core capabilities |
+| [Option Policy](#option-policy) | Rules for exposing socket/context options |
+| [Performance Policy](#performance-policy) | Shared performance standards across all bindings |
+| [Boundary Cost Policy](#boundary-cost-policy) | The FFI/marshalling boundary-cost standard |
+| [Peer Weight Policy](#peer-weight-policy) | The peer-weight contract |
+| [Monitor Policy](#monitor-policy) | The monitor event/snapshot contract |
+| [Error Policy](#error-policy) | Error representation and domain mapping |
+| [Length And Range Boundary Policy](#length-and-range-boundary-policy) | Value validation and boundary limits |
+| [Ownership Policy](#ownership-policy) | Message/handle ownership rules |
+| [Naming Policy](#naming-policy) | Shared naming rules across languages |
+| [Compatibility Policy](#compatibility-policy) | The ban on compatibility shims and deprecated wrappers |
+| [Cross-Language Alignment](#cross-language-alignment) | How to verify consistency across languages |
+| [Test Policy](#test-policy) | Test scope and standards |
+| [Test Matrix](#test-matrix) | A language-by-capability coverage table |
+| [Sample Policy](#sample-policy) | Sample code standards |
+| [Perf Policy](#perf-policy) | Perf-runner standards |
+| [Script Location Policy](#script-location-policy) | Where test/sample/perf scripts live |
+| [Review Checklist](#review-checklist) | Checks to make during PR review |
+| [POSD-Based Implementation Completeness Policy](#posd-based-implementation-completeness-policy) | The test for declaring an implementation complete |
+| [Implementation Review Checklist](#implementation-review-checklist) | Checks before declaring an implementation done |
+| [Binding Requirements](#binding-requirements) | Requirements every binding must satisfy |
+| [API Reference](#api-reference) | Standards for generating API reference documentation |
+| [Disconnecting A Peer By Routing ID](#disconnecting-a-peer-by-routing-id) | The routing-id-based peer disconnect contract |
+| [Related Documents](#related-documents) | Links to related documents |
+| [Core API Surface 6.0.0 Alignment](#core-api-surface-600-alignment) | Alignment status for the 6.0.0 core API surface |
+| [Spot Route Bridge API](#spot-route-bridge-api) | The route bridge API contract |
 
-이 문서는 현재 모든 바인딩이 이미 같은 상태라는 뜻이 아니다. `.NET` binding의
-contract/runtime 분리와 파일 입도를 표준 target으로 삼아, 나머지 wrapper binding을
-단계적으로 정렬하기 위한 기준이다. `Required`로 표시된 항목은 현재 리뷰에서 바로
-적용하고, `Target`으로 표시된 구조와 표면은 해당 바인딩을 정렬하는 작업의 목표로
-적용한다. C binding은 native ABI baseline이므로 별도 예외 규칙을 따른다.
+## Purpose
 
-`c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 아래 문서는
-각 바인딩 구현이 실제로 외부에 제공해야 하는 public API contract를 정의한다.
-이 문서들이 규정하는 것은 공개 타입, 메서드, 시그니처, 반환값, 오류 의미이며,
-바인딩 구현이 노출하는 public 인터페이스는 이 계약과 달라지면 안 된다.
-또한 C를 제외한 wrapper binding은 public contract와 runtime implementation을
-분리한다. 이 분리는 역할 기준으로 고정되지만, 물리 디렉터리와 package/module
-path는 언어 관례에 맞게 정한다. 언어별 README가 지정한 실제 경로가 각 바인딩의
-구현 기준이다.
+This document defines the public API policy for all of `bindings/`.
 
-이 문서는 단순 스타일 가이드가 아니다. 다음을 위한 설계 기준 문서다.
-- public API 설계 기준
-- 리뷰 기준
-- 리팩터링 기준
-- 샘플과 테스트 기준
+Its purpose is to prevent each language binding from growing its own
+surface and its own exception rules, and instead to enforce a shared
+contract that can always be explained in terms of
+`core/include/zlink.h`.
 
-이 문서의 의도는 다음과 같다.
-- 언어별로 이름만 비슷하고 의미가 다른 API를 없앤다.
-- 같은 능력을 여러 방식으로 중복 노출하는 얕은 표면을 없앤다.
-- raw option bag, 불필요한 편의 래퍼, 암묵적 ownership, 숨은 오류 경로를
-  줄인다.
-- binding 사용자가 internal sequencing, native 세부사항, hidden transport
-  switch를 알지 않아도 되게 만든다.
-- POSD 원칙에 맞는 깊은 모듈과 낮은 변경 파급(change amplification) 구조를 유도한다.
-- correctness뿐 아니라 비용 모델, 샘플 품질, 테스트 가능성까지 공통 기준으로
-  묶는다.
+This document does not claim that every binding is already in this state
+today. It sets the `.NET` binding's contract/runtime separation and file
+granularity as the standard target, and gives the remaining wrapper
+bindings a baseline to align to in stages. Items marked `Required` apply
+immediately in the current review; structures and surfaces marked
+`Target` apply as the goal of the work that aligns that binding. The C
+binding is the native ABI baseline, so it follows a separate set of
+exceptions.
 
-기준은 항상 `core/include/zlink.h` 이다. 각 바인딩은 코어 계약을 따르되,
-표현 방식은 언어 관례에 맞게 선택할 수 있다. 다만 의미 계약은 바뀌면 안 된다.
+The documents under `c/`, `cpp/`, `java/`, `dotnet/`, `node/`, `python/`,
+`go/`, `rust/` define the public API contract each binding implementation
+must actually provide externally. What these documents govern is the
+public types, methods, signatures, return values, and error semantics —
+the public interface a binding implementation exposes must not diverge
+from this contract. Every wrapper binding except C also separates the
+public contract from the runtime implementation. This separation is fixed
+by responsibility, but the physical directory and package/module path
+follow each language's conventions. The actual path each per-language
+README specifies is the implementation baseline for that binding.
 
-이 문서는 “각 언어가 어떻게 보일 수 있는가”보다 “각 언어가 무엇을 보장해야
-하는가”를 정의한다.
+This document is not a simple style guide. It is a design-standard
+document for:
+- public API design standards
+- review standards
+- refactoring standards
+- sample and test standards
+
+Its intent is to:
+- eliminate APIs that look similarly named across languages but carry
+  different meaning
+- eliminate shallow surfaces that expose the same capability through
+  multiple redundant paths
+- reduce raw option bags, unnecessary convenience wrappers, implicit
+  ownership, and hidden error paths
+- let a binding user avoid needing to know internal sequencing, native
+  detail, or hidden transport switches
+- drive deep modules and low change amplification, per POSD principles
+- tie correctness together with the cost model, sample quality, and
+  testability under one shared standard
+
+The baseline is always `core/include/zlink.h`. Each binding follows the
+core contract, and may choose its representation to fit language
+convention — but the semantic contract must not change.
+
+This document defines "what each language must guarantee," not "how each
+language may look."
 
 ## Binding Contract Category Policy
 
-모든 바인딩은 public contract를 같은 의미 범주로 나누어야 한다. 실제 폴더,
-package, namespace, module 이름은 언어 관례에 맞게 조정할 수 있지만, 어떤
-public 타입이 어떤 범주에 속하는지는 바인딩마다 같은 기준으로 판단해야 한다.
+Every binding must split its public contract into the same semantic
+categories. The actual folder, package, namespace, or module name can be
+adjusted to fit language convention, but which category a given public
+type belongs to must be judged by the same standard across bindings.
 
-이 정책의 목적은 파일 배치를 보기 좋게 맞추는 것이 아니다. 사용자가 한 언어에서
-배운 개념을 다른 언어에서도 같은 위치와 같은 의미로 찾을 수 있게 만드는 것이다.
-따라서 contract 하위 분류는 구현 파일 구조가 아니라 public API의 개념 경계를
-따른다.
+The point of this policy is not to make file placement look tidy. It is
+to let a user find a concept they learned in one language, at the same
+location and with the same meaning, in another language. So the contract
+subcategories follow the conceptual boundaries of the public API, not the
+implementation file structure.
 
-| 범주 | 목적 | 포함 대상 |
+| Category | Purpose | Includes |
 |------|------|-----------|
-| `core` | 라이브러리 전체의 기반 계약 | `Context`, `ContextOptions`, `RoutingId`, 버전/기능 확인처럼 특정 socket이나 service에 묶이지 않는 public 타입 |
-| `messaging` | 메시지 데이터와 수신 결과 계약 | `Message`, `Received`, topic message, subscription event, multipart payload helper처럼 socket 종류와 독립적인 payload 타입 |
-| `sockets` | socket 종류와 socket 작업 계약 | `PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`, `SubSocket`, `StreamSocket`, socket interface, send/recv/publish/request/reply builder, socket option |
-| `eventing` | 대기, 이벤트 소스, 관찰 계약 | `Poller`, `PollEvent`, timer, monitor socket, monitor event, monitor snapshot |
-| `service` | core service layer 계약 | Spot, Actor dispatch처럼 service domain에 속하는 public 타입 |
-| `errors` | public 오류와 실패 표현 계약 | base exception, bind/connect/send/recv/submit/config/request exception, public error code/result mapping |
+| `core` | The library-wide foundational contract | Public types not tied to a specific socket or service, such as `Context`, `ContextOptions`, `RoutingId`, and version/capability lookup |
+| `messaging` | The message data and receive-result contract | Payload types independent of socket kind, such as `Message`, `Received`, topic message, subscription event, and multipart payload helpers |
+| `sockets` | The socket-kind and socket-operation contract | `PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`, `SubSocket`, `StreamSocket`, socket interfaces, send/recv/publish/request/reply builders, socket options |
+| `eventing` | The waiting, event-source, and observation contract | `Poller`, `PollEvent`, timer, monitor socket, monitor event, monitor snapshot |
+| `service` | The core service-layer contract | Public types that belong to a service domain, such as Spot and Actor dispatch |
+| `errors` | The public error and failure-representation contract | Base exception, bind/connect/send/recv/submit/config/request exceptions, public error-code/result mapping |
 
 ### Contract Category Rules
 
-- `contract`와 `runtime`의 분리는 public API와 구현 세부사항의 분리다.
-  contract 하위 범주는 runtime 내부 구조를 그대로 반영하면 안 된다.
-- `core`는 작게 유지한다. 특정 도메인을 알아야 설명되는 타입은 `core`에 두지
-  않고 해당 도메인 범주에 둔다.
-- `service`는 `spot`, `actor` 같은 하위 도메인을 둘 수 있다.
-  하위 도메인은 사용자가 독립 개념으로 배워야 할 때만 만든다.
-- `eventing`은 monitoring만 뜻하지 않는다. poller, timer, monitor처럼 이벤트를
-  기다리거나 관찰하는 public 계약을 함께 담는다.
-- `errors`는 여러 도메인에 걸쳐 공유되는 오류 표면을 담는다. 특정 socket 작업의
-  결과값처럼 도메인 의미가 강한 타입은 해당 도메인에 둔다.
-- `enums` 같은 표현 형식 기준의 범주는 canonical category로 만들지 않는다.
-  enum, flags, result는 그 값을 해석하는 public 개념의 범주에 둔다.
-- operation, result, callback 보조 타입은 그 의미를 정의하는 도메인에 둔다.
-  예를 들어 send/request/reply 결과와 callback은 messaging 계약에 두고, actor
-  join/session/management 결과와 callback은 service 계약에 둔다. snapshot entry는
-  그 snapshot을 반환하는 service 모델과 함께 둔다.
+- The `contract`/`runtime` split is the split between the public API and
+  implementation detail. A contract subcategory must not mirror the
+  runtime's internal structure as-is.
+- Keep `core` small. A type that can only be explained by knowing a
+  specific domain belongs in that domain's category, not in `core`.
+- `service` can have subdomains such as `spot` and `actor`. Create a
+  subdomain only when a user must learn it as an independent concept.
+- `eventing` does not mean monitoring alone. It also holds public
+  contracts for waiting on or observing events, such as poller, timer,
+  and monitor.
+- `errors` holds error surfaces shared across multiple domains. A type
+  whose meaning is strongly domain-specific, such as the result of a
+  particular socket operation, belongs in that domain instead.
+- Do not make a representation-format category such as `enums` a
+  canonical category. Enums, flags, and results belong in the category of
+  the public concept that interprets their value.
+- Put operation, result, and callback helper types in the domain that
+  defines their meaning. For example, send/request/reply results and
+  callbacks belong in the messaging contract, while Actor
+  join/session/management results and callbacks belong in the service
+  contract. A snapshot entry stays with the service model that returns
+  that snapshot.
 
 ### Handler Registration Naming Policy
 
-callback/handler 등록 함수 이름은 실제 동작을 드러내야 한다. 이벤트가 발생했을 때
-호출되는 함수처럼 보이는 이름을 등록 함수에 쓰면, 사용자가 직접 구현해야 하는 hook
-인지 handler를 저장하는 API인지 헷갈릴 수 있다.
+A callback/handler registration function's name must reveal what it
+actually does. A name that reads like a function invoked when an event
+occurs, used for a registration function, can make a user unsure whether
+it's a hook they must implement or an API that stores a handler.
 
-- 한 subject에 handler 하나를 저장하거나 기존 handler를 교체하는 public API는
-  `set...Handler` 계열 이름을 쓴다. 언어 관례에 따라 `Set...Handler`,
-  `set...Handler`, `set_..._handler`처럼 표기한다.
-- public binding의 `set...Handler`는 같은 subject에 활성 handler를 하나만 둔다.
-  같은 setter를 다시 호출하면 현재 handler를 교체한다. raw native attach 충돌이나
-  recv mode 충돌은 별도 오류로 보고할 수 있지만, public setter 이름은 누적 등록을
-  뜻하지 않는다.
-- 여러 handler를 누적 등록하는 public API만 `add...Handler` 또는
-  `register...Handler` 계열 이름을 쓴다.
-- `on...` 계열 이름은 이벤트가 발생했을 때 호출되는 protected/internal hook이나
-  framework-level handler method에만 쓴다. handler 등록 함수의 canonical 이름으로
-  쓰지 않는다.
-- topic 구독처럼 프로토콜 상태를 바꾸는 API는 `subscribe` / `unsubscribe`를 쓸 수
-  있다. 단순히 callback을 저장하는 함수에는 `subscribe...Handler`를 쓰지 않는다.
-- callback을 `null`/`None`으로 설정해서 해제하는 표면은 만들지 않는다. 해제가
-  필요하면 close/lifecycle 규칙으로 처리한다.
+- A public API that stores a single handler for one subject, or replaces
+  the existing handler, uses a `set...Handler`-family name. Spell it per
+  language convention: `Set...Handler`, `set...Handler`, or
+  `set_..._handler`.
+- A public binding's `set...Handler` keeps only one active handler per
+  subject. Calling the same setter again replaces the current handler. A
+  raw native attach conflict or a recv-mode conflict may still be
+  reported as a separate error, but the public setter name does not imply
+  cumulative registration.
+- Only a public API that accumulates multiple handlers uses an
+  `add...Handler` or `register...Handler`-family name.
+- An `on...`-family name is reserved for a protected/internal hook or a
+  framework-level handler method invoked when an event occurs. It is not
+  the canonical name for a handler-registration function.
+- An API that changes protocol state, such as a topic subscription, may
+  use `subscribe`/`unsubscribe`. A function that simply stores a callback
+  does not use `subscribe...Handler`.
+- Do not create a surface that unregisters by setting a callback to
+  `null`/`None`. When unregistration is needed, handle it through the
+  close/lifecycle rules instead.
 
-대표 canonical 의미 이름은 아래와 같다.
+The representative canonical semantic names are:
 
-| 의미 | canonical 이름 |
+| Meaning | Canonical name |
 |------|----------------|
-| send ready handler 등록 | `setSendReadyHandler` |
-| raw STREAM packet handler 등록 | `setPacketHandler` |
-| SPOT dispatch event handler 등록 | `setDispatchHandler` |
+| Registering a send-ready handler | `setSendReadyHandler` |
+| Registering a raw STREAM packet handler | `setPacketHandler` |
+| Registering a SPOT dispatch event handler | `setDispatchHandler` |
 | SPOT routed receive | `recvRouted` |
 | SPOT Actor lifecycle receive | `recvActorLifecycle` |
 
-대표적인 enum/result/flags 배치 기준은 아래와 같다.
+The representative enum/result/flags placement rules are:
 
-| 타입 예 | 범주 | 이유 |
+| Example type | Category | Reason |
 |---------|------|------|
-| `SendFlags`, `RecvFlags`, `SubmitResult`, `RecvResult` | `sockets` | socket 작업의 입력 또는 결과를 설명한다. |
-| `PollEventFlag`, `PollSourceKind`, `MonitorEventType` | `eventing` | 이벤트 대기와 관찰 결과를 설명한다. |
-| `SpotDispatchEvent`, `SpotPeerKind` | `service.spot` | Spot service domain 안에서만 의미가 정해진다. |
-| `ConfigResult`, `ErrorCode` | `errors` | 여러 도메인에서 공유되는 실패 의미를 설명한다. |
+| `SendFlags`, `RecvFlags`, `SubmitResult`, `RecvResult` | `sockets` | Describes the input to or result of a socket operation. |
+| `PollEventFlag`, `PollSourceKind`, `MonitorEventType` | `eventing` | Describes an event-wait or observation result. |
+| `SpotDispatchEvent`, `SpotPeerKind` | `service.spot` | Its meaning is defined only inside the Spot service domain. |
+| `ConfigResult`, `ErrorCode` | `errors` | Describes a failure meaning shared across multiple domains. |
 
-모든 wrapper binding은 같은 아키텍처 지도를 공유한다. 이 지도는 특정 언어의
-폴더명을 그대로 복사하기 위한 기준이 아니라, 한 언어에서 배운 개념을 다른 언어의
-코드에서도 같은 책임 위치에서 찾을 수 있게 만드는 기준이다. 실제 파일명,
-디렉터리명, package/module/import path는 언어별 관례와 공개 API 안정성을 따른다.
+Every wrapper binding shares the same architecture map. This map is not a
+baseline for copying one language's folder names literally — it lets a
+concept learned in one language be found at the same responsibility
+location in another language's code. The actual file names, directory
+names, and package/module/import paths follow per-language convention and
+public API stability.
 
-공유 아키텍처 지도는 아래와 같다.
+The shared architecture map is:
 
 ```text
 contracts/
@@ -154,402 +238,436 @@ contracts/
   errors/
 
 runtime/
-  core/
-  handles/
-  messaging/
-  buffers/
+  native/
   sockets/
+  messaging/
   eventing/
   service/
-  options/
   errors/
-  native/
+  buffers/
+  options/
+  handles/
 ```
 
-이 지도에서 `contracts`는 사용자가 먼저 읽는 public contract surface다.
-`contracts`에는 public interface, public value object, public result/flag/error
-type, public builder/facade처럼 사용자가 직접 의존하는 타입을 둔다. 구현 세부사항은
-`runtime`에 숨긴다.
+In this map, `contracts` is the public contract surface a user reads
+first. `contracts` holds the types a user directly depends on: public
+interfaces, public value objects, public result/flag/error types, and
+public builders/facades. Implementation detail stays hidden in `runtime`.
 
-다만 public interface를 남발하지 않는다. `Message`, `RoutingId`, `Received`,
-`TopicMessage`, enum/result/flags 같은 값 객체나 단순 데이터 타입은 별도 interface로
-쪼개지 않는다. interface는 사용자가 다형적으로 받아야 하는 역할에만 둔다. 예를
-들어 socket 공통 역할, poll target, monitor target, codec, handler/callback,
-SPOT client 역할이 이에 해당한다.
+Do not overuse public interfaces, however. Value objects and plain data
+types such as `Message`, `RoutingId`, `Received`, `TopicMessage`, and
+enum/result/flags are not split into separate interfaces. Interfaces
+belong only where a user needs to receive something polymorphically —
+for example, a common socket role, a poll target, a monitor target, a
+codec, a handler/callback, or a SPOT client role.
 
-`runtime`은 public contract를 실행하는 구현 영역이다. socket send/recv 흐름,
-message materialization, poller/timer/monitor loop, service runtime, native
-interop, buffer/handle/error mapping 같은 구현 결정을 숨긴다. runtime 타입은
-public API로 권장하지 않으며, contract surface를 통하지 않고 사용자가 직접 의존하면
-안 된다.
+`runtime` is the implementation area that executes the public contract.
+It hides implementation decisions such as the socket send/recv flow,
+message materialization, the poller/timer/monitor loop, the service
+runtime, native interop, and buffer/handle/error mapping. A runtime type
+is not recommended as public API, and a user should not depend on it
+directly without going through the contract surface.
 
 ### Interface / Implementation Separation Policy
 
-C를 제외한 wrapper binding은 `.NET` binding처럼 공개 인터페이스/계약과 런타임 구현을
-분리하는 방향을 따른다. 여기서 `.NET`처럼 분리한다는 말은 모든 언어가 `IContext`나
-`Contracts/Runtime` 같은 이름을 그대로 복사한다는 뜻이 아니다. 사용자가 보는
-계약과 native 호출, handle owner, callback bridge, request pump 같은 구현 세부사항을
-서로 다른 책임 영역에 둔다는 뜻이다.
+Every wrapper binding except C follows the `.NET` binding's direction of
+separating the public interface/contract from the runtime implementation.
+Separating "like `.NET`" here does not mean every language copies names
+such as `IContext` or `Contracts`/`Runtime` literally. It means the
+contract a user sees and the implementation detail — native calls, handle
+owners, callback bridges, request pumps — live in separate areas of
+responsibility.
 
-.NET binding의 분류가 wrapper binding 문서의 표준이다. 다른 언어는 casing,
-package/import 규칙, 파일 확장자만 바꿀 수 있고, 아래 분류의 의미는 유지해야 한다.
+The separation rules are:
 
-| .NET 표준 분류 | 공개 계약 위치 | 런타임 구현 위치 | 책임 |
-|----------------|----------------|------------------|------|
-| Core | `Contracts/Core` | `Runtime/Core` | `Context`, options, routing id, version/capability, package-level facade |
-| Messaging | `Contracts/Messaging` | `Runtime/Messaging` | `Message`, `Received`, topic/subscription payload, multipart/request progress |
-| Sockets | `Contracts/Sockets` | `Runtime/Sockets` | socket roles, socket family APIs, socket options, send/recv/request/reply/publish |
-| Eventing | `Contracts/Eventing` | `Runtime/Eventing` | monitor, poller, poll event, timer, dispatch/event loop |
-| Service | `Contracts/Service` | `Runtime/Service` | `SpotNode`, `Spot`, `Actor`, SPOT topology, service operations |
-| Errors | `Contracts/Errors` | `Runtime/Errors` | public error/result domains and native errno/result mapping |
-| Handles | 없음 | `Runtime/Handles` | native handle ownership, lifetime, reference tracking |
-| Buffers | 없음 | `Runtime/Buffers` | byte buffer ownership, copy/borrow policy, pooled or pinned storage |
-| Options | 관련 계약 category | `Runtime/Options` | option validation and native option id/value mapping |
-| Native | 없음 | `Runtime/Native` | native function declarations, ABI structs, symbol loading, FFI/JNI/P/Invoke |
+- Types, interfaces, traits, protocols, abstract roles, factories,
+  builder start points, DTOs, value objects, enums, and error/result
+  types that a user depends on go in the public contract source.
+- A type that directly owns a native handle, calls the core helper
+  substrate, manages a callback trampoline and request progress, or
+  performs marshalling goes in the runtime or native bridge source.
+- For a resource type where it's more natural for a user to depend on a
+  role than on an implementation — `Context`, socket, poller, timer,
+  SpotNode, Spot, Actor — separate the contract role from the default
+  implementation in whatever way the language supports.
+- Value-centric types such as `Message`, `RoutingId`, `Received`,
+  `TopicMessage`, snapshot DTOs, and enum/flags/result are not wrapped in
+  a meaningless interface/trait/protocol. Keep a value type as a concrete
+  public type, and hide implementation detail inside the type itself when
+  it needs internal native-backed storage.
+- Even in a language where a runtime concrete class must be publicly
+  exposed, the behavior contract a user needs to understand must be
+  explained in the public contract source first.
+- Write samples, perf, and framework adapters against the public contract
+  projection, not against a runtime concrete type or native bridge.
 
-언어별 README는 이 표준 분류를 자신의 파일/패키지 구조로 투영해야 한다. 예를 들어
-TypeScript는 `contracts/core`와 `runtime/core`, Java는
-`systems.zlink.contracts.core`와 `systems.zlink.runtime.core`, Go는 하나의 public
-`contracts` package 안의 `core.go`와 private `internal/core`처럼 표현할 수 있다.
-그러나 `handles`, `buffers`, `options`, `native` 같은 구현 지원 분류를 `common`,
-`utils`, `internal` 하나로만 설명해서는 안 된다. 포괄 폴더가 필요하더라도 그 안에서
-.NET 표준 분류 중 어느 책임인지 문서와 파일명으로 드러나야 한다.
+This separation is not just a naming split. A file on the `contracts`
+side must be readable without knowing the native handle, native function
+names, request pump, callback trampoline, or buffer-marshalling sequence.
+Conversely, a file on the `runtime` side implements the public contract,
+but must not itself become a public surface a user has to import.
 
-분리 기준은 아래와 같다.
+The same standard applies to file structure.
 
-- 사용자가 의존하는 타입, interface, trait, protocol, abstract role, factory,
-  builder 시작점, DTO, value object, enum, error/result type은 public contract
-  source에 둔다.
-- native handle을 직접 소유하거나, core helper substrate를 호출하거나, callback
-  trampoline과 request progress를 관리하거나, marshalling을 수행하는 타입은 runtime
-  또는 native bridge source에 둔다.
-- `Context`, socket, poller, timer, SpotNode, Spot, Actor처럼
-  사용자가 구현체보다 역할에 의존하는 편이 자연스러운 resource type은 언어가
-  지원하는 방식으로 contract role과 runtime implementation을 분리한다.
-- `Message`, `RoutingId`, `Received`, `TopicMessage`, snapshot DTO, enum/flags/result
-  같은 값 중심 타입은 의미 없는 interface/trait/protocol로 감싸지 않는다. 값 타입은
-  concrete public type으로 두고, 내부 native-backed storage가 필요하면 구현 세부사항을
-  타입 내부에 숨긴다.
-- runtime concrete class가 public으로 노출되어야 하는 언어라도, 사용자가 이해해야
-  하는 동작 계약은 public contract source에서 먼저 설명되어야 한다.
-- sample, perf, framework adapter는 runtime concrete type이나 native bridge가 아니라
-  public contract projection을 기준으로 작성한다.
-
-인터페이스/계약 역할을 반드시 먼저 정의해야 하는 대상은 아래 resource와 operation
-builder다. 언어에 따라 `interface`, `trait`, `protocol`, abstract role, public
-contract type 등 표현은 달라도, 호출자는 런타임 구현 클래스가 아니라 이 계약에
-의존해야 한다.
-
-- core resource: `Context`.
-- socket resource: `PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`,
-  `SubSocket`, `XPubSocket`, `XSubSocket`, `StreamSocket`, 그리고 공통 socket
-  behavior/base role.
-- eventing resource: monitor socket, `Poller`, poll event source, `Timer`,
-  stopwatch, atomic counter처럼 native handle이나 runtime lifecycle을 갖는 타입.
-  `SpotNode`, `Spot`, `Actor`.
-- operation builder: multipart send, routed send, request, reply, publish,
-  channel send/request, SPOT send/request/reply, Actor create/join/reply처럼
-  native request state나 multipart accumulation을 숨기는 staged operation.
-- handler/callback role: stream packet handler, monitor handler, poll handler,
-  SPOT dispatch handler, route/admission handler처럼 runtime callback bridge를
-  숨겨야 하는 호출자 제공 역할.
-
-반대로 `Message`, `RoutingId`, `Received`, `TopicMessage`, route result,
-snapshot DTO, option object, enum/flag/result, error value처럼 값 의미가 중심인
-타입은 인터페이스/계약 역할을 억지로 만들지 않는다. 이 타입들은 concrete value나
-언어의 구조적 타입으로 두고, 필요한 검증과 native-backed storage만 내부에 숨긴다.
-
-이 분리는 이름만 나누는 것이 아니다. `contracts` 쪽 파일은 native handle, native
-function 이름, request pump, callback trampoline, buffer marshalling 순서를 몰라도
-읽을 수 있어야 한다. 반대로 `runtime` 쪽 파일은 public contract를 구현하지만,
-그 자체가 사용자가 import해야 하는 public surface가 되면 안 된다.
-
-파일 구조에서도 같은 기준을 적용한다.
-
-- category aggregate 파일은 작은 re-export barrel이나 factory wiring에만 쓴다.
-  `sockets`, `service`, `eventing` 같은 category 파일 하나가 여러 public resource의
-  실제 동작을 모두 담고 있으면 contract/runtime 분리가 된 것이 아니다.
-- native-backed resource 구현은 resource별 파일에 둔다. 예를 들어 socket family,
-  poller, timer, SpotNode, Spot, Actor는 각각의 구현 파일을
-  가져야 한다. 파일명은 언어 관례에 맞추되 resource 이름이나 operation 이름을
-  드러내야 한다.
-- 공통 helper 파일은 public resource 구현의 대체 장소가 아니다. helper 파일에는
-  native call wrapper, handle validation, marshalling helper, 오류 매핑처럼 여러
-  구현이 공유하는 하위 기능만 둔다. `Context`, `RouterSocket`, `SpotNode`, `Poller`
-  같은 resource의 동작 본문을 helper 파일에 모아두면 안 된다.
-- contract 파일과 runtime 파일은 서로 1:1일 필요는 없지만, public resource 하나를
-  찾을 때 contract owner와 runtime owner가 각각 명확해야 한다.
+- Use a category aggregate file only as a small re-export barrel or for
+  factory wiring. If a single category file such as `sockets`, `service`,
+  or `eventing` holds the actual behavior of several public resources,
+  the contract/runtime split has not happened.
+- Put a native-backed resource's implementation in its own per-resource
+  file. For example, each socket family, poller, timer, SpotNode, Spot,
+  and Actor should have its own implementation file. The file name
+  follows language convention but must reveal the resource or operation
+  name.
+- A shared helper file is not a substitute location for a public
+  resource's implementation. A helper file should hold only lower-level
+  functionality shared across multiple implementations, such as a native
+  call wrapper, handle validation, a marshalling helper, or error
+  mapping. Do not collect a resource's actual behavior — for `Context`,
+  `RouterSocket`, `SpotNode`, `Poller` — into a helper file.
+- A contract file and a runtime file do not need a strict 1:1 mapping,
+  but for any given public resource, its contract owner and runtime owner
+  must each be clear.
 
 ### File Granularity Policy
 
-모든 wrapper binding은 파일을 나누는 입도도 비슷하게 맞춘다. 목표는 파일 개수나
-파일명을 1:1로 복제하는 것이 아니라, 어느 언어를 읽어도 같은 개념 묶음을 비슷한
-크기의 파일에서 찾을 수 있게 하는 것이다.
+Every wrapper binding also matches a similar granularity when splitting
+files. The goal is not to replicate file count or file names 1:1, but to
+let a reader of any language find the same conceptual grouping in a
+similarly sized file.
 
-기준은 `.NET` binding의 `Contracts` 정리 수준을 따른다. 한 파일은 하나의 독립된
-public 개념이거나, 같은 변경 이유를 공유하는 작고 강하게 붙은 계약 묶음을 담는다.
+The baseline is the `.NET` binding's `Contracts` organization level. One
+file holds either one independent public concept, or a small, tightly
+coupled group of contracts that share the same reason to change.
 
-파일 분할 기준은 아래와 같다.
+The file-splitting rules are:
 
-- `Context`, socket family, `SpotNode`, `Spot`, `Actor`, poller, timer처럼 사용자가
-  직접 찾는 resource 계약은 얇어도 독립 파일로 둘 수 있다.
-- `Message`, `Received`, `TopicMessage`, `RoutingId`처럼 소유권, 저장소, 값 검증,
-  비용 모델이 중요한 타입은 단독 파일로 둔다.
-- marker interface, delegate, 작은 enum, 한 줄 record처럼 단독으로 변경 이유가 약한
-  타입은 가장 가까운 계약 파일에 합친다. 예를 들어 socket marker role은 socket
-  base 계약과, stream packet handler delegate는 stream socket 계약과 함께 둔다.
-- send/request/reply 같은 staged operation builder 계약은 같은 도메인 변경 이유를
-  공유하므로 한 operation contract 파일로 묶을 수 있다.
-- Actor join, actor management, SpotNode snapshot model처럼 서비스
-  하위 도메인이 뚜렷한 묶음은 도메인별 파일로 둔다. 단, 모델 파일이 너무 커져서
-  peer/status/socket/actor snapshot처럼 서로 다른 변경 이유가 생기면 그때 나눈다.
-- runtime 구현 파일도 같은 원칙을 따른다. 구현 파일 하나가 여러 native-backed
-  resource의 lifecycle, send/recv/request 흐름, callback 등록, snapshot mapping을
-  동시에 담고 있으면 너무 넓다. 그런 파일은 resource 구현 파일과 shared helper
-  파일로 나눈다.
-- category barrel은 작아야 한다. 대략적인 기준으로, re-export와 단순 factory wiring을
-  넘어 수백 줄의 resource implementation이 들어가면 분리 실패로 본다. 실제 기준은
-  줄 수보다 변경 이유다. 서로 다른 public resource를 수정할 때 항상 같은 파일을
-  열어야 한다면 분리해야 한다.
-- `Enums`, `Types`, `Models`, `Common`, `Utils`처럼 표현 형식이나 포괄 이름만 기준으로
-  파일을 만들지 않는다. 파일명은 사용자가 찾는 도메인 개념이나 변경 이유를 드러내야
-  한다.
-- 각 언어는 casing, suffix, package convention을 따른다. 예를 들어 C#은
-  `OperationContracts.cs`, Rust는 `operation_contracts.rs`, TypeScript는
-  `operation-contracts.ts`처럼 표현할 수 있지만, 같은 책임 묶음이라는 점은 유지한다.
+- A resource contract a user looks up directly — `Context`, a socket
+  family, `SpotNode`, `Spot`, `Actor`, poller, timer — can have its own
+  file even if it's thin.
+- A type where ownership, storage, value validation, or cost model
+  matters — `Message`, `Received`, `TopicMessage`, `RoutingId` — gets its
+  own file.
+- A type with a weak independent reason to change — a marker interface,
+  delegate, small enum, one-line record — merges into the nearest
+  contract file. For example, a socket marker role merges with the
+  socket base contract, and a stream packet handler delegate merges with
+  the stream socket contract.
+- Staged operation builder contracts such as send/request/reply share the
+  same domain-level reason to change, so they can be grouped into one
+  operation contract file.
+- A group with a clear service subdomain — Actor join, actor management,
+  SpotNode snapshot models — gets its own domain file. Split it further
+  only once the model file grows large enough that distinct reasons to
+  change appear, such as peer/status/socket/actor snapshots.
+- The same principle applies to runtime implementation files. One
+  implementation file holding several native-backed resources' lifecycle,
+  send/recv/request flow, callback registration, and snapshot mapping all
+  at once is too broad. Split such a file into per-resource
+  implementation files and a shared helper file.
+- Keep a category barrel small. As a rough guideline, once a barrel holds
+  hundreds of lines of resource implementation beyond re-exports and
+  simple factory wiring, treat that as a split failure. The real
+  criterion is the reason to change, not the line count — if editing
+  different public resources always means opening the same file, split
+  it.
+- Do not create a file based only on a representation format or a
+  catch-all name such as `Enums`, `Types`, `Models`, `Common`, or `Utils`.
+  A file name must reveal the domain concept a user is looking for, or
+  the reason it changes.
+- Each language follows its own casing, suffix, and package convention.
+  For example, C# might spell it `OperationContracts.cs`, Rust
+  `operation_contracts.rs`, and TypeScript `operation-contracts.ts` — but
+  the same grouping of responsibility must be preserved.
 
-이 기준을 적용할 때는 언어별 README가 선언한 정렬 방식을 우선한다. 언어별 README가
-breaking alignment를 선언하면 기존 public surface 유지보다 canonical surface 정렬을
-우선한다. 파일 이동은 가능한 한 namespace, package export, crate re-export, package
-`exports`, generated declaration surface를 깔끔하게 재정렬한다. 파일 구조를 맞추기 위해
-새 public wrapper나 얕은 compatibility shim을 만들지 않는다.
+When applying this standard, the alignment approach declared by the
+per-language README takes priority. If a per-language README declares a
+breaking alignment, aligning to the canonical surface takes priority over
+preserving the existing public surface. Prefer to cleanly rearrange the
+namespace, package export, crate re-export, package `exports`, or
+generated declaration surface when moving files. Do not create a new
+public wrapper or a shallow compatibility shim just to match the file
+structure.
 
-언어별 적용은 다음 원칙을 따른다.
+The per-language application follows these principles:
 
-- `.NET`은 `Contracts/<Category>`와 `Runtime/<Category>`를 표준 구조로 삼는다.
-  public interface와 public value object는 `Contracts`에 두고, 구현 class와 native
-  interop helper는 `Runtime`에 둔다.
-- Java는 package가 public API에 가깝기 때문에 `systems.zlink.contracts.<category>`
-  아래에 public interface/value object를 두고, 구현 class와 native bridge는
-  `systems.zlink.runtime.<category>` 또는 `systems.zlink.runtime.nativeapi` 아래에
-  둔다. 단순히 method 목록을 보기 위한 `FooContract` interface는 만들지 않는다.
-- C는 native ABI baseline이므로 별도 contract/runtime 폴더를 만들지 않는다.
-  header 파일, header section, 문서 섹션으로 같은 범주를 표현한다.
-- C++, Go, Rust, Python, Node는 각 언어의 module/package/export 관례를 따르되,
-  public-facing surface와 runtime implementation을 구분해야 한다. 언어가 interface를
-  자연스럽게 지원하지 않으면 문서와 export surface에서 같은 구분을 명확히 한다.
+- `.NET` treats `Contracts/<Category>` and `Runtime/<Category>` as its
+  standard structure. Public interfaces and public value objects go in
+  `Contracts`; implementation classes and native interop helpers go in
+  `Runtime`.
+- Because a Java package is close to public API, Java puts public
+  interfaces/value objects under `systems.zlink.contracts.<category>`,
+  and implementation classes and native bridges under
+  `systems.zlink.runtime.<category>` or
+  `systems.zlink.runtime.nativeapi`. It does not create a `FooContract`
+  interface just to list methods.
+- C is the native ABI baseline, so it does not create separate
+  contract/runtime folders. It expresses the same categories through
+  header files, header sections, and documentation sections.
+- C++, Go, Rust, Python, and Node follow each language's module/package/
+  export convention, but must still distinguish the public-facing surface
+  from the runtime implementation. When a language does not naturally
+  support interfaces, the same distinction must be made explicit in the
+  documentation and the export surface.
 
-기존 바인딩에 `monitoring` 또는 `Monitoring` 범주가 있으면 canonical category는
-`eventing`으로 본다. monitor API만 있던 시기에는 monitoring 이름이 충분했지만,
-poller와 timer까지 함께 다루는 public 계약에서는 eventing이 더 넓고 정확한
-개념이다. 구조 정리 시에는 새 문서와 새 파일을 `eventing` 책임으로 설명한다.
-이미 공개 import/export 경로가 된 `monitoring` 이름은 해당 언어별 README가
-호환성 유지를 명시한 경우에만 임시 alias로 둘 수 있다. breaking alignment를 선언한
-바인딩에서는 `eventing`으로 정리하고 `monitoring` alias를 남기지 않는다.
+If an existing binding has a `monitoring` or `Monitoring` category, treat
+`eventing` as the canonical category. The name `monitoring` was
+sufficient while only the monitor API existed, but `eventing` is the
+broader and more accurate concept for a public contract that also covers
+poller and timer. When cleaning up structure, describe new documents and
+new files as `eventing` responsibility. An already-public `monitoring`
+import/export path may be kept as a temporary alias only when the
+matching per-language README explicitly commits to preserving
+compatibility. A binding that has declared a breaking alignment cleans up
+to `eventing` and does not keep a `monitoring` alias.
 
-`enums` 같은 표현 형식 기준 폴더는 공유 아키텍처 지도의 최상위 범주가 아니다.
-enum, flags, result, literal union은 그 값을 해석하는 도메인 범주에 둔다. 예를 들어
-`RecvFlags`는 `sockets`, `PollEventFlags`는 `eventing`, `SpotPeerKind`는 `service`
-계약에 속한다.
+A representation-format folder such as `enums` is not a top-level
+category in the shared architecture map. Enums, flags, results, and
+literal unions belong in the domain category that interprets their
+value. For example, `RecvFlags` belongs to the `sockets` contract,
+`PollEventFlags` to `eventing`, and `SpotPeerKind` to the `service`
+contract.
 
 ## Binding Runtime Category Policy
 
-wrapper binding은 public contract와 runtime implementation을 분리한다. runtime은
-contract surface 뒤에서 실제 동작을 수행하는 구현 계층이다. public contract는
-사용자가 무엇을 호출할 수 있는지 보여 주고, runtime은 그 호출을 native substrate와
-언어별 실행 모델에 맞게 처리한다.
+A wrapper binding separates the public contract from the runtime
+implementation. Runtime is the implementation layer that performs the
+actual behavior behind the contract surface. The public contract shows a
+user what they can call, and runtime handles that call against the
+native substrate and the language's own execution model.
 
-runtime 하위 범주는 contract 하위 범주와 1:1로 반드시 같을 필요는 없다. 하지만
-구현 책임과 변경 이유가 분명해야 하며, public contract를 단순 반복하는 얇은
-pass-through class를 늘리면 안 된다.
+A runtime subcategory does not need to be strictly 1:1 with a contract
+subcategory. But the implementation responsibility and reason to change
+must be clear, and it must not grow into a thin pass-through class that
+merely repeats the public contract.
 
-권장 runtime 범주는 아래와 같다.
+The recommended runtime categories are:
 
-| 범주 | 책임 |
+| Category | Responsibility |
 |------|------|
-| `core` | context lifecycle, runtime version/capability calls, package-level runtime facade |
-| `native` 또는 언어별 동등 이름 | P/Invoke, JNI, FFI, native 함수 선언, ABI 타입 변환, native symbol loading |
-| `handles` | native handle 소유권, dispose/close, lifetime, reference tracking |
-| `messaging` | native message part 조립, multipart 처리, message 변환, request progress |
-| `sockets` | socket operation 실행, send/recv/publish/request/reply 흐름 |
-| `eventing` | poller, timer, monitor, event dispatch loop |
+| `native`, or a per-language equivalent name | P/Invoke, JNI, FFI, native function declarations, ABI type conversion, native symbol loading |
+| `handles` | Native handle ownership, dispose/close, lifetime, reference tracking |
+| `messaging` | Native message part assembly, multipart handling, message conversion, request progress |
+| `sockets` | Socket operation execution, send/recv/publish/request/reply flow |
+| `eventing` | Poller, timer, monitor, event dispatch loop |
 | `service` | Spot, Actor service runtime |
-| `options` | public option 검증, native option mapping |
-| `errors` | native errno/result를 public exception/result로 변환 |
-| `buffers` | byte buffer, direct buffer, pooled buffer, pinned memory, copy/borrow 정책 |
+| `options` | Public option validation, native option mapping |
+| `errors` | Converting native errno/result into public exception/result |
+| `buffers` | Byte buffer, direct buffer, pooled buffer, pinned memory, copy/borrow policy |
 
-언어 예약어 때문에 이름이 달라질 수 있다. 예를 들어 Java는 `native`가 keyword이므로
-`runtime/nativeapi`를 사용할 수 있다. 이름은 달라도 책임은 설명 가능해야 한다.
+The name may differ because of a language reserved word. For example,
+because `native` is a keyword in Java, it can use `runtime/nativeapi`
+instead. Names can differ, but the responsibility must still be
+explainable.
 
 ### Runtime Category Rules
 
-- runtime은 public API 안정성을 약속하지 않는다. public 계약은 contract 문서와
-  언어별 public surface가 정의한다.
-- runtime 구현 class는 public contract interface 또는 public facade 뒤에 숨긴다.
-  사용자가 runtime class를 직접 생성하거나 호출해야 하면 contract 설계가 새고 있는
-  것이다.
-- contract interface가 runtime 구현과 메서드 목록만 1:1로 반복되면 얕은 모듈 위험
-  신호다. interface는 역할 추상화가 있을 때만 만들고, 값 객체에는 만들지 않는다.
-- runtime 범주는 변경 이유를 기준으로 나눈다. 예를 들어 native symbol 추가는
-  `native`, send/recv 흐름 변경은 `sockets`, message ownership 변경은 `messaging`
-  또는 `buffers`가 바뀌어야 한다.
-- `core`, `common`, `utils`, `internal`, `misc` 같은 포괄 이름은 canonical runtime
-  category로 쓰지 않는다. 이런 이름은 서로 다른 변경 이유를 한곳에 섞기 쉽다.
+- Runtime does not promise public API stability. The public contract is
+  defined by the contract documentation and the per-language public
+  surface.
+- A runtime implementation class hides behind a public contract interface
+  or a public facade. If a user has to construct or call a runtime class
+  directly, the contract design is leaking.
+- If a contract interface only repeats the runtime implementation's
+  method list 1:1, that's a shallow-module warning sign. Create an
+  interface only where there's a real role abstraction, and never for a
+  value object.
+- Split runtime categories by reason to change. For example, adding a
+  native symbol should change `native`; a send/recv flow change should
+  change `sockets`; a message-ownership change should change `messaging`
+  or `buffers`.
+- Do not use a catch-all name such as `core`, `common`, `utils`,
+  `internal`, or `misc` as a canonical runtime category. These names make
+  it easy to mix unrelated reasons to change into one place.
 
-기존 runtime에 `monitoring` 또는 `Monitoring` 범주가 있으면 contract와 마찬가지로
-canonical category는 `eventing`이다. monitor 구현만 담긴 파일이라도 poller, timer,
-event dispatch loop와 같은 변경 이유를 공유한다면 `eventing` 아래에 둔다.
+If an existing runtime has a `monitoring` or `Monitoring` category, the
+canonical category is `eventing`, the same as for contract. Even a file
+that only holds a monitor implementation belongs under `eventing` if it
+shares a reason to change with the poller, timer, or event dispatch loop.
 
-POSD 관점에서 이 기준은 public surface의 가독성과 구현 정보 은닉을 함께 얻기 위한
-것이다. contract는 사용자가 배워야 할 작고 명확한 표면을 제공하고, runtime은 native
-호출 방식, handle ownership, buffer pooling, 오류 매핑 같은 구현 결정을 아래로
-흡수한다. 단, 추상화가 실제 역할을 줄이지 못하고 메서드 목록만 반복하면 오히려
-복잡성이 늘어나므로 만들지 않는다.
+From a POSD perspective, this standard aims to get both public-surface
+readability and implementation information hiding at once. The contract
+gives users a small, clear surface to learn, while runtime absorbs
+implementation decisions such as how native calls are made, handle
+ownership, buffer pooling, and error mapping. Do not create an
+abstraction, however, when it doesn't actually reduce a real role and
+only repeats a method list — that adds complexity instead of reducing it.
 
 ## Actor/Spot Route Surface
 
-모든 바인딩은 core의 Actor route와 Spot route 결과를 손실 없이 노출해야 한다.
-언어별 타입 이름은 달라도 아래 의미는 유지한다.
+Every binding must expose the core's Actor route and Spot route results
+without loss. Per-language type names can differ, but the following
+meaning must be preserved.
 
-- Actor route는 Actor ref의 node rid, current Spot rid, current Spot kind를
-  노출한다.
-- Spot route는 조회한 Spot rid, owner node rid, Spot kind를 노출한다.
-- Spot kind는 Entry Spot, user Spot, invalid 값을 구분한다.
-- 바인딩은 `router -> actor` 또는 `actor -> router` direct API를 새로 만들지 않는다.
-  사용자는 route 조회 결과를 기존 Spot routed API와 조합한다.
+- An Actor route exposes the Actor ref's node rid, current Spot rid, and
+  current Spot kind.
+- A Spot route exposes the looked-up Spot rid, owner node rid, and Spot
+  kind.
+- Spot kind distinguishes Entry Spot, user Spot, and an invalid value.
+- A binding does not create a new direct `router -> actor` or
+  `actor -> router` API. A user combines a route lookup result with the
+  existing Spot routed API.
 
 ## High-Performance Binding Policy
 
-zlink는 고성능 메시징 라이브러리다. 바인딩은 언어별 편의성을 제공하더라도
-hot path의 비용 모델을 숨기거나 악화시키면 안 된다. 공개 API와 내부 구현은
-아래 원칙을 따라야 한다.
+zlink is a high-performance messaging library. A binding may add
+per-language convenience, but it must not hide or worsen the hot path's
+cost model. The public API and internal implementation must follow the
+principles below.
 
-- 메시지 send/recv, publish/subscribe, request/reply, dispatch callback,
-  poller, timer 경로에서는 reflection 기반 동적 호출을 사용하지 않는다.
-  언어 런타임이 reflection을 필수로 요구하는 경우에도 초기화나 바인딩 등록
-  단계로 제한하고, 메시지 처리 루프에서는 사용하지 않는다.
-- reflection은 누락 API를 맞추기 위한 우회 수단이 아니다. 고성능 바인딩은
-  typed facade, 직접 native downcall, 직접 내부 bridge를 사용해야 하며,
-  public 계약을 맞추기 위해 hot path에 reflective lookup을 추가하면 안 된다.
-- 불필요한 메모리 할당을 만들지 않는다. 반복 호출에서 같은 크기의 임시 배열,
-  wrapper, closure, boxing 객체를 매번 새로 만들면 안 된다.
-- 불필요한 복사를 만들지 않는다. core에서 받은 메시지 part는 가능한 한 바로
-  언어별 `Message` 소유 객체로 옮기고, decode나 사용자 요청 없이 byte buffer를
-  다시 복사하지 않는다.
-- hot path에 전역 lock, coarse lock, 불필요한 mutex 경합, shared executor
-  직렬화 지점을 두지 않는다. 필요한 동기화는 subject별 상태를 보호하는 최소
-  범위로 제한한다.
-- callback, dispatch, poller, timer, request completion 진행 경로에서 숨은
-  blocking wait, sleep, busy wait, thread join을 수행하지 않는다. 명시적으로
-  blocking API로 문서화된 호출만 대기할 수 있다.
-- binding은 core의 `*_part` substrate를 사용해 part 단위로 언어 객체를 구성한다.
-  aggregate native 배열을 만든 뒤 다시 언어별 collection으로 변환하는 이중
-  materialization은 금지한다.
-- 성능 검증용 perf, sample, test도 public binding entrypoint만 사용하면서
-  위 비용 모델을 깨지 않아야 한다.
+- Do not use reflection-based dynamic dispatch on the message send/recv,
+  publish/subscribe, request/reply, dispatch callback, poller, or timer
+  path. Even when a language runtime requires reflection, restrict it to
+  initialization or binding-registration time, and never use it in the
+  message-processing loop.
+- Reflection is not a workaround for a missing API. A high-performance
+  binding must use a typed facade, a direct native downcall, or a direct
+  internal bridge, and must not add a reflective lookup to the hot path
+  just to satisfy the public contract.
+- Do not create unnecessary allocation. A repeated call must not
+  construct a new temporary array, wrapper, closure, or boxed object of
+  the same size every time.
+- Do not create unnecessary copies. Move a message part received from
+  core into the language's own `Message`-owned object as directly as
+  possible, and do not copy the byte buffer again without a decode step
+  or an explicit user request.
+- Do not put a global lock, coarse lock, avoidable mutex contention, or a
+  shared-executor serialization point on the hot path. Limit necessary
+  synchronization to the minimum scope that protects per-subject state.
+- Do not perform a hidden blocking wait, sleep, busy wait, or thread join
+  on the callback, dispatch, poller, timer, or request-completion
+  progress path. Only a call explicitly documented as a blocking API may
+  wait.
+- A binding uses core's `*_part` substrate to build language objects part
+  by part. Double materialization — building a native aggregate array and
+  then converting it again into a language-specific collection — is
+  forbidden.
+- Perf, sample, and test code used for performance verification must also
+  use only the public binding entrypoint, and must not break the cost
+  model above.
 
-이 절은 구현 세부 최적화 권고가 아니라 public binding 적합성 조건이다.
-리뷰에서 reflection hot path, 불필요한 할당/복사, 스레드 경합, 숨은 대기가
-확인되면 해당 바인딩은 정책 미준수로 본다.
+This section is not an implementation-detail optimization
+recommendation — it's a public binding conformance requirement. If review
+finds a reflection hot path, unnecessary allocation/copy, thread
+contention, or a hidden wait, that binding is considered non-compliant.
 
 ## Substrate vs Public Binding Surface
 
-bindings 구현은 core가 제공하는 helper substrate C API(`*_part` 계열) 위에 올라간다.
-bindings 사용자에게 노출되는 public API는 그 helper 시그니처를 그대로 따라야 한다는
-뜻이 아니다. 다만 내부 구현이 어떤 core 함수를 호출하는가는 아래 규칙으로 고정한다.
+A bindings implementation sits on top of the helper substrate C API core
+provides (the `*_part` family). The public API exposed to a bindings user
+does not have to follow that helper's signature shape. What is fixed by
+the rule below is which core functions the internal implementation is
+allowed to call.
 
-이 문서는 아래 경계를 기준으로 해석한다.
+This document interprets the following boundary:
 
-- `core/include/zlink.h` 의 `*_part` helper substrate 계약은
-  bindings 구현이 반드시 사용해야 하는 native substrate다.
-- `doc/spec/bindings/` 아래 문서는 각 언어 binding이 외부에 제공하는
-  **public convenience contract**만 정의한다.
+- The `*_part` helper substrate contract in `core/include/zlink.h` is the
+  native substrate a bindings implementation must use.
+- A document under `doc/spec/bindings/` defines only the
+  **public convenience contract** each language binding provides
+  externally.
 
-즉 binding public API는 helper substrate와 모양이 달라도 된다. 그러나 내부에서
-core를 호출하는 방식은 달라서는 안 된다.
+In other words, the binding's public API can look different from the
+helper substrate. But how it calls core internally must not differ.
 
-예를 들면 아래 구조가 요구된다.
+For example, the following structure is required.
 
-- core substrate는 `*_part`, `has_more`, caller-provided `zlink_msg_t`
-  같은 primitive한 표면을 가진다.
-- Java, `.NET`, `Go`, `Rust`, `Python`, `Node`, `C++`, C binding은 그 위에
-  `Received`, `Message`, collection, request/reply convenience 같은
-  언어 친화적 public API를 올린다.
-- public API 내부에서 core를 직접 호출하는 경로는 반드시 `*_part` substrate를 사용한다.
-  aggregate 형태의 core 함수(`zlink_send`, `zlink_recv`, `zlink_publish` 등)를
-  binding 내부에서 호출하면 안 된다.
+- The core substrate has a primitive surface such as `*_part`,
+  `has_more`, and a caller-provided `zlink_msg_t`.
+- Java, `.NET`, `Go`, `Rust`, `Python`, `Node`, `C++`, and C bindings
+  layer a language-friendly public API on top — `Received`, `Message`,
+  collections, and request/reply convenience.
+- Any path inside the public API that calls core directly must use the
+  `*_part` substrate. It must not call an aggregate-shaped core function
+  (`zlink_send`, `zlink_recv`, `zlink_publish`, and so on) from inside a
+  binding.
 
-아래 조건은 반드시 지켜야 한다.
+The following conditions must always hold:
 
-- binding public API의 의미 계약은 core 계약으로 설명 가능해야 한다.
-- helper substrate에만 있는 low-level 세부사항을 binding 사용자에게 직접 노출하지
-  않는다.
-- `RecvPart`, `RecvRoutedPart`, `SubscribePart`, `recv_part`,
-  `recv_routed_part`, `subscribe_part`처럼 part 단위 수신을 public binding
-  API로 노출하지 않는다. part loop, `has_more`, part별 envelope metadata는
-  binding runtime 내부에서 aggregate 결과 저장소로 흡수한다.
-- `doc/spec/bindings/` 문서는 helper substrate 시그니처 자체를 public contract로
-  문서화하지 않는다.
-- helper substrate는 bindings 구현과 성능 최적화를 위한 기반 계층으로만 취급한다.
+- A binding's public API semantic contract must be explainable in terms
+  of the core contract.
+- A binding must not directly expose a low-level detail that exists only
+  in the helper substrate.
+- A binding must not expose part-by-part receive as a public binding
+  API, such as `RecvPart`, `RecvRoutedPart`, `SubscribePart`,
+  `recv_part`, `recv_routed_part`, or `subscribe_part`. The binding
+  runtime absorbs the part loop, `has_more`, and per-part envelope
+  metadata into an aggregate result storage internally.
+- A document under `doc/spec/bindings/` does not document the helper
+  substrate signature itself as a public contract.
+- The helper substrate is treated only as a foundation layer for
+  bindings implementation and performance optimization.
 
-즉 bindings 정책 문서의 기준은 "helper가 어떻게 생겼는가"가 아니라,
-"binding 사용자가 최종적으로 어떤 public contract를 보게 되는가"이다.
+In other words, the bindings policy documents are governed not by "what
+the helper looks like" but by "what public contract a binding user
+ultimately sees."
 
-## `*_part` Substrate 사용 의무 (Required)
+## `*_part` Substrate Usage Requirement (Required)
 
-send, request, reply, publish, subscribe 계열 함수의 내부 구현은 반드시
-core의 `*_part` helper substrate를 사용해야 한다. 이는 `Required` 규칙이다.
+The internal implementation of the send, request, reply, publish, and
+subscribe function families must use core's `*_part` helper substrate.
+This is a `Required` rule.
 
-### 적용 대상
+### Scope
 
-아래 계열에 해당하는 모든 binding 내부 구현 경로에 적용한다.
+This applies to every binding-internal implementation path in the
+following families.
 
-- send (단일 part, 복수 part, routed 포함)
-- recv (단일 part, 복수 part, routed 포함)
-- request (dealer, router, SPOT 계열 포함)
-- reply (router, SPOT 계열 포함)
+- send (including single-part, multi-part, and routed)
+- recv (including single-part, multi-part, and routed)
+- request (including dealer, router, and SPOT variants)
+- reply (including router and SPOT variants)
 - publish
-- subscribe (SPOT subscribe 포함)
+- subscribe (including SPOT subscribe)
 
-### 이유
+### Reason
 
-core가 aggregate 함수와 `*_part` substrate를 모두 제공하던 시기에는 aggregate 함수를
-직접 호출하는 것이 허용됐다. 그러나 이 구조는 아래 비용을 만든다.
+Back when core provided both aggregate functions and the `*_part`
+substrate, calling the aggregate function directly was allowed. But that
+structure creates the following cost:
 
-- core가 먼저 native aggregate (parts 배열) 를 구성한다.
-- binding이 그 aggregate를 다시 언어별 객체(`Message[]`, `Received`, value object)로
-  변환한다.
-- 결과적으로 "native aggregate 생성 → 언어 객체 aggregate 생성"이 연속으로 일어나며,
-  이 이중 변환 비용이 hot path의 실질적인 병목이 된다.
+- Core first builds a native aggregate (a parts array).
+- The binding then converts that aggregate again into a language-specific
+  object (`Message[]`, `Received`, a value object).
+- The result is a back-to-back "build the native aggregate → build the
+  language-object aggregate" sequence, and this double-conversion cost
+  becomes a real bottleneck on the hot path.
 
-`*_part` substrate를 직접 사용하면 binding이 part 하나씩 언어 객체로 직접 변환할 수
-있고, native aggregate 생성 단계를 완전히 제거할 수 있다. 이는 특히 Java, .NET처럼
-객체 materialization 비용이 큰 언어에서 측정 가능한 성능 차이를 만든다.
+Using the `*_part` substrate directly lets a binding convert each part
+straight into a language object one at a time, eliminating the native
+aggregate-construction step entirely. This produces a measurable
+performance difference especially in languages like Java and .NET, where
+object materialization is expensive.
 
-이 규칙은 구조 정리 목적이 아니라 **런타임 성능 비용을 실질적으로 줄이기 위한** 요구사항이다.
+This rule is not for the sake of structural tidiness — it is a
+requirement meant to **substantially reduce runtime performance cost**.
 
-### public API 형태는 유지
+### The Public API Shape Stays The Same
 
-이 규칙은 내부 구현 기반에 관한 것이다. binding 사용자가 보는 public API 형태는
-이 규칙과 무관하게 각 언어 spec이 정한 대로 유지한다.
+This rule is about the internal implementation foundation. The public API
+shape a binding user sees stays whatever each language's spec defines,
+regardless of this rule.
 
-- 사용자는 `send(List<Message>)`, `recv()`, `request(...)` 같은 언어 친화적 API를 그대로 쓴다.
-- `*_part` 호출 시퀀스는 binding 내부 구현 세부사항이며, 사용자에게 노출하지 않는다.
-- public binding의 receive 표면은 `recv`, `subscribe`, `recvRouted` 같은
-  aggregate 결과 저장소 API만 제공한다. `RecvPart`/`SubscribePart` 계열은
-  성능 최적화 substrate의 이름일 뿐 public contract 이름이 아니다.
+- A user still uses a language-friendly API such as
+  `send(List<Message>)`, `recv()`, or `request(...)`.
+- The `*_part` call sequence is a binding-internal implementation detail
+  and is not exposed to the user.
+- A public binding's receive surface offers only an aggregate
+  result-storage API such as `recv`, `subscribe`, or `recvRouted`. The
+  `RecvPart`/`SubscribePart` family is a name for the performance
+  optimization substrate, not a public contract name.
 
 ## Spot Get-Or-Create Mapping
 
-Core exposes `zlink_spot_node_spot_get_or_new(...)` for the atomic "get a
-local logical Spot by routing id, or create it if absent" contract.
+Core provides `zlink_spot_node_spot_get_or_new(...)` for the atomic
+"get a local logical Spot by routing id, or create it if absent"
+contract.
 
-All higher-level bindings must map their public get-or-create SpotNode API
-directly to that C function. They must not compose `spot_lookup()` and
-`create_spot()` to emulate the same behavior, because that loses the core
-atomicity contract and reintroduces the lookup/create race.
+Every higher-level binding must map its public get-or-create SpotNode API
+directly onto that C function. It must not compose `spot_lookup()` and
+`create_spot()` to emulate the same behavior, because doing so loses
+core's atomicity contract and reintroduces the lookup/create race.
 
-The language-level names are:
+The per-language names are:
 
 - C++: `spot_node_t::get_or_create_spot(...)`
 - .NET binding: `SpotNode.GetOrCreateSpot(...)`
@@ -559,158 +677,189 @@ The language-level names are:
 - Rust: `SpotNode::get_or_create_spot(...)`
 - Python: `SpotNode.get_or_create_spot(...)`
 
-Each wrapper returns both the owned `Spot` facade and whether this call created
-the logical spot. The returned facade follows the normal Spot lifetime rules
-for that language.
+Each wrapper returns both the owned `Spot` facade and whether this call
+created the logical spot. The returned facade follows that language's
+normal Spot lifetime rules.
 
-### 준수 확인
+### Compliance Check
 
-구현 리뷰와 검증 단계에서 아래를 확인한다.
+Confirm the following during implementation review and verification.
 
-- binding 소스에서 aggregate 심볼(`zlink_send`, `zlink_recv`, `zlink_send_rid`,
-  `zlink_publish`, `zlink_subscribe`, `zlink_router_recv`, `zlink_dealer_request`,
+- No path in the binding source directly calls an aggregate symbol
+  (`zlink_send`, `zlink_recv`, `zlink_send_rid`, `zlink_publish`,
+  `zlink_subscribe`, `zlink_router_recv`, `zlink_dealer_request`,
   `zlink_router_request`, `zlink_router_reply`, `zlink_spot_send_*`,
-  `zlink_spot_request_*`, `zlink_spot_reply_*`, `zlink_spot_subscribe` 등)을
-  직접 호출하는 경로가 없어야 한다.
-- 대신 대응하는 `*_part` 심볼(`zlink_send_part`, `zlink_recv_part`,
-  `zlink_send_part_rid`, `zlink_publish_part`, `zlink_subscribe_part`,
-  `zlink_router_recv_part`, `zlink_dealer_request_part`, `zlink_router_request_part`,
-  `zlink_router_reply_part`, `zlink_spot_*_part` 등)을 사용해야 한다.
-- 미준수 시 리뷰에서 차단된다.
+  `zlink_spot_request_*`, `zlink_spot_reply_*`, `zlink_spot_subscribe`,
+  and so on).
+- The matching `*_part` symbol is used instead
+  (`zlink_send_part`, `zlink_recv_part`, `zlink_send_part_rid`,
+  `zlink_publish_part`, `zlink_subscribe_part`, `zlink_router_recv_part`,
+  `zlink_dealer_request_part`, `zlink_router_request_part`,
+  `zlink_router_reply_part`, `zlink_spot_*_part`, and so on).
+- Non-compliance blocks the review.
 
 ## Public vs Internal API Boundary
 
-각 binding은 public contract와 internal implementation surface를 분리해야 한다.
-이 문서와 각 언어별 README는 public API의 경계와 라이브러리 모양을 정의한다.
-정확한 함수, 메서드, 타입 목록은 C를 제외한 wrapper binding의 언어별 README가
-지정한 public contract source가 소유한다. C++와 .NET은 이 위치가 실제
-`Contracts/` 폴더이고, Java, Node, Python, Go, Rust는 각 언어 README가 지정한
-package, module, export surface가 그 역할을 한다. 설치 헤더, package entrypoint,
-`.d.ts`, `__init__.py`, `lib.rs` re-export는 이 계약을 사용자에게 노출하는
-projection이다. C는 예외로, `core/include/zlink.h`가 public C ABI의 단일 기준이다.
+Every binding must separate the public contract from the internal
+implementation surface. This document and each per-language README
+define the public API's boundary and the library's shape. The exact
+function, method, and type list is owned by the public contract source
+that each wrapper binding's per-language README designates, except for
+C. For C++ and .NET, that location is a literal `Contracts/` folder; for
+Java, Node, Python, Go, and Rust, it's the package, module, or export
+surface each README designates. The installed header, package
+entrypoint, `.d.ts`, `__init__.py`, and `lib.rs` re-export are the
+projections that expose this contract to the user. C is the exception —
+`core/include/zlink.h` is the single baseline for the public C ABI.
 
-아래 원칙은 모든 binding에 공통으로 적용한다.
+The following principles apply to every binding in common.
 
-- 언어별 public contract source에 포함되지 않은 타입, 함수, 메서드, 모듈,
-  패키지, 네임스페이스는 모두 internal implementation detail로 본다.
-- 언어별 README는 모든 public member를 반복해서 나열하지 않는다. 대신
-  public contract source 위치, source layout, API 변경 절차, runtime/internal
-  경계, 성능 정책을 정의한다.
-- internal API는 이름만 internal처럼 보이게 두면 충분하지 않다. 가능한 언어는
-  패키지 export, module export, assembly visibility, crate re-export,
-  package `exports`, `internal/` directory 같은 언어 고유 경계를 사용해
-  실제로 접근을 제한해야 한다.
-- perf, sample, test도 원칙적으로 public binding entrypoint만 사용해야 한다.
-  같은 저장소 안에 있다고 해서 internal helper를 직접 import하거나 참조하면
-  안 된다.
-- public contract 검증은 배포된 binding consumer가 보게 되는 entrypoint를
-  기준으로 한다. 소스 트리 내부에 internal symbol이 존재한다는 이유로 public으로
-  간주하지 않는다.
-- C++처럼 설치 헤더와 컴파일된 바인딩 라이브러리를 함께 배포하는 바인딩은
-  설치되는 `include/` tree 안에 공개 `Contracts/`를 두고, 구현은
-  `bindings/cpp/src/Runtime/` 아래 비공개 파일로 숨긴다. aggregate 헤더는
-  유지할 수 있지만, public class를 찾는 유일한 진입점이 되어서는 안 된다.
-- internal 구조를 리팩터링할 자유는 보장하되, 그 자유는 public contract를
-  유지하는 범위 안에서만 허용된다.
+- Any type, function, method, module, package, or namespace not included
+  in the per-language public contract source is treated as internal
+  implementation detail.
+- A per-language README does not repeat every public member. Instead it
+  defines the public contract source location, source layout, API-change
+  procedure, runtime/internal boundary, and performance policy.
+- An internal API is not enough to merely look internal by name. Where a
+  language supports it, use a language-native boundary — package export,
+  module export, assembly visibility, crate re-export, package `exports`,
+  an `internal/` directory — to actually restrict access.
+- In principle, perf, sample, and test code must also use only the public
+  binding entrypoint. Being in the same repository does not license a
+  direct import of or reference to an internal helper.
+- Public contract verification is judged against the entrypoint a
+  deployed binding consumer actually sees. The mere existence of an
+  internal symbol inside the source tree does not make it public.
+- A binding that ships an installed header alongside a compiled binding
+  library, like C++, keeps a public `Contracts/` inside the installed
+  `include/` tree, and hides the implementation as private files under
+  `bindings/cpp/src/Runtime/`. An aggregate header may still exist, but it
+  must not become the only entry point for finding a public class.
+- The freedom to refactor internal structure is guaranteed, but only
+  within the scope that preserves the public contract.
 
-즉 이 문서의 목적은 public API 경계와 라이브러리 모양을 정의하는 것뿐 아니라,
-public이 아닌 API를 public처럼 사용하지 못하게 경계를 강제하는 것까지 포함한다.
+In other words, this document's purpose is not only to define the public
+API boundary and library shape — it also includes enforcing that boundary
+so a non-public API cannot be used as if it were public.
 
-### Language-Specific Contract / Runtime Separation
+### Per-Language Contract/Runtime Separation
 
-C를 제외한 wrapper binding은 public contract와 runtime implementation을 분리해야
-한다. 단, 분리 방식은 그 언어의 package, module, import path 규칙을 따라야 한다.
-언어별 README는 실제 repository path와 실제 package/module path를 함께 지정해야
-한다. `Contracts`와 `Runtime`은 공통 logical category 이름이며, 모든 언어에서
-그 단어를 그대로 public package 또는 import path로 만들라는 뜻이 아니다.
-C++는 C++20 바인딩이며, 공개 계약 root는 `bindings/cpp/include/zlink/Contracts/`이고
-런타임 구현 root는 `bindings/cpp/src/Runtime/`이다.
-Java는 package path가 곧 source folder이므로 `systems.zlink.contracts.*`와
-`systems.zlink.runtime.*` 같은 lower-case Java package로 역할 구조를 드러낸다.
-Go, Rust, Python처럼 folder path가 package/module/import path와 직접 연결되는
-언어도 실제 package/module tree 안에서 public 계약과 runtime 구현을 분리한다.
-Node/TypeScript는 `package.json` exports가 public 경계를 정하지만, source folder
-이름도 deep import 오해를 만들 수 있으므로 언어별 README의 실제 source path와
-package export 규칙을 함께 따른다.
+Every wrapper binding except C must separate the public contract from the
+runtime implementation. However, how it separates them must follow that
+language's package, module, and import-path rules. A per-language README
+must specify both the actual repository path and the actual
+package/module path. `Contracts` and `Runtime` are shared logical
+category names — they do not mean every language must turn that literal
+word into a public package or import path.
+C++ is a C++20 binding; its public contract root is
+`bindings/cpp/include/zlink/Contracts/` and its runtime implementation
+root is `bindings/cpp/src/Runtime/`.
+Because a Java package path is itself the source folder, Java reveals the
+role structure through lower-case Java packages such as
+`systems.zlink.contracts.*` and `systems.zlink.runtime.*`.
+Languages such as Go, Rust, and Python, where the folder path connects
+directly to the package/module/import path, also separate the public
+contract from the runtime implementation inside the actual
+package/module tree.
+For Node/TypeScript, `package.json` exports set the public boundary, but
+because the source folder name can also cause deep-import confusion, it
+follows the actual source path and package-export rules its per-language
+README specifies.
 
-C는 native C ABI baseline이다. C public contract는 `core/include/zlink.h`이고,
-`bindings/c`는 그 C API를 기준으로 sample, test, perf, packaging과 필요한 mapping
-정책을 정렬한다. C에는 별도 `Contracts/`와 `Runtime/` 계층을 강제하지 않는다.
+C is the native C ABI baseline. C's public contract is
+`core/include/zlink.h`, and `bindings/c` aligns its sample, test, perf,
+packaging, and any necessary mapping policy against that C API. C is not
+forced to have a separate `Contracts/`/`Runtime/` layering.
 
-`Contracts`는 사용자가 확인해야 하는 public contract source 역할이다. `Runtime`은
-native handle, callback bridge, request progress pump, helper substrate 호출,
-object lifetime 보정 같은 구현 세부사항 역할이다. `Native`는 FFI, P/Invoke,
-JNI/Panama, N-API, cgo 같은 native bridge 전용 역할이다. C++와 .NET처럼 문서가
-명시한 언어에서는 이 역할 이름을 실제 폴더명으로 사용하고, 다른 언어에서는
-언어별 README가 지정한 package/module/export 구조로 같은 역할을 표현한다.
+`Contracts` is the role for the public contract source a user must check.
+`Runtime` is the role for implementation detail such as a native handle,
+callback bridge, request progress pump, helper substrate call, or object
+lifetime correction. `Native` is the role reserved for the native
+bridge — FFI, P/Invoke, JNI/Panama, N-API, cgo. In a language the
+document names explicitly, such as C++ and .NET, these role names are
+used as the actual folder names; in other languages, the same role is
+expressed through the package/module/export structure the per-language
+README specifies.
 
-`Contracts`와 `Runtime`은 공통 역할 이름이다. 이것이 곧 public package,
-namespace, module, import path 이름이라는 뜻은 아니다. 디렉터리 구조가 언어의
-package/module 경로에 직접 영향을 주는 언어는 `Contracts`나 `Runtime`을 public
-import path로 노출하지 않는다. 대신 public package/module tree 안의 실제 경로로
-계약을 배치하고, runtime 구현은 `internal`, private module, unexported module,
-`pub(crate)` module 같은 언어별 비공개 경계 안에 둔다.
+`Contracts` and `Runtime` are shared role names. That does not mean they
+are the public package, namespace, module, or import-path name. A
+language where directory structure directly affects the package/module
+path does not expose `Contracts` or `Runtime` as a public import path.
+Instead, it places the contract at an actual path inside the public
+package/module tree, and keeps the runtime implementation inside a
+language-specific private boundary such as `internal`, a private module,
+an unexported module, or a `pub(crate)` module.
 
 #### Contract / Runtime Placement Rules
 
-아래 기준은 C를 제외한 wrapper binding에 적용한다. 새 public API를 추가하거나
-구현을 옮길 때 이 표를 먼저 확인한다.
+The following criteria apply to every wrapper binding except C. Check
+this table first when adding a new public API or moving an
+implementation.
 
-| 항목 | 위치 |
+| Item | Location |
 |---|---|
-| 사용자가 호출하거나 타입으로 참조하는 공개 동작 계약 | public contract source의 해당 category |
-| public constructor, factory, builder 시작점의 계약 | public contract source의 해당 category |
-| public free function, static facade, extension helper, module function | public contract source의 해당 category |
-| public builder convenience method or helper | public contract source의 해당 category |
-| DTO, value object, enum, public error/result type | public contract source의 해당 category |
-| runtime concrete class, socket kernel, handle owner | runtime/internal source의 해당 category |
-| request progress pump, callback trampoline, part-loop helper | runtime/internal source의 해당 category |
-| native handle wrapper, FFI declaration, struct mirror, marshalling helper | native bridge source |
-| generated native loading code, platform artifact lookup | native bridge source |
+| A public behavior contract a user calls or references by type | The matching category in public contract source |
+| The contract for a public constructor, factory, or builder start point | The matching category in public contract source |
+| A public free function, static facade, extension helper, or module function | The matching category in public contract source |
+| A public builder convenience method or helper | The matching category in public contract source |
+| A DTO, value object, enum, or public error/result type | The matching category in public contract source |
+| A runtime concrete class, socket kernel, or handle owner | The matching category in runtime/internal source |
+| A request progress pump, callback trampoline, or part-loop helper | The matching category in runtime/internal source |
+| A native handle wrapper, FFI declaration, struct mirror, or marshalling helper | Native bridge source |
+| Generated native loading code, platform artifact lookup | Native bridge source |
 
-판정 규칙은 아래와 같다.
+The judgment rules are:
 
-- public contract 타입의 public signature는 native bridge 타입을 참조하지
-  않는다.
-- runtime/internal source에 user-facing method가 필요해지면 먼저 public contract
-  source에 계약을 추가한다. runtime 구현은 그 계약을 구현하거나 projection한다.
-- 사용자가 직접 호출하는 helper가 class method, static method, free function,
-  extension method, module function 중 어떤 모양이든 public 이면 public contract
-  source에 계약을 둔다. 단순 편의 함수라는 이유로 runtime 전용 위치에 남기지
-  않는다.
-- public factory가 runtime concrete type을 반환할 수는 있다. 단 그 생성 동작과
-  반환 타입의 사용자 관찰 가능 동작은 public contract source에서 설명 가능해야
-  한다.
-- runtime/internal 폴더명, module path, package path 자체를 public API로 노출하지
-  않는다. 다만 `Context`, socket, `SpotNode`, `Poller`, `Timer` 같은 런타임 구현
-  클래스나 타입은 언어별 public projection으로 노출할 수 있다. 이 경우 사용자가
-  관찰하는 public behavior는 public contract source에서 설명 가능해야 한다.
-- public contract 타입의 public signature는 native bridge 타입을 참조하지 않는다.
-  concrete value object 내부가 native-backed storage를 써야 하는 경우에도
-  P/Invoke/JNI/N-API/cgo 선언과 marshalling 전용 struct mirror는
-  native bridge source에 둔다.
-- 값만 담는 DTO/value/enum/error/result 타입은 구체 타입으로 둔다. symmetry를
-  이유로 의미 없는 interface, trait, protocol로 감싸지 않는다.
+- A public contract type's public signature does not reference a native
+  bridge type.
+- If runtime/internal source needs a user-facing method, add the contract
+  to public contract source first. The runtime implementation implements
+  or projects that contract.
+- If a helper a user calls directly is public — whether it's shaped as a
+  class method, static method, free function, extension method, or
+  module function — put the contract in public contract source. Do not
+  leave it in a runtime-only location just because it's a simple
+  convenience function.
+- A public factory may return a runtime concrete type. But its
+  construction behavior and the user-observable behavior of the returned
+  type must be explainable in public contract source.
+- Do not expose the runtime/internal folder name or the module/package
+  path itself as public API. However, a basic implementation class or
+  type such as `Context`, socket, `SpotNode`, `Poller`, or `Timer` may be
+  exposed as a per-language public projection. In that case, the public
+  behavior a user observes must still be explainable in public contract
+  source.
+- A public contract type's public signature does not reference a native
+  bridge type. Even when a concrete value object's internals must use
+  native-backed storage, keep the P/Invoke/JNI/N-API/cgo declaration and
+  the marshalling-only struct mirror in native bridge source.
+- Keep a value-only DTO/value/enum/error/result type concrete. Do not
+  wrap it in a meaningless interface, trait, or protocol for the sake of
+  symmetry.
 
-고정 카테고리는 아래와 같다.
+The fixed categories are:
 
-- `Core/`: context, version, capability, utility resource.
+- `Core/`: context, version, roles, and utility resources.
 - `Messaging/`: message, routing id, received, topic message, multipart.
 - `Sockets/`: socket contracts, socket implementations, socket options.
-- `Eventing/`: monitor, poller, timer, readiness event.
+- `Eventing/`: monitor, poller, timer, readiness events.
 - `Service/`: SPOT, actor, SPOT topology.
 - `Errors/`: public error/result/exception domains and runtime mapping.
-- `Native/`: runtime/internal source 아래에만 두는 native bridge category.
+- `Native/`: the native bridge category, kept only under runtime/internal
+  source.
 
-이 카테고리 이름은 문서와 리뷰 기준에서 고정한다. 실제 파일명과 폴더명은 언어별
-README가 지정한 관례를 따른다. 새 카테고리가 필요하면 이 공통 정책과 C를 제외한
-언어별 README의 구조를 함께 바꾼 뒤 사용한다. public contract source에는
-`Native` category를 만들지 않는다. native bridge는 항상 runtime/internal source
-아래에 둔다.
+These category names are fixed in the documentation and review standard.
+The actual file and folder names follow the convention each per-language
+README specifies. If a new category is needed, change this shared policy
+together with the per-language README structure (except C) before using
+it. Do not create a `Native` category in public contract source — the
+native bridge always lives under runtime/internal source.
 
-wrapper binding 공통 구조는 아래 역할 구조로 고정한다. C를 제외한 각 언어 README는
-자기 언어의 실제 repository path와 package/module/import path로 이 구조를 다시
-보여야 하며, 구현도 그 구조와 일치해야 한다.
+The wrapper binding's shared structure is fixed to the following role
+structure. Except for C, each per-language README must show this
+structure again using that language's actual repository path and
+package/module/import path, and the implementation must match that
+structure.
 
 ```text
 bindings/<lang>/
@@ -738,171 +887,200 @@ bindings/<lang>/
 +-- runtimes/
 ```
 
-공통으로 적용되는 기준은 아래와 같다.
+The shared standard is:
 
-- 사용자가 확인해야 하는 공개 API 계약은 찾기 쉬운 위치에 모여 있어야 한다.
-- native handle, callback bridge, request progress pump, helper substrate 호출,
-  object lifetime 보정 같은 구현 세부사항은 공개 계약과 섞이지 않아야 한다.
-- DTO, value object, enum, error/result object는 구체 타입으로 유지한다.
-  값만 담는 타입을 의미 없는 interface나 trait로 감싸지 않는다.
-- socket, context, monitor, timer, service node, spot, actor처럼 native
-  resource와 동작을 숨기는 타입은 언어 관례에 맞는 추상 경계를 둘 수 있다.
-- perf, sample, framework adapter도 원칙적으로 공개 contract를 기준으로
-  작성한다. 같은 저장소 안에 있다는 이유로 runtime 내부 타입에 의존하면
-  public/internal 경계가 약해진다.
+- The public API contract a user must check should be gathered in an
+  easy-to-find location.
+- Implementation detail such as a native handle, callback bridge, request
+  progress pump, helper substrate call, or object lifetime correction
+  must not mix with the public contract.
+- Keep a DTO, value object, enum, or error/result object as a concrete
+  type. Do not wrap a value-only type in a meaningless interface or
+  trait.
+- A type that hides a native resource and its behavior — socket, context,
+  monitor, timer, service node, spot, actor — may have an abstraction
+  boundary that fits the language's convention.
+- In principle, write perf, sample, and framework adapters against the
+  public contract too. Depending on a runtime-internal type just because
+  it's in the same repository weakens the public/internal boundary.
 
-언어별 적용 방향은 다음과 같다.
+The per-language application direction is:
 
-| Binding | 적용 기준 |
+| Binding | Application standard |
 |---|---|
-| C | `core/include/zlink.h`가 public C ABI의 단일 기준이다. `bindings/c`는 별도 contract/runtime 계층을 추가하지 않고, C API 기준의 mapping, sample, test, perf, packaging 정책만 정렬한다. |
-| C++ | `bindings/cpp/include/zlink/Contracts/`가 공개 C++ 계약 위치다. `bindings/cpp/src/Runtime/`은 비공개 구현 위치다. C++20, RAII class, concrete value를 우선하고, public class를 virtual interface로 과도하게 감싸지 않는다. |
-| .NET | 세부 기준은 [.NET binding blueprint](dotnet/README.en.md)를 따른다. 이 문서에서는 .NET 세부 파일 구조를 복사하지 않는다. |
-| Java | `bindings/java/src/main/java/systems/zlink/contracts/` 아래의 public contract package가 공개 계약 위치다. Java는 URL 기반 package layout을 따르므로 lower-case `contracts`와 `runtime` package를 실제 폴더에 반영한다. native bridge는 non-exported `systems.zlink.runtime.nativeapi` 아래에 둔다. |
-| Node | `bindings/node/src/index.ts`와 `package.json` exports가 public contract projection이다. contract source는 `bindings/node/src/zlink/contracts/` 같은 lower-case source path에 두고, runtime/native addon 구현은 `bindings/node/src/zlink/runtime/` 아래에 숨긴다. |
-| Python | `bindings/python/src/zlink/contracts/`가 public contract source다. `zlink` root package는 이 계약을 re-export하는 projection이고, native/FFI 구현은 `_runtime/`과 `_native/` 같은 private package 아래에 둔다. |
-| Go | `bindings/go/contracts/` public package가 Go public contract source다. 현재 runtime/native 구현은 root의 unexported 구현 파일과 cgo bridge 파일이 소유한다. 나중에 별도 package로 나누면 Go `internal/` 규칙으로 숨긴다. |
-| Rust | `bindings/rust/src/contracts/`가 public contract source 역할을 한다. `lib.rs`는 필요한 타입을 crate root/domain projection으로 re-export하고, `bindings/rust/src/runtime/`과 `bindings/rust/src/runtime/native/`는 private module로 둔다. |
+| C | `core/include/zlink.h` is the single baseline for the public C ABI. `bindings/c` does not add a separate contract/runtime layer, and aligns only the C-API-based mapping, sample, test, perf, and packaging policy. |
+| C++ | `bindings/cpp/include/zlink/Contracts/` is the public C++ contract location. `bindings/cpp/src/Runtime/` is the private implementation location. It prefers C++20, RAII classes, and concrete values, and does not over-wrap a public class in a virtual interface. |
+| .NET | Detailed standards follow the [.NET binding blueprint](dotnet/README.md). This document does not duplicate .NET's detailed file structure. |
+| Java | The public contract package under `bindings/java/src/main/java/systems/zlink/contracts/` is the public contract location. Because Java follows URL-based package layout, it reflects the lower-case `contracts` and `runtime` packages in the actual folders. The native bridge lives under the non-exported `systems.zlink.runtime.nativeapi`. |
+| Node | `bindings/node/src/index.ts` and the `package.json` exports are the public contract projection. Contract source lives at a lower-case source path such as `bindings/node/src/zlink/contracts/`, and the runtime/native addon implementation is hidden under `bindings/node/src/zlink/runtime/`. |
+| Python | `bindings/python/src/zlink/contracts/` is the public contract source. The `zlink` root package is the projection that re-exports this contract, and the native/FFI implementation lives under private packages such as `_runtime/` and `_native/`. |
+| Go | The `bindings/go/contracts/` public package is the Go public contract source. Currently the runtime/native implementation is owned by unexported implementation files at the root and by cgo bridge files. If it is split into a separate package later, it should be hidden under Go's `internal/` convention. |
+| Rust | `bindings/rust/src/contracts/` serves as the public contract source. `lib.rs` re-exports the necessary types as a crate-root/domain projection, and `bindings/rust/src/runtime/` and `bindings/rust/src/runtime/native/` stay private modules. |
 
-리뷰에서는 단순히 "interface가 있는가"가 아니라 아래 질문으로 판단한다.
+A review is not judged by simply "does an interface exist," but by the
+following questions.
 
-- 공개 contract만 보고 사용자가 사용할 수 있는 API를 이해할 수 있는가?
-- 공개 contract가 runtime concrete type, native handle, helper bridge 타입을
-  직접 요구하지 않는가?
-- 파일이 독립 개념 또는 같은 변경 이유를 공유하는 묶음을 담고 있는가?
-- marker, delegate, 작은 enum, 한 줄 record만 담은 얇은 파일이 가까운 계약 파일로
-  합쳐질 수 있지 않은가?
-- 값 타입을 추상화하느라 오히려 equality, ownership, 비용 모델이 흐려지지
-  않았는가?
-- 언어 생태계의 자연스러운 캡슐화 수단을 사용했는가?
+- Can a user understand the usable API just by looking at the public
+  contract?
+- Does the public contract avoid directly requiring a runtime concrete
+  type, native handle, or helper bridge type?
+- Does the file hold an independent concept, or a group that shares the
+  same reason to change?
+- Could a thin file that holds only a marker, delegate, small enum, or
+  one-line record be merged into a nearby contract file instead?
+- Has abstracting a value type blurred equality, ownership, or the cost
+  model instead of helping?
+- Does it use the language ecosystem's natural encapsulation mechanism?
 
-#### Target Physical Layout By Binding
+#### Per-Binding Target Physical Layout
 
-각 언어별 README는 신규 정렬 작업의 목표로 아래 경로와 역할을 기준으로 삼는다.
-현재 구현이 아직 이 구조와 다르면 해당 binding의 구조 정리 작업에서 API, sample,
-perf와 함께 단계적으로 맞춘다. public package, namespace, module, import path가
-아래 `Contracts`나 `Runtime` 이름을 직접 노출한다는 뜻은 아니다.
+Each per-language README treats the path and role below as the target for
+new alignment work. If the current implementation still differs from
+this structure, align it in stages together with that binding's API,
+sample, and perf work during its structural cleanup. This does not mean
+the public package, namespace, module, or import path directly exposes
+the `Contracts` or `Runtime` name below.
 
 | Binding | Contract root | Runtime root | Public projection |
 |---|---|---|---|
 | C++ | `bindings/cpp/include/zlink/Contracts/` | `bindings/cpp/src/Runtime/` | `#include <zlink.hpp>` and installed `include/zlink/...` headers |
-| .NET | [dotnet/README.md](dotnet/README.en.md) 참조 | [dotnet/README.md](dotnet/README.en.md) 참조 | [dotnet/README.md](dotnet/README.en.md) 참조 |
+| .NET | See [dotnet/README.md](dotnet/README.md) | See [dotnet/README.md](dotnet/README.md) | See [dotnet/README.md](dotnet/README.md) |
 | Java | `bindings/java/src/main/java/systems/zlink/contracts/` | `bindings/java/src/main/java/systems/zlink/runtime/` | exported `systems.zlink.contracts.*` JPMS packages and Maven artifact |
 | Node | `bindings/node/src/index.ts` and `bindings/node/src/zlink/contracts/` | `bindings/node/src/zlink/runtime/` | package root export, generated `.d.ts`, and `package.json` exports |
 | Python | `bindings/python/src/zlink/contracts/` | `bindings/python/src/zlink/_runtime/` and `bindings/python/src/zlink/_native/` | `zlink` package exports from `__init__.py` |
 | Go | `bindings/go/contracts/` public package | current root unexported implementation files and cgo bridge files; future split should use `bindings/go/internal/...` | exported identifiers in `zlink.systems/zlink/contracts` |
 | Rust | `bindings/rust/src/contracts/` | private `bindings/rust/src/runtime/` and `bindings/rust/src/runtime/native/` modules | `lib.rs` re-exports and public rustdoc projection |
 
-각 언어별 README는 `Core`, `Messaging`, `Sockets`, `Eventing`, `Service`,
-`Errors` 역할이 실제 소스의 어디에 배치되는지 보여야 한다. `Native`는
-runtime/native bridge 역할에만 존재하며 public contract 역할로 만들지 않는다.
+Each per-language README must show where the `Core`, `Messaging`,
+`Sockets`, `Eventing`, `Service`, and `Errors` roles are actually placed
+in its source. `Native` exists only as a runtime/native bridge role and
+is never made a public contract role.
 
 ### Package / Namespace Identity Policy
 
-공식 라이브러리 도메인은 `zlink.systems`다. 새로 확정하거나 변경하는
-언어별 package, namespace, module, artifact 이름은 이 도메인에서 출발해야
-하며, 기존 조직명이나 저장소 소유자 이름을 canonical public 식별자에 넣지
-않는다.
+The official library domain is `zlink.systems`. Any per-language package,
+namespace, module, or artifact name being newly fixed or changed must
+start from this domain, and must not put a prior organization name or a
+repository owner's name into a canonical public identifier.
 
 | Binding | Canonical public identity |
 |---|---|
-| C | public header는 `zlink.h`, symbol prefix는 `zlink_` |
-| C++ | namespace는 `zlink`, 설치 header root는 `include/zlink/` |
-| .NET | NuGet package id와 root namespace는 `Systems.Zlink` |
-| Java | Maven group id, JPMS module, root package는 `systems.zlink` |
-| Node | npm package는 `@zlink-systems/zlink`, public entrypoint는 package root |
-| Python | distribution name과 import package는 `zlink` |
-| Go | module path는 `zlink.systems/zlink`, public package는 `zlink` |
-| Rust | crate name과 public crate root는 `zlink` |
+| C | The public header is `zlink.h`; the symbol prefix is `zlink_` |
+| C++ | The namespace is `zlink`; the installed header root is `include/zlink/` |
+| .NET | The NuGet package id and root namespace are `Systems.Zlink` |
+| Java | The Maven group id, JPMS module, and root package are `systems.zlink` |
+| Node | The npm package is `@zlink-systems/zlink`; the public entrypoint is the package root |
+| Python | The distribution name and import package are `zlink` |
+| Go | The module path is `zlink.systems/zlink`; the public package is `zlink` |
+| Rust | The crate name and public crate root are `zlink` |
 
-- Framework extension package와 namespace는 각 framework 언어의 canonical identity
-  아래에 둔다. 예: `.NET`은 `Zlink.Framework.*`, Java는 `systems.zlink.framework.*`.
-- Go, Python, Rust는 현재 framework target이 아니므로 binding-owned codec module을
-  추가하지 않는다.
-- Node extension package 이름은 생태계 관례를 따르되, public identity가 `zlink`와
-  `zlink.systems` 도메인에서 벗어나지 않게 한다.
-- 새 문서, 샘플, 테스트는 canonical identity만 사용한다.
-- 기존 `Zlink` root namespace 또는 package id가 구현 호환성 때문에 남아 있더라도
-  canonical public identity가 아니며, 새 public API를 그 아래에 추가하지 않는다.
+- A framework extension package and namespace stays under that
+  framework language's canonical identity. For example, `.NET` uses
+  `Zlink.Framework.*`, and Java uses `systems.zlink.framework.*`.
+- Go, Python, and Rust are not currently framework targets, so they do
+  not add a binding-owned codec module.
+- A Node extension package's name follows ecosystem convention, but its
+  public identity must not drift outside the `zlink` and
+  `zlink.systems` domain.
+- New documents, samples, and tests use only the canonical identity.
+- Even if an old `Zlink` root namespace or package id remains for
+  implementation compatibility, it is not the canonical public identity,
+  and no new public API is added under it.
 
 ### Core Interface Shape Rules
 
-이 절은 C를 제외한 wrapper binding의 필수 공개 인터페이스 모양을 요약한다.
-자세한 계약은 뒤의 recv 절과 operation builder 절을 따른다. C는
-`core/include/zlink.h`의 함수형 ABI를 그대로 유지하므로 이 wrapper 규칙을
-적용하지 않는다.
+This section summarizes the required public interface shape for every
+wrapper binding except C. See the recv section and operation builder
+section further below for the detailed contract. C keeps the functional
+ABI of `core/include/zlink.h` as-is, so this wrapper rule does not apply
+to it.
 
-- data-plane `recv`와 `subscribe` 계열은 caller-provided output storage를
-  받는다. `Received`, `TopicMessage`, `SubscriptionEvent` 같은 결과 객체를
-  호출자가 만들고, binding은 그 객체를 갱신한다.
-- data-plane receive 반환값은 "데이터를 받았는가"만 표현한다. hard error는
-  언어 관용에 맞는 typed exception, `error`, `Result`로 전달한다.
-- `Monitor.recv`, `Timer.recv` 같은 control-plane API는 호출 빈도가 낮고
-  결과가 작으므로 언어별 nullable, optional, value-return 형태를 허용한다.
-- `Spot.recvActorJoin` 같은 service control/admission receive도 data-plane
-  drain 경로가 아니므로 언어별 nullable, optional, result-value 형태를 허용한다.
-  단 no-data와 hard error는 분리되어야 하며, public 계약에서 이 예외를 분명히
-  설명해야 한다.
-- `send`, routed send, `publish`, `request`, `reply`, SPOT send/request/reply,
-  Actor 위치·session attach 계열은 operation builder를 반환한다.
-- builder 시작점 인자는 목적지, topic, channel, routing id, request sequence처럼
-  operation의 대상만 받는다. payload, flags, timeout, callback, async/callback
-  submit 선택은 builder 단계에서 표현한다.
-- multipart payload는 builder의 `message(...)` 반복으로 누적한다. 언어 관례에
-  따라 `messages(...)` convenience를 둘 수 있지만, canonical 경로는 builder다.
-  이런 convenience도 public 이면 builder contract의 일부이며 `Contracts/`에
-  위치해야 한다.
-- `sendNoWait`, `publishWithFlags`, `requestAsync`, `requestCallback`처럼 operation
-  시작점 이름을 늘리는 방식은 만들지 않는다. 같은 operation 이름을 유지하고
-  builder 단계가 변형을 흡수한다. async 또는 callback 완료 표면의 언어별
-  마지막 실행 메서드는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
-  따른다.
-- resource 생성은 public constructor를 여러 runtime class에 흩어 두지 않는다.
-  binding별 root facade 또는 context factory가 생성 책임을 가진다. 예를 들어
-  .NET binding은 `Zlink.CreateContext()`로 context를 만들고, socket과 service
-  resource는 `IContext.Create...` factory로 만든다.
-- runtime concrete type은 public contract signature에 직접 드러나면 안 된다.
-  public method의 인자와 반환값은 contract interface, value object, DTO, enum,
-  result/error type으로 설명 가능해야 한다.
-- sample, perf, framework adapter는 이 canonical 인터페이스만 사용한다. runtime
-  내부 helper나 legacy overload를 기준으로 새 코드를 작성하지 않는다.
+- The data-plane `recv` and `subscribe` families take caller-provided
+  output storage. The caller creates a result object such as `Received`,
+  `TopicMessage`, or `SubscriptionEvent`, and the binding updates that
+  object.
+- A data-plane receive's return value expresses only "was data
+  received." A hard error is delivered as a typed exception, `error`, or
+  `Result`, per language convention.
+- A control-plane API such as `Monitor.recv` or `Timer.recv` is called
+  infrequently and returns a small result, so a per-language nullable,
+  optional, or value-return form is allowed.
+- A service control/admission receive such as `Spot.recvActorJoin` is
+  also not a data-plane drain path, so a per-language nullable, optional,
+  or result-value form is allowed. However, no-data and a hard error must
+  still be separated, and the public contract must clearly document this
+  exception.
+- `send`, routed send, `publish`, `request`, `reply`, SPOT
+  send/request/reply, and the Actor location/session-attach family return
+  an operation builder.
+- A builder start point's arguments take only the operation's target —
+  destination, topic, channel, routing id, or request sequence. Payload,
+  flags, timeout, callback, and the async/callback submit choice are
+  expressed at the builder stage.
+- Multipart payload accumulates through repeated `message(...)` calls on
+  the builder. A `messages(...)` convenience may exist per language
+  convention, but the canonical path is the builder. If such a
+  convenience is public, it is part of the builder contract and belongs
+  in `Contracts/`.
+- Do not multiply operation-start names such as `sendNoWait`,
+  `publishWithFlags`, `requestAsync`, or `requestCallback`. Keep the same
+  operation name, and let the builder stage absorb the variation. The
+  per-language final execution method for an async or callback completion
+  surface follows the
+  [bindings async execution surface policy](async-coroutine-policy.md).
+- Resource creation is not scattered across public constructors on
+  several runtime classes. A per-binding root facade or context factory
+  owns construction responsibility. For example, the .NET binding
+  creates a context with `Zlink.CreateContext()`, and creates socket and
+  service resources through `IContext.Create...` factories.
+- A runtime concrete type must not appear directly in a public contract
+  signature. A public method's arguments and return value must be
+  explainable through a contract interface, value object, DTO, enum, or
+  result/error type.
+- Samples, perf, and framework adapters use only this canonical
+  interface. Do not write new code against a runtime-internal helper or a
+  legacy overload.
 
-### Send/Recv Public Shape Is Fixed
+### The Send/Recv Public Shape Is Fixed
 
-bindings의 `send/recv` 공개 형태는 substrate helper가 어떻게 생기느냐에 따라
-매번 다시 정하는 대상이 아니다. 이 문서와 각 언어별 binding spec이 정한
-public shape를 기준으로 고정한다.
+The public `send`/`recv` shape of the bindings is not something to
+redecide every time the substrate helper's shape changes. It is fixed to
+the public shape this document and each per-language binding spec
+define.
 
-즉 helper substrate가 `*_part`, `has_more`, caller-provided message storage
-형태로 바뀌더라도, binding public API는 아래 원칙을 유지해야 한다.
+In other words, even if the helper substrate's shape changes — `*_part`,
+`has_more`, caller-provided message storage — the binding's public API
+must keep the following principles.
 
-- binding 사용자는 언어 문서에 정의된 `send`, `recv`, request/reply,
-  callback 형태를 본다.
-- multipart는 각 언어 문서가 정한 aggregate convenience 모델로 계속 제공할 수
-  있다.
-- helper substrate 변경만을 이유로 binding public `send/recv` shape를 함께
-  흔들면 안 된다.
-- public shape를 바꾸려면 helper 도입과는 별도의 public API 변경으로 다뤄야
-  하며, `doc/spec/bindings/` 문서부터 먼저 갱신해야 한다.
+- A binding user sees the `send`, `recv`, request/reply, and callback
+  shape defined in the language document.
+- Multipart can continue to be offered through whatever aggregate
+  convenience model each language document defines.
+- A binding's public `send`/`recv` shape must not be shaken up just
+  because the helper substrate changed.
+- Changing the public shape must be treated as a public API change
+  separate from introducing the helper, and the `doc/spec/bindings/`
+  document must be updated first.
 
-즉 앞으로 helper C API를 도입하더라도, bindings 쪽 `send/recv`는
-"구현 기반이 바뀌는 것"이지 "사용자에게 보이는 형태가 자동으로 바뀌는 것"이
-아니다.
+In other words, even if a helper C API is introduced going forward, a
+binding's `send`/`recv` is "the implementation foundation changing," not
+"the shape the user sees changing automatically."
 
 ### Canonical Recv: Caller-Provided Storage
 
-고수준 binding (C++ / .NET / Java / Node / Python / Go / Rust) 의 데이터
-플레인 recv 표면은 **caller가 미리 만든 결과 저장소를 매개변수로 받아 내부 상태를
-갱신하는 ref-out 형태**를 canonical로 한다. 매 호출마다 새 결과 인스턴스를
-할당해 반환하는 형태는 hot path 할당 오버헤드를 강제하므로 canonical 표면으로
-사용하지 않는다.
+For a high-level binding (C++ / .NET / Java / Node / Python / Go / Rust),
+the data-plane recv surface's canonical form is a **ref-out shape that
+takes a caller-pre-built result storage as a parameter and updates its
+internal state**. A shape that allocates and returns a new result
+instance on every call forces hot-path allocation overhead, so it is not
+used as the canonical surface.
 
-이 규칙은 `Required` 다. 새로운 binding 을 만들거나 기존 binding 을 갱신할 때
-canonical recv 표면은 이 절을 만족해야 한다.
+This rule is `Required`. When building a new binding or updating an
+existing one, the canonical recv surface must satisfy this section.
 
-#### 적용 범위 (data-plane recv 전체)
+#### Scope (all data-plane recv)
 
-| 표면 | 결과 타입 (caller storage) |
+| Surface | Result type (caller storage) |
 |---|---|
 | `MessageSocketBase.recv` (PAIR / DEALER) | `Received` |
 | `RoutedMessageSocketBase.recv` (ROUTER) | `Received` |
@@ -912,117 +1090,141 @@ canonical recv 표면은 이 절을 만족해야 한다.
 | `Spot.subscribe` | `TopicMessage` |
 | `Spot.recv` (routed) | `Received` |
 
-`Monitor.recv` (`MonitorEvent`) 와 `Timer.recv` (`uint64`) 는 control plane 이며
-호출 빈도가 낮고 결과가 가벼운 value 형이므로 이 절의 적용 대상이 아니다.
-return-form (또는 언어별 `Optional` / nullable / `Option`) 을 유지한다.
-`Spot.recvActorJoin` 처럼 Actor join admission 요청을 받는 service control-plane
-API도 같은 예외를 적용할 수 있다. 이 경우 public 계약은 no-data 표현과 hard
-error 표현을 분리해서 설명해야 한다.
+`Monitor.recv` (`MonitorEvent`) and `Timer.recv` (`uint64`) are
+control-plane calls, called infrequently and with a lightweight value
+result, so they are not in scope for this section. They keep a
+return-form (or a per-language `Optional`/nullable/`Option`). A service
+control-plane API that receives an Actor join admission request, such as
+`Spot.recvActorJoin`, can apply the same exception. In that case, the
+public contract must document the no-data representation and the hard
+error representation separately.
 
-#### 기본 계약
+#### Base Contract
 
-- `recv` 호출자는 long-lived 결과 저장소를 미리 만들어 매 호출마다 같은
-  인스턴스를 넘긴다. binding 은 그 안의 part collection, routing id 저장소,
-  topic 버퍼 등을 가능한 한 재사용해 매 recv 할당을 0 으로 만든다.
-- 반환값은 "받았는가" boolean (또는 success/no-data 를 구분하는 동등 표현) 만
-  포함한다. hard error 는 언어 관용대로 예외 또는 error code 로 전달한다.
-- `recv_flags_t::dontwait` 등 non-blocking flag 가 적용된 호출에서 데이터가
-  없으면 `false`, `recv_result_t::no_data`, `(false, nil)`, `Ok(false)` 같이
-  caller-provided storage와 함께 쓰는 no-data 표현을 반환한다. exception 으로
-  EAGAIN 을 알리지 않는다.
-- multipart 결과는 caller 결과 저장소에 누적 노출한다. binding 이 임시
-  컬렉션을 만들어 caller 결과 저장소와 별도로 캐싱하면 안 된다 (할당이 사라지지
-  않는다).
-- routed recv (router / spot) 에서 routing id 는 caller 가 제공한 `Received`
-  내부 storage 에 채워야 한다. routing id 마다 새 byte 배열을 할당하는 경로는
-  내부 hot path 에 두지 않는다.
+- The `recv` caller pre-builds a long-lived result storage and passes the
+  same instance on every call. The binding reuses its internal part
+  collection, routing-id storage, and topic buffer as much as possible,
+  driving per-recv allocation toward zero.
+- The return value carries only "was something received" — a boolean, or
+  an equivalent representation that distinguishes success from no-data.
+  A hard error is delivered as an exception or error code, per language
+  convention.
+- When a call with a non-blocking flag such as `recv_flags_t::dontwait`
+  finds no data, it returns a no-data representation used together with
+  caller-provided storage, such as `false`, `recv_result_t::no_data`,
+  `(false, nil)`, or `Ok(false)`. It does not signal EAGAIN as an
+  exception.
+- A multipart result accumulates into the caller's result storage. The
+  binding must not build a temporary collection and cache it separately
+  from the caller's result storage — that allocation would not go away.
+- For routed recv (router / spot), the routing id must be filled into
+  storage inside the caller-provided `Received`. A path that allocates a
+  new byte array per routing id does not belong on the internal hot
+  path.
 
-#### 언어별 canonical 시그니처
+#### Canonical Per-Language Signature
 
-위 표의 각 표면에 동일한 ref-out 패턴을 적용한다. 아래는 `Received` 결과
-타입 기준 예시다. `TopicMessage`, `SubscriptionEvent` 도 동일 패턴을 따른다.
+Apply the same ref-out pattern to each surface in the table above. Below
+are examples keyed on the `Received` result type; `TopicMessage` and
+`SubscriptionEvent` follow the same pattern.
 
-| Binding | Canonical 시그니처 |
+| Binding | Canonical signature |
 |---|---|
-| C++ | `int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);` 0 = 성공, 실패나 데이터 없음은 `recv_result_t` 정수값을 반환한다. 바인딩 내부에서 메시지 초기화 같은 local 실패가 나면 -1을 반환하고 errno를 설정한다. multipart 결과는 `out.parts` 에 채워진다. `subscribe(topic_message_t& out, int flags)`, `receive_subscription_event(subscription_event_t& out, int flags)` 도 동일 규칙. |
-| .NET | `bool Recv(Received result, RecvFlags flags = RecvFlags.None);` `bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);` `bool ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags = RecvFlags.None);` `Received` 저장소는 `Received.Create()` 로 만든다. true = 받음, false = 데이터 없음 (DontWait). hard error 는 `ZlinkException`. |
+| C++ | `int recv(received_t& out, recv_flags_t flags = recv_flags_t::none);` 0 = success; failure or no data returns a `recv_result_t` integer value. If a local failure such as message initialization happens inside the binding, it returns -1 and sets errno. Multipart results fill `out.parts`. `subscribe(topic_message_t& out, int flags)` and `receive_subscription_event(subscription_event_t& out, int flags)` follow the same rule. |
+| .NET | `bool Recv(Received result, RecvFlags flags = RecvFlags.None);` `bool Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None);` `bool ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags = RecvFlags.None);` A `Received` storage is created with `Received.Create()`. true = received, false = no data (DontWait). A hard error is `ZlinkException`. |
 | Java | `boolean recv(Received result, RecvFlags flags);` `boolean subscribe(TopicMessage result, RecvFlags flags);` `boolean receiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags);` |
 | Node | `recv(received: Received, flags?: RecvFlag): boolean;` `subscribe(topic: TopicMessage, flags?: RecvFlag): boolean;` `receiveSubscriptionEvent(event: SubscriptionEvent, flags?: RecvFlag): boolean;` |
 | Python | `def recv_into(self, received: Received, *, flags: int = 0) -> bool: ...` `def subscribe_into(self, topic: TopicMessage, *, flags: int = 0) -> bool: ...` `def receive_subscription_event_into(self, event: SubscriptionEvent, *, flags: int = 0) -> bool: ...` |
 | Go | `func (s *Socket) Recv(out *Received, flags RecvFlags) (bool, error)` `func (s *Socket) Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)` `func (s *Socket) ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)` |
 | Rust | `pub fn recv(&self, out: &mut Received, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn subscribe(&self, out: &mut TopicMessage, flags: RecvFlags) -> Result<bool, RecvError>;` `pub fn receive_subscription_event(&self, out: &mut SubscriptionEvent, flags: RecvFlags) -> Result<bool, RecvError>;` |
 
-C ABI binding 은 이 절의 적용 대상이 아니다. C 바인딩은 `zlink.h` 의 typed
-substrate (`zlink_router_recv_part`, `zlink_subscribe_part` 등) 를 그대로
-노출한다.
+A C ABI binding is not in scope for this section. The C binding exposes
+`zlink.h`'s typed substrate (`zlink_router_recv_part`,
+`zlink_subscribe_part`, and so on) as-is.
 
-#### `Received` envelope 의미 통일
+#### Unifying `Received` Envelope Meaning
 
-고수준 binding (C++ / .NET / Java / Node / Python / Go / Rust) 에서
-`Received` 는 **한 번의 data-plane recv 결과를 담는 공통 envelope** 다.
-socket 종류나 service 종류가 달라도 request, reply, routed source, payload
-lifecycle 의 의미는 같아야 한다.
+For a high-level binding (C++ / .NET / Java / Node / Python / Go / Rust),
+`Received` is a **shared envelope that holds the result of one
+data-plane recv call**. The meaning of request, reply, routed source, and
+payload lifecycle must stay the same regardless of socket kind or
+service kind.
 
-아래 규칙은 `Required` 다.
+The rules below are `Required`.
 
-- PAIR / DEALER / ROUTER / STREAM / SPOT routed recv 결과는 모두 같은
-  `Received` 의미를 사용한다.
-- request-reply 수신 결과는 별도 protocol-specific 결과 타입으로 갈라지면
-  안 된다. 예를 들어 `DealerReceived`, `RouterReceived`, `SpotReceived` 처럼
-  request 의미를 socket 종류별 public 타입으로 나누는 표면은 canonical 이 아니다.
-- request 의 의미는 socket 종류와 무관하다. `request_seq` 가 있으면
-  request-reply context 가 있는 수신 결과이고, 없으면 ordinary receive 결과다.
-- reply target, send-back target, source routing metadata 는 `Received` 내부
-  context 로 캡슐화한다. 사용자가 request 를 처리하기 위해 socket 종류별
-  frame 형식이나 내부 dispatch 규칙을 알아야 하면 안 된다.
-- 언어별 이름과 optional 표현(`null`, `None`, `Optional`, `Option`, zero value
-  + `has` flag 등)은 달라도 되지만, canonical field/method 의미는
-  [도메인 객체 Canonical Shape](#도메인-객체-canonical-shape-모든-바인딩-공통)
-  절과 같아야 한다.
+- The receive results of PAIR / DEALER / ROUTER / STREAM / SPOT routed
+  recv all use the same `Received` meaning.
+- A request-reply receive result must not fork into a separate
+  protocol-specific result type. A surface that splits request meaning by
+  socket kind into separate public types — `DealerReceived`,
+  `RouterReceived`, `SpotReceived` — is not canonical.
+- Request meaning is independent of socket kind. If `request_seq` is
+  present, the receive result has request-reply context; if not, it's an
+  ordinary receive result.
+- The reply target, send-back target, and source routing metadata are
+  encapsulated inside `Received`'s own context. A user must not need to
+  know a socket-kind-specific frame format or internal dispatch rule to
+  handle a request.
+- Per-language names and optional representations (`null`, `None`,
+  `Optional`, `Option`, a zero value plus a `has` flag, and so on) can
+  differ, but the canonical field/method meaning must match the
+  [Domain Object Canonical Shape](#domain-object-canonical-shape-shared-by-every-binding)
+  section.
 
-C ABI binding 은 예외다. C 는 managed/object 결과 저장소를 만들지 않고
-`zlink_router_recv_part()`, `zlink_spot_recv_part()`,
-`zlink_dealer_recv_part()` 같은 typed out-param 으로 같은 envelope 구성 요소를
-노출한다. C 에 public `zlink_received_t` 같은 aggregate 객체를 추가하지 않는다.
-그 객체를 추가하면 message part 소유권, init/close/reset, reply context 보관
-규칙이 새 public lifetime 계약으로 늘어나기 때문이다. C helper 가 필요하면
-sample/perf/internal helper 로만 둔다.
+The C ABI binding is an exception. C does not build a managed/object
+result storage; it exposes the same envelope components through typed
+out-params such as `zlink_router_recv_part()`, `zlink_spot_recv_part()`,
+and `zlink_dealer_recv_part()`. Do not add a public aggregate object such
+as `zlink_received_t` to C — doing so would grow message-part ownership,
+init/close/reset, and reply-context retention into a new public lifetime
+contract. If a C helper is needed, keep it only as a sample/perf/internal
+helper.
 
-언어별 세부 문서에는 과거 호환성을 위한 deprecated overload가 별도로 적힐 수
-있다. 위 표는 새 코드와 sample/perf가 따라야 하는 canonical 경로만 정리한다.
+A per-language detail document may separately list a deprecated overload
+kept for backward compatibility. The table above lists only the
+canonical path new code and samples/perf must follow.
 
-#### 결과 저장소 재사용 계약
+#### Result-Storage Reuse Contract
 
-- 결과 저장소 (Received / TopicMessage / SubscriptionEvent) 는 새 recv 결과를
-  받기 전 자동으로 내부 상태를 초기화한다. 같은 인스턴스를 반복적으로 recv 에
-  넘기는 것이 정상 사용이다.
-- .NET 의 `Received` 는 public 생성자를 노출하지 않는다. caller 가 채워질
-  저장소를 만들 때는 `Received.Create()` 를 사용한다. `Received` 는 concrete
-  receive buffer 이며, 별도 read interface 로 나누지 않는다.
-- 이전 recv 의 part 메시지를 caller 가 따로 `move` 하지 않고 다음 recv 를
-  호출하면 이전 메시지는 적절히 닫혀야 한다. binding 은 part Message 의
-  ownership 을 caller 에게 넘기는 별도 helper (`takeFirstPart` 등) 를 제공한다.
-- thread safety 는 같은 결과 저장소를 여러 thread 가 동시에 recv 에 넘기는
-  것을 보장하지 않는다. socket 자체는 단일 thread 가 recv 하도록 하는 기존
-  정책이 유지된다.
+- A result storage (Received / TopicMessage / SubscriptionEvent)
+  automatically resets its internal state before receiving a new recv
+  result. Passing the same instance to `recv` repeatedly is normal usage.
+- .NET's `Received` does not expose a public constructor. A caller uses
+  `Received.Create()` to build the storage to be filled. `Received` is a
+  concrete receive buffer and is not split into a separate read
+  interface.
+- If a caller calls the next recv without separately `move`-ing the
+  previous recv's part messages, the previous message must be closed
+  appropriately. The binding provides a separate helper (such as
+  `takeFirstPart`) that hands ownership of a part `Message` to the
+  caller.
+- Thread safety does not guarantee that multiple threads can pass the
+  same result storage into recv concurrently. The existing policy that a
+  socket is recv'd by a single thread still holds.
 
 ### Operation Builder Policy
 
-zlink의 send/request/reply/publish 계열과 Actor 위치·세션 attach 계열은 모두
-조합 축이 많다. 대상 경로, payload part 개수, `flags`, `timeout`, async/callback
-완료 방식을 일반 메서드 오버로드로 펼치면 socket과 service handle이 얕고
-넓은 인터페이스가 되며 multipart payload를 외부 List/Vector 컨테이너로
-포장해야 한다. 고수준 바인딩은 이 조합 복잡성을 operation 객체 안으로
-숨기고, multipart는 builder의 `message(...)` 반복으로 자연스럽게 누적한다.
+zlink's send/request/reply/publish family, and the Actor
+location/session-attach family, all have many combination axes. Spreading
+target path, payload part count, `flags`, `timeout`, and the
+async/callback completion mode across plain method overloads makes a
+socket or service handle a shallow, wide interface, and forces multipart
+payload to be wrapped in an external List/Vector container. A high-level
+binding hides this combinatorial complexity inside an operation object,
+and multipart naturally accumulates through repeated `message(...)` calls
+on the builder.
 
-이 정책은 C ABI 바인딩에는 적용하지 않는다. C 바인딩은 `zlink.h`에 맞춘
-함수형 계약을 유지한다. C++ / Java / .NET / Node / Python / Go / Rust 같은
-고수준 바인딩의 canonical public API에 적용한다.
+This policy does not apply to the C ABI binding. The C binding keeps the
+functional contract that matches `zlink.h`. It applies to the canonical
+public API of high-level bindings such as C++ / Java / .NET / Node /
+Python / Go / Rust.
 
-#### 적용 대상 시작점
+#### Start Points In Scope
 
-operation builder 시작점은 **모든 송신·요청·응답·게시·Actor 위치·Actor session
-attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관례에 맞게 변환한다.
+An operation builder start point is exposed with the same pattern across
+**every send, request, reply, publish, Actor location, and Actor
+session-attach surface**. The name is converted to fit language
+convention.
 
 ##### Spot facade (`Spot` / `spot_t`)
 
@@ -1045,10 +1247,10 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
   `replyToSpot(destNodeRid, destSpotRid, requestSeq)`
 - `PairSocket.send()` (PAIR send)
 - `StreamSocket.sendTo(rid)` (STREAM peer send)
-- 다른 raw send-capable socket의 송신 entrypoint도 동일하게 builder 시작점을
-  노출한다.
+- Any other raw send-capable socket's send entrypoint exposes an
+  operation builder start point the same way.
 
-##### SpotNode·StreamSocket Actor 표면
+##### SpotNode/StreamSocket Actor surface
 
 - `SpotNode.joinActor(actor, destNodeRid, destSpotRid)` / `join_actor(...)`
 - `SpotNode.leaveActor(actor, currentSpotRid)` / `leave_actor(...)`
@@ -1059,77 +1261,95 @@ attach 표면**에서 동일한 패턴으로 노출한다. 이름은 언어 관�
 - `StreamSocket.sendBoundActor(sessionRid, actorId)` / `send_bound_actor(...)`
 - `SpotNode.sendBoundSessionMsg(actor)` / `send_bound_session_msg(...)`
 
-#### 공통 builder 규칙
+#### Common Builder Rules
 
-- 시작점은 즉시 전송하지 않고 `SendOp`, `RequestOp`, `ReplyOp`,
+- A start point does not send immediately — it returns a per-language
+  operation builder such as `SendOp`, `RequestOp`, `ReplyOp`,
   `ActorJoinOp`, `ActorLeaveOp`, `ActorDestroyOp`, `ActorLookupOp`,
-  `ActorBindOp`, `ActorUnbindOp` 같은 언어별 operation builder를 반환한다.
-  서로 다른 시작점이라도 multipart payload 표현은 모두 `.message(...)`
-  반복으로 통일한다.
-- `.messages(...)`, `.flags(...)`, `.timeout(...)`, callback submit, async 완료
-  마지막 실행 메서드 같은 builder convenience도 public 이면 builder contract의 일부다.
-  runtime 내부 shortcut으로만 정의하지 않는다. async 완료 마지막 실행 메서드의
-  언어별 이름과 의미는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에
-  둔다.
-- payload는 builder의 `message(part)` 반복 호출로 누적한다. 단일 payload와
-  multipart payload를 별도 시작점 오버로드로 나누지 않는다. 외부 List/Vector
-  컨테이너로 multipart를 포장하지 않는다.
-- 시작점과 같은 이름으로 단일 payload shortcut overload를 만들지 않는다.
-  예를 들어 `send(message)`, `send(routingId, message)`,
-  `publish(topic, message)`, `sendToChannel(channelName, message)`,
-  `sendToSpot(nodeRid, spotRid, message)` 같은
-  public overload는 금지한다. 모두 `send(...).message(message).submit()`처럼
-  builder 단계로 표현한다.
-- 언어가 명시적 move/consume 이름을 자연스럽게 표현할 수 있으면 같은 builder 안에
-  ownership 이전 단계(`moveMessage`, `MoveMessage`, `move_message` 등)를 둘 수
-  있다. 이 단계는 새 operation 시작점이 아니며, submit 실패 뒤에도 caller가 해당
-  message를 재사용할 수 없다는 계약을 이름과 문서에서 분명히 드러내야 한다. 기존
-  `message(...)` 단계의 실패 시 원본 보존 계약은 바꾸지 않는다.
-- payload가 의미상 필수인 작업(send/request/reply/publish, Actor join,
-  ActorReplyJoin 등)에서 메시지가 하나도 없는 `submit`은 금지한다. 타입
-  시스템으로 막을 수 있는 언어는 compile-time에서 막고, 그렇지 않은 언어는
-  `submit` 시점에 validation error로 막는다.
-- payload가 없는 작업(Actor `leave`, `destroy`, `bindActor`, `unbindActor`,
-  `remoteActorGetRef`)은 builder가 `message(...)` 단계 없이 곧바로 submit이
-  가능하다. 단 builder 형태와 옵션 단계(`flags(...)`, `timeout(...)`,
-  `callback(...)`, async 완료 마지막 실행 메서드)는 동일하게 노출한다.
-- `flags`, `timeout`, callback, async 선택은 시작점 파라미터가 아니라
-  builder의 선택 단계로 둔다. 시작점은 대상 주소·요청 시퀀스처럼 의미상
-  키만 받는다.
-- 샘플과 문서 예제의 메시징 호출은 기본값을 반복해서 적지 않는다.
-  `request`, `requestToChannel`, `send`, `sendToChannel`, `reply`,
-  `publish` 같은 메시지 전송 함수에서 packet 이름은 요청 객체나 등록된 packet
-  타입에서 추론되는 이름을 기본으로 사용한다. `.packetName(...)`,
-  `.packet_name(...)`, `.PacketName(...)` 같은 packet 이름 override는 실제 전송할
-  packet 이름이 요청 타입의 기본 packet 이름과 다를 때만 사용한다. 같은 방식으로
-  `.timeout(...)`, `.Timeout(...)` 같은 per-call timeout은 해당 호출이 소켓이나
-  framework에 설정된 기본 timeout과 다른 값을 요구할 때만 사용한다. 이 규칙은
-  예제를 짧게 보이게 하려는 규칙이 아니라, 사용자가 불필요한 옵션을 표준 사용법으로
-  오해하지 않게 하기 위한 샘플 계약이다.
-- request/reply protocol envelope을 직접 만드는 helper는 public binding 표면에
-  두지 않는다. `requestFrame(...)` 같은 API는 request sequence와 frame layout을
-  caller에게 노출하므로 runtime/internal helper에 머물러야 한다.
-- reply는 수신한 request context에서 시작해야 한다. binding public API는
-  `received.reply()` 또는 `router.reply(peerRid, requestSeq)`처럼 reply 가능한
-  context를 드러내는 표면만 제공한다. `dealer.reply(requestToken, parts)`처럼
-  DEALER가 임의 token으로 reply를 시작하는 API는 public binding 표면에 두지
-  않는다. DEALER는 특정 peer routing id를 지정할 수 없으므로 reply routing
-  결정이 protocol helper에 새고, 사용자가 token 의미를 알아야 한다.
-- async request·async Actor operation은 submit flags를 받지 않는다. callback
-  형태는 non-blocking submit을 표현하기 위해 `flags`를 받을 수 있다. 자세한
-  완료 방식 차이는 [바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)을
-  따른다.
-- builder는 한 번 submit된 뒤 다시 submit될 수 없다. 언어가 move-only 또는
-  ownership 타입을 제공하면 타입으로 막고, 그렇지 않으면 런타임 상태 검사로
-  막는다.
-- Actor join 시작점은 admission completion 형태가 다르므로 reply payload와
-  최종 Actor ref를 함께 캡처하는 전용 completion 결과(`ActorJoinResult`)를
-  builder가 노출한다. lookup·destroy·leave·bind·unbind는 일반 reply
-  completion (`RequestResult`) 형태를 사용한다.
+  `ActorBindOp`, or `ActorUnbindOp`. Regardless of which start point is
+  used, multipart payload is always expressed through repeated
+  `.message(...)` calls.
+- A builder convenience such as `.messages(...)`, `.flags(...)`,
+  `.timeout(...)`, a callback submit, or the final execution method of an
+  async completion is part of the builder contract if it is public. It
+  must not be defined only as a runtime-internal shortcut. The
+  per-language name and meaning of the async-completion final execution
+  method belongs in the
+  [bindings async execution surface policy](async-coroutine-policy.md).
+- Payload accumulates through repeated `message(part)` calls on the
+  builder. A single payload and a multipart payload are not split into
+  separate start-point overloads. Multipart is not wrapped in an
+  external List/Vector container.
+- Do not create a single-payload shortcut overload with the same name as
+  a start point. For example, public overloads such as `send(message)`,
+  `send(routingId, message)`, `publish(topic, message)`,
+  `sendToChannel(channelName, message)`, and
+  `sendToSpot(nodeRid, spotRid, message)` are forbidden. Express all of
+  these through builder steps, such as
+  `send(...).message(message).submit()`.
+- When a language can naturally express an explicit move/consume name, it
+  can add an ownership-transfer step (`moveMessage`, `MoveMessage`,
+  `move_message`, and so on) inside the same builder. This step is not a
+  new operation start point, and the name and documentation must clearly
+  state that the caller cannot reuse that message even after a submit
+  failure. This does not change the existing `message(...)` step's
+  contract of preserving the original on failure.
+- For an operation where payload is semantically required — send,
+  request, reply, publish, Actor join, ActorReplyJoin, and so on — a
+  `submit` with zero messages is forbidden. A language whose type system
+  can prevent this blocks it at compile time; other languages block it
+  with a validation error at `submit` time.
+- For an operation with no payload — Actor `leave`, `destroy`,
+  `bindActor`, `unbindActor`, `remoteActorGetRef` — the builder can submit
+  immediately without a `message(...)` step. But it still exposes the
+  same builder shape and option steps (`flags(...)`, `timeout(...)`,
+  `callback(...)`, the async-completion final execution method).
+- `flags`, `timeout`, and the callback/async choice are optional builder
+  steps, not start-point parameters. A start point takes only
+  semantically key arguments, such as the target address or request
+  sequence.
+- A messaging call in a sample or documentation example does not repeat a
+  default value. For a message-sending function such as `request`,
+  `requestToChannel`, `send`, `sendToChannel`, `reply`, or `publish`, use
+  the packet name inferred by default from the request object or the
+  registered packet type. Use a packet-name override such as
+  `.packetName(...)`, `.packet_name(...)`, or `.PacketName(...)` only when
+  the packet actually being sent differs from the request type's default
+  packet name. The same way, use a per-call timeout such as
+  `.timeout(...)` or `.Timeout(...)` only when that call needs a value
+  different from the default timeout configured on the socket or
+  framework. This rule is not about making an example look shorter — it's
+  a sample contract that keeps a user from mistaking an unnecessary
+  option for standard usage.
+- A helper that directly builds a request/reply protocol envelope does
+  not belong on the public binding surface. An API such as
+  `requestFrame(...)` exposes the request sequence and frame layout to
+  the caller, so it must stay a runtime/internal helper.
+- A reply must start from the received request context. The public
+  binding API offers only a surface that reveals a reply-capable
+  context, such as `received.reply()` or
+  `router.reply(peerRid, requestSeq)`. An API such as
+  `dealer.reply(requestToken, parts)`, where DEALER starts a reply with
+  an arbitrary token, does not belong on the public binding surface. A
+  DEALER cannot designate a specific peer routing id, so reply-routing
+  decisions would leak into a protocol helper, and the user would need to
+  understand token semantics.
+- An async request or async Actor operation does not take submit flags. A
+  callback form may take `flags` to express a non-blocking submit. The
+  detailed difference in completion mode follows the
+  [bindings async execution surface policy](async-coroutine-policy.md).
+- A builder cannot be submitted again once it has been submitted. A
+  language that offers a move-only or ownership type blocks this by
+  type; otherwise it is blocked by a runtime state check.
+- Because an Actor join start point's admission completion shape differs,
+  its builder exposes a dedicated completion result (`ActorJoinResult`)
+  that captures both the reply payload and the final Actor ref together.
+  lookup/destroy/leave/bind/unbind use the ordinary reply completion
+  shape (`RequestResult`).
 
-#### 공통 흐름 예시
+#### Common Flow Example
 
-이름은 언어 관례에 맞게 변환한다.
+Names are converted to fit language convention.
 
 ```java
 spot.publish(topic)
@@ -1153,197 +1373,264 @@ streamSocket.bindActor(sessionRid, actorRef)
     .submit(replyCallback);
 ```
 
-#### 언어별 비동기 실행 표면 기준
+#### Per-Language Async Execution Surface Standard
 
-언어별 async 또는 callback 완료 마지막 실행 메서드는
-[바인딩 비동기 실행 표면 정책](async-coroutine-policy.md)에 둔다.
+The per-language final execution method for an async or callback
+completion belongs in the
+[bindings async execution surface policy](async-coroutine-policy.md).
 
-이 규칙은 POSD 기준에서 Required다. 새 send/request/reply/publish 또는 Actor
-위치·attach public API를 추가하거나 정리할 때는 이 operation builder 형태와
-비동기 실행 표면 정책을 기준으로 하고, 기존 오버로드를 canonical API로 더 늘리지 않는다.
+This rule is Required under the POSD standard. When adding or cleaning up
+a new send/request/reply/publish or Actor location/attach public API,
+use this operation builder shape and the async execution surface policy
+as the baseline, and do not grow the existing overloads into more
+canonical APIs.
 
 ## Core Alignment Rules
 
-이 절은 언어별 문서의 세부 예제보다 우선 적용되는 core 계약 요약이다.
-`core/include/zlink.h` 와 언어별 문서 간 불일치가 있으면 이 절을 기준으로 한다.
+This section is a summary of the core contract that takes priority over
+the detail examples in per-language documents. If there is a mismatch
+between `core/include/zlink.h` and a per-language document, this section
+is the baseline.
 
-- direct receive callback install surface 는 raw `STREAM` 과 SPOT routed
-  receive 에만 존재한다.
-- 바인딩은 raw `PAIR`, `DEALER`, `ROUTER` 에 대해 `onReceive` 류 direct data
-  callback 을 public 으로 노출하면 안 된다.
-- 바인딩은 raw `SUB`, `XSUB`, SPOT subscribe receive 에 대해
-  `onSubscribe` 류 direct topic callback 을 public 으로 노출하면 안 된다.
-- `ROUTER` inbound routed traffic 은 단일 routed recv 표면으로 수신한다.
-  바인딩 runtime은 내부에서 `zlink_router_recv_part()` 를 사용하고, public
-  표면에는 aggregate routed recv와 request completion callback 만 노출한다.
-  direct receive callback 은 제공하지 않는다.
-- core raw `STREAM` 은 `recv`, raw callback (`zlink_recv_handler()`),
-  packet callback (`zlink_stream_packet_handler()`) 의 세 모드 중 하나를
-  선택하는 예외 타입이다. 고수준 바인딩의 canonical public 계약은
-  `recv` 와 packet callback surface 만 노출한다. raw direct callback 은
-  바인딩 내부 primitive 로만 사용하며, public API 로 추가하려면 먼저 이
-  정책 문서와 해당 언어 spec 을 함께 바꾸어 별도 raw/low-level surface 로
-  분리해야 한다.
-- SPOT 은 channel-aware 모델이다. 바인딩은
+#### Direct Receive Callback Constraints
+
+- The direct receive callback install surface exists only for raw
+  `STREAM` and SPOT routed receive.
+- A binding must not publicly expose an `onReceive`-style direct data
+  callback for raw `PAIR`, `DEALER`, or `ROUTER`.
+- A binding must not publicly expose an `onSubscribe`-style direct topic
+  callback for raw `SUB`, `XSUB`, or SPOT subscribe receive.
+- `ROUTER` inbound routed traffic is received through a single routed
+  recv surface. The binding runtime uses `zlink_router_recv_part()`
+  internally, and exposes only the aggregate routed recv and the request
+  completion callback on the public surface. It does not provide a
+  direct receive callback.
+- Core's raw `STREAM` is an exceptional type that picks one of three
+  modes: `recv`, the raw callback (`zlink_recv_handler()`), or the packet
+  callback (`zlink_stream_packet_handler()`). A high-level binding's
+  canonical public contract exposes only the `recv` and packet-callback
+  surfaces. The raw direct callback is used only as an internal binding
+  primitive — adding it as public API requires changing this policy
+  document and the matching language spec together first, splitting it
+  out as a separate raw/low-level surface.
+
+#### SPOT Channel And Dispatch Surface
+
+- SPOT is a channel-aware model. A binding must provide
   `create_route_bridge(...)` or an equivalent typed bridge,
   `create_publisher(...)` or an equivalent publisher handle,
-  `send_to_channel`, `send_to_spot`, `request_to_channel`,
-  channel-aware send/request operation builder 시작점과 SPOT topic publish /
-  subscribe 표면을 제공해야 한다. Legacy surfaces that attach an external
-  channel `DEALER`, route mesh `ROUTER`, or raw `PUB` socket directly to a
-  `SpotNode` are not part of the public contract.
-- SPOT subscribe 결과는 topic / parts 를 노출한다. channel 이름은 메시지
-  결과 필드로 반복하지 않는다.
-- `zlink_spot_dispatch_event_handler()` 가 SPOT topic/routed/channel-reply/timer/actor
-  plane 의 canonical readable notification surface 이다.
-- Actor dispatch surface는 SPOT과 같은 service layer 공개 기능이다. 모든
-  바인딩은 언어별 관례에 맞는 공개 타입으로 노출하며, 공통 의미는 아래
-  `Actor Dispatch Binding Contract` 절과 `Actor Dispatch Policy` 절을 따른다.
-- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` 과
-  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 는 모든 바인딩에서 typed context option
-  으로 노출해야 한다. profile 값은 compact, low latency, balanced, throughput
-  네 가지이며 기본값은 balanced 이다. context message unit 기본값 `0`은 소켓
-  타입별 기본 메시지 단위를 쓰겠다는 뜻이다.
-- `MonitorStatus` 은 core `zlink_monitor_status_t` 의 auto-HWM v2 진단 필드를
-  빠뜨리지 않고 노출해야 한다. enabled, profile enum, role, policy class,
-  unit budget, size cap, socket message slots, effective message bytes,
-  applied HWM, recent recalculation reason enum, deferred shrink, blocked ratio 는
-  public snapshot 계약에 포함된다.
-- SPOT node option 이름은 core 공개 enum을 그대로 따른다. 방향별 HWM option이나
-  delivery queue hard-limit option은 노출하지 않는다. 노출 대상은
-  `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`, `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
+  `send_to_channel`, `send_to_spot`, `request_to_channel`, the
+  channel-aware send/request operation builder start points, and the SPOT
+  topic publish/subscribe surface. Legacy surfaces that attach an
+  external channel `DEALER`, route mesh `ROUTER`, or raw `PUB` socket
+  directly to a `SpotNode` are not part of the public contract.
+- A SPOT subscribe result exposes topic/parts. The channel name is not
+  repeated as a message result field.
+- `zlink_spot_dispatch_event_handler()` is the canonical readable
+  notification surface for the SPOT topic/routed/channel-reply/timer/actor
+  planes.
+- The Actor dispatch surface is a public service-layer capability, same
+  as SPOT. Every binding exposes it through public types that fit its
+  own language convention, and the shared meaning follows the
+  `Actor Dispatch Binding Contract` section and the `Actor Dispatch
+  Policy` section below.
+
+#### Auto-HWM And SpotNode Options
+
+- `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` and
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` must be exposed by every
+  binding as a typed context option. The profile value is one of
+  compact, low latency, balanced, or throughput, and the default is
+  balanced. A context message-unit default of `0` means using each
+  socket type's default message unit.
+- `MonitorStatus` must expose every one of core `zlink_monitor_status_t`'s
+  auto-HWM v2 diagnostic fields without omission. Enabled, the profile
+  enum, role, policy class, unit budget, size cap, socket message slots,
+  effective message bytes, applied HWM, the recent recalculation reason
+  enum, deferred shrink, and blocked ratio are all part of the public
+  snapshot contract.
+- A SPOT node option name follows core's public enum as-is. A binding
+  does not expose a directional HWM option or a delivery-queue
+  hard-limit option. What it exposes is the four admission options
+  `ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE`,
+  `ZLINK_SPOT_NODE_OPT_ROUTER_HWM`,
   `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE`,
-  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM` 네 가지 admission option과
-  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN`,
-  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` 두 가지 dispatch worker option이다.
-  C API의 공통 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES`는 raw socket의 명시
-  override로만 유지한다. 언어별 고수준 바인딩은 이 값을 socket/SpotNode/Spot
-  public facade로 노출하지 않고, context option만 canonical API로 노출한다.
-  SPOT node와 SPOT handle에는 raw socket 공통 옵션을 설정할 수 없으며,
-  호출하면 `EINVAL`로 실패한다. 이 값은 메시지 크기 제한이 아니라 자동 HWM
-  예산을 슬롯 수로 바꿀 때 쓰는 계획 단위다.
-  dispatch worker option은 `SpotNode` 소유 callback worker pool의 크기만
-  조정하며, `ZLINK_IO_THREADS`나 data-plane thread 수를 뜻하지 않는다.
-  `min`은 1 이상, `max`는 `min` 이상이어야 한다. 명시 설정이 없으면
-  CPU가 1개일 때 `min=max=1`, 그 외에는 `min=2`, `max=cpu_count`로 매핑한다.
-- SPOT binding status object는 core의
-  `disconnected_sub_target_count`,
-  `disconnected_routed_target_count`를 언어 관례에 맞는 이름으로 노출해야 한다.
-  현재 core는 delivery queue 증가만으로 target을 끊지 않으므로 두 값은 `0`을
-  보고한다.
-- SPOT binding이 internal socket snapshot 이름을 노출하거나 문서화할 때는
-  core가 반환하는 public snapshot 이름을 그대로 사용한다. 현재 이름은
-  `mesh-pub`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub`,
-  `routed-router`, `local-pub`, `internal_receiver` 이다.
-  `local-pub`는 같은 node 안 subscriber로 보내는 local fanout socket이다.
-  (`ingress-sub`, `pub-ingress-tx`, `internal-router`, `internal-router-tx`는
-  제거되었으며 snapshot에 포함되지 않는다.)
-- `zlink_spot_dispatch_event_handler()`는 SPOT routed receive와 Actor lifecycle readiness의 단일 진입점이다. 바인딩은 direct routed callback을 public API로 노출하지 않는다.
-- `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` 와
-  `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` 은 메시지 개수 알림이 아니라
-  readiness 알림이다. 바인딩은 edge-trigger one-shot 처럼 설명하거나 구현하면 안 된다.
-- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 과
-  `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` 도 같은 dispatch readiness
-  축에 속한다. Actor readable 이벤트는 어떤 Actor를 drain해야 하는지 알 수
-  있어야 하며, Actor join readable 이벤트는 `Spot`의 join 수신 표면으로
-  drain해야 한다.
-- SPOT dispatch consumer 는 `subscribe` / `recv_routed` 를 각 언어의
-  no-data 표현이 나올 때까지 drain 하는 규칙을 문서와 sample 에 같이 반영해야
-  한다. 예를 들어 C++은 `recv_result_t::no_data` 반환값을 사용하고,
-  Java/Node/Python은 caller-provided result storage를 채우는 API에서 `false`를
-  사용한다.
-- 첫 SPOT routed recv 는 hidden activation, hidden queue open, hidden target registration 을
-  수행하면 안 된다. 바인딩도 같은 전제를 두고 lazy bootstrap 로직을 올리지 않는다.
-- `zlink_send_ready_handler()` 와 poller `ZLINK_POLLOUT` 은 같은
-  send-recovery readiness 축을 가리킨다. 바인딩 문서도 같은 의미로 설명해야
-  한다. `ZLINK_POLLOUT` 은 "transport writable" 이 아니라
-  "send recovery readiness / backpressure recovery notification" 으로 설명한다.
-- 바인딩은 peer 가중치 surface 를 언어별 typed option/property 로 노출해야
-  한다. 설정 대상은 `ROUTER`, `DEALER`이며 값 범위는
-  `0..10000`, 기본값은 `100`이다. `0`은 새 outbound 선택에서 제외를 뜻한다.
-  대응하는 제출 실패 코드는 `ZLINK_SUBMIT_NOT_ADMITTED` (값 13) 이며,
-  모든 바인딩의 `SubmitError` 매핑에 포함되어야 한다.
-- core raw `STREAM` 은 다음 세 수신 모드 중 하나만 선택할 수 있다:
-  (a) `zlink_recv_part()` 기반 blocking/non-blocking recv, (b) `zlink_recv_handler()`
-  raw direct callback, (c) `zlink_stream_packet_handler()` 빅엔디언
-  `u16 header_size + u32 body_size + header + body` 프레이밍 packet callback.
-  두 번째 attach 시 `EBUSY` 가 반환된다. 고수준 바인딩은 public 으로
-  노출한 `STREAM` receive surface 들 사이에 같은 배타 규칙을 유지해야
-  한다. `detachStream`, `streamDetach`, callback detach 같은 별도 public
-  해제 API 는 core 공개 계약에 없으므로 canonical binding surface 에
-  추가하지 않는다. 수신 모드 해제와 callback 정리는 socket close 가 맡는다.
-- `zlink_recv_handler()` 는 raw `STREAM` 전용이다. `PAIR`/`DEALER`/`SUB`/
-  `XSUB`/`ROUTER` 에 attach 하면 `ZLINK_HANDLER_NOT_SUPPORTED` 로 실패한다.
-- socket 기본값: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
-  `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`,
+  `ZLINK_SPOT_NODE_OPT_PUBSUB_HWM`, and the two dispatch-worker options
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` and
+  `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX`.
+  The C API's shared `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` stays only as an
+  explicit override on a raw socket. A per-language high-level binding
+  does not expose this value on a socket/SpotNode/Spot public facade — it
+  exposes only the context option as the canonical API. A SPOT node or
+  SPOT handle cannot set the raw socket's shared option; calling it fails
+  with `EINVAL`. This value is not a message-size limit — it's the
+  planning unit used to turn an auto-HWM budget into a slot count.
+  A dispatch-worker option adjusts only the size of the callback worker
+  pool owned by `SpotNode`, and does not mean `ZLINK_IO_THREADS` or a
+  data-plane thread count. `min` must be at least 1, and `max` must be at
+  least `min`. Absent explicit configuration, it maps to `min=max=1` when
+  there is 1 CPU, and otherwise to `min=2`, `max=cpu_count`.
+#### SPOT Status And Snapshot Names
+
+- A SPOT binding status object must expose core's
+  `disconnected_sub_target_count` and `disconnected_routed_target_count`
+  under a name that fits language convention. Because core currently does
+  not disconnect a target from delivery-queue growth alone, both values
+  currently report `0`.
+- When a SPOT binding exposes or documents an internal socket snapshot
+  name, it uses the public snapshot name core returns as-is. The current
+  names are `mesh-pub`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub`,
+  `routed-router`, `local-pub`, and `internal_receiver`. `local-pub` is
+  the local fanout socket that sends to a subscriber inside the same
+  node. (`ingress-sub`, `pub-ingress-tx`, `internal-router`, and
+  `internal-router-tx` have been removed and are not part of the
+  snapshot.)
+#### Dispatch Readiness Meaning
+
+- `zlink_spot_dispatch_event_handler()` is the single entry point for
+  SPOT routed receive and Actor lifecycle readiness. A binding does not
+  expose a direct routed callback as public API.
+- `ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE` and
+  `ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE` are readiness
+  notifications, not message-count notifications. A binding must not
+  describe or implement them as edge-triggered one-shot events.
+- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` and
+  `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` belong to the same
+  dispatch-readiness axis. An Actor readable event must let the caller
+  know which Actor to drain, and an Actor join readable event must be
+  drained through `Spot`'s join receive surface.
+- A SPOT dispatch consumer must reflect, in its documentation and
+  samples, the rule of draining `subscribe`/`recv_routed` until each
+  language's no-data representation appears. For example, C++ uses the
+  `recv_result_t::no_data` return value, and Java/Node/Python use `false`
+  from the API that fills caller-provided result storage.
+- The first SPOT routed recv must not perform hidden activation, hidden
+  queue open, or hidden target registration. A binding assumes the same
+  premise and does not layer lazy bootstrap logic on top.
+#### Send-Ready, Peer Weight, And STREAM Receive Modes
+
+- `zlink_send_ready_handler()` and the poller's `ZLINK_POLLOUT` point to
+  the same send-recovery readiness axis. A binding's documentation must
+  describe them with the same meaning. `ZLINK_POLLOUT` is described as
+  "send recovery readiness / backpressure recovery notification," not as
+  "transport writable."
+- A binding must expose the peer-weight surface as a per-language typed
+  option/property. It applies to `ROUTER` and `DEALER`; the value range
+  is `0..10000`, and the default is `100`. `0` means exclusion from new
+  outbound selection. The matching submit failure code is
+  `ZLINK_SUBMIT_NOT_ADMITTED` (value 13), and it must be included in
+  every binding's `SubmitError` mapping.
+- Core's raw `STREAM` can select only one of three receive modes at a
+  time: (a) blocking/non-blocking recv based on `zlink_recv_part()`,
+  (b) the raw direct callback `zlink_recv_handler()`, or (c) the packet
+  callback `zlink_stream_packet_handler()`, which uses big-endian
+  `u16 header_size + u32 body_size + header + body` framing. A second
+  attach returns `EBUSY`. A high-level binding must keep the same
+  mutual-exclusion rule among the `STREAM` receive surfaces it exposes
+  publicly. A separate public release API such as `detachStream`,
+  `streamDetach`, or a callback detach is not in core's public contract,
+  so it is not added to the canonical binding surface. Releasing the
+  receive mode and cleaning up the callback is handled by socket close.
+- `zlink_recv_handler()` is exclusive to raw `STREAM`. Attaching it to
+  `PAIR`/`DEALER`/`SUB`/`XSUB`/`ROUTER` fails with
+  `ZLINK_HANDLER_NOT_SUPPORTED`.
+- Socket defaults: `ZLINK_ROUTER_OPT_MANDATORY` = `1`,
+  `ZLINK_OPT_RID_DUPLICATE_POLICY` = `ZLINK_RID_DUPLICATE_REJECT`, and
   `ZLINK_PUB_OPT_NODROP` = `0`.
-  바인딩 예제는 이 기본값을 기준으로 작성한다.
+  A binding's examples are written against these defaults.
 
 ## Actor Dispatch Binding Contract
 
-이 절은 모든 언어 바인딩에 공통으로 적용되는 Actor 공개 계약이다. 언어별 문서는
-아래 계약을 각 언어 관례에 맞는 이름과 타입으로 풀어서 적어야 한다.
+This section is the Actor public contract that applies to every language
+binding in common. A per-language document must spell out the contract
+below using names and types that fit its own language convention.
 
-Actor dispatch는 SPOT messaging의 부가 기능이 아니라 service layer의 독립 공개
-기능이다. lifecycle과 routing은 `SpotNode`, `Spot`, `StreamSocket`이 나누어
-소유하므로 각 공개 타입의 책임을 나누어 노출한다. 구체적인
-surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
+Actor dispatch is not an add-on to SPOT messaging — it's an independent
+public service-layer capability. Because `SpotNode`, `Spot`, and
+`StreamSocket` share ownership of lifecycle and routing, each public
+type exposes its own share of the responsibility. The exact surface
+placement follows the `Actor Dispatch Policy` section below.
 
-- Actor id는 비어 있지 않은 UTF-8 문자열이며 최대 255 bytes다. NUL 문자는
-  허용하지 않는다.
-- Actor ref는 `node_rid`, `actor_id`, `generation`을 가진다.
-  `generation == 0`은 unchecked remote ref이며 유효하지 않은 값으로 보지 않는다.
-- unchecked remote Actor ref 생성은 `SpotNode`가 소유한다. 언어 관례상 static
-  method 또는 factory function 으로 표현할 수 있지만, canonical 문서와 sample 은
-  `SpotNode` 소유 surface 를 기준으로 한다. `ActorRef` 자체에 별도 unchecked
-  factory 를 중복 public API 로 추가하지 않는다.
-- local Actor는 `SpotNode`가 만든다. 한 Actor는 동시에 하나의 Spot에만 join할
-  수 있고, leave는 unread 메시지를 비우지 않는다.
-- `Actor.close` 또는 동등한 lifecycle method 는 그 Actor handle 이 소유한 local
-  Actor 를 파괴한다. `SpotNode.destroyActor(actorRef)` 또는 동등한 method 는
-  Actor handle 없이 Actor ref 만 가진 caller 를 위한 ref 기반 파괴 surface 다.
-  둘은 같은 책임을 다른 이름으로 반복하는 API 가 아니라, owner 가 다른 두
-  진입점이므로 언어별 spec 은 이 차이를 문서화해야 한다.
-- `Actor.join` / `Actor.leave` 는 local Actor handle 을 가진 caller 를 위한
-  표면이다. `SpotNode.joinActor(actorRef, ...)` /
-  `SpotNode.leaveActor(actorRef, ...)` 는 Actor ref 만 가진 caller 를 위한
-  표면이다. 한쪽만 제공하면 ref-only 흐름 또는 owned-handle 흐름 중 하나가
-  불필요하게 복잡해진다.
-- 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session routing
-  id와 actor id 또는 Actor ref를 기준으로 한다.
-- STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
-  사용한다. 제거된 lookup/send helper 이름은 public API에 남기지 않는다.
-- `Actor.sendBoundSession` 과 `Actor.closeBoundSession` 은 session routing id 를
-  인자로 받지 않는다. Actor 가 현재 bound session 선택을 내부에서 숨긴다.
-  caller 가 session routing id 로 직접 선택해야 하는 경우에는
-  `StreamSocket.sendBoundActor(...)` 를 사용한다.
-- Actor recv info 의 `source_node_rid` 와 `source_session_rid` 는 core 구조체의
-  값 필드이므로 nullable / optional 로 문서화하지 않는다. no-data 는 recv 결과
-  자체의 `false`, no-data result, `Ok(false)` 같은 표현으로만 전달한다.
-- Actor readable dispatch event는 어떤 Actor를 drain해야 하는지 알 수 있어야
-  한다. callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에
-  Actor part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
-  반환하게 해야 한다.
-- Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
-  함께 message를 caller에게 돌려줘야 한다. join completion은 전용 `actor join`
-  result 타입으로 최종 Actor ref(remote join이면 target node의 ref)와 joined
-  Spot rid를 application에 전달해야 한다.
-- Request-reply surfaces expose only the payload parts supported by core reply
-  functions. Core reply functions do not accept send flags, so bindings must
-  not add a no-op flag-setting step to reply builders.
-- remote Actor 생성과 admission handler는 공개 표면에서 제거되었다. 원격 노드에서
-  시작해야 하는 Actor는 application이 해당 SpotNode에서 직접 `actor_new`로
-  생성한다. 원격 Actor의 checked ref가 필요하면 async `remote_actor_get_ref`
-  lookup을 사용한다.
-- Actor 위치는 Actor 생성, Spot join/leave, Actor destroy 흐름에서 갱신된다.
-  STREAM session bind/unbind는 Actor 위치를 만들거나 제거하지 않는다.
-- session attach와 Actor 위치 이동은 서로 다른 상태 전이다. user Spot으로 join
-  하는 데 bound STREAM session은 필요하지 않다. Actor 위치 이동은 session
-  mapping을 자동으로 바꾸지 않는다.
-- Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
-  안 된다.
-- 제거된 Actor ref 함수, stream actor lookup/send helper, session actor key
-  설계 이름은 public surface와 문서에 남기지 않는다.
+#### Actor Id, Ref, And Lifecycle Entry Points
+
+- An Actor id is a non-empty UTF-8 string up to 255 bytes. A NUL
+  character is not allowed.
+- An Actor ref carries `node_rid`, `actor_id`, and `generation`.
+  `generation == 0` is an unchecked remote ref, and is not treated as an
+  invalid value.
+- Creating an unchecked remote Actor ref is owned by `SpotNode`. It may
+  be expressed as a static method or a factory function per language
+  convention, but the canonical documentation and samples are based on
+  the `SpotNode`-owned surface. Do not add a separate duplicate unchecked
+  factory as public API directly on `ActorRef` itself.
+- A local Actor is created by `SpotNode`. An Actor can join only one Spot
+  at a time, and leaving does not drain unread messages.
+- `Actor.close`, or an equivalent lifecycle method, destroys the local
+  Actor owned by that Actor handle. `SpotNode.destroyActor(actorRef)`, or
+  an equivalent method, is a ref-based destroy surface for a caller that
+  holds only an Actor ref, without an Actor handle. These are not the
+  same responsibility repeated under two names — they are two entry
+  points with different owners, and a per-language spec must document
+  this difference.
+- `Actor.join` / `Actor.leave` are the surface for a caller holding a
+  local Actor handle. `SpotNode.joinActor(actorRef, ...)` /
+  `SpotNode.leaveActor(actorRef, ...)` are the surface for a caller
+  holding only an Actor ref. Providing only one of the two makes either
+  the ref-only flow or the owned-handle flow unnecessarily complicated.
+
+#### STREAM Session Binding
+
+- One STREAM session can bind multiple Actors. Bind/unbind is keyed on
+  the session routing id and either the actor id or the Actor ref.
+- A public API that sends from STREAM to an Actor uses the bound session
+  and actor id as its selector. A removed lookup/send helper name is not
+  kept in the public API.
+- `Actor.sendBoundSession` and `Actor.closeBoundSession` do not take a
+  session routing id as an argument. An Actor hides its current
+  bound-session selection internally. When a caller must select
+  explicitly by session routing id, it uses
+  `StreamSocket.sendBoundActor(...)` instead.
+- Actor recv info's `source_node_rid` and `source_session_rid` are value
+  fields of the core struct, so they are not documented as
+  nullable/optional. No-data is delivered only through the recv result's
+  own representation, such as `false`, a no-data result, or `Ok(false)`.
+
+#### Dispatch And Join Results
+
+- An Actor readable dispatch event must let the caller know which Actor
+  to drain. A language that hands the callback off to a different
+  execution context must non-blockingly pre-drain the Actor part at
+  callback-entry time, so the public dispatch info can return that part.
+- A Spot join request carries a message. A join reply must also return a
+  message to the caller together with the accept/reject result. Join
+  completion must deliver the final Actor ref (for a remote join, the
+  target node's ref) and the joined Spot rid to the application through
+  a dedicated `actor join` result type.
+- The request-reply surface exposes only the payload part the core reply
+  function supports. Because the core reply function has no send-flag
+  argument, a binding does not add a no-op flag-setting step to the reply
+  builder.
+
+#### Removed APIs
+
+- Remote Actor creation and the admission handler have been removed from
+  the public surface. An Actor that must start on a remote node is
+  created by the application directly on that SpotNode with `actor_new`.
+  When a checked ref for a remote Actor is needed, use the async
+  `remote_actor_get_ref` lookup.
+- Actor location is updated through the Actor creation, Spot join/leave,
+  and Actor destroy flows. STREAM session bind/unbind neither creates nor
+  removes an Actor location.
+- Session attach and Actor location movement are different state
+  transitions. Joining a user Spot does not require a bound STREAM
+  session. Moving an Actor's location does not automatically change the
+  session mapping.
+- There is no per-Actor queue-limit option. A binding must not make this
+  a public option.
+- A removed Actor ref function, a stream actor lookup/send helper, or a
+  session-actor-key design name is not kept in the public surface or
+  documentation.
+
 
 ## 문서 해석 규칙
 - 이 문서의 정책 본문은 기본적으로 규범 문서다.
@@ -1381,7 +1668,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 언어별 표면은 각 언어 관례에 맞게 달라질 수 있지만, 의미 계약은 같아야
   한다.
 
-## Monitor Ready Contract
+## Monitor Ready 계약
 - `*_READY_CHANGED` monitor event 의 `value` 는 aggregate ready count 계약이 아니다.
 - binding public API는 monitor snapshot 에 ready-count surface 가 있다고
   가정하면 안 된다.
@@ -1391,7 +1678,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - SPOT perf 는 explicit `READY/START` barrier protocol 을 사용한다.
 - delivery-ready/count 계열 monitor event 를 새 gate contract 로 만들면 안 된다.
 
-## POSD Structure Policy
+## POSD 구조 정책
 - 바인딩 설계는 John Ousterhout의 POSD 원칙을 따른다.
 - public API는 사용자가 알아야 할 개념 수를 줄여야 한다.
 - 내부 구현 복잡도는 facade, value object, domain object 뒤로 숨겨야 한다.
@@ -1403,7 +1690,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - 예: routing id 길이 제한
   - 예: send failure contract
   - 예: typed option ownership
-- 여러 언어가 공유하는 capability, owner, no-data, error, naming 규칙은 이
+- 여러 언어가 공유하는 역할, owner, no-data, error, naming 규칙은 이
   정책 문서가 한 번만 소유한다. 언어별 spec 은 같은 규칙을 다시 설계하지
   않고, 이 문서의 계약을 언어 관례에 맞게 표현한다.
 - 언어별 spec 이 이 문서와 다른 규칙을 필요로 하면, 개별 문서부터 바꾸지
@@ -1411,15 +1698,15 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   언어 문서를 갱신한다. 그래야 같은 설계 결정이 여러 문서에 흩어지지 않는다.
 - 시간 순서에 의존하는 분해(temporal decomposition)를 줄인다.
   - 예: 사용자가 `setOption` 조합 순서를 기억해야 하는 API 금지
-- public API는 “무엇을 할 수 있는지”를 드러내고, “내부에서 어떻게 배선되는지”를
+- public API는 "무엇을 할 수 있는지"를 드러내고, "내부에서 어떻게 배선되는지"를
   드러내지 않아야 한다.
 - 값 객체와 결과 객체는 깊은 모듈로 취급한다.
   - 호출자에게는 작은 인터페이스를 주고, 내부에서는 검증, ownership, shape
     규칙을 함께 캡슐화해야 한다
 
-## Public Surface Rules
+## 공개 표면 규칙
 
-### Base Type Exposure
+### 기반 타입 노출
 - 가능하면 컴파일 단계에서 사용자가 concrete socket type만 직접 쓰게 해야 한다.
 - 사용자가 generic root base, raw compat base, shared base를 concrete socket
   type 대신 직접 쓰는 구조는 피한다.
@@ -1428,9 +1715,9 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - dynamic binding은 export 제한과 surface test로 같은 규칙을 강제해야 한다.
 - generic root base 또는 raw compat base는 공통 lifecycle과 공통 관리 기능만
   외부에 노출한다.
-- capability-specific shared base는 모든 descendant가 공통으로 가지는 능력만
+- 역할-specific shared base는 모든 descendant가 공통으로 가지는 능력만
   외부에 노출할 수 있다.
-- socket-type-specific capability를 generic root base나 raw compat base로
+- socket-type-specific 역할을 generic root base나 raw compat base로
   올리면 안 된다.
 - public base에서 외부 접근을 허용해도 되는 공통 기능 예:
   - `bind`, `unbind`
@@ -1465,14 +1752,14 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
   - topic/socket-type-specific option facade
   - canonical 이름을 우회하는 legacy alias
     - 예: `recvHandler(...)`, `subscribeHandler(...)`
-- capability-specific shared base는 descendant 전부에 공통인 capability에 한해
+- 역할-specific shared base는 descendant 전부에 공통인 역할에 한해
   허용할 수 있다.
   - 예: subscriber-only base의 `setSubscription`, `unsetSubscription`,
     `subscribe`
   - 예: publisher-only base의 `publish`, `setSendReadyHandler`
-- 위 capability는 capability matrix에서 `Y`인 concrete socket type에만
+- 위 역할은 역할 matrix에서 `Y`인 concrete socket type에만
   public으로 존재해야 한다.
-- capability matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
+- 역할 matrix에서 `—`인 socket type에 대해 base 경유 우회 호출이 가능하면
   안 된다.
 - perf, sample, helper, compat layer도 canonical public surface 규칙을
   우회하는 base entry를 새 기준처럼 사용하면 안 된다.
@@ -1481,7 +1768,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 사용자가 `SocketType`과 raw flag 조합을 기억해서 올바른 send/recv 계열을
   선택해야 하는 구조는 POSD 위반으로 본다.
 
-### Multipart Only
+### Multipart 전용
 - send/receive public surface는 multipart 기준으로 통일한다.
 - 단일 메시지 수신 편의 오버로드는 public에 두지 않는다.
 - 단일 part 전송 편의 메서드는 허용할 수 있다.
@@ -1489,7 +1776,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 수신 결과는 언어에 맞는 도메인 객체 또는 동등한 multipart 표현으로
   반환한다.
 
-### Error Handling Policy
+### 오류 처리 정책
 
 모든 데이터 경로 함수 (`send`, `recv`, `request`, `reply`, `subscribe`,
 `publish`) 는 동일한 에러 처리 원칙을 따른다.
@@ -1572,7 +1859,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 전체 enum 정의는
   [errno-map.md](https://kairos-code-dev.github.io/zlink/en/spec/core/04-errno-map/) 를 참조한다.
 
-#### Per-Function Error Type Hierarchy
+#### 함수별 에러 타입 계층
 
 C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 계승**한다.
 단일 `ZlinkException` / `ZlinkError` 만 두면 시그니처만으로 발생 가능한 에러
@@ -1637,7 +1924,7 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
 - validation 예외 (language-native `IllegalArgumentException` 등) 는 위 체계
   와 별도이며, `ZlinkException` / `ZlinkError` 계층에 들어가지 않는다.
 
-### Flags Policy
+### Flags 정책
 
 모든 데이터 경로 함수는 `flags` 선택 항목을 갖는다. 일반 socket 함수는
 언어별 시그니처의 `flags` 파라미터로 표현하고, SPOT operation builder 대상
@@ -1675,29 +1962,30 @@ C API 의 **함수별 typed result enum 구조를 모든 바인딩이 그대로 
   - C++ / Java / .NET / Node / Python / Go / Rust data-plane recv/subscribe 표면:
     caller-provided output storage와 함께 `flags` 인자를 받는다.
 
-### Naming Policy
+### 네이밍 정책
 
-#### Creation Function Naming
+#### 생성 함수 네이밍
 
-Public functions that create `Message` and `RoutingId` values from an input
-source follow the `.NET` binding's `From(...)` meaning. Do not put the input
-type into the function name when one source-conversion entrypoint can carry the
-same meaning.
+`Message`와 `RoutingId`처럼 입력 값에서 새 객체를 만드는 공개 함수는 `.NET`
+바인딩의 `From(...)` 의미를 기준으로 맞춘다. 입력 타입이 함수 이름에 들어가면
+같은 개념이 언어마다 여러 이름으로 갈라지므로 피한다.
 
-- General creation uses `from(...)` or the language's equivalent single
-  constructor name. `from_bytes`, `from_string`, `from_u32`, and `from_uuid`
-  are not canonical public API names.
-- Hex decoding is the only source suffix exception because it decodes a
-  human-readable representation. Use the language form: `FromHex`, `fromHex`,
-  `from_hex`, or `NewRoutingIDFromHex`.
-- Python uses `from_(...)` because `from` is a reserved word.
-- Rust uses standard `From` implementations for routing ids and `try_from` for fallible message creation. Public helpers named `from_bytes` or `from_string` are not part of the canonical surface.
-- Go does not have overloads. It may keep typed constructors such as
-  `NewRoutingID(...)`, `NewRoutingIDString(...)`, `NewRoutingIDUint32(...)`,
-  and `NewRoutingIDUUIDBytes(...)` to preserve Go style, but it must not repeat
-  both `From` and the input type as in `NewRoutingIDFromString`.
-- Allocation is not source conversion. Use `allocate(...)` or the language's
-  constructor style such as `NewMessageWithSize(...)`.
+- 일반 생성은 `from(...)` 또는 언어별 동등 이름 하나로 모은다.
+  `from_bytes`, `from_string`, `from_u32`, `from_uuid` 같은 타입 suffix 이름은
+  canonical public API 로 쓰지 않는다.
+- hex 디코딩은 사람이 읽는 문자열 디코딩이라는 의미가 다르므로
+  `from_hex` 계열을 예외로 허용한다. 언어별 표기는 `FromHex`, `fromHex`,
+  `from_hex`, `NewRoutingIDFromHex`처럼 관용구를 따른다.
+- Python은 `from`이 예약어이므로 `from_(...)`를 사용한다.
+- Rust는 routing id에 표준 `From` 구현을 사용하고, 실패 가능한 message
+  생성에는 `try_from` 관용구를 사용할 수 있다. 입력 타입 이름을 붙인
+  `from_bytes` / `from_string` 계열 public helper는 두지 않는다.
+- Go는 오버로드가 없으므로 `NewRoutingID(...)`, `NewRoutingIDString(...)`,
+  `NewRoutingIDUint32(...)`, `NewRoutingIDUUIDBytes(...)`처럼 typed constructor를
+  허용한다. 이 예외는 Go의 정적 타입 스타일을 유지하기 위한 것이며,
+  `NewRoutingIDFromString`처럼 `From`과 타입 이름을 함께 반복하지 않는다.
+- allocation은 source 변환이 아니므로 `allocate(...)` 또는 언어별 생성자
+  관용구(`NewMessageWithSize(...)` 등)를 사용한다.
 
 #### 한 entrypoint, 빌더 단계로 변형 표현
 
@@ -1766,7 +2054,7 @@ surface에서는 같은 시작점에 `Message` / `List<Message>` / `flags` / `ti
 
 언어별 관례에 따라 camelCase / PascalCase / snake_case 로 변환한다.
 
-### Request Policy
+### Request 정책
 
 request 는 언어별 async 완료와 callback 완료 방식을 제공할 수 있으며, 두 방식
 모두 동일한 `request` entrypoint 가 반환하는 `RequestOp` operation builder
@@ -1819,7 +2107,7 @@ builder의 callback submit 메서드 (`submit(callback)`).
   return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
   `Result<_, SubmitError>` 반환).
 
-## Domain Object Policy
+## 도메인 객체 정책
 - Java, C#, Go, Rust, Node, Python은 가능하면 `out` 파라미터나 raw tuple보다
   도메인 객체를 우선한다.
 - 최소 핵심 도메인 모델:
@@ -2115,12 +2403,12 @@ raw `zlink_*_t` 구조체를 바인딩 API 표면으로 노출하지 않고 `cla
 위 canonical 을 벗어난 추가 메서드/필드는 정책 위반이다. 언어별 spec 에서
 누락이 발견되면 canonical 기준으로 채워 넣고, 추가된 비표준 메서드는 삭제한다.
 
-## Socket Type Capability Policy
+## 소켓 타입 능력 정책
 - 소켓 타입별 능력은 타입 자체에만 노출한다.
 - 관련 없는 소켓은 관련 없는 함수에 접근할 수 없어야 한다.
   - 예: `PairSocket`에 publish/subscribe/xpub control surface 금지
   - 예: `StreamSocket`에 일반 connect surface 금지
-- 소켓 타입별 option도 타입별 capability facade로만 노출한다.
+- 소켓 타입별 option도 타입별 역할 facade로만 노출한다.
 
 ### 소켓 클래스 네이밍/구조 규칙 (중요)
 - **소켓 클래스 이름은 core C API 의 socket 타입 이름을 그대로 따른다**:
@@ -2228,7 +2516,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 
   `disconnectRid`, `unbind`, `close`는 차단된다.
 
-## Language Spec File Compliance Rules
+## 언어별 스펙 파일 준수 규칙
 
 각 언어별 스펙 파일(`doc/spec/bindings/{lang}/README.md`)은 아래 규칙을
 반드시 준수해야 한다. 스펙 파일 작성이나 리뷰 시 이 체크리스트를 적용한다.
@@ -2241,7 +2529,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 - `—`인 능력은 어떤 언어 바인딩에서도 해당 소켓 타입 클래스에 존재하면
   안 된다.
 - Socket Capability Matrix가 다루지 않는 service layer 기능은 별도
-  capability matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
+  역할 matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
   수 있다.
 - 특히 다음 위반이 자주 발생하므로 주의한다:
   - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
@@ -2291,8 +2579,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 - 대응은 1:1이 아닐 수 있다 (옵션 함수 그룹이 하나의 typed facade로 통합되는 등).
 - 그러나 C API의 어떤 기능도 바인딩 스펙에서 누락되면 안 된다.
 - 새로운 C API가 public header에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
-
-## Service Layer Policy
+## 서비스 계층 정책
 - 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor)의 public API
   정책을 정의한다.
 - 서비스 계층도 소켓 계층과 동일한 POSD 원칙, naming policy, error policy,
@@ -2321,7 +2608,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
   바인딩 public 생성자로 그대로 노출하지 않는다. 반드시 `SpotNode` 중심의
   factory 패턴으로 싼다.
 
-### Service Layer Introspection Surface Tiers
+### 서비스 계층 인트로스펙션 표면 계층
 
 서비스 계층의 introspection / snapshot / entry 타입은 **사용 빈도에 따라
 두 계층으로 구분**한다. 바인딩 spec 은 이 구분을 반영한다.
@@ -2341,7 +2628,7 @@ raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
 Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advanced 타입을
 배우지 않고도 "서비스 등록 / 검색 / 연결" 흐름이 완결돼야 한다.
 
-### `zlink_errno()` Public Exposure
+### `zlink_errno()` 공개 노출
 
 - 바인딩은 **raw `zlink_errno()` / `zlinkErrno()` 함수를 public 으로 노출하지
   않는다**. 에러 상세는 **언제나 에러 타입의 `internalErrno` /
@@ -2353,7 +2640,7 @@ Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advan
 - `Zlink.strerror(errno)` 같은 message lookup 유틸은 convenience 로 남겨두되,
   raw `errno()` accessor 는 private 또는 삭제.
 
-### Service Layer Architecture
+### 서비스 계층 아키텍처
 - 서비스 계층의 현재 공개 축은 `SpotNode`, `Spot`, `Actor`,
   `StreamSocket`의 Actor binding 표면, 그리고 SPOT route bridge/publisher
   표면이다. Public Discovery/Registry handle은 core 8.4.3에서 제거되었으므로
@@ -2395,7 +2682,7 @@ StreamSocket
   `-- close
 ```
 
-### Actor Dispatch Policy
+### Actor Dispatch 정책
 
 Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer 계약이다.
 바인딩은 Actor를 SPOT 내부 세부사항으로 숨기지 않고, `SpotNode`, `Spot`,
@@ -2440,7 +2727,7 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 
 바인딩 surface는 아래 책임 분리를 따른다.
 
-| Public owner | Actor capability |
+| Public owner | Actor 역할 |
 |---|---|
 | `SpotNode` | local Actor 생성/조회, async remote Actor lookup, async destroy, async join/leave, node-level Actor snapshot |
 | `Actor` | Actor ref 보유, Actor recv, bound STREAM session message send, bound session close |
@@ -2488,9 +2775,9 @@ handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
 - Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
   함께 message를 caller에게 돌려줘야 한다. join completion은 `ActorJoinResult`
   값으로 caller에게 최종 Actor ref와 joined Spot rid를 전달한다.
-- Request-reply surfaces expose only the payload parts supported by core reply
-  functions. Core reply functions do not accept send flags, so bindings must
-  not add a no-op flag-setting step to reply builders.
+- request reply 표면은 core reply 함수가 지원하는 payload part만 노출한다.
+  core reply 함수에는 send flag 인자가 없으므로, 바인딩은 reply builder에
+  no-op flag 설정 단계를 추가하지 않는다.
 - `ActorJoinInfo`가 native `zlink_actor_join_info_t`의 모든 필드를 public
   field로 노출해야 한다는 뜻은 아니다. 언어별 binding은 reply에 필요한 native
   request context를 opaque 내부 상태로 보관한다. public 값 객체에는 사용자가
@@ -2560,8 +2847,8 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 ### Actor Capability Matrix
 
 Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`에 걸친 독립
-service layer 기능이다. 각 바인딩은 아래 capability를 언어별 관례에 맞는
-public surface로 노출해야 한다.
+service layer 기능이다. 각 바인딩은 아래 역할을 언어별 관례에 맞는 public
+surface로 노출해야 한다.
 
 | Capability | Public owner | Core substrate |
 |---|---|---|
@@ -2616,14 +2903,13 @@ public surface로 노출해야 한다.
 - Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
 - Spot `close`는 facade만 해제하고 SpotNode는 살아 있다.
 
-### Removed Discovery / Registry Capability
+### 제거된 Discovery / Registry capability
 
-Public Discovery and Registry C APIs were removed from the core contract in
-core 8.4.3. Bindings must not expose Discovery/Registry factories, resolver
-methods, sync options, registry query clients, or compatibility aliases as
-current APIs.
+공개 Discovery와 Registry C API는 core 8.4.3에서 core 계약에서 제거되었다.
+바인딩은 Discovery/Registry factory, resolver method, sync option, registry
+query client, compatibility alias를 현재 API로 노출하면 안 된다.
 
-### Service Observability Policy
+### 서비스 관찰성 정책
 - 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
 - SPOT(SpotNode, Spot) 관찰은 `status`, `peers`,
   `peers(filter)`, `subjects`, `spots`, `actors` API를
@@ -2633,7 +2919,7 @@ current APIs.
 - SocketMonitor callback 해제 정책은 기존과 같다.
   - callback 등록 API가 있는 경우 `close()`로만 해제한다
 
-### Service Layer Domain Objects
+### 서비스 계층 도메인 객체
 - 서비스 계층도 domain object를 사용해야 한다.
 - 최소 핵심 domain object:
   - `MonitorStatus`: monitor 상태 스냅샷
@@ -2641,9 +2927,9 @@ current APIs.
 - Advanced / Diagnostic domain object:
   - `SpotNodePeerEntry`: peer 정보
   - `SpotNodeSubjectEntry`: subject 정보
-  - `SpotNodeSocketEntry`: internal socket diagnostic information. Socket
-    kind uses the shared `SocketType` enum; bindings must not add a separate
-    SpotNode-only socket type enum with the same values.
+  - `SpotNodeSocketEntry`: 내부 socket 진단 정보. socket 종류는 공통
+    `SocketType` enum을 사용하며, 같은 값을 반복하는 별도 SpotNode 전용
+    socket type enum을 만들지 않는다.
   - `SpotNodeSpotEntry`: node 소유 Spot 정보
   - `SpotNodeActorEntry`: node 소유 Actor route 정보
 - 필터 객체:
@@ -2651,8 +2937,8 @@ current APIs.
   - `SpotNodeSubjectFilter`: subject 조회 필터
   - `SpotNodeSocketFilter`: 내부 socket 진단 필터
 - enum/value object:
-  - `SocketType`: socket kind shared by ordinary sockets and SpotNode internal
-    socket diagnostics
+  - `SocketType`: 일반 socket과 SpotNode 내부 socket 진단에서 함께 쓰는
+    socket 종류
   - `SpotRole`: `PUB`, `SUB`
   - `SubjectKind`: `NONE`, `TOPIC`, `PATTERN`
   - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
@@ -2663,22 +2949,22 @@ current APIs.
   monitor source에서만 ready 의미를 해석한다. `SPOT_PUB`, `SPOT_SUB`
   source에서는 ready bit를 SPOT readiness로 확장 해석하면 안 된다.
 
-### Service Layer Naming Policy
+### 서비스 계층 네이밍 정책
 - 서비스 계층도 Naming Policy를 따른다.
 - 허용되는 변형은 Naming Policy의 세 가지 변형과 같다. 즉 케이싱 변형,
   overload 불가 언어의 최소 접미사, 언어별 property/getter 관례만 허용한다.
 - 단어 교체, 생략, 대체는 금지한다.
 - 규칙 상세는 Naming Policy 본문과 동일하다.
 
-#### Service Layer Canonical Name Table
+#### 서비스 계층 Canonical Name 표
 
 | Component | Canonical Name | 설명 |
 |---|---|---|
 | SpotNode | `bind` | endpoint 바인드 |
 | SpotNode | `connectPeer` | raw peer 연결 |
 | SpotNode | `disconnectPeer` | raw peer 연결 해제 |
-| SpotNode | `createRouteBridge` | create a SPOT route bridge for caller/channel-runtime owned sockets |
-| SpotNode | `createPublisher` | create a publisher handle for the SpotNode topic ingress |
+| SpotNode | `createRouteBridge` | caller/channel runtime 소유 socket을 SPOT route bridge에 등록 |
+| SpotNode | `createPublisher` | SpotNode의 topic publish ingress에 쓰는 publisher handle 생성 |
 | SpotNode | `setTlsServer` | TLS 서버 설정 |
 | SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
 | SpotNode | `status` | 노드 상태 스냅샷 |
@@ -2699,61 +2985,61 @@ current APIs.
 | Spot | `recvActorLifecycle` | Actor join/leave lifecycle event 수신 |
 | Spot | `close` | facade 종료 |
 
-### Service Layer Testing Policy
+### 서비스 계층 테스트 정책
 - 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함하므로
   FFI 매핑, lifecycle, 타입 변환이 올바른지 테스트해야 한다.
 - 서비스 계층도 Test Matrix와 동일한 카테고리로 테스트한다.
 
-#### Service Layer Surface Tests
-- SpotNode capability matrix 정렬 확인
-- Spot capability matrix 정렬 확인
+#### 서비스 계층 Surface 테스트
+- SpotNode 역할 matrix 정렬 확인
+- Spot 역할 matrix 정렬 확인
 - service TLS helper 존재 확인
 - typed domain object 존재 확인 (SpotNodeStatus, SpotNodePeerEntry,
   SpotNodeSocketEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
 - typed enum 존재 확인 (SpotRole, SubjectKind, SpotNodeState 등)
 
-#### Service Layer Contract Tests
+#### 서비스 계층 Contract 테스트
 - SpotNode: create/bind/close lifecycle 누수 없음
 - Spot: create/close lifecycle (SpotNode는 살아 있어야 함)
 - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
-#### Service Layer Behavior Tests
+#### 서비스 계층 Behavior 테스트
 - SpotNode bind → Spot publish → Spot subscribe 경로 성공
 - Spot subscribe → 데이터 없음 시 empty 반환 (non-blocking)
 - Spot publish 실패 시 예외 확인
 - Spot dispatch event callback 호출 확인
 - Spot setSendReadyHandler callback 호출 확인
 - Spot receiveSubscriptionEvent 경로 확인
-- SpotRouteBridge attach/send/request/handleReceived path 확인
-- SpotNode publisher handle publish path 확인
+- SpotRouteBridge attach/send/request/handleReceived 경로 동작 확인
+- SpotNode publisher handle publish 경로 동작 확인
 
-#### Service Layer Introspection Tests
+#### 서비스 계층 Introspection 테스트
 - SpotNode status → SpotNodeStatus 필드 검증
   (state, peerCount, subjectCount 등)
 - SpotNode peers → SpotNodePeerEntry 목록 검증
 - SpotNode peers(filter) → 필터 적용 결과 검증
 - SpotNode subjects → SpotNodeSubjectEntry 목록 검증
 
-#### Service Layer Scope for Tests
+#### 서비스 계층 테스트 범위
 
 | Test Category | SpotNode+Spot | Actor | Stream Actor Binding |
 |---|---|---|---|
 | Surface | Required | Required | Required |
 | Contract | Required | Required | Required |
-| Behavior | Required | Required | 구현 시 Required | 구현 시 Required |
-| Introspection | Required | Required | 구현 시 Required | 구현 시 Required |
+| Behavior | Required | Required | Required |
+| Introspection | Required | Required | Required |
 
 - service/spot 계열이 없는 바인딩은 이 테스트를 제외할 수 있다.
 - 여기서 monitor 설명은 socket monitor 기준이다.
 
-### Service Layer Sample Policy
+### 서비스 계층 샘플 정책
 - Canonical Sample Set에 정의된 서비스 계열 샘플:
   - `spot_recv_sample`: Spot channel-aware subscribe / routed recv
   - `spot_callback_sample`: Spot dispatch event callback
   - `monitor_recv_sample`: monitor event 수신 (socket monitor 포함)
 - service/spot 계열이 없는 바인딩은 `spot_*` 샘플을 제외할 수 있다.
 
-### Service Layer Scope per Binding
+### 바인딩별 서비스 계층 범위
 - 모든 바인딩이 서비스 계층 전체를 구현해야 하는 것은 아니다.
 - 최소 요구 사항:
 
@@ -2761,8 +3047,8 @@ current APIs.
 |---|---|
 | SpotNode + Spot | 해당 바인딩에 spot 지원이 있으면 Required |
 
-### Callback API Policy
-- callback 등록 API는 각 소켓 타입의 capability에 따라 노출한다.
+### Callback API 정책
+- callback 등록 API는 각 소켓 타입의 역할에 따라 노출한다.
 - 위 Callback Capabilities 표가 기준이다.
 - canonical handler 등록 이름:
   - `setDispatchHandler`: SPOT unified readable notification callback 등록
@@ -2775,12 +3061,12 @@ current APIs.
 - callback을 `null`/`None`으로 설정하여 해제하는 것은 허용하지 않는다.
   callback 해제는 socket close로만 이루어진다.
 
-## Core API Additions
+## 코어 API 추가 사항
 
 이 섹션은 `core/include/zlink.h`에 추가된 core API를 정리한다.
 각 바인딩은 이 API를 언어별 typed surface로 노출해야 한다.
 
-### Request-Reply Policy
+### Request-Reply 정책
 
 > 언어별 인터페이스 시그니처와 사용 예는
 > `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
@@ -2797,9 +3083,9 @@ current APIs.
   맡는다.
 - `request()` 는 thread blocking API 가 아니다.
 - request-reply 는 Router/Dealer 소켓과 SPOT 의 기능 확장이다.
-  별도 추상 레이어가 아니라 기존 표면에 capability 를 얹는다.
+  별도 추상 레이어가 아니라 기존 표면에 역할을 얹는다.
 
-#### Public surface 에 두지 않는 API
+#### 공개 표면에 두지 않는 API
 
 message-level request-reply marker API 와 per-message metadata API 는
 public surface 의 일부가 아니다. 바인딩은 다음 함수나 상수를 public 으로
@@ -3003,7 +3289,7 @@ high-level request 완료는 첫 reply 1건으로 끝난다.
   - Rust: `FnOnce(Result<Vec<Message>, RequestError>)` (Rust 관용구;
     `RequestError::code` 가 `RequestResult` 에 대응)
 
-### SPOT Messaging Policy
+### SPOT Messaging 정책
 
 > 언어별 SPOT 인터페이스는 `cpp/`, `java/`, `dotnet/`, `node/`, `python/`, `go/`, `rust/` 를 참조한다.
 
@@ -3182,23 +3468,24 @@ typed option/property로 이 두 값을 노출하고, raw option bag을 canonica
 바인딩 규칙:
 - `SpotNode` 와 `Spot` 은 별도 typed handle 로 노출한다.
 - `Spot` 은 `SpotNode` 위에 올라가는 facade 다. `SpotNode` 해제 시 `Spot` 도 무효가 된다.
-- Cross-channel SPOT send/request and SPOT relay ingress use `SpotRouteBridge`.
-  A `ROUTER` socket registered with the bridge remains owned by the caller or
-  channel runtime.
-- Raw Core sockets have no API for logical channel metadata. The channel name
-  is a logical routing value supplied to typed `SpotRouteBridge` operations.
-- The channel runtime calls `handle_router_received()` from its receive loop.
-  When `handled == true`, the bridge has taken ownership of the payload and the
-  caller must not process the same received object again.
-- `SpotNodePublisher` lets external code publish into the SpotNode topic ingress
-  without attaching a raw `PUB` socket to `SpotNode`.
+- Spot에서 다른 channel로 보내거나 `ROUTER` channel에서 Spot relay packet을 받을 때는
+  `SpotRouteBridge`를 사용한다. bridge에 등록되는 `ROUTER` socket은 caller 또는
+  channel runtime이 계속 소유한다.
+- raw Core socket에는 logical channel metadata를 설정하거나 조회하는 API가
+  없다. channel name은 `SpotRouteBridge`의 typed operation이 받는 논리적
+  routing 값으로만 사용한다.
+- bridge의 `handle_router_received()`는 channel runtime의 receive loop에서 호출한다.
+  `handled == true`이면 payload 소유권은 bridge가 가져가며, caller는 같은 received
+  object를 다시 처리하지 않는다.
+- `SpotNodePublisher`는 외부 코드가 raw `PUB` socket을 `SpotNode`에 attach하지 않고
+  SpotNode의 topic publish ingress로 publish하기 위한 handle이다.
 - `Spot.publish(topic).message(...).submit()`은 `SpotNode` 자신의 topic publish
-  ingress queue로 들어가는 channel-aware topic plane이다. Cross-channel calls are
-  described through `SpotRouteBridge` and channel-runtime owned sockets.
+  ingress queue로 들어가는 channel-aware topic plane이다. 외부 channel 호출은
+  `SpotRouteBridge`와 channel runtime 소유 socket 경로로 설명한다.
 - `connect_peer` / `disconnect_peer` 는 raw peer topology 전용 control
   path 다. channel-aware public surface 의 중심 API 로 설명하면 안 된다.
 
-### SPOT Event Dispatcher Policy
+### SPOT Event Dispatcher 정책
 
 core 는 callback 기반 event dispatcher 모델을 제공한다.
 하나의 I/O thread context 안에서 여러 이벤트 소스
@@ -3297,8 +3584,7 @@ zlink_handler_result_t zlink_spot_dispatch_event_handler(void *spot,
 - `CHANNEL_REPLY_READABLE` 은 readiness 신호일 뿐이며 별도 public drain API 는
   없다. reply 는 `zlink_spot_request_channel_part()` 호출 시 등록한
   `zlink_reply_handler_fn` 을 통해 core 가 자동으로 전달한다. `info->subject`
-  dealer handle is diagnostic information that only applies to the deprecated
-  dealer attach path.
+  dealer handle 은 deprecated dealer attach 경로에서만 의미가 있는 진단 정보다.
 - `ACTOR_READABLE` 이면 `info->subject` 로 전달된 Actor subject를 기준으로
   `zlink_spot_node_actor_recv_part()` 를 drain 한다. public API는 raw subject
   pointer나 part loop를 노출하지 않고 `ActorReceived` 또는 동등한 aggregate
@@ -3455,17 +3741,17 @@ zlink_config_result_t zlink_spot_actors(void *spot,
 - filter query 는 typed filter builder 또는 struct 로 노출한다.
 - 반환된 배열의 메모리는 바인딩이 적절히 해제해야 한다.
 
-### SpotNode Node-Level Options
+### SpotNode Node-Level 옵션
 
 SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬다.
 
-## Option Policy
+## 옵션 정책
 
-### Public Option Surface
+### 공개 옵션 표면
 - **public raw `setOption(key, value)` / `getOption(key)` bag 은 금지.**
 - **public raw `setsockopt/getsockopt` bag 도 금지.**
 - 공용 옵션은 언어에 맞는 typed surface (facade) 로만 노출한다.
-- 특화 옵션도 언어에 맞는 capability surface (facade) 로만 노출한다.
+- 특화 옵션도 언어에 맞는 역할 surface (facade) 로만 노출한다.
 - raw enum key + 범용 setter/getter 를 돌리는 public 경로가 spec 에
   남아 있으면 정책 위반. (`set_option(ZLINK_OPT_*, value)` 같은 C 계약이
   바인딩 public API 로 올라오면 안 됨. 바인딩 내부에서 native 호출 경로는
@@ -3474,11 +3760,11 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
   두 방식 중 고를 필요 없게 한다.
 - 예:
   - Java/.NET: `CommonSocketOptions`, `RouterSocketOptions`
-  - Go: typed method set, capability interface
+  - Go: typed method set, 역할 interface
   - Rust: typed builder, method set, newtype
-  - Python/Node: property, namespace object, capability object, typed method set
+  - Python/Node: property, namespace object, 역할 object, typed method set
 
-#### Option Facade Canonical Type Names
+#### Option Facade Canonical 타입 이름
 - 각 바인딩은 아래 canonical facade 타입을 제공해야 한다.
 - 타입 이름은 언어 케이싱 관례만 변형한다.
 
@@ -3499,7 +3785,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
   raw socket option 기본값을 바꾸지 않는다. `DONTWAIT` 호출, backpressure, admission
   거절, request submit 성공 뒤의 reply timeout은 submit retry 대상이 아니다.
 
-### Option Value Types
+### 옵션 값 타입
 - option 값은 가능한 한 의미 기반 타입으로 노출한다.
 - 정책:
   - `0/1` 옵션: `boolean`
@@ -3510,7 +3796,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
   - 문자열/바이트: `String`/`byte[]`
 - option 이름만 enum이고 값은 raw `int`인 형태는 충분하지 않다.
 
-## Performance Policy
+## 성능 정책
 - 성능은 별도 최적화 항목이 아니라 public API 설계의 일부다.
 - canonical hot path는 숨은 비용이 가장 적은 경로여야 한다.
 - hot path에서는 다음을 기본적으로 금지한다.
@@ -3528,7 +3814,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
 - 다만 모든 바인딩은 hot path에서 불필요한 복사, 할당, 변환을 줄이는 방향을
   기본 정책으로 삼아야 한다.
 
-### High-Performance Buffer Ecosystem Policy (Recommended)
+### 고성능 버퍼 생태계 정책 (Recommended)
 - canonical public contract 는 계속 `Message` / `List<Message>` / `Received` /
   `TopicMessage` 를 기준으로 유지한다.
 - 다만 send / publish / request / reply 입력 경로에서는, **해당 언어에서 사실상
@@ -3578,7 +3864,7 @@ SpotNode의 node-level 옵션은 `zlink_set_spot_node_option()` 계열로 다룬
   - "지원 가능" 과 "zero-copy 보장" 을 혼동하지 않는다. zero-copy 보장이
     불가능하면 문서에 copy 가능성을 명시한다.
 
-### Codec / Serializer Extension Module Policy
+### Codec / Serializer Extension 모듈 정책
 - `Message` 와 multipart transport 자체는 계속 canonical binding core contract 다.
 - protobuf / json / messagepack codec-aware domain conversion 은
   **binding core 위에 올라가는 정식 별도 extension contract** 로 취급한다.
@@ -3653,27 +3939,26 @@ MessagePack codec baseline by language:
 | Go | `vmihailenco/msgpack/v5` |
 | Rust | `rmp-serde` |
 
-Bindings no longer define codec extension distribution units:
+Bindings는 더 이상 codec extension 배포 단위를 정의하지 않는다.
 
-| Language | Core binding root | Binding-owned codec package policy |
+| Language | Core binding root | Binding-owned codec package 정책 |
 |---|---|---|
-| C | `bindings/c/include/zlink/`, `bindings/c/src/` | none |
-| C++ | `bindings/cpp/include/zlink/` | none; framework serialization belongs under `framework/languages/cpp/extensions/` |
-| .NET | `bindings/dotnet/src/Zlink/` | none; framework serialization belongs under `framework/languages/dotnet/src/` |
-| Java | `bindings/java/src/main/java/systems/zlink/` | none; framework serialization belongs under `framework/languages/java/` |
-| Node | `bindings/node/src/` | none; framework serialization belongs under `framework/languages/node/packages/` |
-| Python | `bindings/python/src/zlink/` | none; raw `Message`/bytes only |
-| Go | `bindings/go/` | none; raw `Message`/bytes only |
-| Rust | `bindings/rust/src/` | none; raw `Message`/bytes only |
+| C | `bindings/c/include/zlink/`, `bindings/c/src/` | 없음 |
+| C++ | `bindings/cpp/include/zlink/` | 없음. framework 직렬화는 `framework/languages/cpp/extensions/`에서 다룬다 |
+| .NET | `bindings/dotnet/src/Zlink/` | 없음. framework 직렬화는 `framework/languages/dotnet/src/`에서 다룬다 |
+| Java | `bindings/java/src/main/java/systems/zlink/` | 없음. framework 직렬화는 `framework/languages/java/`에서 다룬다 |
+| Node | `bindings/node/src/` | 없음. framework 직렬화는 `framework/languages/node/packages/`에서 다룬다 |
+| Python | `bindings/python/src/zlink/` | 없음. raw `Message`/bytes만 유지한다 |
+| Go | `bindings/go/` | 없음. raw `Message`/bytes만 유지한다 |
+| Rust | `bindings/rust/src/` | 없음. raw `Message`/bytes만 유지한다 |
 
-- placement rules:
-  - Codec helper source is not mixed into the core socket/message namespace.
-  - Binding codec spec documents describe the raw-only policy and point
-    framework users to framework codec extensions when that language has a
-    framework target.
-  - Samples and tests for bindings exercise raw `Message`/bytes behavior.
+- 배치 규칙:
+  - codec helper source를 core socket/message namespace와 같은 디렉터리에 직접 섞지 않는다.
+  - 언어별 codec spec 문서는 raw-only 정책을 설명하고, 해당 언어가 framework target이면
+    framework codec extension 위치를 안내한다.
+  - binding sample과 test는 raw `Message`/bytes 동작을 검증한다.
 
-### External Buffer Attach / Release Hook Policy
+### 외부 버퍼 Attach / Release Hook 정책
 - C API 의 `zlink_msg_init_data(..., zlink_free_fn*, hint)` 는 **external buffer
   attach + release hook** 능력을 제공한다.
 - 바인딩은 이 능력을 **언어 관용구와 메모리 모델에 맞을 때만** public 으로
@@ -3711,7 +3996,7 @@ Bindings no longer define codec extension distribution units:
     lifetime contract, 회귀 테스트, perf 비교가 먼저 필요하다. 정식 spec 과
     구현에는 바로 추가하지 않는다.
 
-## Boundary Cost Policy
+## 경계 비용 정책
 - 경계 검증은 가장 이른 안전한 위치에서 한 번 수행하는 것을 우선한다.
 - 같은 검증을 여러 레이어에서 반복하면 이유가 명확해야 한다.
 - 고정 크기 native struct에 들어가는 값은 truncation 대신 즉시 오류를 반환한다.
@@ -3735,7 +4020,7 @@ Bindings no longer define codec extension distribution units:
 - public 도메인 객체를 만들 때 불필요한 중간 컬렉션 생성은 피한다.
 - helper나 sample이 느린 경로를 canonical path처럼 보이게 만들면 안 된다.
 
-## Peer Weight Policy
+## Peer 가중치 정책
 
 peer 가중치는 peer-level outbound 선택 비율과 drain 상태를 제어하는 canonical
 surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개해야 한다.
@@ -3760,7 +4045,7 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
 - `SpotNodePeerEntry` / `MemberPeerEntry` 도메인 객체는 `weight` 필드를
   포함해야 한다.
 
-## Monitor Policy
+## Monitor 정책
 - monitor plane도 같은 규칙을 따른다.
 - public monitor receive는 `recv()` 하나로 제공한다.
   - blocking/non-blocking 은 flags 파라미터 또는 언어별 관례로 제어한다.
@@ -3785,14 +4070,14 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
   - non-blocking empty 경로
   - socket state 변화와 monitor event의 관계
 
-## Error Policy
+## 오류 정책
 
-### Binding Validation vs Native Error
+### 바인딩 검증 vs Native 오류
 - 입력 값의 형식/범위 오류는 바인딩이 즉시 막는다.
 - socket 상태, 연결 상태, transport 상태, protocol 상태 오류는 코어가
   결정하고 바인딩은 그대로 caller에 전달한다.
 
-### Binding Must Validate
+### 바인딩이 검증해야 하는 항목
 - truncation 가능성이 있는 값
 - overflow 가능성이 있는 값
 - fixed-size native struct에 들어가는 값
@@ -3809,7 +4094,7 @@ surface 다. 모든 바인딩은 구현된 대상 handle에 대해 이를 공개
 - Go: 즉시 `error` 반환 또는 `panic` (프로그래머 오류)
 - Rust: compile-time 보장 (`NonZero`, newtype) 또는 `panic!` / `Result<T, E>`
 
-### Native Must Decide
+### Native 가 결정하는 항목
 - peer 없음
 - backpressure
 - readiness 부족
@@ -4034,7 +4319,7 @@ enum/상수로 매핑하여 타입 안전한 분기를 제공한다.
 - `internalErrno` / `internal_errno` 필드는 별도로 제공하며, 주로
   `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용이다.
 
-### Request-Reply Error Policy
+### Request-Reply 오류 정책
 
 request-reply 는 Per-Function Error Type Hierarchy 의 **`RequestError`**
 (request completion) 과 **`SubmitError`** (request submit) 두 하위 타입을
@@ -4096,7 +4381,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
     경계에서는 `Err(ZlinkError::Submit(..))` / `Err(ZlinkError::Request(..))`
     — `.code()` 메서드
 
-## Length and Range Boundary Policy
+## 길이와 범위 경계 정책
 - 검증 책임은 두 층으로 나눈다.
 - 값 객체가 존재하는 타입:
   - 값 객체 생성 시점에 canonical validation을 수행한다.
@@ -4116,7 +4401,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - topic, subscription, metadata처럼 고정 출력 버퍼가 개입되는 경로는 길이와
   재할당 정책이 명확해야 한다.
 
-## Ownership Policy
+## 소유권 정책
 - `Message` ownership은 코어 계약과 일치해야 한다.
 - 모든 바인딩은 내부적으로 C API를 호출하므로, GC 언어를 포함한 전 언어에서
   native message의 ownership을 올바르게 관리해야 한다.
@@ -4131,7 +4416,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - callback delivery와 direct receive는 동일한 payload shape를 가져야 한다.
 - callback 후 frame validity는 계약으로 명확해야 한다.
 
-## Naming Policy
+## 네이밍 정책
 - 메서드명은 언어 관례만 반영한다.
 - 개념 이름은 바인딩 간 최대한 동일하게 유지한다.
 - 아래 목록은 의미 기준 canonical name 이다.
@@ -4179,7 +4464,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - `setSubscription`, `unsetSubscription`
   - `setPacketHandler`, `setDispatchHandler`, `setSendReadyHandler`
 
-### Method Name Conciseness
+### 메서드 이름 간결성
 - 이 규칙은 public API에 엄격히 적용한다.
 - internal/private API는 파라미터 인코딩이 가독성을 높이면 허용한다.
   - 내부 코드는 overloading 없이 명시적 이름이 더 읽기 좋을 수 있다.
@@ -4241,7 +4526,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 | Node/TS | optional / union | 금지 |
 | Rust | trait bound / Option / newtype | 금지, 동작 구분 접미사만 허용 |
 
-## Compatibility Policy
+## 호환성 정책
 - 호환성보다 일관된 public surface를 우선할 수 있다.
 - deprecated compatibility layer는 가능한 빨리 제거한다.
 - canonical path 외에 동일 기능의 우회 표면을 public 으로 함께 두지 않는다.
@@ -4250,9 +4535,9 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
   - .NET의 `SendFlags` / `RecvFlags` public surface는 canonical 계약이다.
   - 언어별 spec에 없는 legacy flag 타입이나 중복 flag 경로는 추가하지 않는다.
 
-## Cross-Language Alignment
+## 언어 간 정렬
 
-### Shared Behavioral Contract
+### 공유 동작 계약
 - blocking send/receive 계열은 실패 시 언어별 에러 경로 (exception 언어는
   예외, return-based 언어는 에러 반환)
 - non-blocking receive 는 "데이터 없음"도 동일한 에러 경로로 전달
@@ -4261,7 +4546,7 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 - multipart-only
 - typed option surface
 
-### Language-Specific Return Style
+### 언어별 반환 스타일
 - C API
   - raw contract와 함수별 typed result enum
   - multipart-only 기준 surface
@@ -4294,8 +4579,8 @@ wire 에서 사용 가능한 errno 는 3개로 제한된다: `ENOENT`, `EOPNOTSU
 
 언어별 표면은 달라도 의미 계약은 같아야 한다.
 
-### Cross-Language Capability Table (Target)
-이 표는 `.NET` 기준으로 정리한 target capability 표다. 이미 구현된 바인딩의 현재
+### 언어 간 Capability 표 (Target)
+이 표는 `.NET` 기준으로 정리한 target 역할 표다. 이미 구현된 바인딩의 현재
 public surface가 이 표와 다르면, 해당 항목은 구조 정렬 또는 breaking cleanup 작업의
 목표로 해석한다. 단, `Internal-only` 항목은 target 상태에서도 public API, sample,
 guide, spec signature에 노출하지 않는다.
@@ -4322,7 +4607,7 @@ guide, spec signature에 노출하지 않는다.
 | Poller result type name | N/A | `poll_event_t` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` |
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 
-## Testing Policy
+## 테스트 정책
 바인딩 테스트의 목적은 언어별 테스트 개수를 맞추는 것이 아니다. 목적은 각
 바인딩이 자기 public surface에 해당하는 contract를 빠짐없이 같은 수준으로
 보장하는지 확인하는 것이다.
@@ -4366,7 +4651,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - optimization guard test로 hot path가 정책에서 금지한 느린 경로로 퇴행하지
   않았는지 검증한다.
 - callback mode와 direct mode가 함께 허용되지 않는 경로는 충돌 규칙을 검증한다.
-- option 테스트는 typed option surface와 잘못된 capability 접근 차단을 함께
+- option 테스트는 typed option surface와 잘못된 역할 접근 차단을 함께
   검증한다.
 - 성능 회귀 검증은 별도 Perf Policy가 담당한다. 기능 테스트가 perf benchmark를
   대체하거나, perf benchmark가 public contract test를 대체하면 안 된다.
@@ -4392,7 +4677,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - contract 계약 변경: contract test 동반
 - blocking/non-blocking 계약 변경: behavior test 동반
 - ownership/receive shape 변경: callback regression 또는 ownership test 동반
-- option surface 변경: typed option surface test와 negative capability test 동반
+- option surface 변경: typed option surface test와 negative 역할 test 동반
 - codec extension 변경: 해당 codec extension test 동반
 - helper/facade 변경: helper/facade contract test 동반
 - hot path 구현 변경: optimization guard test 또는 perf regression gate 동반
@@ -4407,7 +4692,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - 특정 언어 런타임 위험을 검증한다면 Language-specific 테스트로 남기고, 이유를
   테스트 이름이나 파일 이름에서 알 수 있게 한다.
 
-### Test Execution Script Policy
+### 테스트 실행 스크립트 정책
 - 각 바인딩은 전체 테스트를 한번에 실행할 수 있는 스크립트를 제공해야 한다.
 - 실행 스크립트는 `bindings/<언어>/tests/` 디렉토리에 위치해야 한다.
 - 스크립트는 반복 실행 가능하고 성공/실패를 요약해서 보여줘야 한다.
@@ -4416,7 +4701,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   - `tests/run_tests.ps1`
   - language-specific test runner entry
 
-### Bug Discovery Policy
+### 버그 발견 정책
 - 테스트 또는 perf 작성/실행 중 버그를 발견한 경우 다음 절차를 따른다.
 - 바인딩 라이브러리 버그:
   - 해당 바인딩에서 직접 수정한다.
@@ -4444,9 +4729,9 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - `Language Runtime Tests`는 런타임 특성 때문에 위험이 생기는 바인딩에서
   `Language-specific` 항목이다.
 
-### Required: Surface Tests
+### Required: Surface 테스트
 - canonical public API surface test
-- socket type capability 분리 확인
+- socket type 역할 분리 확인
 - typed option surface 존재 확인
 - socket 공통 TLS helper 존재 확인
 - service TLS helper 존재 확인
@@ -4454,7 +4739,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - monitor canonical surface 존재 확인
   - `recv()`
 
-### Required: Contract Tests
+### Required: Contract 테스트
 - FFI/native 호출 매핑 검증
   - 바인딩 public API 호출이 올바른 C API 함수에 매핑되는지 확인
   - 파라미터 전달과 반환값 변환이 올바른지 확인
@@ -4465,7 +4750,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   - context/socket native handle 생성과 해제가 누수 없이 동작하는지 확인
   - 예외/오류 경로에서도 native 리소스가 정리되는지 확인
 
-### Required: Behavior Tests
+### Required: Behavior 테스트
 - 바인딩 레이어가 core 계약을 올바르게 중계하는지 검증한다.
 - 목적은 core 메시징 기능 재검증이 아니라 바인딩 경로의 정확성 확인이다.
 - blocking 경로:
@@ -4481,7 +4766,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   - `send` 실패 시 예외 또는 오류 경로 확인
   - `publish` 실패 시 예외 또는 오류 경로 확인
 
-### Required: Helper/Facade Tests
+### Required: Helper/Facade 테스트
 - public helper와 facade가 단순 native 호출 이상의 의미를 제공하는 경우 그 의미를
   직접 검증한다.
 - `Message`, `Received`, multipart collection, routing id value/codec, typed option
@@ -4494,7 +4779,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   확인한다.
 - convenience API가 canonical API와 다른 의미를 만들지 않는지 확인한다.
 
-### Required: Optimization Guard Tests
+### Required: Optimization Guard 테스트
 - hot path가 High-Performance Binding Policy를 계속 지키는지 검증한다.
 - send/recv/request/reply/publish/subscribe 내부 경로가 `*_part` substrate를
   사용하는지 확인한다.
@@ -4508,7 +4793,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - perf benchmark는 수치 회귀를 담당하고, optimization guard test는 금지된 구조가
   코드에 들어오지 않도록 막는 역할을 담당한다.
 
-### Required: Failure Contract Tests
+### Required: Failure Contract 테스트
 - blocking `send` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - blocking `publish` failure가 예외 또는 언어별 오류 경로로 caller에 전달되는지 확인
 - `send` backpressure 예외 확인
@@ -4519,7 +4804,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - direct recv 불가 상태에서 empty/null로 숨기지 않는지 확인
 - native `NO_DATA`만 empty/non-success 결과로 처리되는지 확인
 
-### Required: Boundary Validation Tests
+### Required: Boundary Validation 테스트
 - `RoutingId` 최대 길이 경계 (255바이트 OK)
 - `RoutingId` 초과 길이 즉시 오류 반환 (256바이트 이상 → 예외)
 - `Duration -> int millis` overflow 경계
@@ -4530,13 +4815,13 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - `endpoint` 255바이트 초과 즉시 오류 반환 (고정 크기 `char[256]`)
 - topic/filter에 embedded null 문자 포함 시 즉시 오류 반환
 
-### Required: Option Tests
+### Required: Option 테스트
 - common option typed getter/setter
 - socket type별 typed option getter/setter
-- 잘못된 소켓 타입에서 option capability 접근 차단
+- 잘못된 소켓 타입에서 option 역할 접근 차단
 - raw integer 대신 enum/boolean surface가 제공되는지 확인
 
-### Required: Ownership Tests
+### Required: Ownership 테스트
 - send 성공 시 ownership 이동 계약 (native에 넘어감, 바인딩이 이후 접근 금지)
 - send 실패 시 restore 또는 caller ownership 유지 계약
 - 생성 후 send하지 않은 메시지의 명시적 close/해제 (close 없으면 native 메모리 누수)
@@ -4544,7 +4829,7 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - callback 후 frame validity 계약
 - multipart receive shape와 callback delivery shape 일치 여부
 
-### Conditional: Callback Tests
+### Conditional: Callback 테스트
 - public callback API가 있는 경우 callback delivery를 검증한다.
 - callback이 받은 message 또는 multipart payload의 ownership을 검증한다.
 - callback 예외, panic, rejected promise, delegate exception 같은 언어별 실패가
@@ -4554,17 +4839,17 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - callback 안에서 금지된 blocking wait나 hidden thread join이 발생하지 않는지
   확인한다.
 
-### Conditional: Monitor Tests
+### Conditional: Monitor 테스트
 - blocking monitor `recv` 성공 경로
 - non-blocking monitor recv empty path
 - monitor callback/state 변화와 data plane readiness 일치 여부
 
-### Conditional: Poller Tests
+### Conditional: Poller 테스트
 - raw socket readiness 또는 fd readiness가 public poller API로 전달되는지 확인한다.
 - poller가 지원하지 않는 service-specific handle을 조용히 받아들이지 않는지 확인한다.
 - readiness event 값은 data plane contract를 대체하지 않는다는 점을 검증한다.
 
-### Conditional: Service Tests
+### Conditional: Service 테스트
 - spot/actor public API를 제공하는 바인딩은 해당 service lifecycle을 최소 경로로
   검증한다.
 - close/connect/unbind 같은 lifecycle 제약이 public API에서 native 계약대로
@@ -4574,17 +4859,17 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
 - service test는 service layer 바인딩 계약 검증이 목적이다. core service 전체
   matrix를 모든 언어에서 다시 실행하지 않는다.
 
-### Conditional: Codec Tests
+### Conditional: Codec 테스트
 - codec extension package를 제공하는 바인딩은 codec별 payload roundtrip을 검증한다.
 - core binding package가 codec dependency를 필수로 끌어들이지 않는지 확인한다.
 - serializer 선택 규칙이 있는 언어는 기본 serializer와 오류 경로를 검증한다.
 
-### Conditional: Sample Smoke Tests
+### Conditional: Sample Smoke 테스트
 - sample suite를 제공하는 바인딩은 canonical sample set의 실행 smoke를 제공한다.
 - sample smoke는 public API 사용 가능성을 확인하는 최소 검증이다.
 - sample smoke는 core transport matrix, stress, perf 측정을 대신하지 않는다.
 
-### Language-specific: Runtime Tests
+### Language-specific: Runtime 테스트
 - .NET: `IDisposable`, `SafeHandle`, delegate lifetime, `GCHandle`, native library
   loader, `ZlinkException` mapping을 검증한다.
 - Java: `AutoCloseable`, JNI object lifetime, checked/unchecked exception policy,
@@ -4601,19 +4886,19 @@ ownership 관리, native loader, package boundary, hot path 최적화를 함께 
   검증한다.
 - C: raw ABI, errno/result code, caller-provided message lifecycle을 검증한다.
 
-### Note: Performance and Sample Verification
+### 참고: Performance and Sample Verification
 - 성능 회귀 검증은 Perf Policy (`doc/perf/`)가 담당한다. Test Matrix에 중복하지
   않는다.
 - sample/helper의 canonical API 준수, send 실패 무시 방지, legacy surface
   우회 방지는 Review Checklist에서 검증한다. 자동화 테스트 항목이 아니다.
 
-## Sample Policy
+## 샘플 정책
 - 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/en/spec/sample/SAMPLE_POLICY/)
   를 단일 기준 문서로 사용한다.
 - 이 문서는 `core/samples/`와 `bindings/*/samples/`를 함께 포괄한다.
 - 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.
 
-## Perf Policy
+## Perf 정책
 
 perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정하고 개선하기 위한
 코드다. perf 의 1차 목적은 바인딩 레이어의 비용을 드러내고, 병목과 회귀를
@@ -4655,7 +4940,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 | Go | [`go/README.md`](go/README.en.md) |
 | Rust | [`rust/README.md`](rust/README.en.md) |
 
-### Perf Review Checklist
+### Perf 리뷰 체크리스트
 
 - 이 perf 가 바인딩 라이브러리 비용을 측정하고 있는가
 - 핵심 send/recv/callback 경로가 perf 파일 본문에서 직접 읽히는가
@@ -4663,7 +4948,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - `core/perf` 패턴과 정렬되어 있는가
 - `doc/perf` 정책을 준수하는가
 
-## Script Location Policy
+## 스크립트 위치 정책
 - 실행 스크립트는 실행 대상과 같은 디렉토리에 위치한다.
 - 바인딩 루트가 아니라 각 하위 디렉토리에 둔다.
 
@@ -4682,14 +4967,14 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
   이 스크립트는 개별 `tests/run_tests.sh`, `samples/run_samples.sh` 등을
   호출하는 진입점이며, 개별 스크립트를 대체하지 않는다.
 
-## Review Checklist
+## 리뷰 체크리스트
 - public API가 multipart-only인가
 - blocking/non-blocking이 별도 이름으로 분리되지 않았는가
 - 언어별 `Flags Policy`에 없는 public flag type 또는 중복 flag 경로가
   남아 있지 않은가
 - raw option bag이 public에 남아 있지 않은가
 - option 값이 enum/boolean/value object로 승격되었는가
-- 타입별 capability가 제대로 닫혀 있는가
+- 타입별 역할이 제대로 닫혀 있는가
 - blocking send 실패가 예외 또는 오류 경로로 반드시 caller에 전달되는가
 - `send` 실패가 backpressure/not-ready를 포함해 모든 오류를 예외로 전달하는가
 - binding이 truncation/overflow를 선검증하는가
@@ -4701,7 +4986,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - helper가 blocking send 실패를 무시하지 않는가
 - helper가 deprecated/legacy surface를 우회 호출하지 않는가
 
-## POSD-Based Implementation Completion Policy
+## POSD 기반 구현 완성 정책
 - 이 섹션은 바인딩 구현을 완성하고 리팩터링할 때 적용하는 POSD 기반 절차를
   정의한다.
 - 바인딩은 기능 나열이 아니라 구조적 정확성을 기준으로 완성한다.
@@ -4831,7 +5116,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
    - deprecated alias가 남아 있지 않다.
    - Callback API Policy의 canonical 이름(`setPacketHandler`,
      `setDispatchHandler`, `setSendReadyHandler`)이
-     해당 capability에 맞게 존재한다.
+     해당 역할에 맞게 존재한다.
 
 3. **얕은 래퍼 제거**
    - native 함수를 1:1로 감싸기만 하는 public 타입이 없다.
@@ -4895,13 +5180,13 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - "나중에 쓸 수 있으니까" 미리 추상화를 만들면 안 된다.
 - 한 번만 쓰이는 코드를 utility/helper로 빼면 안 된다.
 
-## Implementation Review Checklist
+## 구현 리뷰 체크리스트
 - 이 섹션은 public API 정책을 구현에 반영했는지 확인하는 리뷰 체크리스트다.
 - 아래 항목은 새로운 public API 제안이 아니다. 이미 정의된 계약과 경계 규칙을
   구현, 테스트, 샘플이 지키는지 확인하는 기준이다.
 - 항목은 바인딩별 리뷰와 리팩터링 작업의 기본 체크리스트로 사용한다.
 
-### Public vs Internal Boundary Follow-Ups
+### 공개 vs 내부 경계 후속 작업
 
 - Java:
   - public package에 남아 있는 internal 성격 타입(`SocketCore`,
@@ -4919,7 +5204,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
   - 설치되는 public header와 private substrate header의 경계를 문서와 패키징에
     함께 반영해야 한다.
 
-### Value Validation Follow-Ups
+### 값 검증 후속 작업
 - `RoutingId`
   - 값 객체 생성 시 길이 상한 검증
   - raw 경로가 남아 있다면 native 호출 직전 재검증
@@ -4934,7 +5219,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - enum wrapper가 없는 raw 정수 옵션
   - enum 또는 boolean 승격 후보 조사
 
-### Public Surface Follow-Ups
+### 공개 표면 후속 작업
 - legacy flag 타입
   - 언어별 `Flags Policy`에 없는 public flag type 또는 중복 flag 경로 제거 여부 재확인
   - 필요한 경우 internal 이동 여부 결정
@@ -4945,19 +5230,19 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - 단일 메시지 편의 메서드
   - public receive/subscribe 편의 오버로드 잔존 여부 점검
 
-### Option Surface Follow-Ups
+### 옵션 표면 후속 작업
 - raw option bag 잔존 여부 조사
-- socket type별 option capability 누수 여부 조사
+- socket type별 option 역할 누수 여부 조사
 - option value가 아직 `int`에 머무는 항목 목록화
 - context option도 같은 기준으로 typed facade 적용 여부 검토
 
-### Error Contract Follow-Ups
+### 오류 계약 후속 작업
 - binding validation 예외와 native 예외가 혼재된 경로 조사
 - 바인딩이 errno를 임의로 해석하는 경로 조사
 - native `NO_DATA` 외 오류를 잘못 empty/bool 경로로 숨기는 코드 조사
 - blocking send 실패를 무시하는 helper/sample 조사
 
-### Performance Follow-Ups
+### 성능 후속 작업
 - hot path send/recv 경로의 숨은 복사 조사
 - `Message`, `Received`, `TopicMessage` 생성 과정의 불필요한 컬렉션/배열
   할당 조사
@@ -4965,26 +5250,26 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - string/topic/routing-id 변환의 인코딩/디코딩 비용 조사
 - sample과 helper가 느린 대체 경로를 기본 사용법처럼 노출하는지 조사
 
-### POSD Follow-Ups
+### POSD 후속 작업
 - 얕은 래퍼만 제공하는 public 타입 조사
 - 한 규칙이 여러 모듈에 흩어진 변경 파급 지점 조사
 - 사용자가 internal sequencing을 알아야 하는 temporal API 조사
 - facade 뒤로 숨길 수 있는 raw/native 개념 누수 지점 조사
 
-### Ownership and Callback Follow-Ups
+### 소유권과 콜백 후속 작업
 - send failure restore 경로와 consume 경로가 문서와 일치하는지 점검
 - callback 후 frame validity 계약 재검증
 - callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 점검
 
-### Test Follow-Ups
+### 테스트 후속 작업
 - public surface 변경마다 public surface test 존재 여부 확인
 - value boundary 검증 테스트 추가
   - 예: `RoutingId` 최대 길이
   - 예: `Duration` overflow
-- option negative capability 테스트 보강
+- option negative 역할 테스트 보강
 - ownership/callback regression 유지 여부 확인
 
-## Binding Requirements
+## 바인딩 요구사항
 
 | Binding | 언어 버전 | 런타임/프레임워크 | 빌드 툴 |
 |---------|-----------|-------------------|---------|
@@ -5003,7 +5288,7 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
   - Node: `package.json`, `tsconfig.json`
   - Python: `pyproject.toml`
 
-## API Reference
+## API 레퍼런스
 
 각 바인딩은 해당 언어의 표준 문서 도구로 API 레퍼런스를 생성한다.
 
@@ -5021,14 +5306,12 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 - 출력 디렉터리는 `.gitignore`로 추적에서 제외한다.
 - 각 바인딩의 `README.*.md` 파일에 상세 생성 절차와 스코프가 명시되어 있다.
 
-## Peer Disconnect by Routing ID
+## Routing ID로 Peer 끊기
 
-All bindings expose the core peer-rid disconnect surface on connectable raw
-socket types. The raw socket API maps to `zlink_disconnect_rid()`, and the
-SpotNode API maps to `zlink_spot_node_disconnect_peer_rid()`. `StreamSocket`
-is bind-only and does not expose peer-rid disconnect. Spot facade types do not
-expose a separate peer-rid disconnect method because peer mesh ownership
-belongs to SpotNode.
+- 모든 바인딩은 connectable raw socket 타입에 대해 core의 peer-rid disconnect 표면을 노출한다.
+- raw socket API는 `zlink_disconnect_rid()`에, SpotNode API는 `zlink_spot_node_disconnect_peer_rid()`에 매핑한다.
+- `StreamSocket`은 bind-only이며 peer-rid disconnect를 노출하지 않는다.
+- Spot facade 타입도 별도의 peer-rid disconnect 메서드를 노출하지 않는다. peer mesh 소유권은 SpotNode에 있기 때문이다.
 
 | Language | Raw socket name | SpotNode name |
 |---|---|---|
@@ -5041,22 +5324,16 @@ belongs to SpotNode.
 | Java | `disconnectRid` | `disconnectPeerRid` |
 | .NET | `DisconnectRid` | `DisconnectPeerRid` |
 
-Bindings must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
-`ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`, and the connect
-result values `NOT_FOUND`, `CONFLICT`, and `BUSY` using each language's
-normal enum/error mapping style.
+바인딩은 `ZLINK_OPT_RID_DUPLICATE_POLICY`, `ZLINK_RID_DUPLICATE_REJECT`,
+`ZLINK_RID_DUPLICATE_HANDOVER`, 그리고 connect 결과 값 `NOT_FOUND`, `CONFLICT`,
+`BUSY` 를 각 언어의 일반적인 enum/오류 매핑 스타일로 노출해야 한다.
 
-The C binding exposes `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `0x3034`
-through the native socket option contract and
-`ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` with value `18` through the context
-option contract. Higher-level bindings must expose the capability through the
-typed context option facade. They must not add socket, SpotNode, or Spot public
-facades for the message unit. Compatibility-only raw socket paths, if retained
-by a binding, must be clearly separated from the canonical API, must not be
-used by new docs, samples, or tests, and must keep the C contract: `int` bytes,
-raw default `0`, and negative values fail with `EINVAL`.
+- C 바인딩은 native socket option contract를 통해 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `0x3034` 를, context option contract를 통해 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `18` 을 노출한다.
+- 상위 바인딩은 이 기능을 typed context option facade로 노출해야 한다.
+- socket, SpotNode, Spot 의 public facade는 메시지 단위 옵션을 추가하지 않는다.
+- 호환성을 위해 raw socket 경로를 남겨 둔다면 canonical API와 명확히 분리하고, 새 문서·샘플·테스트에서는 사용하지 않으며, C 계약(`int` bytes, raw 기본값 `0`, 음수 값은 `EINVAL` 로 실패)을 그대로 유지해야 한다.
 
-## Related Docs
+## 관련 문서
 - `bindings/cpp/`
 - `bindings/dotnet/`
 - `bindings/java/`
@@ -5065,43 +5342,36 @@ raw default `0`, and negative values fail with `EINVAL`.
 - `bindings/node/`
 - `bindings/python/`
 
-## Core API Surface 6.0.0 Alignment
+## Core API Surface 6.0.0 정렬
 
-Actor create and join payloads use aggregate multipart payloads. Public binding
-APIs accept a message collection for remote actor create, actor join, actor join
-receive, and actor join reply. A single-message convenience path is allowed only
-when the language README explicitly keeps that convenience surface; otherwise
-breaking alignment removes it in favor of the canonical multipart path. When
-kept, it must call the multipart path internally so empty payload and one empty
-message stay distinguishable. Admission handlers receive a borrowed payload view
-that is valid only during the callback.
+- Actor create와 join payload는 aggregate multipart payload를 사용한다.
+- 공개 바인딩 API는 remote actor create, actor join, actor join receive, actor join reply에 대해 메시지 컬렉션을 받는다.
+- 단일 메시지 편의 경로는 해당 언어 README가 그 편의 표면을 명시적으로 유지하기로 한 경우에만 허용한다. 그렇지 않으면 breaking alignment 과정에서 canonical multipart 경로 쪽으로 정리하면서 제거한다.
+- 유지하는 경우에도 내부적으로는 multipart 경로를 호출해야 하며, empty payload와 비어 있는 메시지 하나가 계속 구분될 수 있어야 한다.
+- admission handler는 callback 동안만 유효한 borrowed payload view를 받는다.
 
-Public Registry scalar configuration was removed with the public
-Discovery/Registry C APIs in core 8.4.3. Bindings must not keep registry option
-surfaces, named registry setters, or compatibility aliases as current public
-API.
+Public Registry scalar 설정은 core 8.4.3에서 공개 Discovery/Registry C API와 함께
+제거되었다. 바인딩은 registry option 표면, 이름 있는 registry setter,
+compatibility alias를 현재 공개 API로 유지하면 안 된다.
 
-## Spot Route Bridge APIs
+## Spot Route Bridge API
 
-Bindings must expose `SpotRouteBridge` or an equivalent typed handle so
-`SpotNode` does not own channel sockets. The bridge references `ROUTER` sockets
-owned by the caller or channel runtime. It sends Spot route packets and hands
-SPOT relay packets from the channel receive loop to SpotNode.
-Closing the bridge must not close the registered channel sockets.
+- 바인딩은 `SpotNode`가 channel socket을 소유하지 않도록 `SpotRouteBridge` 또는 같은 의미의 typed handle을 노출해야 한다.
+- bridge는 caller/channel runtime이 소유한 `ROUTER` socket을 참조하고, Spot route packet을 보내거나 channel receive loop에서 받은 SPOT relay packet을 SpotNode로 넘긴다.
+- bridge를 닫아도 등록된 channel socket은 닫히지 않는다.
 
-Language APIs must preserve these meanings:
+언어별 API는 다음 의미를 빠뜨리지 않아야 한다.
 
-- `createRouteBridge(options)` or an equivalent constructor
+- `createRouteBridge(options)` 또는 동등한 생성자
 - `attachRouterChannel(channelName, routerSocket)`
 - `sendToSpot(targetNode, targetSpot, parts)`
 - `requestToSpot(targetNode, targetSpot, parts, replyHandler, timeout)`
 - `handleRouterReceived(channelName, received)`
-- `close` or `dispose`
+- `close` 또는 `dispose`
 
-`timeout == 0` means the bridge default timeout. When `handleRouterReceived`
-returns a handled result, the binding must make it clear that payload ownership
-moved to the bridge.
+`timeout == 0`은 bridge 기본 timeout을 사용한다. `handleRouterReceived`가 handled
+결과를 반환하면 바인딩은 payload 소유권이 bridge로 넘어갔음을 호출자에게 분명히 표현해야
+한다.
 
-The old C APIs that attached router channel peers directly to `SpotNode` are
-not public contract APIs. Framework adapters must not use that route for the new
-implementation path.
+SpotNode에 router channel peer를 직접 붙이는 예전 C API는 공개 계약에 없다.
+framework adapter는 그 경로를 새 구현에 사용하면 안 된다.

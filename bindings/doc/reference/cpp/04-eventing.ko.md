@@ -25,20 +25,24 @@ monitor.on_event ([] (const zlink::monitor_event_t &e) { /* ... */ });
 zlink::monitor_status_t status = monitor.status ();
 ```
 
-**Options.** `socket_monitor_t()`(기본, 대입 전까지 invalid), static
-`open(const socket_t&, monitor_event = monitor_event::all)`(실제 생성 경로 —
-내부적으로 이를 호출하는 `socket_t::monitor_open(...)`과 대응). `valid()`,
-`on_event(std::function<void(const monitor_event_t&)>)`,
-`recv(recv_flags_t = recv_flags_t::none)`(`std::optional<monitor_event_t>`
-반환), `status() const`(`monitor_status_t` 반환), `close()`. 아무것도 하지 않는
-handler를 의도적으로 등록하고 싶은 caller를 위한 static no-op
-`ignore_event(const monitor_event_t&) noexcept`도 선언돼 있다.
+**옵션.**
 
-**Completion result.** 모든 member는 동기다. move-only다 — 소멸자는 암묵적으로
-close하지 않는다 — `close()`를 명시적으로 호출한다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `socket_monitor_t()` | — | 기본, 대입 전까지 invalid |
+| `open(const socket_t&, monitor_event)` | `monitor_event::all` | static — 실제 생성 경로, 내부적으로 `socket_t::monitor_open(...)`이 호출 |
+| `valid()` | — | — |
+| `on_event(std::function<void(const monitor_event_t&)>)` | — | — |
+| `recv(recv_flags_t)` | `recv_flags_t::none` | `std::optional<monitor_event_t>` 반환 |
+| `status() const` | — | `monitor_status_t` 반환 |
+| `close()` | — | — |
+| `ignore_event(const monitor_event_t&) noexcept` | — | static no-op, 의도적으로 아무것도 안 하는 handler가 필요한 caller용 |
 
-**선택 기준.** 한 번 등록하는 수동적 lifecycle observer엔 `on_event`를,
-pull 기반 drain loop엔 대신 `recv`를 쓴다. 시점 스냅샷엔 `status()`를 쓴다.
+**완료 결과.** 모든 member는 동기다. move-only다 — 소멸자는 암묵적으로
+close하지 않는다.
+
+**선택 기준.** 한 번 등록하는 수동적 lifecycle observer엔 `on_event`를, pull
+기반 drain loop엔 `recv`를 쓴다. 시점 스냅샷엔 `status()`를 쓴다.
 
 ---
 
@@ -46,24 +50,23 @@ pull 기반 drain loop엔 대신 `recv`를 쓴다. 시점 스냅샷엔 `status()
 
 `socket_monitor_t::status()`가 반환하는, socket의 monitored 상태와
 auto-high-water-mark telemetry 스냅샷. accessor method가 있는 class가 아니라
-순수 struct다(dotnet의 `MonitorStatus`와 다름) — 모든 필드가 public 데이터이며
-기본 생성자에서 0/false로 초기화된다.
+순수 struct다(dotnet의 `MonitorStatus`와 다름) — 모든 필드가 public 데이터다.
 
-**Options.** 인자 없음 — `status()`로 생성하지 직접 생성하지 않는다.
+**옵션.** 인자 없음 — `status()`로 생성하지 직접 생성하지 않는다.
 
 | 그룹 | 필드 |
 |---|---|
 | ABI identity | `abi_version`, `struct_size`(`uint32_t`) |
-| Source/state | `source_kind`(`monitor_source_kind`), `state_flags`/`detail_flags`(`uint32_t` 비트마스크 — 아래 enum 참고), `is_ready()`(계산 method: `(state_flags & 1) != 0`) |
+| Source/state | `source_kind`(`monitor_source_kind`), `state_flags`/`detail_flags`(`uint32_t` 비트마스크 — 아래 enum 참고), `is_ready()`(계산값: `(state_flags & 1) != 0`) |
 | Pending count | `snd_pending_msgs`, `rcv_pending_msgs`(`uint64_t`) |
-| Auto-HWM 설정 | `auto_hwm_enabled`(`bool`), `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`(`uint32_t` — 여기선 `zlink::auto_hwm_profile` enum 타입이 아니라 raw 정수 필드), `auto_hwm_unit_budget_bytes`, `auto_hwm_socket_message_slots`(`uint64_t`), `auto_hwm_size_cap`(`uint32_t`) |
+| Auto-HWM 설정 | `auto_hwm_enabled`(`bool`), `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class`(`uint32_t` — `zlink::auto_hwm_profile` enum 타입이 아니라 raw 정수 필드), `auto_hwm_unit_budget_bytes`, `auto_hwm_socket_message_slots`(`uint64_t`), `auto_hwm_size_cap`(`uint32_t`) |
 | Connection bucket | `auto_hwm_connection_bucket_enabled`(`bool`), `auto_hwm_connection_bucket_count`/`_index`/`_hwm_4k`(`uint32_t`), `auto_hwm_connection_bucket_hysteresis_retained`(`bool`) |
 | Auto-HWM plan(byte) | `auto_hwm_effective_message_bytes`, `auto_hwm_planned_sndhwm_bytes`/`_rcvhwm_bytes`, `auto_hwm_applied_sndhwm_bytes`/`_rcvhwm_bytes`(`uint64_t`), `auto_hwm_effective_sndbuf`/`_rcvbuf`(`int32_t`) |
 | Auto-HWM recalc | `auto_hwm_last_recalc_ms`(`uint64_t`), `auto_hwm_last_recalc_reason`(`uint32_t`), `auto_hwm_send_blocked_ratio_ppm`(`uint32_t`) |
-| Auto-HWM deferred shrink | `auto_hwm_deferred_sndhwm_bytes`/`_rcvhwm_bytes`(`uint64_t`, 대응하는 `auto_hwm_deferred_sndhwm_valid`/`_rcvhwm_valid` `bool`이 true일 때만 유효) |
+| Auto-HWM deferred shrink | `auto_hwm_deferred_sndhwm_bytes`/`_rcvhwm_bytes`(`uint64_t`, 대응하는 `..._valid` `bool`이 true일 때만 유효) |
 | In-flight/과금 | `snd_bytes_in_flight`, `rcv_bytes_in_flight`, `minimum_core_message_charge_bytes`, `oversize_message_admission_count`, `oversize_message_admission_max_bytes`(`uint64_t`) |
 
-**Completion result.** 해당 없음 — 순수 데이터, dispose 없음.
+**완료 결과.** 해당 없음 — 순수 데이터, dispose 없음.
 
 **선택 기준.** `state_flags`를 직접 디코딩하는 대신 `is_ready()`를 읽는다.
 socket의 실제 send/receive HWM이 설정한 `common_socket_options_t` 값(Sockets
@@ -85,22 +88,25 @@ std::vector<zlink::poll_event_t> ready (8);
 size_t count = poller.wait (ready.data (), ready.size (), std::chrono::seconds (1));
 ```
 
-**Options.** `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)`,
-`add(socket_t&, poll_event_flag_t, std::uintptr_t slot_)`, `add_fd(int fd_,
-poll_event_flag_t, std::uintptr_t slot_)`, `add(timer_t&, std::uintptr_t
-slot_)` — `slot_`은 대응하는 `poll_event_t`로 그대로 되돌아오는 caller token이다.
-`modify_fd(int, poll_event_flag_t)`, `modify(socket_monitor_t&,
-poll_event_flag_t)`, `modify(socket_t&, poll_event_flag_t)`.
-`remove(socket_monitor_t&)`/`remove(socket_t&)`/`remove(timer_t&)`/
-`remove_fd(int)`(각각 `bool` 반환, 등록돼 있었으면 true). `size() const`
-(`int`). `close()`. `wait(poll_event_t* events_, size_t capacity_,
-std::chrono::milliseconds timeout_)`.
+**옵션.**
 
-**Completion result.** 등록/제거 member는 동기다. `wait`는 `timeout_`까지
-block하며, `capacity_`까지 결과를 쓰고 쓴 개수를 `size_t`로 반환한다(timeout이면
-`0`). `poller_t`는 `socket_monitor_t&`도 직접 등록할 수 있다(dotnet의
-`IPoller`의 `Add` overload는 `IZlinkSocket`/`IZlinkTimer`만 받고, monitor는
-대신 `ZlinkPoll.Poll(IReadOnlyList<ISocketMonitor>, ...)`을 통해 간접적으로
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
+| `add(socket_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | `slot_`은 대응하는 `poll_event_t`로 되돌아옴 |
+| `add_fd(int fd_, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
+| `add(timer_t&, std::uintptr_t slot_)` | — | — |
+| `modify_fd(int, poll_event_flag_t)` / `modify(socket_monitor_t&, poll_event_flag_t)` / `modify(socket_t&, poll_event_flag_t)` | — | — |
+| `remove(socket_monitor_t&)` / `remove(socket_t&)` / `remove(timer_t&)` / `remove_fd(int)` | — | 각각 `bool` 반환, 등록돼 있었으면 true |
+| `size() const` | — | `int` |
+| `close()` | — | — |
+| `wait(poll_event_t* events_, size_t capacity_, std::chrono::milliseconds timeout_)` | — | — |
+
+**완료 결과.** 등록/제거 member는 동기다. `wait`는 `timeout_`까지 block하며,
+`capacity_`까지 결과를 쓰고 쓴 개수를 반환한다(timeout이면 `0`). `poller_t`는
+`socket_monitor_t&`도 직접 등록할 수 있다(dotnet의 `IPoller`의 `Add`
+overload는 `IZlinkSocket`/`IZlinkTimer`만 받고, monitor는 대신
+`ZlinkPoll.Poll(IReadOnlyList<ISocketMonitor>, ...)`을 통해 간접적으로
 poll되는 것과 다르다).
 
 **선택 기준.** 서비스 수명 전체에서 poller 하나를 쓴다. 감시하는 event만 바뀔
@@ -113,12 +119,16 @@ poll되는 것과 다르다).
 `poller_t::wait` 호출이 보고하는 준비된 source 하나. 순수 struct이며 기본
 생성 시 `source_kind = poll_source_kind_t::socket`이다.
 
-**Options.** 인자 없음. 필드: `source_kind`(`poll_source_kind_t`:
-`socket`/`fd`/`timer`), `slot`(`std::uintptr_t`, 등록 시 제공한 caller
-token), `revents`(`poll_event_flag_t`, 실제로 발생한 event), `fd`(`int`,
-`fd` kind source에서만 채워짐).
+**옵션.**
 
-**Completion result.** 해당 없음 — 순수 데이터.
+| Member | 타입 | 의미 |
+| --- | --- | --- |
+| `source_kind` | `poll_source_kind_t` | `socket`/`fd`/`timer` |
+| `slot` | `std::uintptr_t` | 등록 시 제공한 caller token |
+| `revents` | `poll_event_flag_t` | 실제로 발생한 event |
+| `fd` | `int` | `fd` kind source에서만 채워짐 |
+
+**완료 결과.** 해당 없음 — 순수 데이터.
 
 **선택 기준.** `source_kind`/`slot`으로 분기해 각 `wait` 결과를 대응하는
 socket·descriptor·timer로 연결한다.
@@ -138,18 +148,21 @@ std::vector<zlink::poll_item_t> items {
 int ready = zlink::poll (items, std::chrono::milliseconds (1000));
 ```
 
-**Options.** `poll_item_t`: `socket`(`socket_t*`, fd 기반 item이면 null),
-`fd`(`int`), `events`/`revents`(`poll_event_flag_t`); static factory
-`from_socket(socket_t&, poll_event_flag_t)`/`from_fd(int, poll_event_flag_t)`.
-`zlink::poll(poll_item_t* items_, size_t count_, std::chrono::milliseconds
-timeout_)`과 `std::vector<poll_item_t>&` 편의 overload.
+**옵션.**
 
-**Completion result.** 동기다. 준비된 item 개수를 반환한다(timeout이면 `0`).
-각 `poll_item_t`의 `revents`는 호출로 그 자리에서 쓰인다.
+| Member | 의미 |
+| --- | --- |
+| `socket`(`socket_t*`) | fd 기반 item이면 null |
+| `fd`(`int`) / `events`/`revents`(`poll_event_flag_t`) | — |
+| `from_socket(socket_t&, poll_event_flag_t)` / `from_fd(int, poll_event_flag_t)` | static factory |
+| `zlink::poll(poll_item_t* items_, size_t count_, std::chrono::milliseconds timeout_)` | `std::vector<poll_item_t>&` 편의 overload도 있음 |
 
-**선택 기준.** 작고 고정된 socket/descriptor 집합에 대한 임시 one-off wait엔
-이 자유 함수 형태를 쓴다. 감시 대상 집합이 시간에 따라 바뀌거나 monitor/timer를
-socket과 함께 multiplex해야 할 땐 대신 `poller_t`를 쓴다.
+**완료 결과.** 동기다. 준비된 item 개수를 반환한다(timeout이면 `0`). 각
+`poll_item_t`의 `revents`는 호출로 그 자리에서 쓰인다.
+
+**선택 기준.** 작고 고정된 집합에 대한 임시 one-off wait엔 이 자유 함수 형태를
+쓴다. 감시 대상 집합이 시간에 따라 바뀌거나 monitor/timer를 socket과 함께
+multiplex해야 할 땐 `poller_t`를 쓴다.
 
 ---
 
@@ -164,20 +177,22 @@ timer.on_fire ([] (uint64_t count) { /* ... */ });
 timer.start (std::chrono::seconds (1), /*repeat_count=*/0);
 ```
 
-**Options.** `start(duration, uint64_t repeat_count_ = 0)`(임의
-`std::chrono::duration`을 받는 template, 내부적으로 나노초로 변환됨; 음수
-interval은 `config_error_t{invalid_argument}`를 던짐), `stop()`, `recv()`
-(`std::optional<uint64_t>` 반환 — 누적 fire count, 대기 중인 게 없으면
-`std::nullopt`), `on_fire(std::function<void(uint64_t)>)`(dotnet의
-`Action<IZlinkTimer, ulong>`과 달리, 여기 콜백은 timer 자신이 아니라 fire
-count만 받는다), `close()`.
+**옵션.**
 
-**Completion result.** 모든 member는 동기다. move-only다 — 소멸자는 암묵적으로
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `start(duration, uint64_t repeat_count_)` | `repeat_count_ = 0` | 임의 `std::chrono::duration`을 받는 template, 내부적으로 나노초로 변환; 음수는 `config_error_t{invalid_argument}` |
+| `stop()` | — | — |
+| `recv()` | — | `std::optional<uint64_t>` 누적 fire count 반환, 대기 중인 게 없으면 `std::nullopt` |
+| `on_fire(std::function<void(uint64_t)>)` | — | dotnet의 `Action<IZlinkTimer, ulong>`과 달리, 여기 콜백은 timer 자신이 아니라 fire count만 받음 |
+| `close()` | — | — |
+
+**완료 결과.** 모든 member는 동기다. move-only다 — 소멸자는 암묵적으로
 close하지 않는다.
 
-**선택 기준.** 수동적 interval 콜백엔 `on_fire`를, 대신 만료를 poll하려면
-`recv`를, socket과 함께 하나의 wait에서 multiplex하려면
-`poller_t::add(timer_t&, std::uintptr_t)`로 등록한다.
+**선택 기준.** 수동적 interval 콜백엔 `on_fire`를, 만료를 poll하려면
+`recv`를, socket과 함께 multiplex하려면 `poller_t::add(timer_t&,
+std::uintptr_t)`로 등록한다.
 
 ---
 
@@ -196,10 +211,10 @@ close하지 않는다.
 | `poll_source_kind_t` | `poll_event_t::source_kind` | `socket`, `fd`, `timer` |
 | `poll_event_flag_t` | `poller_t::add`/`modify`/`wait`, `poll_item_t`, `zlink::poll` | `none`, `pollin`, `pollout`, `pollerr`, `pollcompletion`(이 투영엔 dotnet의 `PollEventFlags.PollPri`에 대응하는 `pollpri`가 없다) |
 
-**선택 기준.** `monitor_source_kind::spot_pub`/`spot_sub`, `monitor_target_kind_t::spot`/
-`discovery`, `disconnect_reason`은 이 bindings 계층의 public 진입점에서
-선언은 됐지만 현재 도달 불가능한 것으로 취급한다 — 오늘 application 코드에서
-우회할 대상이 아니라 스펙 차원의 질문이다.
+**선택 기준.** `monitor_source_kind::spot_pub`/`spot_sub`,
+`monitor_target_kind_t::spot`/`discovery`, `disconnect_reason`은 이 bindings
+계층의 public 진입점에서 선언은 됐지만 현재 도달 불가능한 것으로 취급한다 —
+오늘 application 코드에서 우회할 대상이 아니라 스펙 차원의 질문이다.
 
 ---
 

@@ -23,19 +23,23 @@ monitor.on_event ([] (const zlink::monitor_event_t &e) { /* ... */ });
 zlink::monitor_status_t status = monitor.status ();
 ```
 
-**Options.** `socket_monitor_t()` (default, invalid until assigned), static `open(const socket_t&,
-monitor_event = monitor_event::all)` (the actual constructor path — matches
-`socket_t::monitor_open(...)`, which calls this internally). `valid()`, `on_event(std::function<void
-(const monitor_event_t&)>)`, `recv(recv_flags_t = recv_flags_t::none)` (returns
-`std::optional<monitor_event_t>`), `status() const` (returns `monitor_status_t`), `close()`. A
-static no-op `ignore_event(const monitor_event_t&) noexcept` is also declared, for a caller that
-wants to register a handler that intentionally does nothing.
+**Options.**
 
-**Completion result.** All members are synchronous. Move-only; the destructor does not implicitly
-close — call `close()` explicitly.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `socket_monitor_t()` | — | default, invalid until assigned |
+| `open(const socket_t&, monitor_event)` | `monitor_event::all` | static — the actual constructor path, called internally by `socket_t::monitor_open(...)` |
+| `valid()` | — | — |
+| `on_event(std::function<void(const monitor_event_t&)>)` | — | — |
+| `recv(recv_flags_t)` | `recv_flags_t::none` | returns `std::optional<monitor_event_t>` |
+| `status() const` | — | returns `monitor_status_t` |
+| `close()` | — | — |
+| `ignore_event(const monitor_event_t&) noexcept` | — | static no-op, for a caller that wants a handler that intentionally does nothing |
 
-**When to use.** Use `on_event` for a passive lifecycle observer registered once; use `recv` for a
-pull-based drain loop instead. Use `status()` for a point-in-time snapshot.
+**Completion result.** All synchronous. Move-only; the destructor does not implicitly close.
+
+**When to use.** `on_event` for a passive lifecycle observer registered once; `recv` for a
+pull-based drain loop instead. `status()` for a point-in-time snapshot.
 
 ---
 
@@ -43,21 +47,20 @@ pull-based drain loop instead. Use `status()` for a point-in-time snapshot.
 
 A snapshot of a socket's monitored state and auto-high-water-mark telemetry, returned by
 `socket_monitor_t::status()`. A plain struct (not a class with accessor methods, unlike dotnet's
-`MonitorStatus`) — every field is public data, default-initialized to zero/false in its default
-constructor.
+`MonitorStatus`) — every field is public data.
 
 **Options.** No parameters — construct via `status()`, not directly.
 
 | Group | Fields |
 |---|---|
 | ABI identity | `abi_version`, `struct_size` (`uint32_t`) |
-| Source/state | `source_kind` (`monitor_source_kind`), `state_flags`/`detail_flags` (`uint32_t` bitmasks — see enums below), `is_ready()` (computed method: `(state_flags & 1) != 0`) |
+| Source/state | `source_kind` (`monitor_source_kind`), `state_flags`/`detail_flags` (`uint32_t` bitmasks — see enums below), `is_ready()` (computed: `(state_flags & 1) != 0`) |
 | Pending counts | `snd_pending_msgs`, `rcv_pending_msgs` (`uint64_t`) |
-| Auto-HWM config | `auto_hwm_enabled` (`bool`), `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class` (`uint32_t` — not the `zlink::auto_hwm_profile` enum type; a raw integer field here), `auto_hwm_unit_budget_bytes`, `auto_hwm_socket_message_slots` (`uint64_t`), `auto_hwm_size_cap` (`uint32_t`) |
+| Auto-HWM config | `auto_hwm_enabled` (`bool`), `auto_hwm_profile`, `auto_hwm_role`, `auto_hwm_policy_class` (`uint32_t` — a raw integer field, not the `zlink::auto_hwm_profile` enum type), `auto_hwm_unit_budget_bytes`, `auto_hwm_socket_message_slots` (`uint64_t`), `auto_hwm_size_cap` (`uint32_t`) |
 | Connection bucket | `auto_hwm_connection_bucket_enabled` (`bool`), `auto_hwm_connection_bucket_count`/`_index`/`_hwm_4k` (`uint32_t`), `auto_hwm_connection_bucket_hysteresis_retained` (`bool`) |
 | Auto-HWM plan (bytes) | `auto_hwm_effective_message_bytes`, `auto_hwm_planned_sndhwm_bytes`/`_rcvhwm_bytes`, `auto_hwm_applied_sndhwm_bytes`/`_rcvhwm_bytes` (`uint64_t`), `auto_hwm_effective_sndbuf`/`_rcvbuf` (`int32_t`) |
 | Auto-HWM recalc | `auto_hwm_last_recalc_ms` (`uint64_t`), `auto_hwm_last_recalc_reason` (`uint32_t`), `auto_hwm_send_blocked_ratio_ppm` (`uint32_t`) |
-| Auto-HWM deferred shrink | `auto_hwm_deferred_sndhwm_bytes`/`_rcvhwm_bytes` (`uint64_t`, valid only when the matching `auto_hwm_deferred_sndhwm_valid`/`_rcvhwm_valid` `bool` is true) |
+| Auto-HWM deferred shrink | `auto_hwm_deferred_sndhwm_bytes`/`_rcvhwm_bytes` (`uint64_t`, valid only when the matching `..._valid` `bool` is true) |
 | In-flight/charging | `snd_bytes_in_flight`, `rcv_bytes_in_flight`, `minimum_core_message_charge_bytes`, `oversize_message_admission_count`, `oversize_message_admission_max_bytes` (`uint64_t`) |
 
 **Completion result.** N/A — plain data, no disposal.
@@ -80,23 +83,28 @@ std::vector<zlink::poll_event_t> ready (8);
 size_t count = poller.wait (ready.data (), ready.size (), std::chrono::seconds (1));
 ```
 
-**Options.** `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)`, `add(socket_t&,
-poll_event_flag_t, std::uintptr_t slot_)`, `add_fd(int fd_, poll_event_flag_t, std::uintptr_t
-slot_)`, `add(timer_t&, std::uintptr_t slot_)` — `slot_` is a caller token echoed back in the
-matching `poll_event_t`. `modify_fd(int, poll_event_flag_t)`, `modify(socket_monitor_t&,
-poll_event_flag_t)`, `modify(socket_t&, poll_event_flag_t)`. `remove(socket_monitor_t&)`/
-`remove(socket_t&)`/`remove(timer_t&)`/`remove_fd(int)` (each returns `bool`, true when it was
-registered). `size() const` (`int`). `close()`. `wait(poll_event_t* events_, size_t capacity_,
-std::chrono::milliseconds timeout_)`.
+**Options.**
 
-**Completion result.** Registration/removal members are synchronous. `wait` blocks up to `timeout_`,
-writing up to `capacity_` results and returning the count written as `size_t` (`0` on timeout).
-Note `poller_t` can also register a `socket_monitor_t&` directly (unlike dotnet's `IPoller`, whose
-`Add` overloads take `IZlinkSocket`/`IZlinkTimer` only — a monitor is polled there indirectly
-through `ZlinkPoll.Poll(IReadOnlyList<ISocketMonitor>, ...)` instead).
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
+| `add(socket_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | `slot_` echoed back in the matching `poll_event_t` |
+| `add_fd(int fd_, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
+| `add(timer_t&, std::uintptr_t slot_)` | — | — |
+| `modify_fd(int, poll_event_flag_t)` / `modify(socket_monitor_t&, poll_event_flag_t)` / `modify(socket_t&, poll_event_flag_t)` | — | — |
+| `remove(socket_monitor_t&)` / `remove(socket_t&)` / `remove(timer_t&)` / `remove_fd(int)` | — | each returns `bool`, true when it was registered |
+| `size() const` | — | `int` |
+| `close()` | — | — |
+| `wait(poll_event_t* events_, size_t capacity_, std::chrono::milliseconds timeout_)` | — | — |
 
-**When to use.** Use one poller across a service's lifetime. Prefer `modify` over `remove` + `add`
-when only the watched events change.
+**Completion result.** Registration/removal members are synchronous. `wait` blocks up to
+`timeout_`, writing up to `capacity_` results and returning the count written (`0` on timeout).
+`poller_t` can also register a `socket_monitor_t&` directly (unlike dotnet's `IPoller`, whose `Add`
+overloads take `IZlinkSocket`/`IZlinkTimer` only — a monitor there is polled indirectly through
+`ZlinkPoll.Poll(IReadOnlyList<ISocketMonitor>, ...)` instead).
+
+**When to use.** One poller across a service's lifetime. Prefer `modify` over `remove` + `add` when
+only the watched events change.
 
 ---
 
@@ -105,10 +113,14 @@ when only the watched events change.
 One ready source reported by a `poller_t::wait` call. A plain struct, default-constructed with
 `source_kind = poll_source_kind_t::socket`.
 
-**Options.** No parameters. Fields: `source_kind` (`poll_source_kind_t`: `socket`/`fd`/`timer`),
-`slot` (`std::uintptr_t`, the caller token supplied at registration), `revents`
-(`poll_event_flag_t`, the events that actually fired), `fd` (`int`, populated for `fd`-kind
-sources).
+**Options.**
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `source_kind` | `poll_source_kind_t` | `socket`/`fd`/`timer` |
+| `slot` | `std::uintptr_t` | the caller token supplied at registration |
+| `revents` | `poll_event_flag_t` | events that actually fired |
+| `fd` | `int` | populated for `fd`-kind sources |
 
 **Completion result.** N/A — plain data.
 
@@ -130,18 +142,21 @@ std::vector<zlink::poll_item_t> items {
 int ready = zlink::poll (items, std::chrono::milliseconds (1000));
 ```
 
-**Options.** `poll_item_t`: `socket` (`socket_t*`, null for an fd-based item), `fd` (`int`),
-`events`/`revents` (`poll_event_flag_t`); static factories `from_socket(socket_t&,
-poll_event_flag_t)`/`from_fd(int, poll_event_flag_t)`. `zlink::poll(poll_item_t* items_, size_t
-count_, std::chrono::milliseconds timeout_)` and the `std::vector<poll_item_t>&` convenience
-overload.
+**Options.**
 
-**Completion result.** Synchronous; returns the count of ready items (`0` on timeout). `revents`
-on each `poll_item_t` is written in place by the call.
+| Member | Meaning |
+| --- | --- |
+| `socket` (`socket_t*`) | null for an fd-based item |
+| `fd` (`int`) / `events`/`revents` (`poll_event_flag_t`) | — |
+| `from_socket(socket_t&, poll_event_flag_t)` / `from_fd(int, poll_event_flag_t)` | static factories |
+| `zlink::poll(poll_item_t* items_, size_t count_, std::chrono::milliseconds timeout_)` | plus a `std::vector<poll_item_t>&` convenience overload |
 
-**When to use.** Use this free-function form for an ad hoc, one-off wait across a small fixed set
-of sockets/descriptors; use `poller_t` instead when the watched set changes over time or a monitor/
-timer needs to be multiplexed alongside sockets.
+**Completion result.** Synchronous; returns the count of ready items (`0` on timeout). `revents` on
+each `poll_item_t` is written in place by the call.
+
+**When to use.** This free-function form for an ad hoc, one-off wait across a small fixed set;
+`poller_t` instead when the watched set changes over time or a monitor/timer needs to be
+multiplexed alongside sockets.
 
 ---
 
@@ -156,19 +171,20 @@ timer.on_fire ([] (uint64_t count) { /* ... */ });
 timer.start (std::chrono::seconds (1), /*repeat_count=*/0);
 ```
 
-**Options.** `start(duration, uint64_t repeat_count_ = 0)` (a template accepting any
-`std::chrono::duration`, converted internally to nanoseconds; a negative interval throws
-`config_error_t{invalid_argument}`), `stop()`, `recv()` (returns `std::optional<uint64_t>` — the
-cumulative fire count, `std::nullopt` when nothing pending), `on_fire(std::function<void
-(uint64_t)>)` (unlike dotnet's `Action<IZlinkTimer, ulong>`, the callback here receives only the
-fire count, not the timer itself), `close()`.
+**Options.**
 
-**Completion result.** All members are synchronous. Move-only; the destructor does not implicitly
-close.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `start(duration, uint64_t repeat_count_)` | `repeat_count_ = 0` | template accepting any `std::chrono::duration`, converted internally to nanoseconds; negative throws `config_error_t{invalid_argument}` |
+| `stop()` | — | — |
+| `recv()` | — | returns `std::optional<uint64_t>` cumulative fire count, `std::nullopt` when nothing pending |
+| `on_fire(std::function<void(uint64_t)>)` | — | unlike dotnet's `Action<IZlinkTimer, ulong>`, the callback here receives only the fire count, not the timer itself |
+| `close()` | — | — |
 
-**When to use.** Use `on_fire` for a passive interval callback; use `recv` to poll expirations
-instead, or register the timer with `poller_t::add(timer_t&, std::uintptr_t)` to multiplex it
-alongside sockets on one wait.
+**Completion result.** All synchronous. Move-only; the destructor does not implicitly close.
+
+**When to use.** `on_fire` for a passive interval callback; `recv` to poll expirations instead, or
+register with `poller_t::add(timer_t&, std::uintptr_t)` to multiplex alongside sockets.
 
 ---
 

@@ -41,7 +41,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Core](01-core.en.md) | Drafted | `Contracts/Core/`: `context.hpp`, `context_options.hpp`, `routing_id.hpp`, `byte_count.hpp`, `capability.hpp`, `utilities.hpp` |
 | [Messaging](02-messaging.en.md) | Drafted | `Contracts/Messaging/`: `message.hpp`, `received.hpp`, `topic_message.hpp`, `subscription_event.hpp`, `operation_contracts.hpp`, `request_result.hpp` (`lazy_message_parts.hpp` and `operation_builder_base.hpp` are `detail`, no public entry) |
 | [Sockets](03-sockets.en.md) | Drafted | `Contracts/Sockets/`: `socket_contracts.hpp`, `message_socket_contracts.hpp`, `routed_socket_contracts.hpp`, `pubsub_socket_contracts.hpp`, `stream_socket.hpp`, `socket_options.hpp`, `results.hpp` |
-| Eventing | Not started | `Contracts/Eventing/`: `monitor.hpp`, `status.hpp`, `poller.hpp`, `poll_event.hpp`, `timers.hpp`, `events.hpp` |
+| [Eventing](04-eventing.en.md) | Drafted | `Contracts/Eventing/`: `monitor.hpp`, `status.hpp`, `poller.hpp`, `poll_event.hpp`, `timers.hpp`, `events.hpp` |
 | Errors | Not started | `Contracts/Errors/`: `errors.hpp`, `results.hpp` |
 
 This document tree is not yet listed in the `mkdocs.yml` nav.

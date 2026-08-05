@@ -16,15 +16,15 @@ scheduler adapters.
 
 | Section | Covers |
 |---|---|
-| [1.1 Submit, Async, and Yield](#11-submit-async와-yield) | Completion meaning per terminator, `Yield` eligibility, the relationship between `SpotWide` gates and Actor claims |
+| [1.1 Submit, Async, and Yield](#11-submit-async-and-yield) | Completion meaning per terminator, `Yield` eligibility, the relationship between `SpotWide` gates and Actor claims |
 | [1.2 Worker offload](#12-worker-offload) | Completion for CPU/I/O workers and error classification |
 | [1.3 One-way submit](#13-one-way-submit) | Source-local admission boundaries and failure classification for send/publish families |
 | [1.4 Admission deadline](#14-admission-deadline) | Deadline owner and default per operation family |
 | [2. Request completion](#2-request-completion) | The race between reply, remote error, timeout, cancellation, and shutdown, and the rule for keeping the caller's turn |
-| [3. Handler turn and claim](#3-handler-turn과-claim) | Gate/claim ownership, how much a `Yield` releases, Actor Join `Defer()` |
-| [4. Cancellation and shutdown](#4-cancellation과-shutdown) | Per-language cancellation input, how pending operations are handled during drain/relocation |
+| [3. Handler turn and claim](#3-handler-turn-and-claim) | Gate/claim ownership, how much a `Yield` releases, Actor Join `Defer()` |
+| [4. Cancellation and shutdown](#4-cancellation-and-shutdown) | Per-language cancellation input, how pending operations are handled during drain/relocation |
 | [5. Spot timer](#5-spot-timer) | Timer generation, cancel semantics, batching high-frequency ticks |
-| [6. Per-language representation](#6-언어별-표현) | Actual return types per language and exact-interface ownership |
+| [6. Per-language representation](#6-per-language-representation) | Actual return types per language and exact-interface ownership |
 
 ## 1. Messaging/Worker call terminator
 

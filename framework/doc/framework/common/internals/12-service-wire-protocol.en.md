@@ -20,18 +20,18 @@ title: "12. Service wire protocol"
 
 | Section | Covers |
 |---|---|
-| [1. Schema and generation boundary](#1-schema와-생성-경계) | The schema as single source of generation, the validator, the Location Store authority key format |
-| [2. Record framing and decode](#2-record-framing과-decode) | Multipart frame layout, decode validation, payload size limits |
+| [1. Schema and generation boundary](#1-schema-and-generation-boundary) | The schema as single source of generation, the validator, the Location Store authority key format |
+| [2. Record framing and decode](#2-record-framing-and-decode) | Multipart frame layout, decode validation, payload size limits |
 | [3. Command space](#3-command-space) | The list of 41 commands and their roles, the Message Follow notification |
-| [4. Admission and connection fence](#4-admission과-connection-fence) | The hello/admit/reject procedure, DescriptorRevision ordering, ClientServer direction |
+| [4. Admission and connection fence](#4-admission-and-connection-fence) | The hello/admit/reject procedure, DescriptorRevision ordering, ClientServer direction |
 | [5. Service liveness](#5-service-liveness) | The livenessProbe/Ack cycle, the Classic fanout beacon, subscriber-ready determination |
 | [6. Typed application message JSON](#6-typed-application-message-json) | The `framework-json-v1` profile rules |
-| [7. Durable authority and explicit creation](#7-durable-authority와-explicit-creation) | Generation separation, the creation record, factory failure handling |
+| [7. Durable authority and explicit creation](#7-durable-authority-and-explicit-creation) | Generation separation, the creation record, factory failure handling |
 | [8. Instance Spot reactivation](#8-instance-spot-reactivation) | The Missing+Instance intent envelope, target-host recovery, User Spot terminal service operations |
-| [9. Maintenance capture and relocation envelope](#9-maintenance-capture와-relocation-envelope) | The Retiring seal, the byte reservation gate, relocation envelope encoding |
-| [10. Relocation, Actor membership, and Ready](#10-relocation-actor-membership과-ready) | The authority phase state machine, aggregate relocation commit, the moment of Ready |
+| [9. Maintenance capture and relocation envelope](#9-maintenance-capture-and-relocation-envelope) | The Retiring seal, the byte reservation gate, relocation envelope encoding |
+| [10. Relocation, Actor membership, and Ready](#10-relocation-actor-membership-and-ready) | The authority phase state machine, aggregate relocation commit, the moment of Ready |
 | [11. Request terminal identity](#11-request-terminal-identity) | OperationId/ReplyRouteId, terminal completion tracking, root replacement |
-| [12. Implementation verification](#12-구현-검증) | The invariants an implementation must uphold |
+| [12. Implementation verification](#12-implementation-verification) | The invariants an implementation must uphold |
 
 ## 1. Schema and generation boundary
 

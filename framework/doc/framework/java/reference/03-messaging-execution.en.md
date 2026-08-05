@@ -4,7 +4,7 @@
 
 This category covers the entry points `ZLinkRouteClient` and `ZLinkFanoutClient` provide. The
 exact signatures are owned by the
-[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.ko.md)
+[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 (Korean-only). This document does not repeat those signatures — it collects only what you need to
 actually call each entry point, in complete form.
 
@@ -192,7 +192,7 @@ These apply in common to every entry point in this category and are not repeated
   `ZLinkFrameworkException.kind()`.
 
 See the
-[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.ko.md)
+[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 and the
 [Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.ko.md)
 (Korean-only) for the full rationale.

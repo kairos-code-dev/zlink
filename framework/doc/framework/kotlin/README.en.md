@@ -50,7 +50,7 @@ Kotlin follow the Kotlin spec.
 | [Kotlin interfaces](../common/spec/server/languages/kotlin/interfaces/README.ko.md) | The exact public signature for coroutines/DSL |
 | [Java spec table of contents](../common/spec/server/languages/java/README.ko.md) | The Java public contract Kotlin uses as-is |
 | [Java interfaces](../common/spec/server/languages/java/interfaces/README.ko.md) | The canonical Java types and builders Kotlin reuses |
-| [Channel messaging](../common/spec/server/languages/java/interfaces/channel-messaging.ko.md) | Channel registration, the outbound client, and dispatch |
+| [Channel messaging](../common/spec/server/languages/java/interfaces/channel-messaging.en.md) | Channel registration, the outbound client, and dispatch |
 | [Spot](../common/spec/server/languages/java/interfaces/spots.ko.md) | Spot lifecycle and factory |
 | [Actor](../common/spec/server/languages/java/interfaces/actors.en.md) | The actor factory, relocation adapter, and bound session |
 | [STREAM](../common/spec/server/languages/java/interfaces/stream-session.en.md) | The stream node and header session |

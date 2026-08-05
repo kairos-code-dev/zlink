@@ -7,7 +7,7 @@ and the entry points that query RouteMesh/ClientServer/Fanout operational status
 signatures are owned by the
 [Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 and the
-[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.ko.md)
+[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 (Korean-only). Every registration entry point is a configuration-time call made inside
 `ZLinkFrameworkConfigurer.configure(...)`.
 
@@ -375,5 +375,5 @@ host-lifecycle category.
 See the
 [Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 and the
-[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.ko.md)
+[Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 (Korean-only) for the full rationale.

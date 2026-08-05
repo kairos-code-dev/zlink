@@ -705,7 +705,7 @@ verifies detailed behavior — messaging, connection, spot, codec, etc.
 | Config | Server configuration | What it covers |
 |--------|-----------|-----------|
 | [Config 1 — Location messaging](config-1-location-messaging.en.md) | Location Store + 2 Channel providers + 2 Object Servers + 2 Object Clients | Public RouteMesh status, automatic/manual topology, Channel provider selection, request/send, timeout/backpressure, and global object identity conflict |
-| [Config 2 — Spot service](config-2-spot-service.ko.md) | Location Store + Relocation Store + 2 Play nodes + 2 Session gateways | Entry/User Spot, Actor create/Join, direct/Channel/multicast message, Session bind/relay/push, timer/close, crash and scale-out |
+| [Config 2 — Spot service](config-2-spot-service.en.md) | Location Store + Relocation Store + 2 Play nodes + 2 Session gateways | Entry/User Spot, Actor create/Join, direct/Channel/multicast message, Session bind/relay/push, timer/close, crash and scale-out |
 | [Config 3 — Pub/Sub events](config-3-pubsub.en.md) | Publisher + 3 subscribers + Location Store | Publisher discovery, topic filter, fanout, late subscriber, restart/Store failure, and publish semantics that don't replay |
 | [Config 4 — Registration/codec](config-4-registration-codec.en.md) | Channel caller/provider | Per-language handler registration method, startup validation, DI lifecycle, default typed JSON and root codec extension |
 | [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.en.md) | Multiple nodes + Location Store | Restart/replacement/disconnect, terminal-once, hidden-replay prohibition, Relocate/Shutdown, capacity and lifecycle contention |

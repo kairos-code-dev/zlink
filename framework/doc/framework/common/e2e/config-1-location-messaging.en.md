@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Next: Spot Service](config-2-spot-service.ko.md)
+[E2E table of contents](README.en.md) | [Next: Spot Service](config-2-spot-service.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 1 — Location Store-Based Messaging

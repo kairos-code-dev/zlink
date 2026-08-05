@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E Index](README.en.md) | [Previous: Spot Service](config-2-spot-service.ko.md) | [Next: Registration And Codec](config-4-registration-codec.en.md)
+[E2E Index](README.en.md) | [Previous: Spot Service](config-2-spot-service.en.md) | [Next: Registration And Codec](config-4-registration-codec.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 3 — Classic Fanout Publish And Subscribers

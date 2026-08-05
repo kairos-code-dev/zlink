@@ -29,16 +29,22 @@ with copy:
     view = copy.data
 ```
 
-**Options.** Class method: `from_(data)`(임의 bytes-like `data`의 독립된
-복사; `from`이 키워드라 뒤에 underscore가 붙음), `allocate(size:
-int)`(쓰기 가능 storage). Instance member: `copy()`(독립된 payload
-복사), `size()`, `is_empty()`, `data`(property — zero-copy
-`memoryview`, 메시지가 열려있는 동안만 유효), `to_bytes()`(복사),
-`copy_to(destination, source_offset=0, destination_offset=0,
-length=None)`(쓴 byte 수 반환), `try_copy_to(destination)`(쓴 byte 수
-또는 `destination`이 너무 작으면 `None` 반환 — `copy_to`의 예외를
-던지지 않는 대안), `to_string(encoding="utf-8")`, `ref_count()`(진단
-전용), `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `from_(data)` | class method; 임의 bytes-like `data`의 독립된 복사; `from`이 키워드라 뒤에 underscore가 붙음 |
+| `allocate(size: int)` | class method; 쓰기 가능 storage |
+| `copy()` | 독립된 payload 복사 |
+| `size()` | payload 바이트 길이 |
+| `is_empty()` | `size()`가 0인지 |
+| `data` | property, zero-copy `memoryview`, 메시지가 열려있는 동안만 유효 |
+| `to_bytes()` | payload의 `bytes` 복사 |
+| `copy_to(destination, source_offset=0, destination_offset=0, length=None)` | payload(또는 범위)를 caller가 제공한 buffer로 복사, 쓴 byte 수 반환 |
+| `try_copy_to(destination)` | 쓴 byte 수를 반환, `destination`이 너무 작으면 `None` — `copy_to`의 예외를 던지지 않는 대안 |
+| `to_string(encoding="utf-8")` | payload를 텍스트로 디코딩 |
+| `ref_count()` | native reference count, 진단 전용 |
+| `close()` | message를 해제 |
 
 **Completion result.** 모든 member는 동기다. `Message`는
 `with`/`async with` 둘 다 지원한다.
@@ -57,8 +63,14 @@ length=None)`(쓴 byte 수 반환), `try_copy_to(destination)`(쓴 byte 수
 `ReceivedMultipart`/`Received` envelope을 iterate할 때 나오는 타입.
 
 **Options.** 인자 없음 — envelope을 iterate해서만 얻으며 직접 생성하지
-않는다. Member: `__len__`(part 크기, byte), `data`(property —
-`memoryview` snapshot), `to_bytes()`(복사), `close()`.
+않는다.
+
+| Member | 의미 |
+| --- | --- |
+| `__len__` | `len(part)`을 통한 part 크기(byte) |
+| `data` | property, `memoryview` snapshot |
+| `to_bytes()` | part의 `bytes` 복사 |
+| `close()` | part를 해제 |
 
 **Completion result.** 동기다. sync·async context-manager 프로토콜
 둘 다 지원한다.
@@ -84,18 +96,22 @@ if dealer.recv_into(received):
     received.reply().message(b"ok").submit()
 ```
 
-**Options.** `ReceivedMultipart`: `__iter__`, `__len__`(part 개수),
-`to_bytes_list()`(`bytes` 복사 목록), `is_single_part()`,
-`first_part()`(소유권 이전 없음; 비어있으면 `RecvError`),
-`single_part_or_throw()`(정확히 하나가 아니면 `RecvError`),
-`close()`. `Received extends ReceivedMultipart`는 `send()`(공유
-`SendOp` builder 시작 — Sockets category — 이 envelope이 포착한
-source route로 향함; envelope에 send context가 없으면
-`SubmitError`)와 `reply()`(공유 `ReplyOp` builder 시작; envelope이
-reply 가능하지 않으면 `SubmitError`)를 더한다. **`Received`도
-`ReceivedMultipart`도 이 contract에서 `routing_id`/`request_seq`를
-문서화된 public member로 노출하지 않는다** — reply/send context는
-`reply()`/`send()` 메서드 자체를 통해서만 도달한다.
+**Options.** **`Received`도 `ReceivedMultipart`도 이 contract에서
+`routing_id`/`request_seq`를 문서화된 public member로 노출하지
+않는다** — reply/send context는 `reply()`/`send()` 메서드 자체를
+통해서만 도달한다.
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `ReceivedMultipart` | `__iter__` | part를 순서대로 iterate |
+| | `__len__` | `len(envelope)`을 통한 part 개수 |
+| | `to_bytes_list()` | part별 `bytes` 복사 목록 |
+| | `is_single_part()` | envelope이 part를 정확히 하나 가졌는지 |
+| | `first_part()` | 소유권 이전 없이 첫 part; 비어있으면 `RecvError` |
+| | `single_part_or_throw()` | 단일 part; 정확히 하나가 아니면 `RecvError` |
+| | `close()` | 소유한 모든 part를 닫음 |
+| `Received extends ReceivedMultipart` | `send()` | 공유 `SendOp` builder(Sockets category)를 시작, 이 envelope이 포착한 source route로 향함; envelope에 send context가 없으면 `SubmitError` |
+| | `reply()` | 공유 `ReplyOp` builder를 시작; envelope이 reply 가능하지 않으면 `SubmitError` |
 
 **Completion result.** 모든 member는 동기다. 둘 다 sync·async
 context-manager 프로토콜을 지원한다.
@@ -120,10 +136,12 @@ if sub.subscribe_into(published):
     topic = published.topic
 ```
 
-**Options.** `topic`(property, get **그리고 set** — 다른 모든 언어의
-읽기 전용 `topic`과 다름). 그 외엔 `ReceivedMultipart`와 같은 공유
-형태: `__iter__`, `__len__`, `to_bytes_list()`, `is_single_part()`,
-`first_part()`, `single_part_or_throw()`, `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `topic` | property, get **그리고 set** — 다른 모든 언어의 읽기 전용 `topic`과 다름; 이 publish가 전송된 topic |
+| `__iter__` / `__len__` / `to_bytes_list()` / `is_single_part()` / `first_part()` / `single_part_or_throw()` / `close()` | `ReceivedMultipart`와 같은 형태 |
 
 **Completion result.** 동기다. sync·async context-manager 프로토콜을
 지원한다.

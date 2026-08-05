@@ -25,13 +25,22 @@ with copy:
     view = copy.data
 ```
 
-**Options.** Class methods: `from_(data)` (an independent copy of any bytes-like `data`; named with
-a trailing underscore since `from` is a keyword), `allocate(size: int)` (writable storage). Instance
-members: `copy()` (independent payload copy), `size()`, `is_empty()`, `data` (property — a
-zero-copy `memoryview`, valid only while the message is open), `to_bytes()` (copy), `copy_to
-(destination, source_offset=0, destination_offset=0, length=None)` (returns bytes written), `try_copy_to
-(destination)` (returns bytes written or `None` if `destination` is too small — the non-raising
-alternative to `copy_to`), `to_string(encoding="utf-8")`, `ref_count()` (a diagnostic only), `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `from_(data)` | class method; an independent copy of any bytes-like `data`; named with a trailing underscore since `from` is a keyword |
+| `allocate(size: int)` | class method; writable storage |
+| `copy()` | independent payload copy |
+| `size()` | payload length in bytes |
+| `is_empty()` | whether `size()` is zero |
+| `data` | property, a zero-copy `memoryview`, valid only while the message is open |
+| `to_bytes()` | copy of the payload as `bytes` |
+| `copy_to(destination, source_offset=0, destination_offset=0, length=None)` | copies the payload (or a range) into a caller-provided buffer, returns bytes written |
+| `try_copy_to(destination)` | returns bytes written, or `None` if `destination` is too small — the non-raising alternative to `copy_to` |
+| `to_string(encoding="utf-8")` | payload decoded as text |
+| `ref_count()` | native reference count, diagnostic only |
+| `close()` | releases the message |
 
 **Completion result.** All members are synchronous. `Message` supports both `with`/`async with`.
 
@@ -48,8 +57,13 @@ A single received message part, distinct from `Message` — the type yielded whe
 `ReceivedMultipart`/`Received` envelope.
 
 **Options.** No parameters — obtained only by iterating an envelope, never constructed directly.
-Members: `__len__` (part size in bytes), `data` (property — a `memoryview` snapshot), `to_bytes()`
-(copy), `close()`.
+
+| Member | Meaning |
+| --- | --- |
+| `__len__` | part size in bytes, via `len(part)` |
+| `data` | property, a `memoryview` snapshot |
+| `to_bytes()` | copy of the part as `bytes` |
+| `close()` | releases the part |
 
 **Completion result.** Synchronous; supports both sync/async context-manager protocols.
 
@@ -72,15 +86,21 @@ if dealer.recv_into(received):
     received.reply().message(b"ok").submit()
 ```
 
-**Options.** `ReceivedMultipart`: `__iter__`, `__len__` (part count), `to_bytes_list()` (list of
-`bytes` copies), `is_single_part()`, `first_part()` (no ownership transfer; raises `RecvError` when
-empty), `single_part_or_throw()` (raises `RecvError` unless exactly one part), `close()`.
-`Received extends ReceivedMultipart` adds `send()` (starts the shared `SendOp` builder — Sockets
-category — addressed to this envelope's captured source route; raises `SubmitError` if the
-envelope carries no send context) and `reply()` (starts the shared `ReplyOp` builder; raises
-`SubmitError` unless the envelope is replyable). **Neither `Received` nor `ReceivedMultipart`
-exposes `routing_id`/`request_seq` as a documented public member in this contract** — reply/send
-context is reached only through the `reply()`/`send()` methods themselves.
+**Options.** **Neither `Received` nor `ReceivedMultipart` exposes `routing_id`/`request_seq` as a
+documented public member in this contract** — reply/send context is reached only through the
+`reply()`/`send()` methods themselves.
+
+| Type | Member | Meaning |
+| --- | --- | --- |
+| `ReceivedMultipart` | `__iter__` | iterates the parts in order |
+| | `__len__` | part count, via `len(envelope)` |
+| | `to_bytes_list()` | list of `bytes` copies, one per part |
+| | `is_single_part()` | whether the envelope has exactly one part |
+| | `first_part()` | the first part, without transferring ownership; raises `RecvError` when empty |
+| | `single_part_or_throw()` | the single part; raises `RecvError` unless exactly one part |
+| | `close()` | closes every owned part |
+| `Received extends ReceivedMultipart` | `send()` | starts the shared `SendOp` builder (Sockets category), addressed to this envelope's captured source route; raises `SubmitError` if the envelope carries no send context |
+| | `reply()` | starts the shared `ReplyOp` builder; raises `SubmitError` unless the envelope is replyable |
 
 **Completion result.** All members are synchronous. Both support sync/async context-manager
 protocols.
@@ -104,9 +124,12 @@ if sub.subscribe_into(published):
     topic = published.topic
 ```
 
-**Options.** `topic` (property, get **and set** — unlike every other language's read-only
-`topic`). Otherwise the same shared shape as `ReceivedMultipart`: `__iter__`, `__len__`,
-`to_bytes_list()`, `is_single_part()`, `first_part()`, `single_part_or_throw()`, `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `topic` | property, get **and set** — unlike every other language's read-only `topic`; the topic this publish was sent on |
+| `__iter__` / `__len__` / `to_bytes_list()` / `is_single_part()` / `first_part()` / `single_part_or_throw()` / `close()` | same shape as `ReceivedMultipart` |
 
 **Completion result.** Synchronous; supports sync/async context-manager protocols.
 

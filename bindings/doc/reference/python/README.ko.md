@@ -45,7 +45,7 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | Category | 상태 | Contract 원본(`contracts/` + `__init__.py` 대조 확인) |
 |---|---|---|
 | [Core](01-core.ko.md) | 작성 완료 | `__init__.py`(factory/자유 함수); `contracts/core/`: `context.py`, `options.py`, `routing_id.py`, `utilities.py`, `codes.py` |
-| Messaging | 미착수 | `contracts/messaging/`: `message.py`, `received.py`, `topic_message.py`, `subscription_event.py`(별도 `operations.py`가 없다 — builder Protocol은 `contracts/sockets/operations.py`에 있다) |
+| [Messaging](02-messaging.ko.md) | 작성 완료 | `contracts/messaging/`: `message.py`, `received.py`, `topic_message.py`, `subscription_event.py`(별도 `operations.py`가 없다 — builder Protocol은 `contracts/sockets/operations.py`에 있다) |
 | Sockets | 미착수 | `contracts/sockets/`: `socket.py`, `message_socket_contracts.py`, `routed_socket_contracts.py`, `pubsub_socket_contracts.py`, `stream_socket.py`, `socket_options.py`, `operations.py`, `codes.py` |
 | Eventing | 미착수 | `contracts/eventing/`: `poller.py`, `monitor.py`, `timer.py`, `codes.py` |
 | Errors | 미착수 | `contracts/errors/`: `errors.py`, `results.py`, `codes.py` |

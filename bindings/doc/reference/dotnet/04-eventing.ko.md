@@ -26,10 +26,10 @@ MonitorStatus status = monitor.Status();
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `OnEvent(Action<MonitorEvent> handler)` | — | background-dispatch-thread 콜백 |
-| `Recv(RecvFlags flags)` | `RecvFlags.None` | `MonitorEvent?` 반환, `DontWait`고 대기 중인 게 없으면 null |
-| `Status()` | — | 인자 없음 |
-| `Close()` | — | — |
+| `OnEvent(Action<MonitorEvent> handler)` | — | 수동적 observer를 등록, 모든 lifecycle event마다 background dispatch 스레드에서 호출됨 |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | 다음 event를 가져옴; `MonitorEvent?` 반환, `DontWait`고 대기 중인 게 없으면 null |
+| `Status()` | — | monitor 대상 socket 상태의 시점 스냅샷 |
+| `Close()` | — | monitor의 native resource를 해제 |
 
 `MonitorEvent(MonitorEventType Event, uint Value, RoutingId? RoutingId, string LocalAddr,
 string RemoteAddr)`는 `OnEvent`와 `Recv` 둘 다가 전달하는 record다 — `Value`는
@@ -86,14 +86,15 @@ int count = poller.Wait(ready, TimeSpan.FromSeconds(1));
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `Size` | 읽기 전용 | `int` |
-| `Add(IZlinkSocket, PollEventFlags, nuint slot)` | — | `slot`은 대응하는 `PollEvent`로 그대로 되돌아옴 |
-| `AddFd(int fd, PollEventFlags, nuint slot)` | — | — |
-| `Add(IZlinkTimer, nuint slot)` | — | — |
-| `Modify(IZlinkSocket, PollEventFlags)` / `ModifyFd(int fd, PollEventFlags)` | — | — |
-| `Remove(IZlinkSocket)` / `Remove(IZlinkTimer)` / `Remove(int fd)` | — | `bool` 반환, 등록돼 있었으면 true |
-| `Clear()` / `Close()` | — | — |
-| `Wait(Span<PollEvent> destination, TimeSpan timeout)` | — | — |
+| `Size`(`int`) | 읽기 전용 | 현재 등록된 source 개수 |
+| `Add(IZlinkSocket, PollEventFlags, nuint slot)` | — | socket을 주어진 event로 등록; `slot`은 대응하는 `PollEvent`로 그대로 되돌아옴 |
+| `AddFd(int fd, PollEventFlags, nuint slot)` | — | 같은 방식으로 raw file descriptor를 등록 |
+| `Add(IZlinkTimer, nuint slot)` | — | timer를 등록, fire하면 ready로 표시 |
+| `Modify(IZlinkSocket, PollEventFlags)` / `ModifyFd(int fd, PollEventFlags)` | — | 이미 등록된 socket/descriptor의 감시 event를 변경 |
+| `Remove(IZlinkSocket)` / `Remove(IZlinkTimer)` / `Remove(int fd)` | — | 등록 해제; `bool` 반환, 등록돼 있었으면 true |
+| `Clear()` | — | 등록된 모든 source를 한 번에 해제 |
+| `Close()` | — | poller의 native resource를 해제 |
+| `Wait(Span<PollEvent> destination, TimeSpan timeout)` | — | source 하나 이상이 ready 상태이거나 `timeout`이 지날 때까지 block |
 
 **완료 결과.** 등록/제거 member는 block 없이 동기다. `Wait`는 `timeout`까지
 block하며, `destination.Length`까지 결과를 쓰고 쓴 개수를 반환한다(timeout이면 `0`).
@@ -139,11 +140,11 @@ timer.Start(TimeSpan.FromSeconds(1), repeatCount: 0);
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `Start(TimeSpan interval, ulong repeatCount)` | — | "무기한 반복"을 뜻하는 sentinel 값은 소스 참고 |
-| `Stop()` | — | `Start`로 재시작 가능 |
-| `Recv(RecvFlags flags)` | `RecvFlags.None` | `ulong?` 누적 fire count 반환, `DontWait`고 대기 중인 게 없으면 null |
-| `OnFire(Action<IZlinkTimer, ulong> handler)` | — | background-dispatch-thread 콜백 |
-| `Close()` | — | — |
+| `Start(TimeSpan interval, ulong repeatCount)` | — | `interval`마다 fire를 시작; `repeatCount`가 횟수 상한("무기한 반복"을 뜻하는 sentinel 값은 소스 참고) |
+| `Stop()` | — | fire를 멈춤; `Start`로 재시작 가능 |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | 누적 fire count를 가져옴; `ulong?` 반환, `DontWait`고 대기 중인 게 없으면 null |
+| `OnFire(Action<IZlinkTimer, ulong> handler)` | — | 수동적 observer를 등록, fire할 때마다 background dispatch 스레드에서 호출됨 |
+| `Close()` | — | timer의 native resource를 해제 |
 
 **완료 결과.** 모두 동기다. `IZlinkTimer`는 `IDisposable`/`IAsyncDisposable`이다.
 
@@ -167,7 +168,7 @@ int ready = ZlinkPoll.Poll(new IZlinkSocket[] { dealer, sub }, timeoutMs: 1000);
 | --- | --- |
 | `Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)` | readable 여부만 확인 |
 | `Poll(sockets, IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents, int timeoutMs)` | socket별 요청 event, 발생한 event를 대응 인덱스의 `revents`에 씀 |
-| socket 대신 `IReadOnlyList<ISocketMonitor>`를 받는 같은 두 overload | — |
+| `IReadOnlyList<ISocketMonitor>`에 대한 같은 두 overload | socket 대신 |
 
 음수 `timeoutMs`는 무기한 block한다.
 

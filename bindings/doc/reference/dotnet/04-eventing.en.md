@@ -25,10 +25,10 @@ MonitorStatus status = monitor.Status();
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `OnEvent(Action<MonitorEvent> handler)` | — | background-dispatch-thread callback |
-| `Recv(RecvFlags flags)` | `RecvFlags.None` | returns `MonitorEvent?`, null when `DontWait` and nothing pending |
-| `Status()` | — | no parameters |
-| `Close()` | — | — |
+| `OnEvent(Action<MonitorEvent> handler)` | — | registers a passive observer, invoked on a background dispatch thread for every lifecycle event |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | pulls the next event; returns `MonitorEvent?`, null when `DontWait` and nothing pending |
+| `Status()` | — | a point-in-time snapshot of the monitored socket's state |
+| `Close()` | — | releases the monitor's native resources |
 
 `MonitorEvent(MonitorEventType Event, uint Value, RoutingId? RoutingId, string LocalAddr, string
 RemoteAddr)` is the record delivered by both `OnEvent` and `Recv` — `Value` is event-specific,
@@ -86,14 +86,15 @@ int count = poller.Wait(ready, TimeSpan.FromSeconds(1));
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `Size` | read-only | `int` |
-| `Add(IZlinkSocket, PollEventFlags, nuint slot)` | — | `slot` echoed back in the matching `PollEvent` |
-| `AddFd(int fd, PollEventFlags, nuint slot)` | — | — |
-| `Add(IZlinkTimer, nuint slot)` | — | — |
-| `Modify(IZlinkSocket, PollEventFlags)` / `ModifyFd(int fd, PollEventFlags)` | — | — |
-| `Remove(IZlinkSocket)` / `Remove(IZlinkTimer)` / `Remove(int fd)` | — | returns `bool`, true when it was registered |
-| `Clear()` / `Close()` | — | — |
-| `Wait(Span<PollEvent> destination, TimeSpan timeout)` | — | — |
+| `Size` (`int`) | read-only | number of sources currently registered |
+| `Add(IZlinkSocket, PollEventFlags, nuint slot)` | — | registers a socket for the given events; `slot` echoed back in the matching `PollEvent` |
+| `AddFd(int fd, PollEventFlags, nuint slot)` | — | registers a raw file descriptor the same way |
+| `Add(IZlinkTimer, nuint slot)` | — | registers a timer, ready when it fires |
+| `Modify(IZlinkSocket, PollEventFlags)` / `ModifyFd(int fd, PollEventFlags)` | — | changes the watched events for an already-registered socket/descriptor |
+| `Remove(IZlinkSocket)` / `Remove(IZlinkTimer)` / `Remove(int fd)` | — | unregisters the source; returns `bool`, true when it was registered |
+| `Clear()` | — | unregisters every source at once |
+| `Close()` | — | releases the poller's native resources |
+| `Wait(Span<PollEvent> destination, TimeSpan timeout)` | — | blocks until at least one source is ready or `timeout` elapses |
 
 **Completion result.** Registration/removal members are synchronous, non-blocking. `Wait` blocks
 up to `timeout`, writing up to `destination.Length` results and returning the count written (`0`
@@ -139,11 +140,11 @@ timer.Start(TimeSpan.FromSeconds(1), repeatCount: 0);
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `Start(TimeSpan interval, ulong repeatCount)` | — | see source for the sentinel meaning "repeat indefinitely" |
-| `Stop()` | — | restartable via `Start` |
-| `Recv(RecvFlags flags)` | `RecvFlags.None` | returns `ulong?` cumulative fire count, null when `DontWait` and nothing pending |
-| `OnFire(Action<IZlinkTimer, ulong> handler)` | — | background-dispatch-thread callback |
-| `Close()` | — | — |
+| `Start(TimeSpan interval, ulong repeatCount)` | — | starts firing every `interval`; `repeatCount` bounds how many times (see source for the sentinel meaning "repeat indefinitely") |
+| `Stop()` | — | stops firing; restartable via `Start` |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | pulls the cumulative fire count; returns `ulong?`, null when `DontWait` and nothing pending |
+| `OnFire(Action<IZlinkTimer, ulong> handler)` | — | registers a passive observer, invoked on a background dispatch thread on every fire |
+| `Close()` | — | releases the timer's native resources |
 
 **Completion result.** All synchronous. `IZlinkTimer` is `IDisposable`/`IAsyncDisposable`.
 

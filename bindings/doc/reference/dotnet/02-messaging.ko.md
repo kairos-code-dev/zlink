@@ -91,10 +91,10 @@ Message first = received.FirstPart();
 | `RoutingId` | `RoutingId?` | receive 경로가 제공할 때만 존재 |
 | `RequestSeq` | `ulong?` | reply 가능할 때만 존재 |
 | `MessageType` | `ReceivedMessageType` | `Raw`/`Request`/`Reply`/`ErrorReply` |
-| `Parts` | `IReadOnlyList<Message>` | — |
-| `IsSinglePart` | `bool` | — |
-| `FirstPart()` | `Message` | 소유권 이전 없음 |
-| `SinglePartOrThrow()` | `Message` | multipart면 예외 |
+| `Parts` | `IReadOnlyList<Message>` | 이 envelope이 담은 모든 message part |
+| `IsSinglePart` | `bool` | `Parts`가 정확히 하나인지 |
+| `FirstPart()` | `Message` | 첫 part, 소유권 이전 없음 |
+| `SinglePartOrThrow()` | `Message` | 단일 part, `Parts`가 둘 이상이면 예외 |
 | `Reply()` | builder | `RequestSeq`가 값을 가질 때만 유효 — 아래 공유 builder 형태 참고 |
 | `Send()` | builder | envelope의 source route로 향함 |
 
@@ -122,10 +122,11 @@ string topic = published.Topic;
 | Member | 반환 | 의미 |
 | --- | --- | --- |
 | `TopicMessage()` | — | public 생성자(`Received`와 달리 factory가 아니라 직접 생성) |
-| `RoutingId` | `RoutingId?` | — |
+| `RoutingId` | `RoutingId?` | 발행자의 routing id, receive 경로가 제공할 때만 존재 |
 | `Topic` | `string` | topic byte에서 지연 디코딩 |
-| `Parts` / `IsSinglePart` | — | — |
-| `FirstPart()` / `SinglePartOrThrow()` | `Message` | `Received`와 같은 형태 |
+| `Parts` | `IReadOnlyList<Message>` | 이 publish가 담은 모든 message part |
+| `IsSinglePart` | `bool` | `Parts`가 정확히 하나인지 |
+| `FirstPart()` / `SinglePartOrThrow()` | `Message` | `Received`와 같은 형태 — 소유권 이전 없는 첫 part, 또는 단일 part(multipart면 예외) |
 
 **완료 결과.** 동기다. `Dispose()`는 이 instance가 소유한 part를 해제한다.
 
@@ -148,9 +149,9 @@ bool ok = xpub.Recv(evt);
 | Member | 반환 | 의미 |
 | --- | --- | --- |
 | `SubscriptionEvent()` | — | public 생성자 |
-| `RoutingId` | `RoutingId?` | — |
-| `Topic` | `string` | — |
-| `Subscribed` | `bool` | 구독 vs 구독 취소 |
+| `RoutingId` | `RoutingId?` | 구독자의 routing id, receive 경로가 제공할 때만 존재 |
+| `Topic` | `string` | 구독·구독 취소된 topic |
+| `Subscribed` | `bool` | 구독이면 `true`, 구독 취소면 `false` |
 | `SubscriptionEntry(string Filter, bool IsPattern)` | record | 활성 구독 하나 |
 
 **완료 결과.** 동기다. dispose 없음 — 이 타입은 자신의 native resource를 소유하지
@@ -184,7 +185,7 @@ received.Reply().Message(Message.From("ok")).Submit();
 | --- | --- | --- |
 | `SendOperation` | `.Message(Message)` | chain 시작 |
 | `SendSubmitOperation` | `.Message(...)` / `.Flags(SendFlags)` / `.Submit()` | part 추가, flag 설정, terminal |
-| `RequestOperation`/`RequestSubmitOperation` | `Send`와 동일 + `.Timeout(TimeSpan)` | — |
+| `RequestOperation`/`RequestSubmitOperation` | `Send`와 동일 + `.Timeout(TimeSpan)` | send chain을 그대로 반영하며 reply 대기 timeout을 더함 |
 | `RequestSubmitOperation.Flags(...)` | `RequestCallbackSubmitOperation`으로 좁힘 | awaitable `.Async()` 경로가 사라짐 — 이후 `.Submit(RequestCallback)`만 도달 가능 |
 | `ReplyOperation`/`ReplySubmitOperation` | `Send`와 같은 형태, flags 단계 없음 | core reply 함수가 send-flag 인자를 받지 않음 |
 | `Messages(IReadOnlyList<Message>)` | `MessageOperations` extension | 네 family 전체의 모든 단계에서 여러 part를 순서대로 한 번에 추가; 독립 진입점 아님 |

@@ -89,10 +89,10 @@ Message first = received.FirstPart();
 | `RoutingId` | `RoutingId?` | present when the receive path provides one |
 | `RequestSeq` | `ulong?` | present when replyable |
 | `MessageType` | `ReceivedMessageType` | `Raw`/`Request`/`Reply`/`ErrorReply` |
-| `Parts` | `IReadOnlyList<Message>` | — |
-| `IsSinglePart` | `bool` | — |
-| `FirstPart()` | `Message` | no ownership transfer |
-| `SinglePartOrThrow()` | `Message` | throws when multipart |
+| `Parts` | `IReadOnlyList<Message>` | every message part this envelope holds |
+| `IsSinglePart` | `bool` | whether `Parts` has exactly one element |
+| `FirstPart()` | `Message` | the first part, without transferring ownership |
+| `SinglePartOrThrow()` | `Message` | the single part, throws if `Parts` has more than one |
 | `Reply()` | builder | valid only when `RequestSeq` has a value — see the shared builder shape below |
 | `Send()` | builder | addressed to the envelope's source route |
 
@@ -120,10 +120,11 @@ string topic = published.Topic;
 | Member | Returns | Meaning |
 | --- | --- | --- |
 | `TopicMessage()` | — | public constructor (unlike `Received`, not a factory) |
-| `RoutingId` | `RoutingId?` | — |
+| `RoutingId` | `RoutingId?` | the publisher's routing id, present when the receive path provides one |
 | `Topic` | `string` | decoded lazily from topic bytes |
-| `Parts` / `IsSinglePart` | — | — |
-| `FirstPart()` / `SinglePartOrThrow()` | `Message` | same shape as `Received` |
+| `Parts` | `IReadOnlyList<Message>` | every message part this publish holds |
+| `IsSinglePart` | `bool` | whether `Parts` has exactly one element |
+| `FirstPart()` / `SinglePartOrThrow()` | `Message` | same shape as `Received` — first part without transfer, or the single part (throws if multipart) |
 
 **Completion result.** Synchronous. `Dispose()` releases the parts this instance owns.
 
@@ -146,9 +147,9 @@ bool ok = xpub.Recv(evt);
 | Member | Returns | Meaning |
 | --- | --- | --- |
 | `SubscriptionEvent()` | — | public constructor |
-| `RoutingId` | `RoutingId?` | — |
-| `Topic` | `string` | — |
-| `Subscribed` | `bool` | subscribed vs. unsubscribed |
+| `RoutingId` | `RoutingId?` | the subscriber's routing id, present when the receive path provides one |
+| `Topic` | `string` | the topic that was subscribed or unsubscribed |
+| `Subscribed` | `bool` | `true` for a subscribe, `false` for an unsubscribe |
 | `SubscriptionEntry(string Filter, bool IsPattern)` | record | one active subscription |
 
 **Completion result.** Synchronous; no disposal — this type owns no native resources.
@@ -181,7 +182,7 @@ received.Reply().Message(Message.From("ok")).Submit();
 | --- | --- | --- |
 | `SendOperation` | `.Message(Message)` | starts the chain |
 | `SendSubmitOperation` | `.Message(...)` / `.Flags(SendFlags)` / `.Submit()` | add parts, set flags, terminal |
-| `RequestOperation`/`RequestSubmitOperation` | same as `Send` + `.Timeout(TimeSpan)` | — |
+| `RequestOperation`/`RequestSubmitOperation` | same as `Send` + `.Timeout(TimeSpan)` | mirrors the send chain, adding a reply-wait timeout |
 | `RequestSubmitOperation.Flags(...)` | narrows to `RequestCallbackSubmitOperation` | drops the awaitable `.Async()` path — only `.Submit(RequestCallback)` remains |
 | `ReplyOperation`/`ReplySubmitOperation` | mirrors `Send`, no flags stage | core reply function takes no send-flag argument |
 | `Messages(IReadOnlyList<Message>)` | `MessageOperations` extension | adds several parts in order at any stage of all four families; not an independent entry point |

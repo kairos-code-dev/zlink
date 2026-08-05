@@ -23,17 +23,17 @@ monitor.on_event(|event| println!("{:?} {}", event.event, event.remote_addr))?;
 let status = monitor.status()?;
 ```
 
-**Options.** `open(socket: &dyn Monitorable) -> Result<Self,
-ConfigError>` — **event-mask 인자를 받지 않으며, 자신의 doc comment에
-따르면 항상 모든 event를 구독한다**("Open a socket monitor for all
-events"). `recv(&self) -> Result<MonitorEvent, RecvError>`(blocking),
-`recv_with_flags(&self, flags: RecvFlags) -> Result<Option<MonitorEvent>,
-RecvError>`(non-blocking 변형, 대기 중인 게 없으면 `Ok(None)`),
-`status()`/`snapshot()`(동등 — `snapshot`은 `status`의 alias),
-`on_event<F>(&mut self, handler: F) -> Result<(), HandlerError> where F:
-Fn(&MonitorEvent) + Send + 'static`, `ignore_handler() ->
-fn(&MonitorEvent)`(caller가 등록할 수 있는 static no-op handler),
-`close(&mut self) -> Result<(), CloseError>`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `open(socket: &dyn Monitorable) -> Result<Self, ConfigError>` | **event-mask 인자를 받지 않으며, 자신의 doc comment에 따르면 항상 모든 event를 구독한다**("Open a socket monitor for all events") |
+| `recv(&self) -> Result<MonitorEvent, RecvError>` | 다음 event를 blocking으로 가져옴 |
+| `recv_with_flags(&self, flags: RecvFlags) -> Result<Option<MonitorEvent>, RecvError>` | non-blocking 변형, 대기 중인 게 없으면 `Ok(None)` |
+| `status()` / `snapshot()` | 시점 스냅샷 `MonitorStatus`를 반환; 동등 — `snapshot`은 `status`의 alias |
+| `on_event<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&MonitorEvent) + Send + 'static` | 수동적 lifecycle-event 콜백을 등록 |
+| `ignore_handler() -> fn(&MonitorEvent)` | caller가 등록할 수 있는 static no-op handler |
+| `close(&mut self) -> Result<(), CloseError>` | monitor를 닫음 |
 
 **Completion result.** 모든 member는 동기다. `Monitorable`은 모든 내장
 socket type이 구현하는 sealed marker trait다 — crate 사용자는 custom
@@ -54,12 +54,16 @@ binding의 public contract를 통해 실제로 구독을 필터링할 방법이 
 `socket_monitor_open_with_events(socket, events)`가 있고, 항상
 `SocketMonitorEventMask::ALL`을 넘긴다 — 그 함수는 export되지 않는다.
 
-**Options.** `ALL`(`0x7FFF`), `CONNECTION_READY`(`0x1000`) — 명명된
-mask는 이 둘뿐이다. 감싸인 `u32` 필드가 private이라 사용자가 임의
-mask를 직접 만들 수 없고, `BitOr`/`BitOrAssign`으로 이 둘을 결합만 할
-수 있다. `bits()`는 raw 값을 읽는다.
-`MONITOR_EVENT_ALL`/`MONITOR_EVENT_CONNECTION_READY`는 같은 두 상수의
-최상위 편의 alias다.
+**Options.** 감싸인 `u32` 필드가 private이라 사용자가 임의 mask를 직접
+만들 수 없고, `BitOr`/`BitOrAssign`으로 명명된 두 값을 결합만 할 수
+있다.
+
+| Member | 의미 |
+| --- | --- |
+| `ALL` | `0x7FFF` |
+| `CONNECTION_READY` | `0x1000` |
+| `bits()` | raw 값을 읽음 |
+| `MONITOR_EVENT_ALL` / `MONITOR_EVENT_CONNECTION_READY` | 같은 두 상수의 최상위 편의 alias |
 
 **Completion result.** 해당 없음 — 순수 값 타입.
 
@@ -79,17 +83,21 @@ monitor가 보고하는 socket connection-lifecycle event 하나.
 if event.is_connected() { /* ... */ }
 ```
 
-**Options.** 필드: `event`(`MonitorEventType`, `u64`를 감싸는 newtype —
-명명된 variant를 가진 enum이 아님), `value`(`u32`, event별 값),
-`routing_id`(`Option<RoutingId>`), `local_addr`/`remote_addr`
-(`String`). 전체 lifecycle event 집합 중 일부만 다루는 편의 predicate
-메서드: `is_connected()`, `is_disconnected()`, `is_listening()`,
-`is_accepted()`, `is_closed()`, `is_connection_ready()`.
-**`ConnectDelayed`, `ConnectRetried`, `BindFailed`, `AcceptFailed`,
-`CloseFailed`, `MonitorStopped`, `HandshakeFailedNoDetail`,
-`HandshakeFailedProtocol`, `HandshakeFailedAuth`, `PeerWeightChanged`엔
-predicate가 없다** — 이들 중 어느 것도 caller가 대응하는 raw mask 값에
-대해 `event.0`을 직접 bit-test해야 한다.
+**Options.** 편의 predicate 메서드는 전체 lifecycle event 집합 중
+일부만 다룬다 — **`ConnectDelayed`, `ConnectRetried`, `BindFailed`,
+`AcceptFailed`, `CloseFailed`, `MonitorStopped`,
+`HandshakeFailedNoDetail`, `HandshakeFailedProtocol`,
+`HandshakeFailedAuth`, `PeerWeightChanged`엔 predicate가 없다** — 이들
+중 어느 것도 caller가 대응하는 raw mask 값에 대해 `event.0`을 직접
+bit-test해야 한다.
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `event` | `MonitorEventType`, `u64`를 감싸는 newtype — 명명된 variant를 가진 enum이 아님 | lifecycle event의 종류 |
+| `value` | `u32` | event별 값 |
+| `routing_id` | `Option<RoutingId>` | event가 제공할 때만 존재하는 peer routing id |
+| `local_addr` / `remote_addr` | `String` | event에 결부된 local/remote 주소 |
+| `is_connected()` / `is_disconnected()` / `is_listening()` / `is_accepted()` / `is_closed()` / `is_connection_ready()` | `bool` | 해당 event 종류에 대한 predicate |
 
 **Completion result.** 해당 없음 — monitor가 전달하는 불변 값.
 
@@ -142,16 +150,19 @@ let mut events = vec![PollEvent::default(); 8];
 let ready = poller.wait(&mut events, 1000)?;
 ```
 
-**Options.** `new() -> Result<Self, ConfigError>`.
-`add_socket(&self, socket: &dyn Pollable, events: i16, slot: usize) ->
-Result<(), ConfigError>`, `modify_socket(&self, socket, events)`,
-`remove_socket(&self, socket)`, `add_fd(&self, fd: RawFd, events: i16,
-slot: usize)`, `modify_fd(&self, fd, events)`, `remove_fd(&self, fd)`,
-`add_timer(&self, timer: &Timer, slot: usize)`, `remove_timer(&self,
-timer: &Timer)`, `wait(&self, events: &mut [PollEvent], timeout_ms: i64)
--> Result<usize, RecvError>`(음수 timeout은 무기한 block), `size(&self)
--> i32`. `Pollable`은 모든 내장 socket type이 구현하는 sealed marker
+**Options.** `Pollable`은 모든 내장 socket type이 구현하는 sealed marker
 trait다 — crate 사용자는 custom 타입에 대해 이걸 구현할 수 없다.
+
+| Member | 의미 |
+| --- | --- |
+| `new() -> Result<Self, ConfigError>` | poller를 생성 |
+| `add_socket(&self, socket: &dyn Pollable, events: i16, slot: usize) -> Result<(), ConfigError>` | socket을 등록; `slot`은 대응하는 poll 결과로 그대로 되돌아오는 caller token |
+| `add_fd(&self, fd: RawFd, events: i16, slot: usize)` | raw file descriptor를 등록, 같은 형태 |
+| `add_timer(&self, timer: &Timer, slot: usize)` | timer를 socket/fd와 함께 multiplex하도록 등록 |
+| `modify_socket(&self, socket, events)` / `modify_fd(&self, fd, events)` | 이미 등록된 socket/fd의 감시 event를 교체 |
+| `remove_socket(&self, socket)` / `remove_fd(&self, fd)` / `remove_timer(&self, timer: &Timer)` | source 등록을 해제 |
+| `wait(&self, events: &mut [PollEvent], timeout_ms: i64) -> Result<usize, RecvError>` | `timeout_ms`까지 block하며 `events.len()`까지 결과를 그 자리에 씀; 음수 timeout은 무기한 block |
+| `size(&self) -> i32` | 현재 등록된 source 개수 |
 
 **Completion result.** 등록/제거 member는 `Result<(), ConfigError>`를
 반환한다. `wait`는 `Result<usize, RecvError>`(준비된 개수)를 반환하며,
@@ -171,12 +182,22 @@ trait다 — crate 사용자는 custom 타입에 대해 이걸 구현할 수 없
 은 `Poller` 대신 standalone `poll(...)` 자유 함수(Core category)가
 쓰는 raw poll descriptor다.
 
-**Options.** `PollEvent`(`Default` 구현, 모든 필드 public):
-`source_kind`(`PollSourceKind`: `Socket`/`Fd`/`Timer`), `fd`(`RawFd`),
-`slot`(`usize`, 등록 시 제공한 caller token), `revents`(`i16`, `POLL*`
-상수의 mask). 편의: `is_readable()`/`is_writable()`(`POLLIN`/`POLLOUT`
-에 대한 bit-test). `PollItem`(모든 필드 public): `fd`(`RawFd`),
-`events`/`revents`(`i16`).
+**Options — `PollEvent`**(`Default` 구현, 모든 필드 public).
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `source_kind` | `PollSourceKind`: `Socket`/`Fd`/`Timer` | source가 socket·file descriptor·timer 중 무엇인지 |
+| `fd` | `RawFd` | file descriptor, `Fd` kind source에서만 채워짐 |
+| `slot` | `usize` | 등록 시 제공한 caller token |
+| `revents` | `i16` | `POLL*` 상수의 mask |
+| `is_readable()` / `is_writable()` | `bool` | `POLLIN`/`POLLOUT`에 대한 편의 bit-test |
+
+**Options — `PollItem`**(모든 필드 public).
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `fd` | `RawFd` | 이 item이 감시하는 file descriptor |
+| `events` / `revents` | `i16` | 감시할/반환된 poll-event bitmask |
 
 **Completion result.** 해당 없음 — 순수 값 타입.
 
@@ -197,13 +218,15 @@ timer.on_fire(|_timer, count| println!("fired {count} times"))?;
 timer.start(1_000_000_000, 0)?; // 나노초 단위 interval
 ```
 
-**Options.** `new() -> Result<Self, ConfigError>`. `start(&self,
-interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError>` —
-**interval이 나노초 단위다**, `Duration`/밀리초 기반 `start`를 쓰는
-다른 모든 언어와 다르다. `stop(&self) -> Result<(), ConfigError>`,
-`recv(&self) -> Result<Option<u64>, RecvError>`(누적 fire count, 대기
-중인 게 없으면 `Ok(None)`), `on_fire<F>(&mut self, handler: F) ->
-Result<(), HandlerError> where F: Fn(&Timer, u64) + Send + 'static`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `new() -> Result<Self, ConfigError>` | timer를 생성 |
+| `start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError>` | `interval_ns`마다 fire를 시작; **interval이 나노초 단위다**, `Duration`/밀리초 기반 `start`를 쓰는 다른 모든 언어와 다르다; `repeat_count == 0`은 무제한 |
+| `stop(&self) -> Result<(), ConfigError>` | fire를 멈춤; `start`로 재시작 가능 |
+| `recv(&self) -> Result<Option<u64>, RecvError>` | 누적 fire count, 대기 중인 게 없으면 `Ok(None)` |
+| `on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&Timer, u64) + Send + 'static` | 수동적 interval 콜백을 등록 |
 
 **Completion result.** 모든 member는 동기다.
 

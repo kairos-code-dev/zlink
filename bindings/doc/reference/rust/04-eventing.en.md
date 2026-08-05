@@ -22,14 +22,17 @@ monitor.on_event(|event| println!("{:?} {}", event.event, event.remote_addr))?;
 let status = monitor.status()?;
 ```
 
-**Options.** `open(socket: &dyn Monitorable) -> Result<Self, ConfigError>` — **takes no event-mask
-parameter and always subscribes to every event**, per its own doc comment ("Open a socket monitor
-for all events"). `recv(&self) -> Result<MonitorEvent, RecvError>` (blocking), `recv_with_flags(&self,
-flags: RecvFlags) -> Result<Option<MonitorEvent>, RecvError>` (non-blocking variant, `Ok(None)`
-when nothing pending), `status()`/`snapshot()` (equivalent — `snapshot` is an alias for `status`),
-`on_event<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&MonitorEvent) + Send +
-'static`, `ignore_handler() -> fn(&MonitorEvent)` (a static no-op handler a caller can register),
-`close(&mut self) -> Result<(), CloseError>`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `open(socket: &dyn Monitorable) -> Result<Self, ConfigError>` | **takes no event-mask parameter and always subscribes to every event**, per its own doc comment ("Open a socket monitor for all events") |
+| `recv(&self) -> Result<MonitorEvent, RecvError>` | blocking pull of the next event |
+| `recv_with_flags(&self, flags: RecvFlags) -> Result<Option<MonitorEvent>, RecvError>` | non-blocking variant, `Ok(None)` when nothing pending |
+| `status()` / `snapshot()` | returns a `MonitorStatus` point-in-time snapshot; equivalent — `snapshot` is an alias for `status` |
+| `on_event<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&MonitorEvent) + Send + 'static` | registers a passive lifecycle-event callback |
+| `ignore_handler() -> fn(&MonitorEvent)` | a static no-op handler a caller can register |
+| `close(&mut self) -> Result<(), CloseError>` | closes the monitor |
 
 **Completion result.** All members are synchronous. `Monitorable` is a sealed marker trait every
 built-in socket type implements; a crate consumer cannot implement it for a custom type.
@@ -47,11 +50,15 @@ binding's public contract. The underlying implementation has a `pub(crate)`
 `socket_monitor_open_with_events(socket, events)` that `open()` calls internally, always passing
 `SocketMonitorEventMask::ALL` — that function is not exported.
 
-**Options.** `ALL` (`0x7FFF`), `CONNECTION_READY` (`0x1000`) — the only two named masks; the
-wrapped `u32` field is private, so a consumer cannot construct an arbitrary mask directly, only
-combine the two named ones via `BitOr`/`BitOrAssign`. `bits()` reads the raw value.
-`MONITOR_EVENT_ALL`/`MONITOR_EVENT_CONNECTION_READY` are top-level convenience aliases for the same
-two constants.
+**Options.** The wrapped `u32` field is private, so a consumer cannot construct an arbitrary mask
+directly, only combine the two named ones via `BitOr`/`BitOrAssign`.
+
+| Member | Meaning |
+| --- | --- |
+| `ALL` | `0x7FFF` |
+| `CONNECTION_READY` | `0x1000` |
+| `bits()` | reads the raw value |
+| `MONITOR_EVENT_ALL` / `MONITOR_EVENT_CONNECTION_READY` | top-level convenience aliases for the same two constants |
 
 **Completion result.** N/A — a plain value type.
 
@@ -70,15 +77,19 @@ A single socket connection-lifecycle event reported by a monitor.
 if event.is_connected() { /* ... */ }
 ```
 
-**Options.** Fields: `event` (`MonitorEventType`, a newtype wrapping `u64` — not an enum with named
-variants), `value` (`u32`, event-specific), `routing_id` (`Option<RoutingId>`), `local_addr`/
-`remote_addr` (`String`). Convenience predicate methods, covering only a subset of the full
-lifecycle event set: `is_connected()`, `is_disconnected()`, `is_listening()`, `is_accepted()`,
-`is_closed()`, `is_connection_ready()`. **No predicate exists for `ConnectDelayed`,
-`ConnectRetried`, `BindFailed`, `AcceptFailed`, `CloseFailed`, `MonitorStopped`,
-`HandshakeFailedNoDetail`, `HandshakeFailedProtocol`, `HandshakeFailedAuth`, or
-`PeerWeightChanged`** — a caller must bit-test `event.0` against the corresponding raw mask value
-directly for any of those.
+**Options.** Convenience predicate methods cover only a subset of the full lifecycle event set —
+**no predicate exists for `ConnectDelayed`, `ConnectRetried`, `BindFailed`, `AcceptFailed`,
+`CloseFailed`, `MonitorStopped`, `HandshakeFailedNoDetail`, `HandshakeFailedProtocol`,
+`HandshakeFailedAuth`, or `PeerWeightChanged`** — a caller must bit-test `event.0` against the
+corresponding raw mask value directly for any of those.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `event` | `MonitorEventType`, a newtype wrapping `u64` — not an enum with named variants | the kind of lifecycle event |
+| `value` | `u32` | an event-specific value |
+| `routing_id` | `Option<RoutingId>` | the peer routing id, present when the event provides one |
+| `local_addr` / `remote_addr` | `String` | the local/remote address associated with the event |
+| `is_connected()` / `is_disconnected()` / `is_listening()` / `is_accepted()` / `is_closed()` / `is_connection_ready()` | `bool` | predicate for that specific event kind |
 
 **Completion result.** N/A — an immutable value delivered by the monitor.
 
@@ -128,14 +139,19 @@ let mut events = vec![PollEvent::default(); 8];
 let ready = poller.wait(&mut events, 1000)?;
 ```
 
-**Options.** `new() -> Result<Self, ConfigError>`. `add_socket(&self, socket: &dyn Pollable, events:
-i16, slot: usize) -> Result<(), ConfigError>`, `modify_socket(&self, socket, events)`,
-`remove_socket(&self, socket)`, `add_fd(&self, fd: RawFd, events: i16, slot: usize)`,
-`modify_fd(&self, fd, events)`, `remove_fd(&self, fd)`, `add_timer(&self, timer: &Timer, slot:
-usize)`, `remove_timer(&self, timer: &Timer)`, `wait(&self, events: &mut [PollEvent], timeout_ms:
-i64) -> Result<usize, RecvError>` (a negative timeout blocks indefinitely), `size(&self) -> i32`.
-`Pollable` is a sealed marker trait every built-in socket type implements — a crate consumer cannot
-implement it for a custom type.
+**Options.** `Pollable` is a sealed marker trait every built-in socket type implements — a crate
+consumer cannot implement it for a custom type.
+
+| Member | Meaning |
+| --- | --- |
+| `new() -> Result<Self, ConfigError>` | creates the poller |
+| `add_socket(&self, socket: &dyn Pollable, events: i16, slot: usize) -> Result<(), ConfigError>` | registers a socket; `slot` is a caller token echoed back in the matching poll result |
+| `add_fd(&self, fd: RawFd, events: i16, slot: usize)` | registers a raw file descriptor, same shape |
+| `add_timer(&self, timer: &Timer, slot: usize)` | registers a timer to be multiplexed alongside sockets/fds |
+| `modify_socket(&self, socket, events)` / `modify_fd(&self, fd, events)` | replaces the watched events for an already-registered socket/fd |
+| `remove_socket(&self, socket)` / `remove_fd(&self, fd)` / `remove_timer(&self, timer: &Timer)` | unregisters the source |
+| `wait(&self, events: &mut [PollEvent], timeout_ms: i64) -> Result<usize, RecvError>` | blocks up to `timeout_ms`, writing up to `events.len()` results in place; a negative timeout blocks indefinitely |
+| `size(&self) -> i32` | the number of currently registered sources |
 
 **Completion result.** Registration/removal members return `Result<(), ConfigError>`. `wait`
 returns `Result<usize, RecvError>` — the ready count, writing up to `events.len()` results in
@@ -153,11 +169,22 @@ across `wait` calls rather than allocating one per wait.
 `PollEvent` is one ready source reported by `Poller::wait`; `PollItem` is a raw poll descriptor used
 by the standalone `poll(...)` free function (Core category) instead of `Poller`.
 
-**Options.** `PollEvent` (implements `Default`, all fields public): `source_kind`
-(`PollSourceKind`: `Socket`/`Fd`/`Timer`), `fd` (`RawFd`), `slot` (`usize`, the caller token supplied
-at registration), `revents` (`i16`, a mask of `POLL*` constants). Convenience: `is_readable()`/
-`is_writable()` (bit-test against `POLLIN`/`POLLOUT`). `PollItem` (all fields public): `fd`
-(`RawFd`), `events`/`revents` (`i16`).
+**Options — `PollEvent`** (implements `Default`, all fields public).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `source_kind` | `PollSourceKind`: `Socket`/`Fd`/`Timer` | whether the source is a socket, file descriptor, or timer |
+| `fd` | `RawFd` | the file descriptor, populated for `Fd`-kind sources |
+| `slot` | `usize` | the caller token supplied at registration |
+| `revents` | `i16` | a mask of `POLL*` constants |
+| `is_readable()` / `is_writable()` | `bool` | convenience bit-test against `POLLIN`/`POLLOUT` |
+
+**Options — `PollItem`** (all fields public).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `fd` | `RawFd` | the file descriptor this item watches |
+| `events` / `revents` | `i16` | watched / returned poll-event bitmask |
 
 **Completion result.** N/A — plain value types.
 
@@ -178,12 +205,15 @@ timer.on_fire(|_timer, count| println!("fired {count} times"))?;
 timer.start(1_000_000_000, 0)?; // interval in nanoseconds
 ```
 
-**Options.** `new() -> Result<Self, ConfigError>`. `start(&self, interval_ns: u64, repeat_count: u64)
--> Result<(), ConfigError>` — **the interval is nanoseconds**, unlike every other language's
-`Duration`/millisecond-based `start`. `stop(&self) -> Result<(), ConfigError>`, `recv(&self) ->
-Result<Option<u64>, RecvError>` (the cumulative fire count, `Ok(None)` when nothing pending),
-`on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&Timer, u64) + Send +
-'static`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `new() -> Result<Self, ConfigError>` | creates the timer |
+| `start(&self, interval_ns: u64, repeat_count: u64) -> Result<(), ConfigError>` | starts firing on `interval_ns`; **the interval is nanoseconds**, unlike every other language's `Duration`/millisecond-based `start`; `repeat_count == 0` means unlimited |
+| `stop(&self) -> Result<(), ConfigError>` | stops firing; restartable via `start` |
+| `recv(&self) -> Result<Option<u64>, RecvError>` | the cumulative fire count, `Ok(None)` when nothing pending |
+| `on_fire<F>(&mut self, handler: F) -> Result<(), HandlerError> where F: Fn(&Timer, u64) + Send + 'static` | registers a passive interval callback |
 
 **Completion result.** All members are synchronous.
 

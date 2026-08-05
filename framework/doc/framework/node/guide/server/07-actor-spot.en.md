@@ -8,7 +8,7 @@ title: "7. Actor And Spot · Node/TypeScript"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 06-spot.en.md](06-spot.en.md) | [Next: 8. Session And Actor Binding](08-actor-session.en.md)
+[Guide Home](README.en.md) | [Previous: 6. Spot](06-spot.en.md) | [Next: 8. Session And Actor Binding](08-actor-session.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

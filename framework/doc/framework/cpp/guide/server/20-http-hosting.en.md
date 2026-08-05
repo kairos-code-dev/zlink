@@ -9,7 +9,7 @@ title: "20. HTTP Hosting · C++"
 # 20. HTTP Hosting
 
 > **The document that owns this chapter's contract** — covered by
-> [C++ HTTP hosting public contract](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md).
+> [C++ HTTP hosting public contract](../../../common/spec/server/languages/cpp/60-http-hosting.en.md).
 > This chapter explains how to open an embedded HTTP server. The sending side is a separate
 > artifact — see the HTTP Client guide.
 
@@ -126,6 +126,6 @@ up, so `stop()` never hangs.
 
 ## 7. Related Documents
 
-- The formal contract: [C++ HTTP hosting public contract](../../../common/spec/server/languages/cpp/60-http-hosting.ko.md)
+- The formal contract: [C++ HTTP hosting public contract](../../../common/spec/server/languages/cpp/60-http-hosting.en.md)
 - The handler model: [13. Key Type Usage Index](13-interface-catalog.en.md)
 - The health endpoint: [11. Monitoring](11-monitoring.en.md)

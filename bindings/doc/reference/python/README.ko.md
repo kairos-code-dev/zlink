@@ -48,6 +48,6 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `contracts/messaging/`: `message.py`, `received.py`, `topic_message.py`, `subscription_event.py`(별도 `operations.py`가 없다 — builder Protocol은 `contracts/sockets/operations.py`에 있다) |
 | [Sockets](03-sockets.ko.md) | 작성 완료 | `contracts/sockets/`: `socket.py`, `message_socket_contracts.py`, `routed_socket_contracts.py`, `pubsub_socket_contracts.py`, `stream_socket.py`, `socket_options.py`, `operations.py`, `codes.py` |
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `contracts/eventing/`: `poller.py`, `monitor.py`, `timer.py`, `codes.py` |
-| Errors | 미착수 | `contracts/errors/`: `errors.py`, `results.py`, `codes.py` |
+| [Errors](05-errors.ko.md) | 작성 완료 | `contracts/errors/`: `errors.py`, `results.py`, `codes.py` |
 
 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.

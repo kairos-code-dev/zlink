@@ -13,7 +13,7 @@ package, organized per feature. Common behavior is owned by the
 - [Actor](actors.ko.md)
 - [STREAM Session](stream-session.en.md)
 - [Location And Maintenance](location-maintenance.ko.md)
-- [Monitoring](monitoring.ko.md)
+- [Monitoring](monitoring.en.md)
 
 Java and Kotlin share one JVM service runtime. A Kotlin coroutine
 wrapper isn't put in the Java contract, and the Kotlin contract

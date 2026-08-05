@@ -9,7 +9,7 @@ title: "11. Monitoring — Status Observation And Diagnostics · Java"
 # 11. Monitoring — Status Observation And Diagnostics
 
 > **The document that owns this chapter's contract** — covered by the
-> [Java monitoring public interface](../../../common/spec/server/languages/java/interfaces/monitoring.ko.md).
+> [Java monitoring public interface](../../../common/spec/server/languages/java/interfaces/monitoring.en.md).
 > This chapter explains the four observation surfaces that contract exposes, focused on
 > usage.
 
@@ -192,7 +192,7 @@ blips.
 
 ## 7. Related Documents
 
-- The formal contract: [Java monitoring public interface](../../../common/spec/server/languages/java/interfaces/monitoring.ko.md)
+- The formal contract: [Java monitoring public interface](../../../common/spec/server/languages/java/interfaces/monitoring.en.md)
 - Metrics and drain/readiness operations: [12. Operations](12-operations.en.md)
 - Diagnostics option list: [16. Options](16-options.en.md) §4
 - Instrument naming convention: [Runtime Metrics And Aggregation Rules](../../../common/spec/25-runtime-metrics.ko.md)

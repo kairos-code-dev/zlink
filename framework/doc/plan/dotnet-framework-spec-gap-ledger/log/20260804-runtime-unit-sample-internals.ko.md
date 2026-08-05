@@ -116,7 +116,7 @@ ZLINK_SAMPLE_EVIDENCE_DIR=/tmp/zoneworld-full-run.UQKcSm \
   bash framework/languages/dotnet/samples/ZoneWorld/run_sample.sh
 ```
 
-보존 evidence는 [`/tmp/zoneworld-full-run.UQKcSm/ZoneWorld`](/tmp/zoneworld-full-run.UQKcSm/ZoneWorld)이며,
+보존 evidence는 `/tmp/zoneworld-full-run.UQKcSm/ZoneWorld`(작업 machine의 로컬 경로, 저장소 밖)이며,
 `runner.log`에서 G4/G1/G2-rid/G2/G5, 일반 client batch의
 `ZW-A1,A2,A3,A4,A5,B1,B2,B3,B5,C1,C4,D1,E1,E2,E3,E4,E6,F1,F3,F4`,
 `ZW-B4`, `ZW-C2`, `ZW-C3`, `ZW-E5-arm`, `ZW-E5`, D1 subscriber·spot,

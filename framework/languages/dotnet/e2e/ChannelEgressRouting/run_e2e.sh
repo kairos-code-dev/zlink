@@ -26,6 +26,17 @@ if [[ "$SCENARIO" == "all" ]]; then
   echo "channel-egress-routing e2e result=passed scenarios=${#CONFIG12_SCENARIOS[@]}"
   exit 0
 fi
+if [[ "$SCENARIO" == *,* ]]; then
+  IFS=',' read -r -a selected_scenarios <<<"$SCENARIO"
+  selected_count=0
+  for scenario in "${selected_scenarios[@]}"; do
+    [[ -n "$scenario" ]] || continue
+    "$0" "$scenario"
+    selected_count=$((selected_count + 1))
+  done
+  echo "channel-egress-routing e2e result=passed scenarios=$selected_count"
+  exit 0
+fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 CONFIG_DIR="$(mktemp -d)"
@@ -165,6 +176,8 @@ dotnet build "$SERVER_PROJECT" --maxcpucount:1
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1
 
 SESSION_STREAM_ENDPOINT="tcp://127.0.0.1:$(pick_port)"
+SERVER_ONLY_URL=""
+SERVER_ONLY_EVIDENCE=""
 start_role session 00-session \
   "game.session" "game.play,game.api" false false 100 "" \
   "$SESSION_STREAM_ENDPOINT"
@@ -181,11 +194,22 @@ start_role workflow300 workflow-300 \
   "" "" true true 300 "$WORKFLOW300_ENDPOINT"
 start_role workflow-client workflow-client \
   "" "" true false 100
+if [[ "$SCENARIO" == "CH-E2E-05" ]]; then
+  start_role workflow-server-only workflow-server-only \
+    "" "" false true 0
+  SERVER_ONLY_URL="${URLS[workflow-server-only]}"
+  SERVER_ONLY_EVIDENCE="${EVIDENCE[workflow-server-only]}"
+fi
 
 for role in session play api audit workflow100 workflow300 workflow-client; do
   wait_json "${URLS[$role]}/health" \
     "'status' in value and value['status'] == 'ready'" "$role health"
 done
+if [[ -n "$SERVER_ONLY_URL" ]]; then
+  wait_json "$SERVER_ONLY_URL/health" \
+    "'status' in value and value['status'] == 'ready'" \
+    "workflow-server-only health"
+fi
 
 wait_json "${URLS[session]}/topology/game" \
   "value['readyPeerCount'] >= 2 and value['channels'] and any(channel['channelName'] == 'game.session' and channel['isReady'] for channel in value['channels'])" "session game topology"
@@ -249,9 +273,11 @@ python3 - "$CONFIG_DIR/client.json" "$SCENARIO" "$SERVER_PROJECT" \
   "$SESSION_STREAM_ENDPOINT" \
   "${URLS[session]}" "${URLS[play]}" "${URLS[api]}" "${URLS[audit]}" \
   "${URLS[workflow100]}" "${URLS[workflow300]}" "${URLS[workflow-client]}" \
+  "$SERVER_ONLY_URL" \
   "${EVIDENCE[session]}" "${EVIDENCE[play]}" "${EVIDENCE[api]}" \
   "${EVIDENCE[audit]}" "${EVIDENCE[workflow100]}" \
-  "${EVIDENCE[workflow300]}" "${EVIDENCE[workflow-client]}" <<'PY'
+  "${EVIDENCE[workflow300]}" "${EVIDENCE[workflow-client]}" \
+  "$SERVER_ONLY_EVIDENCE" <<'PY'
 import json
 import os
 import stat
@@ -259,8 +285,8 @@ import sys
 
 (path, scenario, server_project, config_dir, redis, prefix, log_dir,
  stream_endpoint,
- session, play, api, audit, w100, w300, wc,
- es, ep, ea, eau, ew100, ew300, ewc) = sys.argv[1:]
+ session, play, api, audit, w100, w300, wc, server_only,
+ es, ep, ea, eau, ew100, ew300, ewc, eserver_only) = sys.argv[1:]
 value = {
     "Options": {
         "Scenario": scenario,
@@ -280,6 +306,9 @@ value = {
         "StreamEndpoint": stream_endpoint,
     }
 }
+if server_only:
+    value["Options"]["Urls"]["workflow-server-only"] = server_only
+    value["Options"]["EvidenceFiles"]["workflow-server-only"] = eserver_only
 with open(path, "w", encoding="utf-8") as stream:
     json.dump(value, stream, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

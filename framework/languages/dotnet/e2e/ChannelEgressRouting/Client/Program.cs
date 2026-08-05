@@ -85,7 +85,7 @@ async Task RunAsync(string scenario)
             await AssertRoleReplacementAsync();
             break;
         case "CH-E2E-05":
-            AssertClientServerDirectionSurface();
+            await AssertServerOnlyProcessCannotRequestAsync();
             break;
         case "CH-E2E-06":
             await AssertInvalidStartupAsync("route-clientserver-conflict");
@@ -510,24 +510,26 @@ async Task WaitClientServerTargetCountAsync(string role, int expected)
         $"{role} did not converge to {expected} ready ClientServer target(s).");
 }
 
-void AssertClientServerDirectionSurface()
+async Task AssertServerOnlyProcessCannotRequestAsync()
 {
-    var root = FindRepositoryRoot(AppContext.BaseDirectory);
-    var contractPath = Path.Combine(
-        root,
-        "framework", "doc", "framework", "common", "spec", "server",
-        "languages", "dotnet", "interfaces", "03-configuration-topology.ko.md");
-    var contract = File.ReadAllText(contractPath);
-    var start = contract.IndexOf(
-        "public interface IZLinkClientServerChannelServerBuilder",
-        StringComparison.Ordinal);
-    Require(start >= 0, "ClientServer Server builder contract is missing.");
-    var end = contract.IndexOf("\n}", start, StringComparison.Ordinal);
-    Require(end > start, "ClientServer Server builder contract is incomplete.");
-    var surface = contract[start..end];
-    Require(!surface.Contains("SendTo", StringComparison.Ordinal)
-            && !surface.Contains("RequestTo", StringComparison.Ordinal),
-        "ClientServer Server builder exposes outbound business calls.");
+    var serverOnly = await InvokeRequestAsync(
+        "workflow-server-only",
+        ChannelEgressNames.Workflow,
+        "server-only-request");
+    Require(!serverOnly.Succeeded && serverOnly.Error == "NotFound",
+        $"Server-only process unexpectedly started a ClientServer request: {serverOnly.Error}.");
+
+    var normal = await InvokeRequestAsync(
+        "workflow-client",
+        ChannelEgressNames.Workflow,
+        "server-only-normal-request");
+    Require(normal.Succeeded
+            && normal.Reply?.Role is "workflow-100" or "workflow-300",
+        $"normal Client role request failed: {normal.Error}.");
+    await WaitEvidenceAsync(
+        ["workflow100", "workflow300"],
+        "request|",
+        "id=server-only-normal-request");
 }
 
 async Task AssertInvalidStartupAsync(string mode)

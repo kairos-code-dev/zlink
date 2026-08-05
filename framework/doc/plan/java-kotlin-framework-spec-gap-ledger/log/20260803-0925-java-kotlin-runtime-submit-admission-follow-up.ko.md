@@ -68,10 +68,9 @@ SA-E2E-01,SA-E2E-05,SA-E2E-08,SA-E2E-09,SA-E2E-14,SA-E2E-20
 ```
 
 결과는 exit `0`이며 process log는
-[`SubmitAdmission process log`](../../../../languages/java/e2e/SubmitAdmission/logs/20260803-092352-472365/process.log)에
-있다. aggregate evidence는
-[`evidence.jsonl`](../../../../languages/java/e2e/SubmitAdmission/logs/20260803-092352-472365/evidence.jsonl)에서
-확인한다.
+`languages/java/e2e/SubmitAdmission/logs/20260803-092352-472365/process.log`(로컬 실행 evidence,
+gitignore 대상이라 저장소에는 없음)에 있다. aggregate evidence는 같은 디렉토리의
+`evidence.jsonl`에서 확인한다.
 
 - `SA-E2E-01`: Node direct와 ChannelName 모두 `Submitted`, target handler 2회
 - `SA-E2E-05`: unknown RID 100회 `REQUEST_TARGET_NOT_FOUND`, 종료된 RID 100회 `ROUTE_NOT_CONNECTED`

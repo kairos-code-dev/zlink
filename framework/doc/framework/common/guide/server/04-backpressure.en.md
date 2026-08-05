@@ -716,8 +716,8 @@ current verification.
   ([§2.4](#24-splitting-the-application-connection-and-completion-connection)).
 - **Held-byte attribution observability** — querying which execution target is holding
   backlog bytes while receiving is stopped. Here, an execution target is a
-  [Spot](03-concepts.ko.md#2-spot--a-unit-that-owns-state-and-processes-it-in-order) or an
-  [Actor](03-concepts.ko.md#3-actor--a-state-object-identified-by-id), which processes the
+  [Spot](03-concepts.ko.md#2-spot--상태를-소유하고-순서대로-처리하는-단위) or an
+  [Actor](03-concepts.ko.md#3-actor--id로-식별되는-상태-객체), which processes the
   messages addressed to it one at a time, in a single line. A message with no target decided
   yet, a message caught between two owners as in relocation, and bytes held by a handler
   whose execution has already started, are each tallied separately.

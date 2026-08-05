@@ -448,11 +448,15 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
 
     task_t<void> on_actor_joined (support_user_actor_t &actor) override
     {
+        std::cerr << "supportchat conversation: actor_joined_begin actor="
+                  << actor.actor_id << " role=" << actor.role << "\n";
         if (_pending_actor_joins.erase (actor.actor_id) == 0) {
             throw framework_exception_t (framework_error_kind_t::protocol_error,
                                          "accepted support actor admission is missing");
         }
         (void) co_await join_actor (actor);
+        std::cerr << "supportchat conversation: actor_joined_complete actor="
+                  << actor.actor_id << "\n";
         co_return;
     }
 
@@ -584,6 +588,8 @@ class conversation_spot_t : public spot_t<support_user_actor_t>
                       << " participant=" << participant_id << "\n";
             co_return;
         }
+        std::cerr << "supportchat conversation: bound_push_begin packet=" << packet_name
+                  << " participant=" << participant_id << "\n";
         co_await (*actor)->context ().bound_session ().send (message).submit ();
         std::cerr << "supportchat conversation: bound push packet=" << packet_name
                   << " participant=" << participant_id << "\n";
@@ -681,6 +687,9 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
 
     task_t<void> on_actor_joined (support_user_actor_t &actor) override
     {
+        std::cerr << "supportchat support: actor_joined_begin actor=" << actor.actor_id
+                  << " role=" << actor.role << " pending_profile="
+                  << (_pending_profiles.contains (actor.actor_id) ? "true" : "false") << "\n";
         const auto pending = _pending_profiles.find (actor.actor_id);
         if (pending != _pending_profiles.end ()) {
             auto profile = std::move (pending->second);
@@ -690,6 +699,8 @@ class support_entry_spot_t : public entry_spot_t<support_user_actor_t>
             _actors[actor.actor_id] = &actor;
             _runtime.remember_live_actor (actor);
         }
+        std::cerr << "supportchat support: actor_joined_complete actor=" << actor.actor_id
+                  << " role=" << actor.role << "\n";
         co_return;
     }
 

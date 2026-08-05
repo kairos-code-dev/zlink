@@ -12,16 +12,16 @@
 | CH-E2E-01 | actual 통과 | 실제 port 0 endpoint를 Location Store에 게시한 뒤 RouteMesh peer가 Ready로 수렴한다. 양방향 Channel request와 물리 연결 identity 중복 부재를 검증한다. Client는 정식 `ZLinkHttpClient`를 사용하고 runner는 공통 typed config writer를 사용한다. 최신 증거: `logs/20260729-044618-974448` |
 | CH-E2E-02 | actual 통과 | RouteMesh handler가 `audit.record`와 `workflow.command`를 순서대로 호출하고 원래 reply에 두 downstream 결과를 보존한다. 증거: `logs/20260729-045524-1297423` |
 | CH-E2E-03 | actual 통과 | Play Entry Spot Actor handler와 timer가 ClientServer `Async` 뒤 같은 turn에서 state 변경과 resume을 완료한다. 증거: `logs/20260729-003016-3958766` |
-| CH-E2E-04A | 부분 actual | `100:300` weighted selection을 검증했다. 전체 actual-process 증거는 아직 없다. |
-| CH-E2E-04B | 미구현 | Draining server를 신규 request에서 제외하는 actual-process selector가 없다. |
-| CH-E2E-04C | 미구현 | Server 재시작 뒤 신규 request를 처리하는 actual-process selector가 없다. |
-| CH-E2E-05 | 부분 구현·실행 대기 | public server builder outbound surface 부재 검증. protocol unsolicited 주입은 미구현 |
+| CH-E2E-04A | actual 통과 | `logs/20260805-104857-1219987/`에서 실제 `workflow-client` process가 160개 request를 보내고 `workflow100`·`workflow300` evidence를 `100:300` weight에 맞춰 기록했다. `workflow300`을 weight 0으로 바꾼 동안 단일 target 선택을 확인한 뒤 두 target을 복원했다. |
+| CH-E2E-04B | actual 통과 | `logs/20260805-105013-1227234/`에서 `workflow300`을 drain으로 전환한 뒤 진행 중 요청의 완료와 신규 요청의 `workflow100` 단일 선택을 확인했다. `workflow300.evidence.log`와 `workflow-client.stdout.log`에 drain 요청과 후속 request 결과가 남아 있다. |
+| CH-E2E-04C | actual 통과 | `logs/20260805-105047-1229680/`에서 기존 `workflow-300` RID와 교체 후 `workflow300replacement`의 새 RID를 비교하고, 이전 RID가 제거된 뒤 새 Server request가 완료되는 것을 확인했다. `workflow.before-replacement.json`, `workflow.after-replacement.json`과 replacement evidence가 남아 있다. |
+| CH-E2E-05 | actual 통과 | `logs/20260805-105914-1265624/`에서 Client role이 없는 `workflow-server-only` process의 request가 `NotFound`로 끝나고 evidence가 생성되지 않음을 확인했다. 별도 `workflow-client` request는 `workflow300` handler에 한 번 기록됐으며, E2E client는 `ZLinkHttpClient`만 사용한다. |
 | CH-E2E-06 | actual 통과 | RouteMesh·ClientServer가 같은 ChannelName을 등록한 경우와 ClientServer Client 역할을 중복 등록한 경우가 각각 별도 process startup configuration error로 끝난다. 증거: `logs/20260729-045555-1335584` |
-| CH-E2E-07A | 부분 구현·실행 대기 | process-local 미등록 `NotFound` 즉시 완료와 Ready Api 정상 호출을 구현했다. |
-| CH-E2E-07B | 미구현 | Local Server role만 있는 상태에서 remote member를 호출하는 actual-process 증거가 없다. |
-| CH-E2E-07C | 미구현 | Known target에 연결할 수 없을 때 `Unavailable`을 검증하는 actual-process 증거가 없다. |
+| CH-E2E-07A | actual 통과 | `logs/20260805-105202-1234879/`에서 등록하지 않은 ChannelName request가 1초 이내 `NotFound`로 끝나고, 같은 process의 등록된 `game.api` 경로는 영향을 받지 않는 것을 client assertion으로 확인했다. |
+| CH-E2E-07B | actual 통과 | `logs/20260805-105215-1236427/`에서 Session role이 target RID나 endpoint 없이 `game.api` member를 호출하고 Api role evidence가 한 번 기록됐다. |
+| CH-E2E-07C | actual 통과 | `logs/20260805-105226-1237853/`에서 등록된 `game.api` target의 weight를 0으로 내려 known-but-not-ready 상태를 만들고, request가 `Unavailable`로 종료되며 API handler가 호출되지 않음을 확인했다. |
 | CH-E2E-08 | actual 통과 | WorkflowServer는 `game` Object Client로만 참여한다. ClientServer handler가 global SpotId와 ActorId로 Spot 다음 Actor를 요청하고 원래 reply에 순서를 보존한다. 증거: `logs/20260729-003016-3958766` |
-| CH-E2E-09 | 부분 구현·실행 대기 | RouteMesh·ClientServer·fanout의 port 0 actual endpoint와 AdvertiseHost 분리 구현. STREAM은 미구현 |
+| CH-E2E-09 | actual 통과 | `logs/20260805-105316-1241460/`에서 RouteMesh·ClientServer·fanout·STREAM을 함께 실행했다. Location Store의 모든 advertised endpoint가 `127.0.0.1`의 실제 port로 게시되고 `:0`이 아니며, ClientServer request·fanout delivery·STREAM connector connect가 모두 완료됐다. |
 | CH-E2E-10 | actual 통과 | Result-free ClientServer send를 제출하고 두 Server가 선택 구간에서 handler를 각각 실행하며 전체 handler 수가 제출 수와 정확히 일치한다. 증거: `logs/20260729-045617-1359918` |
 | CH-E2E-11 | actual 통과 | Session이 target RID나 endpoint 없이 `game.api` ChannelName만 사용해 remote Api request와 send를 처리한다. 증거: `logs/20260729-045637-1365103` |
 | CH-E2E-12 | 부분 actual | 같은 process Client+Server와 remote Server weighted 후보를 검증하고 local weight를 `0`으로 바꾼 동안 remote만 선택한 뒤 복원했다. drain variant는 미구현. `logs/20260729-051215-2078936` |
@@ -32,7 +32,7 @@
 | CH-REG-05 | 부분 actual | 같은 ClientServer endpoint에서 WorkflowServer를 종료·재시작하고 새 RID 선택, 이전 RID 제거와 request 완료를 검증했다. lifecycle generation public evidence와 이전 generation late reply 경쟁은 아직 미구현이다. 증거: `logs/20260729-004432-4150890` |
 | CH-REG-06 | actual 통과 | 정상 RouteMesh와 ClientServer request가 application retry 없이 각각 1초 안에 완료된다. 증거: `logs/20260729-045757-1462397` |
 | CH-REG-07 | actual 통과 | 공통 fixture의 일곱 sample·RouteMesh·ChannelName과 .NET sample source 일치. `logs/20260729-050208-1671604` |
-| CH-REG-08 | 부분 구현·실행 대기 | peer RID 중복 부재 검증. listener topology별 개수 검증은 미구현 |
+| CH-REG-08 | actual 통과 | `logs/20260805-105355-1244199/`에서 Session·Play·Api의 GameMesh peer snapshot과 Location Store를 비교해 physical peer RID와 listener endpoint 중복이 없음을 확인했다. |
 | CH-REG-09 | actual 통과 | sample source에 `PreferredNodeRid`·`PreferredRoutingId`가 없는지 검증. `logs/20260729-050242-1677966` |
 | CH-REG-10 | 부분 actual | 같은 ChannelName Client+Server, weighted local·remote 선택과 local weight `0` 제외·복원을 검증했다. drain variant는 미구현. `logs/20260729-051223-2078916` |
 

@@ -150,7 +150,7 @@ review 위험도에 따라 결정한다. 이 문서 갱신 시점의 guide는 `g
 - build/package: `framework/languages/cpp/CMakeLists.txt`, `framework/languages/cpp/cmake/`, `framework/languages/cpp/scripts/verify_packaged_contract.sh`, `scripts/local-package/README.ko.md`, `scripts/v11/run-framework-runtime-regression.mjs`와 `.github/workflows/`.
 - C++ sample 후속 범위: 이 문서의 11~20장, `framework/languages/cpp/samples/`, C++ sample parity/layout/target test와 sample runner.
 - historical reference: `framework/doc/plan/log/framework-public-contract-gap-implementation/cpp-g0-contract-ledger.ko.md`와 같은 디렉토리의 C++ 문서. historical log와 snapshot은 현재 완료 evidence로 사용하지 않았다.
-- 진행 기록 정책: 실제 ledger 작업 중 각 조사·검증·판정 단계가 끝난 직후 이 디렉토리의 날짜별 `log/`에 기록한다. `2026-08-02-progress.log`는 이전 snapshot이고, 이번 재검증은 [`log/2026-08-03-progress.log`](log/2026-08-03-progress.log)에 기록했다. 사후에 command 결과를 모아 만든 log는 완료 evidence로 사용하지 않는다.
+- 진행 기록 정책: 실제 ledger 작업 중 각 조사·검증·판정 단계가 끝난 직후 이 디렉토리의 날짜별 `log/`에 기록한다. `2026-08-02-progress.log`는 이전 snapshot이고, 이번 재검증은 `log/2026-08-03-progress.log`에 기록했다. 사후에 command 결과를 모아 만든 log는 완료 evidence로 사용하지 않는다.
 
 ### 2.3 판정 용어
 
@@ -205,7 +205,7 @@ checkout에는 그 build directory가 없으므로, 현재 판정은 아래 3.4�
 | `ZLINK_CPP_AUTO_CONNECT_TRACE=1 timeout 300s framework/languages/cpp/samples/TicTacToe/run_sample.sh` | exit 0 | pinned `build-v11-samples`에서 preflight 3/3, `PASS TicTacToe.Cpp`, full client/server self-check를 확인했다. six-sample aggregate는 별도 미완료다. |
 | common C++ aggregate E2E | 미완료 | 14-config/374 scenario 전체 selector와 role evidence가 아직 닫히지 않았다. |
 
-2026-08-02 snapshot의 실행 결과와 실패 ID는 [`log/2026-08-02-progress.log`](log/2026-08-02-progress.log)에
+2026-08-02 snapshot의 실행 결과와 실패 ID는 `log/2026-08-02-progress.log`에
 반영되어 있다. 이 snapshot은 exact contract나 common E2E 전체 완료를 의미하지 않는다.
 
 ### 3.3 package와 cache 관찰
@@ -223,7 +223,7 @@ checkout에는 그 build directory가 없으므로, 현재 판정은 아래 3.4�
 
 아래 결과가 현재 checkout의 우선 evidence다. focused unit·contract와 package 결과는 통과했지만,
 sample process와 common aggregate가 닫히지 않아 전체 판정은 `미완료`다. 상세 command와 exit code는
-[`log/2026-08-03-progress.log`](log/2026-08-03-progress.log)에 기록했다.
+`log/2026-08-03-progress.log`에 기록했다.
 
 | 검증 | 실행 결과 | 현재 판정 |
 |---|---|---|

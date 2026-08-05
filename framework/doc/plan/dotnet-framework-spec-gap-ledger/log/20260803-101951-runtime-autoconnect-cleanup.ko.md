@@ -35,7 +35,7 @@ spot-actor-transfer e2e result=passed
 ```
 
 Process evidence는
-[`SpotActorTransfer/logs/20260803-103152-737943/`](../../../../languages/dotnet/e2e/SpotActorTransfer/logs/20260803-103152-737943/)
+`languages/dotnet/e2e/SpotActorTransfer/logs/20260803-103152-737943/`(로컬 실행 evidence, gitignore 대상이라 저장소에는 없음)
 에 있다. `actor-a.stdout.log`의 `JoinTargetReq` 송신과 `actor-b.stdout.log`의
 `__zlink.actor.join_spot.admission`, `commit`, `handoff_completion` 수신은 같은
 flow ID `019fc53f-d985-7865-9934-eb9233d6d84f`를 사용한다. `actor-b.stdout.log`의

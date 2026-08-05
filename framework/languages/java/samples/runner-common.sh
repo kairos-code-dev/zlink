@@ -247,7 +247,7 @@ wait_framework_peer_ready_counts() {
       fi
       actual="$({
         rg 'ZLINK_FRAMEWORK_PEER_READY' "${log_dir}/${log_name}" || true
-      } | rg -o 'peer=[^ ]+' | sort -u | wc -l | tr -d ' ')"
+      } | { rg -o 'peer=[^ ]+' || true; } | sort -u | wc -l | tr -d ' ')"
       if (( actual < expected )); then
         all_ready=0
         break

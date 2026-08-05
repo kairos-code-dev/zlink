@@ -55,7 +55,7 @@ Kotlin follow the Kotlin spec.
 | [Actor](../common/spec/server/languages/java/interfaces/actors.en.md) | The actor factory, relocation adapter, and bound session |
 | [STREAM](../common/spec/server/languages/java/interfaces/stream-session.en.md) | The stream node and header session |
 | [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | The Java/Kotlin Stream Connector |
-| [Location and maintenance](../common/spec/server/languages/java/interfaces/location-maintenance.ko.md) | Discovery, authority, and relocation |
+| [Location and maintenance](../common/spec/server/languages/java/interfaces/location-maintenance.en.md) | Discovery, authority, and relocation |
 | [Monitoring](../common/spec/server/languages/java/interfaces/monitoring.en.md) | Runtime events and typed handlers |
 
 ## 3. Internal Criteria -- Shared With Java/Kotlin

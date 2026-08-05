@@ -5,7 +5,7 @@
 This category covers Location/Relocation Store registration, `ZLinkLocationOptions` tuning, and
 the entry points `ZLinkLocationReadiness` and `ZLinkLocationRuntimeQuery` provide. The exact
 signatures are owned by the
-[Java Location/Relocation exact interface](../../common/spec/server/languages/java/interfaces/location-maintenance.ko.md)
+[Java Location/Relocation exact interface](../../common/spec/server/languages/java/interfaces/location-maintenance.en.md)
 (Korean-only).
 
 ---
@@ -152,5 +152,5 @@ real-time availability of a single MeshName/ChannelName.
 ---
 
 See the
-[Java Location/Relocation exact interface](../../common/spec/server/languages/java/interfaces/location-maintenance.ko.md)
+[Java Location/Relocation exact interface](../../common/spec/server/languages/java/interfaces/location-maintenance.en.md)
 (Korean-only) for the full rationale.

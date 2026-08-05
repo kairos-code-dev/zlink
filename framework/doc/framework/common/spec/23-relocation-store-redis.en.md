@@ -104,7 +104,7 @@ public interface IZLinkRelocationStore
 ```
 
 The formal declaration for other languages follows the
-[Java](server/languages/java/interfaces/location-maintenance.ko.md),
+[Java](server/languages/java/interfaces/location-maintenance.en.md),
 [Kotlin](server/languages/kotlin/interfaces/location-maintenance.ko.md),
 [Node.js](server/languages/node/interfaces/08-location-maintenance.ko.md),
 and

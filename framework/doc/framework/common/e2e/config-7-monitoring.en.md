@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Previous: Store Failure/Recovery](config-6-store-failure-recovery.ko.md) | [Next: Execution Turn And Terminator](config-8-execution-turn.ko.md)
+[E2E table of contents](README.en.md) | [Previous: Store Failure/Recovery](config-6-store-failure-recovery.en.md) | [Next: Execution Turn And Terminator](config-8-execution-turn.ko.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 7 — Runtime Status And Change Observation

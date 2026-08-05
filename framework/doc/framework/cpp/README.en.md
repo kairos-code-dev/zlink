@@ -29,8 +29,8 @@ framework provides host, DI, configuration, logging, and HTTP directly.**
 ## Internals List
 
 [Common Internals](../common/internals/README.en.md) ·
-[Backend Dependency Policy](internals/backend-dependency-policy.ko.md) ·
-[Regression Test Matrix](internals/regression-test-matrix.ko.md)
+[Backend Dependency Policy](internals/backend-dependency-policy.en.md) ·
+[Regression Test Matrix](internals/regression-test-matrix.en.md)
 
 The role, DTOs, and verification criteria of the 6 common samples are found in the
 [common sample](../common/sample/README.ko.md).

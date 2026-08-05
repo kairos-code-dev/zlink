@@ -305,4 +305,4 @@ convention, not an exception
 
 The regression item for registration and startup validation is owned
 by
-[regression-test-matrix](../../../../../cpp/internals/regression-test-matrix.ko.md).
+[regression-test-matrix](../../../../../cpp/internals/regression-test-matrix.en.md).

@@ -4,7 +4,7 @@ title: "2. Spot · Actor Execution Serialization — Splitting Queue And Executi
 
 # 2. Spot · Actor Execution Serialization — Splitting Queue And Execution Gate
 
-[Internal structure table of contents](README.en.md) · [Previous: 1. Layer Boundary And Identifier](01-layering.en.md) · [Next: 3. Application And Infrastructure Execution Separation](03-progress-isolation.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 1. Layer Boundary And Identifier](01-layering.en.md) · [Next: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md)
 
 > **What this chapter answers** — the structure that lets an application
 > handler get away with having no synchronization code.
@@ -409,4 +409,4 @@ left remotely and the caller receives a failure.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 1. Layer Boundary And Identifier](01-layering.en.md) · [Next: 3. Application And Infrastructure Execution Separation](03-progress-isolation.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 1. Layer Boundary And Identifier](01-layering.en.md) · [Next: 3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md)

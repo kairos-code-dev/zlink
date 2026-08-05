@@ -115,7 +115,7 @@ connection easy to miss when reading a chapter separately.
 |---|---|
 | [1. Layer Boundary And Identifier](01-layering.en.md) | Where to draw the binding boundary. Which values mustn't be merged |
 | [2. Spot · Actor Execution Serialization](02-serialization.en.md) | Why the queueing spot and execution authority are separated. Why execution resource mustn't be proportional to Spot count |
-| [3. Application And Infrastructure Execution Separation](03-progress-isolation.ko.md) | What must still progress even while a handler is stuck. Why it's a region separation, not a reserved section |
+| [3. Application And Infrastructure Execution Separation](03-progress-isolation.en.md) | What must still progress even while a handler is stuck. Why it's a region separation, not a reserved section |
 | [4. Operation Completion Confirmation](04-completion.ko.md) | How to make only one win when multiple paths try to finish at once. How not to lose a response |
 | [5. Message Continuity During A Move](05-relocation-continuity.ko.md) | Where a message goes while an object is moving |
 | [6. Target Selection And Route Cache](06-routing-and-cache.ko.md) | How often location is looked up. What slows down if the cache doesn't die after a move |

@@ -4123,7 +4123,8 @@ Recommended priority:
     of a copy.
 
 ### Codec/Serializer Extension Module Policy
-- `Message` 와 multipart transport 자체는 계속 canonical binding core contract 다.
+- `Message` and multipart transport itself remain the canonical binding
+  core contract.
 - protobuf/json/messagepack codec-aware domain conversion is treated as
   **a formal, separate extension contract layered on top of the binding
   core**.
@@ -5672,98 +5673,116 @@ The perf policy is managed across every language in a shared way, in
 - Do not pre-build an abstraction "in case it's needed later."
 - Do not pull code used only once out into a utility/helper.
 
-## 구현 리뷰 체크리스트
-- 이 섹션은 public API 정책을 구현에 반영했는지 확인하는 리뷰 체크리스트다.
-- 아래 항목은 새로운 public API 제안이 아니다. 이미 정의된 계약과 경계 규칙을
-  구현, 테스트, 샘플이 지키는지 확인하는 기준이다.
-- 항목은 바인딩별 리뷰와 리팩터링 작업의 기본 체크리스트로 사용한다.
+## Implementation Review Checklist
+- This section is a review checklist for confirming the public API
+  policy has been reflected in the implementation.
+- The items below are not a proposal for new public API. They're the
+  standard for confirming the implementation, tests, and samples follow
+  the already-defined contract and boundary rules.
+- Use these items as the base checklist for per-binding review and
+  refactoring work.
 
-### 공개 vs 내부 경계 후속 작업
-
+### Public vs. Internal Boundary Follow-Up
 - Java:
-  - public package에 남아 있는 internal 성격 타입(`SocketCore`,
-    `MessagePlane`, request/reply support helper 등)을 internal package 또는
-    implementation package로 이동해야 한다.
-  - JPMS를 사용한다면 documented public package만 export 하도록 정리해야 한다.
+  - An internal-natured type that remains in a public package
+    (`SocketCore`, `MessagePlane`, a request/reply support helper, and
+    so on) must be moved to an internal or implementation package.
+  - If JPMS is used, clean it up so only documented public packages are
+    exported.
 - .NET:
-  - `InternalsVisibleTo`는 test 지원 범위로만 제한해야 한다.
-  - perf 프로젝트가 internal surface에 접근하지 않도록 assembly visibility를
-    다시 닫아야 한다.
+  - `InternalsVisibleTo` must be restricted to test-support scope only.
+  - Assembly visibility must be closed back up so the perf project
+    doesn't access the internal surface.
 - C:
-  - helper substrate와 public C binding header가 실제로 분리되면,
-    `core/include/zlink.h` 중심 설명을 public C binding header 기준으로 다시
-    정리해야 한다.
-  - 설치되는 public header와 private substrate header의 경계를 문서와 패키징에
-    함께 반영해야 한다.
+  - Once the helper substrate and the public C binding header are
+    actually separated, the `core/include/zlink.h`-centered explanation
+    must be reorganized around the public C binding header.
+  - The boundary between the installed public header and the private
+    substrate header must be reflected in both the documentation and
+    packaging.
 
-### 값 검증 후속 작업
+### Value Validation Follow-Up
 - `RoutingId`
-  - 값 객체 생성 시 길이 상한 검증
-  - raw 경로가 남아 있다면 native 호출 직전 재검증
-- `Duration` 기반 옵션
-  - `int millis` 변환 overflow 검증
-  - 음수 허용/비허용 계약 명시
-- topic/filter/string identifier
-  - 고정 크기 output buffer 경로의 재할당 정책 점검
-  - truncation 없이 전체 문자열을 처리하는지 점검
-- offset/length 기반 byte API
-  - bounds 검증 일관화
-- enum wrapper가 없는 raw 정수 옵션
-  - enum 또는 boolean 승격 후보 조사
+  - length-limit validation at value-object construction
+  - re-validation immediately before the native call, if a raw path
+    remains
+- `Duration`-based options
+  - `int millis` conversion overflow validation
+  - explicitly stating the negative-value allowed/disallowed contract
+- topic/filter/string identifiers
+  - check the reallocation policy on a fixed-size output buffer path
+  - check that the entire string is processed without truncation
+- offset/length-based byte APIs
+  - unify bounds validation
+- a raw integer option without an enum wrapper
+  - investigate enum or boolean promotion candidates
 
-### 공개 표면 후속 작업
-- legacy flag 타입
-  - 언어별 `Flags Policy`에 없는 public flag type 또는 중복 flag 경로 제거 여부 재확인
-  - 필요한 경우 internal 이동 여부 결정
-- monitor plane
-  - `recv()` canonical surface 유지 여부 확인
-- callback API
-  - callback payload shape가 direct receive shape와 동일한지 재확인
-- 단일 메시지 편의 메서드
-  - public receive/subscribe 편의 오버로드 잔존 여부 점검
+### Public Surface Follow-Up
+- a legacy flag type
+  - reconfirm removal of a public flag type or duplicate flag path not
+    in the per-language `Flags Policy`
+  - decide whether to move it to internal, if needed
+- the monitor plane
+  - confirm the `recv()` canonical surface is preserved
+- the callback API
+  - reconfirm the callback payload shape matches the direct-receive
+    shape
+- a single-message convenience method
+  - check for a remaining public receive/subscribe convenience overload
 
-### 옵션 표면 후속 작업
-- raw option bag 잔존 여부 조사
-- socket type별 option 역할 누수 여부 조사
-- option value가 아직 `int`에 머무는 항목 목록화
-- context option도 같은 기준으로 typed facade 적용 여부 검토
+### Option Surface Follow-Up
+- investigate any remaining raw option bag
+- investigate any option-role leak across socket types
+- list an option value that still stays `int`
+- review whether a context option should also get a typed facade under
+  the same standard
 
-### 오류 계약 후속 작업
-- binding validation 예외와 native 예외가 혼재된 경로 조사
-- 바인딩이 errno를 임의로 해석하는 경로 조사
-- native `NO_DATA` 외 오류를 잘못 empty/bool 경로로 숨기는 코드 조사
-- blocking send 실패를 무시하는 helper/sample 조사
+### Error Contract Follow-Up
+- investigate a path where a binding validation exception and a native
+  exception are mixed
+- investigate a path where the binding arbitrarily interprets errno
+- investigate code that wrongly hides an error other than native
+  `NO_DATA` behind an empty/bool path
+- investigate a helper/sample that ignores a blocking send failure
 
-### 성능 후속 작업
-- hot path send/recv 경로의 숨은 복사 조사
-- `Message`, `Received`, `TopicMessage` 생성 과정의 불필요한 컬렉션/배열
-  할당 조사
-- callback path와 direct path 비용 차이 조사
-- string/topic/routing-id 변환의 인코딩/디코딩 비용 조사
-- sample과 helper가 느린 대체 경로를 기본 사용법처럼 노출하는지 조사
+### Performance Follow-Up
+- investigate a hidden copy on the hot-path send/recv path
+- investigate unnecessary collection/array allocation while
+  constructing `Message`, `Received`, `TopicMessage`
+- investigate the cost gap between the callback path and the direct
+  path
+- investigate the encoding/decoding cost of string/topic/routing-id
+  conversion
+- investigate whether a sample or helper exposes a slow alternative
+  path as the default usage pattern
 
-### POSD 후속 작업
-- 얕은 래퍼만 제공하는 public 타입 조사
-- 한 규칙이 여러 모듈에 흩어진 변경 파급 지점 조사
-- 사용자가 internal sequencing을 알아야 하는 temporal API 조사
-- facade 뒤로 숨길 수 있는 raw/native 개념 누수 지점 조사
+### POSD Follow-Up
+- investigate a public type that provides only a shallow wrapper
+- investigate a change-amplification point where one rule is scattered
+  across multiple modules
+- investigate a temporal API that requires the user to know internal
+  sequencing
+- investigate a raw/native concept leak point that could be hidden
+  behind a facade
 
-### 소유권과 콜백 후속 작업
-- send failure restore 경로와 consume 경로가 문서와 일치하는지 점검
-- callback 후 frame validity 계약 재검증
-- callback mode와 direct recv 충돌 시 native 계약대로 오류가 전달되는지 점검
+### Ownership And Callback Follow-Up
+- check that the send-failure restore path and consume path match the
+  documentation
+- re-verify the frame-validity contract after a callback
+- check that an error is delivered per the native contract when
+  callback mode and direct recv conflict
 
-### 테스트 후속 작업
-- public surface 변경마다 public surface test 존재 여부 확인
-- value boundary 검증 테스트 추가
-  - 예: `RoutingId` 최대 길이
-  - 예: `Duration` overflow
-- option negative 역할 테스트 보강
-- ownership/callback regression 유지 여부 확인
+### Test Follow-Up
+- confirm a public surface test exists for every public surface change
+- add value-boundary verification tests
+  - example: `RoutingId`'s maximum length
+  - example: `Duration` overflow
+- strengthen option negative-role tests
+- confirm ownership/callback regression tests are kept
 
-## 바인딩 요구사항
+## Binding Requirements
 
-| Binding | 언어 버전 | 런타임/프레임워크 | 빌드 툴 |
+| Binding | Language version | Runtime/framework | Build tool |
 |---------|-----------|-------------------|---------|
 | C++ | C++20 | — | CMake 3.10+ |
 | .NET | C# 12 | .NET 8.0 | MSBuild |
@@ -5772,38 +5791,44 @@ The perf policy is managed across every language in a shared way, in
 | Rust | Rust 2024 edition | MSRV 1.85+ | Cargo |
 | Node | TypeScript 5.8 | Node 22+ | npm |
 | Python | Python 3.9 | CPython 3.9+ | setuptools 68+ |
-- 각 바인딩의 정확한 버전은 해당 프로젝트 설정 파일이 기준이다.
+- The exact version for each binding is governed by that project's
+  configuration file.
   - C++: `CMakeLists.txt`
-  - .NET: `Zlink.csproj` (`PackageId` / `RootNamespace`: `Systems.Zlink`)
+  - .NET: `Zlink.csproj` (`PackageId`/`RootNamespace`: `Systems.Zlink`)
   - Java: `build.gradle`, `gradle-wrapper.properties`
   - Go: `go.mod`
   - Node: `package.json`, `tsconfig.json`
   - Python: `pyproject.toml`
 
-## API 레퍼런스
+## API Reference
 
-각 바인딩은 해당 언어의 표준 문서 도구로 API 레퍼런스를 생성한다.
+Each binding generates its API reference with that language's standard
+documentation tool.
 
-| Binding | 문서 도구 | 생성 명령 | 출력 위치 |
+| Binding | Doc tool | Generate command | Output location |
 |---------|-----------|-----------|-----------|
 | C++ | Doxygen | `doxygen Doxyfile` | `cpp/doxygen/html/` |
 | Java | Javadoc (Gradle) | `./gradlew javadoc` | `java/build/docs/javadoc/` |
 | Python | Sphinx + autodoc | `sphinx-build -b html docs docs/_build/html` | `python/docs/_build/html/` |
 | Node | TypeDoc | `npx typedoc` | `node/typedoc/html/` |
 | .NET | DocFX | `docfx docfx.json` | `dotnet/_site/` |
-| Go | godoc / pkgsite | `go doc ./...` | (동적 서버) |
+| Go | godoc / pkgsite | `go doc ./...` | (a dynamic server) |
 | Rust | rustdoc | `cargo doc --no-deps` | `rust/target/doc/zlink/` |
 
-- 생성 명령은 각 바인딩 디렉터리에서 실행한다.
-- 출력 디렉터리는 `.gitignore`로 추적에서 제외한다.
-- 각 바인딩의 `README.*.md` 파일에 상세 생성 절차와 스코프가 명시되어 있다.
+- Run the generate command from each binding's directory.
+- Exclude the output directory from tracking with `.gitignore`.
+- Each binding's `README.*.md` file specifies the detailed generation
+  procedure and scope.
 
-## Routing ID로 Peer 끊기
+## Disconnecting A Peer By Routing ID
 
-- 모든 바인딩은 connectable raw socket 타입에 대해 core의 peer-rid disconnect 표면을 노출한다.
-- raw socket API는 `zlink_disconnect_rid()`에, SpotNode API는 `zlink_spot_node_disconnect_peer_rid()`에 매핑한다.
-- `StreamSocket`은 bind-only이며 peer-rid disconnect를 노출하지 않는다.
-- Spot facade 타입도 별도의 peer-rid disconnect 메서드를 노출하지 않는다. peer mesh 소유권은 SpotNode에 있기 때문이다.
+- Every binding exposes core's peer-rid disconnect surface for a
+  connectable raw socket type.
+- The raw socket API maps to `zlink_disconnect_rid()`, and the SpotNode
+  API maps to `zlink_spot_node_disconnect_peer_rid()`.
+- `StreamSocket` is bind-only and does not expose peer-rid disconnect.
+- A Spot facade type also does not expose a separate peer-rid disconnect
+  method, because peer mesh ownership belongs to SpotNode.
 
 | Language | Raw socket name | SpotNode name |
 |---|---|---|
@@ -5816,16 +5841,25 @@ The perf policy is managed across every language in a shared way, in
 | Java | `disconnectRid` | `disconnectPeerRid` |
 | .NET | `DisconnectRid` | `DisconnectPeerRid` |
 
-바인딩은 `ZLINK_OPT_RID_DUPLICATE_POLICY`, `ZLINK_RID_DUPLICATE_REJECT`,
-`ZLINK_RID_DUPLICATE_HANDOVER`, 그리고 connect 결과 값 `NOT_FOUND`, `CONFLICT`,
-`BUSY` 를 각 언어의 일반적인 enum/오류 매핑 스타일로 노출해야 한다.
+A binding must expose `ZLINK_OPT_RID_DUPLICATE_POLICY`,
+`ZLINK_RID_DUPLICATE_REJECT`, `ZLINK_RID_DUPLICATE_HANDOVER`, and the
+connect result values `NOT_FOUND`, `CONFLICT`, `BUSY`, using each
+language's usual enum/error mapping style.
 
-- C 바인딩은 native socket option contract를 통해 `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `0x3034` 를, context option contract를 통해 `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` 값 `18` 을 노출한다.
-- 상위 바인딩은 이 기능을 typed context option facade로 노출해야 한다.
-- socket, SpotNode, Spot 의 public facade는 메시지 단위 옵션을 추가하지 않는다.
-- 호환성을 위해 raw socket 경로를 남겨 둔다면 canonical API와 명확히 분리하고, 새 문서·샘플·테스트에서는 사용하지 않으며, C 계약(`int` bytes, raw 기본값 `0`, 음수 값은 `EINVAL` 로 실패)을 그대로 유지해야 한다.
+- The C binding exposes `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` value
+  `0x3034` through the native socket option contract, and
+  `ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES` value `18` through the context
+  option contract.
+- A higher-level binding must expose this capability as a typed context
+  option facade.
+- The public facade of a socket, SpotNode, or Spot does not add a
+  per-message-unit option.
+- If a raw socket path is kept for compatibility, it must be clearly
+  separated from the canonical API, not used in new documentation/
+  samples/tests, and must preserve the C contract as-is (`int` bytes, a
+  raw default of `0`, a negative value fails with `EINVAL`).
 
-## 관련 문서
+## Related Documents
 - `bindings/cpp/`
 - `bindings/dotnet/`
 - `bindings/java/`
@@ -5834,36 +5868,49 @@ The perf policy is managed across every language in a shared way, in
 - `bindings/node/`
 - `bindings/python/`
 
-## Core API Surface 6.0.0 정렬
+## Core API Surface 6.0.0 Alignment
 
-- Actor create와 join payload는 aggregate multipart payload를 사용한다.
-- 공개 바인딩 API는 remote actor create, actor join, actor join receive, actor join reply에 대해 메시지 컬렉션을 받는다.
-- 단일 메시지 편의 경로는 해당 언어 README가 그 편의 표면을 명시적으로 유지하기로 한 경우에만 허용한다. 그렇지 않으면 breaking alignment 과정에서 canonical multipart 경로 쪽으로 정리하면서 제거한다.
-- 유지하는 경우에도 내부적으로는 multipart 경로를 호출해야 하며, empty payload와 비어 있는 메시지 하나가 계속 구분될 수 있어야 한다.
-- admission handler는 callback 동안만 유효한 borrowed payload view를 받는다.
+- Actor create and join payloads use an aggregate multipart payload.
+- The public binding API takes a message collection for remote actor
+  create, actor join, actor join receive, and actor join reply.
+- A single-message convenience path is allowed only when that
+  language's README explicitly decides to keep that convenience
+  surface. Otherwise, it's removed while cleaning up toward the
+  canonical multipart path during breaking alignment.
+- Even when kept, it must call the multipart path internally, and an
+  empty payload must remain distinguishable from a single empty
+  message.
+- An admission handler receives a borrowed payload view valid only
+  during the callback.
 
-Public Registry scalar 설정은 core 8.4.3에서 공개 Discovery/Registry C API와 함께
-제거되었다. 바인딩은 registry option 표면, 이름 있는 registry setter,
-compatibility alias를 현재 공개 API로 유지하면 안 된다.
+The public Registry scalar setting was removed together with the public
+Discovery/Registry C API in core 8.4.3. A binding must not keep a
+registry option surface, a named registry setter, or a compatibility
+alias as current public API.
 
 ## Spot Route Bridge API
 
-- 바인딩은 `SpotNode`가 channel socket을 소유하지 않도록 `SpotRouteBridge` 또는 같은 의미의 typed handle을 노출해야 한다.
-- bridge는 caller/channel runtime이 소유한 `ROUTER` socket을 참조하고, Spot route packet을 보내거나 channel receive loop에서 받은 SPOT relay packet을 SpotNode로 넘긴다.
-- bridge를 닫아도 등록된 channel socket은 닫히지 않는다.
+- A binding must expose `SpotRouteBridge`, or an equivalent typed
+  handle, so `SpotNode` doesn't own the channel socket.
+- The bridge references a `ROUTER` socket owned by the caller/channel
+  runtime, sending a Spot route packet, or handing a SPOT relay packet
+  received in the channel receive loop over to SpotNode.
+- Closing the bridge does not close the registered channel socket.
 
-언어별 API는 다음 의미를 빠뜨리지 않아야 한다.
+A per-language API must not omit the following meaning.
 
-- `createRouteBridge(options)` 또는 동등한 생성자
+- `createRouteBridge(options)` or an equivalent constructor
 - `attachRouterChannel(channelName, routerSocket)`
 - `sendToSpot(targetNode, targetSpot, parts)`
 - `requestToSpot(targetNode, targetSpot, parts, replyHandler, timeout)`
 - `handleRouterReceived(channelName, received)`
-- `close` 또는 `dispose`
+- `close` or `dispose`
 
-`timeout == 0`은 bridge 기본 timeout을 사용한다. `handleRouterReceived`가 handled
-결과를 반환하면 바인딩은 payload 소유권이 bridge로 넘어갔음을 호출자에게 분명히 표현해야
-한다.
+`timeout == 0` uses the bridge's default timeout. When
+`handleRouterReceived` returns a handled result, the binding must
+clearly express to the caller that payload ownership has moved to the
+bridge.
 
-SpotNode에 router channel peer를 직접 붙이는 예전 C API는 공개 계약에 없다.
-framework adapter는 그 경로를 새 구현에 사용하면 안 된다.
+The old C API that attaches a router channel peer directly to SpotNode
+is not part of the public contract. A framework adapter must not use
+that path in a new implementation.

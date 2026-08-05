@@ -7,7 +7,7 @@ Completion kinds, timeout rules, and codec registration are exactly the same as
 (Korean-only) — Kotlin only adds `ZLinkKotlinClient`/`ZLinkKotlinRouteClient`/
 `ZLinkKotlinFanoutClient`, which wrap the same operations in coroutine shape. The exact signatures
 are owned by the
-[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md)
+[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.en.md)
 (Korean-only).
 
 A Kotlin application does not use Java's `ZLinkRouteClient`/`ZLinkFanoutClient` directly — these
@@ -109,7 +109,7 @@ Specifying the reserved topic bytes (`01 5A 4C 46 31`) throws the Java runtime's
   Channel handlers, and outside an owner context.
 
 See the
-[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md)
+[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.en.md)
 and
 [Java reference 03. Messaging execution](../../java/reference/03-messaging-execution.ko.md)
 (Korean-only) for the full rationale.

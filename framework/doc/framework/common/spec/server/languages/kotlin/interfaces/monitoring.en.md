@@ -114,5 +114,5 @@ bridge's cancellation only releases that subscriber registration. It
 doesn't cancel the shared runtime, monitoring publisher, or an
 already-started host operation. The `onMessageFlow` generated JVM
 member is included in
-[Configuration And Host](configuration-host.ko.md)'s multifile class
+[Configuration And Host](configuration-host.en.md)'s multifile class
 inventory.

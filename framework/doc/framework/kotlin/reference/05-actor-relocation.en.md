@@ -7,7 +7,7 @@ Completion kinds, capacity/timeout rules, and relocation ordering are exactly th
 (Korean-only). What Kotlin adds is a suspending Actor base class, and
 `ZLinkKotlinActorManager`/`ZLinkKotlinActorClient`, which wrap the same fluent state in
 coroutines. The exact signatures are owned by the
-[Kotlin Actor exact interface](../../common/spec/server/languages/kotlin/interfaces/actors.ko.md)
+[Kotlin Actor exact interface](../../common/spec/server/languages/kotlin/interfaces/actors.en.md)
 (Korean-only).
 
 ---
@@ -138,7 +138,7 @@ adds no reified helper or overload that omits the policy.
 ---
 
 See the
-[Kotlin Actor exact interface](../../common/spec/server/languages/kotlin/interfaces/actors.ko.md)
+[Kotlin Actor exact interface](../../common/spec/server/languages/kotlin/interfaces/actors.en.md)
 and
 [Java reference 05. Actor relocation](../../java/reference/05-actor-relocation.ko.md)
 (Korean-only) for the full rationale.

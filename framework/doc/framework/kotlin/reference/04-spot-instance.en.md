@@ -7,7 +7,7 @@ Completion kinds, capacity/timeout rules, and relocation ordering are exactly th
 What Kotlin adds is a suspending lifecycle base class family (`ZLinkSuspendingSpot`) and
 `ZLinkKotlinSpotManager`/`ZLinkKotlinRouteClient` extensions that wrap the same fluent state in
 coroutines. The exact signatures are owned by the
-[Kotlin Spot exact interface](../../common/spec/server/languages/kotlin/interfaces/spots.ko.md)
+[Kotlin Spot exact interface](../../common/spec/server/languages/kotlin/interfaces/spots.en.md)
 (Korean-only).
 
 ---
@@ -169,7 +169,7 @@ same as the corresponding entry in
 ---
 
 See the
-[Kotlin Spot exact interface](../../common/spec/server/languages/kotlin/interfaces/spots.ko.md)
+[Kotlin Spot exact interface](../../common/spec/server/languages/kotlin/interfaces/spots.en.md)
 and
 [Java reference 04. Spot instance](../../java/reference/04-spot-instance.ko.md) (Korean-only)
 for the full rationale.

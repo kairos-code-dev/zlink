@@ -9,9 +9,9 @@ builders directly as-is — the exact signature and options table follow
 [Java reference 02. Topology discovery](../../java/reference/02-topology-discovery.ko.md)
 (Korean-only) directly. The only things Kotlin adds are the receiver-lambda DSL and handler
 dispatcher selection. The exact signatures are owned by the
-[Kotlin configuration and host exact interface](../../common/spec/server/languages/kotlin/interfaces/configuration-host.ko.md)
+[Kotlin configuration and host exact interface](../../common/spec/server/languages/kotlin/interfaces/configuration-host.en.md)
 and the
-[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md)
+[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.en.md)
 (Korean-only).
 
 ---
@@ -135,8 +135,8 @@ repeated in this document.
 ---
 
 See the
-[Kotlin configuration and host exact interface](../../common/spec/server/languages/kotlin/interfaces/configuration-host.ko.md),
-[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.ko.md),
+[Kotlin configuration and host exact interface](../../common/spec/server/languages/kotlin/interfaces/configuration-host.en.md),
+[Kotlin channel messaging exact interface](../../common/spec/server/languages/kotlin/interfaces/channel-messaging.en.md),
 and
 [Java reference 02. Topology discovery](../../java/reference/02-topology-discovery.ko.md)
 (Korean-only) for the full rationale.

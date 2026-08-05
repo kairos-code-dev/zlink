@@ -486,7 +486,7 @@ representation.
 |---|---|---|---|
 | .NET | `Async(...)` returns `ValueTask` or `ValueTask<T>` | `Yield(...)` | [exact interface index](server/languages/dotnet/interfaces/README.ko.md) |
 | Java | `submit(...)` returns `CompletionStage<T>` | `yield(...)` | [Channel messaging](server/languages/java/interfaces/channel-messaging.en.md) |
-| Kotlin | Uses the dedicated call wrapper's suspending `await()` | The dedicated wrapper's `yield()` | [Channel messaging](server/languages/kotlin/interfaces/channel-messaging.ko.md) |
+| Kotlin | Uses the dedicated call wrapper's suspending `await()` | The dedicated wrapper's `yield()` | [Channel messaging](server/languages/kotlin/interfaces/channel-messaging.en.md) |
 | Node.js | `submit(...)` returns `Promise<T>` | `yield(...)` | [interface index](server/languages/node/interfaces/README.ko.md) |
 | C++ | `submit(...)` returns `task_t<T>` | `yield(...)` | [framework interfaces](server/languages/cpp/interfaces/README.ko.md) |
 

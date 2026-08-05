@@ -7,10 +7,10 @@ documents below fix, per feature, the scope where Java types are used
 as-is and the Kotlin-only coroutine/DSL signatures.
 
 - [Common Runtime](common-runtime.en.md)
-- [Configuration And Host](configuration-host.ko.md)
-- [Channel Messaging](channel-messaging.ko.md)
-- [Spot](spots.ko.md)
-- [Actor](actors.ko.md)
+- [Configuration And Host](configuration-host.en.md)
+- [Channel Messaging](channel-messaging.en.md)
+- [Spot](spots.en.md)
+- [Actor](actors.en.md)
 - [STREAM Session](stream-session.en.md)
 - [Location And Maintenance](location-maintenance.en.md)
 - [Monitoring](monitoring.en.md)

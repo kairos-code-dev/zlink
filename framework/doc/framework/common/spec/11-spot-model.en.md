@@ -4,7 +4,7 @@ title: "Spot Model — Entry, User, Instance"
 
 # Spot Model — Entry, User, Instance
 
-[Spec table of contents](README.en.md) · [Previous: Network Listener Identity](10-network-listener-identity.ko.md) · [Next: SPOT Messaging](12-spot-messaging.en.md)
+[Spec table of contents](README.en.md) · [Previous: Network Listener Identity](10-network-listener-identity.en.md) · [Next: SPOT Messaging](12-spot-messaging.en.md)
 
 > **What this chapter defines** — what Entry Spot, User Spot, and Instance Spot
 > have in common and how they differ.

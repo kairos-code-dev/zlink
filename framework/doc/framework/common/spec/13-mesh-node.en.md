@@ -75,7 +75,7 @@ prefix matching the listener kind.
 
 The full rule covering the Core binary RID, Framework prefix, Entry Spot,
 and caller-provided RID together is defined by
-[System-Wide Routing ID Policy](10-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책).
+[System-Wide Routing ID Policy](10-network-listener-identity.en.md#7-system-wide-transport-rid-and-spot-id-policy).
 
 Don't interpret the prefix and UUID as application identity that persists
 across object placement, sharding, or a restart.

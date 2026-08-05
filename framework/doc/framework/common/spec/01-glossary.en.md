@@ -1995,7 +1995,7 @@ explicit fixed RID can be used.
 | Lifetime | Unchanged for a MeshNode's lifecycle. A replacement lifecycle uses a new Automatic RID even at the same endpoint. |
 
 Transport RID and Spot ID issuance format and namespace boundaries follow the
-[system-wide Routing ID policy](10-network-listener-identity.ko.md#7-시스템-전체-routing-id-정책).
+[system-wide Routing ID policy](10-network-listener-identity.en.md#7-system-wide-routing-id-policy).
 
 <a id="routing-id-prefix"></a>
 ### Routing ID Prefix

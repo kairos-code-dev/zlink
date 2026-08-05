@@ -4,7 +4,7 @@ title: "ClientServer Channel"
 
 # ClientServer Channel
 
-[Spec table of contents](README.en.md) · [Previous: Channel Messaging](08-channel-messaging.en.md) · [Next: Network Listener Identity](10-network-listener-identity.ko.md)
+[Spec table of contents](README.en.md) · [Previous: Channel Messaging](08-channel-messaging.en.md) · [Next: Network Listener Identity](10-network-listener-identity.en.md)
 
 > **What this chapter defines** — the one-directional service boundary where
 > the Client starts a send/request and the Server runs a handler and replies.

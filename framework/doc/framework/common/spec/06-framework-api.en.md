@@ -51,7 +51,7 @@ Configuring the same root twice in a process, or registering the same
 Registering the same [ChannelName](01-glossary.en.md#channelname) on different RouteMesh or
 ClientServer topologies also fails at startup regardless of role.
 Network identity's common values and per-listener overrides are owned by
-[13 Network Listener Identity](10-network-listener-identity.ko.md).
+[13 Network Listener Identity](10-network-listener-identity.en.md).
 
 Root registration provides one framework runtime singleton per process. This runtime
 performs a host-wide `Relocate`, which requires a mode, and a separate `Shutdown`.

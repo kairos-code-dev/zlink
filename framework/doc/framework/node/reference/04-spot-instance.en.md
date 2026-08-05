@@ -6,7 +6,7 @@ This category covers the external entry points `ZLinkSpotManager` (`ZLINK_SPOT_M
 `ZLinkRouteClient`/`ZLinkSpotPublisherClient` (`ZLINK_SPOT_PUBLISHER_CLIENT`) provide, and the
 entry points used inside Spot code via `ZLinkSpotContext`/`ZLinkInstanceSpotContext`. The exact
 signatures are owned by the
-[Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.ko.md)
+[Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.en.md)
 and the
 [STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.en.md)
 (Korean-only).
@@ -357,7 +357,7 @@ to a specific turn boundary. This call is not needed under the default `AnyTurnB
 ---
 
 See the
-[Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.ko.md)
+[Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.en.md)
 and the
 [STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.en.md)
 (Korean-only) for the full rationale.

@@ -8,7 +8,7 @@ full document list.
 - Builder and configuration options: [Foundation Types And Configuration](interfaces/01-foundation-configuration.ko.md)
 - Channel/request/routing: [Channel, Request, And Routing](interfaces/02-channel-messaging.ko.md)
 - Location/monitoring/metrics: [Location, Monitoring, And Metrics](interfaces/03-location-observability.ko.md)
-- Spot and Instance Spot: [Spot And Instance Spot](interfaces/04-spots.ko.md)
+- Spot and Instance Spot: [Spot And Instance Spot](interfaces/04-spots.en.md)
 - Actor and session binding: [Actor And Session Binding](interfaces/05-actors.en.md)
 - STREAM/timer/worker: [STREAM, Timer, And Worker](interfaces/06-stream-worker.en.md)
 - NestJS adapter: [NestJS Host Adapter](interfaces/07-nestjs-host.ko.md)

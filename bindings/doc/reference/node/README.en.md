@@ -37,7 +37,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 | Category | Status | Contract source (verified against `zlink/contracts/` + `src/index.ts`) |
 |---|---|---|
 | [Core](01-core.en.md) | Drafted | `src/index.ts` (factory functions + `version`/`has`/`proxy`/`sleep`/`multipartClose`); `contracts/core/`: `context.ts`, `routing_id.ts`, `buffer_like.ts` |
-| Messaging | Not started | `contracts/messaging/`: `message.ts`, `received.ts`, `topic_message.ts`, `subscription_event.ts`, `operations.ts`, `handlers.ts` (`message_parts_envelope.ts` is internal support) |
+| [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `message.ts`, `received.ts`, `topic_message.ts`, `subscription_event.ts`, `operations.ts`, `handlers.ts`, `message_parts_envelope.ts` |
 | Sockets | Not started | `contracts/sockets/`: `socket.ts`, `pair_socket.ts`, `dealer_socket.ts`, `router_socket.ts`, `pubsub_sockets.ts`, `stream_socket.ts`, `socket_options.ts`, `socket_constants.ts` |
 | Eventing | Not started | `contracts/eventing/`: `monitor.ts`, `poller.ts`, `timer.ts` |
 | Errors | Not started | `contracts/errors/`: `errors.ts`, `results.ts` |

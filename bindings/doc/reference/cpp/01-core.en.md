@@ -15,7 +15,8 @@ methods. The exact signatures are owned by
 ## `context_t`
 
 A messaging context: the factory and owner of sockets, and the prerequisite for constructing any
-socket type.
+socket type. Move constructible/assignable; copy is deleted — a context has exactly one owner at a
+time.
 
 ```cpp
 zlink::context_t ctx;
@@ -26,13 +27,13 @@ zlink::context_t ctx_with_threads (zlink::io_thread_count_t::value (4));
 
 | Member | Meaning |
 | --- | --- |
-| `context_t()` / `explicit context_t(io_thread_count_t)` | default / with I/O thread count |
-| move constructible/assignable; copy deleted | — |
-| `valid()` | `bool` |
+| `context_t()` | constructs with the default I/O thread count |
+| `explicit context_t(io_thread_count_t)` | constructs with an explicit I/O thread count instead of the default |
+| `valid()` | whether this context is still usable — `false` after `term()` |
 | `shutdown()` | interrupts blocking operations on sockets under this context without closing them |
-| `term()` | terminates and destroys the context |
-| `options()` | returns `context_options_t`, below |
-| `recalculate_auto_hwm()` | — |
+| `term()` | terminates the context and releases its native resources |
+| `options()` | returns `context_options_t` (below), the context-wide option facade |
+| `recalculate_auto_hwm()` | forces an immediate recalculation of automatic high-water marks, instead of waiting for the normal debounce interval |
 
 **Completion result.** All synchronous, no return value except `valid()`/`options()`. The
 destructor calls `term()` if not already terminated.
@@ -44,7 +45,8 @@ one. Call `shutdown()` before destruction when sockets are in use across multipl
 
 ## `context_options_t`
 
-The typed options facade reached via `ctx.options()`.
+The typed options facade reached via `ctx.options()`. Getters have no suffix; setters take the new
+value.
 
 ```cpp
 ctx.options ().io_threads (zlink::io_thread_count_t::value (8));
@@ -52,24 +54,25 @@ ctx.options ().auto_hwm_profile (zlink::auto_hwm_profile::low_latency);
 ctx.options ().add_thread_affinity (zlink::cpu_index_t::value (2));
 ```
 
-**Options.** Paired getter/setter methods (getter has no suffix, setter takes the new value):
+**Options.**
 
 | Member | Type | Meaning |
 | --- | --- | --- |
-| `io_threads()` | `io_thread_count_t` | — |
-| `max_sockets()` | `socket_count_t` | — |
-| `max_msg_size()` | `byte_size_t` | — |
-| `thread_priority()` | `std::optional<thread_priority_t>` | — |
-| `thread_scheduling_policy()` | `thread_scheduling_policy_t` | — |
-| `thread_name_prefix()` | `std::string` | — |
-| `blocky()` | `bool` | — |
-| `auto_hwm_enabled()` | `bool` | — |
-| `auto_hwm_recalc_debounce()` | `std::chrono::milliseconds` | — |
-| `auto_hwm_profile()` | `zlink::auto_hwm_profile` | — |
-| `auto_hwm_msg_unit_bytes()` | `byte_count_t` | — |
-| `socket_limit()` | `socket_count_t` | read-only |
-| `msg_t_size()` | `byte_size_t` | read-only |
-| `add_thread_affinity(cpu_index_t)` / `remove_thread_affinity(cpu_index_t)` | — | setter-only |
+| `io_threads()` | `io_thread_count_t` | I/O thread count |
+| `max_sockets()` | `socket_count_t` | context-wide socket cap |
+| `max_msg_size()` | `byte_size_t` | per-message size cap |
+| `thread_priority()` | `std::optional<thread_priority_t>` | dispatch thread priority |
+| `thread_scheduling_policy()` | `thread_scheduling_policy_t` | dispatch thread scheduling policy |
+| `thread_name_prefix()` | `std::string` | OS-visible dispatch thread name prefix |
+| `blocky()` | `bool` | whether blocking calls actually block vs. fail fast |
+| `auto_hwm_enabled()` | `bool` | whether auto-HWM sizing is active |
+| `auto_hwm_recalc_debounce()` | `std::chrono::milliseconds` | minimum interval between automatic recalculations |
+| `auto_hwm_profile()` | `zlink::auto_hwm_profile` | automatic HWM sizing profile — see the Sockets category |
+| `auto_hwm_msg_unit_bytes()` | `byte_count_t` | accounted-byte unit for auto-HWM sizing |
+| `socket_limit()` | `socket_count_t` | build's hard cap on `max_sockets` (read-only) |
+| `msg_t_size()` | `byte_size_t` | native message struct size, diagnostic only (read-only) |
+| `add_thread_affinity(cpu_index_t)` | — | pins an I/O thread to a CPU (setter-only) |
+| `remove_thread_affinity(cpu_index_t)` | — | unpins an I/O thread from a CPU (setter-only) |
 
 **Completion result.** Every getter/setter is synchronous.
 
@@ -82,27 +85,28 @@ apply it immediately.
 ## Strongly-typed option value wrappers
 
 Small value-type wrappers used throughout `context_options_t` and socket options instead of raw
-`int`/`uint32_t`, each constructed via a static `value(...)` factory.
+`int`/`uint32_t`, each constructed via a static `value(...)` factory — the wrapper exists
+specifically so a mismatched unit doesn't compile.
 
 **Options.**
 
 | Type | Wraps | Meaning |
 | --- | --- | --- |
-| `io_thread_count_t` | `int` via `::value(int)`/`.value()` | — |
-| `socket_count_t` | `int` via `::value(int)`/`.value()` | — |
-| `worker_count_t` | `int` via `::value(int)`/`.value()` | — |
-| `thread_priority_t` | `int` via `::value(int)`/`.value()` | — |
-| `cpu_index_t` | `int` via `::value(int)`/`.value()` | — |
-| `socket_backlog_t` | `int` via `::value(int)`/`.value()` | — |
-| `byte_size_t` | `int64_t` via `::bytes(int64_t)`/`.bytes()` | — |
+| `io_thread_count_t` | `int` via `::value(int)`/`.value()` | argument to `context_t`'s constructor and `context_options_t::io_threads` |
+| `socket_count_t` | `int` via `::value(int)`/`.value()` | `context_options_t::max_sockets`/`socket_limit` |
+| `worker_count_t` | `int` via `::value(int)`/`.value()` | worker-thread counts used by higher socket-option facades (Sockets category) |
+| `thread_priority_t` | `int` via `::value(int)`/`.value()` | `context_options_t::thread_priority` |
+| `cpu_index_t` | `int` via `::value(int)`/`.value()` | `context_options_t::add_thread_affinity`/`remove_thread_affinity` |
+| `socket_backlog_t` | `int` via `::value(int)`/`.value()` | `common_socket_options_t::backlog` (Sockets category) |
+| `byte_size_t` | `int64_t` via `::bytes(int64_t)`/`.bytes()` | plain byte-size options such as `max_msg_size` |
 | `byte_count_t` (Core) | `uint64_t` via `::bytes(uint64_t)`/`.bytes()` | lossless byte count used by HWM and byte-budget options |
-| `peer_weight_t` | `uint32_t` via `::value(uint32_t)` | throws `std::invalid_argument` outside 0-100 |
+| `peer_weight_t` | `uint32_t` via `::value(uint32_t)` | load-balancing weight (Sockets category); throws `std::invalid_argument` outside 0-100 |
 
 **Completion result.** All factories and accessors are `noexcept` except `peer_weight_t::value`,
 which validates its range.
 
 **When to use.** Construct these at the call site (`io_thread_count_t::value(4)`) rather than
-passing a bare integer — the wrapper exists specifically so a mismatched unit doesn't compile.
+passing a bare integer.
 
 ---
 
@@ -121,16 +125,19 @@ auto restored = zlink::routing_id_t::from_hex (previously_printed.to_hex ());
 
 | Member | Meaning |
 | --- | --- |
-| `routing_id_t(const uint8_t *bytes_, size_t size_)` | constructor |
-| `from(const uint8_t*, size_t)` / `from(const std::vector<uint8_t>&)` | raw bytes as-is |
-| `from(const std::string&)` | raw bytes, not UTF-8-validated |
-| `from(uint32_t)` | 4-byte big-endian |
-| `from(const std::array<uint8_t, 16>&)` | 16-byte value, e.g. a GUID's raw bytes |
-| `from_hex(const std::string&)` | restore bytes `to_hex()` printed |
-| `data()` / `size()` / `to_bytes()` | — |
-| `to_string()` | printable UTF-8, then 4-byte-as-uint32, then 16-byte-as-GUID, then `hex:`-prefixed fallback |
-| `to_hex()` | round-trippable with `from_hex` |
-| `operator==`/`!=`, `std::hash<routing_id_t>` | value equality, unordered-container support |
+| `routing_id_t(const uint8_t *bytes_, size_t size_)` | constructor from a raw byte pointer and length |
+| `from(const uint8_t*, size_t)` / `from(const std::vector<uint8_t>&)` | copy raw bytes as-is |
+| `from(const std::string&)` | copy raw bytes, not UTF-8-validated |
+| `from(uint32_t)` | encode as 4-byte big-endian |
+| `from(const std::array<uint8_t, 16>&)` | copy a 16-byte value, e.g. a GUID's raw bytes |
+| `from_hex(const std::string&)` | restore bytes `to_hex()` previously printed |
+| `data()` | pointer to the underlying bytes |
+| `size()` | byte length, 1-255 |
+| `to_bytes()` | owned copy of the bytes as `std::vector<uint8_t>` |
+| `to_string()` | display form: printable UTF-8, then 4-byte-as-uint32, then 16-byte-as-GUID, then a `hex:`-prefixed fallback |
+| `to_hex()` | hex encoding, round-trippable with `from_hex` |
+| `operator==`/`!=` | value equality |
+| `std::hash<routing_id_t>` | specialization enabling use as a key in unordered containers |
 
 **Completion result.** Every factory and accessor is synchronous. Empty input, input over 255
 bytes, or a null pointer with nonzero size throws `std::invalid_argument`; a malformed hex string
@@ -157,11 +164,11 @@ bool has_tls = zlink::has ("tls");
 
 **Options.**
 
-| Member | Parameters | Meaning |
-| --- | --- | --- |
-| `version(int &major_, int &minor_, int &patch_)` | three output references | — |
-| `error_text(int errnum_) noexcept` | — | returns `const char*`; caller must not modify or free it |
-| `has(const std::string &capability_)` | `"tcp"`/`"ipc"`/`"tls"`/`"ws"`/`"wss"`; unrecognized returns `false` | — |
+| Member | Meaning |
+| --- | --- |
+| `version(int &major_, int &minor_, int &patch_)` | writes the linked native library's major, minor, and patch version numbers into `major_`/`minor_`/`patch_` |
+| `error_text(int errnum_) noexcept` | returns the message text for native error code `errnum_`, as a `const char*` the caller must not modify or free |
+| `has(const std::string &capability_)` | whether the named optional capability is compiled into this build — recognized names are `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; any other string returns `false` |
 
 **Completion result.** All three are synchronous, non-throwing.
 
@@ -173,7 +180,8 @@ bool has_tls = zlink::has ("tls");
 ## `stopwatch_t` / `atomic_counter_t` / `thread_t`
 
 A high-resolution stopwatch, a thread-safe integer counter, and a running background thread —
-three independent utility resources with the same RAII shape.
+three independent utility resources with the same RAII shape: default-constructible, move-only,
+`valid() const noexcept`, `close()` (the destructor calls `close()` if not already closed).
 
 ```cpp
 zlink::stopwatch_t watch;
@@ -187,15 +195,19 @@ zlink::thread_t worker ([] { do_work (); });
 worker.join ();
 ```
 
-**Options.** All three: default-constructible, move-only, `valid() const noexcept`, `close()`.
+**Options.**
 
-| Type | Members |
+| Member | Meaning |
 | --- | --- |
-| `stopwatch_t` | `intermediate()`/`stop()` (both `uint64_t` microseconds) |
-| `atomic_counter_t` | `set(int)`, `increment()`/`decrement()` (return the *new* value), `value() const` |
-| `thread_t(std::function<void()> task_)` | runs the task immediately on construction; `join()` blocks until it finishes |
+| `stopwatch_t::intermediate()` | elapsed microseconds since construction, callable any number of times |
+| `stopwatch_t::stop()` | elapsed microseconds since construction, called exactly once to finish |
+| `atomic_counter_t::set(int)` | assigns the counter's value |
+| `atomic_counter_t::increment()` / `decrement()` | adjusts the counter by one, returning the *new* value |
+| `atomic_counter_t::value() const` | reads the current value |
+| `thread_t(std::function<void()> task_)` | constructs and immediately runs `task_` on a new thread |
+| `thread_t::join()` | blocks until the task finishes |
 
-**Completion result.** All synchronous; the destructor calls `close()` if not already closed.
+**Completion result.** All synchronous.
 
 **When to use.** `atomic_counter_t` for a shared count safe across threads. `stopwatch_t` for
 benchmarking. `thread_t` for a portable background thread instead of a platform-specific API.

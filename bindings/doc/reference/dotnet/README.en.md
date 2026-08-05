@@ -43,7 +43,7 @@ question outside this document's scope.
 | [Core](01-core.en.md) | Drafted | `Contracts/Core/`: `Context.cs`, `ContextOptions.cs`, `RoutingId.cs`, `Zlink.cs`, `AtomicCounter.cs`, `ZlinkStopwatch.cs`, `ZlinkThread.cs` |
 | [Messaging](02-messaging.en.md) | Drafted | `Contracts/Messaging/`: `Message.cs`, `MessageOperations.cs`, `OperationContracts.cs`, `Received.cs`, `SubscriptionEvent.cs`, `TopicMessage.cs` (`MessageEnvelopeParts.cs` is `internal`, no public entry) |
 | [Sockets](03-sockets.en.md) | Drafted | `Contracts/Sockets/`: `ISocket.cs`, `IStreamSocket.cs`, `MessageSocketContracts.cs`, `RoutedSocketContracts.cs`, `PubSubSocketContracts.cs`, `SocketEnums.cs`, `SocketOptionFacades.cs`, `PubSubSocketOptionFacades.cs`, `RoutedSocketOptionFacades.cs` |
-| Eventing | Not started | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
+| [Eventing](04-eventing.en.md) | Drafted | `Contracts/Eventing/`: `EventEnums.cs`, `Monitor.cs`, `PollEvent.cs`, `Poller.cs`, `Timer.cs`, `ZlinkPoll.cs` |
 | Errors | Not started | `Contracts/Errors/`: `Errors.cs`, `SubmitResult.cs`, `TypedExceptions.cs` |
 
 On "Core": this names the literal source folder `Contracts/Core/` (context lifecycle, context

@@ -49,6 +49,6 @@ interface-catalog 관례와 반대). 이 레퍼런스 트리도 같은 방향을
 | [Messaging](02-messaging.ko.md) | 작성 완료 | `contracts/messaging/`: `message.rs`, `received.rs`, `topic_message.rs`, `subscription_event.rs`, `operation_contracts.rs`, `operations.rs` |
 | [Sockets](03-sockets.ko.md) | 작성 완료 | `contracts/sockets/`: `socket.rs`, `message_socket_contracts.rs`, `routed_socket_contracts.rs`, `pubsub_socket_contracts.rs`, `stream_socket.rs`, `socket_options.rs` |
 | [Eventing](04-eventing.ko.md) | 작성 완료 | `contracts/eventing/`: `poller.rs`(`Timer`도 여기 소유), `monitor.rs` |
-| Errors | 미착수 | `contracts/errors/`: `errors.rs`, `results.rs` |
+| [Errors](05-errors.ko.md) | 작성 완료 | `contracts/errors/`: `errors.rs`, `results.rs` |
 
 이 문서 트리는 아직 `mkdocs.yml` nav에 올리지 않았다.

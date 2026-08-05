@@ -49,6 +49,6 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `message.rs`, `received.rs`, `topic_message.rs`, `subscription_event.rs`, `operation_contracts.rs`, `operations.rs` |
 | [Sockets](03-sockets.en.md) | Drafted | `contracts/sockets/`: `socket.rs`, `message_socket_contracts.rs`, `routed_socket_contracts.rs`, `pubsub_socket_contracts.rs`, `stream_socket.rs`, `socket_options.rs` |
 | [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing/`: `poller.rs` (also owns `Timer`), `monitor.rs` |
-| Errors | Not started | `contracts/errors/`: `errors.rs`, `results.rs` |
+| [Errors](05-errors.en.md) | Drafted | `contracts/errors/`: `errors.rs`, `results.rs` |
 
 This document tree is not yet listed in the `mkdocs.yml` nav.

@@ -397,7 +397,7 @@ included only when that message contract explicitly defines such a failure state
 ## The Sample Configuration Delivery Standard
 
 Every language's sample must follow the
-[Sample/E2E Configuration Policy](../sample-e2e-configuration-policy.ko.md). The runner builds a
+[Sample/E2E Configuration Policy](../sample-e2e-configuration-policy.en.md). The runner builds a
 per-run role configuration file, and hands the framework host only the configuration file path. A
 standalone client that isn't a Framework host receives the endpoint it directly connects to, the
 request timeout, and the scenario selector as explicit CLI options, validated once at startup.

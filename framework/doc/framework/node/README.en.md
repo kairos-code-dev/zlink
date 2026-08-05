@@ -20,7 +20,7 @@ be synchronous functions.
 
 Sample and E2E config files, the ban on environment variables, and NestJS typed
 configuration provider criteria follow the
-[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
+[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.en.md).
 
 ## 1. Usage Guidance
 

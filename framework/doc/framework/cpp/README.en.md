@@ -13,7 +13,7 @@ The documentation hub for the `zlink::framework` C++ artifact.
 The C++ documents fix the **exact public surface** that meaning takes in C++.
 
 Sample and E2E JSON config files, the ban on environment variables, and typed-binding
-criteria follow the [Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
+criteria follow the [Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.en.md).
 
 **Why C++ has more documentation than the other languages** — `.NET` borrows ASP.NET Core,
 Node borrows NestJS, and Java borrows Spring Boot, but **C++ has no host to borrow, so the

@@ -45,7 +45,7 @@ implements the 6 canonical samples with the same role separation, message names,
 
 The Sample and E2E configuration files, the ban on environment variables, and the per-language
 typed binding criteria follow the
-[Sample/E2E Configuration Policy](framework/common/sample-e2e-configuration-policy.ko.md).
+[Sample/E2E Configuration Policy](framework/common/sample-e2e-configuration-policy.en.md).
 
 | Sample | Core |
 |------|------|

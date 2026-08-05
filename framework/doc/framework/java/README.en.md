@@ -11,7 +11,7 @@ follows the [Async Execution And Coroutine Policy](../common/spec/05-async-execu
 
 Sample and E2E config files, the ban on environment variables, and
 `@ConfigurationProperties`-binding criteria follow the
-[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
+[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.en.md).
 
 > **Kotlin users** should see the [Kotlin-specific guide](../kotlin/README.ko.md).
 > `zlink-framework-kotlin` is a thin coroutine-idiom layer that shares this runtime. The

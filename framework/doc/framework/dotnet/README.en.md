@@ -47,7 +47,7 @@ implementation. The exact criteria are covered in
 [backend-dependency-policy.ko.md](internals/backend-dependency-policy.en.md).
 
 Sample and E2E config files, the ban on environment variables, and Options-binding
-criteria follow the [Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
+criteria follow the [Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.en.md).
 
 ## 1.1 Supported Version Baseline
 

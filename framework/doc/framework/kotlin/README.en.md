@@ -15,7 +15,7 @@ follows the [Async Execution And Coroutine Policy](../common/spec/05-async-execu
 
 Sample and E2E config files, the ban on environment variables, and
 `@ConfigurationProperties`-binding criteria follow the
-[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.ko.md).
+[Sample/E2E Configuration Policy](../common/sample-e2e-configuration-policy.en.md).
 
 Coroutine usage for the client libraries used separately from the server framework is
 found in the [HTTP client guide](guide/http-client/README.ko.md) and the

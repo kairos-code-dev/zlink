@@ -512,7 +512,7 @@ endpoints a client calls are also decided from this viewpoint.
 ### 2.6 Configuration Delivery Contract
 
 E2E in every language mandatorily follows the
-[Sample/E2E Configuration Policy](../sample-e2e-configuration-policy.ko.md).
+[Sample/E2E Configuration Policy](../sample-e2e-configuration-policy.en.md).
 Each config runner generates a per-run role configuration file and
 passes only the configuration file path to the framework host. A
 standalone client that isn't a framework host receives the endpoint it

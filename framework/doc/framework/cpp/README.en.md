@@ -28,7 +28,7 @@ framework provides host, DI, configuration, logging, and HTTP directly.**
 
 ## Internals List
 
-[Common Internals](../common/internals/README.ko.md) ·
+[Common Internals](../common/internals/README.en.md) ·
 [Backend Dependency Policy](internals/backend-dependency-policy.ko.md) ·
 [Regression Test Matrix](internals/regression-test-matrix.ko.md)
 

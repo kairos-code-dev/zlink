@@ -4,7 +4,7 @@
 
 [Guide Home](../index.en.md) | [Common Spec](../common/README.ko.md)
 
-[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.ko.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
+[Common Spec](../common/README.ko.md) | [Async Execution](../common/spec/05-async-execution-policy.ko.md) | [Exact Interface](../common/spec/server/languages/dotnet/interfaces/README.ko.md) | [Stream Connector](../common/spec/stream-connector/languages/dotnet/03-stream-connector.en.md) | [Unity Guide](guide/stream-connector/02-unity.ko.md) | [Common Internals](../common/internals/README.en.md) | [Regression Matrix](internals/regression-test-matrix.ko.md) | [Backend Policy](internals/backend-dependency-policy.ko.md)
 
 # ZLink Framework for .NET
 
@@ -183,7 +183,7 @@ follow each feature's spec.
 
 | Document | Scope |
 |------|------------|
-| [Common Internals](../common/internals/README.ko.md) | Runtime architecture decisions shared across all four languages |
+| [Common Internals](../common/internals/README.en.md) | Runtime architecture decisions shared across all four languages |
 | [regression-test-matrix.ko.md](internals/regression-test-matrix.ko.md) | The regression test items that must always be kept, CI tiers, release gate |
 | [backend-dependency-policy.ko.md](internals/backend-dependency-policy.ko.md) | Backend dependency relationships and the boundary for replacing low-level libraries |
 | [public-symbol-delta-v11.ko.md](internals/public-symbol-delta-v11.ko.md) | Zero internal migrations and the minimal-public-delta classification for maintenance |

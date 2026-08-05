@@ -19,7 +19,7 @@ owned by each package's separate spec.
 | 04 | [Spot And Instance Spot](04-spots.en.md) | [Spot](../../../../01-glossary.en.md#spot) lifecycle, [User Spot](../../../../01-glossary.en.md#entry-user-instance-spot) manager, and the Instance cold-activation fluent call |
 | 05 | [Actor And Session Binding](05-actors.en.md) | Actor lifecycle, Actor call, and bound session |
 | 06 | [STREAM, Timer, And Worker](06-stream-worker.en.md) | STREAM session, timer, and worker scheduling |
-| 07 | [NestJS Host Adapter](07-nestjs-host.ko.md) | Module, DI token, decorator, and host builder |
+| 07 | [NestJS Host Adapter](07-nestjs-host.en.md) | Module, DI token, decorator, and host builder |
 | 08 | [Location/Relocation Provider](08-location-maintenance.en.md) | Opaque atomic Location Store, immutable Relocation Store, and the official Redis provider |
 
 The export name set of the deployment package and every file this table

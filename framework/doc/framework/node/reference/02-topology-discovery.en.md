@@ -7,7 +7,7 @@ This category covers the topology registration entry points `zlinkFramework()`
 RouteMesh/ClientServer/Fanout operational status. The exact signatures are owned by the
 [Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md),
 the
-[NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.ko.md),
+[NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
 [Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
 (Korean-only). Every registration entry point is a configuration-time call inside the
@@ -399,7 +399,7 @@ host-lifecycle category.
 See the
 [Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md),
 the
-[NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.ko.md),
+[NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
 [Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
 (Korean-only) for the full rationale.

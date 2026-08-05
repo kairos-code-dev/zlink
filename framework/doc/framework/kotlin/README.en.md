@@ -65,9 +65,9 @@ criteria **share the Java/Kotlin `internals/`.**
 
 | Document | Scope |
 |------|------|
-| [backend-dependency-policy](../java/internals/backend-dependency-policy.ko.md) | Java binding dependency isolation |
+| [backend-dependency-policy](../java/internals/backend-dependency-policy.en.md) | Java binding dependency isolation |
 | [Common Internals](../common/internals/README.en.md) | Runtime architecture decisions shared across all four languages |
-| [regression-test-matrix](../java/internals/regression-test-matrix.ko.md) | JVM contract, E2E, and performance smoke criteria |
+| [regression-test-matrix](../java/internals/regression-test-matrix.en.md) | JVM contract, E2E, and performance smoke criteria |
 
 ## 4. Samples (Kotlin)
 

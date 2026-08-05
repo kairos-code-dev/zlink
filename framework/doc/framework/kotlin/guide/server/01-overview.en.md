@@ -756,7 +756,7 @@ bottom two layers (`bindings/dotnet`, the Core C API) are used only as a backend
 behind the framework — never directly exposed on the public API, and application code
 doesn't change even if they're replaced later. This backend boundary and data flow are
 explained separately by
-[internals/backend-dependency-policy](../../../java/internals/backend-dependency-policy.ko.md).
+[internals/backend-dependency-policy](../../../java/internals/backend-dependency-policy.en.md).
 
 The point where the application meets this stack is **one registration spot.** This is where
 you declare the MeshNode, fanout, and STREAM node.
@@ -904,7 +904,7 @@ service, handler, and location store model. Anyone reviewing the formal public A
 contract should also read the
 [spec/interfaces index](../../../common/spec/server/languages/java/interfaces/README.ko.md);
 anyone changing the runtime's internal structure should also read
-[internals/](../../../java/internals/backend-dependency-policy.ko.md).
+[internals/](../../../java/internals/backend-dependency-policy.en.md).
 
 ## 7. Naming Convention
 

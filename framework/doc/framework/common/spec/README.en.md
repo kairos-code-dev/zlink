@@ -80,5 +80,5 @@ that manages design candidates for the next revision.
 
 ## Stream Connector
 
-- [32 Stream connector](stream-connector/32-stream-connector.ko.md)
-- [Per-language Stream connector contract](stream-connector/README.ko.md#언어별-public-api)
+- [32 Stream connector](stream-connector/32-stream-connector.en.md)
+- [Per-language Stream connector contract](stream-connector/README.en.md#per-language-public-api)

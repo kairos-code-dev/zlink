@@ -7,7 +7,7 @@ language's implementation and contract tests must follow.
 
 The client package's public interface isn't defined in this directory.
 The Stream connector is owned by
-[Per-Language Stream Connector Contract](../../stream-connector/README.ko.md),
+[Per-Language Stream Connector Contract](../../stream-connector/README.en.md),
 and the HTTP client is owned by
 [Per-Language HTTP Client Contract](../../http-client/README.en.md).
 

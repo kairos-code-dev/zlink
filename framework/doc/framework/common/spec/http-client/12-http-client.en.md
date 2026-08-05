@@ -26,7 +26,7 @@ companion client**, and the contract is owned by framework.
 | | [STREAM Connector](../01-glossary.en.md#stream-connector) | HTTP Client |
 |---|---|---|
 | Package | Separate | Separate |
-| Contract ownership | Framework common spec ([32](../stream-connector/32-stream-connector.ko.md)) | Framework common spec (this document) |
+| Contract ownership | Framework common spec ([32](../stream-connector/32-stream-connector.en.md)) | Framework common spec (this document) |
 | Per-language interface | `stream-connector/languages/<lang>/` | `http-client/languages/<lang>/` |
 
 **There's exactly one reason it exists** — a framework application must

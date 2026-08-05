@@ -29,7 +29,7 @@ owned by [internals/runtime-architecture](../../../../internals/README.ko.md).
 The client connector is owned by the
 [C++ Stream Connector guide](../../../../../cpp/guide/stream-connector/INDEX.ko.md)
 and the
-[Stream Connector common spec](../../../stream-connector/32-stream-connector.ko.md).
+[Stream Connector common spec](../../../stream-connector/32-stream-connector.en.md).
 
 ## Cancellation Argument
 

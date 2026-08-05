@@ -22,7 +22,7 @@ View in another language — [C#/.NET](../../../dotnet/guide/server/09-stream.en
 > and the
 > [per-language STREAM session public contract](../../../common/spec/server/languages/README.ko.md)
 > owns the server's exact signatures. The client package follows the Stream Connector guide
-> and the [per-language public contract](../../../common/spec/stream-connector/README.ko.md).
+> and the [per-language public contract](../../../common/spec/stream-connector/README.en.md).
 
 STREAM is a connection-oriented, bidirectional message channel between an external client and
 the Framework server. The server implements session lifecycle and packet dispatch. The

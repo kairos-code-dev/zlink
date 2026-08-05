@@ -21,7 +21,7 @@ View in another language — **C#/.NET** · [C++](../../../cpp/guide/server/15-e
 > how to build tests in your own system. What each sample verifies is defined by the
 > [common sample document](../../../common/sample/README.ko.md). The connector's formal API
 > surface is owned by the
-> [per-language Stream Connector public contract](../../../common/spec/stream-connector/README.ko.md).
+> [per-language Stream Connector public contract](../../../common/spec/stream-connector/README.en.md).
 > This chapter covers **how to build E2E tests in your own system.**
 
 ## 0. Where E2E Testing Is Needed
@@ -369,5 +369,5 @@ fi
 - Full HTTP client usage: the HTTP Client guide
 - Engine integration and manual pumping: the Stream Connector guide
 - The connector's formal contract:
-  [per-language Stream Connector public contract](../../../common/spec/stream-connector/README.ko.md)
+  [per-language Stream Connector public contract](../../../common/spec/stream-connector/README.en.md)
 - What each sample verifies: [common sample document](../../../common/sample/README.ko.md)

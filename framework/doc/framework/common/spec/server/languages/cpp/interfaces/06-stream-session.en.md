@@ -200,6 +200,6 @@ session is created, and isn't delivered to `on_error(...)`.
 
 **The wire value is a contract.** `stream_close_reason_t`'s 1-6 are the
 same values as the `session-closing` payload in
-[Stream Connector §4.6](../../../../stream-connector/32-stream-connector.ko.md).
+[Stream Connector §4.6](../../../../stream-connector/32-stream-connector.en.md).
 **Don't cast the enum to an integer and use it as the wire value** —
 the codec converts it explicitly.

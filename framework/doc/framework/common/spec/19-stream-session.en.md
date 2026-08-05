@@ -16,7 +16,7 @@ execution unit keeping packet processing and request correlation from accepting
 one connection until it closes — in ZLink Framework. Its audience is framework
 developers implementing the server session surface, dispatch, registration,
 codec, and error boundary. The client-side contract is defined by the
-[Stream Connector Common Spec](stream-connector/32-stream-connector.ko.md), and
+[Stream Connector Common Spec](stream-connector/32-stream-connector.en.md), and
 the two documents share the same wire contract. Per-language types and
 signatures are fixed by the STREAM documents in the
 [per-language Server interface table of contents](server/languages/README.ko.md).
@@ -143,7 +143,7 @@ and message.
   client owns a per-host registry
   ([HTTP Client §5](http-client/12-http-client.en.md#5-codec)); the connector
   owns a per-connector-instance typed codec option
-  ([Stream Connector §5.4](stream-connector/32-stream-connector.ko.md#54-codec)).
+  ([Stream Connector §5.4](stream-connector/32-stream-connector.en.md#54-codec)).
 
 ## 6. Error Boundary
 
@@ -158,7 +158,7 @@ The session error callback is restricted to only the axis of re-surfacing a
 monitor-observable transport error at the session level.
 
 The termination reason when a session closes matches the closed set in
-[Stream Connector §6.3](stream-connector/32-stream-connector.ko.md#63-종료-사유),
+[Stream Connector §6.3](stream-connector/32-stream-connector.en.md#63-close-reason),
 and the instrument is owned by
 [runtime-metrics §4](25-runtime-metrics.en.md#4-object-and-stream).
 
@@ -219,7 +219,7 @@ the same server TLS configuration. The default is not to require it; if set to
 require it, a connection that fails client-certificate verification is
 rejected before a session is built. The client-side transport choice is
 determined by the endpoint scheme
-([Stream Connector §3](stream-connector/32-stream-connector.ko.md)).
+([Stream Connector §3](stream-connector/32-stream-connector.en.md)).
 
 ### 7.2 Startup Validation
 

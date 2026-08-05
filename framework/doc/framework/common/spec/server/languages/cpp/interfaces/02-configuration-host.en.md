@@ -1254,7 +1254,7 @@ public:
 
 **An endpoint holds a scheme and URI together.** The meaning of the
 scheme→transport mapping is owned by
-[Stream Connector §3](../../../../stream-connector/32-stream-connector.ko.md).
+[Stream Connector §3](../../../../stream-connector/32-stream-connector.en.md).
 
 ## 8. Registration Builder
 

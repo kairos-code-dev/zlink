@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Previous: Pub/Sub](config-3-pubsub.en.md) | [Next: Resilience](config-5-resilience-lifecycle.ko.md)
+[E2E table of contents](README.en.md) | [Previous: Pub/Sub](config-3-pubsub.en.md) | [Next: Resilience](config-5-resilience-lifecycle.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 4 — Handler Registration And Typed Codec

@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E Index](README.en.md) | [Previous: Resilience](config-5-resilience-lifecycle.ko.md) | [Next: Monitoring](config-7-monitoring.en.md)
+[E2E Index](README.en.md) | [Previous: Resilience](config-5-resilience-lifecycle.en.md) | [Next: Monitoring](config-7-monitoring.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 6 — Location Store And Relocation Store Failure

@@ -537,7 +537,7 @@ does A process about 75% of the total over enough requests?
   ratio from
   [Channel Messaging §3.2](../spec/08-channel-messaging.en.md#32-channelname-select-one).
   Excluding/restoring weight at runtime is verified by
-  [Config 5 RL-B4](config-5-resilience-lifecycle.ko.md).
+  [Config 5 RL-B4](config-5-resilience-lifecycle.en.md).
 
 #### RM-C8 Apply The Receive Message Size Ceiling
 

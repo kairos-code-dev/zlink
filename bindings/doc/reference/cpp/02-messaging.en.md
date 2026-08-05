@@ -172,16 +172,14 @@ std::move (received.reply ()).message (reply_msg).submit ();
 | `request_submit_operation_t.flags(int)` | narrows to `request_callback_submit_operation_t` | drops the awaitable `.async()` path — only `.submit(request_callback_t)` remains |
 | `reply_operation_t`/`reply_submit_operation_t` | mirrors `send`, `.flags(...)` throws `submit_error_t{not_supported}` for anything but `send_flags_t::none` | core reply function takes no send-flag argument |
 
-**Completion result.** `send_submit_operation_t::submit()`/`reply_submit_operation_t::submit()` are
-synchronous — send returns `bool` (`false` only under `send_flags_t::dontwait` back-pressure;
-other failures throw `submit_error_t`), reply returns `void`. `request_submit_operation_t::async()`
-returns `async_result_t<std::vector<message_t>>` — `.get()` blocks for the reply, or
-`.wait_for(...)`/`.wait_until(...)` polls with a timeout (internally pumps request progress rather
-than blocking the OS thread). `submit(request_callback_t)` (on `request_submit_operation_t`/
-`request_callback_submit_operation_t`) returns `bool` and delivers `(request_result_t,
-std::vector<message_t>)` later — the vector is populated only when the result is
-`request_result_t::ok`, and the callback owns and must `close()` each message. Every builder
-consumes its parts on a successful submit only.
+**Completion result.** All synchronous calls; parts are consumed on a successful submit only.
+
+| Terminal | Returns | Meaning |
+| --- | --- | --- |
+| `send_submit_operation_t::submit()` | `bool` | `false` only under `send_flags_t::dontwait` back-pressure; other failures throw `submit_error_t` |
+| `reply_submit_operation_t::submit()` | `void` | throws `submit_error_t` on failure |
+| `request_submit_operation_t::async()` | `async_result_t<std::vector<message_t>>` | `.get()` blocks for the reply; `.wait_for(...)`/`.wait_until(...)` polls with a timeout — both internally pump request progress rather than blocking the OS thread |
+| `submit(request_callback_t)` (`request_submit_operation_t`/`request_callback_submit_operation_t`) | `bool` | the dispatch result; the actual reply arrives later via the callback as `(request_result_t, std::vector<message_t>)` — the vector is populated only when the result is `request_result_t::ok`, and the callback owns and must `close()` each message |
 
 **When to use.** `.async()` when the caller can wait on a future; `.flags(...).submit(callback)`
 for callback-driven completion instead. `received_t::reply()`/`send()` rather than reconstructing

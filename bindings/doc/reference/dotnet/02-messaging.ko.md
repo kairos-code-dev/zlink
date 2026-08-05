@@ -190,15 +190,15 @@ received.Reply().Message(Message.From("ok")).Submit();
 | `ReplyOperation`/`ReplySubmitOperation` | `Send`와 같은 형태, flags 단계 없음 | core reply 함수가 send-flag 인자를 받지 않음 |
 | `Messages(IReadOnlyList<Message>)` | `MessageOperations` extension | 네 family 전체의 모든 단계에서 여러 part를 순서대로 한 번에 추가; 독립 진입점 아님 |
 
-**완료 결과.** `SendSubmitOperation.Submit()`/`ReplySubmitOperation.Submit()`은 동기다 —
-`Send`는 `bool`을 반환(`SendFlags.DontWait` backpressure일 때만 `false`, 그 외 실패는
-`ZlinkException`), `Reply`는 `void`를 반환한다. `RequestSubmitOperation.Async
-(CancellationToken)`은 `Task<IReadOnlyList<Message>>`를 반환한다 — caller가 reply
-message를 소유하며 반드시 dispose해야 한다. `Submit(RequestCallback)`
-(`RequestSubmitOperation`/`RequestCallbackSubmitOperation`)은 `bool`을 반환하고 결과를
-나중에 `(RequestResult result, IReadOnlyList<Message> parts)`로 전달한다 — `result`가
-`RequestResult.Ok`일 때만 `parts`가 채워진다. 모든 builder는 성공적인 submit에서만
-part를 소비한다 — 실패 시 소유권은 caller에게 복원된다.
+**완료 결과.** 모두 동기 호출이다; part는 성공적인 submit에서만 소비되며, 실패 시
+소유권은 caller에게 복원된다.
+
+| Terminal | 반환 | 의미 |
+| --- | --- | --- |
+| `SendSubmitOperation.Submit()` | `bool` | `SendFlags.DontWait` backpressure일 때만 `false`, 그 외 실패는 `ZlinkException` |
+| `ReplySubmitOperation.Submit()` | `void` | 실패하면 `ZlinkException`을 던짐 |
+| `RequestSubmitOperation.Async(CancellationToken)` | `Task<IReadOnlyList<Message>>` | caller가 reply message를 소유하며 반드시 dispose해야 함 |
+| `Submit(RequestCallback)`(`RequestSubmitOperation`/`RequestCallbackSubmitOperation`) | `bool` | dispatch 결과일 뿐, 실제 reply는 나중에 콜백으로 `(RequestResult result, IReadOnlyList<Message> parts)`가 전달됨 — `result`가 `RequestResult.Ok`일 때만 `parts`가 채워짐 |
 
 **선택 기준.** async 코드에선 `.Async()`를 쓴다. callback-completion 표면이 필요할 땐
 (await할 수 없는 동기 dispatch 스레드) `.Flags(...).Submit(callback)`을 쓴다.

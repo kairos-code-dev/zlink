@@ -187,15 +187,15 @@ received.Reply().Message(Message.From("ok")).Submit();
 | `ReplyOperation`/`ReplySubmitOperation` | mirrors `Send`, no flags stage | core reply function takes no send-flag argument |
 | `Messages(IReadOnlyList<Message>)` | `MessageOperations` extension | adds several parts in order at any stage of all four families; not an independent entry point |
 
-**Completion result.** `SendSubmitOperation.Submit()`/`ReplySubmitOperation.Submit()` are
-synchronous — `Send` returns `bool` (`false` only under `SendFlags.DontWait` back-pressure;
-every other failure throws `ZlinkException`), `Reply` returns `void`.
-`RequestSubmitOperation.Async(CancellationToken)` returns `Task<IReadOnlyList<Message>>` — the
-caller owns and must dispose the reply messages. `Submit(RequestCallback)` (on
-`RequestSubmitOperation`/`RequestCallbackSubmitOperation`) returns `bool` and delivers the outcome
-later via `(RequestResult result, IReadOnlyList<Message> parts)` — `parts` is populated only when
-`result` is `RequestResult.Ok`. Every builder consumes its parts on a successful submit only; on
-failure ownership returns to the caller.
+**Completion result.** All synchronous calls; parts are consumed on a successful submit only, and
+ownership returns to the caller on failure.
+
+| Terminal | Returns | Meaning |
+| --- | --- | --- |
+| `SendSubmitOperation.Submit()` | `bool` | `false` only under `SendFlags.DontWait` back-pressure; every other failure throws `ZlinkException` |
+| `ReplySubmitOperation.Submit()` | `void` | throws `ZlinkException` on failure |
+| `RequestSubmitOperation.Async(CancellationToken)` | `Task<IReadOnlyList<Message>>` | the caller owns and must dispose the reply messages |
+| `Submit(RequestCallback)` (`RequestSubmitOperation`/`RequestCallbackSubmitOperation`) | `bool` | the dispatch result; the actual reply arrives later via the callback as `(RequestResult result, IReadOnlyList<Message> parts)` — `parts` is populated only when `result` is `RequestResult.Ok` |
 
 **When to use.** `.Async()` in async code; `.Flags(...).Submit(callback)` when a callback-completion
 surface is needed instead (a synchronous dispatch thread that can't await). `Reply()`/`Send()` from

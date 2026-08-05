@@ -178,18 +178,14 @@ std::move (received.reply ()).message (reply_msg).submit ();
 | `request_submit_operation_t.flags(int)` | `request_callback_submit_operation_t`로 좁힘 | awaitable `.async()` 경로가 사라짐 — 이후 `.submit(request_callback_t)`만 도달 가능 |
 | `reply_operation_t`/`reply_submit_operation_t` | `send`와 같은 형태, `.flags(...)`는 `send_flags_t::none` 외 값이면 `submit_error_t{not_supported}` | core reply 함수가 send-flag 인자를 받지 않음 |
 
-**완료 결과.** `send_submit_operation_t::submit()`/
-`reply_submit_operation_t::submit()`은 동기다 — send의 반환값은 `bool`
-(`send_flags_t::dontwait` backpressure일 때만 `false`, 그 외 실패는
-`submit_error_t`), reply의 반환값은 `void`다. `request_submit_operation_t::async()`
-는 `async_result_t<std::vector<message_t>>`를 반환한다 — `.get()`은 reply를
-block 대기하고, `.wait_for(...)`/`.wait_until(...)`은 timeout과 함께 poll한다(OS
-스레드를 그대로 block하는 대신 내부적으로 request progress를 pump). `submit
-(request_callback_t)`(`request_submit_operation_t`/
-`request_callback_submit_operation_t`)는 `bool`을 반환하고
-`(request_result_t, std::vector<message_t>)`를 나중에 전달한다 — 결과가
-`request_result_t::ok`일 때만 벡터가 채워지며, 콜백이 각 메시지를 소유하고
-반드시 `close()`해야 한다. 모든 builder는 성공적인 submit에서만 part를 소비한다.
+**완료 결과.** 모두 동기 호출이다; part는 성공적인 submit에서만 소비된다.
+
+| Terminal | 반환 | 의미 |
+| --- | --- | --- |
+| `send_submit_operation_t::submit()` | `bool` | `send_flags_t::dontwait` backpressure일 때만 `false`, 그 외 실패는 `submit_error_t` |
+| `reply_submit_operation_t::submit()` | `void` | 실패하면 `submit_error_t`를 던짐 |
+| `request_submit_operation_t::async()` | `async_result_t<std::vector<message_t>>` | `.get()`은 reply를 block 대기, `.wait_for(...)`/`.wait_until(...)`은 timeout과 함께 poll — 둘 다 OS 스레드를 그대로 block하는 대신 내부적으로 request progress를 pump |
+| `submit(request_callback_t)`(`request_submit_operation_t`/`request_callback_submit_operation_t`) | `bool` | dispatch 결과일 뿐, 실제 reply는 나중에 콜백으로 `(request_result_t, std::vector<message_t>)`가 전달됨 — 결과가 `request_result_t::ok`일 때만 벡터가 채워지며, 콜백이 각 메시지를 소유하고 반드시 `close()`해야 함 |
 
 **선택 기준.** caller가 future를 기다릴 수 있을 땐 `.async()`를, 대신 callback
 기반 완료가 필요할 땐 `.flags(...).submit(callback)`을 쓴다. 목적지를 손으로

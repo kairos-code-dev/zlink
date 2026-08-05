@@ -72,15 +72,24 @@ ctx.options.autoHwmProfile = AutoHwmProfile.LowLatency;
 ctx.options.addThreadAffinity(2);
 ```
 
-**Options.** 순수 property(별도 표기 없으면 get/set): `ioThreads`
-(`number`), `maxSockets`(`number`), `socketLimit`(`number`, 읽기 전용),
-`maxMsgSize`(`number`), `msgTSize`(`number`, 읽기 전용),
-`threadPriority`/`threadSchedulingPolicy`(`number`), `blocky`(`boolean`),
-`autoHwmEnabled`(`boolean`), `autoHwmRecalcDebounceMs`(`number`),
-`autoHwmProfile`(`AutoHwmProfileValue`), `autoHwmMsgUnitBytes`(`bigint` —
-unsigned 64-bit planning unit; `0n`은 socket-type 기본값 선택),
-`threadNamePrefix`(`string`). Method: `addThreadAffinity(cpu: number)`/
-`removeThreadAffinity(cpu: number)`.
+**Options.** 별도 표기 없으면 순수 property는 get/set 둘 다 가능하다.
+
+| Member | 타입 | 의미 |
+| --- | --- | --- |
+| `ioThreads` | `number` | I/O thread 개수 |
+| `maxSockets` | `number` | context 전체 socket 상한 |
+| `socketLimit` | `number`, 읽기 전용 | `maxSockets`의 빌드상 하드 상한 |
+| `maxMsgSize` | `number` | 메시지 하나의 크기 상한 |
+| `msgTSize` | `number`, 읽기 전용 | native message struct 크기, 진단 전용 |
+| `threadPriority` / `threadSchedulingPolicy` | `number` | dispatch thread 우선순위 / scheduling policy |
+| `blocky` | `boolean` | blocking 호출이 실제로 block하는지 fail fast하는지 |
+| `autoHwmEnabled` | `boolean` | auto-HWM sizing 활성 여부 |
+| `autoHwmRecalcDebounceMs` | `number` | 자동 재계산 사이 최소 간격 |
+| `autoHwmProfile` | `AutoHwmProfileValue` | automatic HWM sizing profile — Sockets category 참고 |
+| `autoHwmMsgUnitBytes` | `bigint`, unsigned 64-bit planning unit | auto-HWM용 accounted-byte 단위; `0n`은 socket-type 기본값 선택 |
+| `threadNamePrefix` | `string` | OS에 보이는 dispatch thread 이름 접두사 |
+| `addThreadAffinity(cpu: number)` | method | I/O thread를 CPU에 고정 |
+| `removeThreadAffinity(cpu: number)` | method | I/O thread의 CPU 고정을 해제 |
 
 **Completion result.** 모든 property 읽기/쓰기와 두 method는 동기다.
 
@@ -140,17 +149,18 @@ const fromUint32 = RoutingId.from(42);
 const restored = RoutingId.fromHex(previouslyPrinted.toHex());
 ```
 
-**Options.** Static factory: `from(value: string | Buffer | Uint8Array |
-number)` — `string`은 UTF-8로 인코딩되고, `number`는 4-byte big-endian
-uint32가 되며(`0..4294967295` 범위의 정수여야 함), `Buffer`/`Uint8Array`는
-그대로 복사된다. `fromHex(value: string)`은 `toHex()`가 출력한 byte를
-복원한다. dotnet/java와 달리 전용 UUID 타입 factory overload가 없다 —
-16-byte 값도 여전히 `from(...)`의 `Buffer`/`Uint8Array` overload로
-생성한다. Instance member: `size`(getter), `toBytes()`(복사), `toHex()`,
-`toString()`(printable UTF-8, 그 다음 4-byte를 uint32로, 그 다음 16-byte를
-UUID 포맷으로, 마지막 `hex:` 접두 fallback), `equals(other)`. instance는
-freeze돼 있으며(`Object.freeze`) `from`/`fromHex`로만 생성 가능하다 —
-생성자 자체는 private이며 내부 token으로 보호된다.
+**Options.** instance는 freeze돼 있으며(`Object.freeze`) `from`/`fromHex`로만
+생성 가능하다 — 생성자 자체는 private이며 내부 token으로 보호된다.
+
+| Member | 의미 |
+| --- | --- |
+| `from(value: string \| Buffer \| Uint8Array \| number)` | `string`은 UTF-8로 인코딩되고, `number`는 4-byte big-endian uint32가 되며(`0..4294967295` 범위의 정수여야 함), `Buffer`/`Uint8Array`는 그대로 복사된다. dotnet/java와 달리 전용 UUID 타입 overload가 없다 — 16-byte 값도 `Buffer`/`Uint8Array` 경로로 생성한다 |
+| `fromHex(value: string)` | `toHex()`가 출력한 byte를 복원 |
+| `size` | getter, byte 길이, 1-255 |
+| `toBytes()` | bytes의 방어적 복사 |
+| `toHex()` | hex 인코딩, `fromHex`와 왕복 가능 |
+| `toString()` | 표시 형태: printable UTF-8, 그 다음 4-byte를 uint32로, 그 다음 16-byte를 UUID 포맷으로, 마지막 `hex:` 접두 fallback |
+| `equals(other)` | 값 동등성 |
 
 **Completion result.** 모든 factory·accessor는 동기다. 범위를 벗어난
 길이는 `TypeError`/`RangeError`를 던진다. `fromHex`에 잘못된 hex
@@ -175,9 +185,13 @@ const message = strerror(errnum);
 const hasTls = has('tls');
 ```
 
-**Options.** `strerror(code: number)`. `has(capability: string)` —
-인식하는 이름은 `'tcp'`, `'ipc'`, `'tls'`, `'ws'`, `'wss'`; 다른 문자열은
-`false`를 반환한다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `version()` | `{major, minor, patch}`의 `[number, number, number]` tuple |
+| `strerror(code: number)` | 해당 native error code의 메시지 텍스트 |
+| `has(capability: string)` | 지정한 선택적 역할이 이 빌드에 컴파일돼 있는지 — 인식하는 이름은 `'tcp'`, `'ipc'`, `'tls'`, `'ws'`, `'wss'`; 다른 문자열은 `false`를 반환한다 |
 
 **Completion result.** 모두 동기다. `version()`은 `[number, number,
 number]` tuple(major/minor/patch)을 반환한다. `strerror`는 `string`을
@@ -209,14 +223,21 @@ const thread = createThread(() => doWork());
 thread.join();
 ```
 
-**Options.** `createAtomicCounter(initialValue = 0)` — dotnet/java/cpp와
-달리, 항상 0에서 시작하는 게 아니라 생성 시점에 직접 선택적 시작값을
-받는다. `createStopwatch()`는 인자 없음. `createThread(handler: () =>
-void)`는 새 스레드에서 handler를 즉시 실행한다. `AtomicCounter`:
-`set(value)`, `inc()`/`dec()`(*새* 값을 반환), `value()`, `close()`.
-`Stopwatch`: `intermediate()`/`stop()`(둘 다 `number` 마이크로초),
-`close()`. `Thread`: **`join()`만** — 다른 모든 언어의 thread handle과
-달리, 이 interface는 `close()`/dispose 메서드를 선언하지 않는다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `createAtomicCounter(initialValue = 0)` | dotnet/java/cpp와 달리, 항상 0에서 시작하는 게 아니라 생성 시점에 직접 선택적 시작값을 받는다 |
+| `AtomicCounter.set(value)` | counter 값을 지정 |
+| `AtomicCounter.inc()`/`dec()` | counter를 1 조정, *새* 값을 반환 |
+| `AtomicCounter.value()` | 현재 값을 읽음 |
+| `AtomicCounter.close()` | counter를 해제 |
+| `createStopwatch()` | 인자 없음 |
+| `Stopwatch.intermediate()` | 생성 이후 경과 마이크로초(`number`), 몇 번이든 호출 가능 |
+| `Stopwatch.stop()` | 생성 이후 경과 마이크로초(`number`), 정확히 한 번 호출해 종료 |
+| `Stopwatch.close()` | stopwatch를 해제 |
+| `createThread(handler: () => void)` | 새 스레드에서 `handler`를 즉시 실행 |
+| `Thread.join()` | task가 끝날 때까지 block — **유일한 member**; 다른 모든 언어의 thread handle과 달리 이 interface는 `close()`/dispose 메서드를 선언하지 않는다 |
 
 **Completion result.** 세 factory 모두 자신의 resource를 동기로
 반환한다.
@@ -242,11 +263,14 @@ sleep(1); // 초 단위, 밀리초 아님
 multipartClose(parts);
 ```
 
-**Options.** `proxy(frontend, backend, capture?)` — `capture`는 선택
-사항. `proxySteerable(frontend, backend, capture, control)` — `capture`는
-`null` 가능. `sleep(seconds: number)` — 초 단위를 직접 받는다.
-dotnet(`Duration` overload만 public)과 달리 여기엔 별도의 subsecond
-옵션이 없다. `multipartClose(parts: Message[])`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `proxy(frontend, backend, capture?)` | `capture`는 선택 사항 |
+| `proxySteerable(frontend, backend, capture, control)` | 필수 `control` socket을 더함; `capture`는 `null` 가능 |
+| `sleep(seconds: number)` | 호출 스레드를 block; 초 단위를 직접 받는다 — dotnet(`Duration` overload만 public)과 달리 여기엔 별도의 subsecond 옵션이 없다 |
+| `multipartClose(parts: Message[])` | 모든 part를 한 번에 닫음 |
 
 **Completion result.** 모두 반환값 없이 동기다. `proxy`/`proxySteerable`은
 context가 종료될 때까지(또는 `proxySteerable`의 경우 control 명령이나

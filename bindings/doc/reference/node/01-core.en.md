@@ -68,13 +68,24 @@ ctx.options.autoHwmProfile = AutoHwmProfile.LowLatency;
 ctx.options.addThreadAffinity(2);
 ```
 
-**Options.** Plain properties (get/set except where noted): `ioThreads` (`number`), `maxSockets`
-(`number`), `socketLimit` (`number`, read-only), `maxMsgSize` (`number`), `msgTSize` (`number`,
-read-only), `threadPriority`/`threadSchedulingPolicy` (`number`), `blocky` (`boolean`),
-`autoHwmEnabled` (`boolean`), `autoHwmRecalcDebounceMs` (`number`), `autoHwmProfile`
-(`AutoHwmProfileValue`), `autoHwmMsgUnitBytes` (`bigint` — the unsigned 64-bit planning unit; `0n`
-selects the socket-type default), `threadNamePrefix` (`string`). Methods:
-`addThreadAffinity(cpu: number)`/`removeThreadAffinity(cpu: number)`.
+**Options.** Plain properties are get/set except where noted.
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `ioThreads` | `number` | I/O thread count |
+| `maxSockets` | `number` | context-wide socket cap |
+| `socketLimit` | `number`, read-only | build's hard cap on `maxSockets` |
+| `maxMsgSize` | `number` | per-message size cap |
+| `msgTSize` | `number`, read-only | native message struct size, diagnostic only |
+| `threadPriority` / `threadSchedulingPolicy` | `number` | dispatch thread priority / scheduling policy |
+| `blocky` | `boolean` | whether blocking calls actually block vs. fail fast |
+| `autoHwmEnabled` | `boolean` | whether auto-HWM sizing is active |
+| `autoHwmRecalcDebounceMs` | `number` | minimum interval between automatic recalculations |
+| `autoHwmProfile` | `AutoHwmProfileValue` | automatic HWM sizing profile — see Sockets category |
+| `autoHwmMsgUnitBytes` | `bigint`, unsigned 64-bit planning unit | accounted-byte unit for auto-HWM; `0n` selects the socket-type default |
+| `threadNamePrefix` | `string` | OS-visible dispatch thread name prefix |
+| `addThreadAffinity(cpu: number)` | method | pins an I/O thread to a CPU |
+| `removeThreadAffinity(cpu: number)` | method | unpins an I/O thread from a CPU |
 
 **Completion result.** All property reads/writes and both methods are synchronous.
 
@@ -134,15 +145,18 @@ const fromUint32 = RoutingId.from(42);
 const restored = RoutingId.fromHex(previouslyPrinted.toHex());
 ```
 
-**Options.** Static factories: `from(value: string | Buffer | Uint8Array | number)` — a `string`
-encodes as UTF-8, a `number` becomes a 4-byte big-endian uint32 (must be an integer in
-`0..4294967295`), a `Buffer`/`Uint8Array` is copied as-is. `fromHex(value: string)` restores bytes
-`toHex()` printed. Unlike dotnet/java, there is no dedicated UUID-typed factory overload — a 16-byte
-value is still constructed via the `Buffer`/`Uint8Array` overload of `from(...)`. Instance members:
-`size` (getter), `toBytes()` (copy), `toHex()`, `toString()` (printable UTF-8, then
-4-byte-as-uint32, then 16-byte-as-UUID-format, then a `hex:`-prefixed fallback), `equals(other)`.
-Instances are frozen (`Object.freeze`) and only constructible via `from`/`fromHex` — the
-constructor itself is private and guarded by an internal token.
+**Options.** Instances are frozen (`Object.freeze`) and only constructible via `from`/`fromHex` —
+the constructor itself is private and guarded by an internal token.
+
+| Member | Meaning |
+| --- | --- |
+| `from(value: string \| Buffer \| Uint8Array \| number)` | a `string` encodes as UTF-8; a `number` becomes a 4-byte big-endian uint32 (must be an integer in `0..4294967295`); a `Buffer`/`Uint8Array` is copied as-is. Unlike dotnet/java, there is no dedicated UUID-typed overload — a 16-byte value is still constructed via the `Buffer`/`Uint8Array` path |
+| `fromHex(value: string)` | restores bytes `toHex()` printed |
+| `size` | getter, byte length, 1-255 |
+| `toBytes()` | defensive copy of the bytes |
+| `toHex()` | hex encoding, round-trippable with `fromHex` |
+| `toString()` | display form: printable UTF-8, then 4-byte-as-uint32, then 16-byte-as-UUID-format, then a `hex:`-prefixed fallback |
+| `equals(other)` | value equality |
 
 **Completion result.** Every factory and accessor is synchronous. Out-of-range length throws
 `TypeError`/`RangeError`; a malformed hex string to `fromHex` throws the same.
@@ -165,8 +179,13 @@ const message = strerror(errnum);
 const hasTls = has('tls');
 ```
 
-**Options.** `strerror(code: number)`. `has(capability: string)` — recognized names include
-`'tcp'`, `'ipc'`, `'tls'`, `'ws'`, `'wss'`; any other string returns `false`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `version()` | `[number, number, number]` tuple of `{major, minor, patch}` |
+| `strerror(code: number)` | the message text for that native error code |
+| `has(capability: string)` | whether the named optional capability is compiled into this build — recognized names are `'tcp'`, `'ipc'`, `'tls'`, `'ws'`, `'wss'`; any other string returns `false` |
 
 **Completion result.** All are synchronous. `version()` returns a `[number, number, number]` tuple
 (major/minor/patch). `strerror` returns a `string`. `has` returns `boolean`.
@@ -195,13 +214,21 @@ const thread = createThread(() => doWork());
 thread.join();
 ```
 
-**Options.** `createAtomicCounter(initialValue = 0)` — unlike dotnet/java/cpp, this takes an
-optional starting value directly at creation instead of always starting at zero.
-`createStopwatch()` takes no parameters. `createThread(handler: () => void)` runs the handler
-immediately on the new thread. `AtomicCounter`: `set(value)`, `inc()`/`dec()` (return the *new*
-value), `value()`, `close()`. `Stopwatch`: `intermediate()`/`stop()` (both `number` microseconds),
-`close()`. `Thread`: **only `join()`** — unlike every other language's thread handle, this
-interface declares no `close()`/dispose method.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `createAtomicCounter(initialValue = 0)` | unlike dotnet/java/cpp, takes an optional starting value directly at creation instead of always starting at zero |
+| `AtomicCounter.set(value)` | assigns the counter's value |
+| `AtomicCounter.inc()`/`dec()` | adjusts the counter by one, returning the *new* value |
+| `AtomicCounter.value()` | reads the current value |
+| `AtomicCounter.close()` | releases the counter |
+| `createStopwatch()` | no parameters |
+| `Stopwatch.intermediate()` | elapsed microseconds (`number`) since construction, callable any number of times |
+| `Stopwatch.stop()` | elapsed microseconds (`number`) since construction, called exactly once to finish |
+| `Stopwatch.close()` | releases the stopwatch |
+| `createThread(handler: () => void)` | runs `handler` immediately on the new thread |
+| `Thread.join()` | blocks until the task finishes — **the only member**; unlike every other language's thread handle, this interface declares no `close()`/dispose method |
 
 **Completion result.** All three factories return their resource synchronously.
 
@@ -225,10 +252,14 @@ sleep(1); // seconds, not milliseconds
 multipartClose(parts);
 ```
 
-**Options.** `proxy(frontend, backend, capture?)` — `capture` is optional. `proxySteerable(frontend,
-backend, capture, control)` — `capture` may be `null`. `sleep(seconds: number)` — takes whole
-seconds directly; unlike dotnet (where only the `Duration` overload is public) there is no separate
-sub-second option here. `multipartClose(parts: Message[])`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `proxy(frontend, backend, capture?)` | `capture` is optional |
+| `proxySteerable(frontend, backend, capture, control)` | adds a required `control` socket; `capture` may be `null` |
+| `sleep(seconds: number)` | blocks the calling thread; takes whole seconds directly — unlike dotnet (where only the `Duration` overload is public) there is no separate sub-second option here |
+| `multipartClose(parts: Message[])` | closes every part in one call |
 
 **Completion result.** All are synchronous with no return value. `proxy`/`proxySteerable` block the
 calling thread until the context is terminated (or, for `proxySteerable`, until a control command or

@@ -42,7 +42,7 @@ public interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
 
 The exact builder member of
 [factory](../../../../01-glossary.en.md#factory) registration is owned
-by [Configuration And Host](configuration-host.ko.md). Cross-node
+by [Configuration And Host](configuration-host.en.md). Cross-node
 relocation behavior is wired directly to the Actor factory configure
 callback. The runtime checks the Actor the factory returned against the
 specified `actorClass`, returning a type mismatch as a startup error. A

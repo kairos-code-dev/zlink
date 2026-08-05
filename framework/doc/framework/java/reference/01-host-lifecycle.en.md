@@ -6,7 +6,7 @@ This category covers the Spring Boot host registration entry points and the entr
 `ZLinkFrameworkRuntime` provides. The exact signatures are owned by the
 [Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.en.md)
 and the
-[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
+[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.en.md)
 (Korean-only).
 
 ---
@@ -155,5 +155,5 @@ application's `HealthIndicator` bean writes this judgment directly.
 See the
 [Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.en.md)
 and the
-[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
+[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.en.md)
 (Korean-only) for the full rationale.

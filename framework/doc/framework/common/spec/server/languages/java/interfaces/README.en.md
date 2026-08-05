@@ -7,7 +7,7 @@ package, organized per feature. Common behavior is owned by the
 [server common spec](../../../../README.en.md).
 
 - [Common Runtime](common-runtime.en.md)
-- [Configuration And Host](configuration-host.ko.md)
+- [Configuration And Host](configuration-host.en.md)
 - [Channel Messaging](channel-messaging.en.md)
 - [Spot](spots.en.md)
 - [Actor](actors.en.md)

@@ -9,7 +9,7 @@ title: "16. Options — Setting List And Defaults · Java"
 # 16. Options — Setting List And Defaults
 
 > **The document that owns this chapter's contract** —
-> covered by the [Java configuration and host public contract](../../../common/spec/server/languages/java/interfaces/configuration-host.ko.md).
+> covered by the [Java configuration and host public contract](../../../common/spec/server/languages/java/interfaces/configuration-host.en.md).
 > This chapter organizes that surface as a list, showing what you can set and what happens
 > when you don't.
 
@@ -248,6 +248,6 @@ alive as-is.
 
 ## 10. Related Documents
 
-- The formal contract: [Java configuration and host public contract](../../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
+- The formal contract: [Java configuration and host public contract](../../../common/spec/server/languages/java/interfaces/configuration-host.en.md)
 - What each cap changes: [4. Backpressure](04-backpressure.en.md)
 - The procedure for draining traffic with weights: [12. Operations](12-operations.en.md)

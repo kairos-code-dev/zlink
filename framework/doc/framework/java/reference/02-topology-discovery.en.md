@@ -5,7 +5,7 @@
 This category covers the topology registration entry points `ZLinkFrameworkOptions` provides,
 and the entry points that query RouteMesh/ClientServer/Fanout operational status. The exact
 signatures are owned by the
-[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
+[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.en.md)
 and the
 [Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 (Korean-only). Every registration entry point is a configuration-time call made inside
@@ -373,7 +373,7 @@ host-lifecycle category.
 ---
 
 See the
-[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
+[Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.en.md)
 and the
 [Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 (Korean-only) for the full rationale.

@@ -195,7 +195,7 @@ activation. The handler instance isn't relocation payload — the
 application state that must be recovered is owned by the Spot or Actor.
 
 The exact builder member of factory registration is owned by
-[Configuration And Host](configuration-host.ko.md). The Actor/User Spot/
+[Configuration And Host](configuration-host.en.md). The Actor/User Spot/
 [Instance Spot](../../../../01-glossary.en.md#entry-user-instance-spot)
 [factory](../../../../01-glossary.en.md#factory) selects exactly one
 relocation behavior in the configure callback, and an overload that

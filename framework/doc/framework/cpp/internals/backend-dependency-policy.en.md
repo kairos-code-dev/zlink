@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document List](../../../README.ko.md) | [Previous: Runtime Architecture](../../common/internals/README.en.md) | [Next: Regression Test Matrix](regression-test-matrix.en.md)
+[Document List](../../../README.en.md) | [Previous: Runtime Architecture](../../common/internals/README.en.md) | [Next: Regression Test Matrix](regression-test-matrix.en.md)
 <!-- framework-adapter-nav:end -->
 
 [C++ Bundle](../README.en.md) | [Public Interfaces](../../common/spec/server/languages/cpp/interfaces/README.en.md)
@@ -45,5 +45,5 @@ the binding contract.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document List](../../../README.ko.md) | [Previous: Runtime Architecture](../../common/internals/README.en.md) | [Next: Regression Test Matrix](regression-test-matrix.en.md)
+[Document List](../../../README.en.md) | [Previous: Runtime Architecture](../../common/internals/README.en.md) | [Next: Regression Test Matrix](regression-test-matrix.en.md)
 <!-- framework-adapter-nav:bottom:end -->

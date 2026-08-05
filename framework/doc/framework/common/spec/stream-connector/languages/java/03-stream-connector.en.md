@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md) | [Previous: Java STREAM](../../../server/languages/java/interfaces/stream-session.en.md)
+[Document list](../../../../../../README.en.md) | [Previous: Java STREAM](../../../server/languages/java/interfaces/stream-session.en.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec table of contents](../../../server/languages/java/README.en.md)
@@ -614,5 +614,5 @@ The Java connector has the tests below as a separate suite.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document list](../../../../../../README.ko.md) | [Previous: Java STREAM](../../../server/languages/java/interfaces/stream-session.en.md)
+[Document list](../../../../../../README.en.md) | [Previous: Java STREAM](../../../server/languages/java/interfaces/stream-session.en.md)
 <!-- framework-adapter-nav:bottom:end -->

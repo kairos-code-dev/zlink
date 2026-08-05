@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:end -->
 
 # TypeScript Stream Connector
@@ -448,5 +448,5 @@ TypeScript signature and browser execution environment.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:bottom:end -->

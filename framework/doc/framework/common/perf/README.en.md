@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../README.ko.md) | [Common spec](../README.en.md) | [Scenario E2E](../e2e/README.en.md)
+[Document list](../../../README.en.md) | [Common spec](../README.en.md) | [Scenario E2E](../e2e/README.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Framework Performance Test Common Specification

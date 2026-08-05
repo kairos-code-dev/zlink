@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:end -->
 
 [Node spec table of contents](README.en.md)

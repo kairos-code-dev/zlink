@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:end -->
 
 # TypeScript Public Contract
@@ -16,5 +16,5 @@ Common behavior and error meaning follow the
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:bottom:end -->

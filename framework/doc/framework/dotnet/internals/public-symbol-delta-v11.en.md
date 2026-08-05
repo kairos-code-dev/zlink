@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document List](../../../README.ko.md) | [Runtime Lifecycle](../../common/internals/README.en.md)
+[Document List](../../../README.en.md) | [Runtime Lifecycle](../../common/internals/README.en.md)
 <!-- framework-adapter-nav:end -->
 
 # .NET v11 Public Boundary
@@ -72,5 +72,5 @@ retention policy.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document List](../../../README.ko.md) | [Runtime Lifecycle](../../common/internals/README.en.md)
+[Document List](../../../README.en.md) | [Runtime Lifecycle](../../common/internals/README.en.md)
 <!-- framework-adapter-nav:bottom:end -->

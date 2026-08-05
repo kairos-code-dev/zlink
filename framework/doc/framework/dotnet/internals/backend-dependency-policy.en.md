@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document List](../../../README.ko.md) | [Previous: Regression Test Matrix](regression-test-matrix.en.md)<!-- framework-adapter-nav:end -->
+[Document List](../../../README.en.md) | [Previous: Regression Test Matrix](regression-test-matrix.en.md)<!-- framework-adapter-nav:end -->
 
 [Spec Index](../../common/README.en.md)
 
@@ -146,4 +146,4 @@ factory. There are two check criteria.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document List](../../../README.ko.md) | [Previous: Regression Test Matrix](regression-test-matrix.en.md)<!-- framework-adapter-nav:bottom:end -->
+[Document List](../../../README.en.md) | [Previous: Regression Test Matrix](regression-test-matrix.en.md)<!-- framework-adapter-nav:bottom:end -->

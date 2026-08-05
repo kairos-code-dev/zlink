@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md) | [Next: Spec -- ZLink Framework C++ HTTP Hosting](../../../server/languages/cpp/60-http-hosting.en.md)
+[Document list](../../../../../../README.en.md) | [Next: Spec -- ZLink Framework C++ HTTP Hosting](../../../server/languages/cpp/60-http-hosting.en.md)
 <!-- framework-adapter-nav:end -->
 
 [Spec table of contents](../../../../README.en.md)
@@ -409,5 +409,5 @@ ctest --test-dir framework/languages/cpp/build -L http-client-regression
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document list](../../../../../../README.ko.md) | [Next: Spec -- ZLink Framework C++ HTTP Hosting](../../../server/languages/cpp/60-http-hosting.en.md)
+[Document list](../../../../../../README.en.md) | [Next: Spec -- ZLink Framework C++ HTTP Hosting](../../../server/languages/cpp/60-http-hosting.en.md)
 <!-- framework-adapter-nav:bottom:end -->

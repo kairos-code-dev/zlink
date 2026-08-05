@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document list](../../../../../../README.ko.md) | [Previous: .NET System Structure](../../../server/languages/dotnet/01-system-structure.en.md)
+[Document list](../../../../../../README.en.md) | [Previous: .NET System Structure](../../../server/languages/dotnet/01-system-structure.en.md)
 <!-- framework-adapter-nav:end -->
 
 [.NET spec table of contents](../../../server/languages/dotnet/README.en.md)
@@ -415,5 +415,5 @@ clean consumer all have the same public contract.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document list](../../../../../../README.ko.md)
+[Document list](../../../../../../README.en.md)
 <!-- framework-adapter-nav:bottom:end -->

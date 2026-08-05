@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[Document List](../../../README.ko.md) | [Previous: Runtime Execution](../../common/internals/02-serialization.en.md) | [Next: Backend Dependency Policy](backend-dependency-policy.en.md)
+[Document List](../../../README.en.md) | [Previous: Runtime Execution](../../common/internals/02-serialization.en.md) | [Next: Backend Dependency Policy](backend-dependency-policy.en.md)
 <!-- framework-adapter-nav:end -->
 
 [Spec Index](../../common/README.en.md)
@@ -313,7 +313,7 @@ The target documents are as follows.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[Document List](../../../README.ko.md) | [Previous: Runtime Execution](../../common/internals/02-serialization.en.md) | [Next: Backend Dependency Policy](backend-dependency-policy.en.md)
+[Document List](../../../README.en.md) | [Previous: Runtime Execution](../../common/internals/02-serialization.en.md) | [Next: Backend Dependency Policy](backend-dependency-policy.en.md)
 <!-- framework-adapter-nav:bottom:end -->
 
 ## 11. Regression Test Items Moved From The Public Contract Documents

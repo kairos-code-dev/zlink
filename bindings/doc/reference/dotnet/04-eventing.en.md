@@ -21,20 +21,24 @@ monitor.OnEvent(e => logger.LogInformation("{Event} {Remote}", e.Event, e.Remote
 MonitorStatus status = monitor.Status();
 ```
 
-**Options.** `OnEvent(Action<MonitorEvent> handler)` (background-dispatch-thread callback),
-`Recv(RecvFlags flags = RecvFlags.None)` (returns `MonitorEvent?`, null when
-`RecvFlags.DontWait` and nothing pending), `Status()` (no parameters), `Close()`.
+**Options.**
+
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `OnEvent(Action<MonitorEvent> handler)` | — | background-dispatch-thread callback |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | returns `MonitorEvent?`, null when `DontWait` and nothing pending |
+| `Status()` | — | no parameters |
+| `Close()` | — | — |
+
 `MonitorEvent(MonitorEventType Event, uint Value, RoutingId? RoutingId, string LocalAddr, string
-RemoteAddr)` is the record delivered by both `OnEvent` and `Recv` — `Value` is event-specific (an
-error code or a reconnect interval, for example), `RoutingId` is present only when the event
-carries one.
+RemoteAddr)` is the record delivered by both `OnEvent` and `Recv` — `Value` is event-specific,
+`RoutingId` present only when the event carries one.
 
-**Completion result.** All members are synchronous. `ISocketMonitor` is `IDisposable`/
-`IAsyncDisposable`; `Close()` releases resources without waiting on disposal semantics.
+**Completion result.** All synchronous. `ISocketMonitor` is `IDisposable`/`IAsyncDisposable`;
+`Close()` releases resources without waiting on disposal semantics.
 
-**When to use.** Use `OnEvent` for a passive lifecycle observer registered once; use `Recv` for a
-pull-based drain loop instead. Use `Status()` for a point-in-time snapshot rather than reconstructing
-current state from a stream of events.
+**When to use.** `OnEvent` for a passive lifecycle observer registered once; `Recv` for a
+pull-based drain loop instead. `Status()` for a point-in-time snapshot.
 
 ---
 
@@ -49,22 +53,20 @@ A snapshot of a socket's monitored state and auto-high-water-mark telemetry, ret
 |---|---|
 | ABI identity | `AbiVersion`, `StructSize` (uint) — mirrors the native `zlink_monitor_status_t` ABI version 2 |
 | Source/state | `SourceKind` (`MonitorSourceKind`), `StateFlags` (`MonitorStateFlags`), `DetailFlags` (`MonitorStatusDetailFlags`), `IsReady` (computed: `SourceKind == Socket && StateFlags.Ready`) |
-| Pending counts | `SndPendingMsgs`, `RcvPendingMsgs` (`ulong` — count diagnostics, never share a name with a byte field) |
+| Pending counts | `SndPendingMsgs`, `RcvPendingMsgs` (`ulong`) |
 | Auto-HWM config | `AutoHwmEnabled` (bool), `AutoHwmProfile` (`AutoHwmProfile`), `AutoHwmRole`, `AutoHwmPolicyClass`, `AutoHwmUnitBudgetBytes`, `AutoHwmSizeCap`, `AutoHwmSocketMessageSlots` |
 | Connection bucket | `AutoHwmConnectionBucketEnabled`, `AutoHwmConnectionBucketCount`, `AutoHwmConnectionBucketIndex`, `AutoHwmConnectionBucketHwm4K`, `AutoHwmConnectionBucketHysteresisRetained` |
 | Auto-HWM plan (bytes) | `AutoHwmEffectiveMessageBytes`, `AutoHwmPlannedSendHighWaterMarkBytes`, `AutoHwmPlannedReceiveHighWaterMarkBytes`, `AutoHwmAppliedSendHighWaterMarkBytes`, `AutoHwmAppliedReceiveHighWaterMarkBytes`, `AutoHwmEffectiveSndbuf`, `AutoHwmEffectiveRcvbuf` |
 | Auto-HWM recalc | `AutoHwmLastRecalcMs`, `AutoHwmLastRecalcReason` (`AutoHwmRecalcReason`), `AutoHwmSendBlockedRatioPpm` |
-| Auto-HWM deferred shrink | `AutoHwmDeferredSendHighWaterMarkBytes`/`AutoHwmDeferredReceiveHighWaterMarkBytes` (valid only when the matching `AutoHwmDeferredSendHighWaterMarkValid`/`AutoHwmDeferredReceiveHighWaterMarkValid` is true) |
+| Auto-HWM deferred shrink | `AutoHwmDeferredSendHighWaterMarkBytes`/`AutoHwmDeferredReceiveHighWaterMarkBytes` (valid only when the matching `...Valid` field is true) |
 | In-flight/charging | `SendBytesInFlight`, `ReceiveBytesInFlight`, `MinimumCoreMessageChargeBytes`, `OversizeMessageAdmissionCount`, `OversizeMessageAdmissionMaxBytes` |
 
-**Completion result.** All properties are synchronous reads of an immutable snapshot. Every
-byte-valued field is `ulong`; `AutoHwmProfile` mirrors the enum documented in the Sockets category.
+**Completion result.** Synchronous reads of an immutable snapshot. Every byte-valued field is
+`ulong`.
 
-**When to use.** Read `IsReady` for a quick readiness check instead of decoding `StateFlags`
-directly. Use the connection-bucket and auto-HWM-plan groups when diagnosing why a socket's
-effective send/receive HWM differs from its configured `CommonSocketOptions` value (Sockets
-category) — the deferred-shrink fields explain a HWM that hasn't dropped immediately after a
-policy change.
+**When to use.** Read `IsReady` instead of decoding `StateFlags` directly. Use the
+connection-bucket and auto-HWM-plan groups when diagnosing why a socket's effective send/receive
+HWM differs from its configured `CommonSocketOptions` value (Sockets category).
 
 ---
 
@@ -80,20 +82,25 @@ Span<PollEvent> ready = stackalloc PollEvent[8];
 int count = poller.Wait(ready, TimeSpan.FromSeconds(1));
 ```
 
-**Options.** `Size` (read-only `int`). `Add(IZlinkSocket socket, PollEventFlags events, nuint
-slot)`, `AddFd(int fd, PollEventFlags events, nuint slot)`, `Add(IZlinkTimer timer, nuint slot)` —
-`slot` is a caller token echoed back in the matching `PollEvent`. `Modify(IZlinkSocket socket,
-PollEventFlags events)`, `ModifyFd(int fd, PollEventFlags events)`. `Remove(IZlinkSocket socket)`/
-`Remove(IZlinkTimer timer)`/`Remove(int fd)` (each returns `bool`, true when it was registered).
-`Clear()`. `Close()`. `Wait(Span<PollEvent> destination, TimeSpan timeout)`.
+**Options.**
 
-**Completion result.** All registration/removal members are synchronous with no blocking. `Wait`
-blocks up to `timeout`, writing up to `destination.Length` results and returning the count written
-(`0` on timeout). `IPoller` is `IDisposable`/`IAsyncDisposable`.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Size` | read-only | `int` |
+| `Add(IZlinkSocket, PollEventFlags, nuint slot)` | — | `slot` echoed back in the matching `PollEvent` |
+| `AddFd(int fd, PollEventFlags, nuint slot)` | — | — |
+| `Add(IZlinkTimer, nuint slot)` | — | — |
+| `Modify(IZlinkSocket, PollEventFlags)` / `ModifyFd(int fd, PollEventFlags)` | — | — |
+| `Remove(IZlinkSocket)` / `Remove(IZlinkTimer)` / `Remove(int fd)` | — | returns `bool`, true when it was registered |
+| `Clear()` / `Close()` | — | — |
+| `Wait(Span<PollEvent> destination, TimeSpan timeout)` | — | — |
 
-**When to use.** Use one poller across a service's lifetime rather than creating one per wait —
-`Add`/`Remove`/`Modify` let the watched set change between calls to `Wait`. Prefer `Modify`
-over `Remove` + `Add` when only the watched events change, to avoid losing the source's position.
+**Completion result.** Registration/removal members are synchronous, non-blocking. `Wait` blocks
+up to `timeout`, writing up to `destination.Length` results and returning the count written (`0`
+on timeout). `IPoller` is `IDisposable`/`IAsyncDisposable`.
+
+**When to use.** One poller across a service's lifetime. Prefer `Modify` over `Remove` + `Add`
+when only the watched events change, to avoid losing the source's position.
 
 ---
 
@@ -101,15 +108,19 @@ over `Remove` + `Add` when only the watched events change, to avoid losing the s
 
 One ready source reported by an `IPoller.Wait` call.
 
-**Options.** No parameters — a read-only value type. Members: `SourceKind` (`PollSourceKind`:
-`Socket`/`Fd`/`Timer`), `Slot` (`nuint`, the caller token supplied at registration), `Revents`
-(`PollEventFlags`, the events that actually fired), `Fd` (`int`, populated for `Fd`-kind sources).
+**Options.**
+
+| Member | Returns | Meaning |
+| --- | --- | --- |
+| `SourceKind` | `PollSourceKind` | `Socket`/`Fd`/`Timer` |
+| `Slot` | `nuint` | the caller token supplied at registration |
+| `Revents` | `PollEventFlags` | events that actually fired |
+| `Fd` | `int` | populated for `Fd`-kind sources |
 
 **Completion result.** Synchronous — a plain readonly struct, no disposal.
 
 **When to use.** Branch on `SourceKind`/`Slot` to route each `Wait` result back to the socket,
-descriptor, or timer it corresponds to, since `Wait` reports heterogeneous source kinds in one
-array.
+descriptor, or timer it corresponds to.
 
 ---
 
@@ -124,18 +135,20 @@ timer.OnFire((t, count) => logger.LogInformation("fired {Count} times", count));
 timer.Start(TimeSpan.FromSeconds(1), repeatCount: 0);
 ```
 
-**Options.** `Start(TimeSpan interval, ulong repeatCount)` (`repeatCount` sets how many times it
-fires — see the source for the sentinel meaning "repeat indefinitely"), `Stop()` (restartable via
-`Start`), `Recv(RecvFlags flags = RecvFlags.None)` (returns `ulong?` — the cumulative fire count,
-null when `RecvFlags.DontWait` and nothing pending), `OnFire(Action<IZlinkTimer, ulong> handler)`
-(background-dispatch-thread callback receiving the timer and the fire count), `Close()`.
+**Options.**
 
-**Completion result.** All members are synchronous. `IZlinkTimer` is `IDisposable`/
-`IAsyncDisposable`.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Start(TimeSpan interval, ulong repeatCount)` | — | see source for the sentinel meaning "repeat indefinitely" |
+| `Stop()` | — | restartable via `Start` |
+| `Recv(RecvFlags flags)` | `RecvFlags.None` | returns `ulong?` cumulative fire count, null when `DontWait` and nothing pending |
+| `OnFire(Action<IZlinkTimer, ulong> handler)` | — | background-dispatch-thread callback |
+| `Close()` | — | — |
 
-**When to use.** Use `OnFire` for a passive interval callback; use `Recv` to poll/await
-expirations from a receive loop instead, or register the timer with `IPoller.Add(IZlinkTimer,
-nuint)` to multiplex it alongside sockets on one wait.
+**Completion result.** All synchronous. `IZlinkTimer` is `IDisposable`/`IAsyncDisposable`.
+
+**When to use.** `OnFire` for a passive interval callback; `Recv` to poll/await expirations
+instead, or register with `IPoller.Add(IZlinkTimer, nuint)` to multiplex alongside sockets.
 
 ---
 
@@ -148,18 +161,21 @@ without creating a reusable `IPoller`.
 int ready = ZlinkPoll.Poll(new IZlinkSocket[] { dealer, sub }, timeoutMs: 1000);
 ```
 
-**Options.** Four overloads: `Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)` (readable
-check only); `Poll(IReadOnlyList<IZlinkSocket> sockets, IReadOnlyList<PollEventFlags> events,
-Span<PollEventFlags> revents, int timeoutMs)` (per-socket requested events, fired events written
-into `revents` at matching indexes); and the same two overloads for `IReadOnlyList<ISocketMonitor>`
-in place of sockets. A negative `timeoutMs` blocks indefinitely.
+**Options.**
+
+| Overload | Meaning |
+| --- | --- |
+| `Poll(IReadOnlyList<IZlinkSocket> sockets, int timeoutMs)` | readable check only |
+| `Poll(sockets, IReadOnlyList<PollEventFlags> events, Span<PollEventFlags> revents, int timeoutMs)` | per-socket requested events, fired events written into `revents` at matching indexes |
+| Same two overloads for `IReadOnlyList<ISocketMonitor>` | in place of sockets |
+
+A negative `timeoutMs` blocks indefinitely.
 
 **Completion result.** Synchronous; each overload returns the count of ready sources (`0` on
 timeout).
 
-**When to use.** Use `ZlinkPoll.Poll` for an ad hoc, one-off wait across a small fixed set of
-sockets/monitors; use `IPoller` instead when the watched set changes over time or timers need to
-be multiplexed alongside sockets.
+**When to use.** `ZlinkPoll.Poll` for an ad hoc, one-off wait across a small fixed set; `IPoller`
+instead when the watched set changes over time or timers need to be multiplexed alongside sockets.
 
 ---
 

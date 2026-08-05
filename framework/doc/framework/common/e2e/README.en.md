@@ -717,7 +717,7 @@ verifies detailed behavior — messaging, connection, spot, codec, etc.
 | [Config 11 — Observability/operational deployment](config-11-observability-ops.en.md) | Session + 2 Play + 2 workflow + Stores | Public flow correlation/metrics, maintenance Relocate/Shutdown, client/application result of patch and drain |
 | [Config 12 — Channel egress routing](config-12-channel-egress-routing.en.md) | Session/Play/API + 2 ClientServer services | ChannelName routing, local-egress selection, weight/shutdown/restart, and request/send terminal |
 | [Config 13 — One-way submit admission](config-13-submit-admission.en.md) | RouteMesh/ClientServer/Spot/Actor/Stream targets | One-way admission completion, timeout/cancellation/shutdown contention, zero target, ordering, and hidden-retry prohibition |
-| [Config 14 — Instance Spot activation](config-14-instance-spot.ko.md) | Location/Relocation Store + 2 callers + 2 owners + User Spot owner | Cold activation, concurrent first call, first-message ordering, crash/deadline/capacity/relocation, and cross-language result |
+| [Config 14 — Instance Spot activation](config-14-instance-spot.en.md) | Location/Relocation Store + 2 callers + 2 owners + User Spot owner | Cold activation, concurrent first call, first-message ordering, crash/deadline/capacity/relocation, and cross-language result |
 
 ## 3.1 Configuration Axes — Variations That Run Across Configs
 

@@ -1,6 +1,6 @@
 <!-- framework-adapter-nav:start -->
 [E2E table of contents](README.en.md) | [Previous: Channel Egress Routing](config-12-channel-egress-routing.en.md) |
-[Next: Instance Spot Activation](config-14-instance-spot.ko.md)
+[Next: Instance Spot Activation](config-14-instance-spot.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 13 — One-Way Submit Admission

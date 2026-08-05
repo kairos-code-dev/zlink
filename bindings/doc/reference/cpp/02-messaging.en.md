@@ -33,10 +33,14 @@ zlink::message_t copy = zlink::message_t::from (std::string ("payload"));
 | `from(const std::vector<uint8_t>&)` / `from(std::span<const std::byte>)` / `from(std::span<const uint8_t>)` | static factories, copy |
 | `from(const std::string&)` | UTF-8 encode |
 | `from_json`/`from_messagepack`/`from_protobuf`, `parse_json`/`parse_messagepack`/`parse_protobuf` | template factories/parsers; delegate to a framework codec extension, not part of this package |
-| `data()`/`bytes()` | mutable and `const` overloads |
-| `size()` / `is_empty()` / `ref_count()` | — |
-| `to_bytes()` / `copy_to(std::span<std::byte>)` / `copy_to(std::span<uint8_t>)` / `to_string()` | — |
-| `close()` | — |
+| `data()`/`bytes()` | writable/read-only view of the payload, backed by this instance's storage (mutable and `const` overloads) |
+| `size()` | payload length in bytes |
+| `is_empty()` | whether `size()` is zero |
+| `ref_count()` | native reference count, diagnostic only |
+| `to_bytes()` | owned copy of the payload |
+| `copy_to(std::span<std::byte>)` / `copy_to(std::span<uint8_t>)` | copies the payload into a caller-provided buffer |
+| `to_string()` | payload decoded as UTF-8 |
+| `close()` | releases the payload storage; safe to call on an already-consumed message |
 
 Copy construction/assignment perform a deep copy of the payload.
 
@@ -67,14 +71,15 @@ if (received.request_seq ()) {
 
 | Member | Returns | Meaning |
 | --- | --- | --- |
-| `routing_id()` | `const std::optional<routing_id_t>&` | — |
-| `request_seq()` | `const std::optional<uint64_t>&` | — |
-| `parts()` | `const std::vector<message_t>&` (mutable overload too) | — |
-| `is_single_part()` | `bool` | — |
-| `first_part()` / `single_part_or_throw()` | `message_t` | — |
+| `routing_id()` | `const std::optional<routing_id_t>&` | the source's routing id, present when the receive path provides one |
+| `request_seq()` | `const std::optional<uint64_t>&` | present when this envelope is replyable |
+| `parts()` | `const std::vector<message_t>&` (mutable overload too) | every message part this envelope holds |
+| `is_single_part()` | `bool` | whether `parts()` has exactly one element |
+| `first_part()` | `message_t` | the first part, without transferring ownership |
+| `single_part_or_throw()` | `message_t` | the single part, throws if `parts()` has more than one |
 | `send()` | builder | starts the shared `send_operation_t`, addressed to this envelope's captured routing id |
 | `reply()` | builder | starts the shared `reply_operation_t`; throws on `submit()` if there is no valid reply context |
-| `close()` | — | — |
+| `close()` | — | releases the message parts owned by this envelope |
 
 **Completion result.** All synchronous. `send()`/`reply()` reconstruct the send/reply context
 lazily at submit time from the stored routing id and request sequence, avoiding a per-receive
@@ -100,8 +105,8 @@ if (sub.subscribe (published) == 0) {
 
 | Member | Returns | Meaning |
 | --- | --- | --- |
-| `routing_id()` | `const std::optional<routing_id_t>&` | — |
-| `topic()` | `const std::string&` | — |
+| `routing_id()` | `const std::optional<routing_id_t>&` | the publisher's routing id, present when the receive path provides one |
+| `topic()` | `const std::string&` | the topic this publish was sent on |
 | `parts()` / `is_single_part()` / `first_part()` / `single_part_or_throw()` / `close()` | — | same shape as `received_t` |
 
 **Completion result.** Synchronous.
@@ -124,11 +129,11 @@ if (xpub.receive_subscription_event (evt) == 0) { /* ... */ }
 
 | Type | Field | Meaning |
 | --- | --- | --- |
-| `subscription_event_t` | `routing_id` (`std::optional<routing_id_t>`) | — |
-| | `topic` (`std::string`) | — |
-| | `subscribed` (`bool`) | — |
-| `subscription_filter_t` | `filter` (`std::string`) | — |
-| | `is_pattern` (`bool`, default `false`) | — |
+| `subscription_event_t` | `routing_id` (`std::optional<routing_id_t>`) | the subscriber's routing id, present when the receive path provides one |
+| | `topic` (`std::string`) | the topic that was subscribed or unsubscribed |
+| | `subscribed` (`bool`) | `true` for a subscribe, `false` for an unsubscribe |
+| `subscription_filter_t` | `filter` (`std::string`) | the subscribed topic or pattern text |
+| | `is_pattern` (`bool`, default `false`) | whether `filter` is a pattern rather than a literal topic |
 
 **Completion result.** Both are plain data structs with no disposal or async behavior.
 
@@ -163,7 +168,7 @@ std::move (received.reply ()).message (reply_msg).submit ();
 | --- | --- | --- |
 | `send_operation_t` | `.message(message_t&)`/`.message(message_t&&)` | `&&`-qualified — builder is consumed by each call, chain with `std::move(...)` |
 | `send_submit_operation_t` | `.message(...)` / `.flags(int)` / `.submit()` | add parts, set flags, terminal |
-| `request_operation_t`/`request_submit_operation_t` | same as `send` + `.timeout(std::chrono::milliseconds)` | — |
+| `request_operation_t`/`request_submit_operation_t` | same as `send` + `.timeout(std::chrono::milliseconds)` | mirrors the send chain, adding a reply-wait timeout |
 | `request_submit_operation_t.flags(int)` | narrows to `request_callback_submit_operation_t` | drops the awaitable `.async()` path — only `.submit(request_callback_t)` remains |
 | `reply_operation_t`/`reply_submit_operation_t` | mirrors `send`, `.flags(...)` throws `submit_error_t{not_supported}` for anything but `send_flags_t::none` | core reply function takes no send-flag argument |
 

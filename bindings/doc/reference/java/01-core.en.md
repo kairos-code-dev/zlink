@@ -5,16 +5,19 @@
 # 01. Core
 
 This category covers the context lifecycle, context options, routing identity, and the `Zlink`
-static facade. Socket creation methods on `Context` are listed here for completeness but detailed
-under the Sockets category; poller/timer creation on `Zlink` is listed here but detailed under the
-Eventing category. The exact signatures are owned by
+factory/utility class — the library's process-wide entry points and utility resources. Socket
+creation methods on `Context` are listed here for completeness but detailed under the Sockets
+category; poller/timer creation on `Zlink` is listed here but detailed under the Eventing
+category. Kotlin shares this same runtime — there is no separate Kotlin contract source for Core.
+The exact signatures are owned by
 [`contracts/core/`](../../../../bindings/java/src/main/java/systems/zlink/contracts/core/).
 
 ---
 
 ## `Zlink.createContext()`
 
-Creates a messaging context — the factory and owner of sockets.
+Creates a messaging context — the factory and owner of sockets, and the prerequisite for every
+other entry in this reference.
 
 ```java
 try (Context context = Zlink.createContext()) {
@@ -24,11 +27,11 @@ try (Context context = Zlink.createContext()) {
 
 **Options.** No parameters.
 
-**Completion result.** Returns `Context` synchronously. `Context extends AutoCloseable`; the caller
-owns it and must close it — closing terminates anything still open under it, including sockets
-created from it.
+**Completion result.** Returns `Context` synchronously. The caller owns it and must `close()` it
+(`Context extends AutoCloseable`); closing it terminates anything still open under it, including
+sockets created from it.
 
-**When to use.** Call once per context the application needs; most applications need exactly one.
+**When to use.** Once per context the application needs; most applications need exactly one.
 
 ---
 
@@ -44,43 +47,52 @@ context.recalculateAutoHwm();
 
 **Options.** Neither takes parameters.
 
-**Completion result.** Both are synchronous, returning `void`. `shutdown()` interrupts blocking
-calls on sockets under this context but does not close the context or its sockets. `recalculateAutoHwm()`
-recomputes automatic HWM only for sockets still configured with an `AutoHwmProfile`.
+**Completion result.** Both synchronous, `void`. `shutdown()` interrupts blocking calls on sockets
+under this context but doesn't close the context or its sockets. `recalculateAutoHwm()` recomputes
+automatic HWM only for sockets still configured with an `AutoHwmProfile` (Sockets category).
 
 **When to use.** Call `shutdown()` before closing a context with sockets in use across multiple
-threads, to avoid a thread blocking on a socket call indefinitely. Call `recalculateAutoHwm()`
-after changing the auto-HWM profile or a message-unit option, to apply new sizing immediately.
+threads, to avoid a thread blocking indefinitely. Pair `recalculateAutoHwm()` with an
+`AutoHwmProfile` change to apply new sizing immediately.
 
 ---
 
 ## `Context.options()` / `ContextOptions`
 
-Reads the context-wide options facade, whose properties govern I/O threads and the defaults every
-socket created from the context inherits.
+The context-wide options facade, governing I/O threads and the defaults every socket created from
+the context inherits. `ContextOptions` has a public constructor (`new ContextOptions(context)`),
+but `context.options()` is the normal path.
 
 ```java
-ContextOptions options = context.options();
-options.ioThreads(8);
-options.autoHwmProfile(AutoHwmProfile.LOW_LATENCY);
-options.addThreadAffinityCpu(2);
+context.options().ioThreads(8);
+context.options().autoHwmProfile(AutoHwmProfile.LOW_LATENCY);
+context.options().addThreadAffinityCpu(2);
 ```
 
-**Options.** `ContextOptions` is a concrete class with a public constructor
-(`new ContextOptions(context)`), though `context.options()` is the normal path. Paired getter/setter
-methods: `ioThreads()`/`ioThreads(int)`, `maxSockets()`/`maxSockets(int)`, `threadPriority()`/
-`threadPriority(int)`, `threadSchedulingPolicy()`/`threadSchedulingPolicy(int)`,
-`threadNamePrefix()`/`threadNamePrefix(String)`, `maxMessageSize()`/`maxMessageSize(int)`,
-`blocky()`/`blocky(boolean)`, `autoHwmEnabled()`/`autoHwmEnabled(boolean)`,
-`autoHwmRecalcDebounce()`/`autoHwmRecalcDebounce(Duration)`, `autoHwmProfile()`/
-`autoHwmProfile(AutoHwmProfile)`, `autoHwmMessageUnitBytes()`/`autoHwmMessageUnitBytes(long)` (the
-unsigned 64-bit bit pattern; zero selects the socket-type default). Read-only: `socketLimit()`,
-`messageThreadSize()`. Setter-only: `addThreadAffinityCpu(int)`/`removeThreadAffinityCpu(int)`.
+**Options.**
 
-**Completion result.** All property get/set are synchronous.
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `ioThreads()`/`ioThreads(int)` | `int` | I/O thread count |
+| `maxSockets()`/`maxSockets(int)` | `int` | context-wide socket cap |
+| `socketLimit()` | `int`, read-only | build's hard cap on `maxSockets` |
+| `threadPriority()`/`threadPriority(int)` | `int` | dispatch thread priority |
+| `threadSchedulingPolicy()`/`threadSchedulingPolicy(int)` | `int` | dispatch thread scheduling policy |
+| `threadNamePrefix()`/`threadNamePrefix(String)` | `String` | OS-visible dispatch thread name prefix; the getter returns the value last set on this facade instance, not a native read-back |
+| `maxMessageSize()`/`maxMessageSize(int)` | `int` | per-message size cap |
+| `messageThreadSize()` | `int`, read-only | native message struct size, diagnostic only |
+| `blocky()`/`blocky(boolean)` | `boolean` | whether blocking calls actually block vs. fail fast |
+| `autoHwmEnabled()`/`autoHwmEnabled(boolean)` | `boolean` | whether auto-HWM sizing is active |
+| `autoHwmRecalcDebounce()`/`autoHwmRecalcDebounce(Duration)` | `Duration` | minimum interval between automatic recalculations |
+| `autoHwmProfile()`/`autoHwmProfile(AutoHwmProfile)` | `AutoHwmProfile` | automatic HWM sizing profile — see Sockets category |
+| `autoHwmMessageUnitBytes()`/`autoHwmMessageUnitBytes(long)` | `long` (unsigned 64-bit bit pattern) | accounted-byte unit for auto-HWM; `0` selects the socket-type default |
+| `addThreadAffinityCpu(int)` | — | pins an I/O thread to a CPU (setter-only) |
+| `removeThreadAffinityCpu(int)` | — | unpins an I/O thread from a CPU (setter-only) |
 
-**When to use.** Adjust before creating sockets when the defaults don't fit the deployment. Pair an
-`autoHwmProfile`/`autoHwmEnabled` change with `Context.recalculateAutoHwm()` to apply it
+**Completion result.** Every getter/setter is synchronous.
+
+**When to use.** Adjust before creating sockets when the defaults don't fit the deployment. Pair
+an `autoHwmProfile`/`autoHwmEnabled` change with `Context.recalculateAutoHwm()` to apply it
 immediately.
 
 ---
@@ -95,47 +107,56 @@ try (DealerSocket dealer = context.createDealerSocket()) {
 }
 ```
 
-**Options.** None of the eight factory methods takes parameters.
+**Options.** None of the eight factory methods takes parameters — each returns its matching
+interface (`PairSocket`, `DealerSocket`, `RouterSocket`, `PubSocket`, `SubSocket`, `XPubSocket`,
+`XSubSocket`, `StreamSocket`).
 
-**Completion result.** Each returns its corresponding socket interface synchronously. The caller
-owns and must close the returned socket independently of the context.
+**Completion result.** Synchronous. The caller owns and must `close()` the returned socket
+independently of the context.
 
-**When to use.** See the Sockets category for each socket interface's operations, options, and
-capability roles — this entry only covers how each is created.
+**When to use.** See the Sockets category for each interface's operations and options — this
+entry only covers creation.
 
 ---
 
 ## `RoutingId`
 
-A binary-safe value type identifying a messaging peer or route, 1 to 255 bytes.
+A binary-safe value type identifying a messaging peer or route, 1 to 255 bytes (`MAX_LENGTH`, a
+public constant). Internally maintains a per-thread trusted-bytes cache to avoid reallocating on
+the receive hot path — not part of the public contract surface.
 
 ```java
 RoutingId fromString = RoutingId.from("worker-3");
 RoutingId fromBytes = RoutingId.from(rawBytes);
 RoutingId fromRange = RoutingId.from(buffer, offset, length);
-RoutingId fromUint32 = RoutingId.from(42L);
+RoutingId fromUint = RoutingId.from(42L);
 RoutingId fromUuid = RoutingId.from(UUID.randomUUID());
 RoutingId restored = RoutingId.fromHex(previouslyPrinted.toHex());
 ```
 
-**Options.** Static factories: `from(byte[])` (copies the full array), `from(byte[] value, int
-offset, int length)` (copies the selected byte range — a Java-specific overload not present in
-dotnet/cpp), `from(String)` (UTF-8 encode), `from(long)` (4-byte big-endian from an unsigned
-32-bit value — throws `IllegalArgumentException` if the value doesn't fit in 32 bits), `from(UUID)`
-(16-byte), `fromHex(String)` (restores bytes `toHex()` printed). Instance members: `size()`,
-`toBytes()` (defensive copy), `toHex()`, `toString()` (printable UTF-8, then 4-byte-as-unsigned-int,
-then 16-byte-as-UUID, then a `hex:`-prefixed fallback), `equals`/`hashCode`. `MAX_LENGTH` (`255`) is
-a public constant. Internally, `RoutingId` maintains a per-thread trusted-bytes cache to avoid
-reallocating on the receive hot path — this is not part of the public contract surface.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `from(byte[])` | copies the full array as-is |
+| `from(byte[] value, int offset, int length)` | copies the selected byte range — a Java-specific overload not present in dotnet/cpp |
+| `from(String)` | UTF-8 encode |
+| `from(long)` | 4-byte big-endian from an unsigned 32-bit value; throws `IllegalArgumentException` if the value doesn't fit in 32 bits |
+| `from(UUID)` | 16-byte big-endian |
+| `fromHex(String)` | restores bytes `toHex()` printed |
+| `toBytes()` | defensive copy of the bytes |
+| `size()` | byte length, 1-255 |
+| `toHex()` | hex encoding, round-trippable with `fromHex` |
+| `toString()` | display form: printable UTF-8, then 4-byte-as-unsigned-int, then 16-byte-as-UUID, then a `hex:`-prefixed fallback |
+| `equals`/`hashCode` | value equality |
 
 **Completion result.** Every factory and accessor is synchronous. Out-of-range length throws
 `IllegalArgumentException`; a malformed hex string to `fromHex` throws the same.
 
-**When to use.** Use `from(String)` for a human-assigned identity, `from(long)`/`from(UUID)` for a
-numeric or UUID-shaped identity, and the raw byte overloads (including the range overload) when the
-identity is already binary or is a slice of a larger buffer. Use `toHex()`/`fromHex()` specifically
-for a durable raw-byte round trip — `toString()` is for display only and is not guaranteed
-reversible.
+**When to use.** `from(String)` for a human-assigned identity, `from(long)`/`from(UUID)` for a
+numeric or UUID-shaped identity, and the raw byte overloads (including the range overload) when
+the identity is already binary or a slice of a larger buffer. `toHex()`/`fromHex()` for a durable
+round trip — `toString()` is display-only.
 
 ---
 
@@ -150,25 +171,27 @@ boolean hasTls = Zlink.has("tls");
 int[] version = Zlink.version();
 ```
 
-**Options.** `strerror(int errnum)`. `has(String capability)` — recognized names include `"tcp"`,
-`"ipc"`, `"tls"`, `"ws"`, `"wss"`; any other string returns `false`. `version()`/`ZlinkVersion.get()`
-are equivalent — `ZlinkVersion` is a thin convenience wrapper delegating to `Zlink.version()`.
-`Zlink.errno()` exists in source but has no `public` modifier — it is not reachable from application
-code.
+**Options.**
 
-**Completion result.** All are synchronous. `strerror` returns a `String`. `has` returns `boolean`.
-`version()`/`ZlinkVersion.get()` return `int[]` (major/minor/patch).
+| Member | Meaning |
+| --- | --- |
+| `strerror(int errnum)` | the message text for that native error code |
+| `has(String capability)` | whether the named optional capability is compiled into this build — recognized names are `"tcp"`, `"ipc"`, `"tls"`, `"ws"`, `"wss"`; any other string returns `false` |
+| `version()` / `ZlinkVersion.get()` | `int[]` of `{major, minor, patch}`; equivalent — `ZlinkVersion` is a thin convenience wrapper delegating to `Zlink.version()` |
 
-**When to use.** Use `version()` to confirm the linked native library matches what the application
-expects. Use `has(...)` at startup to branch on optional transports. `strerror` is for diagnostics
-alongside a native error code surfaced elsewhere (Errors category).
+**Completion result.** All synchronous. **`Zlink.errno()` exists in source but has no `public`
+modifier** — it is not reachable from application code.
+
+**When to use.** `version()` to confirm a dynamically-loaded native library matches expectations.
+`has(...)` at startup to branch on optional transports. `strerror` for diagnostics alongside a
+native error code surfaced elsewhere (Errors category).
 
 ---
 
 ## `Zlink.createAtomicCounter()` / `Zlink.createStopwatch()` / `Zlink.createThread(Runnable)`
 
 Creates a thread-safe integer counter, a high-resolution stopwatch, or a running background
-thread — three independent utility resources.
+thread.
 
 ```java
 try (AtomicCounter counter = Zlink.createAtomicCounter()) {
@@ -185,19 +208,26 @@ try (ZlinkThread thread = Zlink.createThread(() -> doWork())) {
 }
 ```
 
-**Options.** `createAtomicCounter()`/`createStopwatch()` take no parameters. `createThread(Runnable
-task)` takes the task to run immediately on the new thread. `AtomicCounter` provides `value()`
-(get), `set(int)`, `increment()`/`decrement()` (return the counter's *new* value). `ZlinkStopwatch`
-provides `intermediate()`/`stop()`, both returning `Duration`. `ZlinkThread` provides `join()`
-(blocks until the task finishes).
+**Options.**
 
-**Completion result.** All three factories return their resource interface synchronously; each is
-`AutoCloseable` and the caller must close it.
+| Member | Meaning |
+| --- | --- |
+| `createAtomicCounter()` | no parameters |
+| `AtomicCounter.set(int)` | assigns the counter's value |
+| `AtomicCounter.increment()`/`decrement()` | adjusts the counter by one, returning the *new* value |
+| `AtomicCounter.value()` | reads the current value |
+| `createStopwatch()` | no parameters |
+| `ZlinkStopwatch.intermediate()` | elapsed `Duration` since construction, callable any number of times |
+| `ZlinkStopwatch.stop()` | elapsed `Duration` since construction, called exactly once to finish |
+| `createThread(Runnable task)` | runs `task` immediately on the new thread |
+| `ZlinkThread.join()` | blocks until the task finishes |
 
-**When to use.** Use `AtomicCounter` for a shared count safe across threads. `ZlinkStopwatch` for
-benchmarking — call `intermediate()` any number of times, then `stop()` exactly once.
-`createThread` for a portable background thread instead of `java.lang.Thread` directly, when the
-zlink runtime needs to own its lifecycle.
+**Completion result.** All three factories return their resource synchronously; the caller owns
+and must `close()` each (all three extend `AutoCloseable`).
+
+**When to use.** `createAtomicCounter` for a shared count safe across threads. `createStopwatch`
+for benchmarking. `createThread` for a portable background thread instead of `java.lang.Thread`
+directly, when the zlink runtime needs to own its lifecycle.
 
 ---
 
@@ -212,21 +242,27 @@ Zlink.proxySteerable(frontend, backend, capture, control);
 Zlink.sleep(Duration.ofSeconds(1));
 ```
 
-**Options.** `proxy(Socket frontend, Socket backend, Socket capture)` — `capture` may be `null`.
-`proxySteerable(Socket frontend, Socket backend, Socket capture, Socket control)`. Only
-`sleep(Duration)` is public — `Zlink.sleep(int seconds)` and `Zlink.multipartClose(Message[])` exist
-in source but have no `public` modifier and are not reachable from application code, unlike
-dotnet's public `Zlink.Sleep(TimeSpan)`/`Zlink.MultipartClose(...)` pairing.
+**Options.**
 
-**Completion result.** All are synchronous with no return value. `proxy`/`proxySteerable` block the
-calling thread until the context is terminated (or, for `proxySteerable`, until a control command or
-error ends the loop) — run either on a dedicated thread.
+| Member | Meaning |
+| --- | --- |
+| `proxy(Socket frontend, Socket backend, Socket capture)` | `capture` may be `null` |
+| `proxySteerable(Socket frontend, Socket backend, Socket capture, Socket control)` | adds a required `control` socket |
+| `sleep(Duration)` | blocks the calling thread |
 
-**When to use.** Use `proxy` for a simple fire-and-forget forwarding loop. Use `proxySteerable` when
-the application needs to pause/resume/terminate the loop from another thread via the control
-socket.
+**Completion result.** All three synchronous, no return value. `proxy`/`proxySteerable` block the
+calling thread until the context terminates (or, for `proxySteerable`, until a control command or
+error ends the loop) — run either on a dedicated thread. **Only `sleep(Duration)` is public** —
+`Zlink.sleep(int seconds)` and `Zlink.multipartClose(Message[])` exist in source but have no
+`public` modifier and are not reachable from application code, unlike dotnet's public
+`Zlink.Sleep(TimeSpan)`/`Zlink.MultipartClose(...)` pairing.
+
+**When to use.** `proxy` for a simple fire-and-forget forwarding loop. `proxySteerable` when the
+loop needs to be paused/resumed/terminated from another thread via `control`. Since there is no
+public `multipartClose`-equivalent helper, close each part individually via `Message.close()`
+(Messaging category).
 
 ---
 
-See [`contracts/core/`](../../../../bindings/java/src/main/java/systems/zlink/contracts/core/) and
-the [Java binding spec](../../spec/java/README.en.md) for the full rationale.
+See [`contracts/core/`](../../../../bindings/java/src/main/java/systems/zlink/contracts/core/)
+and the [Java binding spec](../../spec/java/README.en.md) for the full rationale.

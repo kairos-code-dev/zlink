@@ -812,7 +812,7 @@ abstract/interface, it's a configuration error without an explicit codec.
 > **See it in a sample — when to specify a codec.** Only [Bingo](../../../common/sample/bingo/README.ko.md),
 > a real-time game that needs to cut packet size and encoding cost, registers the Protobuf
 > codec and defines its DTOs with `.proto`. The rest of the
-> [samples](../../../common/sample/README.ko.md) don't register a codec and use the
+> [samples](../../../common/sample/README.en.md) don't register a codec and use the
 > default -- explicit registration is an optional step you take only when you need it.
 
 If you need a format beyond the default codecs (Avro, Thrift, etc.), implement a message
@@ -1039,4 +1039,4 @@ export class AppModule {}
   [per-language channel messaging public contract](../../../common/spec/server/languages/README.ko.md)
 - Topology and handler registration:
   [per-language topology public contract](../../../common/spec/server/languages/README.ko.md)
-- The full scenario: [common samples](../../../common/sample/README.ko.md)
+- The full scenario: [common samples](../../../common/sample/README.en.md)

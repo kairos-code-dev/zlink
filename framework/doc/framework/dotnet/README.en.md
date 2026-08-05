@@ -145,7 +145,7 @@ contract is owned by the reference/topic documents; runnable code by the sample 
 can **read a feature and immediately write against it.** The formal meaning of a concept is
 owned by the common spec, the formal contract by the spec documents, and the guide unpacks
 that meaning into real usage code. The business flow of the full runnable samples is
-defined by the [common sample](../common/sample/README.ko.md).
+defined by the [common sample](../common/sample/README.en.md).
 
 When writing or editing this guide documentation, follow the
 [User Guide Writing Guide](../../../../doc/principal/documentation/guide-writing-guide.ko.md).

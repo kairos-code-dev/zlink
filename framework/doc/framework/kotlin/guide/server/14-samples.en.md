@@ -20,7 +20,7 @@ View in another language — [C#/.NET](../../../dotnet/guide/server/14-samples.e
 > **This chapter has no spec document that owns a contract.** It's guidance for choosing
 > which sample to look at. Each sample's language-neutral scenario, message contract, and
 > verification criteria are defined by the
-> [common sample document](../../../common/sample/README.ko.md). This document lays out
+> [common sample document](../../../common/sample/README.en.md). This document lays out
 > **which sample helps first** and how to run it.
 
 The samples are split so each one owns a different bundle of features. You don't need to
@@ -419,7 +419,7 @@ separately via `ZoneWorld/run_sample.sh`.
 ## 10. Related Documents
 
 - Each sample's language-neutral scenario and verification criteria:
-  [Common sample](../../../common/sample/README.ko.md)
+  [Common sample](../../../common/sample/README.en.md)
 - Per-language sample directory layout: the `README` at each language's sample root
 - Per-feature usage: [05-channel-messaging](05-channel-messaging.ko.md) through
   [12-operations](12-operations.ko.md)

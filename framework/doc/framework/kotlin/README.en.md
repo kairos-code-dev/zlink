@@ -76,7 +76,7 @@ The samples provide the same scenario set as Java, implemented with Kotlin corou
 documents.
 
 The 6 canonical samples' server roles, message contracts, state transitions, and
-completion criteria are owned by the [common sample](../common/sample/README.ko.md). The
+completion criteria are owned by the [common sample](../common/sample/README.en.md). The
 Kotlin documents don't restate this contract.
 
 | Document | Scope |

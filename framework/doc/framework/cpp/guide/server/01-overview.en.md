@@ -889,7 +889,7 @@ The main readers are:
   the DB, broker, or domain service.
 
 To see ZLink's use concretely, as a business flow, look at the
-[common samples](../../../common/sample/README.ko.md). See the real-time game server shape
+[common samples](../../../common/sample/README.en.md). See the real-time game server shape
 in [TicTacToe](../../../common/sample/tictactoe/README.ko.md) and
 [Bingo](../../../common/sample/bingo/README.ko.md).
 [ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
@@ -940,5 +940,5 @@ The guide uses the following notation consistently throughout.
 - [19-configuration](19-configuration.ko.md) — Configuration binding
 - [20-http-hosting](20-http-hosting.ko.md) — An HTTP endpoint inside the process
 - [21-execution-model](21-execution-model.ko.md) — The coroutine execution model
-- [Common samples](../../../common/sample/README.ko.md) — Representative business scenarios and verification criteria
+- [Common samples](../../../common/sample/README.en.md) — Representative business scenarios and verification criteria
 - [C++ exact interface index](../../../common/spec/server/languages/cpp/interfaces/README.ko.md) — The formal contract

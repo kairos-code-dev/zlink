@@ -380,7 +380,7 @@ belongs to
 
 ## 8. Related Documents
 
-- Common business scenarios: [Framework Common Sample Scenarios](../../../common/sample/README.ko.md)
+- Common business scenarios: [Framework Common Sample Scenarios](../../../common/sample/README.en.md)
 - How to use it: [Channel Messaging](05-channel-messaging.ko.md)
 - Surface mapping: [05-channel-messaging](05-channel-messaging.ko.md) §0, `13. Interface Catalog` chapter §1.6
 - Samples as runnable code: [14-samples](14-samples.ko.md)

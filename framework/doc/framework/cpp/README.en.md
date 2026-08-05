@@ -33,6 +33,6 @@ framework provides host, DI, configuration, logging, and HTTP directly.**
 [Regression Test Matrix](internals/regression-test-matrix.en.md)
 
 The role, DTOs, and verification criteria of the 6 common samples are found in the
-[common sample](../common/sample/README.ko.md).
+[common sample](../common/sample/README.en.md).
 
 For the framework's top-level common documents, see the [guide home](../index.en.md).

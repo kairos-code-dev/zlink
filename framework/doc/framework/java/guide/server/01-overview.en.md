@@ -892,7 +892,7 @@ The main readers are:
   the DB, broker, or domain service.
 
 To see ZLink's use concretely, as a business flow, look at the
-[common samples](../../../common/sample/README.ko.md). See the real-time game server shape
+[common samples](../../../common/sample/README.en.md). See the real-time game server shape
 in [TicTacToe](../../../common/sample/tictactoe/README.ko.md) and
 [Bingo](../../../common/sample/bingo/README.ko.md).
 [ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
@@ -939,7 +939,7 @@ The guide uses the following notation consistently throughout.
 - [14-samples](14-samples.ko.md) — Checking it against runnable samples
 - [16-options](16-options.ko.md) — The option list and defaults, what changes when
 - [17-alternative](17-alternative.ko.md) — **Where ZLink fits** (where it's used, warning signs, the technology-choice boundary)
-- [Common samples](../../../common/sample/README.ko.md) — Representative business scenarios and verification criteria
+- [Common samples](../../../common/sample/README.en.md) — Representative business scenarios and verification criteria
 - [Java exact interface index](../../../common/spec/server/languages/java/interfaces/README.ko.md) — The formal contract
 
 ---

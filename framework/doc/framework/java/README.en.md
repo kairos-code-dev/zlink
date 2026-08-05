@@ -57,7 +57,7 @@ Samples provide the same scenario set for both Java and Kotlin. The 6 canonical 
 per-app documents; feature-axis samples are kept as separate documents.
 
 The 6 canonical samples' server roles, message contracts, state transitions, and
-completion criteria are owned by the [common sample](../common/sample/README.ko.md). The
+completion criteria are owned by the [common sample](../common/sample/README.en.md). The
 Java documents don't restate this contract.
 
 | Document | Scope |

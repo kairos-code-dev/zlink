@@ -25,7 +25,7 @@ configuration provider criteria follow the
 ## 1. Usage Guidance
 
 Check the Node framework's public API and behavior in the formal spec below. Runnable
-usage examples are found in the [common sample](../common/sample/README.ko.md) and the
+usage examples are found in the [common sample](../common/sample/README.en.md) and the
 [Node sample](../../../languages/node/samples/README.ko.md).
 
 Usage of the client libraries used separately from the server framework is found in the
@@ -59,7 +59,7 @@ maintainers. Check the spec for the public API and allowed combinations.
 ## 4. Common Samples
 
 The 6 canonical samples' server roles, message contracts, state transitions, and
-completion criteria are owned by the [common sample](../common/sample/README.ko.md). The
+completion criteria are owned by the [common sample](../common/sample/README.en.md). The
 Node.js documents don't restate this contract.
 
 ## 5. Regression Tests

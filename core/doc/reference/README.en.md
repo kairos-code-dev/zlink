@@ -60,8 +60,8 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [PAIR](06-pair.en.md) | Drafted | socket/01-pair |
 | [PUB](07-pub.en.md) | Drafted | socket/02-pub |
 | [SUB](08-sub.en.md) | Drafted | socket/03-sub |
-| XPUB | Not started | socket/04-xpub |
-| XSUB | Not started | socket/05-xsub |
+| [XPUB](09-xpub.en.md) | Drafted | socket/04-xpub |
+| [XSUB](10-xsub.en.md) | Drafted | socket/05-xsub |
 | DEALER | Not started | socket/06-dealer |
 | ROUTER | Not started | socket/07-router |
 | STREAM | Not started | socket/08-stream |

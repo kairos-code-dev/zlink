@@ -57,8 +57,8 @@ Core의 공개 표면은 framework의 정제된 8개 category보다 훨씬 세�
 | [PAIR](06-pair.ko.md) | 작성 완료 | socket/01-pair |
 | [PUB](07-pub.ko.md) | 작성 완료 | socket/02-pub |
 | [SUB](08-sub.ko.md) | 작성 완료 | socket/03-sub |
-| XPUB | 미착수 | socket/04-xpub |
-| XSUB | 미착수 | socket/05-xsub |
+| [XPUB](09-xpub.ko.md) | 작성 완료 | socket/04-xpub |
+| [XSUB](10-xsub.ko.md) | 작성 완료 | socket/05-xsub |
 | DEALER | 미착수 | socket/06-dealer |
 | ROUTER | 미착수 | socket/07-router |
 | STREAM | 미착수 | socket/08-stream |

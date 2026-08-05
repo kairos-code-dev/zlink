@@ -6,7 +6,7 @@ This directory fixes the exact public signature of the Java server
 package, organized per feature. Common behavior is owned by the
 [server common spec](../../../../README.en.md).
 
-- [Common Runtime](common-runtime.ko.md)
+- [Common Runtime](common-runtime.en.md)
 - [Configuration And Host](configuration-host.ko.md)
 - [Channel Messaging](channel-messaging.en.md)
 - [Spot](spots.ko.md)

@@ -194,5 +194,5 @@ These apply in common to every entry point in this category and are not repeated
 See the
 [Java channel messaging exact interface](../../common/spec/server/languages/java/interfaces/channel-messaging.en.md)
 and the
-[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.ko.md)
+[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.en.md)
 (Korean-only) for the full rationale.

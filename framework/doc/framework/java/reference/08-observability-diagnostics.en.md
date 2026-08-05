@@ -8,7 +8,7 @@ category), which reads host/topology status; and the `ZLinkFrameworkErrorKind` c
 table used to judge failures across every category. The exact signatures are owned by the
 [Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 and the
-[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.ko.md)
+[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.en.md)
 (Korean-only).
 
 ---
@@ -98,5 +98,5 @@ condition, idempotency, and business state.
 See the
 [Java configuration and host exact interface](../../common/spec/server/languages/java/interfaces/configuration-host.ko.md)
 and the
-[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.ko.md)
+[Java common runtime exact interface](../../common/spec/server/languages/java/interfaces/common-runtime.en.md)
 (Korean-only) for the full rationale.

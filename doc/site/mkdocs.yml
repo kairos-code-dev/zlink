@@ -233,6 +233,17 @@ nav:
               - "15. E2E 테스트": node/guide/server/15-e2e-testing.ko.md
               - "16. Options": node/guide/server/16-options.ko.md
               - "17. ZLink를 어디에 쓰나": node/guide/server/17-alternative.ko.md
+      - Reference:
+          - .NET:
+              - "Reference home": dotnet/reference/README.md
+              - "01. Host lifecycle": dotnet/reference/01-host-lifecycle.md
+              - "02. Topology discovery": dotnet/reference/02-topology-discovery.md
+              - "03. Messaging execution": dotnet/reference/03-messaging-execution.md
+              - "04. Spot instance": dotnet/reference/04-spot-instance.md
+              - "05. Actor relocation": dotnet/reference/05-actor-relocation.md
+              - "06. Stream session": dotnet/reference/06-stream-session.md
+              - "07. Location authority": dotnet/reference/07-location-authority.md
+              - "08. Observability diagnostics": dotnet/reference/08-observability-diagnostics.md
       - 스펙:
           - "공통 스펙": common/README.ko.md
           - 작성 기준과 공통 용어:

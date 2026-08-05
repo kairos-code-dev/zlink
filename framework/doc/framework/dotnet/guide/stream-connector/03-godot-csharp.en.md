@@ -9,7 +9,7 @@ This document explains how to use `Systems.Zlink.Stream.Connector` from a Godot 
 connector as-is, calling `Dispatch.Async()` on the Godot main thread to run the user callbacks.
 
 > **A Godot project using C++ GDExtension should see
-> [C++ Guide 09 — Engine Adapters](../../../cpp/guide/stream-connector/09-engine-adapters.ko.md)
+> [C++ Guide 09 — Engine Adapters](../../../cpp/guide/stream-connector/09-engine-adapters.en.md)
 > instead of this document.**
 > **For a Web build, see the [Node/TypeScript Connector Guide](../../../node/guide/stream-connector/01-overview.en.md).**
 

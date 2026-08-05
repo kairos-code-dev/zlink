@@ -21,7 +21,7 @@ focuses on **engine integration**.
 
 | Document | Target |
 |------|------|
-| [C++ Stream Connector Guide](../../../cpp/guide/stream-connector/INDEX.ko.md) | Unreal, Godot (GDExtension), Axmol, general C++ |
+| [C++ Stream Connector Guide](../../../cpp/guide/stream-connector/INDEX.en.md) | Unreal, Godot (GDExtension), Axmol, general C++ |
 | [Node/TypeScript Stream Connector Guide](../../../node/guide/stream-connector/INDEX.en.md) | **Browser, Unity WebGL, Cocos web**, Node |
 
 **If you build for web (browser/WASM), you use the TypeScript connector regardless of language.**

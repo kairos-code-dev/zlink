@@ -27,7 +27,7 @@ directory.
 owned by [internals/runtime-architecture](../../../../internals/README.en.md).
 
 The client connector is owned by the
-[C++ Stream Connector guide](../../../../../cpp/guide/stream-connector/INDEX.ko.md)
+[C++ Stream Connector guide](../../../../../cpp/guide/stream-connector/INDEX.en.md)
 and the
 [Stream Connector common spec](../../../stream-connector/32-stream-connector.en.md).
 

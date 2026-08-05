@@ -64,7 +64,7 @@ template, coroutine.
 | `zlink_framework` | **`zlink::framework`** (STATIC) | Provides Framework core and requires C++20 (`cxx_std_20`). |
 
 **The client connector is a separate product line** — owned by the
-[C++ Stream Connector guide](../../../../../cpp/guide/stream-connector/INDEX.ko.md).
+[C++ Stream Connector guide](../../../../../cpp/guide/stream-connector/INDEX.en.md).
 It doesn't mutually depend on the server framework.
 
 ## 3. Application Host

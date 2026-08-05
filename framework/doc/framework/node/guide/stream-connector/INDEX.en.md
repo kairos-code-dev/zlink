@@ -15,7 +15,7 @@ The exact options, call builder, and error types are owned by the
 
 | Document | Target |
 |------|------|
-| [C++ Stream Connector Guide](../../../cpp/guide/stream-connector/INDEX.ko.md) | Unreal, Godot GDExtension, Axmol, general C++ |
+| [C++ Stream Connector Guide](../../../cpp/guide/stream-connector/INDEX.en.md) | Unreal, Godot GDExtension, Axmol, general C++ |
 | [.NET Stream Connector Guide](../../../dotnet/guide/stream-connector/INDEX.en.md) | Unity native, Godot C#, desktop, and server |
 
 If you build for web or WASM, you use this TypeScript connector regardless of language.

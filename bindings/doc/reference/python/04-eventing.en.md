@@ -21,10 +21,15 @@ monitor.on_event(lambda event: print(event.event, event.remote_addr))
 status = monitor.status()
 ```
 
-**Options.** `status()` (returns `MonitorStatus`), `close()`, `recv(*, flags=0)` (returns
-`MonitorEvent` or `None` when `DONT_WAIT` is set and none is available), `on_event(handler)`
-(background-dispatch-thread callback). `ignore_handler` is a `staticmethod` (`lambda event: None`)
-a caller can register to explicitly discard events.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `status()` | returns a `MonitorStatus` point-in-time snapshot |
+| `close()` | closes the monitor |
+| `recv(*, flags=0)` | pulls the next event; returns `MonitorEvent` or `None` when `DONT_WAIT` is set and none is available |
+| `on_event(handler)` | registers a passive lifecycle-event callback, invoked on a background dispatch thread |
+| `ignore_handler` | a `staticmethod` (`lambda event: None`) a caller can register to explicitly discard events |
 
 **Completion result.** All members are synchronous. Supports both sync and async context-manager
 protocols.
@@ -72,8 +77,15 @@ receive HWM differs from its configured `CommonSocketOptions` value (Sockets cat
 A single socket connection-lifecycle event reported by a monitor. A concrete class with a
 keyword-only `__init__`.
 
-**Options.** Constructor keyword arguments (all required, no defaults): `event`, `value`,
-`routing_id`, `local_addr`, `remote_addr` — all become plain instance attributes of the same name.
+**Options.** Constructor keyword arguments are all required, no defaults; each becomes a plain
+instance attribute of the same name.
+
+| Field | Meaning |
+| --- | --- |
+| `event` | the kind of lifecycle event (a `MonitorEventMask` value) |
+| `value` | an event-specific value such as an error code or reconnect interval |
+| `routing_id` | the peer routing id, present when the event provides one |
+| `local_addr` / `remote_addr` | the local/remote address associated with the event |
 
 **Completion result.** N/A — an immutable-in-practice value delivered by the monitor (nothing
 prevents mutation, but nothing in the contract calls for it).
@@ -95,10 +107,18 @@ events = create_poll_events(8)
 ready = poller.wait(events, timeout_ms=1000)
 ```
 
-**Options.** `add_socket(socket, events, slot)`, `add_fd(fd, events, slot)`, `add_timer(timer,
-slot)` — `slot` is a caller token echoed back in the matching result. `modify_socket(socket,
-events)`, `modify_fd(fd, events)`. `remove_socket(socket)`, `remove_fd(fd)`, `remove_timer(timer)`.
-`size()`. `wait(events, timeout_ms)` (a negative timeout blocks indefinitely). `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `add_socket(socket, events, slot)` | registers a socket; `slot` is a caller token echoed back in the matching result |
+| `add_fd(fd, events, slot)` | registers a raw file descriptor, same shape |
+| `add_timer(timer, slot)` | registers a timer to be multiplexed alongside sockets/fds |
+| `modify_socket(socket, events)` / `modify_fd(fd, events)` | replaces the watched events for an already-registered socket/fd |
+| `remove_socket(socket)` / `remove_fd(fd)` / `remove_timer(timer)` | unregisters the source |
+| `size()` | the number of currently registered sources |
+| `wait(events, timeout_ms)` | blocks up to `timeout_ms`, filling `events` in place; a negative timeout blocks indefinitely |
+| `close()` | closes the poller |
 
 **Completion result.** Registration/removal members are synchronous. `wait` blocks up to
 `timeout_ms`, filling `events` in place and returning the ready count. Supports both sync and async
@@ -123,10 +143,27 @@ for i in range(events.ready_count):
         ...
 ```
 
-**Options.** `PollEvents`: `capacity` (property), `ready_count` (property), `source_kind(index)`/
-`slot(index)`/`revents(index)`/`fd(index)`, `has_event(index, event)` (convenience bit-test),
-`event(index)` (materializes a `PollEvent`). `PollEvent` (frozen dataclass): `source_kind`, `slot`,
-`revents`, `fd` (defaults to `0`).
+**Options — `PollEvents`.**
+
+| Member | Meaning |
+| --- | --- |
+| `capacity` | property, the fixed capacity passed to `create_poll_events(...)` |
+| `ready_count` | property, how many of the slots hold a ready event after the last `wait` |
+| `source_kind(index)` | the ready source's kind at that index |
+| `slot(index)` | the caller token supplied when that source was registered |
+| `revents(index)` | raw poll-event bitmask for that index |
+| `fd(index)` | the file descriptor at that index, populated for FD-kind sources |
+| `has_event(index, event)` | convenience bit-test over `revents(index)` |
+| `event(index)` | materializes a `PollEvent` for that index |
+
+**Options — `PollEvent`** (frozen dataclass).
+
+| Field | Meaning |
+| --- | --- |
+| `source_kind` | whether the source is a socket, file descriptor, or timer |
+| `slot` | the caller token supplied at registration |
+| `revents` | raw poll-event bitmask |
+| `fd` | the file descriptor, defaults to `0` when the source isn't FD-kind |
 
 **Completion result.** All `PollEvents` accessors are synchronous. `PollEvent` is immutable
 (`frozen=True`).
@@ -147,12 +184,15 @@ timer.on_fire(lambda count: print(f"fired {count} times"))
 timer.start(interval_ns=1_000_000_000, repeat_count=0)
 ```
 
-**Options.** `start(interval_ns: int, repeat_count: int)` — **the interval is nanoseconds**,
-matching rust's `Timer::start`, not the millisecond/`Duration`-based `start` every other language
-covered so far uses. `stop()`, `recv()` (returns `Optional[int]` — the cumulative fire count,
-`None` when nothing pending), `on_fire(handler)` (background-dispatch-thread callback — **the
-handler here receives only the fire count**, not `(timer, count)` the way most other languages'
-`on_fire`/`onFire` callbacks do), `close()`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `start(interval_ns: int, repeat_count: int)` | starts firing on `interval_ns`; **the interval is nanoseconds**, matching rust's `Timer::start`, not the millisecond/`Duration`-based `start` every other language covered so far uses; `repeat_count == 0` means unlimited |
+| `stop()` | stops firing; restartable via `start` |
+| `recv()` | returns `Optional[int]` — the cumulative fire count, `None` when nothing pending |
+| `on_fire(handler)` | registers a passive interval callback, invoked on a background dispatch thread — **the handler here receives only the fire count**, not `(timer, count)` the way most other languages' `on_fire`/`onFire` callbacks do |
+| `close()` | closes the timer |
 
 **Completion result.** All members are synchronous. Supports both sync and async context-manager
 protocols.

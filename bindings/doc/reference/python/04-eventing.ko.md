@@ -23,11 +23,15 @@ monitor.on_event(lambda event: print(event.event, event.remote_addr))
 status = monitor.status()
 ```
 
-**Options.** `status()`(`MonitorStatus` 반환), `close()`,
-`recv(*, flags=0)`(`MonitorEvent` 또는 `DONT_WAIT`가 설정되고
-없으면 `None` 반환), `on_event(handler)`(background-dispatch-thread
-콜백). `ignore_handler`는 caller가 event를 명시적으로 버리려고 등록할
-수 있는 `staticmethod`(`lambda event: None`)다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `status()` | 시점 스냅샷 `MonitorStatus`를 반환 |
+| `close()` | monitor를 닫음 |
+| `recv(*, flags=0)` | 다음 event를 가져옴; `MonitorEvent` 또는 `DONT_WAIT`가 설정되고 없으면 `None` 반환 |
+| `on_event(handler)` | 수동적 lifecycle-event 콜백을 등록, background dispatch 스레드에서 호출됨 |
+| `ignore_handler` | caller가 event를 명시적으로 버리려고 등록할 수 있는 `staticmethod`(`lambda event: None`) |
 
 **Completion result.** 모든 member는 동기다. sync·async
 context-manager 프로토콜을 둘 다 지원한다.
@@ -79,9 +83,15 @@ connection-bucket과 auto-HWM-plan attribute를 쓴다.
 monitor가 보고하는 socket connection-lifecycle event 하나.
 keyword-only `__init__`을 가진 concrete class다.
 
-**Options.** 생성자 keyword 인자(전부 필수, 기본값 없음): `event`,
-`value`, `routing_id`, `local_addr`, `remote_addr` — 전부 같은 이름의
-순수 instance attribute가 된다.
+**Options.** 생성자 keyword 인자는 전부 필수이며 기본값이 없다; 각각
+같은 이름의 순수 instance attribute가 된다.
+
+| Field | 의미 |
+| --- | --- |
+| `event` | lifecycle event의 종류(`MonitorEventMask` 값) |
+| `value` | 에러 코드나 reconnect interval 같은 event별 값 |
+| `routing_id` | event가 제공할 때만 존재하는 peer routing id |
+| `local_addr` / `remote_addr` | event에 결부된 local/remote 주소 |
 
 **Completion result.** 해당 없음 — monitor가 전달하는 실질적으로
 불변인 값(mutation을 막는 건 없지만 contract 어디도 그걸 요구하지
@@ -106,12 +116,18 @@ events = create_poll_events(8)
 ready = poller.wait(events, timeout_ms=1000)
 ```
 
-**Options.** `add_socket(socket, events, slot)`, `add_fd(fd, events,
-slot)`, `add_timer(timer, slot)` — `slot`은 대응하는 결과로 그대로
-되돌아오는 caller token이다. `modify_socket(socket, events)`,
-`modify_fd(fd, events)`. `remove_socket(socket)`, `remove_fd(fd)`,
-`remove_timer(timer)`. `size()`. `wait(events, timeout_ms)`(음수
-timeout은 무기한 block). `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `add_socket(socket, events, slot)` | socket을 등록; `slot`은 대응하는 결과로 그대로 되돌아오는 caller token |
+| `add_fd(fd, events, slot)` | raw file descriptor를 등록, 같은 형태 |
+| `add_timer(timer, slot)` | timer를 socket/fd와 함께 multiplex하도록 등록 |
+| `modify_socket(socket, events)` / `modify_fd(fd, events)` | 이미 등록된 socket/fd의 감시 event를 교체 |
+| `remove_socket(socket)` / `remove_fd(fd)` / `remove_timer(timer)` | source 등록을 해제 |
+| `size()` | 현재 등록된 source 개수 |
+| `wait(events, timeout_ms)` | `timeout_ms`까지 block하며 `events`를 그 자리에서 채움; 음수 timeout은 무기한 block |
+| `close()` | poller를 닫음 |
 
 **Completion result.** 등록/제거 member는 동기다. `wait`는
 `timeout_ms`까지 block하며, `events`를 그 자리에서 채우고 준비된
@@ -138,11 +154,27 @@ for i in range(events.ready_count):
         ...
 ```
 
-**Options.** `PollEvents`: `capacity`(property), `ready_count`
-(property), `source_kind(index)`/`slot(index)`/`revents(index)`/
-`fd(index)`, `has_event(index, event)`(편의 bit-test),
-`event(index)`(`PollEvent`를 materialize). `PollEvent`(frozen
-dataclass): `source_kind`, `slot`, `revents`, `fd`(기본값 `0`).
+**Options — `PollEvents`.**
+
+| Member | 의미 |
+| --- | --- |
+| `capacity` | property, `create_poll_events(...)`에 넘긴 고정 용량 |
+| `ready_count` | property, 마지막 `wait` 이후 몇 개 slot이 준비된 event를 담고 있는지 |
+| `source_kind(index)` | 해당 index의 준비된 source 종류 |
+| `slot(index)` | 그 source 등록 시 넘긴 caller token |
+| `revents(index)` | 해당 index의 raw poll-event bitmask |
+| `fd(index)` | 해당 index의 file descriptor, FD kind source에서만 채워짐 |
+| `has_event(index, event)` | `revents(index)`에 대한 편의 bit-test |
+| `event(index)` | 해당 index의 `PollEvent`를 materialize |
+
+**Options — `PollEvent`**(frozen dataclass).
+
+| Field | 의미 |
+| --- | --- |
+| `source_kind` | source가 socket·file descriptor·timer 중 무엇인지 |
+| `slot` | 등록 시 제공한 caller token |
+| `revents` | raw poll-event bitmask |
+| `fd` | file descriptor, source가 FD kind가 아니면 기본값 `0` |
 
 **Completion result.** 모든 `PollEvents` accessor는 동기다.
 `PollEvent`는 불변이다(`frozen=True`).
@@ -164,14 +196,15 @@ timer.on_fire(lambda count: print(f"fired {count} times"))
 timer.start(interval_ns=1_000_000_000, repeat_count=0)
 ```
 
-**Options.** `start(interval_ns: int, repeat_count: int)` —
-**interval이 나노초 단위다**, rust의 `Timer::start`와 일치하고,
-지금까지 다룬 다른 모든 언어가 쓰는 밀리초/`Duration` 기반 `start`와
-다르다. `stop()`, `recv()`(`Optional[int]` 반환 — 누적 fire count,
-대기 중인 게 없으면 `None`), `on_fire(handler)`
-(background-dispatch-thread 콜백 — **여기 handler는 fire count만
-받는다**, 대부분 다른 언어의 `on_fire`/`onFire` 콜백이 받는
-`(timer, count)`가 아니다), `close()`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `start(interval_ns: int, repeat_count: int)` | `interval_ns`마다 fire를 시작; **interval이 나노초 단위다**, rust의 `Timer::start`와 일치하고 지금까지 다룬 다른 모든 언어가 쓰는 밀리초/`Duration` 기반 `start`와 다르다; `repeat_count == 0`은 무제한 |
+| `stop()` | fire를 멈춤; `start`로 재시작 가능 |
+| `recv()` | `Optional[int]` 반환 — 누적 fire count, 대기 중인 게 없으면 `None` |
+| `on_fire(handler)` | 수동적 interval 콜백을 등록, background dispatch 스레드에서 호출됨 — **여기 handler는 fire count만 받는다**, 대부분 다른 언어의 `on_fire`/`onFire` 콜백이 받는 `(timer, count)`가 아니다 |
+| `close()` | timer를 닫음 |
 
 **Completion result.** 모든 member는 동기다. sync·async
 context-manager 프로토콜을 둘 다 지원한다.

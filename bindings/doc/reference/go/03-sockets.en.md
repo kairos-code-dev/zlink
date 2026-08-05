@@ -30,20 +30,27 @@ builder family every socket below returns is documented in the Messaging categor
 
 ## Shared socket surface (via embedding, not an interface)
 
-Every socket type except `StreamSocket` gets this set for free through embedding:
-`Bind(endpoint string) error`, `Connect(endpoint string) error`, `Unbind(endpoint string) error`,
-`Disconnect(endpoint string) error`, `DisconnectRID(peerRID RoutingID) error`, `Close() error`,
-`CommonOptions() *CommonSocketOptions`, `LastEndpoint() (string, error)`,
-`SetTLSServer(certPath, keyPath string, requireClientCert bool) error`,
-`SetTLSClient(caCertPath, hostname string, trustSystem bool) error` — **only the combined TLS
-setters exist**; unlike rust, there are no individual `SetTLSCert`/`SetTLSKey`/`SetTLSCA`/
-`SetTLSHostname` methods in this binding. `StreamSocket` hand-forwards only `Bind`, `Unbind`,
-`Close`, `LastEndpoint`, `SetTLSServer`, `SetTLSClient`, and a handful of individual
-`CommonSocketOptions` values (`SetSendHighWaterMark`/`SendHighWaterMark`,
-`SetReceiveHighWaterMark`/`ReceiveHighWaterMark`, `SetLinger`, `SetReceiveTimeout`,
-`SetSendTimeout`, `SetTCPKeepalive`, `SetTCPNoDelay`, `SetIPv6`) — it has no `Connect`,
-`Disconnect`, `DisconnectRID`, or `CommonOptions()` at all, and therefore no way to reach
-`Immediate`, `RidDuplicatePolicy`, `MaxMessageSize`, `Backlog`, `ReconnectInterval`,
+**Options.** Every socket type except `StreamSocket` gets this set for free through embedding.
+**Only the combined TLS setters exist**; unlike rust, there are no individual
+`SetTLSCert`/`SetTLSKey`/`SetTLSCA`/`SetTLSHostname` methods in this binding.
+
+| Member | Meaning |
+| --- | --- |
+| `Bind(endpoint string) error` / `Unbind(endpoint string) error` | starts/stops listening on an address |
+| `Connect(endpoint string) error` / `Disconnect(endpoint string) error` | connects/disconnects to a peer address |
+| `DisconnectRID(peerRID RoutingID) error` | disconnects the peer identified by that routing id |
+| `Close() error` | closes the native socket |
+| `CommonOptions() *CommonSocketOptions` | the shared options facade |
+| `LastEndpoint() (string, error)` | the concrete resolved bind address |
+| `SetTLSServer(certPath, keyPath string, requireClientCert bool) error` | combined server-side TLS setup, apply before `Bind` |
+| `SetTLSClient(caCertPath, hostname string, trustSystem bool) error` | combined client-side TLS setup, apply before `Connect` |
+
+`StreamSocket` hand-forwards only `Bind`, `Unbind`, `Close`, `LastEndpoint`, `SetTLSServer`,
+`SetTLSClient`, and a handful of individual `CommonSocketOptions` values
+(`SetSendHighWaterMark`/`SendHighWaterMark`, `SetReceiveHighWaterMark`/`ReceiveHighWaterMark`,
+`SetLinger`, `SetReceiveTimeout`, `SetSendTimeout`, `SetTCPKeepalive`, `SetTCPNoDelay`, `SetIPv6`)
+— it has no `Connect`, `Disconnect`, `DisconnectRID`, or `CommonOptions()` at all, and therefore no
+way to reach `Immediate`, `RidDuplicatePolicy`, `MaxMessageSize`, `Backlog`, `ReconnectInterval`,
 `ConnectTimeout`, or the `SubmitRetry*` family that every other socket type can set.
 
 **Completion result.** Every one of these methods returns `error` (or `(T, error)` for getters).
@@ -67,26 +74,41 @@ opts.SetLinger(time.Second)
 opts.SetSubmitRetryMode(contracts.SubmitRetryLocalFailure)
 ```
 
-**Options.** `CommonSocketOptions`, every accessor returning `(T, error)`/`error`:
-`Linger()`/`SetLinger(time.Duration)`,
-`SendHighWaterMark()`/`SetSendHighWaterMark(int)`,
-`ReceiveHighWaterMark()`/`SetReceiveHighWaterMark(int)`,
-`SendTimeout()`/`SetSendTimeout(time.Duration)`,
-`ReceiveTimeout()`/`SetReceiveTimeout(time.Duration)`, `Immediate()`/`SetImmediate(bool)`,
-`RidDuplicatePolicy()`/`SetRidDuplicatePolicy(RidDuplicatePolicy)`,
-`ConnectTimeout()`/`SetConnectTimeout(time.Duration)`, `IPv6()`/`SetIPv6(bool)`,
-`TCPNoDelay()`/`SetTCPNoDelay(bool)`, `TCPKeepalive()`/`SetTCPKeepalive(bool)`,
-`MaxMessageSize()`/`SetMaxMessageSize(int64)`, `Backlog()`/`SetBacklog(int)`,
-`ReconnectInterval()`/`SetReconnectInterval(time.Duration)`,
-`ReconnectIntervalMax()`/`SetReconnectIntervalMax(time.Duration)`,
-`SubmitRetryMode()`/`SetSubmitRetryMode(SubmitRetryMode)`,
-`SubmitRetryTimeout()`/`SetSubmitRetryTimeout(time.Duration)`,
-`SubmitRetryAttempts()`/`SetSubmitRetryAttempts(int)`, `LastEndpoint()` (read-only, delegates to
-the socket directly). `PubSocketOptions`: `NoDrop()`/`SetNoDrop(bool)`, `Verbose()`/
-`SetVerbose(bool)`, `Verboser()`/`SetVerboser(bool)`, `Manual()`/`SetManual(bool)`,
-`ManualLastValue()`/`SetManualLastValue(bool)`, `TopicsCount() (int, error)` (read-only),
-`WelcomeMessage()`/`SetWelcomeMessage(*Message)`, `ApproveSubscribe(RoutingID) error`/
-`RejectSubscribe(RoutingID) error` (set-only — no corresponding getters).
+**Options — `CommonSocketOptions`.** Every accessor returns `(T, error)`/`error`.
+
+| Member | Meaning |
+| --- | --- |
+| `Linger()` / `SetLinger(time.Duration)` | upper bound on how long `Close()` waits for pending sends to flush |
+| `SendHighWaterMark()` / `SetSendHighWaterMark(int)` | outbound accounted-byte HWM |
+| `ReceiveHighWaterMark()` / `SetReceiveHighWaterMark(int)` | inbound accounted-byte HWM |
+| `SendTimeout()` / `SetSendTimeout(time.Duration)` | upper bound on how long a blocking send waits |
+| `ReceiveTimeout()` / `SetReceiveTimeout(time.Duration)` | upper bound on how long a blocking receive waits |
+| `Immediate()` / `SetImmediate(bool)` | whether a send requires a live connection now, instead of queueing until one exists |
+| `RidDuplicatePolicy()` / `SetRidDuplicatePolicy(RidDuplicatePolicy)` | what happens when a peer reuses an existing routing id |
+| `ConnectTimeout()` / `SetConnectTimeout(time.Duration)` | upper bound on how long connect handshake waits |
+| `IPv6()` / `SetIPv6(bool)` | whether the socket accepts IPv6 connections |
+| `TCPNoDelay()` / `SetTCPNoDelay(bool)` | disables Nagle's algorithm when `true` |
+| `TCPKeepalive()` / `SetTCPKeepalive(bool)` | OS TCP keepalive mode |
+| `MaxMessageSize()` / `SetMaxMessageSize(int64)` | maximum size in bytes of a single accepted message |
+| `Backlog()` / `SetBacklog(int)` | pending-connection queue length for a listening socket |
+| `ReconnectInterval()` / `SetReconnectInterval(time.Duration)` | delay between reconnect attempts |
+| `ReconnectIntervalMax()` / `SetReconnectIntervalMax(time.Duration)` | cap on the reconnect delay |
+| `SubmitRetryMode()` / `SetSubmitRetryMode(SubmitRetryMode)` | whether a failed submit retries automatically on local back-pressure |
+| `SubmitRetryTimeout()` / `SetSubmitRetryTimeout(time.Duration)` | retry timeout when `SubmitRetryMode()` is `SubmitRetryLocalFailure` |
+| `SubmitRetryAttempts()` / `SetSubmitRetryAttempts(int)` | retry attempt cap when `SubmitRetryMode()` is `SubmitRetryLocalFailure` |
+| `LastEndpoint()` | read-only, delegates to the socket directly — the concrete resolved bind address |
+
+**Options — `PubSocketOptions`.**
+
+| Member | Meaning |
+| --- | --- |
+| `NoDrop()` / `SetNoDrop(bool)` | error instead of silent drop on back-pressure |
+| `Verbose()` / `SetVerbose(bool)` / `Verboser()` / `SetVerboser(bool)` | deliver every (un)subscribe message, including duplicates |
+| `Manual()` / `SetManual(bool)` | subscriptions require `ApproveSubscribe`/`RejectSubscribe` instead of auto-accept |
+| `ManualLastValue()` / `SetManualLastValue(bool)` | manual mode that also replays the last cached message per topic to a newly accepted subscriber |
+| `TopicsCount() (int, error)` | read-only, active subscription count |
+| `WelcomeMessage()` / `SetWelcomeMessage(*Message)` | sent automatically to each newly connected subscriber |
+| `ApproveSubscribe(RoutingID) error` / `RejectSubscribe(RoutingID) error` | set-only — no corresponding getters |
 
 **Completion result.** Every accessor is synchronous, returning `error` alongside its value —
 consistent with the Core category's `Context.Options()` convention.
@@ -109,9 +131,13 @@ var received contracts.Received
 ok, err := pair.Recv(&received, contracts.RecvFlagsNone)
 ```
 
-**Options.** `Send() SendOp` (starts the shared send builder), `Recv(out *Received, flags
-RecvFlags) (bool, error)`, `OnSendReady(handler func()) error`, plus the shared lifecycle/TLS/
-options surface above.
+**Options.** Plus the shared lifecycle/TLS/options surface above.
+
+| Member | Meaning |
+| --- | --- |
+| `Send() SendOp` | starts the shared send builder |
+| `Recv(out *Received, flags RecvFlags) (bool, error)` | populates `out` with the next message |
+| `OnSendReady(handler func()) error` | registers a back-pressure-cleared callback |
 
 **Completion result.** `Recv` returns `(false, nil)` only when `RecvFlagsDontWait` is set and no
 message is available.
@@ -133,12 +159,17 @@ dealer.Request().Message(payload).Submit(ctx, func(result contracts.RequestResul
 })
 ```
 
-**Options.** Same shared surface as `PairSocket`, plus: `Send() SendOp`, `Recv(out, flags) (bool,
-error)`, `Request() RequestOp` (starts the shared request builder — no target parameter, since
-DEALER has no API-level peer routing id), `SetRoutingID(RoutingID) error`/`RoutingID() (RoutingID,
-error)`, `SetProbe(bool) error` (**set-only, no getter**), `Weight()`/`SetWeight(int)`,
-`SetRequestTimeout(time.Duration) error` (**set-only, no getter** — matching the same asymmetry in
-every other language's Dealer type).
+**Options.** Same shared surface as `PairSocket`, plus:
+
+| Member | Meaning |
+| --- | --- |
+| `Send() SendOp` | starts the shared send builder |
+| `Recv(out, flags) (bool, error)` | populates `out` with the next message |
+| `Request() RequestOp` | starts the shared request builder; no target parameter — DEALER has no API-level peer routing id |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `SetProbe(bool) error` | **set-only, no getter**; sends an empty probe on connect |
+| `Weight()` / `SetWeight(int)` | load-balancing weight, both directions |
+| `SetRequestTimeout(time.Duration) error` | **set-only, no getter** — matching the same asymmetry in every other language's Dealer type |
 
 **Completion result.** `Recv` follows the same `(false, nil)`-on-`DontWait` convention as
 `PairSocket`.
@@ -162,23 +193,25 @@ router.OnCompletionControl(func(received *contracts.Received) {
 })
 ```
 
-**Options.** Same shared surface as `PairSocket`, plus: `SendTo(target RoutingID) SendOp`,
-`Recv(out, flags) (bool, error)` (returns `*RecvError{Result: RecvBusy}` if a receive-callback
-handler is already installed — this binding's `Recv`/callback path are mutually exclusive on
-ROUTER), `Request(peerRID RoutingID) RequestOp` (Messaging category's `RequestOp`, addressed to a
-specific peer), `Reply(rid RoutingID, requestSeq uint64) ReplyOp` (Messaging category's `ReplyOp`),
-`OnSendReady(handler func()) error`, `SetRoutingID(RoutingID) error`/`RoutingID() (RoutingID,
-error)`, `SetMandatory(bool) error` (**set-only**), `SetProbe(bool) error` (**set-only**),
-`SetHandover(bool) error` (**set-only** convenience over `CommonOptions().SetRidDuplicatePolicy`,
-mapping `true` to `RidDuplicateHandover` — both paths reach the same underlying option),
-`SetConnectRoutingID(RoutingID) error` (**set-only — no getter for the assigned connect routing
-id**, unlike dotnet's/cpp's read-only `ConnectRoutingId` property), `Weight()`/`SetWeight(int)`,
-`RequestTimeout()`/`SetRequestTimeout(time.Duration)` (**both directions, unlike Dealer's
-set-only**), `OnCompletionControl(handler func(*Received)) error`/`CompletionControl(peerRID
-RoutingID) SendOp` (an opaque control-plane record addressed to a peer; the control plane accepts
-no send flags — `Flags` values other than `SendFlagsNone` are rejected at submit time). **This
-binding does implement Completion-control on ROUTER**, unlike rust, which declares no equivalent
-public entry point.
+**Options.** Same shared surface as `PairSocket`, plus. **This binding does implement
+Completion-control on ROUTER**, unlike rust, which declares no equivalent public entry point.
+
+| Member | Meaning |
+| --- | --- |
+| `SendTo(target RoutingID) SendOp` | starts the shared send builder, addressed to that peer |
+| `Recv(out, flags) (bool, error)` | populates `out` with the next message; returns `*RecvError{Result: RecvBusy}` if a receive-callback handler is already installed — this binding's `Recv`/callback path are mutually exclusive on ROUTER |
+| `Request(peerRID RoutingID) RequestOp` | Messaging category's `RequestOp`, addressed to a specific peer |
+| `Reply(rid RoutingID, requestSeq uint64) ReplyOp` | Messaging category's `ReplyOp`, answering that peer's request |
+| `OnSendReady(handler func()) error` | registers a back-pressure-cleared callback |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `SetMandatory(bool) error` | **set-only**; error instead of silent drop on an unknown route |
+| `SetProbe(bool) error` | **set-only**; sends an empty probe on connect |
+| `SetHandover(bool) error` | **set-only** convenience over `CommonOptions().SetRidDuplicatePolicy`, mapping `true` to `RidDuplicateHandover` — both paths reach the same underlying option |
+| `SetConnectRoutingID(RoutingID) error` | **set-only — no getter for the assigned connect routing id**, unlike dotnet's/cpp's read-only `ConnectRoutingId` property |
+| `Weight()` / `SetWeight(int)` | load-balancing weight, both directions |
+| `RequestTimeout()` / `SetRequestTimeout(time.Duration)` | request timeout, **both directions, unlike Dealer's set-only** |
+| `OnCompletionControl(handler func(*Received)) error` | registers the callback that receives incoming completion-control records |
+| `CompletionControl(peerRID RoutingID) SendOp` | an opaque control-plane record addressed to a peer; the control plane accepts no send flags — `Flags` values other than `SendFlagsNone` are rejected at submit time |
 
 **Completion result.** `Recv` follows the same convention as `PairSocket`.
 
@@ -206,18 +239,22 @@ var msg contracts.TopicMessage
 ok, err := sub.Subscribe(&msg, contracts.RecvFlagsNone)
 ```
 
-**Options.** `PubSocket`: `Publish(topic string) SendOp`, `OnSendReady(handler func()) error`,
-`PubOptions() *PubSocketOptions`. **Neither `PubSocket` nor `XPubSocket` declares
-`SetRoutingID`/`RoutingID`** — no routing-id surface at all on either type in this binding, the
-same as every other language covered so far. `SubSocket`/`XSubSocket`: `Subscribe(out
-*TopicMessage, flags RecvFlags) (bool, error)`, `SetSubscription(filter string) error`/
-`UnsetSubscription(filter string) error` (subscriptions accumulate), `SubscriptionAt(index int)
-(string, bool, error)` (a `(filter, isPattern, error)` triple), `TopicsCount() (int, error)`.
-**Neither `SubSocket` nor `XSubSocket` declares `OnSendReady`** — the only socket types in this
-binding without it. `XPubSocket` adds `ReceiveSubscriptionEvent(out *SubscriptionEvent, flags
-RecvFlags) (bool, error)` and its own `Publish(topic string) SendOp` (a copy, not reused from
-`PubSocket`, though identical in shape) on top of the `PubSocket` surface it embeds via
-`publishSocket`.
+**Options.** **Neither `PubSocket` nor `XPubSocket` declares `SetRoutingID`/`RoutingID`** — no
+routing-id surface at all on either type in this binding, the same as every other language covered
+so far. **Neither `SubSocket` nor `XSubSocket` declares `OnSendReady`** — the only socket types in
+this binding without it.
+
+| Type | Member | Meaning |
+| --- | --- | --- |
+| `PubSocket` | `Publish(topic string) SendOp` | starts the shared send builder |
+| | `OnSendReady(handler func()) error` | registers a back-pressure-cleared callback |
+| | `PubOptions() *PubSocketOptions` | the per-type options facade |
+| `SubSocket` / `XSubSocket` | `Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)` | populates `out` with the next matching publish |
+| | `SetSubscription(filter string) error` / `UnsetSubscription(filter string) error` | adds/removes a topic filter; subscriptions accumulate |
+| | `SubscriptionAt(index int) (string, bool, error)` | a `(filter, isPattern, error)` triple — the filter at that index |
+| | `TopicsCount() (int, error)` | active subscription count |
+| `XPubSocket` | `ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)` | populates `out` with the next subscribe/unsubscribe, added on top of the `PubSocket` surface it embeds via `publishSocket` |
+| | `Publish(topic string) SendOp` | its own copy, not reused from `PubSocket`, though identical in shape |
 
 **Completion result.** `Subscribe`/`ReceiveSubscriptionEvent` follow the same `(false,
 nil)`-on-`DontWait` convention.
@@ -242,14 +279,17 @@ stream.OnPacket(func(routingID contracts.RoutingID, header, body *contracts.Mess
 })
 ```
 
-**Options.** `SendTo(target RoutingID) SendOp`, `Recv(out *Received, flags RecvFlags) (bool,
-error)` (this binding's `Recv` additionally captures the source routing id as a send context on
-`out`, so a subsequent `out.Send()` addresses the packet's sender — a STREAM-specific enrichment),
-`OnPacket(handler func(RoutingID, *Message, *Message)) error` (the handler owns both `header` and
-`body`), `OnSendReady(handler func()) error`, `SetRoutingID(RoutingID) error`/`RoutingID()
-(RoutingID, error)`, `SetNotify(bool)`/`Notify() (bool, error)`. No `StreamSocketOptions` facade
-type exists — `SetNotify`/`Notify` are declared directly on `StreamSocket`, unlike `PubSocketOptions`'s
-separate facade shape.
+**Options.** No `StreamSocketOptions` facade type exists — `SetNotify`/`Notify` are declared
+directly on `StreamSocket`, unlike `PubSocketOptions`'s separate facade shape.
+
+| Member | Meaning |
+| --- | --- |
+| `SendTo(target RoutingID) SendOp` | starts the shared send builder, addressed to that peer |
+| `Recv(out *Received, flags RecvFlags) (bool, error)` | populates `out` with the next packet; this binding's `Recv` additionally captures the source routing id as a send context on `out`, so a subsequent `out.Send()` addresses the packet's sender — a STREAM-specific enrichment |
+| `OnPacket(handler func(RoutingID, *Message, *Message)) error` | registers a callback-driven packet loop; the handler owns both `header` and `body` |
+| `OnSendReady(handler func()) error` | registers a back-pressure-cleared callback |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | assigns/reads this socket's own routing id, observed by peers on connect |
+| `SetNotify(bool)` / `Notify() (bool, error)` | delivers peer connect/disconnect as application messages when enabled |
 
 **Completion result.** `Recv` follows the `(false, nil)`-on-`DontWait` convention.
 

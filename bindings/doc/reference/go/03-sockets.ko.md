@@ -36,18 +36,25 @@ signature는
 
 ## 공유 socket 표면(embedding을 통해, interface가 아니라)
 
-`StreamSocket`을 제외한 모든 socket type은 embedding을 통해 이 집합을
-공짜로 얻는다: `Bind(endpoint string) error`, `Connect(endpoint string)
-error`, `Unbind(endpoint string) error`, `Disconnect(endpoint string)
-error`, `DisconnectRID(peerRID RoutingID) error`, `Close() error`,
-`CommonOptions() *CommonSocketOptions`, `LastEndpoint() (string, error)`,
-`SetTLSServer(certPath, keyPath string, requireClientCert bool) error`,
-`SetTLSClient(caCertPath, hostname string, trustSystem bool) error` —
-**결합형 TLS setter만 존재한다**; rust와 달리 개별
-`SetTLSCert`/`SetTLSKey`/`SetTLSCA`/`SetTLSHostname` 메서드는 이
-binding에 없다. `StreamSocket`은 `Bind`, `Unbind`, `Close`,
-`LastEndpoint`, `SetTLSServer`, `SetTLSClient`, 그리고 소수의 개별
-`CommonSocketOptions` 값(`SetSendHighWaterMark`/`SendHighWaterMark`,
+**Options.** `StreamSocket`을 제외한 모든 socket type은 embedding을
+통해 이 집합을 공짜로 얻는다. **결합형 TLS setter만 존재한다**; rust와
+달리 개별 `SetTLSCert`/`SetTLSKey`/`SetTLSCA`/`SetTLSHostname` 메서드는
+이 binding에 없다.
+
+| Member | 의미 |
+| --- | --- |
+| `Bind(endpoint string) error` / `Unbind(endpoint string) error` | 주소에서 listen을 시작/중단 |
+| `Connect(endpoint string) error` / `Disconnect(endpoint string) error` | peer 주소로 connect/disconnect |
+| `DisconnectRID(peerRID RoutingID) error` | 해당 routing id로 식별되는 peer를 disconnect |
+| `Close() error` | native socket을 닫는다 |
+| `CommonOptions() *CommonSocketOptions` | 공유 option facade |
+| `LastEndpoint() (string, error)` | 실제로 해석된 bind 주소 |
+| `SetTLSServer(certPath, keyPath string, requireClientCert bool) error` | 결합된 서버측 TLS 설정, `Bind` 전에 적용 |
+| `SetTLSClient(caCertPath, hostname string, trustSystem bool) error` | 결합된 클라이언트측 TLS 설정, `Connect` 전에 적용 |
+
+`StreamSocket`은 `Bind`, `Unbind`, `Close`, `LastEndpoint`,
+`SetTLSServer`, `SetTLSClient`, 그리고 소수의 개별 `CommonSocketOptions`
+값(`SetSendHighWaterMark`/`SendHighWaterMark`,
 `SetReceiveHighWaterMark`/`ReceiveHighWaterMark`, `SetLinger`,
 `SetReceiveTimeout`, `SetSendTimeout`, `SetTCPKeepalive`,
 `SetTCPNoDelay`, `SetIPv6`)만 손으로 forward한다 — `Connect`,
@@ -78,31 +85,42 @@ opts.SetLinger(time.Second)
 opts.SetSubmitRetryMode(contracts.SubmitRetryLocalFailure)
 ```
 
-**Options.** `CommonSocketOptions`, 모든 accessor가 `(T, error)`/`error`
-반환: `Linger()`/`SetLinger(time.Duration)`,
-`SendHighWaterMark()`/`SetSendHighWaterMark(int)`,
-`ReceiveHighWaterMark()`/`SetReceiveHighWaterMark(int)`,
-`SendTimeout()`/`SetSendTimeout(time.Duration)`,
-`ReceiveTimeout()`/`SetReceiveTimeout(time.Duration)`,
-`Immediate()`/`SetImmediate(bool)`,
-`RidDuplicatePolicy()`/`SetRidDuplicatePolicy(RidDuplicatePolicy)`,
-`ConnectTimeout()`/`SetConnectTimeout(time.Duration)`,
-`IPv6()`/`SetIPv6(bool)`, `TCPNoDelay()`/`SetTCPNoDelay(bool)`,
-`TCPKeepalive()`/`SetTCPKeepalive(bool)`,
-`MaxMessageSize()`/`SetMaxMessageSize(int64)`,
-`Backlog()`/`SetBacklog(int)`,
-`ReconnectInterval()`/`SetReconnectInterval(time.Duration)`,
-`ReconnectIntervalMax()`/`SetReconnectIntervalMax(time.Duration)`,
-`SubmitRetryMode()`/`SetSubmitRetryMode(SubmitRetryMode)`,
-`SubmitRetryTimeout()`/`SetSubmitRetryTimeout(time.Duration)`,
-`SubmitRetryAttempts()`/`SetSubmitRetryAttempts(int)`,
-`LastEndpoint()`(읽기 전용, socket에 직접 위임). `PubSocketOptions`:
-`NoDrop()`/`SetNoDrop(bool)`, `Verbose()`/`SetVerbose(bool)`,
-`Verboser()`/`SetVerboser(bool)`, `Manual()`/`SetManual(bool)`,
-`ManualLastValue()`/`SetManualLastValue(bool)`, `TopicsCount() (int,
-error)`(읽기 전용), `WelcomeMessage()`/`SetWelcomeMessage(*Message)`,
-`ApproveSubscribe(RoutingID) error`/`RejectSubscribe(RoutingID) error`
-(set-only — 대응하는 getter 없음).
+**Options — `CommonSocketOptions`.** 모든 accessor가 `(T, error)`/`error`를
+반환한다.
+
+| Member | 의미 |
+| --- | --- |
+| `Linger()` / `SetLinger(time.Duration)` | `Close()`가 대기 중인 send를 flush하기 위해 기다리는 상한 |
+| `SendHighWaterMark()` / `SetSendHighWaterMark(int)` | outbound accounted-byte HWM |
+| `ReceiveHighWaterMark()` / `SetReceiveHighWaterMark(int)` | inbound accounted-byte HWM |
+| `SendTimeout()` / `SetSendTimeout(time.Duration)` | blocking send가 기다리는 상한 |
+| `ReceiveTimeout()` / `SetReceiveTimeout(time.Duration)` | blocking receive가 기다리는 상한 |
+| `Immediate()` / `SetImmediate(bool)` | send가 지금 당장 살아있는 연결을 요구하는지, 아니면 연결이 생길 때까지 큐잉하는지 |
+| `RidDuplicatePolicy()` / `SetRidDuplicatePolicy(RidDuplicatePolicy)` | peer가 기존 routing id를 재사용할 때 벌어지는 일 |
+| `ConnectTimeout()` / `SetConnectTimeout(time.Duration)` | connect handshake가 기다리는 상한 |
+| `IPv6()` / `SetIPv6(bool)` | socket이 IPv6 연결을 받아들이는지 |
+| `TCPNoDelay()` / `SetTCPNoDelay(bool)` | `true`면 Nagle 알고리즘을 비활성화 |
+| `TCPKeepalive()` / `SetTCPKeepalive(bool)` | OS TCP keepalive 모드 |
+| `MaxMessageSize()` / `SetMaxMessageSize(int64)` | 수신 허용하는 메시지 한 건의 최대 바이트 크기 |
+| `Backlog()` / `SetBacklog(int)` | listening socket의 대기 연결 큐 길이 |
+| `ReconnectInterval()` / `SetReconnectInterval(time.Duration)` | 재연결 시도 사이 간격 |
+| `ReconnectIntervalMax()` / `SetReconnectIntervalMax(time.Duration)` | 재연결 간격의 상한 |
+| `SubmitRetryMode()` / `SetSubmitRetryMode(SubmitRetryMode)` | local back-pressure에서 실패한 submit이 자동 재시도되는지 |
+| `SubmitRetryTimeout()` / `SetSubmitRetryTimeout(time.Duration)` | `SubmitRetryMode()`가 `SubmitRetryLocalFailure`일 때의 재시도 timeout |
+| `SubmitRetryAttempts()` / `SetSubmitRetryAttempts(int)` | `SubmitRetryMode()`가 `SubmitRetryLocalFailure`일 때의 재시도 횟수 상한 |
+| `LastEndpoint()` | 읽기 전용, socket에 직접 위임 — 실제로 해석된 bind 주소 |
+
+**Options — `PubSocketOptions`.**
+
+| Member | 의미 |
+| --- | --- |
+| `NoDrop()` / `SetNoDrop(bool)` | back-pressure에서 조용히 버리는 대신 오류 |
+| `Verbose()` / `SetVerbose(bool)` / `Verboser()` / `SetVerboser(bool)` | 중복 포함 모든 (un)subscribe 메시지를 전달 |
+| `Manual()` / `SetManual(bool)` | 구독이 자동 승인 대신 `ApproveSubscribe`/`RejectSubscribe`를 요구 |
+| `ManualLastValue()` / `SetManualLastValue(bool)` | manual 모드에 더해 새로 승인된 구독자에게 topic별 마지막 캐시 메시지도 재전송 |
+| `TopicsCount() (int, error)` | 읽기 전용, 활성 구독 개수 |
+| `WelcomeMessage()` / `SetWelcomeMessage(*Message)` | 새로 연결된 구독자 각각에게 자동 전송 |
+| `ApproveSubscribe(RoutingID) error` / `RejectSubscribe(RoutingID) error` | set-only — 대응하는 getter 없음 |
 
 **Completion result.** 모든 accessor는 동기다, 값과 함께 `error`를
 반환한다 — Core category의 `Context.Options()` 관례와 일관됨.
@@ -126,9 +144,13 @@ var received contracts.Received
 ok, err := pair.Recv(&received, contracts.RecvFlagsNone)
 ```
 
-**Options.** `Send() SendOp`(공유 send builder 시작), `Recv(out
-*Received, flags RecvFlags) (bool, error)`, `OnSendReady(handler
-func()) error`, 그리고 위 공유 lifecycle/TLS/option 표면.
+**Options.** 위 공유 lifecycle/TLS/option 표면에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `Send() SendOp` | 공유 send builder를 시작 |
+| `Recv(out *Received, flags RecvFlags) (bool, error)` | `out`을 다음 메시지로 채움 |
+| `OnSendReady(handler func()) error` | back-pressure 해제 콜백을 등록 |
 
 **Completion result.** `Recv`는 `RecvFlagsDontWait`가 설정돼 있고
 메시지가 없을 때만 `(false, nil)`을 반환한다.
@@ -151,14 +173,17 @@ dealer.Request().Message(payload).Submit(ctx, func(result contracts.RequestResul
 })
 ```
 
-**Options.** `PairSocket`과 같은 공유 표면 + `Send() SendOp`,
-`Recv(out, flags) (bool, error)`, `Request() RequestOp`(공유 request
-builder 시작 — target 인자 없음, DEALER엔 API 레벨 peer routing id가
-없기 때문), `SetRoutingID(RoutingID) error`/`RoutingID() (RoutingID,
-error)`, `SetProbe(bool) error`(**set-only, getter 없음**),
-`Weight()`/`SetWeight(int)`, `SetRequestTimeout(time.Duration) error`
-(**set-only, getter 없음** — 다른 모든 언어의 Dealer 타입에서 나타나는
-동일한 비대칭과 일치).
+**Options.** `PairSocket`과 같은 공유 표면에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `Send() SendOp` | 공유 send builder를 시작 |
+| `Recv(out, flags) (bool, error)` | `out`을 다음 메시지로 채움 |
+| `Request() RequestOp` | 공유 request builder를 시작; target 인자 없음 — DEALER엔 API 레벨 peer routing id가 없기 때문 |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `SetProbe(bool) error` | **set-only, getter 없음**; connect 시 빈 probe 전송 |
+| `Weight()` / `SetWeight(int)` | load-balancing 가중치, 양방향 모두 |
+| `SetRequestTimeout(time.Duration) error` | **set-only, getter 없음** — 다른 모든 언어의 Dealer 타입에서 나타나는 동일한 비대칭과 일치 |
 
 **Completion result.** `Recv`는 `PairSocket`과 같은 `DontWait`에서
 `(false, nil)` 관례를 따른다.
@@ -183,29 +208,26 @@ router.OnCompletionControl(func(received *contracts.Received) {
 })
 ```
 
-**Options.** `PairSocket`과 같은 공유 표면 + `SendTo(target RoutingID)
-SendOp`, `Recv(out, flags) (bool, error)`(receive-callback handler가
-이미 설치돼 있으면 `*RecvError{Result: RecvBusy}`를 반환 — 이
-binding에서 `Recv`와 callback 경로는 ROUTER에서 상호 배타적),
-`Request(peerRID RoutingID) RequestOp`(Messaging category의
-`RequestOp`, 특정 peer로 향함), `Reply(rid RoutingID, requestSeq
-uint64) ReplyOp`(Messaging category의 `ReplyOp`), `OnSendReady(handler
-func()) error`, `SetRoutingID(RoutingID) error`/`RoutingID()
-(RoutingID, error)`, `SetMandatory(bool) error`(**set-only**),
-`SetProbe(bool) error`(**set-only**), `SetHandover(bool) error`
-(**set-only** — `CommonOptions().SetRidDuplicatePolicy` 위의 편의
-메서드, `true`를 `RidDuplicateHandover`로 매핑 — 두 경로 모두 같은
-밑바탕 option에 닿는다), `SetConnectRoutingID(RoutingID) error`
-(**set-only — 할당된 connect routing id의 getter 없음**, 읽기 전용
-`ConnectRoutingId` property를 가진 dotnet/cpp와 다름),
-`Weight()`/`SetWeight(int)`,
-`RequestTimeout()`/`SetRequestTimeout(time.Duration)`(**양방향 모두,
-Dealer의 set-only와 다름**), `OnCompletionControl(handler
-func(*Received)) error`/`CompletionControl(peerRID RoutingID) SendOp`
-(peer로 향하는 opaque control-plane record; control plane은 send
-flag를 전혀 받지 않는다 — `SendFlagsNone` 외의 `Flags` 값은 submit
-시점에 거부된다). **이 binding은 ROUTER에서 completion-control을
-실제로 구현한다**, 대응하는 공개 진입점을 선언하지 않는 rust와 다르다.
+**Options.** `PairSocket`과 같은 공유 표면에 더해. **이 binding은
+ROUTER에서 completion-control을 실제로 구현한다**, 대응하는 공개
+진입점을 선언하지 않는 rust와 다르다.
+
+| Member | 의미 |
+| --- | --- |
+| `SendTo(target RoutingID) SendOp` | 공유 send builder를 그 peer로 향해 시작 |
+| `Recv(out, flags) (bool, error)` | `out`을 다음 메시지로 채움; receive-callback handler가 이미 설치돼 있으면 `*RecvError{Result: RecvBusy}`를 반환 — 이 binding에서 `Recv`와 callback 경로는 ROUTER에서 상호 배타적 |
+| `Request(peerRID RoutingID) RequestOp` | Messaging category의 `RequestOp`, 특정 peer로 향함 |
+| `Reply(rid RoutingID, requestSeq uint64) ReplyOp` | Messaging category의 `ReplyOp`, 해당 peer의 request에 응답 |
+| `OnSendReady(handler func()) error` | back-pressure 해제 콜백을 등록 |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `SetMandatory(bool) error` | **set-only**; 알 수 없는 route에서 조용히 버리는 대신 오류 |
+| `SetProbe(bool) error` | **set-only**; connect 시 빈 probe 전송 |
+| `SetHandover(bool) error` | **set-only** — `CommonOptions().SetRidDuplicatePolicy` 위의 편의 메서드, `true`를 `RidDuplicateHandover`로 매핑 — 두 경로 모두 같은 밑바탕 option에 닿는다 |
+| `SetConnectRoutingID(RoutingID) error` | **set-only — 할당된 connect routing id의 getter 없음**, 읽기 전용 `ConnectRoutingId` property를 가진 dotnet/cpp와 다름 |
+| `Weight()` / `SetWeight(int)` | load-balancing 가중치, 양방향 모두 |
+| `RequestTimeout()` / `SetRequestTimeout(time.Duration)` | request timeout, **양방향 모두, Dealer의 set-only와 다름** |
+| `OnCompletionControl(handler func(*Received)) error` | 들어오는 completion-control record를 받는 콜백을 등록 |
+| `CompletionControl(peerRID RoutingID) SendOp` | peer로 향하는 opaque control-plane record; control plane은 send flag를 전혀 받지 않는다 — `SendFlagsNone` 외의 `Flags` 값은 submit 시점에 거부된다 |
 
 **Completion result.** `Recv`는 `PairSocket`과 같은 관례를 따른다.
 
@@ -236,22 +258,23 @@ var msg contracts.TopicMessage
 ok, err := sub.Subscribe(&msg, contracts.RecvFlagsNone)
 ```
 
-**Options.** `PubSocket`: `Publish(topic string) SendOp`,
-`OnSendReady(handler func()) error`, `PubOptions() *PubSocketOptions`.
-**`PubSocket`도 `XPubSocket`도 `SetRoutingID`/`RoutingID`를 선언하지
-않는다** — 둘 다 이 binding에 routing-id 표면이 전혀 없다, 지금까지
-다룬 다른 모든 언어와 동일하다. `SubSocket`/`XSubSocket`:
-`Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)`,
-`SetSubscription(filter string) error`/`UnsetSubscription(filter
-string) error`(subscription은 누적됨), `SubscriptionAt(index int)
-(string, bool, error)`(`(filter, isPattern, error)` triple),
-`TopicsCount() (int, error)`. **`SubSocket`도 `XSubSocket`도
+**Options.** **`PubSocket`도 `XPubSocket`도 `SetRoutingID`/`RoutingID`를
+선언하지 않는다** — 둘 다 이 binding에 routing-id 표면이 전혀 없다,
+지금까지 다룬 다른 모든 언어와 동일하다. **`SubSocket`도 `XSubSocket`도
 `OnSendReady`를 선언하지 않는다** — 이 binding에서 유일하게
-`OnSendReady`가 없는 socket type이다. `XPubSocket`은
-`ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags)
-(bool, error)`와 그 자신의 `Publish(topic string) SendOp`(재사용이
-아니라 복사본, 형태는 동일)를 `publishSocket`을 통해 embed하는
-`PubSocket` 표면 위에 추가한다.
+`OnSendReady`가 없는 socket type이다.
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `PubSocket` | `Publish(topic string) SendOp` | 공유 send builder를 시작 |
+| | `OnSendReady(handler func()) error` | back-pressure 해제 콜백을 등록 |
+| | `PubOptions() *PubSocketOptions` | 타입별 option facade |
+| `SubSocket` / `XSubSocket` | `Subscribe(out *TopicMessage, flags RecvFlags) (bool, error)` | `out`을 다음 매칭 publish로 채움 |
+| | `SetSubscription(filter string) error` / `UnsetSubscription(filter string) error` | topic filter를 추가/제거; subscription은 누적된다 |
+| | `SubscriptionAt(index int) (string, bool, error)` | `(filter, isPattern, error)` triple — 해당 index의 filter |
+| | `TopicsCount() (int, error)` | 활성 구독 개수 |
+| `XPubSocket` | `ReceiveSubscriptionEvent(out *SubscriptionEvent, flags RecvFlags) (bool, error)` | `out`을 다음 subscribe/unsubscribe로 채움, `publishSocket`을 통해 embed하는 `PubSocket` 표면 위에 추가됨 |
+| | `Publish(topic string) SendOp` | 자신만의 복사본, `PubSocket`에서 재사용된 게 아니지만 형태는 동일 |
 
 **Completion result.** `Subscribe`/`ReceiveSubscriptionEvent`는 같은
 `DontWait`에서 `(false, nil)` 관례를 따른다.
@@ -277,17 +300,18 @@ stream.OnPacket(func(routingID contracts.RoutingID, header, body *contracts.Mess
 })
 ```
 
-**Options.** `SendTo(target RoutingID) SendOp`, `Recv(out *Received,
-flags RecvFlags) (bool, error)`(이 binding의 `Recv`는 추가로 source
-routing id를 `out`에 send context로 캡처한다, 그래서 이어지는
-`out.Send()`는 packet의 발신자로 향한다 — STREAM 전용 보강), `OnPacket
-(handler func(RoutingID, *Message, *Message)) error`(handler가
-`header`와 `body` 둘 다 소유), `OnSendReady(handler func()) error`,
-`SetRoutingID(RoutingID) error`/`RoutingID() (RoutingID, error)`,
-`SetNotify(bool)`/`Notify() (bool, error)`. `StreamSocketOptions`
-facade 타입은 존재하지 않는다 — `SetNotify`/`Notify`는
-`StreamSocket`에 직접 선언돼 있다, `PubSocketOptions`의 별도 facade
-형태와 다르다.
+**Options.** `StreamSocketOptions` facade 타입은 존재하지 않는다 —
+`SetNotify`/`Notify`는 `StreamSocket`에 직접 선언돼 있다,
+`PubSocketOptions`의 별도 facade 형태와 다르다.
+
+| Member | 의미 |
+| --- | --- |
+| `SendTo(target RoutingID) SendOp` | 공유 send builder를 그 peer로 향해 시작 |
+| `Recv(out *Received, flags RecvFlags) (bool, error)` | `out`을 다음 packet으로 채움; 이 binding의 `Recv`는 추가로 source routing id를 `out`에 send context로 캡처한다, 그래서 이어지는 `out.Send()`는 packet의 발신자로 향한다 — STREAM 전용 보강 |
+| `OnPacket(handler func(RoutingID, *Message, *Message)) error` | callback 기반 packet loop를 등록; handler가 `header`와 `body` 둘 다 소유 |
+| `OnSendReady(handler func()) error` | back-pressure 해제 콜백을 등록 |
+| `SetRoutingID(RoutingID) error` / `RoutingID() (RoutingID, error)` | 이 socket 자신의 routing id를 지정/조회, peer가 connect 시 관찰 |
+| `SetNotify(bool)` / `Notify() (bool, error)` | 활성화 시 peer connect/disconnect를 application 메시지로 전달 |
 
 **Completion result.** `Recv`는 `DontWait`에서 `(false, nil)` 관례를
 따른다.

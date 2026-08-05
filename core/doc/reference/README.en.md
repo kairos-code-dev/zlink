@@ -53,7 +53,7 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | Category | Status | Corresponding spec |
 |---|---|---|
 | [Context](01-context.en.md) | Drafted | 01-context |
-| Message | Not started | 02-message |
+| [Message](02-message.en.md) | Drafted | 02-message |
 | Socket lifecycle | Not started | socket/README §Functions (create/bind/connect/disconnect/close) |
 | Socket options and identity | Not started | socket/README §Socket Options, §Dedicated Functions |
 | Raw receive | Not started | socket/README §Receive Model Summary, 03-errors §4 |

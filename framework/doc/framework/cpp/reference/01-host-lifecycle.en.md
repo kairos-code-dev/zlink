@@ -5,7 +5,7 @@
 This category covers the host registration, relocation, shutdown, and status entry points that
 `app_t` provides, and the health registration that `app_t::health()` provides. The exact
 signatures are owned by the
-[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 and the
 [Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 (Korean-only).
@@ -200,7 +200,7 @@ external orchestrator will query.
 ---
 
 See the
-[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 and the
 [Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 (Korean-only) for the full rationale.

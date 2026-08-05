@@ -9,7 +9,7 @@ title: "18. DI Container · C++"
 # 18. DI Container
 
 > **The document that owns this chapter's contract** — covered by
-> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md).
+> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md).
 > This chapter explains registration and resolution for the C++-only built-in DI container.
 
 The framework has a built-in ASP.NET Core-style DI (dependency injection) container.
@@ -252,6 +252,6 @@ only `const` methods.
 
 ## 9. Related Documents
 
-- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 - Reading config values: [19. Configuration](19-configuration.ko.md)
 - The list of injectable types: [13. Key Type Usage Index](13-interface-catalog.en.md)

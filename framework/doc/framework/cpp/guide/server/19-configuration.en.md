@@ -9,7 +9,7 @@ title: "19. Configuration · C++"
 # 19. Configuration
 
 > **The document that owns this chapter's contract** — covered by
-> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md).
+> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md).
 > This chapter explains how to read config values from the CLI, environment variables, and
 > JSON files. What you can configure is collected in [16. Options](16-options.en.md).
 
@@ -160,6 +160,6 @@ auto suffix = app.config ().environment ();     // "staging"
 
 ## 8. Related Documents
 
-- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 - The list of configurable values: [16. Options](16-options.en.md)
 - DI registration: [18. DI Container](18-di-container.en.md)

@@ -247,7 +247,7 @@ distinguished by type.
 **The framework provides an embedded HTTP server.** The contract is
 owned by [60](60-http-hosting.ko.md) · [61](61-embedded-http-server.ko.md),
 and the public type is owned by
-[configuration and host](interfaces/02-configuration-host.ko.md). Here
+[configuration and host](interfaces/02-configuration-host.en.md). Here
 only the **rule that hits system structure** is summarized.
 
 ### 7.1 Per-Request DI Scope

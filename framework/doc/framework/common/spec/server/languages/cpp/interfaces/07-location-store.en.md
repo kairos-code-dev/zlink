@@ -43,7 +43,7 @@ struct location_options_t {
 ```
 
 The Store registration member is owned by
-[Configuration and host](02-configuration-host.ko.md)'s
+[Configuration and host](02-configuration-host.en.md)'s
 `zlink_framework_options_t`. The application registers each of the two
 capabilities once with the existing `add_location_store(...)` and
 `add_relocation_store(...)`. A `use_*` member of the same meaning, or a

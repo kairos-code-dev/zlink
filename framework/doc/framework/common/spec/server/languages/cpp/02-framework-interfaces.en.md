@@ -8,7 +8,7 @@ category document in the
 [C++ exact interface table of contents](interfaces/README.en.md).
 
 - [Common runtime](interfaces/01-common-runtime.ko.md)
-- [Configuration and host](interfaces/02-configuration-host.ko.md)
+- [Configuration and host](interfaces/02-configuration-host.en.md)
 - [Channel messaging](interfaces/03-channel-messaging.ko.md)
 - [Spot](interfaces/04-spots.ko.md)
 - [Actor](interfaces/05-actors.ko.md)

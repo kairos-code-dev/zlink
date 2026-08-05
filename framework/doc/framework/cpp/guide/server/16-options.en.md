@@ -9,7 +9,7 @@ title: "16. Options — Setting List And Defaults · C++"
 # 16. Options — Setting List And Defaults
 
 > **The document that owns this chapter's contract** — covered by
-> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md).
+> [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md).
 > This chapter organizes that surface as a list, showing what you can set and what happens
 > when you don't. Reading values from a config file is covered by
 > [19. Configuration](19-configuration.ko.md).
@@ -221,7 +221,7 @@ These have no default, so startup fails if you don't specify them.
 
 ## 10. Related Documents
 
-- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+- The formal contract: [C++ configuration and host public contract](../../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 - Reading values from a config file: [19. Configuration](19-configuration.ko.md)
 - What each cap changes: [4. Backpressure](04-backpressure.en.md)
 - The procedure for draining traffic with weights: [12. Operations](12-operations.en.md)

@@ -370,7 +370,7 @@ and process survival (liveness) are different questions.
 ## 4. Structured Logging And Metric Provider Boundary
 
 The application configures the standard logging provider with
-[Configuration and host](02-configuration-host.ko.md)'s
+[Configuration and host](02-configuration-host.en.md)'s
 `logging_builder_t`. Runtime state change and diagnostic information
 are delivered through `log_record_t`'s identifier and field.
 

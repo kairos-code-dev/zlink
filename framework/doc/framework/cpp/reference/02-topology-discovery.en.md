@@ -7,7 +7,7 @@ and the entry points that query RouteMesh/ClientServer/Fanout operational status
 signatures are owned by the
 [Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 and the
-[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 (Korean-only). Every registration entry point is a call made at host configuration time.
 
 ---
@@ -416,5 +416,5 @@ or `status()` (observability-diagnostics category).
 See the
 [Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.en.md)
 and the
-[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
+[Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.en.md)
 (Korean-only) for the full rationale.

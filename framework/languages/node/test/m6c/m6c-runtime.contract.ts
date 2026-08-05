@@ -551,7 +551,7 @@ test('canonical command 33 and 46 match the shared reply-relay byte fixture', ()
       contentType: 'application/json',
       bytes: Buffer.from('{}')
     }
-  }), /no payload/);
+  }), /must not carry a payload/);
 
   const ack = {
     relocation: { high: 4n, low: 5n },

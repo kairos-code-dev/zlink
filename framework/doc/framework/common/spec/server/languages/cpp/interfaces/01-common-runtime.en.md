@@ -342,7 +342,7 @@ state** and isn't a public contract.
 ### 7.1 Dispatch Error Contract
 
 A dispatch failure doesn't make a separate event type — it's expressed
-as [Monitoring §2](08-monitoring.ko.md#2-메시지-흐름-관측)'s
+as [Monitoring §2](08-monitoring.en.md#2-message-flow-observation)'s
 `message_flow_event_t`. The closed value and conditional field rule of
 `surface`, `message_kind`, `reason`, `action` is owned by
 [Message Flow Tracing §3-§4](../../../../26-message-flow-tracing.en.md).
@@ -351,7 +351,7 @@ as [Monitoring §2](08-monitoring.ko.md#2-메시지-흐름-관측)'s
 
 `handler_execution_t` distinguishes how a handler executes. The exact
 declaration of dispatch diagnostics, message-flow, and error event is
-owned by the [Monitoring interface](08-monitoring.ko.md).
+owned by the [Monitoring interface](08-monitoring.en.md).
 
 ### 7.3 Worker
 

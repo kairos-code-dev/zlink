@@ -7,7 +7,7 @@ This category covers the host registration, relocation, shutdown, and status ent
 signatures are owned by the
 [Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
 and the
-[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
+[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 (Korean-only).
 
 ---
@@ -202,5 +202,5 @@ external orchestrator will query.
 See the
 [Configuration and host exact interface](../../common/spec/server/languages/cpp/interfaces/02-configuration-host.ko.md)
 and the
-[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
+[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 (Korean-only) for the full rationale.

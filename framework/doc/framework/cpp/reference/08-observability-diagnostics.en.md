@@ -7,7 +7,7 @@ trace/metric/log recording level; `framework_runtime_t`, which reads host/topolo
 `logging_builder_t`, which configures structured logging; and the `framework_error_kind_t`
 correspondence table used to judge failures across every category. The exact signatures are owned
 by the
-[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
+[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 and the
 [Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
 (Korean-only).
@@ -145,7 +145,7 @@ directly, checking the operation's completion condition, idempotency, and busine
 ---
 
 See the
-[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
+[Monitoring exact interface](../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 and the
 [Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
 (Korean-only) for the full rationale.

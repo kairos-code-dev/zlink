@@ -9,7 +9,7 @@ title: "11. Monitoring — Status Observation And Diagnostics · C++"
 # 11. Monitoring — Status Observation And Diagnostics
 
 > **The document that owns this chapter's contract** — covered by
-> [C++ monitoring public contract](../../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md).
+> [C++ monitoring public contract](../../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md).
 > This chapter explains the four observation surfaces that contract exposes, focused on
 > usage.
 
@@ -179,7 +179,7 @@ Metric names, kinds, units, and labels are owned by
 
 ## 7. Related Documents
 
-- The formal contract: [C++ monitoring public contract](../../../common/spec/server/languages/cpp/interfaces/08-monitoring.ko.md)
+- The formal contract: [C++ monitoring public contract](../../../common/spec/server/languages/cpp/interfaces/08-monitoring.en.md)
 - Metrics and drain/readiness operations: [12. Operations](12-operations.en.md)
 - Logging provider configuration: [19. Configuration](19-configuration.ko.md)
 - HTTP endpoint registration: [20. HTTP Hosting](20-http-hosting.ko.md)

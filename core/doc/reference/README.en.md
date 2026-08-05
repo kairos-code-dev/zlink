@@ -64,7 +64,7 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [XSUB](10-xsub.en.md) | Drafted | socket/05-xsub |
 | [DEALER](11-dealer.en.md) | Drafted | socket/06-dealer |
 | [ROUTER](12-router.en.md) | Drafted | socket/07-router |
-| STREAM | Not started | socket/08-stream |
+| [STREAM](13-stream.en.md) | Drafted | socket/08-stream |
 | Socket monitor | Not started | 07-monitoring, 05-events |
 | Polling and pollers | Not started | 06-polling, 05-events |
 | Timers | Not started | 08-utilities §Timers |

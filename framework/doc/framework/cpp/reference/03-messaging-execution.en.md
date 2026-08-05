@@ -205,5 +205,5 @@ These apply in common to every entry point in this category and are not repeated
 See the
 [Channel messaging exact interface](../../common/spec/server/languages/cpp/interfaces/03-channel-messaging.ko.md)
 and the
-[Common runtime exact interface](../../common/spec/server/languages/cpp/interfaces/01-common-runtime.ko.md)
+[Common runtime exact interface](../../common/spec/server/languages/cpp/interfaces/01-common-runtime.en.md)
 (Korean-only) for the full rationale.

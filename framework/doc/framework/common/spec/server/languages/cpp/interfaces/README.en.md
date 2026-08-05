@@ -9,7 +9,7 @@ constraint, and default value.
 
 | Document | Owned contract and installed public header |
 |---|---|
-| [Common runtime](01-common-runtime.ko.md) | Defines the common public type of `dispatch`, `errors`, `messaging`, `codecs`, and `workers`. |
+| [Common runtime](01-common-runtime.en.md) | Defines the common public type of `dispatch`, `errors`, `messaging`, `codecs`, and `workers`. |
 | [Configuration and host](02-configuration-host.ko.md) | Defines `configuration`, `http`, host, DI, module, and the relocation and shutdown lifecycle public interface that distinguishes planned maintenance/rolling update. |
 | [Channel messaging](03-channel-messaging.ko.md) | Defines `channels` and `handlers`, topology builder, Object role/capacity/weight, and the automatic RID contract. |
 | [Spots](04-spots.ko.md) | Defines global SpotId/SpotRef, the relocation adapter and callback, Instance Spot cold activation, and the [User Spot](../../../../01-glossary.en.md#entry-spot-user-spot-and-instance-spot) manager. |

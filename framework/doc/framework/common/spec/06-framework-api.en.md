@@ -582,7 +582,7 @@ interfaces.
 | Java | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/java/interfaces/README.ko.md), [connector](stream-connector/languages/java/03-stream-connector.ko.md) |
 | Kotlin | `codecs().use(extension)` | connector's `typedCodec` option | [server](server/languages/kotlin/interfaces/README.ko.md), [Java/Kotlin connector](stream-connector/languages/java/03-stream-connector.ko.md) |
 | Node.js | `codecs().use(extension)` | connector's `codec` option | [server](server/languages/node/interfaces/README.ko.md), [connector](stream-connector/languages/typescript/03-stream-connector.ko.md) |
-| C++ | `codecs().use(extension)` | `connector_options_t::typed_codec` | [server](server/languages/cpp/interfaces/01-common-runtime.ko.md), [connector](stream-connector/languages/cpp/03-stream-connector.ko.md) |
+| C++ | `codecs().use(extension)` | `connector_options_t::typed_codec` | [server](server/languages/cpp/interfaces/01-common-runtime.en.md), [connector](stream-connector/languages/cpp/03-stream-connector.ko.md) |
 
 Both registration surfaces project the same typed-payload contract, but that doesn't mean
 the concrete types of the server extension object and connector option must also match. The

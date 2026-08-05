@@ -87,6 +87,8 @@ libunity.a
 *.la
 *.exe
 *.html
+# mkdocs custom_dir 포크 파일 — 생성물이 아니라 커밋 대상인 소스다.
+!doc/site/overrides/**/*.html
 *.pdf
 *.ps
 *~

@@ -66,12 +66,23 @@ public final class ZLinkAggregateRelocationCoordinator {
         ZLinkStoreCancellation cancellation) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(cancellation, "cancellation");
-        byte[] digest = inventoryDigest(request.participants());
+        return stageRoot(
+            request,
+            inventoryDigest(request.participants()),
+            cancellation);
+    }
+
+    private CompletionStage<StagedRoot> stageRoot(
+        Request request,
+        byte[] digest,
+        ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(request, "request");
+        byte[] expectedDigest = Objects.requireNonNull(digest, "digest").clone();
         byte[] root = request.root();
         return ZLinkRelocationTreeStore.put(
                 relocationStore,
                 root,
-                digest,
+                expectedDigest,
                 RETENTION,
                 cancellation)
             .thenCompose(tree -> ZLinkRelocationTreeStore.read(
@@ -89,7 +100,7 @@ public final class ZLinkAggregateRelocationCoordinator {
                     return CompletableFuture.completedFuture(new StagedRoot(
                         request,
                         tree.root(),
-                        digest));
+                        expectedDigest));
                 }));
     }
 
@@ -564,9 +575,6 @@ public final class ZLinkAggregateRelocationCoordinator {
                                         ::authorityOwnerGeneration)
                                     .toList()));
                     }
-                    long mutationGeneration = canonicalMutationGeneration(
-                        successor.canonicalBytes(),
-                        publication.sourceCleanupCompleted());
                     List<Participant> mutations = new ArrayList<>();
                     for (int index = 0; index < expected.size(); index++) {
                         var participant = expected.get(index);
@@ -584,7 +592,7 @@ public final class ZLinkAggregateRelocationCoordinator {
                     var allocation = snapshots.getFirst().allocation();
                     var request = new Request(
                         publication.aggregateId(),
-                        mutationGeneration,
+                        publication.aggregateGeneration(),
                         mutations,
                         successor.canonicalBytes(),
                         allocation.descriptor(),
@@ -592,57 +600,69 @@ public final class ZLinkAggregateRelocationCoordinator {
                         new ZLinkPlacementCapacityBundle(
                             0, 0, java.util.Optional.empty()),
                         targetOwner);
-                    return stageRoot(request, cancellation)
-                        .thenCompose(staged -> prepareAuthority(
+                    return stageRoot(
                             request,
-                            staged.inventoryDigest(),
+                            stored.inventoryDigest(),
+                            cancellation)
+                        .thenCompose(staged -> updateCanonicalAuthorities(
+                            mutations,
+                            request,
                             staged.stored(),
-                            cancellation,
-                            publication.sourceCleanupCompleted()))
-                        .thenCompose(prepared -> commit(prepared, cancellation))
-                        .thenCompose(committed -> readCanonicalVersions(
-                            expected, successor, cancellation));
+                            successor,
+                            publication.sourceCleanupCompleted(),
+                            cancellation));
                 });
         });
     }
 
-    private CompletionStage<CanonicalProgress> readCanonicalVersions(
-        List<ExpectedParticipant> participants,
+    /**
+     * Applies a post-commit root or replay transition with the ordinary
+     * StoreVersion CAS. The bounded aggregate commit is reserved for the
+     * initial ownership, membership and capacity transition.
+     */
+    private CompletionStage<CanonicalProgress> updateCanonicalAuthorities(
+        List<Participant> participants,
+        Request request,
+        ZLinkRelocationStored stored,
         ZLinkServiceRelocationEnvelopeCodec.Envelope root,
+        boolean sourceCleanupCompleted,
         ZLinkStoreCancellation cancellation) {
         List<String> versions = new ArrayList<>();
         List<Long> ownerGenerations = new ArrayList<>();
-        CompletionStage<Void> reads = CompletableFuture.completedFuture(null);
-        for (ExpectedParticipant participant : participants) {
-            reads = reads.thenCompose(ignored -> authorityStore.read(
-                    participant.authorityKey(), cancellation)
-                .thenAccept(result -> {
-                    if (!(result instanceof ZLinkAuthoritySnapshot snapshot)) {
-                        throw new RelocationDataLostException(
-                            "canonical replay authority disappeared");
-                    }
-                    versions.add(snapshot.storeVersion());
-                    ownerGenerations.add(snapshot.authorityOwnerGeneration());
-                }));
+        CompletionStage<Void> writes = CompletableFuture.completedFuture(null);
+        for (Participant participant : participants) {
+            byte[] payload =
+                ZLinkCanonicalRelocationAuthorityStateCodec.publish(
+                    participant.applicationAuthorityPayload(),
+                    request,
+                    ZLinkAuthorityGenerationTransition.PRESERVE,
+                    stored,
+                    sourceCleanupCompleted);
+            writes = writes.thenCompose(ignored ->
+                authorityStore.compareExchange(
+                        participant.authorityKey(),
+                        new ZLinkAuthorityExpectFound(
+                            participant.expectedStoreVersion()),
+                        new ZLinkAuthorityPut(
+                            payload,
+                            ZLinkAuthorityGenerationTransition.PRESERVE,
+                            java.util.Optional.empty(),
+                            java.util.Optional.empty()),
+                        cancellation)
+                    .thenCompose(result -> {
+                        if (!(result instanceof ZLinkAuthorityStored value)) {
+                            return failed(new RelocationDataLostException(
+                                "post-commit canonical authority CAS conflicted: "
+                                    + participant.authorityKey()));
+                        }
+                        versions.add(value.storeVersion());
+                        ownerGenerations.add(
+                            value.authorityOwnerGeneration());
+                        return CompletableFuture.completedFuture(null);
+                    }));
         }
-        return reads.thenApply(ignored -> new CanonicalProgress(
+        return writes.thenApply(ignored -> new CanonicalProgress(
             root, versions, ownerGenerations));
-    }
-
-    private static long canonicalMutationGeneration(
-        byte[] root,
-        boolean sourceCleanupCompleted) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update(root);
-            digest.update((byte) (sourceCleanupCompleted ? 1 : 0));
-            long value = java.nio.ByteBuffer.wrap(digest.digest())
-                .order(java.nio.ByteOrder.BIG_ENDIAN)
-                .getLong() & Long.MAX_VALUE;
-            return value == 0 ? 1 : value;
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
     }
 
     /** Reads the exact completion published by command 33's authority fence. */

@@ -1,6 +1,6 @@
 # Spec -- ZLink HTTP Client For Kotlin
 
-> See the [user guide](../../../../../kotlin/guide/http-client/README.ko.md)
+> See the [user guide](../../../../../kotlin/guide/http-client/README.en.md)
 > for a usage-focused document.
 > **The language-neutral common contract is owned by the
 > [common spec](../../README.en.md)**, and this document only

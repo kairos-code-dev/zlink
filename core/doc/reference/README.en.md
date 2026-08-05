@@ -67,8 +67,8 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [STREAM](13-stream.en.md) | Drafted | socket/08-stream |
 | [Socket monitor](14-socket-monitor.en.md) | Drafted | 07-monitoring, 05-events |
 | [Polling and pollers](15-polling.en.md) | Drafted | 06-polling, 05-events |
-| Timers | Not started | 08-utilities §Timers |
-| Utilities | Not started | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
+| [Timers](16-timers.en.md) | Drafted | 08-utilities §Timers |
+| [Utilities](17-utilities.en.md) | Drafted | 08-utilities §Atomic Counter, §Stopwatch, §Miscellaneous |
 | Errors, results, and version | Not started | 03-errors, 04-errno-map |
 
 Filenames follow `NN-slug.en.md`/`NN-slug.ko.md` in the numbering above once drafted; the table

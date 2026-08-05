@@ -9,8 +9,8 @@ full document list.
 - Channel/request/routing: [Channel, Request, And Routing](interfaces/02-channel-messaging.ko.md)
 - Location/monitoring/metrics: [Location, Monitoring, And Metrics](interfaces/03-location-observability.ko.md)
 - Spot and Instance Spot: [Spot And Instance Spot](interfaces/04-spots.ko.md)
-- Actor and session binding: [Actor And Session Binding](interfaces/05-actors.ko.md)
-- STREAM/timer/worker: [STREAM, Timer, And Worker](interfaces/06-stream-worker.ko.md)
+- Actor and session binding: [Actor And Session Binding](interfaces/05-actors.en.md)
+- STREAM/timer/worker: [STREAM, Timer, And Worker](interfaces/06-stream-worker.en.md)
 - NestJS adapter: [NestJS Host Adapter](interfaces/07-nestjs-host.ko.md)
 - Location/Relocation provider: [Location/Relocation Provider](interfaces/08-location-maintenance.ko.md)
 

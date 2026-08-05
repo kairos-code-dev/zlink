@@ -8,7 +8,7 @@ entry points used inside Spot code via `ZLinkSpotContext`/`ZLinkInstanceSpotCont
 signatures are owned by the
 [Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.ko.md)
 and the
-[STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.ko.md)
+[STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.en.md)
 (Korean-only).
 
 ---
@@ -359,5 +359,5 @@ to a specific turn boundary. This call is not needed under the default `AnyTurnB
 See the
 [Spot and Instance Spot exact interface](../../common/spec/server/languages/node/interfaces/04-spots.ko.md)
 and the
-[STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.ko.md)
+[STREAM, timer, and worker exact interface](../../common/spec/server/languages/node/interfaces/06-stream-worker.en.md)
 (Korean-only) for the full rationale.

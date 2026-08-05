@@ -6,7 +6,7 @@ This category covers the external entry points `ZLinkActorManager` (`ZLINK_ACTOR
 `ZLinkActorClient` (`ZLINK_ACTOR_CLIENT`) provide, the entry point for joining a Spot from inside
 Actor code via `ZLinkActorContext`, and relocation policy selection. The exact signatures are
 owned by the
-[Actor and session binding exact interface](../../common/spec/server/languages/node/interfaces/05-actors.ko.md)
+[Actor and session binding exact interface](../../common/spec/server/languages/node/interfaces/05-actors.en.md)
 (Korean-only).
 
 ---
@@ -182,5 +182,5 @@ per call afterward.
 ---
 
 See the
-[Actor and session binding exact interface](../../common/spec/server/languages/node/interfaces/05-actors.ko.md)
+[Actor and session binding exact interface](../../common/spec/server/languages/node/interfaces/05-actors.en.md)
 (Korean-only) for the full rationale.

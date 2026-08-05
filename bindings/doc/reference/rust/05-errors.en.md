@@ -66,12 +66,14 @@ match dealer.send().message(part)?.submit() {
 }
 ```
 
-**Options.** Variants: `Submit(SubmitError)`, `Request(RequestError)`, `Recv(RecvError)`,
-`Handler(HandlerError)`, `Close(CloseError)`, `Bind(BindError)`, `Connect(ConnectError)`,
-`Config(ConfigError)`. Each typed error struct implements `From<Self> for ZlinkError`, so
-`.into()`/`?` (with an error type of `ZlinkError`) converts automatically. Members: `code(&self) ->
-i32` (matches on the variant, returns the inner `code` field cast to `i32`), `native_errno(&self)
--> i32` (same pattern).
+**Options.** Each typed error struct implements `From<Self> for ZlinkError`, so `.into()`/`?` (with
+an error type of `ZlinkError`) converts automatically.
+
+| Member | Meaning |
+| --- | --- |
+| `Submit(SubmitError)` / `Request(RequestError)` / `Recv(RecvError)` / `Handler(HandlerError)` / `Close(CloseError)` / `Bind(BindError)` / `Connect(ConnectError)` / `Config(ConfigError)` | one variant per typed error struct |
+| `code(&self) -> i32` | matches on the variant, returns the inner `code` field cast to `i32` |
+| `native_errno(&self) -> i32` | matches on the variant, returns the inner `native_errno` field |
 
 **Completion result.** N/A — a plain sum-type wrapper implementing `Display` and
 `std::error::Error`.

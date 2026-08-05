@@ -73,13 +73,15 @@ match dealer.send().message(part)?.submit() {
 }
 ```
 
-**Options.** Variant: `Submit(SubmitError)`, `Request(RequestError)`,
-`Recv(RecvError)`, `Handler(HandlerError)`, `Close(CloseError)`,
-`Bind(BindError)`, `Connect(ConnectError)`, `Config(ConfigError)`. 각
-typed error struct가 `From<Self> for ZlinkError`를 구현하므로,
-`.into()`/`?`(error 타입이 `ZlinkError`일 때)가 자동으로 변환한다.
-Member: `code(&self) -> i32`(variant를 match해서 내부 `code` 필드를
-`i32`로 캐스팅해 반환), `native_errno(&self) -> i32`(같은 패턴).
+**Options.** 각 typed error struct가 `From<Self> for ZlinkError`를
+구현하므로, `.into()`/`?`(error 타입이 `ZlinkError`일 때)가 자동으로
+변환한다.
+
+| Member | 의미 |
+| --- | --- |
+| `Submit(SubmitError)` / `Request(RequestError)` / `Recv(RecvError)` / `Handler(HandlerError)` / `Close(CloseError)` / `Bind(BindError)` / `Connect(ConnectError)` / `Config(ConfigError)` | typed error struct마다 variant 하나씩 |
+| `code(&self) -> i32` | variant를 match해서 내부 `code` 필드를 `i32`로 캐스팅해 반환 |
+| `native_errno(&self) -> i32` | variant를 match해서 내부 `native_errno` 필드를 반환 |
 
 **Completion result.** 해당 없음 — `Display`와 `std::error::Error`를
 구현하는 순수 sum-type wrapper.

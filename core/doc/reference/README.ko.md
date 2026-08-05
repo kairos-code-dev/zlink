@@ -54,9 +54,9 @@ Core의 공개 표면은 framework의 정제된 8개 category보다 훨씬 세�
 | [Socket lifecycle](03-socket-lifecycle.ko.md) | 작성 완료 | socket/README §Functions(create/bind/connect/disconnect/close) |
 | [Socket options and identity](04-socket-options.ko.md) | 작성 완료 | socket/README §Socket Options, §Dedicated Functions |
 | [Raw receive](05-raw-receive.ko.md) | 작성 완료 | socket/README §Receive Model Summary, 03-errors §4 |
-| PAIR | 미착수 | socket/01-pair |
-| PUB | 미착수 | socket/02-pub |
-| SUB | 미착수 | socket/03-sub |
+| [PAIR](06-pair.ko.md) | 작성 완료 | socket/01-pair |
+| [PUB](07-pub.ko.md) | 작성 완료 | socket/02-pub |
+| [SUB](08-sub.ko.md) | 작성 완료 | socket/03-sub |
 | XPUB | 미착수 | socket/04-xpub |
 | XSUB | 미착수 | socket/05-xsub |
 | DEALER | 미착수 | socket/06-dealer |

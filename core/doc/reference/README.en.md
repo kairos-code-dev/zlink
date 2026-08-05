@@ -57,9 +57,9 @@ the "When to use" prose of Polling and Socket monitor below instead of becoming 
 | [Socket lifecycle](03-socket-lifecycle.en.md) | Drafted | socket/README §Functions (create/bind/connect/disconnect/close) |
 | [Socket options and identity](04-socket-options.en.md) | Drafted | socket/README §Socket Options, §Dedicated Functions |
 | [Raw receive](05-raw-receive.en.md) | Drafted | socket/README §Receive Model Summary, 03-errors §4 |
-| PAIR | Not started | socket/01-pair |
-| PUB | Not started | socket/02-pub |
-| SUB | Not started | socket/03-sub |
+| [PAIR](06-pair.en.md) | Drafted | socket/01-pair |
+| [PUB](07-pub.en.md) | Drafted | socket/02-pub |
+| [SUB](08-sub.en.md) | Drafted | socket/03-sub |
 | XPUB | Not started | socket/04-xpub |
 | XSUB | Not started | socket/05-xsub |
 | DEALER | Not started | socket/06-dealer |

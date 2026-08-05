@@ -4,7 +4,7 @@ title: "1. Layer Boundary And Identifier"
 
 # 1. Layer Boundary And Identifier
 
-[Internal structure table of contents](README.en.md) · [Next: 2. Spot · Actor Execution Serialization — splitting queue and execution gate](02-serialization.ko.md)
+[Internal structure table of contents](README.en.md) · [Next: 2. Spot · Actor Execution Serialization — splitting queue and execution gate](02-serialization.en.md)
 
 > **What this chapter answers** — what chunk to split the runtime
 > into, and which value must not be merged into one.
@@ -427,4 +427,4 @@ depending on that value's stability.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Next: 2. Spot · Actor Execution Serialization](02-serialization.ko.md)
+[Internal structure table of contents](README.en.md) · [Next: 2. Spot · Actor Execution Serialization](02-serialization.en.md)

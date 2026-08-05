@@ -114,7 +114,7 @@ connection easy to miss when reading a chapter separately.
 | Document | Decision It Covers |
 |---|---|
 | [1. Layer Boundary And Identifier](01-layering.en.md) | Where to draw the binding boundary. Which values mustn't be merged |
-| [2. Spot · Actor Execution Serialization](02-serialization.ko.md) | Why the queueing spot and execution authority are separated. Why execution resource mustn't be proportional to Spot count |
+| [2. Spot · Actor Execution Serialization](02-serialization.en.md) | Why the queueing spot and execution authority are separated. Why execution resource mustn't be proportional to Spot count |
 | [3. Application And Infrastructure Execution Separation](03-progress-isolation.ko.md) | What must still progress even while a handler is stuck. Why it's a region separation, not a reserved section |
 | [4. Operation Completion Confirmation](04-completion.ko.md) | How to make only one win when multiple paths try to finish at once. How not to lose a response |
 | [5. Message Continuity During A Move](05-relocation-continuity.ko.md) | Where a message goes while an object is moving |
@@ -130,7 +130,7 @@ A performance-critical decision is gathered in
 [11](11-message-ownership.ko.md)'s copy count,
 [6](06-routing-and-cache.ko.md)'s location cache,
 [7](07-dispatch-loop.ko.md)'s batching/wake method/timer resource,
-[2](02-serialization.ko.md)'s execution resource constraint, and
+[2](02-serialization.en.md)'s execution resource constraint, and
 [8](08-object-lifecycle.ko.md)'s memory accounting.
 
 ## A Decision With The Canonical Document In Multiple Places
@@ -140,7 +140,7 @@ disagree, the one below is treated as canonical.
 
 | Topic | Canonical |
 |---|---|
-| The result when the queue saturates | The family × location table in [2. Spot · Actor Execution Serialization 「2. The Pitfall When Building Execution Authority」](02-serialization.ko.md#2-실행-권한을-만들-때의-함정) |
+| The result when the queue saturates | The family × location table in [2. Spot · Actor Execution Serialization 「2. The Pitfall When Building Execution Authority」](02-serialization.en.md#2-the-pitfall-when-building-execution-authority) |
 | The owner-occupancy bound and the lifecycle continuous-execution bound | [Actor Model 「3. Actor Queue」](../spec/14-actor-model.en.md#3-actor-queue) |
 | The target-selection procedure and tiebreak | [Channel Messaging 「Selection Order」](../spec/08-channel-messaging.en.md#selection-order) |
 | Observer merging and loss | [Runtime Status And Operational Diagnostics](../spec/24-runtime-monitoring.en.md) |

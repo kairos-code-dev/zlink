@@ -5,7 +5,7 @@
 This category covers Location/Relocation Store registration, `location_options_t` tuning, and the
 entry points `location_readiness_t` and `location_runtime_query_t` provide. The exact signatures
 are owned by the
-[Location/Relocation Store/Redis exact interface](../../common/spec/server/languages/cpp/interfaces/07-location-store.ko.md)
+[Location/Relocation Store/Redis exact interface](../../common/spec/server/languages/cpp/interfaces/07-location-store.en.md)
 (Korean-only).
 
 ---
@@ -160,5 +160,5 @@ real-time availability of a single MeshName/ChannelName.
 ---
 
 See the
-[Location/Relocation Store/Redis exact interface](../../common/spec/server/languages/cpp/interfaces/07-location-store.ko.md)
+[Location/Relocation Store/Redis exact interface](../../common/spec/server/languages/cpp/interfaces/07-location-store.en.md)
 (Korean-only) for the full rationale.

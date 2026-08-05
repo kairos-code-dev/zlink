@@ -108,7 +108,7 @@ The formal declaration for other languages follows the
 [Kotlin](server/languages/kotlin/interfaces/location-maintenance.en.md),
 [Node.js](server/languages/node/interfaces/08-location-maintenance.en.md),
 and
-[C++](server/languages/cpp/interfaces/07-location-store.ko.md) exact
+[C++](server/languages/cpp/interfaces/07-location-store.en.md) exact
 interfaces. A registration example for both Stores is kept only in
 [Location Runtime](21-location-runtime.en.md#13-registration-conditions-and-lifetime).
 

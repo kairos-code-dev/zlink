@@ -72,7 +72,7 @@ The formal shape in other languages follows the
 [Java](server/languages/java/interfaces/location-maintenance.en.md),
 [Kotlin](server/languages/kotlin/interfaces/location-maintenance.en.md),
 [Node.js](server/languages/node/interfaces/08-location-maintenance.en.md), and
-[C++](server/languages/cpp/interfaces/07-location-store.ko.md) exact
+[C++](server/languages/cpp/interfaces/07-location-store.en.md) exact
 interfaces.
 Registration examples for both Stores are kept only in
 [Location Runtime](21-location-runtime.en.md#13-registration-conditions-and-lifetime).

@@ -4,7 +4,7 @@
 
 This category covers the entry points `ZLinkRouteClient` (`ZLINK_ROUTE_CLIENT`) and
 `ZLinkFanoutClient` (`ZLINK_FANOUT_CLIENT`) provide. The exact signatures are owned by the
-[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md)
+[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.en.md)
 (Korean-only). This document does not repeat those signatures — it collects only what you need to
 actually call each entry point, in complete form.
 
@@ -191,7 +191,7 @@ These apply in common to every entry point in this category and are not repeated
   lists (`NotFound`/`Unavailable`/`DeadlineExceeded`/`ShuttingDown`).
 
 See the
-[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md)
+[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.en.md)
 and the
 [Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
 (Korean-only) for the full rationale.

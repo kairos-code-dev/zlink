@@ -6,7 +6,7 @@ are managed split across per-category documents. See the
 full document list.
 
 - Builder and configuration options: [Foundation Types And Configuration](interfaces/01-foundation-configuration.ko.md)
-- Channel/request/routing: [Channel, Request, And Routing](interfaces/02-channel-messaging.ko.md)
+- Channel/request/routing: [Channel, Request, And Routing](interfaces/02-channel-messaging.en.md)
 - Location/monitoring/metrics: [Location, Monitoring, And Metrics](interfaces/03-location-observability.en.md)
 - Spot and Instance Spot: [Spot And Instance Spot](interfaces/04-spots.en.md)
 - Actor and session binding: [Actor And Session Binding](interfaces/05-actors.en.md)

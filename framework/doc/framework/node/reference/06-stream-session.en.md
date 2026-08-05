@@ -5,7 +5,7 @@
 This category covers the entry points used inside STREAM session code (`ZLinkSession`,
 `ZLinkStream`, `ZLinkSessionActors`, `ZLinkSessionActor`) and the entry point used for a bound
 session inside Actor code (`ZLinkBoundSession`). The exact signatures are owned by the
-[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md)
+[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.en.md)
 and the
 [Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
 (Korean-only).
@@ -226,7 +226,7 @@ to be kept. Use the `close` entry to disconnect directly from the Session side.
 ---
 
 See the
-[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.ko.md)
+[Channel, request, and routing exact interface](../../common/spec/server/languages/node/interfaces/02-channel-messaging.en.md)
 and the
 [Foundation types and configuration exact interface](../../common/spec/server/languages/node/interfaces/01-foundation-configuration.ko.md)
 (Korean-only) for the full rationale.

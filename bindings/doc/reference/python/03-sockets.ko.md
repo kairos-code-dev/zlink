@@ -26,13 +26,16 @@ with socket:
     ...
 ```
 
-**Options.** `bind(endpoint)`, `close()`, `options`(property — 이
-socket type의 typed option facade), `__enter__`/`__exit__`(sync
-context-manager만 — **여기엔 `__aenter__`/`__aexit__`가 없다**, 이
-binding의 다른 모든 resource 타입이 따르는 sync·async 둘 다 패턴과
-다름). **`unbind`도, TLS 메서드(`set_tls_server`/`set_tls_client`
-등)도 전혀 없다** — 지금까지 다룬 다른 모든 언어와 달리, 이
-binding의 socket 기반 contract엔 둘 다 없다.
+**Options.** **`unbind`도, TLS 메서드(`set_tls_server`/`set_tls_client`
+등)도 전혀 없다** — 지금까지 다룬 다른 모든 언어와 달리, 이 binding의
+socket 기반 contract엔 둘 다 없다.
+
+| Member | 의미 |
+| --- | --- |
+| `bind(endpoint)` | 주소에서 listen을 시작 |
+| `close()` | native socket을 닫는다 |
+| `options` | property, 이 socket type의 typed option facade |
+| `__enter__` / `__exit__` | sync context-manager만 — **여기엔 `__aenter__`/`__aexit__`가 없다**, 이 binding의 다른 모든 resource 타입이 따르는 sync·async 둘 다 패턴과 다름 |
 
 **Completion result.** `bind`/`close`는 반환값 없이 동기다.
 
@@ -52,29 +55,48 @@ socket.options.linger_ms = 1000
 socket.options.submit_retry_mode = SubmitRetryMode.LOCAL_FAILURE
 ```
 
-**Options.** `linger_ms`, `send_high_water_mark`/
-`receive_high_water_mark`, `send_timeout_ms`/`receive_timeout_ms`,
-`immediate`, `rid_duplicate_policy`, `connect_timeout_ms`, `ipv6`,
-`tcp_no_delay`, `tcp_keepalive`, `max_message_size`, `backlog`,
-`reconnect_interval_ms`/`reconnect_interval_max_ms`,
-`submit_retry_mode`, `submit_retry_timeout_ms`,
-`submit_retry_attempts` — 전부 순수 get/set property. **지금까지 다룬
-다른 어떤 언어도 노출하지 않는 heartbeat property 3개가 여기 있다**:
-`heartbeat_interval_ms`(idle connection에서 heartbeat ping 간격),
-`heartbeat_ttl_ms`(heartbeat 없이 remote가 connection을 얼마나
-살려두는지), `heartbeat_timeout_ms`(connection을 죽었다고 취급하기
-전 heartbeat reply를 얼마나 기다리는지). 타입별 확장:
-`DealerSocketOptions`는 `probe`, `weight`, `request_timeout_ms`를
-더한다. `RouterSocketOptions`는 `mandatory`, `handover`, `probe`,
-`connect_routing_id`(이 binding의 socket contract 전체에서 *유일한*
-routing-id 형태 표면 — 어떤 socket type도 자신만의
-`set_routing_id`/`get_routing_id`가 없다는 README의 참고 참조),
-`weight`, `request_timeout_ms`를 더한다. `StreamSocketOptions`는
-`notify`를 더한다. `PubSocketOptions`는 `verbose`, `verboser`,
-`manual`, `no_drop`, `manual_last_value`, `welcome_message`,
-`topics_count`(읽기 전용), `approve_subscribe(routing_id)`/
-`reject_subscribe(routing_id)`를 더한다. `SubSocketOptions`는
-`topics_count`(읽기 전용)만 더한다.
+**Options — `CommonSocketOptions`.** 전부 순수 get/set property다.
+
+| Member | 의미 |
+| --- | --- |
+| `linger_ms` | `close()`가 대기 중인 send를 flush하기 위해 기다리는 상한 |
+| `send_high_water_mark` / `receive_high_water_mark` | outbound/inbound accounted-byte HWM |
+| `send_timeout_ms` / `receive_timeout_ms` | blocking send/receive가 기다리는 상한 |
+| `immediate` | send가 지금 당장 살아있는 연결을 요구하는지, 아니면 연결이 생길 때까지 큐잉하는지 |
+| `rid_duplicate_policy` | peer가 기존 routing id를 재사용할 때 벌어지는 일 |
+| `connect_timeout_ms` | connect handshake가 기다리는 상한 |
+| `ipv6` | socket이 IPv6 연결을 받아들이는지 |
+| `tcp_no_delay` | `True`면 Nagle 알고리즘을 비활성화 |
+| `tcp_keepalive` | OS TCP keepalive 모드 |
+| `max_message_size` | 수신 허용하는 메시지 한 건의 최대 바이트 크기 |
+| `backlog` | listening socket의 대기 연결 큐 길이 |
+| `reconnect_interval_ms` / `reconnect_interval_max_ms` | 재연결 시도 사이 간격 / 그 간격의 상한 |
+| `submit_retry_mode` | local back-pressure에서 실패한 submit이 자동 재시도되는지 |
+| `submit_retry_timeout_ms` / `submit_retry_attempts` | `submit_retry_mode`가 요청할 때의 재시도 timeout/횟수 상한 |
+| `heartbeat_interval_ms` | idle connection에서 heartbeat ping 간격 — **지금까지 다룬 다른 어떤 언어도 이 property를 노출하지 않는다** |
+| `heartbeat_ttl_ms` | heartbeat 없이 remote가 connection을 얼마나 살려두는지 — 같은 독점성 |
+| `heartbeat_timeout_ms` | connection을 죽었다고 취급하기 전 heartbeat reply를 얼마나 기다리는지 — 같은 독점성 |
+
+**Options — 타입별 확장.**
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `DealerSocketOptions` | `probe` | connect 시 빈 probe 전송 |
+| | `weight` | load-balancing 가중치 |
+| | `request_timeout_ms` | request timeout |
+| `RouterSocketOptions` | `mandatory` | 알 수 없는 route에서 조용히 버리는 대신 오류 |
+| | `handover` | `rid_duplicate_policy`의 편의 wrapper |
+| | `probe` | connect 시 빈 probe 전송 |
+| | `connect_routing_id` | 이 binding의 socket contract 전체에서 *유일한* routing-id 형태 표면 — 어떤 socket type도 자신만의 `set_routing_id`/`get_routing_id`가 없다는 README의 참고 참조 |
+| | `weight` / `request_timeout_ms` | 양방향 모두 |
+| `StreamSocketOptions` | `notify` | 활성화 시 peer connect/disconnect를 application 메시지로 전달 |
+| `PubSocketOptions` | `verbose` / `verboser` | 중복 포함 모든 (un)subscribe 메시지를 전달 |
+| | `manual` / `manual_last_value` | 구독이 `approve_subscribe`/`reject_subscribe`를 요구; `manual_last_value`는 새로 승인된 구독자에게 topic별 마지막 캐시 메시지도 재전송 |
+| | `no_drop` | back-pressure에서 조용히 버리는 대신 오류 |
+| | `welcome_message` | 새로 연결된 구독자 각각에게 자동 전송 |
+| | `topics_count` | 읽기 전용, 활성 구독 개수 |
+| | `approve_subscribe(routing_id)` / `reject_subscribe(routing_id)` | set-only, getter 없음 |
+| `SubSocketOptions` | `topics_count` | 읽기 전용 — 이 socket이 가진 유일한 타입별 option |
 
 **Completion result.** 모든 property 읽기/쓰기는 동기다.
 
@@ -98,10 +120,14 @@ if pair.recv_into(received):
     ...
 ```
 
-**Options.** `connect(endpoint)`, `disconnect(endpoint)`,
-`disconnect_rid(peer_rid)`, `send()`(공유 `SendOp` builder 시작),
-`recv_into(received, *, flags=0)`(`bool` 반환), 그리고
-`_SocketContract` 기반 표면.
+**Options.** `_SocketContract` 기반 표면에 더해:
+
+| Member | 의미 |
+| --- | --- |
+| `connect(endpoint)` / `disconnect(endpoint)` | peer 주소로 connect/disconnect |
+| `disconnect_rid(peer_rid)` | 해당 routing id로 식별되는 peer를 disconnect |
+| `send()` | 공유 `SendOp` builder를 시작 |
+| `recv_into(received, *, flags=0)` | `received`를 다음 메시지로 채움, `bool` 반환 |
 
 **Completion result.** `recv_into`는 `DONT_WAIT`가 설정되고
 메시지가 없을 때만 `False`를 반환한다.
@@ -121,12 +147,16 @@ dealer = create_dealer_socket(ctx)
 dealer.request().message(b"payload").submit(callback)
 ```
 
-**Options.** `dealer_options`(property, `DealerSocketOptions` 반환),
-`connect(endpoint)`, `disconnect(endpoint)`, `send()`,
-`request()`(공유 `RequestOp` builder 시작 — target 인자 없음,
-DEALER는 API 레벨 peer routing id가 없기 때문),
-`recv_into(received, *, flags=0)`. **`set_routing_id`/
-`get_routing_id`가 전혀 없다** — README 참고.
+**Options.** **`set_routing_id`/`get_routing_id`가 전혀 없다** — README
+참고.
+
+| Member | 의미 |
+| --- | --- |
+| `dealer_options` | property, `DealerSocketOptions` 반환 |
+| `connect(endpoint)` / `disconnect(endpoint)` | peer 주소로 connect/disconnect |
+| `send()` | 공유 `SendOp` builder를 시작 |
+| `request()` | 공유 `RequestOp` builder를 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없기 때문 |
+| `recv_into(received, *, flags=0)` | `received`를 다음 메시지로 채움 |
 
 **Completion result.** `recv_into`는 `PairSocket`과 같은
 `DONT_WAIT`에서 `False` 관례를 따른다.
@@ -147,15 +177,19 @@ router = create_router_socket(ctx)
 router.send(peer_rid).message(b"hello").submit()
 ```
 
-**Options.** `router_options`(property, `RouterSocketOptions` 반환),
-`connect(endpoint)`, `disconnect(endpoint)`, `send(routing_id)`,
-`request(routing_id)`(Messaging category의 공유 `RequestOp`, 특정
-peer로 향함), `reply(routing_id, request_seq)`(공유 `ReplyOp`),
-`recv_into(received, *, flags=0)`. **이 binding엔
-`try_send_completion_control`/`set_completion_control_handler`가
-선언돼 있지 않다** — dotnet/cpp/java/node에서 ROUTER에 문서화된
-opaque Completion-control 표면에 대응하는 게 여기엔 없다, rust에도
-같은 표면이 없는 것과 일치.
+**Options.** **이 binding엔 `try_send_completion_control`/
+`set_completion_control_handler`가 선언돼 있지 않다** —
+dotnet/cpp/java/node에서 ROUTER에 문서화된 opaque Completion-control
+표면에 대응하는 게 여기엔 없다, rust에도 같은 표면이 없는 것과 일치.
+
+| Member | 의미 |
+| --- | --- |
+| `router_options` | property, `RouterSocketOptions` 반환 |
+| `connect(endpoint)` / `disconnect(endpoint)` | peer 주소로 connect/disconnect |
+| `send(routing_id)` | 공유 `SendOp`을 그 peer로 향해 시작 |
+| `request(routing_id)` | Messaging category의 공유 `RequestOp`, 특정 peer로 향함 |
+| `reply(routing_id, request_seq)` | 공유 `ReplyOp`, 해당 peer의 request에 응답 |
+| `recv_into(received, *, flags=0)` | `received`를 다음 메시지로 채움 |
 
 **Completion result.** `recv_into`는 위 관례를 따른다.
 
@@ -183,20 +217,21 @@ if sub.subscribe_into(msg):
     ...
 ```
 
-**Options.** `PubSocket`: `pub_options`, `connect(endpoint)`,
-`disconnect(endpoint)`, `publish(topic)`(공유 `SendOp` builder
-시작). `SubSocket`: `sub_options`, `connect(endpoint)`,
-`disconnect(endpoint)`, `set_subscription(topic)`/
-`unset_subscription(topic)`(구독은 누적된다), `subscription_at(index)`
-(`(filter, is_pattern)` tuple 또는 `None` 반환),
-`subscribe_into(topic_message, *, flags=0)`. `XPubSocket`:
-`PubSocket`과 같은 형태(`pub_options`, `connect`, `disconnect`,
-`publish`)에 `receive_subscription_event_into(event, *, flags=0)`를
-더함. `XSubSocket`: **`SubSocket`과 member 집합이 동일한, 완전히
-독립적인 `Protocol` 선언** — `sub_options`, `connect`, `disconnect`,
-`set_subscription`/`unset_subscription`, `subscription_at`,
-`subscribe_into` — 일치하는 형태 외엔 둘을 연결하는 공유 기반 타입이
-없다.
+**Options.**
+
+| 타입 | Member | 의미 |
+| --- | --- | --- |
+| `PubSocket` | `pub_options` | 타입별 option facade |
+| | `connect(endpoint)` / `disconnect(endpoint)` | peer 주소로 connect/disconnect |
+| | `publish(topic)` | 공유 `SendOp` builder를 시작 |
+| `SubSocket` | `sub_options` | 타입별 option facade |
+| | `connect(endpoint)` / `disconnect(endpoint)` | peer 주소로 connect/disconnect |
+| | `set_subscription(topic)` / `unset_subscription(topic)` | topic filter를 추가/제거; 구독은 누적된다 |
+| | `subscription_at(index)` | `(filter, is_pattern)` tuple, 또는 `None` — 해당 index의 filter |
+| | `subscribe_into(topic_message, *, flags=0)` | `topic_message`를 다음 매칭 publish로 채움 |
+| `XPubSocket` | `pub_options` / `connect` / `disconnect` / `publish` | `PubSocket`과 같은 형태 |
+| | `receive_subscription_event_into(event, *, flags=0)` | `event`를 다음 subscribe/unsubscribe로 채움 |
+| `XSubSocket` | `sub_options` / `connect` / `disconnect` / `set_subscription` / `unset_subscription` / `subscription_at` / `subscribe_into` | **`SubSocket`과 member 집합이 동일한, 완전히 독립적인 `Protocol` 선언** — 일치하는 형태 외엔 둘을 연결하는 공유 기반 타입이 없다 |
 
 **Completion result.** `subscribe_into`/
 `receive_subscription_event_into`는 위 `DONT_WAIT`에서 `False`
@@ -222,12 +257,16 @@ stream = create_stream_socket(ctx)
 stream.on_packet(lambda rid, header, body: ...)
 ```
 
-**Options.** `stream_options`, `send(routing_id)`,
-`recv_into(received, *, flags=0)`, `on_packet(handler)`(handler가
-header와 body 메시지를 둘 다 소유하며 background dispatch 스레드에서
-실행됨), `disconnect_rid(peer_rid)`. **이 Protocol엔 `connect`/
-`disconnect`가 선언돼 있지 않다** — 다른 모든 언어의 STREAM 비대칭과
-일치.
+**Options.** **이 Protocol엔 `connect`/`disconnect`가 선언돼 있지
+않다** — 다른 모든 언어의 STREAM 비대칭과 일치.
+
+| Member | 의미 |
+| --- | --- |
+| `stream_options` | 타입별 option facade |
+| `send(routing_id)` | 공유 `SendOp`을 그 peer로 향해 시작 |
+| `recv_into(received, *, flags=0)` | `received`를 다음 packet으로 채움 |
+| `on_packet(handler)` | callback 기반 packet loop를 등록; handler가 header와 body 메시지를 둘 다 소유하며 background dispatch 스레드에서 실행됨 |
+| `disconnect_rid(peer_rid)` | 해당 routing id로 식별되는 peer를 disconnect |
 
 **Completion result.** `recv_into`는 위 관례를 따른다.
 
@@ -251,20 +290,17 @@ dealer.request().message(payload).timeout(5.0).submit(
 received.reply().message(b"ok").submit()
 ```
 
-**Options.** `_FluentMessageOp`(공유 기반): `message(payload)`(part
-하나 추가), `messages(*payloads)`(한 호출로 여러 part 추가 — **여기선
-공유 기반 Protocol에 직접 선언돼 있다**, multi-part 편의가 별도
-extension method인 다른 언어와 다름), `flags(flags)`. `SendOp extends
-_FluentMessageOp`는 `submit()`을 더한다. `RequestOp extends
-_FluentMessageOp`는 `timeout(timeout)`과 `submit(callback)`을
-더한다 — **callback 전용, 이 Protocol엔 awaitable/Future 반환
-overload가 문서화돼 있지 않다**, dotnet/java/node/cpp의 async 경로가
-아니라 rust의 callback 전용 request submit과 일치. `RequestCallbackOp`
-는 `.flags(...)`를 호출한 후에만 도달하는 좁혀진 타입이 아니라
-별도 Protocol로서 `RequestOp`의 형태(`timeout`,
-`submit(callback)`)를 그대로 반영한다 — `RequestOp`와
-`RequestCallbackOp` 둘 다 `submit(callback)`을 직접 노출한다.
-`ReplyOp extends _FluentMessageOp`는 `submit()`을 더한다.
+**Options.**
+
+| Stage | Member | 의미 |
+| --- | --- | --- |
+| `_FluentMessageOp`(공유 기반) | `message(payload)` | part 하나를 추가, chain을 시작/계속 |
+| | `messages(*payloads)` | 한 호출로 여러 part 추가 — **여기선 공유 기반 Protocol에 직접 선언돼 있다**, multi-part 편의가 별도 extension method인 다른 언어와 다름 |
+| | `flags(flags)` | flag 설정 |
+| `SendOp extends _FluentMessageOp` | `submit()` | terminal |
+| `RequestOp extends _FluentMessageOp` | `timeout(timeout)` / `submit(callback)` | reply-wait timeout을 더함; **callback 전용, 이 Protocol엔 awaitable/Future 반환 overload가 문서화돼 있지 않다**, dotnet/java/node/cpp의 async 경로가 아니라 rust의 callback 전용 request submit과 일치 |
+| `RequestCallbackOp` | `timeout` / `submit(callback)` | `.flags(...)`를 호출한 후에만 도달하는 좁혀진 타입이 아니라 **별도 Protocol**로서 `RequestOp`의 형태를 그대로 반영 — `RequestOp`와 `RequestCallbackOp` 둘 다 `submit(callback)`을 직접 노출한다 |
+| `ReplyOp extends _FluentMessageOp` | `submit()` | terminal |
 
 **Completion result.** `SendOp.submit()`/`ReplyOp.submit()`은
 operation 결과를 동기로 반환한다. `RequestOp`/

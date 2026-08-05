@@ -24,11 +24,15 @@ with socket:
     ...
 ```
 
-**Options.** `bind(endpoint)`, `close()`, `options` (property — the typed options facade for this
-socket type), `__enter__`/`__exit__` (sync context-manager only — **no `__aenter__`/`__aexit__`
-here**, unlike the async-and-sync-both pattern every other resource type in this binding follows).
-**No `unbind`, no TLS methods (`set_tls_server`/`set_tls_client`/etc.) at all** — unlike every
-other language covered so far, this binding's socket base contract has neither.
+**Options.** **No `unbind`, no TLS methods (`set_tls_server`/`set_tls_client`/etc.) at all** —
+unlike every other language covered so far, this binding's socket base contract has neither.
+
+| Member | Meaning |
+| --- | --- |
+| `bind(endpoint)` | starts listening on an address |
+| `close()` | closes the native socket |
+| `options` | property, the typed options facade for this socket type |
+| `__enter__` / `__exit__` | sync context-manager only — **no `__aenter__`/`__aexit__` here**, unlike the async-and-sync-both pattern every other resource type in this binding follows |
 
 **Completion result.** `bind`/`close` are synchronous with no return value.
 
@@ -47,22 +51,48 @@ socket.options.linger_ms = 1000
 socket.options.submit_retry_mode = SubmitRetryMode.LOCAL_FAILURE
 ```
 
-**Options.** `linger_ms`, `send_high_water_mark`/`receive_high_water_mark`, `send_timeout_ms`/
-`receive_timeout_ms`, `immediate`, `rid_duplicate_policy`, `connect_timeout_ms`, `ipv6`,
-`tcp_no_delay`, `tcp_keepalive`, `max_message_size`, `backlog`, `reconnect_interval_ms`/
-`reconnect_interval_max_ms`, `submit_retry_mode`, `submit_retry_timeout_ms`,
-`submit_retry_attempts` — all plain get/set properties. **Three heartbeat properties exist here
-that no other language covered so far exposes**: `heartbeat_interval_ms` (interval between
-heartbeat pings on an idle connection), `heartbeat_ttl_ms` (how long the remote keeps the
-connection alive without a heartbeat), `heartbeat_timeout_ms` (how long to wait for a heartbeat
-reply before treating the connection as dead). Per-type extensions: `DealerSocketOptions` adds
-`probe`, `weight`, `request_timeout_ms`. `RouterSocketOptions` adds `mandatory`, `handover`,
-`probe`, `connect_routing_id` (the *only* routing-id-shaped surface anywhere in this binding's
-socket contracts — see the README's note that no socket type has `set_routing_id`/`get_routing_id`
-of its own), `weight`, `request_timeout_ms`. `StreamSocketOptions` adds `notify`. `PubSocketOptions`
-adds `verbose`, `verboser`, `manual`, `no_drop`, `manual_last_value`, `welcome_message`,
-`topics_count` (read-only), `approve_subscribe(routing_id)`/`reject_subscribe(routing_id)`.
-`SubSocketOptions` adds only `topics_count` (read-only).
+**Options — `CommonSocketOptions`.** All plain get/set properties.
+
+| Member | Meaning |
+| --- | --- |
+| `linger_ms` | upper bound on how long `close()` waits for pending sends to flush |
+| `send_high_water_mark` / `receive_high_water_mark` | outbound/inbound accounted-byte HWM |
+| `send_timeout_ms` / `receive_timeout_ms` | upper bound on how long a blocking send/receive waits |
+| `immediate` | whether a send requires a live connection now, instead of queueing until one exists |
+| `rid_duplicate_policy` | what happens when a peer reuses an existing routing id |
+| `connect_timeout_ms` | upper bound on how long connect handshake waits |
+| `ipv6` | whether the socket accepts IPv6 connections |
+| `tcp_no_delay` | disables Nagle's algorithm when `True` |
+| `tcp_keepalive` | OS TCP keepalive mode |
+| `max_message_size` | maximum size in bytes of a single accepted message |
+| `backlog` | pending-connection queue length for a listening socket |
+| `reconnect_interval_ms` / `reconnect_interval_max_ms` | delay between reconnect attempts / cap on that delay |
+| `submit_retry_mode` | whether a failed submit retries automatically on local back-pressure |
+| `submit_retry_timeout_ms` / `submit_retry_attempts` | retry timeout/attempt cap when `submit_retry_mode` requests it |
+| `heartbeat_interval_ms` | interval between heartbeat pings on an idle connection — **no other language covered so far exposes this property** |
+| `heartbeat_ttl_ms` | how long the remote keeps the connection alive without a heartbeat — same exclusivity |
+| `heartbeat_timeout_ms` | how long to wait for a heartbeat reply before treating the connection as dead — same exclusivity |
+
+**Options — per-type extensions.**
+
+| Type | Member | Meaning |
+| --- | --- | --- |
+| `DealerSocketOptions` | `probe` | sends an empty probe on connect |
+| | `weight` | load-balancing weight |
+| | `request_timeout_ms` | request timeout |
+| `RouterSocketOptions` | `mandatory` | error instead of silent drop on an unknown route |
+| | `handover` | convenience wrapper over `rid_duplicate_policy` |
+| | `probe` | sends an empty probe on connect |
+| | `connect_routing_id` | the *only* routing-id-shaped surface anywhere in this binding's socket contracts — see the README's note that no socket type has `set_routing_id`/`get_routing_id` of its own |
+| | `weight` / `request_timeout_ms` | both directions |
+| `StreamSocketOptions` | `notify` | delivers peer connect/disconnect as application messages when enabled |
+| `PubSocketOptions` | `verbose` / `verboser` | deliver every (un)subscribe message, including duplicates |
+| | `manual` / `manual_last_value` | subscriptions require `approve_subscribe`/`reject_subscribe`; `manual_last_value` also replays the last cached message per topic to a newly accepted subscriber |
+| | `no_drop` | error instead of silent drop on back-pressure |
+| | `welcome_message` | sent automatically to each newly connected subscriber |
+| | `topics_count` | read-only, active subscription count |
+| | `approve_subscribe(routing_id)` / `reject_subscribe(routing_id)` | set-only, no getters |
+| `SubSocketOptions` | `topics_count` | read-only — the only per-type option this socket has |
 
 **Completion result.** Every property read/write is synchronous.
 
@@ -85,9 +115,14 @@ if pair.recv_into(received):
     ...
 ```
 
-**Options.** `connect(endpoint)`, `disconnect(endpoint)`, `disconnect_rid(peer_rid)`, `send()`
-(starts the shared `SendOp` builder), `recv_into(received, *, flags=0)` (returns `bool`), plus the
-`_SocketContract` base surface.
+**Options.** Plus the `_SocketContract` base surface.
+
+| Member | Meaning |
+| --- | --- |
+| `connect(endpoint)` / `disconnect(endpoint)` | connects/disconnects to a peer address |
+| `disconnect_rid(peer_rid)` | disconnects the peer identified by that routing id |
+| `send()` | starts the shared `SendOp` builder |
+| `recv_into(received, *, flags=0)` | populates `received` with the next message, returns `bool` |
 
 **Completion result.** `recv_into` returns `False` only when `DONT_WAIT` is set and no message is
 available.
@@ -106,10 +141,15 @@ dealer = create_dealer_socket(ctx)
 dealer.request().message(b"payload").submit(callback)
 ```
 
-**Options.** `dealer_options` (property, returns `DealerSocketOptions`), `connect(endpoint)`,
-`disconnect(endpoint)`, `send()`, `request()` (starts the shared `RequestOp` builder — no target
-parameter, since DEALER has no API-level peer routing id), `recv_into(received, *, flags=0)`. **No
-`set_routing_id`/`get_routing_id` at all** — see the README's note.
+**Options.** **No `set_routing_id`/`get_routing_id` at all** — see the README's note.
+
+| Member | Meaning |
+| --- | --- |
+| `dealer_options` | property, returns `DealerSocketOptions` |
+| `connect(endpoint)` / `disconnect(endpoint)` | connects/disconnects to a peer address |
+| `send()` | starts the shared `SendOp` builder |
+| `request()` | starts the shared `RequestOp` builder; no target parameter — DEALER has no API-level peer routing id |
+| `recv_into(received, *, flags=0)` | populates `received` with the next message |
 
 **Completion result.** `recv_into` follows the same `False`-on-`DONT_WAIT` convention as
 `PairSocket`.
@@ -129,12 +169,18 @@ router = create_router_socket(ctx)
 router.send(peer_rid).message(b"hello").submit()
 ```
 
-**Options.** `router_options` (property, returns `RouterSocketOptions`), `connect(endpoint)`,
-`disconnect(endpoint)`, `send(routing_id)`, `request(routing_id)` (Messaging category's shared
-`RequestOp`, addressed to a specific peer), `reply(routing_id, request_seq)` (the shared `ReplyOp`),
-`recv_into(received, *, flags=0)`. **This binding declares no `try_send_completion_control`/
+**Options.** **This binding declares no `try_send_completion_control`/
 `set_completion_control_handler`** — the opaque Completion-control surface documented on ROUTER in
 dotnet/cpp/java/node has no equivalent here, matching rust's absence of the same surface.
+
+| Member | Meaning |
+| --- | --- |
+| `router_options` | property, returns `RouterSocketOptions` |
+| `connect(endpoint)` / `disconnect(endpoint)` | connects/disconnects to a peer address |
+| `send(routing_id)` | starts the shared `SendOp`, addressed to that peer |
+| `request(routing_id)` | Messaging category's shared `RequestOp`, addressed to a specific peer |
+| `reply(routing_id, request_seq)` | the shared `ReplyOp`, answering that peer's request |
+| `recv_into(received, *, flags=0)` | populates `received` with the next message |
 
 **Completion result.** `recv_into` follows the convention above.
 
@@ -160,16 +206,21 @@ if sub.subscribe_into(msg):
     ...
 ```
 
-**Options.** `PubSocket`: `pub_options`, `connect(endpoint)`, `disconnect(endpoint)`,
-`publish(topic)` (starts the shared `SendOp` builder). `SubSocket`: `sub_options`,
-`connect(endpoint)`, `disconnect(endpoint)`, `set_subscription(topic)`/`unset_subscription(topic)`
-(subscriptions accumulate), `subscription_at(index)` (returns `(filter, is_pattern)` tuple, or
-`None`), `subscribe_into(topic_message, *, flags=0)`. `XPubSocket`: same shape as `PubSocket`
-(`pub_options`, `connect`, `disconnect`, `publish`) plus `receive_subscription_event_into(event, *,
-flags=0)`. `XSubSocket`: an **entirely independent `Protocol` declaration with the identical member
-set to `SubSocket`** — `sub_options`, `connect`, `disconnect`, `set_subscription`/
-`unset_subscription`, `subscription_at`, `subscribe_into` — no shared base type links the two
-beyond the matching shape.
+**Options.**
+
+| Type | Member | Meaning |
+| --- | --- | --- |
+| `PubSocket` | `pub_options` | the per-type options facade |
+| | `connect(endpoint)` / `disconnect(endpoint)` | connects/disconnects to a peer address |
+| | `publish(topic)` | starts the shared `SendOp` builder |
+| `SubSocket` | `sub_options` | the per-type options facade |
+| | `connect(endpoint)` / `disconnect(endpoint)` | connects/disconnects to a peer address |
+| | `set_subscription(topic)` / `unset_subscription(topic)` | adds/removes a topic filter; subscriptions accumulate |
+| | `subscription_at(index)` | `(filter, is_pattern)` tuple, or `None` — the filter at that index |
+| | `subscribe_into(topic_message, *, flags=0)` | populates `topic_message` with the next matching publish |
+| `XPubSocket` | `pub_options` / `connect` / `disconnect` / `publish` | same shape as `PubSocket` |
+| | `receive_subscription_event_into(event, *, flags=0)` | populates `event` with the next subscribe/unsubscribe |
+| `XSubSocket` | `sub_options` / `connect` / `disconnect` / `set_subscription` / `unset_subscription` / `subscription_at` / `subscribe_into` | **entirely independent `Protocol` declaration with the identical member set to `SubSocket`** — no shared base type links the two beyond the matching shape |
 
 **Completion result.** `subscribe_into`/`receive_subscription_event_into` follow the
 `False`-on-`DONT_WAIT` convention above.
@@ -192,10 +243,16 @@ stream = create_stream_socket(ctx)
 stream.on_packet(lambda rid, header, body: ...)
 ```
 
-**Options.** `stream_options`, `send(routing_id)`, `recv_into(received, *, flags=0)`,
-`on_packet(handler)` (the handler owns both header and body messages, running on a background
-dispatch thread), `disconnect_rid(peer_rid)`. **No `connect`/`disconnect` declared on this
-Protocol** — matching every other language's STREAM asymmetry.
+**Options.** **No `connect`/`disconnect` declared on this Protocol** — matching every other
+language's STREAM asymmetry.
+
+| Member | Meaning |
+| --- | --- |
+| `stream_options` | the per-type options facade |
+| `send(routing_id)` | starts the shared `SendOp`, addressed to that peer |
+| `recv_into(received, *, flags=0)` | populates `received` with the next packet |
+| `on_packet(handler)` | registers a callback-driven packet loop; the handler owns both header and body messages, running on a background dispatch thread |
+| `disconnect_rid(peer_rid)` | disconnects the peer identified by that routing id |
 
 **Completion result.** `recv_into` follows the convention above.
 
@@ -219,16 +276,17 @@ dealer.request().message(payload).timeout(5.0).submit(
 received.reply().message(b"ok").submit()
 ```
 
-**Options.** `_FluentMessageOp` (shared base): `message(payload)` (add one part),
-`messages(*payloads)` (add several parts in one call — **declared directly on the shared base
-Protocol here**, unlike other languages where the multi-part convenience is a separate extension
-method), `flags(flags)`. `SendOp extends _FluentMessageOp` adds `submit()`. `RequestOp extends
-_FluentMessageOp` adds `timeout(timeout)` and `submit(callback)` — **callback-only, no
-awaitable/Future-returning overload documented on this Protocol**, matching rust's callback-only
-request submit rather than dotnet/java/node/cpp's async path. `RequestCallbackOp` mirrors
-`RequestOp`'s shape (`timeout`, `submit(callback)`) as a separate Protocol rather than a narrowed
-type reached only after calling `.flags(...)` — both `RequestOp` and `RequestCallbackOp` expose
-`submit(callback)` directly. `ReplyOp extends _FluentMessageOp` adds `submit()`.
+**Options.**
+
+| Stage | Member | Meaning |
+| --- | --- | --- |
+| `_FluentMessageOp` (shared base) | `message(payload)` | add one part, starts/continues the chain |
+| | `messages(*payloads)` | add several parts in one call — **declared directly on the shared base Protocol here**, unlike other languages where the multi-part convenience is a separate extension method |
+| | `flags(flags)` | set flags |
+| `SendOp extends _FluentMessageOp` | `submit()` | terminal |
+| `RequestOp extends _FluentMessageOp` | `timeout(timeout)` / `submit(callback)` | adds a reply-wait timeout; **callback-only, no awaitable/Future-returning overload documented on this Protocol**, matching rust's callback-only request submit rather than dotnet/java/node/cpp's async path |
+| `RequestCallbackOp` | `timeout` / `submit(callback)` | mirrors `RequestOp`'s shape as a **separate Protocol** rather than a narrowed type reached only after calling `.flags(...)` — both `RequestOp` and `RequestCallbackOp` expose `submit(callback)` directly |
+| `ReplyOp extends _FluentMessageOp` | `submit()` | terminal |
 
 **Completion result.** `SendOp.submit()`/`ReplyOp.submit()` return the operation result
 synchronously. `RequestOp`/`RequestCallbackOp.submit(callback)` deliver the reply to `callback`

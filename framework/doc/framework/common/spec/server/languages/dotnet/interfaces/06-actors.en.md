@@ -348,7 +348,7 @@ There's no application API that controls this barrier.
 
 Actor factory options and relocation policy are registered together in
 the `AddActorFactory<TActor,TFactory>(...)` configure callback of
-[Topology Configuration](03-configuration-topology.ko.md). The callback
+[Topology Configuration](03-configuration-topology.en.md). The callback
 must select exactly one policy.
 
 The Create and GetOrCreate calls are single-use. Setting the same option

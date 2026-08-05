@@ -155,7 +155,7 @@ only Channel Client membership doesn't connect.
 The following .NET excerpt is an example for understanding common role
 selection and factory registration. It doesn't require the same
 signature in other languages; the exact .NET contract is defined by the
-[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ```csharp
 public interface IZLinkMeshNodeBuilder

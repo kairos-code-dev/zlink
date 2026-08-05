@@ -9,7 +9,7 @@ title: "16. Options — Configuration List And Defaults · C#/.NET"
 # 16. Options — Configuration List And Defaults
 
 > **The documents that own this chapter's contract** —
-> [Topology public interfaces](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md)
+> [Topology public interfaces](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.en.md)
 > and
 > [Host configuration interfaces](../../../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md)
 > define the exact signatures and value ranges. This chapter helps you **list that surface
@@ -318,7 +318,7 @@ Everything else starts from its default.
   [13-interface-catalog §2 Topology Registration](13-interface-catalog.ko.md#2-topology-등록)
   — the verification class `BuilderContracts`
 - The exact signatures and value ranges:
-  [Topology public interfaces](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md) ·
+  [Topology public interfaces](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.en.md) ·
   [Host configuration interfaces](../../../common/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md)
 - Registration points and layering: [01-overview](01-overview.ko.md#아키텍처--계층-구조와-등록-지점)
 - Runtime observation and operations: [11-monitoring](11-monitoring.ko.md) · [12-operations](12-operations.ko.md)

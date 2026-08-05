@@ -32,7 +32,7 @@ representation.
 The common spec doesn't take any one language's syntax as the standard.
 Each language expresses the same feature and observable result in its own
 idiom. The exact signature of .NET RouteMesh/MeshNode is owned by
-[.NET RouteMesh/MeshNode Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET RouteMesh/MeshNode Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ### 2.1 Production Source Owner
 

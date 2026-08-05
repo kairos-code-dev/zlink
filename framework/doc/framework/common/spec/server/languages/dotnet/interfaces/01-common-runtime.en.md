@@ -108,7 +108,7 @@ already-used reply token are handled as .NET exceptional completion. An
 operation isn't automatically resubmitted after a timeout or
 cancellation. The exact signature of `IZLinkMetadataCall<TSelf>` and the
 1024-byte upper bound are owned by
-[Topology Configuration §6](03-configuration-topology.ko.md#6-메시징-metadata).
+[Topology Configuration §6](03-configuration-topology.en.md#6-messaging-metadata).
 Setting the same key multiple times sends the last value. A reply doesn't
 automatically copy request metadata.
 

@@ -170,7 +170,7 @@ attributes or decorators isn't provided.
 The following .NET excerpt shows how to register a bind endpoint, TLS, and
 session type on one Stream node. It doesn't require the same signature in
 other languages; the exact .NET contract is defined by the
-[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ```csharp
 public interface IZLinkStreamNodeBuilder

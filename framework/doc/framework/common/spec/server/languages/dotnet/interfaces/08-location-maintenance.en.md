@@ -46,7 +46,7 @@ public sealed class ZLinkLocationOptions
 
 The signature of the root's `AddLocationStore(...)`,
 `AddRelocationStore(...)`, and `ConfigureLocations()` is owned by
-[Topology Configuration](03-configuration-topology.ko.md#2-등록-인터페이스).
+[Topology Configuration](03-configuration-topology.en.md#2-registration-interface).
 Exactly one Store is registered per role. Registering the same role twice
 fails startup with `ZLinkConfigurationException` before socket bind.
 

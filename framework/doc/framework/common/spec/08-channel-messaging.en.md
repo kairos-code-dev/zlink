@@ -332,7 +332,7 @@ runs `BillingHandler`. Sending the same packet name via Node direct runs
 The code above is a .NET expression showing the contract for readability. The
 exact full signature is defined by
 [.NET Channel Messaging Interface](server/languages/dotnet/interfaces/04-channel-messaging.ko.md) and
-[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ### 5.1 Information Provided To The Handler Context
 
@@ -498,7 +498,7 @@ contract doesn't apply to Classic fanout publish.
 
 The exact full signature is defined by
 [.NET Channel Messaging Interface](server/languages/dotnet/interfaces/04-channel-messaging.ko.md) and
-[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ## 7. Failure And Termination
 
@@ -618,7 +618,7 @@ frame. Detailed ownership and delivery rules are defined by
 
 The exact .NET signature is defined by
 [.NET Common Runtime Interface](server/languages/dotnet/interfaces/01-common-runtime.ko.md) and
-[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Configuration Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ### 8.2 Observability Information
 

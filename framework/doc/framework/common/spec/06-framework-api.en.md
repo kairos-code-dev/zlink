@@ -14,7 +14,7 @@ title: "ZLink Framework API"
 This document defines ZLink Framework's language-neutral public API family and registration
 rules. Actual types, generic constraints, overloads, and async return types are owned by
 each package's per-language spec. The .NET RouteMesh and MeshNode's exact interface follows
-[.NET RouteMesh/MeshNode Interfaces](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET RouteMesh/MeshNode Interfaces](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ### 1.1 The Boundary Between Public Contract And Runtime Implementation
 

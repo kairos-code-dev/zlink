@@ -34,7 +34,7 @@ appears in the .NET public API. It doesn't require the same signature in
 other languages.
 
 The exact .NET signature is defined by the
-[.NET Topology Public Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[.NET Topology Public Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ```csharp
 public interface IZLinkFrameworkOptions

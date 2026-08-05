@@ -94,7 +94,7 @@ The Entry Spot's SpotId is issued by the Framework in the form `<prefix>-entry-<
 There's no API for the application to set the Entry Spot's RoutingId or SpotId.
 
 For the exact builders, see the
-[Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.ko.md).
+[Topology exact interface](../../../common/spec/server/languages/dotnet/interfaces/03-configuration-topology.en.md).
 
 ## 3. Spot
 

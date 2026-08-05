@@ -1,13 +1,13 @@
 # .NET System Structure And Host Registration
 
-[.NET exact interface table of contents](README.en.md) · [Topology Configuration](03-configuration-topology.ko.md)
+[.NET exact interface table of contents](README.en.md) · [Topology Configuration](03-configuration-topology.en.md)
 
 ## 1. Scope
 
 This document defines the contract for registering ZLink Framework with
 the ASP.NET Core host and DI. The exact signature of the RouteMesh
 builder, ChannelName membership, manual peer, and runtime options is
-owned by [Topology Configuration](03-configuration-topology.ko.md). The
+owned by [Topology Configuration](03-configuration-topology.en.md). The
 signature of handler, context, and messaging client is owned by the
 per-feature documents in the
 [exact interface table of contents](README.en.md).
@@ -44,7 +44,7 @@ public static class ServiceCollectionExtensions
 
 The framework root is registered once on one `IServiceCollection`. The
 exact member of `IZLinkFrameworkOptions` is owned by
-[Topology Configuration §2](03-configuration-topology.ko.md#2-등록-인터페이스).
+[Topology Configuration §2](03-configuration-topology.en.md#2-registration-interface).
 
 Host startup completes normally once configuration validation and public
 listener preparation finish and it can accept application callbacks. An
@@ -184,7 +184,7 @@ message.
 
 The public runtime option for Mesh placement weight and Channel weight is
 owned by
-[Topology Configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option).
+[Topology Configuration §5](03-configuration-topology.en.md#5-publisher-and-runtime-option).
 At runtime, node placement weight can be set by MeshName, and a local
 Server's `Weight` by ChannelName. The two values apply to different
 selections. Transport options including `MaxMessageSize` are only set

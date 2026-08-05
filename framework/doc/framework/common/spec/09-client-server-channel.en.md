@@ -55,7 +55,7 @@ languages. The sections describing role and endpoint show the needed interface
 and example together.
 
 The exact .NET signature is defined by
-[.NET Topology Public Interface](server/languages/dotnet/interfaces/03-configuration-topology.ko.md) and
+[.NET Topology Public Interface](server/languages/dotnet/interfaces/03-configuration-topology.en.md) and
 [.NET Channel Messaging Public Interface](server/languages/dotnet/interfaces/04-channel-messaging.ko.md).
 
 ## 3. Client And Server Roles

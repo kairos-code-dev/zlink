@@ -9,7 +9,7 @@ types, methods, generic constraints, nullable, and async return types.
 |---|---|
 | [Exact interface table of contents](interfaces/README.ko.md) | Defines the C# public type, member, nullable annotation, generic constraint, and default per feature. |
 | [Configuration and host](interfaces/02-configuration-host.ko.md) | Defines the ASP.NET Core registration method, package boundary, DI, and startup contract. |
-| [Topology configuration](interfaces/03-configuration-topology.ko.md) | Defines RouteMesh, ClientServer, and fanout builder and runtime options. |
+| [Topology configuration](interfaces/03-configuration-topology.en.md) | Defines RouteMesh, ClientServer, and fanout builder and runtime options. |
 | [Location configuration and operations](interfaces/08-location-maintenance.ko.md) | Defines application-facing Location options, readiness, and operational queries. |
 | [Location/Relocation provider](interfaces/08-authority-relocation.ko.md) | Defines the generic atomic Location Store and immutable Relocation Store SPI. |
 | [Host monitoring](interfaces/10-topology-monitoring.en.md) | Defines host state, Relocate/Shutdown results, and operational status. |
@@ -54,7 +54,7 @@ owns its exact interface.
   reflection, or a direct native symbol call.
 - The per-target ROUTER submit for Logical Multicast and the meaning of
   manual peer's expected RID are owned by
-  [Topology Configuration](interfaces/03-configuration-topology.ko.md).
+  [Topology Configuration](interfaces/03-configuration-topology.en.md).
 
 ## Cancellation
 

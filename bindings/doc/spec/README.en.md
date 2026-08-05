@@ -4959,115 +4959,145 @@ target state.
 | Poller result type name | N/A | `poll_event_t` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` |
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 
-## 테스트 정책
-바인딩 테스트의 목적은 언어별 테스트 개수를 맞추는 것이 아니다. 목적은 각
-바인딩이 자기 public surface에 해당하는 contract를 빠짐없이 같은 수준으로
-보장하는지 확인하는 것이다.
+## Test Policy
+The purpose of binding tests is not to match a test count across
+languages. The purpose is to confirm that each binding guarantees, at
+the same level and without omission, the contract that matches its own
+public surface.
 
-테스트 수는 언어별 API 표면, 런타임 ownership 모델, 패키징 방식에 따라 달라질 수
-있다. 따라서 테스트 개수는 판단의 보조 신호일 뿐이고, 아래 검증 계층과 Test
-Matrix의 의미 계약을 충족하는지가 실제 기준이다. 특정 바인딩의 테스트가 유난히
-많거나 적으면 개수 자체를 맞추기보다, 누락된 contract가 있는지 또는 core
-correctness 재검증 같은 중복 테스트가 섞였는지를 먼저 확인한다.
+The test count can vary by per-language API surface, runtime ownership
+model, and packaging approach. So the test count is only a supporting
+signal for judgment — the real standard is whether the verification
+layers below and the Test Matrix's semantic contract are satisfied. If a
+particular binding's test count looks unusually high or low, first check
+whether a contract is missing, or whether a redundant test — such as one
+that re-verifies core correctness — has crept in, rather than trying to
+match the count itself.
 
-zlink 바인딩은 native 함수를 단순 호출하는 얇은 래퍼가 아니다. 각 언어 바인딩은
-public facade, helper object, domain object, typed option, callback delivery,
-ownership 관리, native loader, package boundary, hot path 최적화를 함께 제공한다.
-따라서 테스트도 단순 roundtrip만으로 충분하지 않다. public helper가 제공하는
-추가 의미와 최적화 불변식도 binding contract의 일부로 검증해야 한다.
+A zlink binding is not a thin wrapper that simply calls a native
+function. Each language binding also provides a public facade, helper
+objects, domain objects, typed options, callback delivery, ownership
+management, a native loader, a package boundary, and hot-path
+optimization. So a simple round-trip test is not enough either — the
+additional meaning a public helper provides, and its optimization
+invariants, must also be verified as part of the binding contract.
 
-테스트는 아래 계층으로 분류한다.
+Tests are classified into the layers below.
 
-- `Required`: 모든 바인딩이 반드시 가져야 하는 테스트다.
-- `Conditional`: 해당 public API나 배포 단위를 제공하는 바인딩만 반드시 가져야
-  하는 테스트다.
-- `Language-specific`: 특정 런타임의 수명, 예외, GC, borrow, cgo, native loader
-  같은 위험을 검증하는 테스트다. 다른 언어에 억지로 복제하지 않는다.
-- `Sample smoke`: 사용자-facing 패턴이 public API로 실행되는지 확인하는 테스트다.
-  core correctness를 다시 검증하는 대량 시나리오로 확장하지 않는다.
-- `Out of scope`: core 자체의 메시징 correctness, transport matrix 전체 재검증,
-  일회성 migration 검증, 자동화할 수 없는 리뷰 항목이다. 이런 항목은 영구
-  바인딩 테스트로 남기지 않는다. 다만 바인딩 helper, facade, 최적화 불변식이
-  관여하는 경로라면 core 기능과 겹쳐 보여도 바인딩 테스트로 유지한다.
+- `Required`: a test every binding must have.
+- `Conditional`: a test required only for a binding that provides the
+  matching public API or distribution unit.
+- `Language-specific`: a test that verifies a risk specific to a
+  runtime — lifetime, exceptions, GC, borrow, cgo, native loader. This
+  is not forced to be duplicated in another language.
+- `Sample smoke`: a test that confirms a user-facing pattern runs
+  through the public API. This does not expand into a large scenario set
+  that re-verifies core correctness.
+- `Out of scope`: core's own messaging correctness, a full re-
+  verification of the transport matrix, one-off migration verification,
+  and review items that can't be automated. These items are not kept as
+  permanent binding tests. However, if a path involves a binding helper,
+  facade, or optimization invariant, it stays a binding test even if it
+  looks like it overlaps with core functionality.
 
-공통 원칙은 아래와 같다.
+The shared principles are:
 
-- public surface test로 canonical public API를 고정한다.
-- contract test로 바인딩과 native 경계의 타입 변환, 오류 매핑, handle lifecycle을
-  검증한다.
-- behavior test로 바인딩 public API가 core 계약을 올바르게 중계하는지 검증한다.
-- helper/facade test로 바인딩이 추가로 제공하는 언어 친화 기능의 의미 계약을
-  검증한다.
-- ownership 테스트는 send 성공, send 실패, receive, callback, multipart 경로를
-  모두 포함해야 한다.
-- optimization guard test로 hot path가 정책에서 금지한 느린 경로로 퇴행하지
-  않았는지 검증한다.
-- callback mode와 direct mode가 함께 허용되지 않는 경로는 충돌 규칙을 검증한다.
-- option 테스트는 typed option surface와 잘못된 역할 접근 차단을 함께
-  검증한다.
-- 성능 회귀 검증은 별도 Perf Policy가 담당한다. 기능 테스트가 perf benchmark를
-  대체하거나, perf benchmark가 public contract test를 대체하면 안 된다.
+- A public surface test fixes the canonical public API.
+- A contract test verifies type conversion, error mapping, and handle
+  lifecycle at the binding/native boundary.
+- A behavior test verifies that the binding public API correctly relays
+  the core contract.
+- A helper/facade test verifies the semantic contract of the extra
+  language-friendly functionality a binding provides.
+- An ownership test must cover the send-success, send-failure, receive,
+  callback, and multipart paths.
+- An optimization guard test verifies the hot path hasn't regressed into
+  a slow path the policy forbids.
+- A path where callback mode and direct mode are not allowed together
+  verifies the conflict rule.
+- An option test verifies the typed option surface together with
+  blocking incorrect role access.
+- Performance regression verification is owned by the separate Perf
+  Policy. A functional test must not replace a perf benchmark, and a
+  perf benchmark must not replace a public contract test.
 
-테스트 충족 기준은 아래와 같다.
+The test satisfaction criteria are:
 
-- 각 바인딩은 자신이 제공하는 public API에 대해 Test Matrix의 `Required` 항목을
-  모두 검증해야 한다.
-- 특정 public API, extension package, sample suite를 제공하면 대응하는
-  `Conditional` 항목도 검증해야 한다.
-- 언어 런타임 때문에 생기는 ownership, lifetime, loader, callback, GC, borrow,
-  cgo 같은 위험은 `Language-specific` 테스트로 검증한다.
-- 제공하지 않는 public API에 대한 테스트를 개수 맞추기 목적으로 추가하지 않는다.
-- core correctness를 다시 검증하는 테스트는 바인딩 helper, facade, package
-  boundary, native loader, 최적화 불변식과 직접 관련이 없으면 바인딩 테스트에서
-  제거하거나 core test로 옮긴다.
-- 같은 계약을 여러 테스트가 반복해서 검증하면 하나의 깊은 테스트로 합치고,
-  서로 다른 계약을 한 테스트가 숨기고 있으면 Matrix 항목이 드러나도록 나눈다.
+- Each binding must verify every `Required` item in the Test Matrix for
+  the public API it provides.
+- If it provides a particular public API, extension package, or sample
+  suite, it must also verify the matching `Conditional` item.
+- A risk that arises from the language runtime — ownership, lifetime,
+  loader, callback, GC, borrow, cgo — is verified with a
+  `Language-specific` test.
+- Do not add a test for a public API the binding doesn't provide, just
+  to match a count.
+- A test that re-verifies core correctness is removed from the binding
+  tests or moved to a core test, unless it directly relates to a
+  binding helper, facade, package boundary, native loader, or
+  optimization invariant.
+- If multiple tests repeatedly verify the same contract, merge them into
+  one deep test; if one test hides multiple distinct contracts, split it
+  so each Matrix item is visible.
 
-정책 변경 시 필수 테스트 규칙:
+Required test rules on a policy change:
 
-- public surface 변경: public surface test 동반
-- contract 계약 변경: contract test 동반
-- blocking/non-blocking 계약 변경: behavior test 동반
-- ownership/receive shape 변경: callback regression 또는 ownership test 동반
-- option surface 변경: typed option surface test와 negative 역할 test 동반
-- codec extension 변경: 해당 codec extension test 동반
-- helper/facade 변경: helper/facade contract test 동반
-- hot path 구현 변경: optimization guard test 또는 perf regression gate 동반
+- a public surface change: accompanied by a public surface test
+- a contract change: accompanied by a contract test
+- a blocking/non-blocking contract change: accompanied by a behavior
+  test
+- an ownership/receive shape change: accompanied by a callback
+  regression or ownership test
+- an option surface change: accompanied by a typed option surface test
+  and a negative role test
+- a codec extension change: accompanied by that codec extension's test
+- a helper/facade change: accompanied by a helper/facade contract test
+- a hot-path implementation change: accompanied by an optimization
+  guard test or a perf regression gate
 
-기존 코드에 Test Matrix 바깥의 테스트가 있으면 아래 기준으로 정리한다.
+If existing code has a test outside the Test Matrix, clean it up by the
+following criteria.
 
-- core 기능 재검증이면 core test로 옮기거나 삭제한다.
-- migration 검증이면 migration 완료 후 삭제할 임시 테스트로 표시한다.
-- 사용자-facing 패턴 확인이면 sample smoke로 이동한다.
-- 바인딩 helper, facade, package boundary, native loader, 최적화 불변식 검증이면
-  Test Matrix의 적절한 카테고리로 분류해서 유지한다.
-- 특정 언어 런타임 위험을 검증한다면 Language-specific 테스트로 남기고, 이유를
-  테스트 이름이나 파일 이름에서 알 수 있게 한다.
+- If it re-verifies core functionality, move it to a core test or
+  delete it.
+- If it's migration verification, mark it as a temporary test to delete
+  once migration is complete.
+- If it confirms a user-facing pattern, move it to sample smoke.
+- If it verifies a binding helper, facade, package boundary, native
+  loader, or optimization invariant, keep it, classified under the
+  appropriate Test Matrix category.
+- If it verifies a specific language runtime risk, keep it as a
+  Language-specific test, and make the reason clear from the test name
+  or file name.
 
-### 테스트 실행 스크립트 정책
-- 각 바인딩은 전체 테스트를 한번에 실행할 수 있는 스크립트를 제공해야 한다.
-- 실행 스크립트는 `bindings/<언어>/tests/` 디렉토리에 위치해야 한다.
-- 스크립트는 반복 실행 가능하고 성공/실패를 요약해서 보여줘야 한다.
-- 권장 형태:
+### Test Run Script Policy
+- Each binding must provide a script that can run the entire test suite
+  at once.
+- The run script must be located in the `bindings/<language>/tests/`
+  directory.
+- The script must be repeatable and must summarize success/failure.
+- Recommended forms:
   - `tests/run_tests.sh`
   - `tests/run_tests.ps1`
-  - language-specific test runner entry
+  - a language-specific test runner entry
 
-### 버그 발견 정책
-- 테스트 또는 perf 작성/실행 중 버그를 발견한 경우 다음 절차를 따른다.
-- 바인딩 라이브러리 버그:
-  - 해당 바인딩에서 직접 수정한다.
-  - 수정과 함께 회귀 테스트를 추가한다.
-- core 라이브러리 버그:
-  - 바인딩에서 core 버그를 직접 수정하지 않는다.
-  - `bindings/<언어>/bug/` 디렉토리에 버그 리포트를 작성한다.
-  - 리포트에는 최소한 다음을 포함한다.
-    - 재현 조건 (소켓 타입, 패턴, 메시지 크기, transport 등)
-    - 기대 동작
-    - 실제 동작
-    - 재현 코드 또는 테스트 참조
-  - 바인딩 측에서 workaround가 필요하면 workaround임을 명시하고 bug 리포트를
-    참조한다.
+### Bug Discovery Policy
+- When a bug is found while writing/running a test or perf benchmark,
+  follow this procedure.
+- A binding library bug:
+  - Fix it directly in that binding.
+  - Add a regression test together with the fix.
+- A core library bug:
+  - Do not fix the core bug directly from the binding.
+  - Write a bug report in the `bindings/<language>/bug/` directory.
+  - The report must include at least the following:
+    - reproduction conditions (socket type, pattern, message size,
+      transport, and so on)
+    - expected behavior
+    - actual behavior
+    - reproduction code or a test reference
+  - If a workaround is needed on the binding side, explicitly mark it as
+    a workaround and reference the bug report.
 
 ## Test Matrix
 - 이 섹션은 각 바인딩이 최소한 가져야 할 테스트 항목을 정리한다.

@@ -119,7 +119,7 @@ connection easy to miss when reading a chapter separately.
 | [4. Operation Completion Confirmation](04-completion.en.md) | How to make only one win when multiple paths try to finish at once. How not to lose a response |
 | [5. Message Continuity During A Move](05-relocation-continuity.en.md) | Where a message goes while an object is moving |
 | [6. Target Selection And Route Cache](06-routing-and-cache.en.md) | How often location is looked up. What slows down if the cache doesn't die after a move |
-| [7. Receive And Dispatch Loop](07-dispatch-loop.ko.md) | Whether to wake per message or batch-process. What wakes it |
+| [7. Receive And Dispatch Loop](07-dispatch-loop.en.md) | Whether to wake per message or batch-process. What wakes it |
 | [8. Object Kind And Activation](08-object-lifecycle.ko.md) | How the three Spot kinds are distinguished. When a missing object is built |
 | [9. Session And Actor Binding](09-session-binding.ko.md) | How to keep two places from pointing at the same Actor while a connection is swapped |
 | [10. Liveness And Status Publication](10-liveness-and-state.ko.md) | How to judge whether the peer is alive. From when a call is accepted |
@@ -129,7 +129,7 @@ connection easy to miss when reading a chapter separately.
 A performance-critical decision is gathered in
 [11](11-message-ownership.ko.md)'s copy count,
 [6](06-routing-and-cache.en.md)'s location cache,
-[7](07-dispatch-loop.ko.md)'s batching/wake method/timer resource,
+[7](07-dispatch-loop.en.md)'s batching/wake method/timer resource,
 [2](02-serialization.en.md)'s execution resource constraint, and
 [8](08-object-lifecycle.ko.md)'s memory accounting.
 

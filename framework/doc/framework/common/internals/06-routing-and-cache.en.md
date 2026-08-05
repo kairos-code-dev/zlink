@@ -4,7 +4,7 @@ title: "6. Target Selection And Route Cache"
 
 # 6. Target Selection And Route Cache
 
-[Internal structure table of contents](README.en.md) · [Previous: 5. Message Continuity During A Move](05-relocation-continuity.en.md) · [Next: 7. Receive And Dispatch Loop](07-dispatch-loop.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 5. Message Continuity During A Move](05-relocation-continuity.en.md) · [Next: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md)
 
 > **What this chapter answers** — the procedure for picking a target
 > from a single name, and how often that location lookup happens.
@@ -466,4 +466,4 @@ instead of publish.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 5. Message Continuity During A Move](05-relocation-continuity.en.md) · [Next: 7. Receive And Dispatch Loop](07-dispatch-loop.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 5. Message Continuity During A Move](05-relocation-continuity.en.md) · [Next: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md)

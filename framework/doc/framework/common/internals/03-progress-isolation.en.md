@@ -221,7 +221,7 @@ by configuration, and what this clause requires isn't exact
 accounting but that the excess stays independent of load.
 
 `R` is a different axis from the count/byte/elapsed-time bounds in
-[7. Receive And Dispatch Loop 「6. Reading Multiple Items At Once From A Socket」](07-dispatch-loop.ko.md#6-소켓에서-한-번에-여러-건을-읽는다).
+[7. Receive And Dispatch Loop 「6. Read Multiple Items At Once From A Socket」](07-dispatch-loop.en.md#6-read-multiple-items-at-once-from-a-socket).
 Those three decide **how much to read from one connection per
 wake-up**, while `R` decides **how many raw receives that haven't
 finished classification can be outstanding at once.** They aren't

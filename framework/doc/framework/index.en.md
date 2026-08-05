@@ -336,7 +336,7 @@ switch line at the top of each chapter lets you view the same chapter in another
 
 | Language | Server guide | Get started right away | Client-side guide |
 | --- | --- | --- | --- |
-| `.NET` | [Server](dotnet/guide/server/README.ko.md) | [Installation and first run](dotnet/guide/server/02-getting-started.ko.md) | [Stream Connector](dotnet/guide/stream-connector/README.ko.md) · [HTTP Client](dotnet/guide/http-client/README.ko.md) |
+| `.NET` | [Server](dotnet/guide/server/README.ko.md) | [Installation and first run](dotnet/guide/server/02-getting-started.ko.md) | [Stream Connector](dotnet/guide/stream-connector/README.ko.md) · [HTTP Client](dotnet/guide/http-client/README.en.md) |
 | C++ | [Server](cpp/guide/server/README.ko.md) | [Installation and first run](cpp/guide/server/02-getting-started.ko.md) | [Stream Connector](cpp/guide/stream-connector/README.ko.md) · [HTTP Client](cpp/guide/http-client/README.ko.md) |
 | Java | [Server](java/guide/server/README.ko.md) | [Installation and first run](java/guide/server/02-getting-started.ko.md) | [Stream Connector](java/guide/stream-connector/README.ko.md) · [HTTP Client](java/guide/http-client/README.en.md) |
 | Kotlin | [Server](kotlin/guide/server/README.ko.md) | [Installation and first run](kotlin/guide/server/02-getting-started.ko.md) | [Stream Connector](kotlin/guide/stream-connector/README.ko.md) · [HTTP Client](kotlin/guide/http-client/README.en.md) |

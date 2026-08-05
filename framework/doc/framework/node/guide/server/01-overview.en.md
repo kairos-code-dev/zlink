@@ -294,7 +294,7 @@ every message for one room (requests, subscription events, timer ticks, actor pa
 — it's **serialization of execution order** ([06 §3](06-spot.ko.md)).
 
 Runnable reference samples: [TicTacToe](../../../common/sample/tictactoe/README.ko.md) ·
-[Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.ko.md)
+[Bingo](../../../common/sample/bingo/README.ko.md) · [GameQuest](../../../common/sample/event/gamequest.en.md)
 
 ### Concurrent Access To One Entity
 
@@ -528,7 +528,7 @@ of pieces follows just to get that one thing.
 Keeping state next to the consumer with a stateful stream processor (Kafka Streams/Flink)
 cuts the DB round trips, but partition design, state-store recovery, and rebalance remain
 your operational responsibility — the detailed comparison is covered by
-[GameQuest common scenario §3](../../../common/sample/event/gamequest.ko.md).
+[GameQuest common scenario §3](../../../common/sample/event/gamequest.en.md).
 
 Drawing the same business process — an order workflow — both ways shows the difference in
 pieces right in the picture.
@@ -895,7 +895,7 @@ in [TicTacToe](../../../common/sample/tictactoe/README.ko.md) and
 [Bingo](../../../common/sample/bingo/README.ko.md).
 [ShoppingMall](../../../common/sample/event/shoppingmall.ko.md),
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.ko.md),
-[GameQuest](../../../common/sample/event/gamequest.ko.md), and
+[GameQuest](../../../common/sample/event/gamequest.en.md), and
 [SupportChat](../../../common/sample/supportchat/README.ko.md) are end-to-end samples that
 go all the way to the business domain — order workflow, assignment/status tracking, game
 progress, support/chat.

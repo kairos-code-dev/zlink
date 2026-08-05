@@ -325,7 +325,7 @@ instead. Anything that genuinely needs zero loss, like an actual currency payout
 into a separate tier.
 
 - Paired chapters: [06-spot](06-spot.ko.md), [08-actor-session](08-actor-session.ko.md)
-- Scenario: [GameQuest](../../../common/sample/event/gamequest.ko.md) · payload JSON
+- Scenario: [GameQuest](../../../common/sample/event/gamequest.en.md) · payload JSON
 
 ## 8. ZoneWorld — Building A Zone-Sharded MMORPG And Ops Control
 

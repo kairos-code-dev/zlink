@@ -205,7 +205,7 @@ rooms/tasks at once** ends up in the same shape.
 
 - Paired chapters: [08-actor-session](08-actor-session.ko.md), [06-spot](06-spot.ko.md)
   (timer), [09-stream](09-stream.ko.md)
-- Scenario: [SupportChat](../../../common/sample/supportchat/README.ko.md) · payload JSON
+- Scenario: [SupportChat](../../../common/sample/supportchat/README.en.md) · payload JSON
 
 ## 5. DeliveryDispatch — Building A Dispatch System
 
@@ -381,7 +381,7 @@ UI**, so you can watch the boundary crossing and node maintenance-mode switch ha
 
 - Paired chapters: [07-actor-spot](07-actor-spot.ko.md) (relocation),
   `11. Monitoring` chapter, [12-operations](12-operations.ko.md)
-- Scenario: [ZoneWorld](../../../common/sample/zoneworld/README.ko.md) · payload JSON
+- Scenario: [ZoneWorld](../../../common/sample/zoneworld/README.en.md) · payload JSON
 - The server is provided in multiple languages sharing one browser client.
 
 ## 9. Running It

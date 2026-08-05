@@ -161,7 +161,7 @@ There's no need to rebuild from the socket for each one.
 
 - **① Zone-sharding** — set up a zone with `add_route_mesh` + a node-addressed route mesh. A
   player crossing a boundary is handed off by **cross-node actor relocation**
-  ([07](07-actor-spot.ko.md)) instead. [ZoneWorld](../../../common/sample/zoneworld/README.ko.md)
+  ([07](07-actor-spot.ko.md)) instead. [ZoneWorld](../../../common/sample/zoneworld/README.en.md)
   is exactly this approach.
 - **② Lobby + room** — entry/matching is the Entry Spot, and a room is a room spot created
   with `get_or_create`. [Bingo](../../../common/sample/bingo/README.ko.md) is exactly this
@@ -498,7 +498,7 @@ co_await spots.request_to_spot (request.order_id, request)  // request is alread
 co_await actor.context ().bound_session ().send (order_status_changed_t{order_id, status}).submit ();
 ```
 
-Runnable reference samples: [SupportChat](../../../common/sample/supportchat/README.ko.md) ·
+Runnable reference samples: [SupportChat](../../../common/sample/supportchat/README.en.md) ·
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md)
 
 ### Simplifying Event-Driven Business Processing
@@ -895,7 +895,7 @@ in [TicTacToe](../../../common/sample/tictactoe/README.en.md) and
 [ShoppingMall](../../../common/sample/event/shoppingmall.en.md),
 [DeliveryDispatch](../../../common/sample/deliverydispatch/README.en.md),
 [GameQuest](../../../common/sample/event/gamequest.en.md), and
-[SupportChat](../../../common/sample/supportchat/README.ko.md) are end-to-end samples that
+[SupportChat](../../../common/sample/supportchat/README.en.md) are end-to-end samples that
 go all the way to the business domain — order workflow, assignment/status tracking, game
 progress, support/chat.
 

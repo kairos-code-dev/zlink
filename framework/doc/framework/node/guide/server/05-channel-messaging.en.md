@@ -473,7 +473,7 @@ mesh.channel('billing').client();            // A call-only channel is client --
 A fanout channel's subscription handler is registered with the fanout builder's
 `AddHandler<...>()`.
 
-> **See it in a sample — [ZoneWorld](../../../common/sample/zoneworld/README.ko.md).** All
+> **See it in a sample — [ZoneWorld](../../../common/sample/zoneworld/README.en.md).** All
 > three kinds appear in a single registration block. Control reports are received over a
 > route mesh channel, and cluster-wide announcements over a fanout channel.
 >

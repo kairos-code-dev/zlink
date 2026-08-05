@@ -67,16 +67,14 @@ except SubmitError as ex:
         pass  # 정상 제어 흐름이지 실제 실패가 아니다
 ```
 
-**Options.** `ZlinkError(code: int, native_errno: int = 0)` — 순수
-public 생성자다(기반이 protected/abstract이고 subclass를 통해서만
-도달 가능한 다른 언어와 다름). Member: `code`(property, 실패를
-분류하는 zlink result code), `native_errno`(property, 없으면 `0`).
-`_TypedZlinkError`(모든 typed exception이 실제로 파생하는 non-public
-중간 계층)는 `result`(property, typed result enum)를 더한다 — 이
-`__init__`은 **raw code가 알려진 enum member와 맞지 않을 때
-`ValueError`를 잡아서 예외를 던지거나 무관한 값으로 조용히 매핑하는
-대신 raw 정수를 그대로 보존한다**, 이는 특히 더 새로운 Core가 이
-binding이 아직 모르는 result를 보고할 때를 견디기 위함이다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `ZlinkError(code: int, native_errno: int = 0)` | 순수 public 생성자다(기반이 protected/abstract이고 subclass를 통해서만 도달 가능한 다른 언어와 다름) |
+| `code` | property, 실패를 분류하는 zlink result code |
+| `native_errno` | property, 밑에 깔린 native errno, 없으면 `0` |
+| `_TypedZlinkError.result` | property, typed result enum; 모든 typed exception이 실제로 파생하는 non-public 중간 계층에 선언됨 — 이 `__init__`은 **raw code가 알려진 enum member와 맞지 않을 때 `ValueError`를 잡아서 예외를 던지거나 무관한 값으로 조용히 매핑하는 대신 raw 정수를 그대로 보존한다**, 이는 특히 더 새로운 Core가 이 binding이 아직 모르는 result를 보고할 때를 견디기 위함이다 |
 
 **Completion result.** 해당 없음 — 이건 내장 `RuntimeError`를
 확장하는 exception 계층 자체다.

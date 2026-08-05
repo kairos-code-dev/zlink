@@ -61,14 +61,14 @@ except SubmitError as ex:
         pass  # ordinary control flow, not a real failure
 ```
 
-**Options.** `ZlinkError(code: int, native_errno: int = 0)` — a plain public constructor (unlike
-languages where the base is protected/abstract and only reachable via a subclass). Members: `code`
-(property, the zlink result code that classifies the failure), `native_errno` (property, `0` when
-none). `_TypedZlinkError` (the non-public intermediate every typed exception actually derives from)
-adds `result` (property, the typed result enum) — its `__init__` **catches a `ValueError` when the
-raw code doesn't match any known enum member and preserves the raw integer instead of raising or
-silently mapping to an unrelated value**, specifically to tolerate a newer Core version reporting a
-result this binding doesn't know about yet.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `ZlinkError(code: int, native_errno: int = 0)` | a plain public constructor (unlike languages where the base is protected/abstract and only reachable via a subclass) |
+| `code` | property, the zlink result code that classifies the failure |
+| `native_errno` | property, the underlying native errno, `0` when none |
+| `_TypedZlinkError.result` | property, the typed result enum; declared on the non-public intermediate every typed exception actually derives from — its `__init__` **catches a `ValueError` when the raw code doesn't match any known enum member and preserves the raw integer instead of raising or silently mapping to an unrelated value**, specifically to tolerate a newer Core version reporting a result this binding doesn't know about yet |
 
 **Completion result.** N/A — this is the exception hierarchy itself, extending the built-in
 `RuntimeError`.

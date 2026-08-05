@@ -29,11 +29,11 @@ zlink::monitor_status_t status = monitor.status ();
 | --- | --- | --- |
 | `socket_monitor_t()` | — | default, invalid until assigned |
 | `open(const socket_t&, monitor_event)` | `monitor_event::all` | static — the actual constructor path, called internally by `socket_t::monitor_open(...)` |
-| `valid()` | — | — |
-| `on_event(std::function<void(const monitor_event_t&)>)` | — | — |
-| `recv(recv_flags_t)` | `recv_flags_t::none` | returns `std::optional<monitor_event_t>` |
-| `status() const` | — | returns `monitor_status_t` |
-| `close()` | — | — |
+| `valid()` | — | whether this monitor is still usable |
+| `on_event(std::function<void(const monitor_event_t&)>)` | — | registers a passive observer for every lifecycle event |
+| `recv(recv_flags_t)` | `recv_flags_t::none` | pulls the next event; returns `std::optional<monitor_event_t>` |
+| `status() const` | — | a point-in-time snapshot of the monitored socket's state, returns `monitor_status_t` |
+| `close()` | — | releases the monitor's native resources |
 | `ignore_event(const monitor_event_t&) noexcept` | — | static no-op, for a caller that wants a handler that intentionally does nothing |
 
 **Completion result.** All synchronous. Move-only; the destructor does not implicitly close.
@@ -87,15 +87,15 @@ size_t count = poller.wait (ready.data (), ready.size (), std::chrono::seconds (
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
-| `add(socket_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | `slot_` echoed back in the matching `poll_event_t` |
-| `add_fd(int fd_, poll_event_flag_t, std::uintptr_t slot_)` | — | — |
-| `add(timer_t&, std::uintptr_t slot_)` | — | — |
-| `modify_fd(int, poll_event_flag_t)` / `modify(socket_monitor_t&, poll_event_flag_t)` / `modify(socket_t&, poll_event_flag_t)` | — | — |
-| `remove(socket_monitor_t&)` / `remove(socket_t&)` / `remove(timer_t&)` / `remove_fd(int)` | — | each returns `bool`, true when it was registered |
-| `size() const` | — | `int` |
-| `close()` | — | — |
-| `wait(poll_event_t* events_, size_t capacity_, std::chrono::milliseconds timeout_)` | — | — |
+| `add(socket_monitor_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | registers a monitor for the given events; `slot_` echoed back in the matching `poll_event_t` |
+| `add(socket_t&, poll_event_flag_t, std::uintptr_t slot_)` | — | registers a socket the same way |
+| `add_fd(int fd_, poll_event_flag_t, std::uintptr_t slot_)` | — | registers a raw file descriptor the same way |
+| `add(timer_t&, std::uintptr_t slot_)` | — | registers a timer, ready when it fires |
+| `modify_fd(int, poll_event_flag_t)` / `modify(socket_monitor_t&, poll_event_flag_t)` / `modify(socket_t&, poll_event_flag_t)` | — | changes the watched events for an already-registered source |
+| `remove(socket_monitor_t&)` / `remove(socket_t&)` / `remove(timer_t&)` / `remove_fd(int)` | — | unregisters the source; each returns `bool`, true when it was registered |
+| `size() const` | — | number of sources currently registered (`int`) |
+| `close()` | — | releases the poller's native resources |
+| `wait(poll_event_t* events_, size_t capacity_, std::chrono::milliseconds timeout_)` | — | blocks until at least one source is ready or `timeout_` elapses |
 
 **Completion result.** Registration/removal members are synchronous. `wait` blocks up to
 `timeout_`, writing up to `capacity_` results and returning the count written (`0` on timeout).
@@ -146,10 +146,11 @@ int ready = zlink::poll (items, std::chrono::milliseconds (1000));
 
 | Member | Meaning |
 | --- | --- |
-| `socket` (`socket_t*`) | null for an fd-based item |
-| `fd` (`int`) / `events`/`revents` (`poll_event_flag_t`) | — |
-| `from_socket(socket_t&, poll_event_flag_t)` / `from_fd(int, poll_event_flag_t)` | static factories |
-| `zlink::poll(poll_item_t* items_, size_t count_, std::chrono::milliseconds timeout_)` | plus a `std::vector<poll_item_t>&` convenience overload |
+| `socket` (`socket_t*`) | the socket to poll, null for an fd-based item |
+| `fd` (`int`) | the file descriptor to poll, when `socket` is null |
+| `events`/`revents` (`poll_event_flag_t`) | requested/actually-fired events |
+| `from_socket(socket_t&, poll_event_flag_t)` / `from_fd(int, poll_event_flag_t)` | static factories building a `poll_item_t` for a socket or a raw fd |
+| `zlink::poll(poll_item_t* items_, size_t count_, std::chrono::milliseconds timeout_)` | waits once across `items_`, writing `revents` in place; a `std::vector<poll_item_t>&` convenience overload also exists |
 
 **Completion result.** Synchronous; returns the count of ready items (`0` on timeout). `revents` on
 each `poll_item_t` is written in place by the call.
@@ -175,11 +176,11 @@ timer.start (std::chrono::seconds (1), /*repeat_count=*/0);
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `start(duration, uint64_t repeat_count_)` | `repeat_count_ = 0` | template accepting any `std::chrono::duration`, converted internally to nanoseconds; negative throws `config_error_t{invalid_argument}` |
-| `stop()` | — | — |
-| `recv()` | — | returns `std::optional<uint64_t>` cumulative fire count, `std::nullopt` when nothing pending |
-| `on_fire(std::function<void(uint64_t)>)` | — | unlike dotnet's `Action<IZlinkTimer, ulong>`, the callback here receives only the fire count, not the timer itself |
-| `close()` | — | — |
+| `start(duration, uint64_t repeat_count_)` | `repeat_count_ = 0` | starts firing every `duration` (a template accepting any `std::chrono::duration`, converted internally to nanoseconds; negative throws `config_error_t{invalid_argument}`); `repeat_count_` bounds how many times |
+| `stop()` | — | stops firing; restartable via `start` |
+| `recv()` | — | pulls the cumulative fire count; returns `std::optional<uint64_t>`, `std::nullopt` when nothing pending |
+| `on_fire(std::function<void(uint64_t)>)` | — | registers a passive observer, invoked on every fire; unlike dotnet's `Action<IZlinkTimer, ulong>`, the callback here receives only the fire count, not the timer itself |
+| `close()` | — | releases the timer's native resources |
 
 **Completion result.** All synchronous. Move-only; the destructor does not implicitly close.
 

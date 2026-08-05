@@ -76,10 +76,13 @@ try {
 
 **Options.** public 생성자 `ZlinkError(code: number, nativeErrno =
 0)` — 하지만 application 코드는 이걸 직접 생성하지 않는다, 모든 내장
-API가 대신 올바른 타입의 subclass를 던진다. Member: `code`(`number`,
-실패를 분류하는 zlink result code), `nativeErrno`(`number`, 밑에 깔린
-native errno, 기본값 `0`), `name`(`string`, `ResultError`의 생성자가
-구체적 error class 이름으로 설정함, 예: `'SubmitError'`).
+API가 대신 올바른 타입의 subclass를 던진다.
+
+| Member | 의미 |
+| --- | --- |
+| `code` | `number`, 실패를 분류하는 zlink result code |
+| `nativeErrno` | `number`, 밑에 깔린 native errno, 기본값 `0` |
+| `name` | `string`, `ResultError`의 생성자가 구체적 error class 이름(예: `'SubmitError'`)으로 설정 |
 
 **Completion result.** 해당 없음 — 이건 내장 `Error`를 확장하는 error
 계층 자체다. 내부 `ResultError<TResult>` 계층은 export되지 않는다 —

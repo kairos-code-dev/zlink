@@ -69,9 +69,12 @@ try {
 
 **Options.** Public constructor `ZlinkError(code: number, nativeErrno = 0)` — but application code
 never constructs this directly; every built-in API throws the correctly-typed subclass instead.
-Members: `code` (`number`, the zlink result code that classifies the failure), `nativeErrno`
-(`number`, the underlying native errno, defaults to `0`), `name` (`string`, set to the concrete
-error class name, e.g. `'SubmitError'`, by `ResultError`'s constructor).
+
+| Member | Meaning |
+| --- | --- |
+| `code` | `number`, the zlink result code that classifies the failure |
+| `nativeErrno` | `number`, the underlying native errno, defaults to `0` |
+| `name` | `string`, set to the concrete error class name (e.g. `'SubmitError'`) by `ResultError`'s constructor |
 
 **Completion result.** N/A — this is the error hierarchy itself, extending the built-in `Error`.
 The internal `ResultError<TResult>` layer is not exported — application code can catch/reference

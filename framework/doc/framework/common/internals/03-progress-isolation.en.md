@@ -4,7 +4,7 @@ title: "3. Application And Infrastructure Execution Separation"
 
 # 3. Application And Infrastructure Execution Separation
 
-[Internal structure table of contents](README.en.md) · [Previous: 2. Spot · Actor Execution Serialization — splitting queue and execution gate](02-serialization.en.md) · [Next: 4. Operation Completion Confirmation — Only One Finalizes](04-completion.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 2. Spot · Actor Execution Serialization — splitting queue and execution gate](02-serialization.en.md) · [Next: 4. Operation Completion Confirmation — Only One Finalizes](04-completion.en.md)
 
 > **What this chapter answers** — what must keep progressing while a
 > handler is stuck.
@@ -301,4 +301,4 @@ procedure, and peer connection handling still progress.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 2. Spot · Actor Execution Serialization](02-serialization.en.md) · [Next: 4. Operation Completion Confirmation](04-completion.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 2. Spot · Actor Execution Serialization](02-serialization.en.md) · [Next: 4. Operation Completion Confirmation](04-completion.en.md)

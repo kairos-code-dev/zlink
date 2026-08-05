@@ -756,7 +756,7 @@ bottom two layers (`bindings/dotnet`, the Core C API) are used only as a backend
 behind the framework — never directly exposed on the public API, and application code
 doesn't change even if they're replaced later. This backend boundary and data flow are
 explained separately by
-[internals/backend-dependency-policy](../../internals/backend-dependency-policy.ko.md).
+[internals/backend-dependency-policy](../../../java/internals/backend-dependency-policy.ko.md).
 
 The point where the application meets this stack is **one registration spot.** This is where
 you declare the MeshNode, fanout, and STREAM node.
@@ -795,7 +795,7 @@ What you declare, and where, comes down to three spots.
 | `IZLink*Runtime` status | Status observation and diagnostics | [Chapter 11](11-monitoring.ko.md) |
 
 Every option settable at each surface, with its default, is collected in
-[16-options](16-options.ko.md).
+[16-options](../../../java/guide/server/16-options.en.md).
 
 ## 4. The Four Integration Axes, Summarized
 
@@ -904,7 +904,7 @@ service, handler, and location store model. Anyone reviewing the formal public A
 contract should also read the
 [spec/interfaces index](../../../common/spec/server/languages/java/interfaces/README.ko.md);
 anyone changing the runtime's internal structure should also read
-[internals/](../../internals/backend-dependency-policy.ko.md).
+[internals/](../../../java/internals/backend-dependency-policy.ko.md).
 
 ## 7. Naming Convention
 
@@ -928,7 +928,7 @@ Uses the Java notation as-is. Any surface the Kotlin layer adds follows the same
 - [11-monitoring](11-monitoring.ko.md) — Status observation and diagnostics
 - [13-interface-catalog](13-interface-catalog.ko.md) — Every contract interface as code (ContractTests verification)
 - [14-samples](14-samples.ko.md) — Checking it against runnable samples
-- [16-options](16-options.ko.md) — The option list and defaults, what changes when
+- [16-options](../../../java/guide/server/16-options.en.md) — The option list and defaults, what changes when
 - [17-alternative](17-alternative.ko.md) — **Where ZLink fits** (where it's used, warning signs, the technology-choice boundary)
 - [Common samples](../../../common/sample/README.ko.md) — Representative business scenarios and verification criteria
 - [Java exact interface index](../../../common/spec/server/languages/java/interfaces/README.ko.md) — The formal contract

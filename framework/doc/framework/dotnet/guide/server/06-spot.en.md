@@ -8,7 +8,7 @@ title: "6. Spot · C#/.NET"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 05-channel-messaging.en.md](05-channel-messaging.en.md) | [Next: 7. Actor And Spot](07-actor-spot.en.md)
+[Guide Home](README.en.md) | [Previous: 5. Channel Messaging — request · send · pub/sub](05-channel-messaging.en.md) | [Next: 7. Actor And Spot](07-actor-spot.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

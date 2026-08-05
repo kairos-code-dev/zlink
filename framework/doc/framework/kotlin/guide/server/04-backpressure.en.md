@@ -8,7 +8,7 @@ title: "4. Backpressure — When Arrival Outpaces Processing · Kotlin"
 <!-- generated:end -->
 
 <!-- framework-adapter-nav:start -->
-[Guide Home](README.en.md) | [Previous: 3. Core Concepts](03-concepts.en.md) | [Next: 05-channel-messaging.en.md](05-channel-messaging.en.md)
+[Guide Home](README.en.md) | [Previous: 3. Core Concepts](03-concepts.en.md) | [Next: 5. Channel Messaging — request · send · pub/sub](05-channel-messaging.en.md)
 <!-- framework-adapter-nav:end -->
 
 <!-- language-switch:start -->

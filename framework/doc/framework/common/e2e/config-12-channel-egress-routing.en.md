@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[E2E table of contents](README.en.md) | [Previous: Observability/Operational Deployment](config-11-observability-ops.ko.md) | [Next: One-Way Submit Admission](config-13-submit-admission.en.md)
+[E2E table of contents](README.en.md) | [Previous: Observability/Operational Deployment](config-11-observability-ops.en.md) | [Next: One-Way Submit Admission](config-13-submit-admission.en.md)
 <!-- framework-adapter-nav:end -->
 
 # Config 12 — Selecting The Send Path That Matches A ChannelName

@@ -39,7 +39,7 @@ actually exists in the current Node code and regression tests.
 
 | Document | Scope |
 |------|------|
-| [system-structure](../common/spec/server/languages/node/01-system-structure.ko.md) | Package structure, NestJS registration, lifecycle, and startup validation |
+| [system-structure](../common/spec/server/languages/node/01-system-structure.en.md) | Package structure, NestJS registration, lifecycle, and startup validation |
 | [Interface table of contents](../common/spec/server/languages/node/interfaces/README.ko.md) | The interface/decorator/context/options catalog by category |
 
 **The meaning and behavioral rules of a feature are owned by the [common spec](../common/spec/README.ko.md).**

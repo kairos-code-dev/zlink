@@ -4,7 +4,7 @@ title: "8. Object Kind And Activation"
 
 # 8. Object Kind And Activation
 
-[Internal structure table of contents](README.en.md) · [Previous: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md) · [Next: 9. Session And Actor Binding](09-session-binding.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md) · [Next: 9. Session And Actor Binding](09-session-binding.en.md)
 
 > **What this chapter answers** — how the three Spot kinds are
 > distinguished, when a missing object is built, and how a message
@@ -379,4 +379,4 @@ followed as-is
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md) · [Next: 9. Session And Actor Binding](09-session-binding.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 7. Receive And Dispatch Loop](07-dispatch-loop.en.md) · [Next: 9. Session And Actor Binding](09-session-binding.en.md)

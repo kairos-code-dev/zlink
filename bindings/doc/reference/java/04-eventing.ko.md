@@ -24,11 +24,14 @@ try (SocketMonitor monitor = socket.monitorOpen(MonitorEventType.CONNECTED, Moni
 }
 ```
 
-**Options.** `onEvent(SocketMonitorHandler handler)`, `recv()`/`recv(RecvFlags flags)`(둘 다
-`MonitorEvent`를 직접 반환한다 — dotnet의 `MonitorEvent?`와 달리
-`Optional`/nullable이 아니다), `status()`(`MonitorStatus` 반환).
-`SocketMonitor.IGNORE_HANDLER`는 caller가 의도적으로 event를 버리고 싶을 때
-등록할 수 있는 public static 상수 no-op `SocketMonitorHandler`다.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `onEvent(SocketMonitorHandler handler)` | 수동적 lifecycle-event 콜백을 등록 |
+| `recv()` / `recv(RecvFlags flags)` | 다음 event를 가져옴; 둘 다 `MonitorEvent`를 직접 반환한다 — dotnet의 `MonitorEvent?`와 달리 `Optional`/nullable이 아니다 |
+| `status()` | 시점 스냅샷 `MonitorStatus`를 반환 |
+| `IGNORE_HANDLER` | caller가 의도적으로 event를 버리고 싶을 때 등록할 수 있는 public static 상수 no-op `SocketMonitorHandler` |
 
 **Completion result.** 모든 member는 동기다. `SocketMonitor extends
 AutoCloseable`이다.
@@ -84,15 +87,19 @@ try (Poller poller = Zlink.createPoller()) {
 }
 ```
 
-**Options.** `add(Socket socket, long slot, PollEventFlags... events)`,
-`addFd(int fd, long slot, PollEventFlags... events)`, `add(ZlinkTimer
-timer, long slot)` — `slot`은 대응하는 poll 결과로 그대로 되돌아오는
-caller token이다. 인자 순서(`slot`이 varargs `events`보다 앞)와 event가
-결합된 bitmask 인자가 아니라 varargs로 주어진다는 점을 참고한다.
-`modify(Socket socket, PollEventFlags... events)`, `modifyFd(int fd,
-PollEventFlags... events)`. `remove(Socket)`/`remove(int fd)`/
-`remove(ZlinkTimer)`(각각 `boolean` 반환, 등록돼 있었으면 true). `clear()`,
-`size()`(`int`). `wait(PollEvents events, Duration timeout)`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `add(Socket socket, long slot, PollEventFlags... events)` | socket을 등록; `slot`은 대응하는 poll 결과로 그대로 되돌아오는 caller token — 인자 순서(`slot`이 varargs `events`보다 앞)를 참고 |
+| `addFd(int fd, long slot, PollEventFlags... events)` | raw file descriptor를 등록, 같은 `slot`/varargs 형태 |
+| `add(ZlinkTimer timer, long slot)` | timer를 socket/fd와 함께 multiplex하도록 등록 |
+| `modify(Socket socket, PollEventFlags... events)` | 이미 등록된 socket의 감시 event를 교체 |
+| `modifyFd(int fd, PollEventFlags... events)` | 이미 등록된 fd의 감시 event를 교체 |
+| `remove(Socket)` / `remove(int fd)` / `remove(ZlinkTimer)` | source 등록을 해제; `boolean` 반환, 실제로 등록돼 있었으면 `true` |
+| `clear()` | 모든 source를 한 번에 등록 해제 |
+| `size()` | `int`, 현재 등록된 source 개수 |
+| `wait(PollEvents events, Duration timeout)` | `timeout`까지 block하며 `events`를 그 자리에서 채움 |
 
 **Completion result.** 등록/제거 member는 동기다. `wait`는 `timeout`까지
 block하며, `events`를 그 자리에서 채우고 준비된 개수를 반환한다(이후
@@ -120,13 +127,20 @@ for (int i = 0; i < events.readyCount(); i++) {
 ```
 
 **Options.** public 생성자 `PollEvents(int capacity)`(`capacity <= 0`이면
-`IllegalArgumentException`). 읽기 전용 accessor, 각각 `capacity()`가 아니라
+`IllegalArgumentException`). 아래 모든 accessor는 `capacity()`가 아니라
 `readyCount()`에 대해 bounds-check되며 범위를 벗어나면
-`IndexOutOfBoundsException`을 던진다: `capacity()`, `readyCount()`,
-`sourceKind(int index)`, `slot(int index)`, `revents(int index)`(raw `int`
-bitmask), `hasEvent(int index, PollEventFlags event)`(편의 bit-test),
-`fd(int index)`, `eventAt(int index)`(해당 index의 `PollEvent` record를
-materialize).
+`IndexOutOfBoundsException`을 던진다.
+
+| Member | 의미 |
+| --- | --- |
+| `capacity()` | 생성자에 넘긴 고정 용량 |
+| `readyCount()` | 마지막 `wait` 이후 몇 개 slot이 준비된 event를 담고 있는지 |
+| `sourceKind(int index)` | 해당 index의 준비된 source 종류 |
+| `slot(int index)` | 그 source 등록 시 넘긴 caller token |
+| `revents(int index)` | 해당 index의 raw `int` poll-event bitmask |
+| `hasEvent(int index, PollEventFlags event)` | `revents(index)`에 대한 편의 bit-test |
+| `fd(int index)` | 해당 index의 file descriptor, `FD` kind source에서만 채워짐 |
+| `eventAt(int index)` | 해당 index의 `PollEvent` record를 materialize |
 
 **Completion result.** 모든 accessor는 동기다. `Poller.wait(...)`는
 package-private `markReadyCount`/`markEvent`를 통해 `PollEvents`
@@ -144,10 +158,15 @@ hot polling loop에서 그 할당을 피할 수 있다.
 `PollEvents.eventAt(index)`가 필요 시 materialize하는, poller wait가
 보고하는 준비된 source 하나. Java `record`다.
 
-**Options.** 인자 없음. Component: `sourceKind`(`PollSourceKind`:
-`SOCKET`/`FD`/`TIMER`), `slot`(`long`, 등록 시 제공한 caller token),
-`revents`(`int`, raw poll-event bitmask), `fd`(`int`, `FD` kind
-source에서만 채워짐).
+**Options.** 인자 없음 — 직접 생성하지 않고 `PollEvents.eventAt(...)`으로
+얻는다.
+
+| Component | 타입 | 의미 |
+| --- | --- | --- |
+| `sourceKind` | `PollSourceKind` | source가 `SOCKET`/`FD`/`TIMER` 중 무엇인지 |
+| `slot` | `long` | 등록 시 제공한 caller token |
+| `revents` | `int` | raw poll-event bitmask |
+| `fd` | `int` | file descriptor, `FD` kind source에서만 채워짐 |
 
 **Completion result.** 해당 없음 — 불변 record.
 
@@ -168,11 +187,14 @@ try (ZlinkTimer timer = Zlink.createTimer()) {
 }
 ```
 
-**Options.** `start(Duration interval, long repeatCount)`, `stop()`(`start`로
-재시작 가능), `recv()`(`long`을 직접 반환 — 누적 fire count; dotnet의
-`ulong?`/cpp의 `std::optional<uint64_t>`와 달리, 소스에선 nullable/optional이
-아니다), `onFire(TimerHandler handler)`(handler는 `(ZlinkTimer timer, long
-fireCount)`를 받음).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `start(Duration interval, long repeatCount)` | `interval`마다 fire를 시작; `repeatCount == 0`은 무제한 |
+| `stop()` | fire를 멈춤; `start`로 재시작 가능 |
+| `recv()` | `long`을 직접 반환 — 누적 fire count; dotnet의 `ulong?`/cpp의 `std::optional<uint64_t>`와 달리 소스에선 nullable/optional이 아니다 |
+| `onFire(TimerHandler handler)` | 수동적 interval 콜백을 등록; handler는 `(ZlinkTimer timer, long fireCount)`를 받음 |
 
 **Completion result.** 모든 member는 동기다. `ZlinkTimer extends
 AutoCloseable`이다.

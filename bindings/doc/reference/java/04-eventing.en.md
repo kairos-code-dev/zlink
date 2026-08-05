@@ -22,10 +22,14 @@ try (SocketMonitor monitor = socket.monitorOpen(MonitorEventType.CONNECTED, Moni
 }
 ```
 
-**Options.** `onEvent(SocketMonitorHandler handler)`, `recv()`/`recv(RecvFlags flags)` (both return
-`MonitorEvent` directly — not `Optional`/nullable, unlike dotnet's `MonitorEvent?`), `status()`
-(returns `MonitorStatus`). `SocketMonitor.IGNORE_HANDLER` is a public static constant
-no-op `SocketMonitorHandler` a caller can register when it intentionally wants to discard events.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `onEvent(SocketMonitorHandler handler)` | registers a passive lifecycle-event callback |
+| `recv()` / `recv(RecvFlags flags)` | pulls the next event; both return `MonitorEvent` directly — not `Optional`/nullable, unlike dotnet's `MonitorEvent?` |
+| `status()` | returns a `MonitorStatus` point-in-time snapshot |
+| `IGNORE_HANDLER` | a public static constant no-op `SocketMonitorHandler` a caller can register when it intentionally wants to discard events |
 
 **Completion result.** All members are synchronous. `SocketMonitor extends AutoCloseable`.
 
@@ -78,13 +82,19 @@ try (Poller poller = Zlink.createPoller()) {
 }
 ```
 
-**Options.** `add(Socket socket, long slot, PollEventFlags... events)`, `addFd(int fd, long slot,
-PollEventFlags... events)`, `add(ZlinkTimer timer, long slot)` — `slot` is a caller token echoed
-back in the matching poll result; note the parameter order (`slot` before the varargs `events`) and
-that events are supplied as varargs rather than a combined bitmask parameter. `modify(Socket socket,
-PollEventFlags... events)`, `modifyFd(int fd, PollEventFlags... events)`. `remove(Socket)`/
-`remove(int fd)`/`remove(ZlinkTimer)` (each returns `boolean`, true when it was registered).
-`clear()`, `size()` (`int`). `wait(PollEvents events, Duration timeout)`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `add(Socket socket, long slot, PollEventFlags... events)` | registers a socket; `slot` is a caller token echoed back in the matching poll result — note the parameter order (`slot` before the varargs `events`) |
+| `addFd(int fd, long slot, PollEventFlags... events)` | registers a raw file descriptor, same `slot`/varargs shape |
+| `add(ZlinkTimer timer, long slot)` | registers a timer to be multiplexed alongside sockets/fds |
+| `modify(Socket socket, PollEventFlags... events)` | replaces the watched events for an already-registered socket |
+| `modifyFd(int fd, PollEventFlags... events)` | replaces the watched events for an already-registered fd |
+| `remove(Socket)` / `remove(int fd)` / `remove(ZlinkTimer)` | unregisters the source; returns `boolean`, `true` when it was actually registered |
+| `clear()` | unregisters every source at once |
+| `size()` | `int`, the number of currently registered sources |
+| `wait(PollEvents events, Duration timeout)` | blocks up to `timeout`, populating `events` in place |
 
 **Completion result.** Registration/removal members are synchronous. `wait` blocks up to `timeout`,
 populating `events` in place and returning the ready count (also readable afterward via
@@ -110,11 +120,19 @@ for (int i = 0; i < events.readyCount(); i++) {
 ```
 
 **Options.** Public constructor `PollEvents(int capacity)` (throws `IllegalArgumentException` if
-`capacity <= 0`). Read-only accessors, each bounds-checked against `readyCount()` (not `capacity()`)
-and throwing `IndexOutOfBoundsException` out of range: `capacity()`, `readyCount()`,
-`sourceKind(int index)`, `slot(int index)`, `revents(int index)` (raw `int` bitmask),
-`hasEvent(int index, PollEventFlags event)` (convenience bit-test), `fd(int index)`, `eventAt(int
-index)` (materializes a `PollEvent` record for that index).
+`capacity <= 0`). Every accessor below is bounds-checked against `readyCount()` (not `capacity()`)
+and throws `IndexOutOfBoundsException` out of range.
+
+| Member | Meaning |
+| --- | --- |
+| `capacity()` | the fixed capacity passed to the constructor |
+| `readyCount()` | how many of the slots hold a ready event after the last `wait` |
+| `sourceKind(int index)` | the ready source's kind at that index |
+| `slot(int index)` | the caller token supplied when that source was registered |
+| `revents(int index)` | raw `int` poll-event bitmask for that index |
+| `hasEvent(int index, PollEventFlags event)` | convenience bit-test over `revents(index)` |
+| `fd(int index)` | the file descriptor at that index, populated for `FD`-kind sources |
+| `eventAt(int index)` | materializes a `PollEvent` record for that index |
 
 **Completion result.** All accessors are synchronous. `Poller.wait(...)` mutates a `PollEvents`
 instance in place via package-private `markReadyCount`/`markEvent` — not part of the public
@@ -131,9 +149,14 @@ individual accessors avoids that allocation on a hot polling loop.
 One ready source reported by a poller wait, materialized on demand by `PollEvents.eventAt(index)`.
 A Java `record`.
 
-**Options.** No parameters. Components: `sourceKind` (`PollSourceKind`: `SOCKET`/`FD`/`TIMER`),
-`slot` (`long`, the caller token supplied at registration), `revents` (`int`, raw poll-event
-bitmask), `fd` (`int`, populated for `FD`-kind sources).
+**Options.** No parameters — obtained via `PollEvents.eventAt(...)`, not constructed directly.
+
+| Component | Type | Meaning |
+| --- | --- | --- |
+| `sourceKind` | `PollSourceKind` | whether the source is `SOCKET`/`FD`/`TIMER` |
+| `slot` | `long` | the caller token supplied at registration |
+| `revents` | `int` | raw poll-event bitmask |
+| `fd` | `int` | the file descriptor, populated for `FD`-kind sources |
 
 **Completion result.** N/A — an immutable record.
 
@@ -154,10 +177,14 @@ try (ZlinkTimer timer = Zlink.createTimer()) {
 }
 ```
 
-**Options.** `start(Duration interval, long repeatCount)`, `stop()` (restartable via `start`),
-`recv()` (returns `long` directly — the cumulative fire count; unlike dotnet's `ulong?`/cpp's
-`std::optional<uint64_t>`, this is not nullable/optional in source), `onFire(TimerHandler handler)`
-(the handler receives `(ZlinkTimer timer, long fireCount)`).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `start(Duration interval, long repeatCount)` | starts firing on `interval`; `repeatCount == 0` means unlimited |
+| `stop()` | stops firing; restartable via `start` |
+| `recv()` | returns `long` directly — the cumulative fire count; unlike dotnet's `ulong?`/cpp's `std::optional<uint64_t>`, this is not nullable/optional in source |
+| `onFire(TimerHandler handler)` | registers a passive interval callback; the handler receives `(ZlinkTimer timer, long fireCount)` |
 
 **Completion result.** All members are synchronous. `ZlinkTimer extends AutoCloseable`.
 

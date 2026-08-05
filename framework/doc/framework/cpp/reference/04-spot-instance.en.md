@@ -5,7 +5,7 @@
 This category covers the external entry points `spot_manager_t`/`route_client_t`/
 `spot_publisher_client_t` provide, and the entry points used inside Spot code via
 `spot_context_t`/`spot_common_context_t`. The exact signatures are owned by the
-[Spot exact interface](../../common/spec/server/languages/cpp/interfaces/04-spots.ko.md)
+[Spot exact interface](../../common/spec/server/languages/cpp/interfaces/04-spots.en.md)
 (Korean-only).
 
 ---
@@ -369,5 +369,5 @@ to a specific turn boundary. This call is not needed under the default `any_turn
 ---
 
 See the
-[Spot exact interface](../../common/spec/server/languages/cpp/interfaces/04-spots.ko.md)
+[Spot exact interface](../../common/spec/server/languages/cpp/interfaces/04-spots.en.md)
 (Korean-only) for the full rationale.

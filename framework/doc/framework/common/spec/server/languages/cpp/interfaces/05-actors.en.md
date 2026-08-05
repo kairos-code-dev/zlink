@@ -18,7 +18,7 @@ included in the relocation target.
 ## 1. Identity And Maintenance Policy
 
 The exact declaration of `actor_context_t`, which an Actor uses, is
-owned by the [Spot interface](04-spots.ko.md).
+owned by the [Spot interface](04-spots.en.md).
 
 ```cpp
 namespace zlink::framework {

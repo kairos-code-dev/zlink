@@ -42,6 +42,6 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `Message.java`, `Received.java`, `TopicMessage.java`, `SubscriptionEvent.java`, `SubscriptionEntry.java`, `SendOperation.java`, `SendSubmitOperation.java`, `RequestOperation.java`, `RequestSubmitOperation.java`, `RequestCallbackSubmitOperation.java`, `TimeoutSubmitOperation.java`, `ReplyOperation.java`, `ReplySubmitOperation.java`, `MessageBuilderStage.java` |
 | [Sockets](03-sockets.en.md) | Drafted | `contracts/sockets/`: `Socket.java`, `StreamSocket.java`, `MessageSocketContracts/{PairSocket,DealerSocket}.java`, `RoutedSocketContracts/RouterSocket.java`, `PubSubSocketContracts/{PubSocket,SubSocket,XPubSocket,XSubSocket}.java`, `SocketOptionFacades/*.java`, `SocketEnums/*.java`, `SocketHandlers/*.java` |
 | [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing/`: `Poller.java`, `ZlinkTimer.java`, `SocketMonitor.java`, `EventEnums/*.java`, `EventHandlers/*.java`, `EventModels/*.java` |
-| Errors | Not started | `contracts/errors/`: `ErrorCategory.java`, `Errors/*.java` (exception classes + result enums) |
+| [Errors](05-errors.en.md) | Drafted | `contracts/errors/`: `ErrorCategory.java`, `Errors/*.java` (exception classes + result enums) |
 
 This document tree is not yet listed in the `mkdocs.yml` nav.

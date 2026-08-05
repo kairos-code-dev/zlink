@@ -4,7 +4,7 @@ title: "12. Service wire protocol"
 
 # 12. Service wire protocol
 
-[Internals index](README.ko.md) · [Previous: 11. Payload Ownership and Copying](11-message-ownership.ko.md)
+[Internals index](README.en.md) · [Previous: 11. Payload Ownership and Copying](11-message-ownership.en.md)
 
 > **What this chapter answers** — the byte format and command list exchanged between nodes.
 >
@@ -580,4 +580,4 @@ retention period.
 
 ---
 
-[Internals index](README.ko.md) · [Previous: 11. Payload Ownership and Copying](11-message-ownership.ko.md)
+[Internals index](README.en.md) · [Previous: 11. Payload Ownership and Copying](11-message-ownership.en.md)

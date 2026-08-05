@@ -123,11 +123,11 @@ connection easy to miss when reading a chapter separately.
 | [8. Object Kind And Activation](08-object-lifecycle.en.md) | How the three Spot kinds are distinguished. When a missing object is built |
 | [9. Session And Actor Binding](09-session-binding.en.md) | How to keep two places from pointing at the same Actor while a connection is swapped |
 | [10. Liveness And Status Publication](10-liveness-and-state.en.md) | How to judge whether the peer is alive. From when a call is accepted |
-| [11. Payload Ownership And Copy](11-message-ownership.ko.md) | How many times a byte is copied from socket to handler. When deserialization happens |
+| [11. Payload Ownership And Copy](11-message-ownership.en.md) | How many times a byte is copied from socket to handler. When deserialization happens |
 | [12. Service Wire Protocol](12-service-wire-protocol.ko.md) | The byte format and command exchanged between nodes |
 
 A performance-critical decision is gathered in
-[11](11-message-ownership.ko.md)'s copy count,
+[11](11-message-ownership.en.md)'s copy count,
 [6](06-routing-and-cache.en.md)'s location cache,
 [7](07-dispatch-loop.en.md)'s batching/wake method/timer resource,
 [2](02-serialization.en.md)'s execution resource constraint, and

@@ -4,7 +4,7 @@ title: "10. Liveness And Status Publication"
 
 # 10. Liveness And Status Publication
 
-[Internal structure table of contents](README.en.md) · [Previous: 9. Session And Actor Binding](09-session-binding.en.md) · [Next: 11. Payload Ownership And Copy](11-message-ownership.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 9. Session And Actor Binding](09-session-binding.en.md) · [Next: 11. Payload Ownership And Copy](11-message-ownership.en.md)
 
 > **What this chapter answers** — how to judge whether the peer is
 > alive, and how to publish this runtime's status outward.
@@ -287,4 +287,4 @@ message midway. Changing it would leave half a message's record.
 
 ---
 
-[Internal structure table of contents](README.en.md) · [Previous: 9. Session And Actor Binding](09-session-binding.en.md) · [Next: 11. Payload Ownership And Copy](11-message-ownership.ko.md)
+[Internal structure table of contents](README.en.md) · [Previous: 9. Session And Actor Binding](09-session-binding.en.md) · [Next: 11. Payload Ownership And Copy](11-message-ownership.en.md)

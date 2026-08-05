@@ -87,7 +87,7 @@ response receives the failure reason as its result.
 another method is free. Since a long span becomes a bottleneck itself,
 put **only checking and enqueuing** here — work like deserialization
 or handler lookup happens outside this span
-([11. Payload Ownership And Copy 「6. When Deserialization Happens」](11-message-ownership.ko.md#6-역직렬화를-언제-하는가)).
+([11. Payload Ownership And Copy 「6. When Deserialization Happens」](11-message-ownership.en.md#6-when-deserialization-happens)).
 
 ## 3. Acquire Exclusivity Together With Taking Ownership
 

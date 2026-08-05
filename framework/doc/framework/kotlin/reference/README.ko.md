@@ -1,6 +1,6 @@
 # Kotlin Framework 레퍼런스
 
-작성 규칙은 [레퍼런스 문서 작성 가이드](../../../../doc/principal/documentation/reference-writing-guide.ko.md)를
+작성 규칙은 [레퍼런스 문서 작성 가이드](../../../../../doc/principal/documentation/reference-writing-guide.ko.md)를
 따른다. dotnet 레퍼런스(parity 참조 lane)와 같은 8개 category·순서를 그대로 쓴다.
 
 `zlink-framework-kotlin`은 Java `zlink-framework` runtime을 그대로 재사용하는 얇은 coroutine idiom

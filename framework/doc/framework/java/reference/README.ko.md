@@ -1,10 +1,10 @@
 # Java Framework 레퍼런스
 
-작성 규칙은 [레퍼런스 문서 작성 가이드](../../../../doc/principal/documentation/reference-writing-guide.ko.md)를
+작성 규칙은 [레퍼런스 문서 작성 가이드](../../../../../doc/principal/documentation/reference-writing-guide.ko.md)를
 따른다. dotnet 레퍼런스(parity 참조 lane)와 같은 8개 category·순서를 그대로 쓰고, 각 항목은 Java
 exact interface(`javap` inventory)를 직접 대조해 작성했다.
 
-- [Guide](../guide/README.ko.md) — Spring Boot 튜토리얼 관점.
+- [Guide](../guide/server/README.ko.md) — Spring Boot 튜토리얼 관점.
 - [Java exact interface](../../common/spec/server/languages/java/interfaces/README.ko.md) — 계약 원문
   소유 문서.
 - **이 레퍼런스** — "이 호출 하나를 완결하려면 무엇을 알아야 하는가"만 모은다.

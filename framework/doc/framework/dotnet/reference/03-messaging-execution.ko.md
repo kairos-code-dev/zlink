@@ -27,13 +27,13 @@ await routeClient
 | `.Metadata(key, value)` / `.Metadata(ZLinkMessageMetadata)` | 없음 | handler에 전달할 key-value. 합쳐서 1024 byte(UTF-8) 상한이고, 같은 key는 마지막 값이 전송된다 |
 | `.Async(ct)` | 필수 terminal | source-local admission 성공까지만 기다린다 |
 
-**완료 의미.** 정상 완료는 이 프로세스가 message를 큐에 수락했다는 뜻이다. Remote handler 실행이나
+**완료 결과.** 정상 완료는 이 프로세스가 message를 큐에 수락했다는 뜻이다. Remote handler 실행이나
 subscriber 수신은 기다리지 않는다. 큐 여유가 없으면 socket send timeout(설정하지 않으면 1초,
 `SetDefaultSocketSendTimeout`으로 변경)까지 기다린 뒤 그래도 없으면 `DeadlineExceeded`로 완료한다.
 ChannelName에 ready target이 없으면 `NotFound`, route 단절은 `Unavailable`, runtime 종료 중이면
 `ShuttingDown`으로 완료한다.
 
-**언제 쓰나.** Reply가 필요 없는 fire-and-forget에 쓴다. Reply가 필요하면 `RequestToChannel`을
+**선택 기준.** Reply가 필요 없는 fire-and-forget에 쓴다. Reply가 필요하면 `RequestToChannel`을
 쓴다.
 
 ---
@@ -58,11 +58,11 @@ var reply = await routeClient
 | `.Async<TResponse>(ct)` | terminal(택 1) | reply 수신까지 현재 실행을 이어서 기다린다 |
 | `.Yield<TResponse>(ct)` | terminal(택 1) | `SpotWide` User Spot·Instance Spot handler 안에서만 유효하다. 대기 동안 User Spot gate를 반환해 형제 job의 실행을 허용한다. 그 밖의 실행 context에서 호출하면 `InvalidOperation`으로 완료한다 |
 
-**완료 의미.** `TResponse`(handler 반환값)로 완료하거나, timeout이면 `DeadlineExceeded`, ChannelName에
+**완료 결과.** `TResponse`(handler 반환값)로 완료하거나, timeout이면 `DeadlineExceeded`, ChannelName에
 ready target이 없으면 `NotFound`, route 단절은 `Unavailable`, runtime 종료 중이면 `ShuttingDown`으로
 완료한다.
 
-**언제 쓰나.** Reply 값이 필요할 때 쓴다. One-way면 `SendToChannel`을 쓴다. `Yield`는 `SpotWide`
+**선택 기준.** Reply 값이 필요할 때 쓴다. One-way면 `SendToChannel`을 쓴다. `Yield`는 `SpotWide`
 handler 안에서 다른 request나 worker가 진행 중일 때, 자신의 대기가 형제 job을 막지 않게 하려고 쓴다.
 
 ---
@@ -80,10 +80,10 @@ await routeClient
 
 **옵션.** `SendToChannel`과 동일하다 — `.Metadata(...)`, terminal `.Async(ct)`.
 
-**완료 의미.** `SendToChannel`과 같은 완료 kind를 쓴다. 대상 RID가 Object Client(handler 등록이
+**완료 결과.** `SendToChannel`과 같은 완료 kind를 쓴다. 대상 RID가 Object Client(handler 등록이
 불가능한 RID)이면 다른 target으로 넘기지 않고 `NotFound`로 완료한다.
 
-**언제 쓰나.** 업무 object(actor·spot)의 배치나 메시징에는 쓰지 않는다 — 그 경우에는
+**선택 기준.** 업무 object(actor·spot)의 배치나 메시징에는 쓰지 않는다 — 그 경우에는
 ActorId·SpotId·ChannelName을 쓴다. Node direct는 운영 목적으로 특정 node를 지목할 때만 쓴다.
 
 ---
@@ -101,7 +101,7 @@ var status = await routeClient
 **옵션.** `RequestToChannel`과 동일하다 — `.Metadata(...)`, `.Timeout(...)`, terminal
 `.Async<TResponse>(ct)` 또는 `.Yield<TResponse>(ct)`.
 
-**완료 의미와 쓰임.** `RequestToChannel`과 같되, 대상 선택이 ChannelName round-robin이 아니라
+**완료 결과와 선택 기준.** `RequestToChannel`과 같되, 대상 선택이 ChannelName round-robin이 아니라
 지정한 RID 고정이라는 점만 다르다.
 
 ---
@@ -129,11 +129,11 @@ await fanoutClient
 | topic 인자 생략 | event의 packet name을 topic으로 사용 | 예약된 topic 이름을 쓰면 `ArgumentException`으로 완료한다 |
 | `.Async(ct)` | 필수 terminal | source-local publish admission 완료까지만 기다린다 |
 
-**완료 의미.** 정상 완료는 발행 admission이 끝났다는 뜻이다. Subscriber 수나 수신 완료는 반환하지
+**완료 결과.** 정상 완료는 발행 admission이 끝났다는 뜻이다. Subscriber 수나 수신 완료는 반환하지
 않는다 — target이 0개여도 정상 완료한다. 시작한 뒤에는 개별 target 실패를 전체 실패로 바꾸지 않고
 재시도하지 않는다.
 
-**언제 쓰나.** 발행자가 구독자를 알지 못해야 하는 관찰·통지에 쓴다. 특정 대상에 보내는 메시징이면
+**선택 기준.** 발행자가 구독자를 알지 못해야 하는 관찰·통지에 쓴다. 특정 대상에 보내는 메시징이면
 `SendToChannel`이나 `RequestToChannel`을 쓴다.
 
 ---
@@ -156,10 +156,10 @@ services.AddZLinkFramework(options =>
 | --- | --- | --- |
 | `.Use(IZLinkCodecExtension)` | 없으면 JSON | business payload serializer를 등록한다. 여러 번 호출해 여러 content type을 등록할 수 있다 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Host 시작 전에만 호출한다 — 시작한 뒤의 호출은 계약
+**완료 결과.** 반환값 없이 동기로 등록된다. Host 시작 전에만 호출한다 — 시작한 뒤의 호출은 계약
 범위 밖이다.
 
-**언제 쓰나.** JSON이 아닌 content type(MessagePack, Protobuf 등)을 쓸 때 쓴다. 공식
+**선택 기준.** JSON이 아닌 content type(MessagePack, Protobuf 등)을 쓸 때 쓴다. 공식
 `ZLinkMessagePackCodec.Default`/`ZLinkProtobufCodec.Default` 외에 `IZLinkCodecExtension`을 직접
 구현해 custom serializer를 등록할 수도 있다.
 

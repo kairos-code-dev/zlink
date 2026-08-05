@@ -80,12 +80,12 @@ builder 구성 요소를 선언 순서나 알파벳 순으로 나열하는 문�
 > | `.Async<TResponse>(ct)` | terminal (택 1) | reply 수신까지 대기 |
 > | `.Yield<TResponse>(ct)` | terminal (택 1) | 특정 handler 실행 context에서만 유효, 대기 동안 자리를 반환 |
 >
-> ### 완료 의미
+> ### 완료 결과
 >
 > `TResponse`, timeout이면 `DeadlineExceeded`, ChannelName에 ready target이 없으면
 > `NotFound`.
 >
-> ### 언제 쓰나
+> ### 선택 기준
 >
 > reply 값이 필요할 때만. one-way면 `SendToChannel`.
 
@@ -116,8 +116,8 @@ builder 구성 요소를 선언 순서나 알파벳 순으로 나열하는 문�
 - 한 줄 요약 — 이 호출이 무엇을 완결하는가
 - 완결된 호출 코드 한 벌 — 실제 존재하는 API로 쓴다(원칙 4)
 - 옵션 표 — 이 진입점에만 해당하는 modifier, 기본값, 의미
-- 완료 의미 — 정상 반환값과 실패 kind
-- 언제 이 항목 대신 비슷한 항목을 쓰는지 한 문장
+- 완료 결과 — 정상 반환값과 실패 kind
+- 선택 기준 — 이 항목 대신 비슷한 항목을 쓰는 경우를 한 문장으로
 - 정확한 시그니처로의 링크
 
 ### 3.4 정확한 계약과 다시 대조한다

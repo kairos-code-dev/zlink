@@ -41,12 +41,12 @@ services.AddZLinkFramework(options =>
 | `.AddRouteSendHandler<THandler, TMessage>(packetName?)` | packet name은 메시지 타입에서 결정 | Node direct one-way handler(`IZLinkRouteSendHandler<TMessage>`) 등록. `SendToNode`(messaging-execution category)가 호출하는 대상 |
 | `.AddRouteRequestHandler<THandler, TRequest, TReply>(packetName?)` | packet name은 메시지 타입에서 결정 | Node direct request handler(`IZLinkRouteRequestHandler<TRequest, TReply>`) 등록. `RequestToNode`가 호출하는 대상 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. 잘못된 조합(중복 MeshName, listener 설정 누락 등)은
+**완료 결과.** 반환값 없이 동기로 등록된다. 잘못된 조합(중복 MeshName, listener 설정 누락 등)은
 host startup 검증에서 `ZLinkConfigurationException`으로 드러난다. 같은 packet name을 RouteMesh
 Channel handler family와 Node direct handler family에 각각 등록할 수 있으며, 각 family 안의 중복
 key만 startup 오류다.
 
-**언제 쓰나.** RouteMesh를 쓰는 모든 host가 최소 하나의 MeshNode를 등록할 때 쓴다. Manual peer만
+**선택 기준.** RouteMesh를 쓰는 모든 host가 최소 하나의 MeshNode를 등록할 때 쓴다. Manual peer만
 쓰고 분산 discovery가 필요 없는 node는 Location Store 없이 시작할 수 있다.
 
 ---
@@ -78,10 +78,10 @@ play.Objects().Server()
 | `.AddInstanceSpotFactory<TSpot>(type, configure)` | 없음 | cold-activation Instance Spot 타입 등록. `configure`는 `StableTypeLimit(int)`에 더해 `PreserveStateWith`/`RecreateOnRelocation`/`DisableRelocation` 중 정확히 하나를 받는다 |
 | `.AddActorFactory<TActor, TFactory>(type, configure)` | 없음 | stable Actor 타입 등록. `configure`는 `PreserveStateWith`/`RecreateOnRelocation`/`DisableRelocation` 중 정확히 하나를 받는다(Actor factory에는 `StableTypeLimit`이 없다) |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Relocation을 쓰려는 stable type의 adapter·factory 불일치,
+**완료 결과.** 반환값 없이 동기로 등록된다. Relocation을 쓰려는 stable type의 adapter·factory 불일치,
 type 중복은 host startup 검증에서 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** 이 node가 Actor·Spot을 실제로 호스팅(Server)하거나, 다른 node가 호스팅하는 Actor·Spot을
+**선택 기준.** 이 node가 Actor·Spot을 실제로 호스팅(Server)하거나, 다른 node가 호스팅하는 Actor·Spot을
 메시징 대상으로만 참조(Client)할 때 각각의 role을 등록한다. Relocation 정책 선택 기준은
 actor-relocation category를 참고한다.
 
@@ -108,10 +108,10 @@ play.Channel("play.api").Server()
 | `.AddSendHandler<THandler, TMessage>(packetName?)` | packet name은 메시지 타입에서 결정 | one-way handler 등록 |
 | `.AddRequestHandler<THandler, TRequest, TReply>(packetName?)` | packet name은 메시지 타입에서 결정 | request/reply handler 등록 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. 같은 owner namespace 안 handler key 중복은 host startup
+**완료 결과.** 반환값 없이 동기로 등록된다. 같은 owner namespace 안 handler key 중복은 host startup
 검증에서 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** `SendToChannel`/`RequestToChannel`(messaging-execution category)로 받을 handler를
+**선택 기준.** `SendToChannel`/`RequestToChannel`(messaging-execution category)로 받을 handler를
 등록할 때 `.Server()`를 쓴다. 이 MeshNode가 다른 node의 Server만 호출하고 자신은 handler를 두지
 않으면 `.Client()`만 등록한다. 서로 다른 프로세스 사이 통신이 필요하면 ClientServer Channel 등록을
 대신 쓴다.
@@ -141,10 +141,10 @@ options.AddClientServerChannel("payments.api").Client()
 | `.Server().SetWeight(int)` / `.AddSendHandler`/`.AddRequestHandler` | RouteMesh Channel Server와 동일 | 가중치와 handler 등록 |
 | `.Client().Connect(endpoint)` | manual | 특정 Server에 수동 연결. 생략하면 automatic discovery로 target을 찾는다 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Automatic discovery를 쓰는 Client·Server는 Location
+**완료 결과.** 반환값 없이 동기로 등록된다. Automatic discovery를 쓰는 Client·Server는 Location
 Store 등록이 없으면 host startup 검증에서 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** RouteMesh 멤버가 아닌 독립 서비스 사이의 request/reply나 one-way 메시징에 쓴다. 같은
+**선택 기준.** RouteMesh 멤버가 아닌 독립 서비스 사이의 request/reply나 one-way 메시징에 쓴다. 같은
 RouteMesh 안 node끼리는 RouteMesh Channel 등록을 대신 쓴다.
 
 ---
@@ -177,10 +177,10 @@ options.AddFanoutChannel("lobby.events")
 | `.Connect(endpoint)` | — | manual subscriber. 명시한 endpoint만 쓴다. 같은 채널에 `EnableSubscriber()`와 함께 등록하면 host startup이 실패한다 |
 | `.AddHandler<THandler, TEvent>(packetName?)` | packet name은 이벤트 타입에서 결정 | typed event handler 등록 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Automatic subscriber와 manual subscriber를 같은
+**완료 결과.** 반환값 없이 동기로 등록된다. Automatic subscriber와 manual subscriber를 같은
 fanout channel에 함께 설정하면 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** 발행자가 구독자를 알 필요가 없는 관찰·통지 채널을 새로 만들 때 쓴다. Reply가 필요한
+**선택 기준.** 발행자가 구독자를 알 필요가 없는 관찰·통지 채널을 새로 만들 때 쓴다. Reply가 필요한
 메시징에는 RouteMesh Channel이나 ClientServer Channel 등록을 대신 쓴다.
 
 ---
@@ -207,10 +207,10 @@ options.AddStreamNode("public-gateway")
 | `.SetTlsServer(certPath, keyPath, requireClientCertificate?)` | TLS 없음 | TLS 서버 인증서·키, 상호 인증 여부 |
 | `.AddSession<TSession>()` | 없음 | 연결마다 생성할 Session 타입 등록 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. TLS 설정 오류는 host startup 검증에서
+**완료 결과.** 반환값 없이 동기로 등록된다. TLS 설정 오류는 host startup 검증에서
 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** 외부 client가 STREAM 프로토콜로 직접 연결하는 gateway를 열 때 쓴다. 정확한 Session·Actor
+**선택 기준.** 외부 client가 STREAM 프로토콜로 직접 연결하는 gateway를 열 때 쓴다. 정확한 Session·Actor
 연결 규칙은 stream-session category를 참고한다.
 
 ---
@@ -234,12 +234,12 @@ IReadOnlyList<ZLinkMeshPeerConnection> connections = play.PeerConnections.ListCo
 | `.Disconnect(endpoint)` | — | 등록한 연결을 해제 |
 | `.ListConnections()` | — | 현재 등록된 연결 목록 조회 |
 
-**완료 의미.** 반환값 없이 동기로 등록·해제된다. 양쪽 MeshNode가 Object Client이고 둘 다 RouteMesh
+**완료 결과.** 반환값 없이 동기로 등록·해제된다. 양쪽 MeshNode가 Object Client이고 둘 다 RouteMesh
 Channel Server membership이 없으면 이 연결 intent는 목록에 남아도 ready peer가 되지 않고, ready peer
 수·liveness 대상에도 포함되지 않는다. 어느 한쪽에라도 weight `0`을 포함한 Channel Server
 membership이 있으면 일반 peer admission·liveness 규칙을 적용한다.
 
-**언제 쓰나.** Automatic discovery(Location Store)를 쓰지 않고 고정된 peer 목록으로 RouteMesh를
+**선택 기준.** Automatic discovery(Location Store)를 쓰지 않고 고정된 peer 목록으로 RouteMesh를
 구성할 때 쓴다.
 
 ---
@@ -274,13 +274,13 @@ public sealed class AuthenticationFilter : IZLinkHandlerFilter
 | --- | --- | --- |
 | `.UseFilter<TFilter>()` | 없음(등록한 순서대로 실행) | `IZLinkHandlerFilter` 구현체를 dispatch 체인에 추가 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. `next()`를 호출하면 남은 filter와 handler가
+**완료 결과.** 반환값 없이 동기로 등록된다. `next()`를 호출하면 남은 filter와 handler가
 실행된다. Request에서 `next()`를 호출하지 않으면 `Rejected` reply로 끝나고, `next()`를 두 번
 호출하면 `InvalidOperation`으로 실패하며 handler를 다시 실행하지 않는다. `context.DispatchKind`로
 `NodeDirectSend`/`NodeDirectRequest`/`ChannelSend`/`ChannelRequest`/`ClassicFanout`을 구분한다 —
 `ChannelSend`/`ChannelRequest`는 RouteMesh와 ClientServer를 모두 포함한다.
 
-**언제 쓰나.** 개별 handler마다 반복할 공통 전처리·검증이 필요할 때 쓴다. Filter는 업무 reply를
+**선택 기준.** 개별 handler마다 반복할 공통 전처리·검증이 필요할 때 쓴다. Filter는 업무 reply를
 직접 만들지 않는다 — 거부만 표현하고 나머지는 handler가 처리한다.
 
 ---
@@ -316,12 +316,12 @@ services.AddZLinkFramework(options =>
 | `.ConfigureStreamCompression()` | 압축 없음 | STREAM 기본 압축 codec(`UseDefault()`/`UseLz4()`/`Use(codec)`/`Disable()`) |
 | `.ConfigureRouterSocket()` / `.ConfigureSpotPublisher()`(MeshNodeBuilder) | socket 기본값 | MeshNode ROUTER 소켓, Spot publisher의 HWM·buffer·timeout 개별 조정 |
 
-**완료 의미.** `.AddHandlersFromAssemblyOf(...)`/`.DisableImplicitHandlerAutoRegistration()`은
+**완료 결과.** `.AddHandlersFromAssemblyOf(...)`/`.DisableImplicitHandlerAutoRegistration()`은
 반환값 없이 동기로 실행된다. `.ConfigureMetadata()`/`.ConfigureNetwork()`/`.ConfigureInboundDispatch()`/`.ConfigureDispatch()`/`.ConfigureStreamCompression()`은
 동기적으로 해당 builder나 options 객체를 반환하며, 그 위에서 property를 설정하거나 추가 modifier를
 호출한다. 값 범위를 벗어나면 host startup 검증에서 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** 위 전용 항목(host lifecycle·topology 등록·diagnostics)에 속하지 않는, 단순 값 하나로
+**선택 기준.** 위 전용 항목(host lifecycle·topology 등록·diagnostics)에 속하지 않는, 단순 값 하나로
 끝나는 host-wide 설정을 조정할 때 쓴다. Diagnostics 관련 설정은 observability-diagnostics
 category를 쓴다.
 
@@ -346,9 +346,9 @@ channel.Weight = 0; // 이 Channel Server를 선택 대상에서 제외한다
 | `Mesh(meshName).PlacementWeight` | 등록 시점 값 | node 단위 Actor·Spot 배치 가중치 |
 | `Channel(channelName).Weight` | 등록 시점 값 | ChannelName 단위 Server 선택 가중치 |
 
-**완료 의미.** 동기 get/set이다. 즉시 적용되며 별도 완료 신호가 없다.
+**완료 결과.** 동기 get/set이다. 즉시 적용되며 별도 완료 신호가 없다.
 
-**언제 쓰나.** 운영 중 배치나 트래픽 비중을 조정할 때 쓴다. `MaxMessageSize`를 포함한 transport
+**선택 기준.** 운영 중 배치나 트래픽 비중을 조정할 때 쓴다. `MaxMessageSize`를 포함한 transport
 option은 이 경로로 바꿀 수 없다 — startup 전에만 설정한다.
 
 ---
@@ -376,12 +376,12 @@ await foreach (var observed in routeMeshRuntime.ObserveAsync("play", ct))
 | `IZLinkClientServerRuntime` | ChannelName | `ZLinkClientServerStatus`(Targets 포함) |
 | `IZLinkFanoutRuntime` | ChannelName | `ZLinkFanoutStatus`(Publishers 포함) |
 
-**완료 의미.** `GetStatus`는 즉시 값을 반환하는 동기 호출이다. `ObserveAsync`는 host-lifecycle
+**완료 결과.** `GetStatus`는 즉시 값을 반환하는 동기 호출이다. `ObserveAsync`는 host-lifecycle
 category의 `ObserveAsync`와 같은 모양으로 `ZLinkObservedStatus<TStatus>`를 스트리밍하며,
 `Loss` 필드로 관찰 유실 여부를 판단한다. Manual ChannelName을 `IZLinkFanoutRuntime`으로 조회하면
 `ZLinkConfigurationException`으로 완료한다.
 
-**언제 쓰나.** 특정 MeshName·ChannelName의 가용성을 판단하거나 장애 범위를 좁힐 때 쓴다. Host
+**선택 기준.** 특정 MeshName·ChannelName의 가용성을 판단하거나 장애 범위를 좁힐 때 쓴다. Host
 전체 상태가 필요하면 host-lifecycle category의 `Status`/`ObserveAsync`를 쓴다.
 
 ---

@@ -34,11 +34,11 @@ string spotId = created.Spot.SpotId;
 | `.Async(ct)` | terminal(택 1, single-use) | 생성 완료까지 기다린다 |
 | `.Yield(ct)` | terminal(택 1, single-use) | `SpotWide` handler 안에서만 유효 |
 
-**완료 의미.** `ZLinkSpotCreateResult.State`가 `Created`(새로 생성)다. Spot의 `OnCreateAsync`가
+**완료 결과.** `ZLinkSpotCreateResult.State`가 `Created`(새로 생성)다. Spot의 `OnCreateAsync`가
 거부하면 `Rejected`이고 `Reply`에 거부 메시지가 담긴다. 같은 option을 두 번 설정하거나 terminal을
 두 번 호출하면 `InvalidOperation`, deadline 안에 끝나지 않으면 `DeadlineExceeded`다.
 
-**언제 쓰나.** 항상 새 인스턴스가 필요할 때 쓴다. 있으면 재사용하고 없을 때만 만들려면
+**선택 기준.** 항상 새 인스턴스가 필요할 때 쓴다. 있으면 재사용하고 없을 때만 만들려면
 `GetOrCreate`를 쓴다.
 
 ---
@@ -58,12 +58,12 @@ ZLinkSpotCreateResult existingOrCreated = await spotManager
 **옵션.** `Create`와 동일하다 — `.InMesh(...)`, `.Request(...)`, `.Timeout(...)`, terminal
 `.Async(ct)` 또는 `.Yield(ct)`.
 
-**완료 의미.** `State`가 `Existing`이면 이미 있던 Spot을 그대로 반환하고 `Request`는 무시한다.
+**완료 결과.** `State`가 `Existing`이면 이미 있던 Spot을 그대로 반환하고 `Request`는 무시한다.
 `Created`면 새로 만든 것이다. 같은 SpotId가 `Creating` 상태로 경합 중이면 그 결과를 기다렸다가
 합류하고, cleanup으로 Missing이 되면 새 reservation을 다시 경쟁한다. Kind나 stable type이 기존
 authority와 다르면 `TypeMismatch`로 완료한다.
 
-**언제 쓰나.** SpotId로 멱등하게 "있으면 쓰고 없으면 만들기"가 필요할 때 쓴다. 항상 새 인스턴스가
+**선택 기준.** SpotId로 멱등하게 "있으면 쓰고 없으면 만들기"가 필요할 때 쓴다. 항상 새 인스턴스가
 필요하면 `Create`를 쓴다.
 
 ---
@@ -83,12 +83,12 @@ if (spot is { } found)
 
 **옵션.** 두 호출 모두 modifier가 없다 — 대상 식별자와 `CancellationToken`만 받는다.
 
-**완료 의미.** `FindAsync`는 Ready Spot이 없으면 `null`을 반환한다. `CloseAsync`는 해당
+**완료 결과.** `FindAsync`는 Ready Spot이 없으면 `null`을 반환한다. `CloseAsync`는 해당
 incarnation이 없으면 `false`, generation이 다르면 `InvalidOperation`, pre-commit seal 중이면
 `Unavailable`이다. User Spot에 Actor membership이 남아 있으면 `false`이며 Actor를 자동으로
 leave·destroy하지 않는다.
 
-**언제 쓰나.** 지금 시점의 존재 여부 확인이나 명시적 종료가 필요할 때 쓴다. `CloseAsync`는 stale
+**선택 기준.** 지금 시점의 존재 여부 확인이나 명시적 종료가 필요할 때 쓴다. `CloseAsync`는 stale
 `SpotRef`로 다른 incarnation을 대신 닫지 않는다.
 
 ---
@@ -120,11 +120,11 @@ await spotClient
 | `.InMesh(meshName)` | Object Client·Server role의 Mesh가 하나면 생략 가능 | Missing Instance Spot을 처음 만들 Mesh. Instance marker 없이 쓰면 `InvalidOperation` |
 | `.Async(ct)` | 필수 terminal | source-local admission까지만 기다린다 |
 
-**완료 의미.** SpotId가 없고 Instance marker도 없으면 `NotFound`. `InstanceSpot(...)`을 썼는데
+**완료 결과.** SpotId가 없고 Instance marker도 없으면 `NotFound`. `InstanceSpot(...)`을 썼는데
 existing authority가 User Spot이거나 명시한 타입과 다르면 `TypeMismatch`. 그 외 완료 kind는
 messaging-execution category의 공통 규칙과 같다.
 
-**언제 쓰나.** Reply가 필요 없는 Spot 메시징에 쓴다. Reply가 필요하면 `RequestToSpot`을 쓴다.
+**선택 기준.** Reply가 필요 없는 Spot 메시징에 쓴다. Reply가 필요하면 `RequestToSpot`을 쓴다.
 
 ---
 
@@ -147,10 +147,10 @@ var reply = await spotClient
 | `.Async<TResponse>(ct)` | terminal(택 1) | reply 수신까지 기다린다 |
 | `.Yield<TResponse>(ct)` | terminal(택 1) | `SpotWide` User Spot·Instance Spot handler 안에서만 유효. 그 밖에서 호출하면 `InvalidOperation` |
 
-**완료 의미.** `SendToSpot`과 같은 실패 kind에 더해, cold activation 중 factory나 initialize가
+**완료 결과.** `SendToSpot`과 같은 실패 kind에 더해, cold activation 중 factory나 initialize가
 실패하면 typed failure로 완료된다 — Framework가 내부적으로 재시도하지 않는다.
 
-**언제 쓰나.** Reply 값이 필요할 때 쓴다. One-way면 `SendToSpot`을 쓴다.
+**선택 기준.** Reply 값이 필요할 때 쓴다. One-way면 `SendToSpot`을 쓴다.
 
 ---
 
@@ -167,11 +167,11 @@ await spotPublisherClient
 
 **옵션.** 이 호출에는 `.Async(ct)` terminal만 있다 — topic은 필수 인자다.
 
-**완료 의미.** 정상 완료는 발행 admission이 끝났다는 뜻이다. Subscriber 수신은 기다리지 않는다.
+**완료 결과.** 정상 완료는 발행 admission이 끝났다는 뜻이다. Subscriber 수신은 기다리지 않는다.
 messaging-execution category의 classic fanout `Publish`와 달리, ChannelName만으로 owner
 MeshNode를 결정하며 caller가 MeshName을 추가로 넘기지 않는다.
 
-**언제 쓰나.** Spot 상태 변화를 관찰자에게 알릴 때 쓴다. 구독자에게 직접 reply가 필요하면 이 항목이
+**선택 기준.** Spot 상태 변화를 관찰자에게 알릴 때 쓴다. 구독자에게 직접 reply가 필요하면 이 항목이
 아니라 `RequestToSpot`을 쓴다.
 
 ---
@@ -196,11 +196,11 @@ IZLinkTimer timer = await Context.AddTimer<RoomTickHandler>(
 | `options.MaxCatchUpTicks` | 1 | `CatchUpBounded`일 때 한 번에 따라잡을 최대 tick 수 |
 | `options.StopOnUnhandledException` | `false` | handler 예외 시 timer를 멈출지 여부 |
 
-**완료 의미.** `IZLinkTimer`를 반환한다. Timer는 이 Spot에 속한 logical registration이라
+**완료 결과.** `IZLinkTimer`를 반환한다. Timer는 이 Spot에 속한 logical registration이라
 relocation 때 자동으로 이전되며 application이 target에서 다시 등록할 필요가 없다. `CancelAsync()`나
 `DisposeAsync()`로 취소한다.
 
-**언제 쓰나.** Spot 안에서 주기 작업이 필요할 때 쓴다.
+**선택 기준.** Spot 안에서 주기 작업이 필요할 때 쓴다.
 
 ---
 
@@ -224,10 +224,10 @@ int result = await Context
 | `.Async(ct)` | terminal(택 1) | 완료까지 기다린다 |
 | `.Yield(ct)` | terminal(택 1) | `SpotWide` handler 안에서만 유효 |
 
-**완료 의미.** `TResult`를 반환하거나 timeout이면 `DeadlineExceeded`로 완료한다. Worker pool
+**완료 결과.** `TResult`를 반환하거나 timeout이면 `DeadlineExceeded`로 완료한다. Worker pool
 크기(`MinThreads`/`MaxThreads`)와 idle timeout은 host 시작 전에만 설정한다.
 
-**언제 쓰나.** CPU-bound 계산은 `RunCpuWorker`, I/O 대기가 있는 작업은 `RunIoWorker`를 쓴다. 둘 다
+**선택 기준.** CPU-bound 계산은 `RunCpuWorker`, I/O 대기가 있는 작업은 `RunIoWorker`를 쓴다. 둘 다
 owner turn의 순차 실행을 막지 않으려는 목적이다.
 
 ---
@@ -264,11 +264,11 @@ public void Configure()
 Entry Spot의 `AddActorPacket<THandler, TActor>()`는 User Spot의 것과 메서드 이름은 같지만 `THandler`가
 구현해야 하는 interface가 다르다 — 등록하는 registry가 어느 Spot 종류의 것인지에 따라 갈린다.
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Packet name을 생략하면 handler가 처리하는 메시지
+**완료 결과.** 반환값 없이 동기로 등록된다. Packet name을 생략하면 handler가 처리하는 메시지
 타입의 `ZLinkPacketAttribute`를 확인하고, 그것도 없으면 타입 이름을 쓴다. 같은 owner의 handler key
 중복은 host startup 검증에서 `ZLinkConfigurationException`으로 드러난다.
 
-**언제 쓰나.** `Configure()`가 호출될 때마다 이 Spot이 처리할 모든 handler를 등록한다. Node·Channel
+**선택 기준.** `Configure()`가 호출될 때마다 이 Spot이 처리할 모든 handler를 등록한다. Node·Channel
 handler는 topology-discovery category의 등록 항목을, STREAM session handler는 stream-session
 category를 참고한다.
 
@@ -289,9 +289,9 @@ await Context.Outbound
 **옵션.** messaging-execution category의 `SendToChannel`/`RequestToChannel`과 동일한 modifier를
 받는다 — `.Metadata(...)`, `.Timeout(...)`, terminal `.Async(ct)`/`.Async<TResponse>(ct)`.
 
-**완료 의미.** messaging-execution category의 완료 kind와 같다.
+**완료 결과.** messaging-execution category의 완료 kind와 같다.
 
-**언제 쓰나.** Spot이 외부 client가 아니라 자기 코드 안에서 다른 ChannelName의 handler를 호출해야
+**선택 기준.** Spot이 외부 client가 아니라 자기 코드 안에서 다른 ChannelName의 handler를 호출해야
 할 때 쓴다. 다른 Spot을 직접 호출하려면 `SendToSpot`/`RequestToSpot`을 쓴다.
 
 ---
@@ -309,13 +309,13 @@ await entryContext.DestroyActorAsync(actor, ct); // Entry Spot: Actor를 완전�
 **옵션.** 세 호출 모두 modifier가 없다 — 대상(`LeaveActorAsync`/`DestroyActorAsync`)과
 `CancellationToken`만 받는다.
 
-**완료 의미.** `LeaveActorAsync`(`IZLinkSpotContext` 전용)는 member Actor membership만 해제하고
+**완료 결과.** `LeaveActorAsync`(`IZLinkSpotContext` 전용)는 member Actor membership만 해제하고
 Actor 자체는 파기하지 않는다. `CloseAsync`(`IZLinkSpotContext`/`IZLinkInstanceSpotContext`)는
 manager의 `CloseAsync(spotRef)`(spot-instance category 앞부분 항목)와 같은 완료 kind를 쓰되, 이
 Spot 자신을 대상으로 한다. `DestroyActorAsync`(`IZLinkEntrySpotContext` 전용)는 Actor를 완전히
 파기한다 — `LeaveActorAsync`와 달리 membership 해제가 아니라 Actor 자체를 없앤다.
 
-**언제 쓰나.** Member Actor를 다른 곳으로 옮기지 않고 이 Spot에서만 빼려면 `LeaveActorAsync`를,
+**선택 기준.** Member Actor를 다른 곳으로 옮기지 않고 이 Spot에서만 빼려면 `LeaveActorAsync`를,
 Spot 자신을 스스로 종료하려면 `CloseAsync`를, Entry Spot에서 더 이상 필요 없는 Actor를 완전히
 없애려면 `DestroyActorAsync`를 쓴다.
 
@@ -332,12 +332,12 @@ Context.RelocationReady().Defer();
 
 **옵션.** 이 호출에는 modifier가 없다.
 
-**완료 의미.** 반환값 없음. 현재 handler가 끝난 뒤 relocation 경계를 등록한다. 이동하지 않았거나
+**완료 결과.** 반환값 없음. 현재 handler가 끝난 뒤 relocation 경계를 등록한다. 이동하지 않았거나
 commit 전에 abort했으면 source에서 `Continued`, 이동했으면 target에서 `Relocated` completion을
 `OnRelocationReadyCompletedAsync(...)`로 받는다. `AnyTurnBoundary` mode, `PerActor` Spot, Entry·
 Instance Spot, Spot turn 밖, 같은 turn의 중복 호출은 `InvalidOperation`으로 완료한다.
 
-**언제 쓰나.** Application이 relocation 시점을 특정 turn 경계로 정밀하게 제어해야 할 때 쓴다. 기본
+**선택 기준.** Application이 relocation 시점을 특정 turn 경계로 정밀하게 제어해야 할 때 쓴다. 기본
 `AnyTurnBoundary` mode에서는 이 호출이 필요하지 않다.
 
 ---

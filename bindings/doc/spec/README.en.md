@@ -2690,72 +2690,81 @@ spec file.
 - But no C API capability may be missing from a binding spec.
 - When a new C API is added to a public header, every per-language spec
   file must be updated together.
-## 서비스 계층 정책
-- 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor)의 public API
-  정책을 정의한다.
-- 서비스 계층도 소켓 계층과 동일한 POSD 원칙, naming policy, error policy,
-  ownership policy, testing policy를 따른다.
-- 서비스 계층의 기준은 `core/include/zlink.h`의 Spot/Actor C API다.
+## Service Layer Policy
+- This section defines the public API policy for the service layer
+  (Spot, Actor) that sits on top of the socket layer.
+- The service layer follows the same POSD principles, naming policy,
+  error policy, ownership policy, and testing policy as the socket
+  layer.
+- The service layer's baseline is the Spot/Actor C API in
+  `core/include/zlink.h`.
 
-### Spot / SpotNode Lifecycle (POSD 원칙)
+### Spot / SpotNode Lifecycle (POSD Principles)
 
-- **`SpotNode` 가 lifecycle 소유자**다. `Spot` 은 그 위의 pub/sub facade 로,
-  `SpotNode` 가 살아 있는 동안만 유효하다.
-- `Spot` 은 독립 생성자로 만들지 않는다. **`SpotNode.createSpot(...)` 등
-  factory 메서드로 생성**한다. 이름은 언어 관용구대로 (`spot_node.new_spot`,
-  `spotNode.createSpot`, 등).
-- 명시적 Spot routing id를 기준으로 "있으면 가져오고 없으면 만든다"는 흐름은
-  `zlink_spot_node_spot_get_or_new(...)`에 직접 대응하는
-  `SpotNode.getOrCreateSpot(...)` 계열 메서드로 노출한다. 바인딩은 lookup과 create를
-  조합해서 이 의미를 흉내 내면 안 된다.
-- `Spot` 생명은 부모 `SpotNode` 에 바인드된다.
-  - `spot.close()` — Spot 만 끝내고 node 는 유지
-  - `spotNode.close()` — node 와 그 아래 모든 live Spot 을 함께 정리
-    (cascading close)
-- 사용자가 `Spot` 과 `SpotNode` 의 close 순서를 수동으로 조합할 필요를
-  제거한다. 바인딩이 `SpotNode.close()` 에서 child spots 를 선처리한 후
-  node 를 내린다.
-- C API 의 raw `zlink_spot_new(...)` + `zlink_spot_node_new(...)` 조합을
-  바인딩 public 생성자로 그대로 노출하지 않는다. 반드시 `SpotNode` 중심의
-  factory 패턴으로 싼다.
+- **`SpotNode` is the lifecycle owner.** `Spot` is a pub/sub facade on
+  top of it, valid only while `SpotNode` is alive.
+- `Spot` is not built with an independent constructor. **It is created
+  through a factory method such as `SpotNode.createSpot(...)`**. The
+  name follows language idiom (`spot_node.new_spot`,
+  `spotNode.createSpot`, and so on).
+- The "get if it exists, otherwise create" flow keyed on an explicit
+  Spot routing id is exposed through a `SpotNode.getOrCreateSpot(...)`
+  family method that directly maps to
+  `zlink_spot_node_spot_get_or_new(...)`. A binding must not emulate
+  this meaning by combining lookup and create.
+- `Spot`'s life is bound to its parent `SpotNode`.
+  - `spot.close()` — ends only the Spot; the node stays alive
+  - `spotNode.close()` — cleans up the node and every live Spot under it
+    together (cascading close)
+- This removes the need for a user to manually combine the close order
+  of `Spot` and `SpotNode`. The binding pre-processes child spots inside
+  `SpotNode.close()` before tearing down the node.
+- The C API's raw `zlink_spot_new(...)` + `zlink_spot_node_new(...)`
+  combination is not exposed as a binding public constructor as-is. It
+  must be wrapped in a `SpotNode`-centered factory pattern.
 
-### 서비스 계층 인트로스펙션 표면 계층
+### Service Layer Introspection Surface Tiers
 
-서비스 계층의 introspection / snapshot / entry 타입은 **사용 빈도에 따라
-두 계층으로 구분**한다. 바인딩 spec 은 이 구분을 반영한다.
+The service layer's introspection/snapshot/entry types are **split into
+two tiers by usage frequency**. A binding spec reflects this split.
 
-- **Primary (핵심)**: 일반 사용자가 자주 쓰는 snapshot/query surface.
-  `bindings/<lang>/README.md` 의 상위 섹션에 기술한다.
-  - `SpotNodeStatus` (spot node 상태)
+- **Primary (core)**: a snapshot/query surface an ordinary user uses
+  frequently. Described in `bindings/<lang>/README.md`'s upper section.
+  - `SpotNodeStatus` (spot node status)
 
-- **Advanced / Diagnostic (진단용)**: 디버깅 / 운영 모니터링 등 특수 용도.
-  spec 에서 "Advanced" 또는 "Diagnostic" 하위 섹션으로 분리 기술한다.
+- **Advanced/Diagnostic**: for special purposes such as debugging or
+  operational monitoring. Described in a separate "Advanced" or
+  "Diagnostic" subsection in the spec.
   - `SpotNodePeerEntry`, `SpotNodeSubjectEntry`
-  - `SpotNodeSocketEntry`, `SpotNodeSpotEntry`,
-    `SpotNodeActorEntry`
-  - 각종 filter 타입 (`SpotNodePeerFilter`, `SpotNodeSubjectFilter`,
+  - `SpotNodeSocketEntry`, `SpotNodeSpotEntry`, `SpotNodeActorEntry`
+  - Various filter types (`SpotNodePeerFilter`, `SpotNodeSubjectFilter`,
     `SpotNodeSocketFilter`)
 
-Primary 타입만으로 기본 사용 시나리오가 성립해야 한다. Advanced 타입을
-배우지 않고도 "서비스 등록 / 검색 / 연결" 흐름이 완결돼야 한다.
+The Primary types alone must be enough for a basic usage scenario. The
+"register / discover / connect a service" flow must complete without
+learning the Advanced types.
 
-### `zlink_errno()` 공개 노출
+### Public Exposure Of `zlink_errno()`
 
-- 바인딩은 **raw `zlink_errno()` / `zlinkErrno()` 함수를 public 으로 노출하지
-  않는다**. 에러 상세는 **언제나 에러 타입의 `internalErrno` /
-  `internal_errno` 필드**로만 접근한다.
-- 사용자가 에러 조사 시 "가끔 `ZlinkException.getCode()` 쓰고 가끔 `Zlink.
-  errno()` 쓰는" 이중 경로를 만들지 않는다 — 한 진입점으로 통일.
-- 바인딩 내부 구현이 `zlink_errno()` 를 호출해 예외 객체에 채워 넣는 건
-  허용 (내부 해석용). public surface 에만 금지 적용.
-- `Zlink.strerror(errno)` 같은 message lookup 유틸은 convenience 로 남겨두되,
-  raw `errno()` accessor 는 private 또는 삭제.
+- A binding **does not expose the raw `zlink_errno()`/`zlinkErrno()`
+  function publicly**. Error detail is accessed **only ever through the
+  error type's `internalErrno`/`internal_errno` field**.
+- Do not create a dual path where a user investigating an error
+  "sometimes uses `ZlinkException.getCode()` and sometimes uses
+  `Zlink.errno()`" — unify it to one entry point.
+- It's allowed for a binding's internal implementation to call
+  `zlink_errno()` to fill in the exception object (for internal
+  interpretation). The ban applies only to the public surface.
+- A message-lookup utility such as `Zlink.strerror(errno)` can remain as
+  a convenience, but the raw `errno()` accessor should be private or
+  removed.
 
-### 서비스 계층 아키텍처
-- 서비스 계층의 현재 공개 축은 `SpotNode`, `Spot`, `Actor`,
-  `StreamSocket`의 Actor binding 표면, 그리고 SPOT route bridge/publisher
-  표면이다. Public Discovery/Registry handle은 core 8.4.3에서 제거되었으므로
-  새 바인딩 표면으로 되살리면 안 된다.
+### Service Layer Architecture
+- The service layer's current public axes are `SpotNode`, `Spot`,
+  `Actor`, `StreamSocket`'s Actor binding surface, and the SPOT route
+  bridge/publisher surface. The public Discovery/Registry handle was
+  removed from the core contract in core 8.4.3, so it must not be
+  revived as a new binding surface.
 
 ```
 SpotNode
@@ -2793,135 +2802,153 @@ StreamSocket
   `-- close
 ```
 
-### Actor Dispatch 정책
+### Actor Dispatch Policy
 
-Actor dispatch는 현재 core 공개 헤더에 존재하는 정식 service layer 계약이다.
-바인딩은 Actor를 SPOT 내부 세부사항으로 숨기지 않고, `SpotNode`, `Spot`,
-`Actor`, `StreamSocket`에 걸친 별도 공개 기능으로 정리한다.
+Actor dispatch is a formal service-layer contract that currently exists
+in core's public header. A binding does not hide Actor as an internal
+SPOT detail — it organizes it as a separate public capability spanning
+`SpotNode`, `Spot`, `Actor`, and `StreamSocket`.
 
-언어가 header, module, package, namespace처럼 public surface를 나누는 단위를
-제공한다면 Actor는 독립 entrypoint를 가져야 한다. 이 entrypoint는 단순히
-SPOT 전체 헤더나 모듈을 다시 include/import/export하는 얇은 forwarding
-파일이어서는 안 된다. Actor entrypoint는 Actor 값 객체, Actor lifecycle
-handle, Actor recv/join helper처럼 Actor 계약을 구성하는 public type과
-함수 선언을 실질적으로 소유해야 한다. SPOT entrypoint가 Actor entrypoint를
-재사용하는 구조는 허용하지만, Actor entrypoint가 SPOT 구현 전체에 기대어
-존재만 하는 구조는 정책 미준수다.
+If the language provides a unit for splitting public surface — a header,
+module, package, namespace — Actor must have its own independent
+entrypoint. This entrypoint must not be a thin forwarding file that
+merely re-includes/imports/exports the whole SPOT header or module. The
+Actor entrypoint must substantively own the public types and function
+declarations that make up the Actor contract — the Actor value object,
+the Actor lifecycle handle, the Actor recv/join helper. A structure where
+the SPOT entrypoint reuses the Actor entrypoint is allowed, but a
+structure where the Actor entrypoint exists only by leaning on the whole
+SPOT implementation is non-compliant.
 
-기준이 되는 core 공개 타입과 함수는 아래다.
+The baseline core public types and functions are as follows.
 
-- 타입: `zlink_actor_ref_t`, `zlink_actor_route_t`, `zlink_actor_recv_info_t`,
-  `zlink_actor_join_info_t`, `zlink_actor_join_result_t`,
-  `zlink_actor_join_entry_spot_result_t`, `zlink_actor_lookup_result_t`,
-  `zlink_spot_actor_lifecycle_info_t`, `zlink_actor_join_spot_handler_fn`,
-  `zlink_actor_join_entry_spot_handler_fn`, `zlink_actor_lookup_handler_fn`,
-  `zlink_spot_node_spot_entry_t`, `zlink_spot_node_actor_entry_t`
-- `SpotNode` 축: `zlink_spot_node_actor_new`,
-  `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` (async lookup),
-  `zlink_spot_node_actor_destroy` (async submit),
-  `zlink_spot_node_actor_join_spot` (async submit + 전용 completion typedef),
-  `zlink_spot_node_actor_join_entry_spot` (async submit + 전용 completion typedef),
+- Types: `zlink_actor_ref_t`, `zlink_actor_route_t`,
+  `zlink_actor_recv_info_t`, `zlink_actor_join_info_t`,
+  `zlink_actor_join_result_t`, `zlink_actor_join_entry_spot_result_t`,
+  `zlink_actor_lookup_result_t`, `zlink_spot_actor_lifecycle_info_t`,
+  `zlink_actor_join_spot_handler_fn`,
+  `zlink_actor_join_entry_spot_handler_fn`,
+  `zlink_actor_lookup_handler_fn`, `zlink_spot_node_spot_entry_t`,
+  `zlink_spot_node_actor_entry_t`
+- `SpotNode` axis: `zlink_spot_node_actor_new`,
+  `zlink_spot_node_actor_lookup`, `zlink_remote_actor_get_ref` (async
+  lookup), `zlink_spot_node_actor_destroy` (async submit),
+  `zlink_spot_node_actor_join_spot` (async submit + a dedicated
+  completion typedef), `zlink_spot_node_actor_join_entry_spot` (async
+  submit + a dedicated completion typedef),
   `zlink_spot_node_actor_leave_spot` (async submit),
   `zlink_spot_node_actor_recv_part`,
   `zlink_spot_node_actor_send_bound_session_msg`,
   `zlink_spot_node_actor_reply_no_bind`,
   `zlink_spot_node_actor_close_bound_session`
-- `Spot` 축: `zlink_spot_actor_join_recv`,
-  `zlink_spot_actor_join_reply`, `zlink_spot_recv_actor_lifecycle`,
-  `zlink_spot_actors`
-- `StreamSocket` 축: `zlink_stream_bind_actor` (async submit),
+- `Spot` axis: `zlink_spot_actor_join_recv`, `zlink_spot_actor_join_reply`,
+  `zlink_spot_recv_actor_lifecycle`, `zlink_spot_actors`
+- `StreamSocket` axis: `zlink_stream_bind_actor` (async submit),
   `zlink_stream_unbind_actor` (async submit),
-  `zlink_stream_send_bound_actor_part`,
-  `zlink_stream_bound_actors`
-- snapshot 축: `zlink_spot_node_spots`,
-  `zlink_spot_node_actors`, `zlink_spot_actors`
+  `zlink_stream_send_bound_actor_part`, `zlink_stream_bound_actors`
+- Snapshot axis: `zlink_spot_node_spots`, `zlink_spot_node_actors`,
+  `zlink_spot_actors`
 
-바인딩 surface는 아래 책임 분리를 따른다.
+The binding surface follows this split of responsibility.
 
-| Public owner | Actor 역할 |
+| Public owner | Actor role |
 |---|---|
-| `SpotNode` | local Actor 생성/조회, async remote Actor lookup, async destroy, async join/leave, node-level Actor snapshot |
-| `Actor` | Actor ref 보유, Actor recv, bound STREAM session message send, bound session close |
-| `Spot` | Actor join request recv/reply, Actor lifecycle event receive, 현재 Spot에 join된 Actor snapshot |
-| `StreamSocket` / session facade | async STREAM session Actor bind/unbind, bound Actor 대상 send, session attach 목록 조회 |
+| `SpotNode` | Local Actor create/lookup, async remote Actor lookup, async destroy, async join/leave, node-level Actor snapshot |
+| `Actor` | Holds the Actor ref, Actor recv, bound STREAM session message send, bound session close |
+| `Spot` | Actor join request recv/reply, Actor lifecycle event receive, a snapshot of Actors currently joined to this Spot |
+| `StreamSocket` / session facade | Async STREAM session Actor bind/unbind, send targeted at a bound Actor, session-attach list lookup |
 
-바인딩은 아래 도메인 객체를 public contract로 제공해야 한다. 이름은 언어 관례에
-맞게 변환할 수 있지만 필드 의미는 바꾸지 않는다.
+A binding must provide the following domain objects as a public
+contract. The name can be converted to fit language convention, but the
+field meaning does not change.
 
-| 객체 | 필수 의미 |
+| Object | Required meaning |
 |---|---|
 | `ActorRef` | `node_rid`, `actor_id`, `generation` |
-| `ActorRoute` | route 대상 Actor, current Spot routing id, current Spot kind |
-| `ActorRecvInfo` | 수신 Actor, source node/session routing id, flags |
-| `ActorReceived` | `ActorRecvInfo`, payload parts. 이름은 언어 관례에 따라 바꿀 수 있지만 part 단위 loop와 `has_more`는 public field로 노출하지 않는다. payload parts를 소유하는 언어에서는 복제 가능한 record/value가 아니라 dispose 가능한 envelope로 노출한다 |
-| `ActorJoinInfo` + join message | join 요청 판단과 응답에 필요한 `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, join message. 언어 관례에 따라 `ActorJoinRequest` wrapper나 tuple/pair로 묶을 수 있다. join message를 소유하는 wrapper는 dispose 가능해야 한다. native reply context는 binding 내부에서만 보관하며 public field로 노출하지 않는다 |
-| `ActorJoinResult` | join completion에 전달. `result`, 최종 `actor` ref(remote join이면 target node ref), `joined_spot_rid`, `join_epoch`, `flags` |
-| `ActorJoinEntrySpotResult` | Entry Spot join completion에 전달. `result`, 최종 `actor` ref, `target_node_rid`, `join_epoch`, `flags`. join message나 reply payload는 없다 |
-| `ActorLookupResult` | remote Actor lookup completion에 전달. `result`, checked `actor` ref, `flags` |
-| `SpotActorLifecycleEvent` | Spot lifecycle readable event를 drain한 결과. `kind`, `info`. request parts를 함께 소유하는 언어에서는 복제 가능한 record/value가 아니라 dispose 가능한 envelope로 노출한다 |
-| `SpotActorLifecycleInfo` | Spot lifecycle event에 포함된다. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
-| `SpotNodeSpotEntry` | Spot routing id, Entry/User Spot kind, dispatch handler 여부, joined/pending Actor 수, route sync 상태, 변경 시각 |
-| `SpotNodeActorEntry` | Actor ref, current Spot routing id, current Spot kind, route sync 상태, pending message 수, 변경 시각 |
+| `ActorRoute` | The routed target Actor, current Spot routing id, current Spot kind |
+| `ActorRecvInfo` | The receiving Actor, source node/session routing id, flags |
+| `ActorReceived` | `ActorRecvInfo` plus payload parts. The name can change per language convention, but the part-by-part loop and `has_more` are not exposed as public fields. In a language that owns the payload parts, expose it as a disposable envelope, not a cloneable record/value |
+| `ActorJoinInfo` + join message | The `source_actor`, `target_actor`, `source_node_rid`, `source_spot_rid`, `target_node_rid`, `target_spot_rid`, `join_epoch`, `flags`, and join message needed to judge and respond to a join request. Can be grouped into an `ActorJoinRequest` wrapper or a tuple/pair per language convention. A wrapper that owns the join message must be disposable. The native reply context is kept only inside the binding and is not exposed as a public field |
+| `ActorJoinResult` | Delivered on join completion. `result`, the final `actor` ref (the target node's ref for a remote join), `joined_spot_rid`, `join_epoch`, `flags` |
+| `ActorJoinEntrySpotResult` | Delivered on Entry Spot join completion. `result`, the final `actor` ref, `target_node_rid`, `join_epoch`, `flags`. No join message or reply payload |
+| `ActorLookupResult` | Delivered on remote Actor lookup completion. `result`, the checked `actor` ref, `flags` |
+| `SpotActorLifecycleEvent` | The result of draining a Spot lifecycle readable event. `kind`, `info`. In a language where it also owns request parts, expose it as a disposable envelope, not a cloneable record/value |
+| `SpotActorLifecycleInfo` | Included in a Spot lifecycle event. `previous_actor`, `current_actor`, `previous_spot_rid`, `current_spot_rid`, `join_epoch`, `flags` |
+| `SpotNodeSpotEntry` | Spot routing id, Entry/User Spot kind, whether a dispatch handler is set, joined/pending Actor count, route sync state, change timestamp |
+| `SpotNodeActorEntry` | Actor ref, current Spot routing id, current Spot kind, route sync state, pending message count, change timestamp |
 
-세부 규칙은 아래와 같다.
+The detailed rules are as follows.
 
-- Actor id는 비어 있지 않은 UTF-8 문자열이며 최대 255 bytes다. NUL 문자는
-  허용하지 않는다.
-- `generation == 0`은 unchecked remote ref이며 유효하지 않은 값으로 보지 않는다.
-- local Actor는 `SpotNode`가 만들고, lifecycle handle은 언어별 `Actor` 타입으로
-  노출한다. 한 Actor는 동시에 하나의 Spot에만 join할 수 있다.
-- `leave`는 async submit API다. unread Actor message를 비우지 않는다. 같은 node의
-  Entry Spot으로만 돌아가며, user Spot에서 leave가 성공하면 source left event와
-  Entry Spot joined lifecycle event가 발생하고 active route가 Entry Spot
-  위치로 갱신된다.
-- Entry Spot join은 async submit API다. target 인자는 Entry Spot rid가 아니라
-  SpotNode rid다. 한 SpotNode에는 Entry Spot이 하나뿐이므로 별도 Entry Spot rid를
-  public API에 요구하지 않는다. Entry Spot join은 join message를 보내지 않고
-  application join queue를 거치지 않는다. completion handler는 성공/실패와 최종
-  Actor ref만 돌려준다.
-- 원격 노드에서 시작해야 하는 Actor는 application이 해당 SpotNode에서 직접
-  `actor_new`로 생성한다. remote Actor의 checked ref는 async
-  `remote_actor_get_ref` lookup으로 얻는다. remote create-or-get과 admission
-  handler는 공개 표면에 없다.
-- Spot join request는 message를 포함한다. join reply도 accept/reject 결과와
-  함께 message를 caller에게 돌려줘야 한다. join completion은 `ActorJoinResult`
-  값으로 caller에게 최종 Actor ref와 joined Spot rid를 전달한다.
-- request reply 표면은 core reply 함수가 지원하는 payload part만 노출한다.
-  core reply 함수에는 send flag 인자가 없으므로, 바인딩은 reply builder에
-  no-op flag 설정 단계를 추가하지 않는다.
-- `ActorJoinInfo`가 native `zlink_actor_join_info_t`의 모든 필드를 public
-  field로 노출해야 한다는 뜻은 아니다. 언어별 binding은 reply에 필요한 native
-  request context를 opaque 내부 상태로 보관한다. public 값 객체에는 사용자가
-  판단과 응답에 필요한 `source_actor`, `target_actor`, source/target node와
-  Spot routing id, `join_epoch`, `flags`, message를 노출한다.
-- 한 STREAM session은 여러 Actor를 bind할 수 있다. bind/unbind는 session
-  routing id와 actor id 또는 Actor ref를 기준으로 한다.
-- 언어가 session facade를 자연스럽게 제공할 수 있으면 STREAM Actor bind/unbind와
-  bound Actor 대상 send는 socket-wide 함수가 아니라 session facade의 동작으로
-  노출하는 편이 좋다. 이렇게 하면 session routing id를 반복해서 넘기지 않아도
-  된다.
-- STREAM에서 Actor로 보내는 public API는 bound session과 actor id를 선택자로
-  사용한다.
-- Actor 위치는 Actor 생성, Spot join/leave, Actor destroy 흐름에서 갱신된다.
-  STREAM session bind/unbind는 Actor 위치를 바꾸지 않는다.
-- Actor별 queue limit option은 없다. 바인딩은 이를 public option으로 만들면
-  안 된다.
-- 제거된 Actor ref 함수, stream actor lookup/send helper, session actor key
-  설계 이름은 public surface와 문서에 남기지 않는다.
+- An Actor id is a non-empty UTF-8 string up to 255 bytes. A NUL
+  character is not allowed.
+- `generation == 0` is an unchecked remote ref, and is not treated as an
+  invalid value.
+- A local Actor is created by `SpotNode`, and its lifecycle handle is
+  exposed as the per-language `Actor` type. An Actor can join only one
+  Spot at a time.
+- `leave` is an async submit API. It does not drain unread Actor
+  messages. It always returns to the Entry Spot of the same node —
+  if `leave` succeeds from a user Spot, a source-left event and an
+  Entry-Spot-joined lifecycle event fire, and the active route is
+  updated to the Entry Spot location.
+- Entry Spot join is an async submit API. The target argument is the
+  SpotNode rid, not an Entry Spot rid. Because a SpotNode has only one
+  Entry Spot, the public API does not require a separate Entry Spot rid.
+  An Entry Spot join does not send a join message and does not go
+  through the application join queue. The completion handler returns
+  only success/failure and the final Actor ref.
+- An Actor that must start on a remote node is created by the
+  application directly on that SpotNode with `actor_new`. A checked ref
+  for a remote Actor is obtained through the async
+  `remote_actor_get_ref` lookup. Remote create-or-get and an admission
+  handler are not on the public surface.
+- A Spot join request carries a message. A join reply must also return a
+  message to the caller together with the accept/reject result. Join
+  completion delivers the final Actor ref and joined Spot rid to the
+  caller as an `ActorJoinResult` value.
+- The request-reply surface exposes only the payload part the core reply
+  function supports. Because the core reply function has no send-flag
+  argument, a binding does not add a no-op flag-setting step to the
+  reply builder.
+- `ActorJoinInfo` exposing this does not mean it must expose every field
+  of native `zlink_actor_join_info_t` as a public field. A per-language
+  binding keeps the native request context needed for the reply as
+  opaque internal state. The public value object exposes
+  `source_actor`, `target_actor`, the source/target node and Spot
+  routing id, `join_epoch`, `flags`, and the message — what a user needs
+  to judge and respond.
+- One STREAM session can bind multiple Actors. Bind/unbind is keyed on
+  the session routing id and either the actor id or the Actor ref.
+- When a language can naturally provide a session facade, it's better to
+  expose STREAM Actor bind/unbind and send targeted at a bound Actor as
+  operations on the session facade, rather than as socket-wide
+  functions. This avoids repeatedly passing the session routing id.
+- A public API that sends from STREAM to an Actor uses the bound session
+  and actor id as its selector.
+- Actor location is updated through the Actor creation, Spot join/leave,
+  and Actor destroy flows. STREAM session bind/unbind does not change
+  Actor location.
+- There is no per-Actor queue-limit option. A binding must not make this
+  a public option.
+- A removed Actor ref function, a stream actor lookup/send helper, or a
+  session-actor-key design name is not kept in the public surface or
+  documentation.
 
-Actor dispatch event는 SPOT dispatch event handler와 같은 readiness 모델을
-사용한다.
+An Actor dispatch event uses the same readiness model as the SPOT
+dispatch event handler.
 
-- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` 은 Actor part를 읽을 수 있다는
-  알림이다. callback 1회가 part 1개를 뜻하지 않는다.
-- `ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR` 의 subject는 callback 동안만 유효한
-  native Actor ref다. 바인딩 public API는 raw pointer를 노출하지 않는다.
-- callback을 다른 실행 컨텍스트로 넘기는 언어는 callback 진입 시점에 Actor
-  part를 nonblocking으로 미리 drain해서 public dispatch info가 그 part를
-  반환하게 해야 한다.
-- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` 은 Spot의 Actor join request
-plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public 표면으로
-  언어별 no-data 표현이 나올 때까지 drain할 수 있게 해야 한다.
+- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE` is a notification that an
+  Actor part can be read. One callback does not mean one part.
+- `ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR`'s subject is a native Actor ref
+  valid only during the callback. A binding's public API does not
+  expose a raw pointer.
+- A language that hands the callback off to a different execution
+  context must non-blockingly pre-drain the Actor part at callback-entry
+  time, so the public dispatch info can return that part.
+- `ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE` is the readiness signal
+  for a Spot's Actor join request plane. A binding must let it be
+  drained through `Spot.recvActorJoin` or an equivalent public surface
+  until each language's no-data representation appears.
 
 ### SpotNode Capability Matrix
 
@@ -2945,21 +2972,23 @@ plane readiness다. 바인딩은 `Spot.recvActorJoin` 또는 동등한 public �
 | `actors` | Y |
 | `close` | Y |
 
-- SpotNode는 data plane API(`send`/`recv`/`publish`/`subscribe`)를 직접
-  노출하지 않는다.
-- data plane은 `Spot` facade를 통해서만 접근한다.
-- `connectPeer`/`disconnectPeer`는 raw peer topology 전용 control path 다.
-- `createSpot` 은 `zlink_spot_new()` 위에 놓는 public factory다.
-  `entrySpot` 은 `zlink_spot_node_entry_spot()` 을 언어별 typed `Spot`
-  factory로 감싼다. `spotLookup` 은 `zlink_spot_node_spot_lookup()` 을
-  언어별 typed `Spot` 조회 표면으로 감싼다.
-  `createPublisher`를 중심으로 다룬다.
+- SpotNode does not directly expose the data-plane API (`send`/`recv`/
+  `publish`/`subscribe`).
+- The data plane is accessed only through the `Spot` facade.
+- `connectPeer`/`disconnectPeer` are control paths exclusive to raw peer
+  topology.
+- `createSpot` is a public factory placed on top of `zlink_spot_new()`.
+  `entrySpot` wraps `zlink_spot_node_entry_spot()` in a per-language
+  typed `Spot` factory. `spotLookup` wraps
+  `zlink_spot_node_spot_lookup()` as a per-language typed `Spot` lookup
+  surface. Treated as centered on `createPublisher`.
 
 ### Actor Capability Matrix
 
-Actor dispatch는 `SpotNode`, `Actor`, `Spot`, `StreamSocket`에 걸친 독립
-service layer 기능이다. 각 바인딩은 아래 역할을 언어별 관례에 맞는 public
-surface로 노출해야 한다.
+Actor dispatch is an independent service-layer capability spanning
+`SpotNode`, `Actor`, `Spot`, and `StreamSocket`. Each binding must expose
+the roles below as a public surface that fits its own language
+convention.
 
 | Capability | Public owner | Core substrate |
 |---|---|---|
@@ -3008,130 +3037,143 @@ surface로 노출해야 한다.
 | `recvActorLifecycle` | Y |
 | `close` | Y |
 
-- Spot은 소켓 타입이 아니라 SpotNode 위에 올라가는 channel-aware facade다.
-- Spot routed receive 는 `recv_routed` 또는 동등한 typed recv surface 로
-  노출할 수 있다.
-- Spot은 `bind`/`connect`를 갖지 않는다 (SpotNode가 담당).
-- Spot `close`는 facade만 해제하고 SpotNode는 살아 있다.
+- Spot is not a socket type — it's a channel-aware facade layered on top
+  of SpotNode.
+- Spot routed receive can be exposed as `recv_routed` or an equivalent
+  typed recv surface.
+- Spot has no `bind`/`connect` (SpotNode owns that).
+- Spot's `close` releases only the facade — SpotNode stays alive.
 
-### 제거된 Discovery / Registry capability
+### Removed Discovery/Registry Capability
 
-공개 Discovery와 Registry C API는 core 8.4.3에서 core 계약에서 제거되었다.
-바인딩은 Discovery/Registry factory, resolver method, sync option, registry
-query client, compatibility alias를 현재 API로 노출하면 안 된다.
+The public Discovery and Registry C API was removed from the core
+contract in core 8.4.3. A binding must not expose a Discovery/Registry
+factory, resolver method, sync option, registry query client, or
+compatibility alias as current API.
 
-### 서비스 관찰성 정책
-- 공개 서비스 계층 관찰은 별도 monitor handle 대신 snapshot/query surface로 한다.
-- SPOT(SpotNode, Spot) 관찰은 `status`, `peers`,
-  `peers(filter)`, `subjects`, `spots`, `actors` API를
-  사용한다. 내부 socket 진단이 필요한 바인딩은 `internalSockets`을
-  별도 diagnostic 표면으로 둔다.
-- 상태 전이가 필요하면 연속된 snapshot/query 결과를 비교한다.
-- SocketMonitor callback 해제 정책은 기존과 같다.
-  - callback 등록 API가 있는 경우 `close()`로만 해제한다
+### Service Observability Policy
+- Public service-layer observation uses a snapshot/query surface instead
+  of a separate monitor handle.
+- SPOT (SpotNode, Spot) observation uses the `status`, `peers`,
+  `peers(filter)`, `subjects`, `spots`, and `actors` APIs. A binding that
+  needs internal socket diagnostics keeps `internalSockets` as a
+  separate diagnostic surface.
+- When a state transition needs to be observed, compare successive
+  snapshot/query results.
+- The SocketMonitor callback release policy stays the same as before.
+  - When a callback registration API exists, release it only through
+    `close()`
 
-### 서비스 계층 도메인 객체
-- 서비스 계층도 domain object를 사용해야 한다.
-- 최소 핵심 domain object:
-  - `MonitorStatus`: monitor 상태 스냅샷
-  - `SpotNodeStatus`: SpotNode 상태 (state, peer count 등)
-- Advanced / Diagnostic domain object:
-  - `SpotNodePeerEntry`: peer 정보
-  - `SpotNodeSubjectEntry`: subject 정보
-  - `SpotNodeSocketEntry`: 내부 socket 진단 정보. socket 종류는 공통
-    `SocketType` enum을 사용하며, 같은 값을 반복하는 별도 SpotNode 전용
-    socket type enum을 만들지 않는다.
-  - `SpotNodeSpotEntry`: node 소유 Spot 정보
-  - `SpotNodeActorEntry`: node 소유 Actor route 정보
-- 필터 객체:
-  - `SpotNodePeerFilter`: peer 조회 필터
-  - `SpotNodeSubjectFilter`: subject 조회 필터
-  - `SpotNodeSocketFilter`: 내부 socket 진단 필터
-- enum/value object:
-  - `SocketType`: 일반 socket과 SpotNode 내부 socket 진단에서 함께 쓰는
-    socket 종류
+### Service Layer Domain Objects
+- The service layer must also use domain objects.
+- The minimum core domain objects:
+  - `MonitorStatus`: a monitor status snapshot
+  - `SpotNodeStatus`: SpotNode status (state, peer count, and so on)
+- Advanced/Diagnostic domain objects:
+  - `SpotNodePeerEntry`: peer information
+  - `SpotNodeSubjectEntry`: subject information
+  - `SpotNodeSocketEntry`: internal socket diagnostic information. Uses
+    the shared `SocketType` enum for the socket kind — does not create a
+    separate SpotNode-only socket-type enum that repeats the same
+    values.
+  - `SpotNodeSpotEntry`: node-owned Spot information
+  - `SpotNodeActorEntry`: node-owned Actor route information
+- Filter objects:
+  - `SpotNodePeerFilter`: a peer-lookup filter
+  - `SpotNodeSubjectFilter`: a subject-lookup filter
+  - `SpotNodeSocketFilter`: an internal socket diagnostic filter
+- Enum/value objects:
+  - `SocketType`: the socket kind shared between an ordinary socket and
+    SpotNode's internal socket diagnostics
   - `SpotRole`: `PUB`, `SUB`
   - `SubjectKind`: `NONE`, `TOPIC`, `PATTERN`
-  - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`, `ERROR`
+  - `SpotNodeState`: `IDLE`, `CONNECTING`, `PARTIAL_READY`, `READY`,
+    `ERROR`
   - `MonitorSourceKind`: `SOCKET`, `SPOT_PUB`, `SPOT_SUB`
   - `SpotPeerSource`: `MANUAL`, `DISCOVERY`, `MIXED`
   - `SpotPeerState`: `CONFIGURED`, `CONNECTING`, `CONNECTED`
-- `MonitorStatus.isReady()` 또는 동등한 편의 accessor는 raw socket
-  monitor source에서만 ready 의미를 해석한다. `SPOT_PUB`, `SPOT_SUB`
-  source에서는 ready bit를 SPOT readiness로 확장 해석하면 안 된다.
+- `MonitorStatus.isReady()` or an equivalent convenience accessor
+  interprets ready meaning only for a raw socket monitor source. For a
+  `SPOT_PUB`/`SPOT_SUB` source, the ready bit must not be
+  reinterpreted as extended SPOT readiness.
 
-### 서비스 계층 네이밍 정책
-- 서비스 계층도 Naming Policy를 따른다.
-- 허용되는 변형은 Naming Policy의 세 가지 변형과 같다. 즉 케이싱 변형,
-  overload 불가 언어의 최소 접미사, 언어별 property/getter 관례만 허용한다.
-- 단어 교체, 생략, 대체는 금지한다.
-- 규칙 상세는 Naming Policy 본문과 동일하다.
+### Service Layer Naming Policy
+- The service layer also follows the Naming Policy.
+- The allowed variation is the same three variations as the Naming
+  Policy — casing variation, a minimal suffix for a language without
+  overloads, and per-language property/getter convention only.
+- Word substitution, omission, or replacement is forbidden.
+- The detailed rules are the same as the Naming Policy body.
 
-#### 서비스 계층 Canonical Name 표
+#### Service Layer Canonical Name Table
 
-| Component | Canonical Name | 설명 |
+| Component | Canonical Name | Description |
 |---|---|---|
-| SpotNode | `bind` | endpoint 바인드 |
-| SpotNode | `connectPeer` | raw peer 연결 |
-| SpotNode | `disconnectPeer` | raw peer 연결 해제 |
-| SpotNode | `createRouteBridge` | caller/channel runtime 소유 socket을 SPOT route bridge에 등록 |
-| SpotNode | `createPublisher` | SpotNode의 topic publish ingress에 쓰는 publisher handle 생성 |
-| SpotNode | `setTlsServer` | TLS 서버 설정 |
-| SpotNode | `setTlsClient` | TLS 클라이언트 설정 |
-| SpotNode | `status` | 노드 상태 스냅샷 |
-| SpotNode | `peers` | peer 목록 스냅샷 |
-| SpotNode | `peers(filter)` | peer 필터 조회 |
-| SpotNode | `subjects` | subject 목록 스냅샷 |
-| SpotNode | `internalSockets` | 내부 socket 진단 스냅샷 |
-| SpotNode | `spots` | node 소유 Spot 스냅샷 |
-| SpotNode | `actors` | node 소유 Actor 스냅샷 |
-| SpotNode | `close` | 노드 종료 |
-| Spot | `publish(topic, ...)` | Spot topic 발행 |
-| Spot | `subscribe` | 토픽 구독 수신 |
-| Spot | `receiveSubscriptionEvent` | topic 구독 이벤트 수신 |
-| Spot | `setSubscription` / `unsetSubscription` | 구독 필터 관리 |
-| Spot | `sendToChannel` / `requestToChannel` | channel 단위 routed 송신 / 요청 |
-| Spot | `setDispatchHandler` | topic/routed/channel reply/timer readable 알림 handler 등록 |
-| Spot | `setSendReadyHandler` | send ready callback handler 등록 |
-| Spot | `recvActorLifecycle` | Actor join/leave lifecycle event 수신 |
-| Spot | `close` | facade 종료 |
+| SpotNode | `bind` | Binds an endpoint |
+| SpotNode | `connectPeer` | Connects a raw peer |
+| SpotNode | `disconnectPeer` | Disconnects a raw peer |
+| SpotNode | `createRouteBridge` | Registers a caller/channel-runtime-owned socket with the SPOT route bridge |
+| SpotNode | `createPublisher` | Creates a publisher handle used for SpotNode's topic-publish ingress |
+| SpotNode | `setTlsServer` | Configures TLS server |
+| SpotNode | `setTlsClient` | Configures TLS client |
+| SpotNode | `status` | A node status snapshot |
+| SpotNode | `peers` | A peer-list snapshot |
+| SpotNode | `peers(filter)` | A filtered peer lookup |
+| SpotNode | `subjects` | A subject-list snapshot |
+| SpotNode | `internalSockets` | An internal socket diagnostic snapshot |
+| SpotNode | `spots` | A node-owned Spot snapshot |
+| SpotNode | `actors` | A node-owned Actor snapshot |
+| SpotNode | `close` | Terminates the node |
+| Spot | `publish(topic, ...)` | Publishes a Spot topic |
+| Spot | `subscribe` | Receives a topic subscription |
+| Spot | `receiveSubscriptionEvent` | Receives a topic subscription event |
+| Spot | `setSubscription` / `unsetSubscription` | Manages a subscription filter |
+| Spot | `sendToChannel` / `requestToChannel` | A channel-targeted routed send/request |
+| Spot | `setDispatchHandler` | Registers the topic/routed/channel-reply/timer readable notification handler |
+| Spot | `setSendReadyHandler` | Registers the send-ready callback handler |
+| Spot | `recvActorLifecycle` | Receives an Actor join/leave lifecycle event |
+| Spot | `close` | Terminates the facade |
 
-### 서비스 계층 테스트 정책
-- 서비스 계층은 sample이나 perf에서 직접 검증되지 않는 컴포넌트를 포함하므로
-  FFI 매핑, lifecycle, 타입 변환이 올바른지 테스트해야 한다.
-- 서비스 계층도 Test Matrix와 동일한 카테고리로 테스트한다.
+### Service Layer Test Policy
+- Because the service layer includes components not directly verified
+  by a sample or perf, it must be tested for correct FFI mapping,
+  lifecycle, and type conversion.
+- The service layer is tested using the same categories as the Test
+  Matrix.
 
-#### 서비스 계층 Surface 테스트
-- SpotNode 역할 matrix 정렬 확인
-- Spot 역할 matrix 정렬 확인
-- service TLS helper 존재 확인
-- typed domain object 존재 확인 (SpotNodeStatus, SpotNodePeerEntry,
-  SpotNodeSocketEntry, SpotNodeSpotEntry, SpotNodeActorEntry 등)
-- typed enum 존재 확인 (SpotRole, SubjectKind, SpotNodeState 등)
+#### Service Layer Surface Tests
+- Confirm SpotNode role-matrix alignment
+- Confirm Spot role-matrix alignment
+- Confirm the service TLS helper exists
+- Confirm the typed domain objects exist (SpotNodeStatus,
+  SpotNodePeerEntry, SpotNodeSocketEntry, SpotNodeSpotEntry,
+  SpotNodeActorEntry, and so on)
+- Confirm the typed enums exist (SpotRole, SubjectKind, SpotNodeState,
+  and so on)
 
-#### 서비스 계층 Contract 테스트
-- SpotNode: create/bind/close lifecycle 누수 없음
-- Spot: create/close lifecycle (SpotNode는 살아 있어야 함)
-- 예외/오류 경로에서도 native 리소스가 정리되는지 확인
+#### Service Layer Contract Tests
+- SpotNode: no leak across the create/bind/close lifecycle
+- Spot: create/close lifecycle (SpotNode must stay alive)
+- Confirm native resources are cleaned up on exception/error paths too
 
-#### 서비스 계층 Behavior 테스트
-- SpotNode bind → Spot publish → Spot subscribe 경로 성공
-- Spot subscribe → 데이터 없음 시 empty 반환 (non-blocking)
-- Spot publish 실패 시 예외 확인
-- Spot dispatch event callback 호출 확인
-- Spot setSendReadyHandler callback 호출 확인
-- Spot receiveSubscriptionEvent 경로 확인
-- SpotRouteBridge attach/send/request/handleReceived 경로 동작 확인
-- SpotNode publisher handle publish 경로 동작 확인
+#### Service Layer Behavior Tests
+- SpotNode bind → Spot publish → Spot subscribe path succeeds
+- Spot subscribe → returns empty when there's no data (non-blocking)
+- Confirm exception on Spot publish failure
+- Confirm the Spot dispatch event callback fires
+- Confirm the Spot setSendReadyHandler callback fires
+- Confirm the Spot receiveSubscriptionEvent path
+- Confirm SpotRouteBridge attach/send/request/handleReceived paths work
+- Confirm the SpotNode publisher handle publish path works
 
-#### 서비스 계층 Introspection 테스트
-- SpotNode status → SpotNodeStatus 필드 검증
-  (state, peerCount, subjectCount 등)
-- SpotNode peers → SpotNodePeerEntry 목록 검증
-- SpotNode peers(filter) → 필터 적용 결과 검증
-- SpotNode subjects → SpotNodeSubjectEntry 목록 검증
+#### Service Layer Introspection Tests
+- SpotNode status → verify SpotNodeStatus fields (state, peerCount,
+  subjectCount, and so on)
+- SpotNode peers → verify the SpotNodePeerEntry list
+- SpotNode peers(filter) → verify the filtered result
+- SpotNode subjects → verify the SpotNodeSubjectEntry list
 
-#### 서비스 계층 테스트 범위
+#### Service Layer Test Scope
 
 | Test Category | SpotNode+Spot | Actor | Stream Actor Binding |
 |---|---|---|---|
@@ -3140,37 +3182,43 @@ query client, compatibility alias를 현재 API로 노출하면 안 된다.
 | Behavior | Required | Required | Required |
 | Introspection | Required | Required | Required |
 
-- service/spot 계열이 없는 바인딩은 이 테스트를 제외할 수 있다.
-- 여기서 monitor 설명은 socket monitor 기준이다.
+- A binding without a service/spot family can exclude this test.
+- Here, "monitor" refers to a socket monitor.
 
-### 서비스 계층 샘플 정책
-- Canonical Sample Set에 정의된 서비스 계열 샘플:
-  - `spot_recv_sample`: Spot channel-aware subscribe / routed recv
+### Service Layer Sample Policy
+- Service-family samples defined in the Canonical Sample Set:
+  - `spot_recv_sample`: Spot channel-aware subscribe/routed recv
   - `spot_callback_sample`: Spot dispatch event callback
-  - `monitor_recv_sample`: monitor event 수신 (socket monitor 포함)
-- service/spot 계열이 없는 바인딩은 `spot_*` 샘플을 제외할 수 있다.
+  - `monitor_recv_sample`: monitor event receive (including socket
+    monitor)
+- A binding without a service/spot family can exclude the `spot_*`
+  samples.
 
-### 바인딩별 서비스 계층 범위
-- 모든 바인딩이 서비스 계층 전체를 구현해야 하는 것은 아니다.
-- 최소 요구 사항:
+### Per-Binding Service Layer Scope
+- Not every binding has to implement the entire service layer.
+- The minimum requirement:
 
-| Component | 요구 수준 |
+| Component | Required level |
 |---|---|
-| SpotNode + Spot | 해당 바인딩에 spot 지원이 있으면 Required |
+| SpotNode + Spot | Required if that binding has spot support |
 
-### Callback API 정책
-- callback 등록 API는 각 소켓 타입의 역할에 따라 노출한다.
-- 위 Callback Capabilities 표가 기준이다.
-- canonical handler 등록 이름:
-  - `setDispatchHandler`: SPOT unified readable notification callback 등록
-  - `setSendReadyHandler`: send ready 상태 callback 등록
-- SPOT routed receive와 Actor lifecycle은 direct callback 등록 API를 노출하지 않는다.
-  `setDispatchHandler`가 readable event를 알리고, 사용자는 `recvRouted` 또는
-  `recvActorLifecycle`로 queue를 명시적으로 drain한다.
-- `onReceive` 는 raw `STREAM` direct fragment callback 의 내부 이름으로만
-  사용할 수 있다. canonical public binding API 이름으로 쓰지 않는다.
-- callback을 `null`/`None`으로 설정하여 해제하는 것은 허용하지 않는다.
-  callback 해제는 socket close로만 이루어진다.
+### Callback API Policy
+- A callback registration API is exposed according to each socket
+  type's role.
+- The Callback Capabilities table above is the baseline.
+- Canonical handler registration names:
+  - `setDispatchHandler`: registers the SPOT unified readable
+    notification callback
+  - `setSendReadyHandler`: registers the send-ready status callback
+- SPOT routed receive and Actor lifecycle do not expose a direct
+  callback registration API. `setDispatchHandler` announces a readable
+  event, and the user explicitly drains the queue with `recvRouted` or
+  `recvActorLifecycle`.
+- `onReceive` may be used only as the internal name for the raw
+  `STREAM` direct fragment callback. It is not used as a canonical
+  public binding API name.
+- Unregistering a callback by setting it to `null`/`None` is not
+  allowed. A callback is unregistered only by closing the socket.
 
 ## 코어 API 추가 사항
 

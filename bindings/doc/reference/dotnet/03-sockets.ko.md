@@ -26,24 +26,26 @@ using IZlinkSocket monitor = (IZlinkSocket)socket.MonitorOpen(SocketEvent.All);
 socket.Close();
 ```
 
-**Options.** `ISocket`: `Options`(`CommonSocketOptions`, 아래), `Bind(string address)`,
-`Unbind(string address)`, `MonitorOpen(SocketEvent events = SocketEvent.All)`,
-`SetTlsServer(certPath, keyPath, requireClientCert = false)`(binding 전에 적용),
-`SetTlsClient(caCertPath, hostname, trustSystem = false)`(connecting 전에 적용),
-`Close()`. `IConnectableSocket`(기본 `IZlinkSocket` marker를 제외한 모든 socket type)은
-`Connect(string address)`, `Disconnect(string address)`,
-`DisconnectRid(RoutingId peerRid)`를 더한다.
+**옵션.**
 
-**Completion result.** `MonitorOpen`을 제외한 모든 member는 반환값 없이 동기다.
-`MonitorOpen`은 `ISocketMonitor`(Eventing category)를 동기로 반환한다 — caller가
-소유하며 반드시 dispose해야 한다. `Close()`는 native socket을 즉시 닫는다 —
-`Dispose()`와 달리 `IDisposable` semantic을 기다리지 않는다. `ISocket`/`IZlinkSocket`
-자체가 `IDisposable`/`IAsyncDisposable`이다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Options` | — | `CommonSocketOptions`, 아래 |
+| `Bind(string address)` / `Unbind(string address)` | — | 수신 시작/중지 |
+| `MonitorOpen(SocketEvent events)` | `SocketEvent.All` | `ISocketMonitor`를 염(Eventing category) |
+| `SetTlsServer(certPath, keyPath, requireClientCert)` | `requireClientCert = false` | `Bind` 전에 적용 |
+| `SetTlsClient(caCertPath, hostname, trustSystem)` | `trustSystem = false` | `Connect` 전에 적용 |
+| `Close()` | — | native socket을 즉시 닫음 |
+| `Connect(string)` / `Disconnect(string)` / `DisconnectRid(RoutingId)` | — | `IConnectableSocket`만 — 기본 `IZlinkSocket` marker를 제외한 모든 socket type |
+
+**완료 결과.** `MonitorOpen`을 제외한 모든 member는 반환값 없이 동기다.
+`MonitorOpen`은 `ISocketMonitor`를 반환한다(caller 소유). `Close()`는
+`Dispose()`와 달리 즉시 닫는다. `ISocket`/`IZlinkSocket` 자체가
+`IDisposable`/`IAsyncDisposable`이다.
 
 **선택 기준.** `Bind`/`Connect` 전에 각각 `SetTlsServer`/`SetTlsClient`를 호출한다 —
-이미 bind·connect된 후에 적용하면 기존 상태엔 영향이 없다. socket 자체엔 `using`을
-선호하고, native socket이 일반 disposal이 아니라 즉시 해제돼야 할 때만 `Close()`를
-쓴다.
+이미 bind·connect된 후엔 효과가 없다. native socket이 일반 disposal이 아니라 즉시
+해제돼야 할 때만 `Close()`를 쓴다.
 
 ---
 
@@ -57,24 +59,29 @@ socket.Options.Linger = TimeSpan.FromSeconds(1);
 socket.Options.SubmitRetryMode = SubmitRetryMode.LocalFailure;
 ```
 
-**Options.** `MaxMessageSize`(`long`, -1 = 제한 없음), `SendHighWaterMark`/
-`ReceiveHighWaterMark`(`ulong` accounted-byte 제한, 0 = 제한 없음 — Core category의
-byte-HWM 참고), `SendBufferSize`/`ReceiveBufferSize`(`int`, -1 = OS 기본값), `Linger`
-(`TimeSpan?`, null = 무기한 대기), `ReconnectInterval`/`ReconnectIntervalMax`
-(`TimeSpan?`, null이면 비활성화/무제한), `Backlog`(`int`), `ReceiveTimeout`/
-`SendTimeout`/`ConnectTimeout`/`HandshakeInterval`(`TimeSpan?`, null = 무기한 block /
-OS·native 기본값), `TcpKeepAlive`(`int`, -1/0/1), `IPv6`/`TcpNoDelay`/`Immediate`
-(`bool`), `SubmitRetryMode`(`SubmitRetryMode`), `SubmitRetryTimeoutMilliseconds`/
-`SubmitRetryAttempts`(`int`), `RoutingIdDuplicatePolicy`(`RidDuplicatePolicy`),
-`LastEndpoint`(`string`, 읽기 전용 — 실제로 resolve된 bind 주소).
+**옵션.**
 
-**Completion result.** 모든 property get/set은 동기다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `MaxMessageSize` | -1(제한 없음) | `long` |
+| `SendHighWaterMark` / `ReceiveHighWaterMark` | 0(제한 없음) | `ulong` accounted-byte 제한 — Core category의 byte-HWM 참고 |
+| `SendBufferSize` / `ReceiveBufferSize` | -1(OS 기본값) | `int` |
+| `Linger` | null(무기한 대기) | `TimeSpan?` |
+| `ReconnectInterval` / `ReconnectIntervalMax` | null(비활성화/무제한) | `TimeSpan?` |
+| `Backlog` | — | `int` |
+| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval` | null(무기한 block / OS·native 기본값) | `TimeSpan?` |
+| `TcpKeepAlive` | — | `int`, -1/0/1 |
+| `IPv6` / `TcpNoDelay` / `Immediate` | — | `bool` |
+| `SubmitRetryMode` | `Off` | `SubmitRetryMode` |
+| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts` | — | `int` |
+| `RoutingIdDuplicatePolicy` | `Reject` | `RidDuplicatePolicy` |
+| `LastEndpoint` | 읽기 전용 | resolve된 bind 주소 |
+
+**완료 결과.** 모든 property get/set은 동기다.
 
 **선택 기준.** 기본값이 배포 환경에 맞지 않을 때 socket이 메시지 교환을 시작하기 전에
 `SendHighWaterMark`/`ReceiveHighWaterMark`, `Linger`를 설정한다. wildcard 주소로
-bind한 후 resolve된 포트를 알려면 `LastEndpoint`를 읽는다. local back-pressure에
-걸린 submit이 caller에게 노출되지 않고 자동으로 재시도돼야 할 땐
-`SubmitRetryMode.LocalFailure`를 쓴다.
+bind한 후 resolve된 포트를 알려면 `LastEndpoint`를 읽는다.
 
 ---
 
@@ -90,16 +97,21 @@ using Received received = Received.Create();
 if (pair.Recv(received)) { /* ... */ }
 ```
 
-**Options.** `IMessageSocket`(PAIR/DEALER 공유): `Send()`(공유 `SendOperation` builder
-시작 — Messaging category), `Recv(Received result, RecvFlags flags = RecvFlags.None)`,
-`OnSendReady(Action handler)`(back-pressure 해소 콜백, background dispatch 스레드에서
-실행). `IPairSocket`은 `IMessageSocket` 외에 더하는 게 없다.
+**옵션.**
 
-**Completion result.** `Recv`는 `bool`을 반환한다 — `RecvFlags.DontWait`가 설정되고
-메시지가 없을 때만 `false`다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Send()` | — | 공유 `SendOperation` builder 시작(Messaging category) |
+| `Recv(Received result, RecvFlags flags)` | `RecvFlags.None` | `result`를 채움 |
+| `OnSendReady(Action handler)` | — | back-pressure 해소 콜백, background dispatch 스레드 |
 
-**선택 기준.** 배타적 point-to-point 링크(예: 고정된 두 endpoint 사이의 제어
-채널)엔 PAIR를 쓴다 — peer 라우팅이 없고 load-balance하지 않는다.
+`IPairSocket`은 이 공유 `IMessageSocket` 표면 외에 더하는 게 없다.
+
+**완료 결과.** `Recv`는 `bool`을 반환한다 — `RecvFlags.DontWait`에서 아무것도 없을
+때만 `false`다.
+
+**선택 기준.** 배타적 point-to-point 링크엔 PAIR를 쓴다 — peer 라우팅이 없고
+load-balance하지 않는다.
 
 ---
 
@@ -116,19 +128,23 @@ IReadOnlyList<Message> reply = await dealer.Request()
     .Async();
 ```
 
-**Options.** `IMessageSocket`에 더하는 것: `Options`(`DealerSocketOptions`: `Probe`
-set-only — connect 시 빈 probe 전송; `RequestTimeout` set-only `TimeSpan?`;
-`PeerWeight` `int` load-balancing 가중치 0-100), `SetRoutingId(RoutingId)`/
-`GetRoutingId()`, `Request()`(공유 `RequestOperation` builder 시작 — Messaging
-category; target 인자가 없다 — DEALER는 API 레벨 peer routing id가 없기 때문이다).
+**옵션.** `IMessageSocket`에 더하는 것:
 
-**Completion result.** `Request()`의 builder는 Messaging category의
-operation-builder 항목대로 resolve된다. `SetRoutingId`/`GetRoutingId`는 동기다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Options.Probe` | — | `bool`, set-only; connect 시 빈 probe 전송 |
+| `Options.RequestTimeout` | — | `TimeSpan?`, set-only |
+| `Options.PeerWeight` | — | `int` 0-100, load-balancing 가중치 |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `Request()` | — | 공유 `RequestOperation` builder 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없음 |
 
-**선택 기준.** peer가 첫 메시지부터 이를 관찰하도록 connect 전에 `SetRoutingId`를
-설정한다. DEALER는 임의 token에 reply할 수 없다 — 그런 protocol envelope helper가
-없다 — reply는 수신된 request context(`Received.Reply()`, Messaging category)에서
-답하거나, target context가 요구할 때 명시적 ROUTER/service reply 표면에서 답한다.
+**완료 결과.** `Request()`의 builder는 Messaging category의 operation-builder
+항목대로 resolve된다. `SetRoutingId`/`GetRoutingId`는 동기다.
+
+**선택 기준.** peer가 첫 메시지부터 관찰하도록 connect 전에 `SetRoutingId`를
+설정한다. DEALER엔 임의 token에 reply하는 protocol envelope helper가 없다 —
+수신된 request context(`Received.Reply()`, Messaging category)에서 답하거나 명시적
+ROUTER/service reply 표면을 쓴다.
 
 ---
 
@@ -143,29 +159,32 @@ router.Send(peerRid).Message(Message.From("hello")).Submit();
 router.OnCompletionControl((rid, parts) => { /* ... */ });
 ```
 
-**Options.** `IRoutedMessageSocket`(`Send(RoutingId)`, `Recv(Received, RecvFlags)`,
-`OnSendReady(Action)`)와 `IConnectableSocket`에 더하는 것: `Options`
-(`RouterSocketOptions`: `Mandatory` `bool` — 알 수 없는 route로의 send를 조용히
-버리는 대신 에러; `Handover` `bool` — `RoutingIdDuplicatePolicy`의 shorthand;
-`Probe` `bool`; `ConnectRoutingId` `RoutingId?` 읽기 전용에 더해
-`SetConnectRoutingId(RoutingId)`로 peer가 고르는 대신 다음 outbound connection의
-id를 지정; `RequestTimeout` `TimeSpan?`; `PeerWeight` `int` 0-100),
-`SetRoutingId(RoutingId)`/`GetRoutingId()`, `Request(RoutingId peerRid)`(Messaging
-category의 `RequestOperation`), `Reply(RoutingId rid, ulong requestSeq)`(Messaging
-category의 `ReplyOperation`), `TrySendCompletionControl(RoutingId peerRid,
-IReadOnlyList<Message> parts)`, `OnCompletionControl(CompletionControlHandler
-handler)`.
+**옵션.** `IRoutedMessageSocket`(`Send(RoutingId)`, `Recv(Received, RecvFlags)`,
+`OnSendReady(Action)`)과 `IConnectableSocket`에 더하는 것:
 
-**Completion result.** `TrySendCompletionControl`은 동기로 `bool`을 반환한다 —
-`parts`를 소비하지 않는다(Core는 payload에 명령 의미를 부여하지 않는다). `false`는
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Options.Mandatory` | `false` | `bool`; 알 수 없는 route로의 send를 조용히 버리는 대신 에러 |
+| `Options.Handover` | `false` | `bool`; `RoutingIdDuplicatePolicy`의 shorthand |
+| `Options.Probe` | — | `bool` |
+| `Options.ConnectRoutingId` / `SetConnectRoutingId(RoutingId)` | 읽기 전용 getter | peer가 고르는 대신 다음 outbound connection의 id를 지정 |
+| `Options.RequestTimeout` | — | `TimeSpan?` |
+| `Options.PeerWeight` | — | `int` 0-100 |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `Request(RoutingId peerRid)` | — | Messaging category의 `RequestOperation` |
+| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category의 `ReplyOperation` |
+| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | opaque control record |
+| `OnCompletionControl(CompletionControlHandler handler)` | — | — |
+
+**완료 결과.** `TrySendCompletionControl`은 동기로 `bool`을 반환한다 — `false`는
 completion-lane back-pressure를 뜻하고, 그 외 실패는 `ZlinkSubmitException`을
 던진다. `CompletionControlHandler`는 background dispatch 스레드에서 실행되며
 `parts`의 모든 메시지를 소유한다 — 각각 정확히 한 번 dispose해야 한다.
 
 **선택 기준.** DEALER가 특정 peer를 지정할 수 없는 ROUTER 주도·ROUTER 응답
 request/reply엔 `Request(peerRid)`/`Reply(rid, requestSeq)`를 쓴다.
-application-level receive와 독립적인, peer의 기존 completion connection 위 opaque
-bounded control record엔 `TrySendCompletionControl`/`OnCompletionControl`을 쓴다.
+application-level receive와 독립적인 opaque bounded control record엔
+`TrySendCompletionControl`/`OnCompletionControl`을 쓴다.
 
 ---
 
@@ -183,28 +202,29 @@ using SubscriptionEvent evt = new SubscriptionEvent();
 if (xpub.ReceiveSubscriptionEvent(evt)) { /* ... */ }
 ```
 
-**Options.** `IPublisherSocket`(PUB/XPUB 공유): `Publish(string topic)`(공유
-`SendOperation` builder 시작), `OnSendReady(Action handler)`. `IPubSocket`은
-`Options`(`PubSocketOptions`, 아래), `SetRoutingId(RoutingId)`/`GetRoutingId()`를
-더한다. `IXPubSocket`은 `Options`(역시 `PubSocketOptions` — 같은 facade 타입)와
-`ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags =
-RecvFlags.None)`를 더한다. `IPubSocket`과 달리 **`IXPubSocket`은 자신만의
-`SetRoutingId`/`GetRoutingId`가 없다** — `IPublisherSocket`만 상속한다.
-`PubSocketOptions`: `Verbose`/`Verboser` `bool`(중복 포함 모든 (un)subscribe
-메시지 전달), `Manual` `bool`(구독이 auto-accept 대신 `ApproveSubscribe`/
-`RejectSubscribe`를 요구), `ManualLastValue` `bool`(새로 승인된 구독자에게 topic별
-마지막 캐시 메시지도 재생하는 manual 모드), `NoDrop` `bool`(back-pressure에서 조용히
-버리는 대신 에러), `WelcomeMessage`(`Message`, 새로 연결된 구독자마다 자동 전송 —
-getter는 caller 소유 복사본을 반환), `TopicsCount`(`int`, 읽기 전용),
-`ApproveSubscribe(RoutingId)`/`RejectSubscribe(RoutingId)`(`Manual` 필요).
+**옵션.** 공유 `IPublisherSocket`: `Publish(string topic)`(공유 `SendOperation`
+시작), `OnSendReady(Action)`. `IPubSocket`은 `SetRoutingId`/`GetRoutingId`도
+있다 — **`IXPubSocket`은 없다**(`IPublisherSocket`만 상속). 둘 다 같은
+`PubSocketOptions` facade를 `Options`로 노출한다:
 
-**Completion result.** `ReceiveSubscriptionEvent`는 `bool`을 반환한다 —
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Verbose` / `Verboser` | `false` | 중복 포함 모든 (un)subscribe 메시지 전달 |
+| `Manual` | `false` | 구독이 auto-accept 대신 `ApproveSubscribe`/`RejectSubscribe` 요구 |
+| `ManualLastValue` | `false` | 새로 승인된 구독자에게 topic별 마지막 캐시 메시지도 재생하는 manual 모드 |
+| `NoDrop` | `false` | back-pressure에서 조용히 버리는 대신 에러 |
+| `WelcomeMessage` | 없음 | 새로 연결된 구독자마다 자동 전송; getter는 caller 소유 복사본 반환 |
+| `TopicsCount` | 읽기 전용 | — |
+| `ApproveSubscribe(RoutingId)` / `RejectSubscribe(RoutingId)` | — | `Manual` 필요 |
+| `ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)` | `RecvFlags.None` | `IXPubSocket`만 |
+
+**완료 결과.** `ReceiveSubscriptionEvent`는 `bool`을 반환한다 —
 `RecvFlags.DontWait`에서 아무것도 없을 때만 `false`다. `ApproveSubscribe`/
 `RejectSubscribe`는 반환값 없이 동기다.
 
-**선택 기준.** publish 자체는 둘이 같게 동작하지만, `ReceiveSubscriptionEvent`로
-구독자 변동을 관찰하려면(또는 `Manual`/`ApproveSubscribe`/`RejectSubscribe`로 수동
-admission을 하려면) `IPubSocket` 대신 `IXPubSocket`을 쓴다.
+**선택 기준.** `ReceiveSubscriptionEvent`로 구독자 변동을 관찰하려면(또는
+`Manual`/`ApproveSubscribe`/`RejectSubscribe`로 수동 admission을 하려면)
+`IPubSocket` 대신 `IXPubSocket`을 쓴다 — publish 자체는 둘이 같게 동작한다.
 
 ---
 
@@ -220,21 +240,25 @@ using TopicMessage msg = new TopicMessage();
 if (sub.Subscribe(msg)) { /* ... */ }
 ```
 
-**Options.** `ISubscriberSocket`(SUB/XSUB 공유): `SetSubscription(string
-topicOrPattern)`/`UnsetSubscription(string topicOrPattern)`(구독은 누적된다),
-`SubscriptionAt(int index)`(`SubscriptionEntry?`, 범위를 벗어나면 null),
-`Subscribe(TopicMessage result, RecvFlags flags = RecvFlags.None)`. `ISubSocket`은
-`Options`(`SubSocketOptions`: `TopicsCount` `int`, 읽기 전용),
-`SetRoutingId(RoutingId)`/`GetRoutingId()`를 더한다. **`IXSubSocket`은
-`ISubscriberSocket` 외에 더하는 게 없다** — 자신의 `Options`(역시 `SubSocketOptions`
-타입) 외엔 고유 member가 없고 모든 operation이 공유 `ISubscriberSocket` 표면이다.
+**옵션.** 공유 `ISubscriberSocket`:
 
-**Completion result.** `Subscribe`는 `bool`을 반환한다 — `RecvFlags.DontWait`에서
-아무것도 없을 때만 `false`다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `SetSubscription(string)` / `UnsetSubscription(string)` | — | 구독은 누적된다 |
+| `SubscriptionAt(int index)` | `SubscriptionEntry?` | 범위 밖이면 `null` |
+| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | — |
+| `Options.TopicsCount` | 읽기 전용 | `int` |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | `ISubSocket`만 |
 
-**선택 기준.** 일반적인 경우(구독을 socket option으로 설정)엔 `ISubSocket`을 쓴다.
-구독을 일반 메시지로 실어 날라야 할 때(예: 메시지만 중계하는 device를 통해 구독
-상태를 전달할 때)만 `IXSubSocket`을 쓴다.
+**`IXSubSocket`은 `ISubscriberSocket` 외에 더하는 게 없다** — `SetRoutingId`/
+`GetRoutingId`도, 고유 member도 없다; 모든 operation이 공유 표면이다(자신의
+`Options`도 같은 `SubSocketOptions` 타입).
+
+**완료 결과.** `Subscribe`는 `bool`을 반환한다 — `RecvFlags.DontWait`에서 아무것도
+없을 때만 `false`다.
+
+**선택 기준.** 일반적인 경우(구독을 socket option으로 설정)엔 `ISubSocket`을,
+구독을 일반 메시지로 실어 날라야 할 때만 `IXSubSocket`을 쓴다.
 
 ---
 
@@ -248,21 +272,21 @@ using IStreamSocket stream = context.CreateStreamSocket();
 stream.OnPacket((routingId, header, body) => { /* header/body 소유; 각각 한 번 dispose */ });
 ```
 
-**Options.** `IRoutedMessageSocket`을 확장: `Options`(`StreamSocketOptions`: `Notify`
-`bool` — peer connect/disconnect를 application message로 전달), `OnPacket
-(StreamPacketHandler handler)`(background-dispatch-thread 콜백; handler가
-`header`/`body`를 소유하며 정확히 한 번 dispose해야 함), `RecvPart(out RoutingId?
-sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags =
-RecvFlags.None)`(첫 receive 호출이 이 socket을 receive 모드로 고정한다 — `OnPacket`
-등록과 함께 쓸 수 없다), `DisconnectRid(RoutingId peerRid)`.
+**옵션.** `IRoutedMessageSocket`을 확장:
 
-**Completion result.** `RecvPart`는 동기로 `bool`을 반환한다 — 반환된 `part`는
-caller 소유이며 반드시 dispose해야 한다. `StreamPacketHandler`는 메시지 소유권을
-콜백으로 이전하며, 콜백은 `header`와 `body`를 정확히 한 번씩 dispose해야 한다.
+| Member | 기본값 | 의미 |
+| --- | --- | --- |
+| `Options.Notify` | `false` | `bool`; peer connect/disconnect를 application message로 전달 |
+| `OnPacket(StreamPacketHandler handler)` | — | background-dispatch-thread 콜백; handler가 `header`/`body`를 소유하며 정확히 한 번 dispose해야 함 |
+| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | 첫 호출이 이 socket을 receive 모드로 고정 — `OnPacket`과 함께 쓸 수 없음 |
+| `DisconnectRid(RoutingId peerRid)` | — | — |
+
+**완료 결과.** `RecvPart`는 동기로 `bool`을 반환한다 — 반환된 `part`는 caller
+소유다. `StreamPacketHandler`는 메시지 소유권을 콜백으로 이전하며, 콜백은
+`header`와 `body`를 정확히 한 번씩 dispose해야 한다.
 
 **선택 기준.** callback 기반 packet loop엔 `OnPacket`을, pull 기반 loop엔
-`RecvPart`를 선택한다 — 첫 receive 호출이 이뤄지면 둘은 상호 배타적이다.
-application이 raw peer connect/disconnect를 직접 관찰해야 할 땐 `Notify`를 쓴다.
+`RecvPart`를 쓴다 — 첫 receive 호출이 이뤄지면 둘은 상호 배타적이다.
 
 ---
 
@@ -280,8 +304,7 @@ application이 raw peer connect/disconnect를 직접 관찰해야 할 땐 `Notif
 | `RecvFlags` | 모든 `Recv`/`Subscribe`/`ReceiveSubscriptionEvent`/`RecvPart` | `None`, `DontWait` |
 
 **선택 기준.** 두 flags enum 어느 쪽이든 `DontWait`는 blocking 호출을
-non-blocking으로 바꿔 block하는 대신 `false`/back-pressure를 보고한다 — 그 호출에서
-`false`가 정확히 무엇을 뜻하는지는 위 각 항목을 참고한다.
+non-blocking으로 바꿔 block하는 대신 `false`/back-pressure를 보고한다.
 
 ---
 

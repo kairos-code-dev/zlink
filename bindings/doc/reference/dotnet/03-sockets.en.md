@@ -25,23 +25,25 @@ using IZlinkSocket monitor = (IZlinkSocket)socket.MonitorOpen(SocketEvent.All);
 socket.Close();
 ```
 
-**Options.** `ISocket`: `Options` (`CommonSocketOptions`, below), `Bind(string address)`,
-`Unbind(string address)`, `MonitorOpen(SocketEvent events = SocketEvent.All)`,
-`SetTlsServer(certPath, keyPath, requireClientCert = false)` (apply before binding),
-`SetTlsClient(caCertPath, hostname, trustSystem = false)` (apply before connecting), `Close()`.
-`IConnectableSocket` (every socket type except the base `IZlinkSocket` marker) adds
-`Connect(string address)`, `Disconnect(string address)`, `DisconnectRid(RoutingId peerRid)`.
+**Options.**
 
-**Completion result.** All members are synchronous with no return value except `MonitorOpen`,
-which returns `ISocketMonitor` (Eventing category) synchronously — the caller owns and must
-dispose it. `Close()` closes the native socket immediately; unlike `Dispose()`, it does not wait
-on `IDisposable` semantics. `ISocket`/`IZlinkSocket` are themselves `IDisposable`/
-`IAsyncDisposable`.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Options` | — | `CommonSocketOptions`, below |
+| `Bind(string address)` / `Unbind(string address)` | — | listen / stop listening |
+| `MonitorOpen(SocketEvent events)` | `SocketEvent.All` | opens an `ISocketMonitor` (Eventing category) |
+| `SetTlsServer(certPath, keyPath, requireClientCert)` | `requireClientCert = false` | apply before `Bind` |
+| `SetTlsClient(caCertPath, hostname, trustSystem)` | `trustSystem = false` | apply before `Connect` |
+| `Close()` | — | closes the native socket immediately |
+| `Connect(string)` / `Disconnect(string)` / `DisconnectRid(RoutingId)` | — | `IConnectableSocket` only — every socket type except the base `IZlinkSocket` marker |
 
-**When to use.** Call `SetTlsServer`/`SetTlsClient` before `Bind`/`Connect` respectively — applying
-either after the socket is already bound or connected has no effect on existing state. Prefer
-`using` for the socket itself; call `Close()` only when the native socket must release immediately
-rather than through normal disposal.
+**Completion result.** All synchronous, no return value except `MonitorOpen` (returns
+`ISocketMonitor`, caller-owned). `Close()` closes immediately, unlike `Dispose()`.
+`ISocket`/`IZlinkSocket` are themselves `IDisposable`/`IAsyncDisposable`.
+
+**When to use.** Call `SetTlsServer`/`SetTlsClient` before `Bind`/`Connect` — applying either after
+the socket is already bound or connected has no effect. Call `Close()` only when the native socket
+must release immediately rather than through normal disposal.
 
 ---
 
@@ -55,23 +57,29 @@ socket.Options.Linger = TimeSpan.FromSeconds(1);
 socket.Options.SubmitRetryMode = SubmitRetryMode.LocalFailure;
 ```
 
-**Options.** `MaxMessageSize` (`long`, -1 = no limit), `SendHighWaterMark`/`ReceiveHighWaterMark`
-(`ulong` accounted-byte limits, 0 = no limit — see the Core category's byte-HWM note),
-`SendBufferSize`/`ReceiveBufferSize` (`int`, -1 = OS default), `Linger` (`TimeSpan?`, null = wait
-indefinitely), `ReconnectInterval`/`ReconnectIntervalMax` (`TimeSpan?`, null disables/uncaps),
-`Backlog` (`int`), `ReceiveTimeout`/`SendTimeout`/`ConnectTimeout`/`HandshakeInterval`
-(`TimeSpan?`, null = block indefinitely / OS or native default), `TcpKeepAlive` (`int`, -1/0/1),
-`IPv6`/`TcpNoDelay`/`Immediate` (`bool`), `SubmitRetryMode` (`SubmitRetryMode`),
-`SubmitRetryTimeoutMilliseconds`/`SubmitRetryAttempts` (`int`), `RoutingIdDuplicatePolicy`
-(`RidDuplicatePolicy`), `LastEndpoint` (`string`, read-only — the concrete resolved bind address).
+**Options.**
+
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `MaxMessageSize` | -1 (no limit) | `long` |
+| `SendHighWaterMark` / `ReceiveHighWaterMark` | 0 (no limit) | `ulong` accounted-byte limits — see Core category's byte-HWM note |
+| `SendBufferSize` / `ReceiveBufferSize` | -1 (OS default) | `int` |
+| `Linger` | null (wait indefinitely) | `TimeSpan?` |
+| `ReconnectInterval` / `ReconnectIntervalMax` | null (disables/uncaps) | `TimeSpan?` |
+| `Backlog` | — | `int` |
+| `ReceiveTimeout` / `SendTimeout` / `ConnectTimeout` / `HandshakeInterval` | null (block indefinitely / OS or native default) | `TimeSpan?` |
+| `TcpKeepAlive` | — | `int`, -1/0/1 |
+| `IPv6` / `TcpNoDelay` / `Immediate` | — | `bool` |
+| `SubmitRetryMode` | `Off` | `SubmitRetryMode` |
+| `SubmitRetryTimeoutMilliseconds` / `SubmitRetryAttempts` | — | `int` |
+| `RoutingIdDuplicatePolicy` | `Reject` | `RidDuplicatePolicy` |
+| `LastEndpoint` | read-only | resolved bind address |
 
 **Completion result.** Every property get/set is synchronous.
 
 **When to use.** Set `SendHighWaterMark`/`ReceiveHighWaterMark` and `Linger` before the socket
 starts exchanging messages when the defaults don't fit the deployment. Read `LastEndpoint` after
-binding to a wildcard address to learn the resolved port. Use `SubmitRetryMode.LocalFailure` when
-a submit hitting local back-pressure should retry automatically rather than surface it to the
-caller.
+binding a wildcard address to learn the resolved port.
 
 ---
 
@@ -87,16 +95,21 @@ using Received received = Received.Create();
 if (pair.Recv(received)) { /* ... */ }
 ```
 
-**Options.** `IMessageSocket` (shared by PAIR/DEALER): `Send()` (starts the shared `SendOperation`
-builder — Messaging category), `Recv(Received result, RecvFlags flags = RecvFlags.None)`,
-`OnSendReady(Action handler)` (back-pressure-cleared callback, runs on a background dispatch
-thread). `IPairSocket` adds nothing beyond `IMessageSocket`.
+**Options.**
 
-**Completion result.** `Recv` returns `bool` — `false` only when `RecvFlags.DontWait` is set and
-no message is available.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Send()` | — | starts the shared `SendOperation` builder (Messaging category) |
+| `Recv(Received result, RecvFlags flags)` | `RecvFlags.None` | populates `result` |
+| `OnSendReady(Action handler)` | — | back-pressure-cleared callback, background dispatch thread |
 
-**When to use.** Use PAIR for an exclusive point-to-point link (for example, a control channel
-between two fixed endpoints) — it has no peer routing and does not load-balance.
+`IPairSocket` adds nothing beyond this shared `IMessageSocket` surface.
+
+**Completion result.** `Recv` returns `bool` — `false` only under `RecvFlags.DontWait` with
+nothing available.
+
+**When to use.** Use PAIR for an exclusive point-to-point link — it has no peer routing and does
+not load-balance.
 
 ---
 
@@ -112,19 +125,23 @@ IReadOnlyList<Message> reply = await dealer.Request()
     .Async();
 ```
 
-**Options.** Adds to `IMessageSocket`: `Options` (`DealerSocketOptions`: `Probe` set-only —
-send an empty probe on connect; `RequestTimeout` set-only `TimeSpan?`; `PeerWeight` `int`
-load-balancing weight 0-100), `SetRoutingId(RoutingId)`/`GetRoutingId()`, `Request()` (starts the
-shared `RequestOperation` builder — Messaging category; has no target parameter, since DEALER has
-no API-level peer routing id to address).
+**Options.** Adds to `IMessageSocket`:
 
-**Completion result.** `Request()`'s builder resolves per the Messaging category's operation-
-builder entry. `SetRoutingId`/`GetRoutingId` are synchronous.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Options.Probe` | — | `bool`, set-only; sends an empty probe on connect |
+| `Options.RequestTimeout` | — | `TimeSpan?`, set-only |
+| `Options.PeerWeight` | — | `int` 0-100, load-balancing weight |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `Request()` | — | starts the shared `RequestOperation` builder; no target parameter — DEALER has no API-level peer routing id |
+
+**Completion result.** `Request()`'s builder resolves per the Messaging category's
+operation-builder entry. `SetRoutingId`/`GetRoutingId` are synchronous.
 
 **When to use.** Set `SetRoutingId` before connecting so peers observe it from the first message.
-A DEALER cannot reply to an arbitrary token — it has no protocol envelope helper for that; replies
-are answered from a received request context (`Received.Reply()`, Messaging category) or from an
-explicit ROUTER/service reply surface when the target context requires it.
+DEALER has no protocol envelope helper to reply to an arbitrary token — reply from a received
+request's context (`Received.Reply()`, Messaging category) or from an explicit ROUTER/service
+reply surface instead.
 
 ---
 
@@ -140,33 +157,37 @@ router.OnCompletionControl((rid, parts) => { /* ... */ });
 ```
 
 **Options.** Adds to `IRoutedMessageSocket` (`Send(RoutingId)`, `Recv(Received, RecvFlags)`,
-`OnSendReady(Action)`) and `IConnectableSocket`: `Options` (`RouterSocketOptions`: `Mandatory`
-`bool` — error instead of silent drop on an unknown route; `Handover` `bool` — shorthand over
-`RoutingIdDuplicatePolicy`; `Probe` `bool`; `ConnectRoutingId` `RoutingId?` read-only plus
-`SetConnectRoutingId(RoutingId)` to assign the next outbound connection's id instead of letting
-the peer choose; `RequestTimeout` `TimeSpan?`; `PeerWeight` `int` 0-100), `SetRoutingId(RoutingId)`/
-`GetRoutingId()`, `Request(RoutingId peerRid)` (Messaging category's `RequestOperation`),
-`Reply(RoutingId rid, ulong requestSeq)` (Messaging category's `ReplyOperation`),
-`TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)`,
-`OnCompletionControl(CompletionControlHandler handler)`.
+`OnSendReady(Action)`) and `IConnectableSocket`:
 
-**Completion result.** `TrySendCompletionControl` returns `bool` synchronously — it does not
-consume `parts` (Core assigns no command meaning to the payload); `false` means completion-lane
-back-pressure, other failures throw `ZlinkSubmitException`. `CompletionControlHandler` runs on a
-background dispatch thread and owns every message in its `parts` — it must dispose each exactly
-once.
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Options.Mandatory` | `false` | `bool`; error instead of silent drop on an unknown route |
+| `Options.Handover` | `false` | `bool`; shorthand over `RoutingIdDuplicatePolicy` |
+| `Options.Probe` | — | `bool` |
+| `Options.ConnectRoutingId` / `SetConnectRoutingId(RoutingId)` | read-only getter | assigns the next outbound connection's id instead of letting the peer choose |
+| `Options.RequestTimeout` | — | `TimeSpan?` |
+| `Options.PeerWeight` | — | `int` 0-100 |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | — |
+| `Request(RoutingId peerRid)` | — | Messaging category's `RequestOperation` |
+| `Reply(RoutingId rid, ulong requestSeq)` | — | Messaging category's `ReplyOperation` |
+| `TrySendCompletionControl(RoutingId peerRid, IReadOnlyList<Message> parts)` | — | opaque control record |
+| `OnCompletionControl(CompletionControlHandler handler)` | — | — |
 
-**When to use.** Use `Request(peerRid)`/`Reply(rid, requestSeq)` for ROUTER-initiated or
-ROUTER-answered request/reply, where DEALER cannot address a specific peer. Use
+**Completion result.** `TrySendCompletionControl` returns `bool` synchronously — `false` means
+completion-lane back-pressure; other failures throw `ZlinkSubmitException`. `CompletionControlHandler`
+runs on a background dispatch thread and owns every message in `parts` — dispose each exactly once.
+
+**When to use.** `Request(peerRid)`/`Reply(rid, requestSeq)` for ROUTER-initiated or
+ROUTER-answered request/reply, where DEALER cannot address a specific peer.
 `TrySendCompletionControl`/`OnCompletionControl` for an opaque bounded control record on a peer's
-existing completion connection, independent from application-level receive.
+existing connection, independent from application-level receive.
 
 ---
 
 ## `IPubSocket` / `IXPubSocket`
 
-PUB publishes topic-filtered messages, dropping ones with no matching subscriber; XPUB additionally
-surfaces subscriber subscription/unsubscription events.
+PUB publishes topic-filtered messages, dropping ones with no matching subscriber; XPUB
+additionally surfaces subscriber subscription/unsubscription events.
 
 ```csharp
 using IPubSocket pub = context.CreatePubSocket();
@@ -177,26 +198,28 @@ using SubscriptionEvent evt = new SubscriptionEvent();
 if (xpub.ReceiveSubscriptionEvent(evt)) { /* ... */ }
 ```
 
-**Options.** `IPublisherSocket` (shared by PUB/XPUB): `Publish(string topic)` (starts the shared
-`SendOperation` builder), `OnSendReady(Action handler)`. `IPubSocket` adds `Options`
-(`PubSocketOptions`, below), `SetRoutingId(RoutingId)`/`GetRoutingId()`. `IXPubSocket` adds
-`Options` (also `PubSocketOptions` — the same facade type) and
-`ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags = RecvFlags.None)`; unlike
-`IPubSocket`, **`IXPubSocket` has no `SetRoutingId`/`GetRoutingId` of its own** — it inherits only
-`IPublisherSocket`. `PubSocketOptions`: `Verbose`/`Verboser` `bool` (deliver every (un)subscribe
-message, including duplicates), `Manual` `bool` (subscriptions require `ApproveSubscribe`/
-`RejectSubscribe` instead of auto-accept), `ManualLastValue` `bool` (manual mode that also replays
-the last cached message per topic to a newly accepted subscriber), `NoDrop` `bool` (error instead
-of silent drop on back-pressure), `WelcomeMessage` (`Message`, sent automatically to each newly
-connected subscriber — the getter returns a caller-owned copy), `TopicsCount` (`int`, read-only),
-`ApproveSubscribe(RoutingId)`/`RejectSubscribe(RoutingId)` (require `Manual`).
+**Options.** Shared `IPublisherSocket`: `Publish(string topic)` (starts the shared
+`SendOperation`), `OnSendReady(Action)`. `IPubSocket` also has `SetRoutingId`/`GetRoutingId` —
+**`IXPubSocket` does not** (it inherits only `IPublisherSocket`). Both expose `Options` as the
+same `PubSocketOptions` facade:
+
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Verbose` / `Verboser` | `false` | deliver every (un)subscribe message, including duplicates |
+| `Manual` | `false` | subscriptions require `ApproveSubscribe`/`RejectSubscribe` instead of auto-accept |
+| `ManualLastValue` | `false` | manual mode that also replays the last cached message per topic to a newly accepted subscriber |
+| `NoDrop` | `false` | error instead of silent drop on back-pressure |
+| `WelcomeMessage` | none | sent automatically to each newly connected subscriber; getter returns a caller-owned copy |
+| `TopicsCount` | read-only | — |
+| `ApproveSubscribe(RoutingId)` / `RejectSubscribe(RoutingId)` | — | require `Manual` |
+| `ReceiveSubscriptionEvent(SubscriptionEvent result, RecvFlags flags)` | `RecvFlags.None` | `IXPubSocket` only |
 
 **Completion result.** `ReceiveSubscriptionEvent` returns `bool` — `false` only under
-`RecvFlags.DontWait` with nothing available. `ApproveSubscribe`/`RejectSubscribe` are synchronous
-with no return value.
+`RecvFlags.DontWait` with nothing available. `ApproveSubscribe`/`RejectSubscribe` are synchronous,
+no return value.
 
-**When to use.** Use `IXPubSocket` over `IPubSocket` specifically to observe subscriber churn via
-`ReceiveSubscriptionEvent` (or manual admission via `Manual`/`ApproveSubscribe`/`RejectSubscribe`);
+**When to use.** `IXPubSocket` over `IPubSocket` specifically to observe subscriber churn via
+`ReceiveSubscriptionEvent`, or manual admission via `Manual`/`ApproveSubscribe`/`RejectSubscribe`;
 otherwise the two behave the same for publishing.
 
 ---
@@ -213,20 +236,25 @@ using TopicMessage msg = new TopicMessage();
 if (sub.Subscribe(msg)) { /* ... */ }
 ```
 
-**Options.** `ISubscriberSocket` (shared by SUB/XSUB): `SetSubscription(string topicOrPattern)`/
-`UnsetSubscription(string topicOrPattern)` (subscriptions accumulate), `SubscriptionAt(int index)`
-(`SubscriptionEntry?`, null when out of range), `Subscribe(TopicMessage result, RecvFlags flags =
-RecvFlags.None)`. `ISubSocket` adds `Options` (`SubSocketOptions`: `TopicsCount` `int`,
-read-only), `SetRoutingId(RoutingId)`/`GetRoutingId()`. **`IXSubSocket` adds nothing beyond
-`ISubscriberSocket`** except its own `Options` (also typed `SubSocketOptions`) — it has no unique
-member; every operation is the shared `ISubscriberSocket` surface.
+**Options.** Shared `ISubscriberSocket`:
+
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `SetSubscription(string)` / `UnsetSubscription(string)` | — | subscriptions accumulate |
+| `SubscriptionAt(int index)` | `SubscriptionEntry?` | `null` when out of range |
+| `Subscribe(TopicMessage result, RecvFlags flags)` | `RecvFlags.None` | — |
+| `Options.TopicsCount` | read-only | `int` |
+| `SetRoutingId(RoutingId)` / `GetRoutingId()` | — | `ISubSocket` only |
+
+**`IXSubSocket` adds nothing beyond `ISubscriberSocket`** — no `SetRoutingId`/`GetRoutingId`, no
+unique members; every operation is the shared surface (its own `Options` is the same
+`SubSocketOptions` type).
 
 **Completion result.** `Subscribe` returns `bool` — `false` only under `RecvFlags.DontWait` with
 nothing available.
 
-**When to use.** Use `ISubSocket` for the common case (subscriptions set as socket options); use
-`IXSubSocket` specifically when subscriptions must be carried as ordinary messages instead (for
-example, forwarding subscription state through a device that only relays messages).
+**When to use.** `ISubSocket` for the common case (subscriptions as socket options); `IXSubSocket`
+specifically when subscriptions must be carried as ordinary messages instead.
 
 ---
 
@@ -240,20 +268,21 @@ using IStreamSocket stream = context.CreateStreamSocket();
 stream.OnPacket((routingId, header, body) => { /* owns header/body; dispose each once */ });
 ```
 
-**Options.** Extends `IRoutedMessageSocket`: `Options` (`StreamSocketOptions`: `Notify` `bool` —
-deliver peer connect/disconnect as application messages), `OnPacket(StreamPacketHandler handler)`
-(background-dispatch-thread callback; the handler owns and must dispose `header`/`body` exactly
-once), `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags
-flags = RecvFlags.None)` (the first receive call fixes this socket to receive mode — it cannot
-combine with `OnPacket` registration), `DisconnectRid(RoutingId peerRid)`.
+**Options.** Extends `IRoutedMessageSocket`:
 
-**Completion result.** `RecvPart` returns `bool` synchronously; the returned `part` is caller-owned
-and must be disposed. `StreamPacketHandler` transfers message ownership to the callback, which must
+| Member | Default | Meaning |
+| --- | --- | --- |
+| `Options.Notify` | `false` | `bool`; deliver peer connect/disconnect as application messages |
+| `OnPacket(StreamPacketHandler handler)` | — | background-dispatch-thread callback; handler owns and must dispose `header`/`body` exactly once |
+| `RecvPart(out RoutingId? sourceRoutingId, out Message? part, out bool hasMore, RecvFlags flags)` | `RecvFlags.None` | first call fixes this socket to receive mode — cannot combine with `OnPacket` |
+| `DisconnectRid(RoutingId peerRid)` | — | — |
+
+**Completion result.** `RecvPart` returns `bool` synchronously; the returned `part` is
+caller-owned. `StreamPacketHandler` transfers message ownership to the callback, which must
 dispose `header` and `body` exactly once.
 
-**When to use.** Choose `OnPacket` for a callback-driven packet loop, or `RecvPart` for a
-pull-based one — the two are mutually exclusive once the first receive call is made. Use `Notify`
-when the application needs to observe raw peer connect/disconnect directly.
+**When to use.** `OnPacket` for a callback-driven packet loop, or `RecvPart` for a pull-based one —
+mutually exclusive once the first receive call is made.
 
 ---
 
@@ -271,8 +300,7 @@ Shared enums referenced across every entry above.
 | `RecvFlags` | Every `Recv`/`Subscribe`/`ReceiveSubscriptionEvent`/`RecvPart` | `None`, `DontWait` |
 
 **When to use.** `DontWait` on either flags enum turns a blocking call into a non-blocking one that
-reports `false`/back-pressure instead of blocking — see each entry above for exactly what `false`
-means for that specific call.
+reports `false`/back-pressure instead of blocking.
 
 ---
 

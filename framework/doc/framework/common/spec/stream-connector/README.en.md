@@ -38,4 +38,4 @@ per-language guide:
 [.NET](../../../dotnet/guide/stream-connector/README.ko.md),
 [Java](../../../java/guide/stream-connector/README.en.md),
 [Kotlin](../../../kotlin/guide/stream-connector/README.en.md),
-[Node.js/TypeScript](../../../node/guide/stream-connector/README.ko.md).
+[Node.js/TypeScript](../../../node/guide/stream-connector/README.en.md).

@@ -9,7 +9,7 @@ RouteMesh/ClientServer/Fanout operational status. The exact signatures are owned
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only). Every registration entry point is a configuration-time call inside the
 `zlinkFramework()` chain.
 
@@ -401,5 +401,5 @@ See the
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only) for the full rationale.

@@ -6,7 +6,7 @@ This category covers the `ZLinkModule`/`zlinkFramework()` registration entry poi
 points `ZLinkFrameworkRuntime` provides. The exact signatures are owned by the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md)
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only).
 
 ---
@@ -150,5 +150,5 @@ topology-discovery category.
 See the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md)
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only) for the full rationale.

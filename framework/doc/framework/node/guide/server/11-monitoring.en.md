@@ -9,7 +9,7 @@ title: "11. Monitoring — Status Observation And Diagnostics · Node/TypeScript
 # 11. Monitoring — Status Observation And Diagnostics
 
 > **The document that owns this chapter's contract** — covered by the
-> [Node.js location and observability public contract](../../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md).
+> [Node.js location and observability public contract](../../../common/spec/server/languages/node/interfaces/03-location-observability.en.md).
 > This chapter explains the four observation surfaces that contract exposes, focused on
 > usage.
 
@@ -179,7 +179,7 @@ blips.
 
 ## 7. Related Documents
 
-- The formal contract: [Node.js location and observability public contract](../../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+- The formal contract: [Node.js location and observability public contract](../../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 - Metrics and drain/readiness operations: [12. Operations](12-operations.en.md)
 - Diagnostics option list: [16. Options](16-options.en.md) §4
 - Injection token list: [13. Key Interface Usage Index](13-interface-catalog.en.md) §1

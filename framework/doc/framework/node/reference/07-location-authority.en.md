@@ -9,7 +9,7 @@ the entry points `ZLinkLocationReadiness` and `ZLinkLocationRuntimeQuery`
 the
 [NestJS host adapter exact interface](../../common/spec/server/languages/node/interfaces/07-nestjs-host.en.md),
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only).
 
 ---
@@ -158,5 +158,5 @@ real-time availability of a single MeshName/ChannelName.
 See the
 [Location/Relocation provider exact interface](../../common/spec/server/languages/node/interfaces/08-location-maintenance.en.md)
 and the
-[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.ko.md)
+[Location operational query and observability exact interface](../../common/spec/server/languages/node/interfaces/03-location-observability.en.md)
 (Korean-only) for the full rationale.

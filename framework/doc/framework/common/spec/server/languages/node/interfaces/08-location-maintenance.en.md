@@ -308,4 +308,4 @@ Redis implementation details.
 - Spot/Actor-dedicated Store and per-capability Store interfaces
 
 The location operational query the application uses is owned solely by
-[Location, Monitoring, And Metrics](03-location-observability.ko.md).
+[Location, Monitoring, And Metrics](03-location-observability.en.md).

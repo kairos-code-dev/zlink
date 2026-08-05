@@ -4695,80 +4695,99 @@ sends. Only 3 errno values are usable on the wire: `ENOENT`,
     `Err(ZlinkError::Submit(..))`/`Err(ZlinkError::Request(..))` — the
     `.code()` method
 
-## 길이와 범위 경계 정책
-- 검증 책임은 두 층으로 나눈다.
-- 값 객체가 존재하는 타입:
-  - 값 객체 생성 시점에 canonical validation을 수행한다.
-  - 예: `RoutingId`, typed enum wrapper, bounded identifier
-- 값 객체가 존재하지 않거나 호출 문맥 의존 변환이 필요한 타입:
-  - native 호출 직전에 검증한다.
-  - 예: `Duration -> int millis`, offset/length slicing, output buffer sizing
-- native 호출 직전 재검증은 아래 경우에만 필수다.
-  - 값 객체를 거치지 않는 raw 경로가 존재하는 경우
-  - 값 객체 생성 후 호출 직전 추가 변환이 들어가는 경우
-  - 값 객체가 아닌 복합 입력 조합에서 overflow/truncation이 생길 수 있는 경우
-- truncation 후 native로 넘기는 동작은 금지한다.
+## Length And Range Boundary Policy
+- Validation responsibility splits into two layers.
+- For a type where a value object exists:
+  - Perform canonical validation at value-object construction time.
+  - Example: `RoutingId`, a typed enum wrapper, a bounded identifier
+- For a type without a value object, or one that needs a call-context-
+  dependent conversion:
+  - Validate immediately before the native call.
+  - Example: `Duration -> int millis`, offset/length slicing, output
+    buffer sizing
+- Re-validation immediately before the native call is required only in
+  these cases:
+  - a raw path exists that bypasses the value object
+  - an additional conversion happens between value-object construction
+    and the call
+  - overflow/truncation can occur from a non-value-object composite
+    input combination
+- Passing a truncated value to native is forbidden.
 
-예:
-- `RoutingId`는 `zlink_routing_id_t`의 `data[255]` 계약을 넘기지 않아야 한다.
-- `Duration -> int millis` 변환은 overflow를 허용하면 안 된다.
-- topic, subscription, metadata처럼 고정 출력 버퍼가 개입되는 경로는 길이와
-  재할당 정책이 명확해야 한다.
+Examples:
+- `RoutingId` must not exceed `zlink_routing_id_t`'s `data[255]`
+  contract.
+- A `Duration -> int millis` conversion must not allow overflow.
+- A path involving a fixed output buffer, such as topic, subscription,
+  or metadata, must have a clear length and reallocation policy.
 
-## 소유권 정책
-- `Message` ownership은 코어 계약과 일치해야 한다.
-- 모든 바인딩은 내부적으로 C API를 호출하므로, GC 언어를 포함한 전 언어에서
-  native message의 ownership을 올바르게 관리해야 한다.
-- ownership 경로:
-  - send 성공: ownership이 native로 이동한다. 바인딩은 이후 접근하면 안 된다.
-  - send 실패: restore 가능한 경로와 consume되는 경로를 혼동하지 않는다.
-  - recv: native가 생성한 메시지의 ownership을 바인딩이 넘겨받는다. 바인딩이
-    해제 책임을 진다.
-  - 생성 후 미전송: 바인딩이 직접 생성한 메시지를 전송하지 않았다면 반드시
-    명시적으로 close/해제해야 한다. GC가 managed wrapper만 수거할 뿐, native
-    메모리는 해제하지 않으므로 누수가 발생한다.
-- callback delivery와 direct receive는 동일한 payload shape를 가져야 한다.
-- callback 후 frame validity는 계약으로 명확해야 한다.
+## Ownership Policy
+- `Message` ownership must match the core contract.
+- Because every binding calls the C API internally, every language,
+  including GC languages, must correctly manage the ownership of the
+  native message.
+- Ownership paths:
+  - send success: ownership moves to native. The binding must not
+    access it afterward.
+  - send failure: don't confuse a restorable path with a consumed path.
+  - recv: the binding receives ownership of the message native created.
+    The binding is responsible for releasing it.
+  - constructed but not sent: if the binding constructed a message
+    directly and never sent it, it must be explicitly closed/released.
+    GC only collects the managed wrapper — it doesn't release the native
+    memory — so a leak occurs otherwise.
+- Callback delivery and direct receive must have the same payload
+  shape.
+- Frame validity after the callback must be clear from the contract.
 
-## 네이밍 정책
-- 메서드명은 언어 관례만 반영한다.
-- 개념 이름은 바인딩 간 최대한 동일하게 유지한다.
-- 아래 목록은 의미 기준 canonical name 이다.
-- 실제 바인딩 메서드명은 다음 세 가지 변형만 허용한다.
-  1. **케이싱 변형**: 언어 관례에 맞게 camelCase/PascalCase/snake_case를
-     변환한다. 단어 구성은 바뀌지 않는다.
-     - 예: `connectPeer` → Go: `ConnectPeer`, Python: `connect_peer`,
-       C++: `connect_peer`, Rust: `connect_peer`
-  2. **overload 불가 언어의 최소 접미사**: Go와 Rust처럼 overloading이 없는
-     언어에서, 동일 동작의 파라미터 변형을 구분하기 위해 최소한의 접미사를
-     허용한다. 이 접미사는 동작 구분이며, 파라미터 인코딩이 아니다.
-     - 예: `send` → Go: `Send` / `SendTo`, Rust: `send` / `send_to`
-     - 허용 접미사 범위: `To` 수준의 최소 동작 구분 접미사까지만 허용한다.
-       파라미터 타입이나 의미를 풀어쓴 접미사는 금지한다.
-       - 허용: `SendTo`, `send_to`
-       - 금지: `SendWithRoutingId`, `send_routed`, `send_multipart`
-     - 접미사 허용은 overloading도 keyword/optional parameter도 없는
-       언어(Go, Rust)에만 적용된다.
-     - 접미사 없이 시그니처로 구분 가능한 언어에서는 접미사를 사용하지
-       않는다.
+## Naming Policy
+- A method name reflects only language convention.
+- Keep the concept name as identical as possible across bindings.
+- The list below gives the canonical names by meaning.
+- The actual binding method name allows only the following three
+  variations.
+  1. **Casing variation**: convert to camelCase/PascalCase/snake_case
+     per language convention. Word composition does not change.
+     - example: `connectPeer` → Go: `ConnectPeer`, Python:
+       `connect_peer`, C++: `connect_peer`, Rust: `connect_peer`
+  2. **A minimal suffix for a language without overloads**: in a
+     language without overloading, like Go and Rust, a minimal suffix is
+     allowed to distinguish a parameter variant of the same operation.
+     This suffix distinguishes the operation — it is not parameter
+     encoding.
+     - example: `send` → Go: `Send`/`SendTo`, Rust: `send`/`send_to`
+     - allowed suffix scope: only up to a minimal operation-distinguishing
+       suffix at the `To` level. A suffix that spells out the parameter
+       type or meaning is forbidden.
+       - allowed: `SendTo`, `send_to`
+       - forbidden: `SendWithRoutingId`, `send_routed`, `send_multipart`
+     - suffix allowance applies only to a language with neither
+       overloading nor keyword/optional parameters (Go, Rust).
+     - a language that can distinguish by signature without a suffix
+       does not use one.
        - overloading: Java, C#, C++
-       - keyword / optional parameter: Python
-       - optional / union type: Node/TypeScript
-  3. **언어별 property/getter 관례**: 값을 읽는 accessor는 언어 관례에 맞는
-     property 또는 getter 형태를 사용할 수 있다. 단, 개념 이름은 같아야 하고
-     새로운 동작 이름을 만들면 안 된다.
-     - 예: canonical `getValue` → C++ `value()`, .NET `Value` 또는
+       - keyword/optional parameter: Python
+       - optional/union type: Node/TypeScript
+  3. **Per-language property/getter convention**: a value-reading
+     accessor can use a property or getter form that fits language
+     convention. However, the concept name must stay the same, and a new
+     operation name must not be created.
+     - example: canonical `getValue` → C++ `value()`, .NET `Value` or
        `GetValue()`, Java/Node `getValue()`
-     - 예: canonical `routingId`/`getRoutingId` → C++ `routing_id()`,
-       Java `routingId()`, Node `getRoutingId()`
-- **그 외의 단어 교체, 단어 생략, 다른 단어 대체는 허용하지 않는다.**
-  - 금지 예: `setDispatchHandler`를 `spotDispatchHandler`로 바꾸는 것 → 단어 교체
-  - 금지 예: `querySnapshot`을 `snapshot`으로 줄이는 것 → 단어 생략이므로,
-    canonical 이름 자체를 `snapshot`으로 정의해야 한다
-- 케이싱이나 접미사가 달라져도 역할 구분과 의미 계약은 같아야 한다.
-- 예: `receiveSubscriptionEvent` → Python: `receive_subscription_event`,
-  Go: `ReceiveSubscriptionEvent`
-- 추천 canonical 이름:
+     - example: canonical `routingId`/`getRoutingId` → C++
+       `routing_id()`, Java `routingId()`, Node `getRoutingId()`
+- **No other word substitution, word omission, or word replacement is
+  allowed.**
+  - forbidden example: changing `setDispatchHandler` to
+    `spotDispatchHandler` → word substitution
+  - forbidden example: shortening `querySnapshot` to `snapshot` → word
+    omission; if this is desired, the canonical name itself must be
+    defined as `snapshot`
+- Even when casing or the suffix differs, the role distinction and
+  semantic contract must stay the same.
+- example: `receiveSubscriptionEvent` → Python:
+  `receive_subscription_event`, Go: `ReceiveSubscriptionEvent`
+- Recommended canonical names:
   - `bind`, `connect`, `close`
   - `send`
   - `recv`
@@ -4778,126 +4797,145 @@ sends. Only 3 errno values are usable on the wire: `ENOENT`,
   - `setSubscription`, `unsetSubscription`
   - `setPacketHandler`, `setDispatchHandler`, `setSendReadyHandler`
 
-### 메서드 이름 간결성
-- 이 규칙은 public API에 엄격히 적용한다.
-- internal/private API는 파라미터 인코딩이 가독성을 높이면 허용한다.
-  - 내부 코드는 overloading 없이 명시적 이름이 더 읽기 좋을 수 있다.
-  - 예: internal helper에서 `sendRouted(id, msg)`는 허용
-- 메서드 이름은 동작(action)만 표현한다.
-- 파라미터의 존재, 타입, 개수를 이름에 반복하지 않는다.
-- 시그니처가 이미 설명하는 것을 이름에 다시 쓰면 안 된다.
-- 동작 자체가 다른 경우(예: `send` vs `publish`)는 이름이 달라야 한다.
-- 입력만 다른 경우(예: routing id 유무)는 이름을 늘리지 않는다.
+### Method Name Conciseness
+- This rule applies strictly to the public API.
+- An internal/private API is allowed to encode parameters when that
+  improves readability.
+  - Internal code may read better with an explicit name, without
+    overloading.
+  - example: `sendRouted(id, msg)` is allowed in an internal helper
+- A method name expresses only the action.
+- The presence, type, and count of parameters are not repeated in the
+  name.
+- Do not restate in the name what the signature already describes.
+- When the operation itself differs (for example, `send` vs `publish`),
+  the name must differ.
+- When only the input differs (for example, whether a routing id is
+  present), the name is not lengthened.
 
-안티패턴과 올바른 패턴:
+Anti-pattern vs. correct pattern:
 
-| 안티패턴 | 올바른 패턴 | 이유 |
+| Anti-pattern | Correct pattern | Reason |
 |---|---|---|
-| `send(message)` | `send().message(message).submit()` | 시작점은 전송 대상만 받고 payload는 builder 단계로 분리 |
-| `sendWithRoutingId(id, msg)` | `send(id).message(msg).submit()` | builder가 RoutingId와 payload를 단계로 분리 |
-| `sendMultipartMessages(parts)` | `send().message(p1).message(p2).submit()` | builder의 `.message(...)` 반복으로 multipart 표현 |
-| `publish(topic, message)` | `publish(topic).message(message).submit()` | topic과 payload를 한 시작점에 섞지 않음 |
-| `publishToTopic(topic, msg)` | `publish(topic).message(msg).submit()` | publish는 topic이 있는 동작, builder가 payload를 단계로 분리 |
-| `sendToChannel(channel, message)` | `sendToChannel(channel).message(message).submit()` | channel 대상과 payload를 builder 단계로 분리 |
-| `requestToChannel(channel, parts, timeout)` | `requestToChannel(channel).message(p1).message(p2).timeout(timeout).submit()` | channel request의 payload와 timeout은 builder 단계 |
-| `requestFrame(seq, parts)` | public 표면 금지 | request sequence와 frame layout은 runtime/internal helper 세부사항 |
-| `dealer.reply(token, parts)` | `received.reply().message(...).submit()` 또는 router/SPOT reply | DEALER는 특정 peer routing id를 지정할 수 없어 임의 token reply가 개념적으로 맞지 않음 |
-| `recvWithTimeout(timeout)` | `recv(timeout)` | 시그니처로 충분 |
-| `setLingerTimeoutMilliseconds(ms)` | `setLinger(duration)` | 타입이 단위를 전달 |
+| `send(message)` | `send().message(message).submit()` | The start point takes only the send target; payload is a separate builder step |
+| `sendWithRoutingId(id, msg)` | `send(id).message(msg).submit()` | The builder separates RoutingId and payload into steps |
+| `sendMultipartMessages(parts)` | `send().message(p1).message(p2).submit()` | Multipart is expressed through repeated builder `.message(...)` calls |
+| `publish(topic, message)` | `publish(topic).message(message).submit()` | Topic and payload are not mixed into one start point |
+| `publishToTopic(topic, msg)` | `publish(topic).message(msg).submit()` | publish is already the topic-having operation; the builder separates payload into a step |
+| `sendToChannel(channel, message)` | `sendToChannel(channel).message(message).submit()` | The channel target and payload are separated into builder steps |
+| `requestToChannel(channel, parts, timeout)` | `requestToChannel(channel).message(p1).message(p2).timeout(timeout).submit()` | A channel request's payload and timeout are builder steps |
+| `requestFrame(seq, parts)` | forbidden on the public surface | Request sequence and frame layout are runtime/internal helper detail |
+| `dealer.reply(token, parts)` | `received.reply().message(...).submit()`, or a router/SPOT reply | DEALER cannot designate a specific peer routing id, so an arbitrary-token reply doesn't conceptually fit |
+| `recvWithTimeout(timeout)` | `recv(timeout)` | The signature is enough |
+| `setLingerTimeoutMilliseconds(ms)` | `setLinger(duration)` | The type conveys the unit |
 
-송신·요청·응답·게시·Actor 표면은 `Operation Builder Policy` 에 따라 builder
-시작점만 노출하고, payload·flags·timeout·callback 등 모든 변형 축은 builder
-단계로 표현한다. 시작점 이름은 동작(action)만 담고 파라미터의 존재, 타입,
-개수를 이름에 반복하지 않는다.
+The send/request/reply/publish/Actor surface exposes only the builder
+start point, per the `Operation Builder Policy`, and every variation
+axis — payload, flags, timeout, callback — is expressed as a builder
+step. A start-point name carries only the action, and does not repeat
+the presence, type, or count of parameters.
 
-비-builder public 표면(예: snapshot, lookup, getter/setter) 에서 파라미터
-조합이 다를 때 이름을 늘리는 대신 각 언어의 고유 disambiguation 메커니즘을
-사용한다.
+For a non-builder public surface (for example, snapshot, lookup,
+getter/setter) where the parameter combination differs, use each
+language's own disambiguation mechanism instead of lengthening the name.
 
-- Java / C# / C++: overloading
-  - 이름은 하나, 시그니처가 구분
-- Go: 가변 인자 / functional option / 별도 메서드
-  - overloading이 없으므로 동작 의미가 다른 경우에만 최소 접미사를 허용한다
-  - 파라미터를 그대로 이름에 넣지 않는다
-- Python: keyword argument / optional parameter
-  - 이름은 하나, keyword가 구분
-- Node/TypeScript: optional parameter / union type
-  - 이름은 하나, 타입이 구분
-- Rust: trait bound / `Option<T>` / newtype
-  - overloading이 없으므로 `impl Into<T>`, `Option<T>`, strong newtype으로 구분
-  - 동작 의미가 다른 경우에만 최소 접미사를 허용한다
-  - 파라미터를 그대로 이름에 넣지 않는다
+- Java/C#/C++: overloading
+  - one name; the signature distinguishes
+- Go: variadic arguments/functional option/a separate method
+  - because there's no overloading, allow a minimal suffix only when the
+    operation meaning differs
+  - do not put the parameter directly into the name
+- Python: keyword argument/optional parameter
+  - one name; the keyword distinguishes
+- Node/TypeScript: optional parameter/union type
+  - one name; the type distinguishes
+- Rust: trait bound/`Option<T>`/newtype
+  - because there's no overloading, distinguish with `impl Into<T>`,
+    `Option<T>`, or a strong newtype
+  - allow a minimal suffix only when the operation meaning differs
+  - do not put the parameter directly into the name
 
-언어별 정리:
+Per-language summary:
 
-| 언어 | disambiguation 방식 | 이름에 파라미터 인코딩 |
+| Language | Disambiguation method | Parameter encoding in the name |
 |---|---|---|
-| Java | overloading | 금지 |
-| C# | overloading | 금지 |
-| C++ | overloading + strong type | 금지 |
-| Go | 별도 메서드 / functional option | 금지, 동작 구분 접미사만 허용 |
-| Python | keyword / optional | 금지 |
-| Node/TS | optional / union | 금지 |
-| Rust | trait bound / Option / newtype | 금지, 동작 구분 접미사만 허용 |
+| Java | overloading | forbidden |
+| C# | overloading | forbidden |
+| C++ | overloading + strong type | forbidden |
+| Go | separate method/functional option | forbidden; only an operation-distinguishing suffix is allowed |
+| Python | keyword/optional | forbidden |
+| Node/TS | optional/union | forbidden |
+| Rust | trait bound/Option/newtype | forbidden; only an operation-distinguishing suffix is allowed |
 
-## 호환성 정책
-- 호환성보다 일관된 public surface를 우선할 수 있다.
-- deprecated compatibility layer는 가능한 빨리 제거한다.
-- canonical path 외에 동일 기능의 우회 표면을 public 으로 함께 두지 않는다.
-- flag 타입 정책:
-  - public flags 노출 여부와 형태는 위 `Flags Policy` 절을 따른다.
-  - .NET의 `SendFlags` / `RecvFlags` public surface는 canonical 계약이다.
-  - 언어별 spec에 없는 legacy flag 타입이나 중복 flag 경로는 추가하지 않는다.
+## Compatibility Policy
+- A consistent public surface can be prioritized over compatibility.
+- Remove a deprecated compatibility layer as soon as possible.
+- Do not keep a bypass surface for the same capability publicly
+  alongside the canonical path.
+- Flag type policy:
+  - Whether and how public flags are exposed follows the `Flags Policy`
+    section above.
+  - .NET's `SendFlags`/`RecvFlags` public surface is the canonical
+    contract.
+  - Do not add a legacy flag type or duplicate flag path that isn't in
+    the per-language spec.
 
-## 언어 간 정렬
+## Cross-Language Alignment
 
-### 공유 동작 계약
-- blocking send/receive 계열은 실패 시 언어별 에러 경로 (exception 언어는
-  예외, return-based 언어는 에러 반환)
-- non-blocking receive 는 "데이터 없음"도 동일한 에러 경로로 전달
-  (result code 로 구분). 별도 `try*` API 는 제공하지 않는다.
-- non-blocking send 는 explicit outcome (submit result code)
+### Shared Behavior Contract
+- The blocking send/receive family delivers a per-language error path
+  on failure (an exception for exception languages, a returned error
+  for return-based languages)
+- Non-blocking receive delivers "no data" through the same error path
+  too (distinguished by result code). No separate `try*` API is
+  provided.
+- Non-blocking send has an explicit outcome (a submit result code)
 - multipart-only
-- typed option surface
+- a typed option surface
 
-### 언어별 반환 스타일
+### Per-Language Return Style
 - C API
-  - raw contract와 함수별 typed result enum
-  - multipart-only 기준 surface
-  - blocking API + explicit non-blocking entry (`flags` 파라미터)
+  - the raw contract and a per-function typed result enum
+  - a multipart-only baseline surface
+  - a blocking API plus an explicit non-blocking entry (a `flags`
+    parameter)
 - C++
-  - RAII와 typed wrapper
-  - multipart-only 기준 surface
-  - 실패는 `throw zlink_error_t` (`SubmitResult` 코드 포함)
+  - RAII and typed wrappers
+  - a multipart-only baseline surface
+  - failure is `throw zlink_error_t` (including the `SubmitResult` code)
 - .NET
-  - typed option surface + `ZlinkException`
-  - multipart-only 기준 surface
-  - 실패는 `throw ZlinkException` (`Code` 포함)
+  - a typed option surface plus `ZlinkException`
+  - a multipart-only baseline surface
+  - failure is `throw ZlinkException` (including `Code`)
 - Java
-  - domain object + `ZlinkException`
-  - multipart-only 기준 surface
-  - 실패는 `throw ZlinkException` (`getCode()` 포함)
+  - domain objects plus `ZlinkException`
+  - a multipart-only baseline surface
+  - failure is `throw ZlinkException` (including `getCode()`)
 - Go
-  - `(T, error)` + strong type + explicit error check
-  - multipart-only 기준 surface
-  - 모든 실패는 `error` 반환 (`SubmitResult` 코드 포함)
+  - `(T, error)` plus strong types and an explicit error check
+  - a multipart-only baseline surface
+  - every failure returns `error` (including the `SubmitResult` code)
 - Rust
-  - `Result<T, E>` + strong newtype + ownership
-  - multipart-only 기준 surface
-  - 단일 함수군은 `BindError` / `SubmitError` 같은 concrete error,
-    다중 함수군은 `ZlinkError`
+  - `Result<T, E>` plus a strong newtype and ownership
+  - a multipart-only baseline surface
+  - a single function family uses a concrete error such as
+    `BindError`/`SubmitError`; multiple function families use
+    `ZlinkError`
 - Node/Python
-  - 언어 관례를 따르되 의미 계약은 동일
-  - multipart-only 기준 surface
-  - 모든 실패는 `throw` / `raise` (`SubmitResult` 코드 포함)
+  - follows language convention, but the semantic contract is the same
+  - a multipart-only baseline surface
+  - every failure is `throw`/`raise` (including the `SubmitResult` code)
 
-언어별 표면은 달라도 의미 계약은 같아야 한다.
+The surface can differ per language, but the semantic contract must be
+the same.
 
-### 언어 간 Capability 표 (Target)
-이 표는 `.NET` 기준으로 정리한 target 역할 표다. 이미 구현된 바인딩의 현재
-public surface가 이 표와 다르면, 해당 항목은 구조 정렬 또는 breaking cleanup 작업의
-목표로 해석한다. 단, `Internal-only` 항목은 target 상태에서도 public API, sample,
-guide, spec signature에 노출하지 않는다.
+### Cross-Language Capability Table (Target)
+This table is a target role table organized around `.NET`. If an
+already-implemented binding's current public surface differs from this
+table, interpret that item as a goal for structural alignment or
+breaking cleanup work. However, an `Internal-only` item is not exposed
+in the public API, samples, guides, or spec signatures even in its
+target state.
 
 | Area | C API | C++ | .NET | Java | Go | Rust | Node | Python |
 |---|---|---|---|---|---|---|---|---|
@@ -4909,15 +4947,15 @@ guide, spec signature에 노출하지 않는다.
 | Typed option surface | N/A raw C options | Required | Required | Required | Required | Required | Required | Required |
 | Socket TLS helpers | `zlink_set_tls_*` | Required | Required | Required | Required | Required | Required | Required |
 | Service TLS helpers | `zlink_set_tls_*` on service handles | Required | Required | Required | Required | Required | Required | Required |
-| Socket Capability Matrix 준수 | Core 기준 | Required | Required | Required | Required | Required | Required | Required |
+| Socket Capability Matrix compliance | Based on Core | Required | Required | Required | Required | Required | Required | Required |
 | `onReceive` callback | STREAM raw fn ptr | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only | Internal-only |
 | `setPacketHandler` callback registration | STREAM packet fn ptr | Required | Required | Required | Required | Required | Required | Required |
-| `setDispatchHandler` callback registration | SPOT raw fn ptr | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required | 구현 시 Required |
+| `setDispatchHandler` callback registration | SPOT raw fn ptr | Required once implemented | Required once implemented | Required once implemented | Required once implemented | Required once implemented | Required once implemented | Required once implemented |
 | `recvActorLifecycle` | SPOT lifecycle queue | Required | Required | Required | Required | Required | Required | Required |
 | `setSendReadyHandler` callback registration | Raw fn ptr | Required | Required | Required | Required | Required | Required | Required |
-| StreamSocket `connect` 차단 | N/A | Required | Required | Required | Required | Required | Required | Required |
-| StreamSocket `disconnectRid` 차단 | N/A | Required | Required | Required | Required | Required | Required | Required |
-| Public `detachStream` 비노출 | N/A | Required | Required | Required | Required | Required | Required | Required |
+| StreamSocket `connect` blocked | N/A | Required | Required | Required | Required | Required | Required | Required |
+| StreamSocket `disconnectRid` blocked | N/A | Required | Required | Required | Required | Required | Required | Required |
+| Public `detachStream` not exposed | N/A | Required | Required | Required | Required | Required | Required | Required |
 | Poller result type name | N/A | `poll_event_t` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` | `PollEvent` |
 | Monitor typed event surface | Raw struct | Required | Required | Required | Required | Required | Required | Required |
 

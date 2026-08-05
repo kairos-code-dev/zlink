@@ -41,7 +41,7 @@ public record ZLinkStreamHeader(
         } else {
             flags.remove(ZLinkStreamHeaderFlag.HAS_REQUEST_SEQUENCE);
         }
-        if (name == null || name.isBlank()) {
+        if (name == null || (!isReplyKind(kind) && name.isBlank())) {
             throw new IllegalArgumentException("name is required");
         }
         if (name.getBytes(StandardCharsets.UTF_8).length > MAX_PACKET_NAME_BYTES) {
@@ -132,7 +132,7 @@ public record ZLinkStreamHeader(
             codec,
             flags,
             requestHeader.requestSequence(),
-            packetName,
+            "",
             metadata,
             requestHeader.correlationId(), requestHeader.flowId(), requestHeader.flowOrigin());
     }
@@ -148,7 +148,7 @@ public record ZLinkStreamHeader(
             ZLinkStreamCodec.JSON,
             EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
             requestHeader.requestSequence(),
-            packetName,
+            "",
             Map.of(),
             requestHeader.correlationId(), requestHeader.flowId(), requestHeader.flowOrigin());
     }
@@ -198,6 +198,11 @@ public record ZLinkStreamHeader(
             throw new IllegalArgumentException(
                 "STREAM control packet must use raw codec and must not contain flags");
         }
+    }
+
+    private static boolean isReplyKind(ZLinkStreamMessageKind kind) {
+        return kind == ZLinkStreamMessageKind.RESPONSE
+            || kind == ZLinkStreamMessageKind.ERROR;
     }
 
     private static void validateFlowId(String value) {

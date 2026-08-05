@@ -102,7 +102,7 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
-            assertEquals("ProbeReply", frame.header().packetName());
+            assertEquals("", frame.header().packetName());
             assertEquals(ZLinkStreamCodec.JSON, frame.header().codec());
             assertEquals(Map.of(), frame.header().metadata());
             assertFalse(frame.header().flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
@@ -126,7 +126,7 @@ final class EntrySpotActorDispatchTests {
 
             DecodedFrame frame = decodeFrame(reply.parts().get(0));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, frame.header().kind());
-            assertEquals("ProbeReply", frame.header().packetName());
+            assertEquals("", frame.header().packetName());
             assertEquals(ZLinkStreamCodec.JSON, frame.header().codec());
             assertEquals("bound:actor-a", deserializeReply(frame).value());
         }

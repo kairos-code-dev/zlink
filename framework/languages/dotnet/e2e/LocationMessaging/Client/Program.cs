@@ -11,9 +11,6 @@ using var providerA = ZLinkHttpClient.Create(options.ProviderAUrl)
 using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
-using var workflow = ZLinkHttpClient.Create(options.WorkflowUrl)
-    .Timeout(TimeSpan.FromMinutes(5))
-    .Build();
 using var directConsumer = ZLinkHttpClient.Create(options.DirectConsumerUrl)
     .Timeout(TimeSpan.FromMinutes(5))
     .Build();
@@ -32,7 +29,7 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RM-A1", () => RmA1LocationStoreAutoConnectScenario.RunAsync(providerA, providerB)),
     ("RM-A2", () => RmA2ManualEndpointScenario.RunAsync(singleConsumer, providerA)),
     ("RM-A4", () => RmA4SameRidFailoverScenario.RunAsync(options)),
-    ("RM-A6", () => RmA6MultipleChannelsScenario.RunAsync(providerA, providerB, workflow)),
+    ("RM-A6", () => RmA6MultipleChannelsScenario.RunAsync(options)),
     ("RM-B1", () => RmB1ScaleOutScenario.RunAsync(options)),
     ("RM-B2", () => RmB2ScaleInScenario.RunAsync(options)),
     ("RM-B3", () => RmB3ProviderCrashFailoverScenario.RunAsync(options)),

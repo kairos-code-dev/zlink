@@ -826,29 +826,52 @@ internal sealed class ZLinkActorHandoffState(
             if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     $"Actor '{actorId}' cannot complete an inactive handoff.");
-            if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
-            {
-                _canonicalMaintenanceDrain = null;
-                _canonicalMaintenanceReplayReservations.Clear();
+            if (TryCompleteTargetHandoffLocked(handoffId))
                 return;
-            }
-            if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying
-                || _frames.Count != 0)
-                throw new InvalidOperationException(
-                    $"Actor '{actorId}' cannot complete before target replay drains.");
-            _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
-            _sourceTrailingImported = false;
-            _canonicalMaintenanceReplayReservations.Clear();
-            if (_deferredJoinAwaitingTarget)
-            {
-                _deferredJoinAwaitingTarget = false;
-                BeginDeferredJoinCaptureLocked();
-                diagnostic?.Invoke(
-                    $"deferred_join_capture_started_after_target actor={actorId} "
-                    + $"handoff={handoffId}");
-            }
-            _targetCompletion?.TrySetResult();
+            throw new InvalidOperationException(
+                $"Actor '{actorId}' cannot complete before target replay drains.");
         }
+    }
+
+    internal bool TryCompleteTransferredActorReplay(string handoffId)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_handoffId, handoffId, StringComparison.Ordinal))
+                return false;
+            return TryCompleteTargetHandoffLocked(handoffId);
+        }
+    }
+
+    private bool TryCompleteTargetHandoffLocked(string handoffId)
+    {
+        if (_targetPhase == ZLinkActorTargetHandoffPhase.Completed)
+        {
+            _canonicalMaintenanceDrain = null;
+            _canonicalMaintenanceReplayReservations.Clear();
+            return true;
+        }
+        if (_targetPhase != ZLinkActorTargetHandoffPhase.Replaying
+            || _frames.Count != 0)
+            return false;
+
+        // The phase change and the empty-frame check share this lock. A late
+        // ingress frame is therefore either captured before this boundary and
+        // replayed by the caller, or admitted directly after the target
+        // handoff has completed.
+        _targetPhase = ZLinkActorTargetHandoffPhase.Completed;
+        _sourceTrailingImported = false;
+        _canonicalMaintenanceReplayReservations.Clear();
+        if (_deferredJoinAwaitingTarget)
+        {
+            _deferredJoinAwaitingTarget = false;
+            BeginDeferredJoinCaptureLocked();
+            diagnostic?.Invoke(
+                $"deferred_join_capture_started_after_target actor={actorId} "
+                + $"handoff={handoffId}");
+        }
+        _targetCompletion?.TrySetResult();
+        return true;
     }
 
     public IReadOnlyList<ZLinkActorHandoffFrame> SnapshotFrames()

@@ -86,6 +86,19 @@ public final class ZLinkServiceOperationRegistry implements AutoCloseable {
             Objects.requireNonNull(failure, "failure"));
     }
 
+    /**
+     * Removes an operation whose transport submission was rejected before a
+     * request existed. No callback is delivered for such an operation.
+     */
+    public boolean discard(UUID id) {
+        Entry<?> entry = entries.remove(Objects.requireNonNull(id, "id"));
+        if (entry == null) {
+            return false;
+        }
+        cancelDeadline(entry);
+        return true;
+    }
+
     public int pendingCount() {
         return entries.size();
     }

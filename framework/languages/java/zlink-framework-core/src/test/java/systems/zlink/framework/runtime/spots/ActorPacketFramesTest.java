@@ -12,6 +12,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorReceived;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
@@ -85,6 +87,33 @@ final class ActorPacketFramesTest {
                 var json = new ObjectMapper().readTree(decoded.body());
                 assertEquals("IllegalStateException", json.get("code").asText());
                 assertEquals("handler failed", json.get("message").asText());
+            } catch (java.io.IOException failure) {
+                throw new AssertionError("error payload is not JSON", failure);
+            }
+        }
+    }
+
+    @Test
+    void streamActorFrameworkErrorUsesTheCommonWireCode() {
+        ZLinkStreamHeader request = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "ActorReq",
+            Map.of());
+        try (Message headerPart = Message.from(ZLinkStreamHeaderCodec.encode(request));
+             Message frame = ActorPacketFrames.encodeError(
+                 ActorPacketFrames.decode(actorReceived(headerPart)),
+                 new ZLinkFrameworkException(
+                     ZLinkFrameworkErrorKind.NOT_FOUND,
+                     "actor was not found"))) {
+            DecodedFrame decoded = decodeFrame(frame);
+
+            try {
+                var json = new ObjectMapper().readTree(decoded.body());
+                assertEquals("NotFound", json.get("code").asText());
+                assertEquals("actor was not found", json.get("message").asText());
             } catch (java.io.IOException failure) {
                 throw new AssertionError("error payload is not JSON", failure);
             }

@@ -51,6 +51,7 @@ if [[ "$G4_CHILD" == "0" ]] && scenario_selected ZW-G4; then
   if [[ "$SCENARIO" == "ZW-G4" ]]; then exit 0; fi
 fi
 RUN_DIR="$(mktemp -d)"
+RUN_DIR="$(cd "${RUN_DIR}" && pwd)"
 RUN_ID="$(basename "$RUN_DIR")-$$-$RANDOM"
 LOG_DIR="$RUN_DIR/logs"
 CONFIG_DIR="$RUN_DIR/config"
@@ -86,10 +87,10 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_ENDPOINT \
   "zlink-zoneworld-dotnet-redis" redis:7.2-alpine
 
 echo "==> build"
-dotnet build "$ROOT_DIR/Server/Ops/ZoneWorld.Server.Ops.csproj" -v q --nologo >/dev/null
-dotnet build "$ROOT_DIR/Server/ZoneNode/ZoneWorld.Server.ZoneNode.csproj" -v q --nologo >/dev/null
-dotnet build "$ROOT_DIR/Server/Gateway/ZoneWorld.Server.Gateway.csproj" -v q --nologo >/dev/null
-dotnet build "$ROOT_DIR/Client/ZoneWorld.Client.csproj" -v q --nologo >/dev/null
+dotnet build "$ROOT_DIR/Server/Ops/ZoneWorld.Server.Ops.csproj" --maxcpucount:1 -v q --nologo >/dev/null
+dotnet build "$ROOT_DIR/Server/ZoneNode/ZoneWorld.Server.ZoneNode.csproj" --maxcpucount:1 -v q --nologo >/dev/null
+dotnet build "$ROOT_DIR/Server/Gateway/ZoneWorld.Server.Gateway.csproj" --maxcpucount:1 -v q --nologo >/dev/null
+dotnet build "$ROOT_DIR/Client/ZoneWorld.Client.csproj" --maxcpucount:1 -v q --nologo >/dev/null
 
 read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
@@ -270,17 +271,16 @@ start_zone_node() {
   wait_for_log_after "$name" "node status report submitted. node=$name" "$first_new_line" 450
   wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line" 450
 
-  # Process readiness is complete only after the replacement RID has an admitted mesh
-  # connection in both directions. The status report and Ops socket observation above prove
+  # Process readiness is complete only after the replacement RID has completed the mesh
+  # admission handshake with node-1. The status report and Ops socket observation above prove
   # discovery and transport reachability, but they do not prove that routed application traffic
   # can use the new peer.
   if [[ "$name" == "zone-node-2" ]]; then
     local_rid="$(routing_id_of zone-node-2 "$first_new_ops_line")"
     peer_rid="$(routing_id_of zone-node-1)"
-    wait_for_log_after "$name" "mesh_peer_admit local=$local_rid peer=$peer_rid" \
-      "$first_new_line" 600
-    wait_for_log_after zone-node-1 "mesh_peer_admit local=$peer_rid peer=$local_rid" \
-      "$first_peer_line" 600
+    wait_for_peer_admission_after \
+      "$name" "$local_rid" "$first_new_line" \
+      zone-node-1 "$peer_rid" "$first_peer_line" 600
   fi
 }
 
@@ -363,6 +363,30 @@ wait_for_log_after() {
   return 1
 }
 
+wait_for_peer_admission_after() {
+  local local_name="$1" local_rid="$2" local_first_line="$3"
+  local peer_name="$4" peer_rid="$5" peer_first_line="$6"
+  local attempts="${7:-200}"
+  local local_pattern="mesh_peer_admission_accepted local=$local_rid peer=$peer_rid command=Admit"
+  local peer_pattern="mesh_peer_admission_accepted local=$peer_rid peer=$local_rid command=Admit"
+
+  # Either side may initiate the selected transport. Observe a guard-accepted admission rather
+  # than a received descriptor, so the assertion proves that routed traffic can use the peer.
+  for ((i = 0; i < attempts; i++)); do
+    if grep -Fq "$local_pattern" <(tail -n +"$local_first_line" \
+        "$LOG_DIR/$local_name.log" 2>/dev/null) \
+      || grep -Fq "$peer_pattern" <(tail -n +"$peer_first_line" \
+        "$LOG_DIR/$peer_name.log" 2>/dev/null); then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "!! neither side logged a completed mesh admission for $local_rid and $peer_rid" >&2
+  tail -20 "$LOG_DIR/$local_name.log" >&2 || true
+  tail -20 "$LOG_DIR/$peer_name.log" >&2 || true
+  return 1
+}
+
 wait_for_zone_log() {
   local pattern="$1" attempts="${2:-200}"
   for ((i = 0; i < attempts; i++)); do
@@ -427,6 +451,14 @@ if [[ "$G4_PROVEN" == "1" ]]; then g_pass ZW-G4; fi
 
 node1_mesh_rid="$(routing_id_of zone-node-1)"
 node2_mesh_rid="$(routing_id_of zone-node-2)"
+
+# The common sample contract requires the two zone runtimes to establish their mesh peer before
+# any scenario uses cross-node routing. topology=ready only proves local spot construction; this
+# gate observes the completed admission on either side of the transport.
+wait_for_peer_admission_after \
+  zone-node-1 "$node1_mesh_rid" 1 \
+  zone-node-2 "$node2_mesh_rid" 1 600
+
 if scenario_selected ZW-G1 && [[ "$G4_CHILD" == "0" ]]; then
   if is_zone_node_rid "$node1_mesh_rid" \
       && is_zone_node_rid "$node2_mesh_rid" \
@@ -596,6 +628,47 @@ selects() {
   base="$(printf '%s' "$1" | cut -d- -f1,2)"
   [[ "$SCENARIO" == *"$base"* ]]
 }
+
+# ZW-B6 has a client-visible reply, but the one-way half has no reply by definition. Confirm both
+# probe handlers ran exactly once and that the source node emitted the framework's Message Follow
+# relay evidence. This keeps a direct current-owner delivery from being mistaken for old-route
+# forwarding.
+if selects ZW-B6; then
+  b6_line="$(grep -F 'message-follow-probe completed ' "$LOG_DIR/client.log" | tail -n 1 || true)"
+  actor_id=""
+  one_way_id=""
+  request_id=""
+  if [[ "$b6_line" =~ actor=([^[:space:]]+)[[:space:]]one_way=([^[:space:]]+)[[:space:]]request=([^[:space:]]+) ]]; then
+    actor_id="${BASH_REMATCH[1]}"
+    one_way_id="${BASH_REMATCH[2]}"
+    request_id="${BASH_REMATCH[3]}"
+  fi
+  one_way_payload="$(printf '%s' 'one-way-payload' | od -An -tx1 -v \
+    | tr -d ' \\n' | tr '[:lower:]' '[:upper:]')"
+  request_payload="$(printf '%s' 'request-payload' | od -An -tx1 -v \
+    | tr -d ' \\n' | tr '[:lower:]' '[:upper:]')"
+  one_way_hits="$(awk -v actor="$actor_id" -v probe="$one_way_id" -v payload="$one_way_payload" \
+    '/message-follow probe one-way handled\./ \
+      && index($0, "actor=" actor ",") > 0 \
+      && index($0, "probe=" probe ",") > 0 \
+      && index($0, "payload=" payload) > 0 { count++ } \
+    END { print count + 0 }' "$LOG_DIR"/zone-node-*.log 2>/dev/null)"
+  request_hits="$(awk -v actor="$actor_id" -v probe="$request_id" -v payload="$request_payload" \
+    '/message-follow probe handled\./ \
+      && index($0, "actor=" actor ",") > 0 \
+      && index($0, "probe=" probe ",") > 0 \
+      && index($0, "payload=" payload) > 0 { count++ } \
+    END { print count + 0 }' "$LOG_DIR"/zone-node-*.log 2>/dev/null)"
+  relay_hits="$(awk -v actor="$actor_id" \
+    '/message_follow_relay/ && index($0, "actor=" actor) > 0 { count++ } \
+    END { print count + 0 }' "$LOG_DIR"/zone-node-*.log 2>/dev/null)"
+  if [[ -n "$actor_id" && -n "$one_way_id" && -n "$request_id" \
+      && "$one_way_hits" -eq 1 && "$request_hits" -eq 1 && "$relay_hits" -eq 2 ]]; then
+    pass ZW-B6
+  else
+    fail ZW-B6 "Message Follow evidence was incomplete (actor=$actor_id one_way=$one_way_hits request=$request_hits relay=$relay_hits)"
+  fi
+fi
 
 runner_scenario() {
   local id="$1" description="$2" log="$3" pattern="$4"
@@ -779,7 +852,8 @@ phase() {
   for id in "$@"; do
     if [[ -z "${PASSED[$id]:-}" ]]; then
       echo "!! $marker withheld: $id did not pass" >&2
-      return 0
+      status=1
+      return 1
     fi
   done
   echo "$marker"
@@ -787,9 +861,6 @@ phase() {
 
 # Only a full run can claim a phase. A selective run proves one scenario, not a capability.
 if [[ "$SCENARIO" == "all" ]]; then
-  # ZW-B6 remains withheld until the framework exposes a supported operational
-  # route-injection harness for the previous owner route. Global Actor APIs always
-  # resolve the current owner and therefore cannot exercise bounded Message Follow.
   phase "zoneworld-relocation=completed"      ZW-B2 ZW-B3 ZW-B5 ZW-B6 ZW-F2
   phase "zoneworld-border-sync=completed"     ZW-B1 ZW-B4
   phase "zoneworld-ops-observe=completed"     ZW-C1 ZW-C2 ZW-C3 ZW-C4

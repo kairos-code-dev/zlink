@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const [output, ...args] = process.argv.slice(2);
 if (!output) throw new Error('Usage: node write-config.mjs <output> [--key value ...]');
 const listKeys = new Set(['subscriberUrls']);
-const aliases = { subscriberUrl: 'subscriberUrls' };
+const aliases = { subscriberUrl: 'subscriberUrls', secondaryPublisherUrl: 'secondaryPublisherUrl' };
 const e2e = {};
 for (let index = 0; index < args.length; index += 2) {
   const flag = args[index]; const value = args[index + 1];

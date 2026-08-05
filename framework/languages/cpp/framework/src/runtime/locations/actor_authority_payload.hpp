@@ -2,6 +2,8 @@
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
+
+#include "runtime/actors/actor_ref_access.hpp"
 #include <zlink/framework/contracts/spots/spot.hpp>
 
 #include <cstddef>
@@ -44,9 +46,9 @@ inline std::vector<std::byte> encode_actor_authority_payload (
     };
     append_text ("zlink:actor-authority:v1");
     append_text (actor.node_rid ().value ());
-    append_text (actor.actor_type ());
-    append_text (actor.actor_id ());
-    append_u64 (actor.generation ());
+    append_text (::zlink::framework::detail::actor_ref_access_t::actor_type (actor));
+    append_text (actor.actor_id ().value ());
+    append_u64 (actor.object_generation ());
     append_text (spot_id);
     append_u64 (spot_generation);
     return bytes;
@@ -96,7 +98,8 @@ decode_actor_authority_payload (const std::vector<std::byte> &bytes)
             || actor_generation == 0 || spot_id.empty () || spot_generation == 0)
             return std::nullopt;
         return actor_authority_projection_t{
-          actor_ref_t{node_rid_t::from_string (node), type, id, actor_generation},
+          ::zlink::framework::detail::actor_ref_access_t::make (
+            node_rid_t::from_string (node), type, id, actor_generation),
           spot_id_t{spot_id}, spot_generation};
     }
     catch (...) {

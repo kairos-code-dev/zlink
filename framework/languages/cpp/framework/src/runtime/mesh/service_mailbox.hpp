@@ -39,6 +39,8 @@ struct service_mailbox_claim_t
     service_mailbox_domain_t domain;
     std::uint64_t serial;
     std::vector<service_mailbox_record_t> records;
+    std::size_t claimed_messages = 0;
+    std::size_t claimed_bytes = 0;
 };
 
 class service_mailbox_t
@@ -69,7 +71,10 @@ class service_mailbox_t
     struct owner_queue_t
     {
         std::deque<service_mailbox_record_t> records;
+        std::size_t messages = 0;
         std::size_t bytes = 0;
+        std::size_t active_messages = 0;
+        std::size_t active_bytes = 0;
         bool claimed = false;
         std::uint64_t claim_serial = 0;
     };
@@ -81,6 +86,8 @@ class service_mailbox_t
         std::set<std::string> indexed;
         std::size_t messages = 0;
         std::size_t bytes = 0;
+        std::size_t active_messages = 0;
+        std::size_t active_bytes = 0;
         std::size_t message_budget = 0;
         std::size_t byte_budget = 0;
     };
@@ -93,7 +100,12 @@ class service_mailbox_t
                         const std::string &owner,
                         std::size_t message_budget,
                         std::size_t byte_budget);
-    static std::size_t retained_bytes (const service_mailbox_record_t &record);
+    struct retained_size_t
+    {
+        std::size_t bytes = 0;
+        bool overflow = false;
+    };
+    static retained_size_t retained_bytes (const service_mailbox_record_t &record);
 
     mutable std::mutex _mutex;
     domain_t _application;

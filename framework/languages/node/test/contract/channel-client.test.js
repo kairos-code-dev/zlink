@@ -231,6 +231,45 @@ test('one-way clients reject when their registered runtime is not started', asyn
   );
 });
 
+test('ZLinkFanoutClient exposes the current advertised publisher listener endpoint', () => {
+  const registration = framework.createFrameworkRegistration({
+    channels: {
+      events: { publisher: { bind: 'tcp://127.0.0.1:0' } }
+    }
+  });
+  const observedAt = new Date('2026-08-05T00:00:00.000Z');
+  const fanout = new framework.DefaultZLinkFanoutClient(registration, {
+    getFanoutListenerStatus(channelName) {
+      assert.equal(channelName, 'events');
+      return {
+        channelName,
+        endpoint: 'tcp://127.0.0.1:43127',
+        observedAt
+      };
+    }
+  });
+
+  assert.deepEqual(fanout.getListenerStatus('events'), {
+    channelName: 'events',
+    endpoint: 'tcp://127.0.0.1:43127',
+    observedAt
+  });
+});
+
+test('ZLinkFanoutClient rejects listener status for a non-publisher channel', () => {
+  const fanout = new framework.DefaultZLinkFanoutClient(framework.createFrameworkRegistration(), {
+    getFanoutListenerStatus() {
+      throw new Error('listener status must not reach transport');
+    }
+  });
+
+  assert.throws(
+    () => fanout.getListenerStatus('events'),
+    (error) => error instanceof framework.ZLinkConfigurationException
+      && /does not have a publisher capability/.test(error.message)
+  );
+});
+
 test('ZLinkRouteClient one-way calls report asynchronous transport admission', async () => {
   const calls = [];
   const registration = framework.createFrameworkRegistration({
@@ -633,6 +672,28 @@ test('ZLinkChannelClient and fanout client reject pre-aborted submit before tran
   await assertAborted(() => client.requestToChannel('api', typedPacket('Ping', 'ping')).submit(controller.signal));
   await assertAborted(() => fanout.publish('events', typedPacket('Event', 'event')).submit(controller.signal));
   assert.deepEqual(calls, []);
+});
+
+test('ZLinkFanoutClient preserves an explicitly supplied topic and derives packet name separately', async () => {
+  const calls = [];
+  const event = typedPacket('EventMsg', { value: 'payload' });
+  const registration = framework.createFrameworkRegistration({
+    channels: { events: { publisher: { bind: 'inproc://explicit-fanout-topic' } } }
+  });
+  const fanout = new framework.DefaultZLinkFanoutClient(registration, {
+    async publish(channelName, topic, packetName, message, signal) {
+      calls.push({ channelName, topic, packetName, message, signal });
+      return { status: ZLinkSubmitStatus.Submitted };
+    }
+  });
+
+  await fanout.publish('events', 'orders', event).submit();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].channelName, 'events');
+  assert.equal(calls[0].topic, 'orders');
+  assert.equal(calls[0].packetName, 'EventMsg');
+  assert.equal(calls[0].message, event);
 });
 
 test('one-way call validation wins over a pre-aborted signal', async () => {
@@ -2804,6 +2865,114 @@ test('fanout publisher binds during runtime start before the first publish', asy
     await subscriberRuntime.stop();
     await publisherRuntime.stop();
   }
+});
+
+test('fanout subscriberConnections changes the live manual receive set', async () => {
+  const firstEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const secondEndpoint = `tcp://127.0.0.1:${await reservePort()}`;
+  const calls = [];
+  const firstPublisherRegistration = framework.createFrameworkRegistration({
+    channels: { events: { publisher: { bind: firstEndpoint } } }
+  });
+  const secondPublisherRegistration = framework.createFrameworkRegistration({
+    channels: { events: { publisher: { bind: secondEndpoint } } }
+  });
+
+  let subscriberConnections;
+  const subscriberOptions = framework.createFrameworkOptions((builder) => {
+    const channel = builder.addFanoutChannel('events');
+    channel.connect(firstEndpoint);
+    subscriberConnections = channel.subscriberConnections();
+  });
+  subscriberOptions.channels.events.publishHandlers = [{
+    packetName: 'ProfileChanged',
+    handler: {
+      handle(payload) {
+        calls.push(payload);
+      }
+    }
+  }];
+  const subscriberRegistration = framework.createFrameworkRegistration(subscriberOptions);
+  const firstPublisherRuntime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: firstPublisherRegistration
+  });
+  const secondPublisherRuntime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: secondPublisherRegistration
+  });
+  const subscriberRuntime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: subscriberRegistration
+  });
+
+  try {
+    await firstPublisherRuntime.start();
+    await subscriberRuntime.start();
+    await secondPublisherRuntime.start();
+    const firstFanout = new framework.DefaultZLinkFanoutClient(
+      firstPublisherRegistration,
+      firstPublisherRuntime.channelTransport
+    );
+    const secondFanout = new framework.DefaultZLinkFanoutClient(
+      secondPublisherRegistration,
+      secondPublisherRuntime.channelTransport
+    );
+
+    await publishUntilHandled(
+      firstFanout,
+      'events',
+      'ProfileChanged',
+      'ProfileChanged',
+      { source: 'first' },
+      () => calls.some((payload) => payload.source === 'first')
+    );
+
+    subscriberConnections.connect(secondEndpoint);
+    assert.deepEqual(subscriberConnections.listConnections(), [firstEndpoint, secondEndpoint]);
+    await publishUntilHandled(
+      secondFanout,
+      'events',
+      'ProfileChanged',
+      'ProfileChanged',
+      { source: 'second-before-disconnect' },
+      () => calls.some((payload) => payload.source === 'second-before-disconnect')
+    );
+
+    subscriberConnections.disconnect(secondEndpoint);
+    assert.deepEqual(subscriberConnections.listConnections(), [firstEndpoint]);
+    const beforeDisconnect = calls.length;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await secondFanout
+        .publish('events', typedPacket('ProfileChanged', { source: 'second-after-disconnect' }))
+        .submit();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(calls.length, beforeDisconnect);
+  } finally {
+    await secondPublisherRuntime.stop();
+    await subscriberRuntime.stop();
+    await firstPublisherRuntime.stop();
+  }
+});
+
+test('fanout builder and subscriber handle share the manual endpoint set', () => {
+  const firstEndpoint = 'tcp://127.0.0.1:9511';
+  const secondEndpoint = 'tcp://127.0.0.1:9512';
+  let subscriberConnections;
+  const options = framework.createFrameworkOptions((builder) => {
+    const channel = builder.addFanoutChannel('events');
+    subscriberConnections = channel.subscriberConnections();
+    channel.connect(firstEndpoint);
+    subscriberConnections.connect(secondEndpoint);
+    channel.connect(secondEndpoint);
+  });
+
+  assert.deepEqual(
+    subscriberConnections.listConnections(),
+    [firstEndpoint, secondEndpoint]
+  );
+  assert.deepEqual(
+    options.channels.events.subscriber.manualConnections,
+    [firstEndpoint, secondEndpoint]
+  );
 });
 
 test('ZLinkModule route client uses runtime host route transport after bootstrap', async () => {

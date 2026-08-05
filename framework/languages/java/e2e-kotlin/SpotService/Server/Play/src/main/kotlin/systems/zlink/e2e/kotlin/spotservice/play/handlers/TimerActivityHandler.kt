@@ -7,7 +7,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest
 
 class TimerActivityHandler {
     @ZLinkSpotRequest
-    fun handle(
+    suspend fun handle(
         spot: TimerScenarioSpot,
         request: Contracts.TimerActivityReq,
     ): Contracts.TimerActivityRes {

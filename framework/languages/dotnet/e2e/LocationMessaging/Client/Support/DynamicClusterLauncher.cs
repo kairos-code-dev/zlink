@@ -11,6 +11,7 @@ namespace LocationMessaging.Client.Support;
 internal sealed class DynamicClusterLauncher(
     string providerProject,
     string consumerProject,
+    string workflowProject,
     string configDir,
     string logDir,
     string scenarioName) : IAsyncDisposable
@@ -40,6 +41,7 @@ internal sealed class DynamicClusterLauncher(
         var launcher = new DynamicClusterLauncher(
             options.ProviderProject,
             options.ConsumerProject,
+            options.WorkflowProject,
             scenarioConfigDir,
             scenarioLogDir,
             scenarioName)
@@ -82,7 +84,9 @@ internal sealed class DynamicClusterLauncher(
         return new DynamicProvider(process, httpUrl, process.RequireChannelEndpoint(), routeEndpoint);
     }
 
-    public async Task<DynamicConsumer> StartConsumerAsync(string name)
+    public async Task<DynamicConsumer> StartConsumerAsync(
+        string name,
+        bool registerWorkflowClient = false)
     {
         var processName = $"{scenarioName}-{name}";
         var httpUrl = PickHttpUrl();
@@ -90,11 +94,43 @@ internal sealed class DynamicClusterLauncher(
             processName,
             consumerProject,
             new DynamicConsumerOptions(
-                httpUrl, logDir, name, RedisEndpoint, RedisKeyPrefix),
+                httpUrl,
+                logDir,
+                name,
+                RedisEndpoint,
+                RedisKeyPrefix,
+                registerWorkflowClient),
             httpUrl,
             channelEndpoint: null);
         await process.WaitReadyAsync();
         return new DynamicConsumer(process, httpUrl);
+    }
+
+    public async Task<DynamicWorkflow> StartWorkflowAsync(
+        string name,
+        string rid,
+        int weight = 100)
+    {
+        var processName = $"{scenarioName}-{name}";
+        var httpUrl = PickHttpUrl();
+        var workflowEndpoint = PickEndpoint();
+        var process = StartServer(
+            processName,
+            workflowProject,
+            new DynamicWorkflowOptions(
+                Role: "workflow",
+                HttpUrl: httpUrl,
+                LogDir: logDir,
+                Rid: rid,
+                WorkflowEndpoint: workflowEndpoint,
+                Weight: weight,
+                EvidenceFile: Path.Combine(logDir, $"{processName}.evidence.log"),
+                RedisEndpoint: RedisEndpoint,
+                RedisKeyPrefix: RedisKeyPrefix),
+            httpUrl,
+            workflowEndpoint);
+        await process.WaitReadyAsync();
+        return new DynamicWorkflow(process, httpUrl, process.RequireChannelEndpoint());
     }
 
     public async Task<DrainResultRes> StopAsync(DynamicProvider provider)
@@ -190,13 +226,30 @@ internal sealed record DynamicConsumerOptions(
     string LogDir,
     string TraceLabel,
     string RedisEndpoint,
-    string RedisKeyPrefix);
+    string RedisKeyPrefix,
+    bool RegisterWorkflowClient = false);
+
+internal sealed record DynamicWorkflowOptions(
+    string Role,
+    string HttpUrl,
+    string LogDir,
+    string Rid,
+    string WorkflowEndpoint,
+    int Weight,
+    string? EvidenceFile = null,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null);
 
 internal sealed record DynamicProvider(
     DynamicProcess Process,
     string HttpUrl,
     string ChannelEndpoint,
     string RouteEndpoint);
+
+internal sealed record DynamicWorkflow(
+    DynamicProcess Process,
+    string HttpUrl,
+    string WorkflowEndpoint);
 
 internal sealed record DynamicConsumer(DynamicProcess Process, string HttpUrl);
 

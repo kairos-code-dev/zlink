@@ -14,12 +14,16 @@
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
 
+#include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include "runtime/protocol/service_wire_codec.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -27,8 +31,11 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <variant>
+#include <vector>
 
 namespace fw = zlink::framework;
+namespace runtime = zlink::framework::runtime;
 
 namespace
 {
@@ -171,6 +178,133 @@ void write_ready ()
     }
     std::ofstream file (path, std::ios::trunc);
     file << "ready\n";
+}
+
+std::vector<std::uint8_t> routing_id_bytes (const std::string &value)
+{
+    return {value.begin (), value.end ()};
+}
+
+std::string routing_id_string (const std::vector<std::uint8_t> &value)
+{
+    return {value.begin (), value.end ()};
+}
+
+runtime::protocol::message_follow_notice_t make_message_follow_notice (
+  const runtime::mesh::service_node_descriptor_t &source_node,
+  const runtime::mesh::service_node_descriptor_t &target_node,
+  std::uint64_t operation_low)
+{
+    const auto actor_route = [] (
+      const runtime::mesh::service_node_descriptor_t &node,
+      std::uint64_t authority_owner_generation) {
+        return runtime::protocol::actor_route_fence_t{
+          "cross-language-message-follow",
+          1,
+          node.node_routing_id,
+          node.lifecycle_generation,
+          authority_owner_generation,
+          8};
+    };
+    return runtime::protocol::message_follow_notice_t{
+      actor_route (source_node, 7),
+      actor_route (target_node, 8),
+      1,
+      1,
+      64,
+      runtime::protocol::wire_operation_id_t{3, operation_low},
+      11};
+}
+
+int run_message_follow_host ()
+{
+    using runtime::mesh::raw_mesh_node_options_t;
+    using runtime::mesh::raw_mesh_node_owner_t;
+    using runtime::mesh::service_mailbox_domain_t;
+    using runtime::mesh::service_node_state_t;
+    using runtime::protocol::decode_message_follow;
+
+    const auto local_name = option ("node-rid", "cpp-message-follow");
+    const auto peer_name = require ("peer-rid");
+    const auto local_rid = routing_id_bytes (local_name);
+    const auto peer_rid = routing_id_bytes (peer_name);
+    if (local_rid.empty () || peer_rid.empty ())
+        throw std::invalid_argument ("message-follow routing IDs must be non-empty");
+
+    raw_mesh_node_options_t options;
+    options.descriptor.mesh_name = option ("mesh-name", "message-follow");
+    options.descriptor.node_routing_id = local_rid;
+    options.descriptor.lifecycle_generation = 1;
+    options.descriptor.descriptor_revision = 1;
+    options.descriptor.advertised_endpoint = require ("bind-endpoint");
+    options.descriptor.state = service_node_state_t::preparing;
+    options.descriptor.security_identity = "default";
+    options.descriptor.protocol_capabilities = {"framework-service-v11"};
+
+    raw_mesh_node_owner_t owner (std::move (options));
+    owner.start ();
+    if (!owner.connect_peer (require ("peer-endpoint")))
+        throw std::runtime_error ("message-follow peer connection was not submitted");
+
+    event_sink_t sink (option ("event-file"));
+    write_ready ();
+    const auto deadline = std::chrono::steady_clock::now ()
+                          + std::chrono::seconds (60);
+    bool sent = false;
+    bool received = false;
+    while (std::chrono::steady_clock::now () < deadline) {
+        const auto now =
+          runtime::mesh::service_liveness_registry_t::clock_t::now ();
+        (void) owner.drain_monitor_events (now);
+        (void) owner.pump_one (now);
+        (void) owner.tick_liveness (now);
+
+        while (true) {
+            auto claim = owner.mailbox ().try_claim (
+              service_mailbox_domain_t::infrastructure, 16, 1024 * 1024);
+            if (!claim)
+                break;
+            for (const auto &record : claim->records) {
+                if (record.parts.size () != 1)
+                    continue;
+                const auto notice = decode_message_follow (record.parts.front ());
+                const auto source = std::visit (
+                  [] (const auto &route) {
+                      return routing_id_string (route.target_node_routing_id);
+                  },
+                  notice.source);
+                const auto target = std::visit (
+                  [] (const auto &route) {
+                      return routing_id_string (route.target_node_routing_id);
+                  },
+                  notice.target);
+                sink.append (
+                  "message-follow-received|source-node=" + source
+                  + "|target-node=" + target
+                  + "|operation-low="
+                  + std::to_string (notice.original_operation.low));
+                received = true;
+            }
+            (void) owner.mailbox ().release (*claim);
+        }
+
+        const auto peer = owner.topology ().peer (peer_rid);
+        if (!sent && received && peer) {
+            sent = owner.send_message_follow (
+              peer_rid,
+              make_message_follow_notice (
+                owner.topology ().local_descriptor (), peer->descriptor, 101));
+        }
+        if (sent && received) {
+            std::this_thread::sleep_for (std::chrono::seconds (2));
+            return 0;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    throw std::runtime_error (
+      "message-follow process exchange timed out (sent="
+      + std::string (sent ? "true" : "false")
+      + ", received=" + std::string (received ? "true" : "false") + ")");
 }
 
 /* Channel server handlers: mirror TestHostProfileRequestHandler/SendHandler so
@@ -423,6 +557,9 @@ int main (int argc, char **argv)
     try {
         if (mode == "stream-connector") {
             return run_stream_connector ();
+        }
+        if (mode == "message-follow") {
+            return run_message_follow_host ();
         }
 
         auto app = fw::app_t::create ();

@@ -137,6 +137,7 @@ LOCATION_LEASE_POLL_MILLISECONDS=100
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
+TOPOLOGY_READINESS_ATTEMPTS=100
 SCENARIO_SETTLE_SECONDS=3
 
 print_logs() {
@@ -437,7 +438,7 @@ wait_topology_ready() {
   local expected="$2"
   local endpoint
   endpoint="$(role_http_endpoint "${role}")"
-  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+  for _ in $(seq 1 "${TOPOLOGY_READINESS_ATTEMPTS}"); do
     if curl -fsS "${endpoint}/topology/ready?expected=${expected}" >/dev/null 2>&1; then
       return 0
     fi
@@ -447,10 +448,105 @@ wait_topology_ready() {
   return 1
 }
 
+wait_location_ready() {
+  local role="$1"
+  local endpoint
+  endpoint="$(role_http_endpoint "${role}")"
+  for _ in $(seq 1 "${TOPOLOGY_READINESS_ATTEMPTS}"); do
+    if curl -fsS "${endpoint}/location/ready" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
+  done
+  echo "Timed out waiting for ${role} Location descriptors expected=${expected}" >&2
+  return 1
+}
+
 spot_owner() {
   local endpoint="$1"
   local spot_rid="$2"
   curl -fsS "${endpoint}/location/spot-owner?spotRid=${spot_rid}" | tr -d '\r\n'
+}
+
+set_placement_weight() {
+  local endpoint="$1"
+  local weight="$2"
+  python3 - "${endpoint}/placement-weight" "${weight}" <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"weight": int(sys.argv[2])}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    body = json.loads(response.read().decode())
+    if body.get("weight") != int(sys.argv[2]):
+        raise SystemExit(f"placement weight was not applied: {body}")
+    print(f"placement endpoint={sys.argv[1]} weight={body['weight']}")
+PY
+}
+
+prepare_default_spot_fixtures() {
+  local room_a_response
+  local room_b_response
+  set_placement_weight "${HTTP_A}" 100
+  set_placement_weight "${HTTP_B}" 0
+  room_a_response="$(python3 - "${HTTP_A}/spot/create" room-a play-a <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"spotRid": sys.argv[2]}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    print(response.read().decode(), end="")
+PY
+)"
+  python3 - "${room_a_response}" room-a play-a <<'PY'
+import json
+import sys
+
+body = json.loads(sys.argv[1])
+if body.get("spotRid") != sys.argv[2] or body.get("nodeRid") != sys.argv[3]:
+    raise SystemExit(f"room-a fixture owner mismatch: {body}")
+PY
+
+  set_placement_weight "${HTTP_A}" 0
+  set_placement_weight "${HTTP_B}" 100
+  room_b_response="$(python3 - "${HTTP_B}/spot/create" room-b play-b <<'PY'
+import json
+import sys
+import urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1],
+    data=json.dumps({"spotRid": sys.argv[2]}).encode(),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=5) as response:
+    print(response.read().decode(), end="")
+PY
+)"
+  python3 - "${room_b_response}" room-b play-b <<'PY'
+import json
+import sys
+
+body = json.loads(sys.argv[1])
+if body.get("spotRid") != sys.argv[2] or body.get("nodeRid") != sys.argv[3]:
+    raise SystemExit(f"room-b fixture owner mismatch: {body}")
+PY
+
+  set_placement_weight "${HTTP_A}" 100
+  set_placement_weight "${HTTP_B}" 100
 }
 
 wait_owner_lease_expired() {
@@ -600,6 +696,14 @@ expected_peers=$((${#SERVER_ROLES[@]} - 1))
 for role in "${SERVER_ROLES[@]}"; do
   wait_topology_ready "${role}" "${expected_peers}"
 done
+for role in "${SERVER_ROLES[@]}"; do
+  if [[ "${role}" != "gateway" ]]; then
+    wait_location_ready "${role}"
+  fi
+done
+if [[ "${SPOT_ONLY_MODE}" != "true" && "${SCENARIO}" != "SM-E1" && "${SCENARIO}" != "sm-e1" ]]; then
+  prepare_default_spot_fixtures
+fi
 if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
   for role in gateway multi-node-a multi-node-b; do
     if ! grep -Fq "[topology] role=${role} route_mesh=disabled" "${log_dir}/${role}.stdout.log"; then

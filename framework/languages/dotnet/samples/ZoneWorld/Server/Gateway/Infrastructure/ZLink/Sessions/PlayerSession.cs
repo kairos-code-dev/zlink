@@ -17,6 +17,7 @@ public sealed class PlayerSession(
     IZLinkSessionContext context,
     PlayerSessionBinder binder,
     RelocationProbeService relocationProbes,
+    IZLinkActorClient actors,
     ILogger<PlayerSession> logger) : IZLinkSession
 {
     public IZLinkSessionContext Context { get; } = context;
@@ -70,6 +71,25 @@ public sealed class PlayerSession(
             await Context.Client
                 .Reply(await relocationProbes.FindActorAsync(request.ActorId, cancellationToken))
                 .Async(cancellationToken);
+            return;
+        }
+
+        if (dispatch.PacketName == nameof(MessageFollowProbeReq))
+        {
+            var request = payload.Decode<MessageFollowProbeReq>();
+            if (dispatch.CanReply)
+            {
+                var reply = await actors
+                    .RequestToActor(request.ActorId, request)
+                    .Async<MessageFollowProbeRes>(cancellationToken);
+                await Context.Client.Reply(reply).Async(cancellationToken);
+            }
+            else
+            {
+                await actors
+                    .SendToActor(request.ActorId, request)
+                    .Async(cancellationToken);
+            }
             return;
         }
 

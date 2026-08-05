@@ -68,7 +68,6 @@ final class ZLinkSpotRouteMessages {
             if (emptyReply != null) {
                 emptyReply.close();
             }
-            replyParts.forEach(Message::close);
         }
     }
 

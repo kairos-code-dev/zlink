@@ -89,11 +89,21 @@ export class ZLinkSpotLocationClaims {
     );
   }
 
-  async release(meshName: string, spotId: RoutingId): Promise<void> {
+  async release(
+    meshName: string,
+    spotId: RoutingId,
+    expectedObjectGeneration?: bigint
+  ): Promise<void> {
     const key = { meshName, spotId };
     const canonical = ZLinkLocationKeyCodec.encodeSpotKey(key);
     const tracked = this.spots.get(canonical);
     if (tracked === undefined) {
+      return;
+    }
+    if (
+      expectedObjectGeneration !== undefined
+      && (tracked.kind !== 'authority' || tracked.objectGeneration !== expectedObjectGeneration)
+    ) {
       return;
     }
     if (tracked.kind === 'legacy') {
@@ -269,6 +279,13 @@ export class ZLinkSpotLocationClaims {
         result.current.storeVersion,
         { kind: 'delete' }
       );
+    }
+    if (
+      result.kind === 'conflict'
+      && result.current.kind === 'snapshot'
+      && !matchesTrackedAuthority(result.current, tracked)
+    ) {
+      return;
     }
     if (result.kind === 'deleted' || (
       result.kind === 'conflict' && result.current.kind === 'missing'

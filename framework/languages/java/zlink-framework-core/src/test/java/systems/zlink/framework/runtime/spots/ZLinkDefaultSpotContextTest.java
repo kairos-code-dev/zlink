@@ -110,9 +110,12 @@ final class ZLinkDefaultSpotContextTest {
         CompletableFuture<Void> secondStarted = new CompletableFuture<>();
 
         CompletionStage<Void> first = context.enqueueActorDispatch(
-            "actor-a",
-            23,
-            () -> {
+                "actor-a",
+                23,
+                () -> {
+                assertEquals(
+                    "actor-a",
+                    ZLinkSuspendInvocationContext.currentActorDispatch());
                 var execution = ZLinkSuspendInvocationContext
                     .currentApplicationExecution();
                 assertTrue(execution.sharedSpotGate());
@@ -159,6 +162,148 @@ final class ZLinkDefaultSpotContextTest {
 
         dispatch.toCompletableFuture().join();
         assertTrue(actorStarted.isDone());
+    }
+
+    @Test
+    void spotWideDifferentActorCallbacksDoNotOverlap() throws Exception {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            TestHost host = new TestHost(executor);
+            DefaultSpotContext context = host.userContext(
+                ZLinkUserSpotExecutionMode.SPOT_WIDE);
+            CompletableFuture<Void> firstRelease = new CompletableFuture<>();
+            CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+            CompletableFuture<Void> secondStarted = new CompletableFuture<>();
+            AtomicInteger activeCallbacks = new AtomicInteger();
+            AtomicInteger maximumActiveCallbacks = new AtomicInteger();
+
+            CompletionStage<Void> first = context.enqueueActorDispatch(
+                "actor-a",
+                () -> {
+                    int active = activeCallbacks.incrementAndGet();
+                    maximumActiveCallbacks.accumulateAndGet(
+                        active, Math::max);
+                    firstStarted.complete(null);
+                    return firstRelease.whenComplete((ignored, error) ->
+                        activeCallbacks.decrementAndGet());
+                });
+            firstStarted.get(2, TimeUnit.SECONDS);
+
+            CompletionStage<Void> second = context.enqueueActorDispatch(
+                "actor-b",
+                () -> {
+                    int active = activeCallbacks.incrementAndGet();
+                    maximumActiveCallbacks.accumulateAndGet(
+                        active, Math::max);
+                    secondStarted.complete(null);
+                    activeCallbacks.decrementAndGet();
+                    return CompletableFuture.completedFuture(null);
+                });
+
+            assertEquals(2, host.actorDispatchSubmissions.get());
+            assertFalse(secondStarted.isDone());
+            firstRelease.complete(null);
+            CompletableFuture.allOf(
+                first.toCompletableFuture(),
+                second.toCompletableFuture()).join();
+            assertEquals(1, maximumActiveCallbacks.get());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void spotWideLifecycleWaitsForTheSharedSpotGate() throws Exception {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            TestHost host = new TestHost(executor);
+            DefaultSpotContext context = host.userContext(
+                ZLinkUserSpotExecutionMode.SPOT_WIDE);
+            CompletableFuture<Void> applicationRelease =
+                new CompletableFuture<>();
+            CompletableFuture<Void> applicationStarted =
+                new CompletableFuture<>();
+            CompletableFuture<Void> lifecycleStarted =
+                new CompletableFuture<>();
+
+            CompletionStage<Void> application = context.enqueueDispatch(() -> {
+                applicationStarted.complete(null);
+                return applicationRelease;
+            });
+            applicationStarted.get(2, TimeUnit.SECONDS);
+
+            CompletionStage<Void> lifecycle = context.enqueueLifecycle(() -> {
+                lifecycleStarted.complete(null);
+                return CompletableFuture.completedFuture(null);
+            });
+
+            assertFalse(lifecycleStarted.isDone());
+            applicationRelease.complete(null);
+            CompletableFuture.allOf(
+                application.toCompletableFuture(),
+                lifecycle.toCompletableFuture()).join();
+            assertTrue(lifecycleStarted.isDone());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void spotWideLifecycleCanBeEnqueuedFromTheCurrentDispatchTurn()
+        throws Exception {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            TestHost host = new TestHost(executor);
+            DefaultSpotContext context = host.userContext(
+                ZLinkUserSpotExecutionMode.SPOT_WIDE);
+            CompletableFuture<Void> lifecycleStarted =
+                new CompletableFuture<>();
+
+            CompletionStage<Void> dispatch = context.enqueueDispatch(() ->
+                context.enqueueLifecycle(() -> {
+                    lifecycleStarted.complete(null);
+                    return CompletableFuture.completedFuture(null);
+                }));
+
+            dispatch.toCompletableFuture().get(2, TimeUnit.SECONDS);
+            assertTrue(lifecycleStarted.isDone());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void lifecycleLaneRunsBeforeAQueuedApplicationTurn() throws Exception {
+        ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            TestHost host = new TestHost(executor);
+            DefaultSpotContext context = host.userContext(
+                ZLinkUserSpotExecutionMode.SPOT_WIDE);
+            CompletableFuture<Void> firstRelease = new CompletableFuture<>();
+            List<String> order = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+            CompletionStage<Void> first = context.enqueueDispatch(() -> {
+                order.add("first");
+                return firstRelease;
+            });
+            CompletionStage<Void> lifecycle = context.enqueueLifecycle(() -> {
+                order.add("lifecycle");
+                return CompletableFuture.completedFuture(null);
+            });
+            CompletionStage<Void> second = context.enqueueDispatch(() -> {
+                order.add("second");
+                return CompletableFuture.completedFuture(null);
+            });
+
+            firstRelease.complete(null);
+            CompletableFuture.allOf(
+                first.toCompletableFuture(),
+                lifecycle.toCompletableFuture(),
+                second.toCompletableFuture()).join();
+            assertEquals(List.of("first", "lifecycle", "second"), order);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test

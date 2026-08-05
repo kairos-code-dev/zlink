@@ -531,6 +531,27 @@ function readyRead(
   target: ServiceInstanceActivationTarget
 ): ServiceInstanceAuthorityRead {
   const decoded = decodeServiceReadySpotAuthority(snapshot.payload);
+  const creating = decodeServiceInstanceAuthorityPayload(snapshot.payload);
+  if (
+    creating?.state === 'coldActivating'
+    && snapshot.allocation.objectKind === 'instance_spot'
+    && snapshot.allocation.state === 'reserved'
+    && creating.stableType === target.stableType
+    && creating.spotId === target.targetSpotId
+    && creating.ownerId === snapshot.ownerId
+    && creating.ownerLeaseGeneration === snapshot.ownerLeaseGeneration
+    && creating.ownerMeshName === snapshot.allocation.descriptor.meshName
+    && creating.ownerNodeGeneration === snapshot.allocation.descriptorLifecycleGeneration
+    && routingIdsEqual(creating.ownerNodeRid, snapshot.allocation.descriptor.rid)
+    && routingIdsEqual(target.targetNodeRid, snapshot.allocation.descriptor.rid)
+    && target.targetNodeGeneration === snapshot.allocation.descriptorLifecycleGeneration
+  ) {
+    return {
+      kind: 'creating',
+      objectGeneration: snapshot.objectGeneration,
+      authorityOwnerGeneration: snapshot.authorityOwnerGeneration
+    };
+  }
   if (
     decoded?.kind !== 'instance_spot'
     || decoded.stableType !== target.stableType

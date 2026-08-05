@@ -1,4 +1,7 @@
-import { ZLinkFrameworkInternalErrorKind } from '../framework-errors-internal';
+import {
+  createInternalFrameworkException,
+  ZLinkFrameworkInternalErrorKind
+} from '../framework-errors-internal';
 import type { ActorRef, ZLinkBoundSession, ZLinkBoundSessionSendCall } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import {
@@ -57,7 +60,7 @@ export class ZLinkNativeFallbackBoundSession implements ZLinkBoundSession {
   }
 
   async disconnect(signal?: AbortSignal): Promise<void> {
-    const remoteTarget = this.options.remoteBoundSessionTargetProvider() ?? this.options.remoteActorPacketTargetProvider();
+    const remoteTarget = this.options.remoteBoundSessionTargetProvider();
     if (remoteTarget !== undefined) {
       const spotKind: ZLinkSpotKind | undefined =
         'spotKind' in remoteTarget ? remoteTarget.spotKind as ZLinkSpotKind | undefined : undefined;
@@ -90,7 +93,11 @@ export class ZLinkNativeFallbackBoundSession implements ZLinkBoundSession {
     }
     const actorRef = this.options.actorRefProvider();
     const node = this.options.nativeActorNodeProvider();
-    if (actorRef !== undefined && node !== undefined) {
+    if (
+      actorRef !== undefined
+      && node !== undefined
+      && currentBindingGeneration(actorRef) !== undefined
+    ) {
       await this.options.runtime.disconnectNativeBoundSession(node, actorRef, signal);
       return;
     }
@@ -156,13 +163,11 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       // binding is no longer available.
       const actorRef = this.options.actorRefProvider();
       const node = this.options.nativeActorNodeProvider();
-      const bindingGeneration = (actorRef as (ActorRef & { readonly bindingGeneration?: bigint }) | undefined)
-        ?.bindingGeneration;
+      const bindingGeneration = currentBindingGeneration(actorRef);
       if (
         actorRef !== undefined
         && node !== undefined
         && bindingGeneration !== undefined
-        && bindingGeneration > 0n
       ) {
         nativeAttempted = true;
         const result = await this.options.runtime.sendNativeBoundSession(
@@ -241,7 +246,13 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     }
     const actorRef = this.options.actorRefProvider();
     const node = this.options.nativeActorNodeProvider();
-    if (!nativeAttempted && actorRef !== undefined && node !== undefined) {
+    const bindingGeneration = currentBindingGeneration(actorRef);
+    if (
+      !nativeAttempted
+      && actorRef !== undefined
+      && node !== undefined
+      && bindingGeneration !== undefined
+    ) {
       const result = await this.options.runtime.sendNativeBoundSession(
         node,
         actorRef,
@@ -254,7 +265,11 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       return result;
     }
     if (localActor) {
-      throw new Error(`No current session binding exists for actor '${this.options.actorId}'.`);
+      throw createInternalFrameworkException(
+        ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
+        `No current session binding exists for actor '${this.options.actorId}'.`,
+        true
+      );
     }
     const result = await this.options.runtime.sendBoundSession(
       this.options.actorId,
@@ -272,6 +287,16 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       this.options.onSend?.(this.options.actorId, packetName);
     }
   }
+}
+
+function currentBindingGeneration(actorRef: ActorRef | undefined): bigint | undefined {
+  const generation = (actorRef as (ActorRef & { readonly bindingGeneration?: bigint }) | undefined)
+    ?.bindingGeneration;
+  return positiveBindingGeneration(generation);
+}
+
+function positiveBindingGeneration(generation: bigint | undefined): bigint | undefined {
+  return generation !== undefined && generation > 0n ? generation : undefined;
 }
 
 function disconnectedFrameHeader(): ZLinkStreamFrameHeader {

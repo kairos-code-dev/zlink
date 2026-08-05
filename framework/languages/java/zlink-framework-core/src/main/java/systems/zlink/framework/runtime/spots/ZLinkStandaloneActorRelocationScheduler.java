@@ -35,7 +35,8 @@ final class ZLinkStandaloneActorRelocationScheduler {
             .thenCompose(ignored -> source.freezeAndPrepare(cancellation))
             .thenCompose(ignored -> source.commitAuthority(cancellation))
             .thenCompose(published -> {
-                source.commitSourceQueue();
+                source.commitSourceQueue(
+                    published.targetOwnerGenerations());
                 committed.set(true);
                 return client.publish(
                         request.targetNodeRid(), request.fence(), timeout)

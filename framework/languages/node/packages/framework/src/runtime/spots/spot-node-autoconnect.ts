@@ -84,11 +84,12 @@ export function spotNodeAutoConnectCapability(
     hasRouteMeshServerChannel: Object.values(spotNode.meshChannels ?? {})
       .some((channel) => channel.server === true)
   };
+  const manualConnections = hasManualRouterConnections(spotNode);
   return {
     local,
     executor: new ZLinkSpotNodeAutoConnectExecutor(
       node,
-      hasManualRouterConnections(spotNode)
+      manualConnections
     )
   };
 }

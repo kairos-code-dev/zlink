@@ -1,6 +1,5 @@
 package systems.zlink.e2e.spotservice.shared;
 
-import systems.zlink.contracts.core.RoutingId;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest;
 import systems.zlink.framework.ZLinkMessageContext;
@@ -14,10 +13,16 @@ public final class EntryActorJoinHandler {
         Contracts.ActorJoinReq request) {
         actor.applyProfile(request.profile());
         spot.record("ActorJoinPayload", payloadEvidence(request));
-        return actor.context()
-            .joinSpot(RoutingId.from(request.spotRid()), request)
-            .submit(Contracts.ActorJoinRes.class)
-            .thenApply(response -> response.reply());
+        actor.context()
+            .joinSpot(request.spotRid(), request)
+            .defer();
+        return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.ActorJoinRes(
+            actor.actorId(),
+            request.spotRid(),
+            spot.nodeRid(),
+            request.profile().displayName(),
+            request.profile().level(),
+            request.tags()));
     }
 
     private static String payloadEvidence(Contracts.ActorJoinReq request) {

@@ -163,6 +163,7 @@ wait_port "$mission_a_channel"
 wait_port "$mission_b_channel"
 wait_http "$api_a_http"
 wait_http "$api_b_http"
+wait_framework_ready_logs "$LOG_DIR" 1
 
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"$LOG_DIR/client.log" 2>&1

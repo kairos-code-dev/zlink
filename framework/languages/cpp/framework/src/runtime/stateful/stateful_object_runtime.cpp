@@ -17,6 +17,8 @@ constexpr std::size_t max_creation_request_bytes = 1024u * 1024u;
 constexpr std::size_t max_restored_timers = 4096;
 constexpr std::size_t max_application_state_bytes =
   64u * 1024u * 1024u;
+constexpr std::size_t max_relocation_hold_records = 1024;
+constexpr std::size_t max_relocation_hold_bytes = 16u * 1024u * 1024u;
 
 std::uint64_t stable_hash (const std::string &value)
 {
@@ -38,13 +40,54 @@ bool stateful_object_runtime_t::object_key_t::operator< (
 
 stateful_object_runtime_t::stateful_object_runtime_t (
   std::size_t application_capacity,
-  std::size_t infrastructure_capacity) :
+  std::size_t infrastructure_capacity,
+  std::size_t application_byte_capacity,
+  std::size_t infrastructure_byte_capacity) :
     _application_capacity (application_capacity),
-    _infrastructure_capacity (infrastructure_capacity)
+    _infrastructure_capacity (infrastructure_capacity),
+    _application_byte_capacity (application_byte_capacity),
+    _infrastructure_byte_capacity (infrastructure_byte_capacity)
 {
-    if (_application_capacity == 0 || _infrastructure_capacity == 0) {
+    if (_application_capacity == 0 || _infrastructure_capacity == 0
+        || _application_byte_capacity == 0
+        || _infrastructure_byte_capacity == 0) {
         throw std::invalid_argument ("stateful turn capacity is zero");
     }
+}
+
+std::size_t stateful_object_runtime_t::retained_bytes (
+  const turn_record_t &record) noexcept
+{
+    constexpr auto fixed = dispatch_limits::fixed_work_byte_cost;
+    if (record.payload.size ()
+        > std::numeric_limits<std::size_t>::max () - fixed)
+        return std::numeric_limits<std::size_t>::max ();
+    return fixed + record.payload.size ();
+}
+
+void stateful_object_runtime_t::move_held_application_locked (
+  object_record_t &object)
+{
+    auto &queue = object.queue;
+    const auto held_records = queue.held_application.size ();
+    const auto held_bytes = queue.held_application_bytes;
+    while (!queue.held_application.empty ()) {
+        queue.application.push_back (
+          std::move (queue.held_application.front ()));
+        queue.held_application.pop_front ();
+    }
+    if (object.state == object_state_t::moving) {
+        const auto hold = _relocation_holds.find (object.barrier_generation);
+        if (hold != _relocation_holds.end ()) {
+            hold->second.record_count -=
+              std::min (hold->second.record_count,
+                        held_records);
+            hold->second.byte_count -=
+              std::min (hold->second.byte_count,
+                        held_bytes);
+        }
+    }
+    queue.held_application_bytes = 0;
 }
 
 void stateful_object_runtime_t::configure_relocation_state (
@@ -506,11 +549,7 @@ stateful_object_runtime_t::commit_membership_move (
         ++actor_record->reference.authority_owner_generation;
     }
     actor_record->state = object_state_t::ready;
-    while (!actor_record->queue.held_application.empty ()) {
-        actor_record->queue.application.push_back (
-          std::move (actor_record->queue.held_application.front ()));
-        actor_record->queue.held_application.pop_front ();
-    }
+    move_held_application_locked (*actor_record);
     const auto current = actor_record->reference;
     _membership_moves.erase (move);
     return {stateful_error_t::none, current};
@@ -533,12 +572,7 @@ stateful_error_t stateful_object_runtime_t::abort_membership_move (
     }
     actor_entry->second.membership = move->second.previous_membership;
     actor_entry->second.state = object_state_t::ready;
-    while (!actor_entry->second.queue.held_application.empty ()) {
-        actor_entry->second.queue.application.push_back (
-          std::move (
-            actor_entry->second.queue.held_application.front ()));
-        actor_entry->second.queue.held_application.pop_front ();
-    }
+    move_held_application_locked (actor_entry->second);
     _membership_moves.erase (move);
     return stateful_error_t::none;
 }
@@ -673,11 +707,7 @@ stateful_error_t stateful_object_runtime_t::abort_close_spot (
         || record->second.state != object_state_t::closing
         || record->second.barrier_generation != token.value)
         return stateful_error_t::generation_stale;
-    while (!record->second.queue.held_application.empty ()) {
-        record->second.queue.application.push_back (
-          std::move (record->second.queue.held_application.front ()));
-        record->second.queue.held_application.pop_front ();
-    }
+    move_held_application_locked (record->second);
     record->second.state = object_state_t::ready;
     record->second.barrier_generation = 0;
     _spot_closes.erase (closing);
@@ -695,33 +725,89 @@ stateful_error_t stateful_object_runtime_t::enqueue (
     if (object == nullptr) {
         return error;
     }
-    if (domain == turn_domain_t::application
-        && object->state == object_state_t::recovering
-        && _relocation_restore_reservations.contains (
-          key_for (owner))) {
+    return enqueue_locked (*object, domain, std::move (record));
+}
+
+stateful_error_t stateful_object_runtime_t::enqueue_locked (
+  object_record_t &object,
+  turn_domain_t domain,
+  turn_record_t record)
+{
+    auto &queue = object.queue;
+    const auto bytes = retained_bytes (record);
+    const auto application = domain == turn_domain_t::application;
+    const auto pending_count = application
+      ? queue.application.size () + queue.held_application.size ()
+      : queue.infrastructure.size ();
+    const auto active = application
+      ? queue.application_active
+      : queue.infrastructure_active;
+    const auto active_bytes = application
+      ? queue.application_active_bytes
+      : queue.infrastructure_active_bytes;
+    const auto pending_bytes = application
+      ? queue.application_bytes
+      : queue.infrastructure_bytes;
+    const auto count_capacity = application
+      ? _application_capacity
+      : _infrastructure_capacity;
+    const auto byte_capacity = application
+      ? _application_byte_capacity
+      : _infrastructure_byte_capacity;
+    const auto held = application
+      && (object.state == object_state_t::moving
+          || object.state == object_state_t::recovering
+          || object.state == object_state_t::closing);
+    const auto relocating = application
+      && object.state == object_state_t::moving
+      && _relocation_holds.contains (object.barrier_generation);
+    const auto active_count = active ? std::size_t{1} : std::size_t{0};
+    if (pending_count >= count_capacity - std::min (
+                                  count_capacity, active_count)
+        || bytes > byte_capacity
+        || pending_bytes > byte_capacity
+        || active_bytes > byte_capacity - pending_bytes
+        || bytes > byte_capacity - pending_bytes - active_bytes) {
         return stateful_error_t::backpressured;
     }
-    if ((object->state == object_state_t::moving
-         || object->state == object_state_t::recovering
-         || object->state == object_state_t::closing)
-        && domain == turn_domain_t::application) {
-        if (object->queue.held_application.size ()
-            >= _application_capacity) {
+    if (held
+        && (queue.held_application.size () >= max_relocation_hold_records
+            || bytes > max_relocation_hold_bytes
+            || queue.held_application_bytes
+                 > max_relocation_hold_bytes - bytes)) {
+        return stateful_error_t::backpressured;
+    }
+    std::map<std::uint64_t, relocation_hold_state_t>::iterator hold;
+    if (relocating) {
+        hold = _relocation_holds.find (object.barrier_generation);
+        if (hold->second.record_count >= max_relocation_hold_records
+            || bytes > max_relocation_hold_bytes
+            || hold->second.byte_count
+                 > max_relocation_hold_bytes - bytes) {
             return stateful_error_t::backpressured;
         }
-        object->queue.held_application.push_back (std::move (record));
+    }
+    if (application
+        && (object.state == object_state_t::moving
+            || object.state == object_state_t::recovering
+            || object.state == object_state_t::closing)) {
+        queue.held_application.push_back (std::move (record));
+        queue.application_bytes += bytes;
+        queue.held_application_bytes += bytes;
+        if (relocating) {
+            ++hold->second.record_count;
+            hold->second.byte_count += bytes;
+        }
         return stateful_error_t::none;
     }
-    auto &queue = domain == turn_domain_t::application
-                    ? object->queue.application
-                    : object->queue.infrastructure;
-    const auto capacity = domain == turn_domain_t::application
-                            ? _application_capacity
-                            : _infrastructure_capacity;
-    if (queue.size () >= capacity) {
-        return stateful_error_t::backpressured;
+    if (application) {
+        queue.application.push_back (std::move (record));
+        queue.application_bytes += bytes;
     }
-    queue.push_back (std::move (record));
+    else {
+        queue.infrastructure.push_back (std::move (record));
+        queue.infrastructure_bytes += bytes;
+    }
     return stateful_error_t::none;
 }
 
@@ -742,6 +828,8 @@ stateful_object_runtime_t::try_claim (
         auto continuation =
           std::move (*object->queue.yielded_continuation);
         object->queue.yielded_continuation.reset ();
+        object->queue.application_active_bytes =
+          retained_bytes (continuation);
         return {stateful_error_t::none, std::move (continuation)};
     }
     if ((object->state == object_state_t::moving
@@ -758,8 +846,17 @@ stateful_object_runtime_t::try_claim (
     if (active || queue.empty ()) {
         return {stateful_error_t::none, std::nullopt};
     }
+    const auto bytes = retained_bytes (queue.front ());
     auto record = std::move (queue.front ());
     queue.pop_front ();
+    if (domain == turn_domain_t::application) {
+        object->queue.application_bytes -= bytes;
+        object->queue.application_active_bytes = bytes;
+    }
+    else {
+        object->queue.infrastructure_bytes -= bytes;
+        object->queue.infrastructure_active_bytes = bytes;
+    }
     active = true;
     return {stateful_error_t::none, std::move (record)};
 }
@@ -781,6 +878,10 @@ stateful_error_t stateful_object_runtime_t::complete_claim (
         return stateful_error_t::conflict;
     }
     active = false;
+    if (domain == turn_domain_t::application)
+        object->queue.application_active_bytes = 0;
+    else
+        object->queue.infrastructure_active_bytes = 0;
     _quiescence.notify_all ();
     return stateful_error_t::none;
 }
@@ -802,6 +903,14 @@ stateful_error_t stateful_object_runtime_t::yield_claim (
     }
     if (object->queue.yielded_continuation)
         return stateful_error_t::conflict;
+    const auto bytes = retained_bytes (continuation);
+    if (object->queue.application_bytes > _application_byte_capacity
+        || bytes > _application_byte_capacity
+             - std::min (
+                 _application_byte_capacity,
+                 object->queue.application_bytes))
+        return stateful_error_t::backpressured;
+    object->queue.application_active_bytes = bytes;
     object->queue.yielded_continuation = std::move (continuation);
     _quiescence.notify_all ();
     return stateful_error_t::none;
@@ -821,6 +930,82 @@ std::size_t stateful_object_runtime_t::pending (
              ? object->queue.application.size ()
                  + object->queue.held_application.size ()
              : object->queue.infrastructure.size ();
+}
+
+std::size_t stateful_object_runtime_t::pending_bytes (
+  const object_ref_t &owner,
+  turn_domain_t domain) const
+{
+    std::lock_guard lock (_mutex);
+    stateful_error_t error = stateful_error_t::none;
+    const auto *object = find_record_locked (owner, error);
+    if (object == nullptr)
+        return 0;
+    return domain == turn_domain_t::application
+             ? object->queue.application_bytes
+             : object->queue.infrastructure_bytes;
+}
+
+stateful_error_t stateful_object_runtime_t::discard_application (
+  const object_ref_t &owner,
+  std::uint64_t sequence)
+{
+    std::lock_guard lock (_mutex);
+    stateful_error_t error = stateful_error_t::none;
+    auto *object = find_record_locked (owner, error);
+    if (object == nullptr)
+        return error;
+    const auto queued = std::find_if (
+      object->queue.application.begin (), object->queue.application.end (),
+      [sequence] (const turn_record_t &record) {
+          return record.sequence == sequence;
+      });
+    const auto held = std::find_if (
+      object->queue.held_application.begin (),
+      object->queue.held_application.end (),
+      [sequence] (const turn_record_t &record) {
+          return record.sequence == sequence;
+      });
+    if (queued == object->queue.application.end ()
+        && held == object->queue.held_application.end ())
+        return stateful_error_t::not_found;
+
+    const auto in_held = held != object->queue.held_application.end ();
+    const auto &record = in_held ? *held : *queued;
+    const auto bytes = retained_bytes (record);
+    if (in_held) {
+        if (bytes > object->queue.held_application_bytes
+            || bytes > object->queue.application_bytes)
+            return stateful_error_t::conflict;
+    } else if (bytes > object->queue.application_bytes) {
+        return stateful_error_t::conflict;
+    }
+    auto hold = _relocation_holds.end ();
+    if (in_held && object->state == object_state_t::moving
+        && object->barrier_generation != 0) {
+        hold = _relocation_holds.find (object->barrier_generation);
+        if (hold == _relocation_holds.end ()
+            || hold->second.record_count == 0
+            || hold->second.byte_count < bytes)
+            return stateful_error_t::conflict;
+    }
+    object->queue.application_bytes -= bytes;
+    if (in_held) {
+        object->queue.held_application_bytes -= bytes;
+        object->queue.held_application.erase (held);
+    } else {
+        object->queue.application.erase (queued);
+    }
+    if (hold != _relocation_holds.end ()) {
+        --hold->second.record_count;
+        hold->second.byte_count -= bytes;
+    }
+    if (!in_held) {
+        _quiescence.notify_all ();
+        return stateful_error_t::none;
+    }
+    _quiescence.notify_all ();
+    return stateful_error_t::none;
 }
 
 stateful_error_t stateful_object_runtime_t::register_timer (
@@ -888,15 +1073,13 @@ stateful_error_t stateful_object_runtime_t::enqueue_timer_tick (
     if (timer == object->timers.end ()) {
         return stateful_error_t::not_found;
     }
-    auto &queue = object->state == object_state_t::moving
-                    ? object->queue.held_application
-                    : object->queue.application;
-    if (queue.size () >= _application_capacity) {
-        return stateful_error_t::backpressured;
-    }
-    queue.push_back (
-      {timer->second.next_tick_sequence++, std::move (payload)});
-    return stateful_error_t::none;
+    const auto sequence = timer->second.next_tick_sequence;
+    const auto result = enqueue_locked (
+      *object, turn_domain_t::application,
+      {sequence, std::move (payload)});
+    if (result == stateful_error_t::none)
+        ++timer->second.next_tick_sequence;
+    return result;
 }
 
 std::vector<logical_timer_t> stateful_object_runtime_t::timers (
@@ -1009,68 +1192,78 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
     }
 
     const auto token = _next_relocation_token++;
-    std::vector<object_ref_t> sources;
-    sources.reserve (records.size ());
-    for (auto *object : records) {
-        object->state = object_state_t::moving;
-        object->barrier_generation = token;
-        sources.push_back (object->reference);
-    }
-    _quiescence.wait (lock, [&records] {
-        return std::all_of (
-          records.begin (), records.end (), [] (const auto *object) {
-              return !object->queue.application_active
-                     && !object->queue.infrastructure_active
-                     && !object->queue.yielded_continuation;
-          });
-    });
-
-    std::vector<frozen_object_state_t> frozen_participants;
-    frozen_participants.reserve (records.size ());
     try {
-      for (auto *object : records) {
-        frozen_object_state_t frozen{
-          .owner = object->reference,
-          .stable_type = object->stable_type,
-          .application_state = {},
-          .pending_application = {},
-          .timers = {}};
-        if ((object->reference.kind == object_kind_t::user_spot
-             || object->reference.kind == object_kind_t::instance_spot)
-            && _relocation_state_capture) {
-            frozen.application_state =
-              _relocation_state_capture (
-                object->reference, object->stable_type, cancellation);
-            if (frozen.application_state.size ()
-                > max_application_state_bytes) {
-                throw std::length_error (
-                  "Spot relocation state exceeds 64 MiB");
+        _relocation_holds.emplace (token, relocation_hold_state_t{});
+    }
+    catch (...) {
+        return {stateful_error_t::conflict, {}};
+    }
+    std::vector<object_ref_t> sources;
+    std::vector<frozen_object_state_t> frozen_participants;
+    try {
+        sources.reserve (records.size ());
+        for (auto *object : records) {
+            object->state = object_state_t::moving;
+            object->barrier_generation = token;
+            sources.push_back (object->reference);
+        }
+        _quiescence.wait (lock, [&records] {
+            return std::all_of (
+              records.begin (), records.end (), [] (const auto *object) {
+                  return !object->queue.application_active
+                         && !object->queue.infrastructure_active
+                         && !object->queue.yielded_continuation;
+              });
+        });
+
+        frozen_participants.reserve (records.size ());
+        for (auto *object : records) {
+            frozen_object_state_t frozen{
+              .owner = object->reference,
+              .stable_type = object->stable_type,
+              .application_state = {},
+              .pending_application = {},
+              .timers = {}};
+            if ((object->reference.kind == object_kind_t::user_spot
+                 || object->reference.kind == object_kind_t::instance_spot)
+                && _relocation_state_capture) {
+                frozen.application_state =
+                  _relocation_state_capture (
+                    object->reference, object->stable_type, cancellation);
+                if (frozen.application_state.size ()
+                    > max_application_state_bytes) {
+                    throw std::length_error (
+                      "Spot relocation state exceeds 64 MiB");
+                }
             }
+            frozen.timers.reserve (object->timers.size ());
+            for (const auto &[_, timer] : object->timers)
+                frozen.timers.push_back (timer);
+            frozen.pending_application.reserve (
+              object->queue.application.size ());
+            for (const auto &pending : object->queue.application)
+                frozen.pending_application.push_back (pending);
+            frozen_participants.push_back (std::move (frozen));
         }
-        frozen.pending_application.reserve (
-          object->queue.application.size ());
-        while (!object->queue.application.empty ()) {
-            frozen.pending_application.push_back (
-              std::move (object->queue.application.front ()));
-            object->queue.application.pop_front ();
-        }
-        frozen.timers.reserve (object->timers.size ());
-        for (const auto &[_, timer] : object->timers)
-            frozen.timers.push_back (timer);
-        frozen_participants.push_back (std::move (frozen));
-      }
+        _relocation_seals.emplace (
+          token,
+          relocation_seal_state_t{
+            keys, std::move (sources), frozen_participants});
     }
     catch (...) {
         for (auto *object : records) {
+            move_held_application_locked (*object);
             object->state = object_state_t::ready;
             object->barrier_generation = 0;
         }
+        _relocation_holds.erase (token);
         return {stateful_error_t::conflict, {}};
     }
-    _relocation_seals.emplace (
-      token,
-      relocation_seal_state_t{
-        keys, std::move (sources), frozen_participants});
+    for (auto *object : records) {
+        object->queue.application.clear ();
+        object->queue.application_bytes =
+          object->queue.held_application_bytes;
+    }
     return {
       stateful_error_t::none,
       aggregate_relocation_seal_t{
@@ -1097,16 +1290,15 @@ stateful_error_t stateful_object_runtime_t::abort_relocation (
     for (std::size_t index = 0; index != seal->second.keys.size (); ++index) {
         auto &record = _objects.find (seal->second.keys[index])->second;
         for (auto &pending :
-             seal->second.frozen[index].pending_application)
+             seal->second.frozen[index].pending_application) {
+            record.queue.application_bytes += retained_bytes (pending);
             record.queue.application.push_back (std::move (pending));
-        while (!record.queue.held_application.empty ()) {
-            record.queue.application.push_back (
-              std::move (record.queue.held_application.front ()));
-            record.queue.held_application.pop_front ();
         }
+        move_held_application_locked (record);
         record.state = object_state_t::ready;
         record.barrier_generation = 0;
     }
+    _relocation_holds.erase (token);
     _relocation_seals.erase (seal);
     return stateful_error_t::none;
 }
@@ -1154,17 +1346,16 @@ stateful_object_runtime_t::commit_relocation_aggregate (
         record.reference.node_id = target_node_id;
         ++record.reference.authority_owner_generation;
         for (auto &pending :
-             seal->second.frozen[index].pending_application)
+             seal->second.frozen[index].pending_application) {
+            record.queue.application_bytes += retained_bytes (pending);
             record.queue.application.push_back (std::move (pending));
-        while (!record.queue.held_application.empty ()) {
-            record.queue.application.push_back (
-              std::move (record.queue.held_application.front ()));
-            record.queue.held_application.pop_front ();
         }
+        move_held_application_locked (record);
         record.state = object_state_t::ready;
         record.barrier_generation = 0;
         result.push_back (record.reference);
     }
+    _relocation_holds.erase (token);
     _relocation_seals.erase (seal);
     return {stateful_error_t::none, std::move (result)};
 }
@@ -1193,10 +1384,17 @@ try
         return stateful_error_t::invalid;
     }
     std::uint64_t previous_sequence = 0;
+    std::size_t pending_bytes = 0;
     for (const auto &pending : frozen.pending_application) {
         if (pending.sequence == 0 || pending.sequence <= previous_sequence)
             return stateful_error_t::invalid;
         previous_sequence = pending.sequence;
+        const auto bytes = retained_bytes (pending);
+        if (bytes > _application_byte_capacity
+                       - std::min (
+                           _application_byte_capacity, pending_bytes))
+            return stateful_error_t::backpressured;
+        pending_bytes += bytes;
     }
     std::uint64_t previous_timer = 0;
     for (const auto &timer : frozen.timers) {
@@ -1258,8 +1456,10 @@ try
         record.stable_type = frozen.stable_type;
         record.state = object_state_t::recovering;
         record.restore_identity = identity;
-        for (const auto &pending : frozen.pending_application)
+        for (const auto &pending : frozen.pending_application) {
+            record.queue.application_bytes += retained_bytes (pending);
             record.queue.application.push_back (pending);
+        }
         for (const auto &timer : frozen.timers)
             record.timers.emplace (timer.timer_id, timer);
         auto next_objects = _objects;
@@ -1324,11 +1524,7 @@ stateful_error_t stateful_object_runtime_t::commit_relocation_restore (
              != std::optional<relocation_restore_identity_t>{
                identity})
         return stateful_error_t::conflict;
-    while (!record->queue.held_application.empty ()) {
-        record->queue.application.push_back (
-          std::move (record->queue.held_application.front ()));
-        record->queue.held_application.pop_front ();
-    }
+    move_held_application_locked (*record);
     record->state = object_state_t::ready;
     record->restore_identity.reset ();
     _quiescence.notify_all ();
@@ -1358,11 +1554,7 @@ stateful_object_runtime_t::commit_relocation_restore_aggregate (
         records.push_back (record);
     }
     for (auto *record : records) {
-        while (!record->queue.held_application.empty ()) {
-            record->queue.application.push_back (
-              std::move (record->queue.held_application.front ()));
-            record->queue.held_application.pop_front ();
-        }
+        move_held_application_locked (*record);
         record->state = object_state_t::ready;
         record->restore_identity.reset ();
     }
@@ -1473,12 +1665,20 @@ try
             return stateful_error_t::invalid;
         }
         std::uint64_t previous_sequence = 0;
+        std::size_t pending_bytes = 0;
         for (const auto &pending : source.pending_application) {
             if (pending.sequence == 0
                 || pending.sequence <= previous_sequence) {
                 return stateful_error_t::invalid;
             }
             previous_sequence = pending.sequence;
+            const auto bytes = retained_bytes (pending);
+            if (bytes > _application_byte_capacity
+                             - std::min (
+                                 _application_byte_capacity,
+                                 pending_bytes))
+                return stateful_error_t::backpressured;
+            pending_bytes += bytes;
         }
         std::uint64_t previous_timer = 0;
         for (const auto &timer : source.timers) {
@@ -1598,6 +1798,7 @@ try
                 record.membership = *user_spot_key;
             for (const auto &pending :
                  frozen[index].pending_application) {
+                record.queue.application_bytes += retained_bytes (pending);
                 record.queue.application.push_back (pending);
             }
             for (const auto &timer : frozen[index].timers)

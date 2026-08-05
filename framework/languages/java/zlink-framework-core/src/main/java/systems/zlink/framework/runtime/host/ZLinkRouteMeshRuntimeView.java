@@ -25,6 +25,10 @@ import systems.zlink.framework.monitoring.ZLinkPlacementSnapshot;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkTopologyReason;
 import systems.zlink.framework.monitoring.ZLinkTopologyState;
+import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
@@ -36,7 +40,8 @@ import systems.zlink.framework.runtime.internal.monitoring.ZLinkStatusPublisher;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.core.RoutingId;
 
-final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime, AutoCloseable {
+final class ZLinkRouteMeshRuntimeView
+    implements ZLinkRouteMeshRuntime, ZLinkRouteMeshRuntimeOptions, AutoCloseable {
     private static final long MONITOR_IDLE_NANOS = 10_000_000L;
     private final ZLinkFrameworkRuntime runtime;
     private final AtomicLong sequence = new AtomicLong();
@@ -178,6 +183,32 @@ final class ZLinkRouteMeshRuntimeView implements ZLinkRouteMeshRuntime, AutoClos
     @Override
     public boolean isReady(String meshName) {
         return snapshot(meshName).isReady();
+    }
+
+    @Override
+    public ZLinkMeshNodeRuntimeOptions meshNode(String meshName) {
+        return options().meshNode(meshName);
+    }
+
+    @Override
+    public ZLinkMeshChannelRuntimeOptions channel(
+        String meshName,
+        String channelName) {
+        return options().channel(meshName, channelName);
+    }
+
+    @Override
+    public ZLinkMeshPlacementRuntimeOptions mesh(String meshName) {
+        return options().mesh(meshName);
+    }
+
+    @Override
+    public ZLinkMeshChannelRuntimeOptions channel(String channelName) {
+        return options().channel(channelName);
+    }
+
+    private ZLinkRouteMeshRuntimeOptions options() {
+        return runtime.routeMeshRuntimeOptionsInternal();
     }
 
     void signalAll() {

@@ -115,8 +115,8 @@ candidate_actor_ref (zlink::framework::actor_directory_t &directory,
         co_return *located;
     }
     co_return zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string (configuration.actor_rid),
-      e2e::actor_type_name, actor_id, 1);
+      zlink::framework::actor_id_t (actor_id), 1, e2e::spot_mesh_name,
+      zlink::framework::node_rid_t::from_string (configuration.actor_rid));
 }
 
 class send_handler_t

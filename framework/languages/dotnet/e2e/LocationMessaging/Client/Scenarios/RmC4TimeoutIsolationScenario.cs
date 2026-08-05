@@ -1,6 +1,7 @@
 // Verifies RM-C4 Timeout Isolation behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Scenarios;
@@ -18,8 +19,8 @@ internal static class RmC4TimeoutIsolationScenario
             .Body(new ProfileReq("slow"))
             .Async<ExpectedFailureRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            timeout.ErrorKind == nameof(TimeoutException),
-            "RM-C4 expected TimeoutException.");
+            timeout.ErrorKind == nameof(ZLinkFrameworkErrorKind.DeadlineExceeded),
+            "RM-C4 expected DeadlineExceeded.");
 
         var immediate = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c4-after-timeout"))

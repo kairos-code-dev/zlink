@@ -205,6 +205,9 @@ class authority_relocation_port_t
 struct aggregate_relocation_fence_t
 {
     std::uint64_t value = 0;
+    // The public port keeps the durable Store identity with the opaque
+    // process-facing value so commit and abort can resume after restart.
+    aggregate_fence_t durable_fence;
 };
 
 enum class aggregate_publish_status_t
@@ -270,6 +273,10 @@ struct eligible_relocation_unit_t
           const std::vector<protocol::relocation_data_t> &,
           const relocation_stored_t &)> prepare_target;
         std::function<void (std::uint64_t, std::uint64_t)> acknowledged;
+        std::function<void (
+          std::uint64_t,
+          const std::vector<protocol::relocation_data_t> &,
+          std::uint64_t)> acknowledged_records;
         std::function<bool (
           std::uint64_t,
           std::uint64_t,

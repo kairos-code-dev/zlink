@@ -214,6 +214,7 @@ final class RouteSpotSendCall
                 return CompletableFuture.<Void>completedFuture(null);
             }
             RuntimeException error = SpotCallAddresses.unwrap(failure);
+            invalidateStaleRoute(error);
             return shouldReactivate(address, error, activation)
                 .thenCompose(reactivate -> reactivate
                     ? activation.send(
@@ -221,6 +222,12 @@ final class RouteSpotSendCall
                         packetName, contentType, metadata.values())
                     : CompletableFuture.<Void>failedFuture(error));
         }).thenCompose(java.util.function.Function.identity());
+    }
+
+    private void invalidateStaleRoute(RuntimeException failure) {
+        if (resolver != null && SpotCallAddresses.isStaleRoute(failure)) {
+            resolver.invalidate(target);
+        }
     }
 
     private CompletionStage<Boolean> shouldReactivate(
@@ -400,11 +407,18 @@ final class RouteSpotRequestCall
                 return CompletableFuture.completedFuture(reply);
             }
             RuntimeException error = SpotCallAddresses.unwrap(failure);
+            invalidateStaleRoute(error);
             return shouldReactivate(address, error, activation)
                 .thenCompose(reactivate -> reactivate
                     ? activateRequest(activation, replyType)
                     : CompletableFuture.<TReply>failedFuture(error));
         }).thenCompose(java.util.function.Function.identity());
+    }
+
+    private void invalidateStaleRoute(RuntimeException failure) {
+        if (resolver != null && SpotCallAddresses.isStaleRoute(failure)) {
+            resolver.invalidate(target);
+        }
     }
 
     private CompletionStage<Boolean> shouldReactivate(

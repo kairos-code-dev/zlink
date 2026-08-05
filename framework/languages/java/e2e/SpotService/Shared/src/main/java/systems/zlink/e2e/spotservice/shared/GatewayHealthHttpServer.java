@@ -7,7 +7,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.springframework.context.SmartLifecycle;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
@@ -35,8 +34,10 @@ public final class GatewayHealthHttpServer implements SmartLifecycle {
             return;
         }
         try {
-            spots.create(GatewayOperationSpot.class, RoutingId.from(
+            spots.create("gateway-operation")
+                .request(new Contracts.CreateSpotReq(
                     "gateway-operations-" + UUID.randomUUID().toString().replace("-", "")))
+                .submit()
                 .toCompletableFuture().join();
             GatewayOperationSpot operations = GatewayOperationSpot.awaitReady();
             URI uri = URI.create(endpoint);

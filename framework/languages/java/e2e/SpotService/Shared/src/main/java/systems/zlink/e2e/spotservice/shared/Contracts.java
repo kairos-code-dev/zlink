@@ -66,6 +66,18 @@ public final class Contracts {
         String state) {
     }
 
+    public record PlacementWeightReq(int weight) {
+    }
+
+    public record PlacementWeightRes(int weight) {
+    }
+
+    public record RelocationReq() {
+    }
+
+    public record RelocationRes(String outcome, String reason) {
+    }
+
     public record SpotStateRouteReq(
         String spotRid,
         String op,

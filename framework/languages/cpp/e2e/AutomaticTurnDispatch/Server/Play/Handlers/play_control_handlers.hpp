@@ -116,11 +116,11 @@ class bind_await_actors_handler_t
             auto actor_ref = joined_accepted->actor;
             _evidence.add ("bind-actor|rid=" + _evidence.node_rid + "|spot="
                            + request.spot_id + "|actor=" + actor_id + "|generation="
-                           + std::to_string (actor_ref.generation ()));
+                           + std::to_string (actor_ref.object_generation ()));
             reply.actors.push_back (
               {.actor_id = actor_id,
                .node_rid = std::string (actor_ref.node_rid ().value ()),
-               .generation = actor_ref.generation ()});
+               .generation = actor_ref.object_generation ()});
         }
         return reply;
     }

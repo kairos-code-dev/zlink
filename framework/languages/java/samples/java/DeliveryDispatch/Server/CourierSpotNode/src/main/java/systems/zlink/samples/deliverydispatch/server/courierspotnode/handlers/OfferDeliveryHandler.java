@@ -25,10 +25,10 @@ public final class OfferDeliveryHandler
 
     @Override
     public CompletionStage<Void> handle(CourierEntrySpot spot, Messages.OfferDeliveryMsg message) {
-        return actors.find(message.courierId()).thenAccept(found -> {
+        return actors.find(message.courierId()).thenCompose(found -> {
             var actorRef = found.orElseThrow(() -> new IllegalStateException(
                 "Courier actor is not bound: " + message.courierId()));
-            actorClient.sendToActor(actorRef.actorId(), message).submit();
+            return actorClient.sendToActor(actorRef.actorId(), message).submit();
         });
     }
 }

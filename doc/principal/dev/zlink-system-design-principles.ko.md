@@ -1,39 +1,34 @@
 # ZLink 시스템 개발 원칙
 
-> [POSDDD](./posddd.ko.md)의 범용 설계 원칙을
-> ZLink 코어·바인딩, 그리고 ZLink 위에서 만드는 애플리케이션에 적용하는 규칙.
-> 범용 원칙과 충돌하지 않는다 — 여기서는 ZLink 고유의 적용 방식, 개념·계약 어휘, 시스템
-> 소프트웨어에만 해당하는 규칙만 다룬다.
+> ZLink 프로젝트 전체 — 코어·바인딩, 그리고 ZLink 위에서 만드는 애플리케이션 — 가 공통으로
+> 따르는 고유 개발 원칙. [POSDDD](./posddd.ko.md)와 충돌하지 않고 그 위에 선다 — 여기서는
+> POSDDD가 다루지 않는 ZLink 고유의 구조적 사실, 도메인 어휘, 계약, 팀 정책만 다룬다.
 >
 > 공개 계약의 언어 간 정렬(parity) 정책은 `AGENTS.md`의 "Framework public contract parity"가
 > 정본이다. 여기서는 그 정책을 설계 원칙 관점에서 어떻게 지키는지만 다룬다 — 정책 자체가
 > 바뀌면 `AGENTS.md`를 고친다.
 >
 > **독자**: ZLink 코어·바인딩을 만들거나, ZLink 위에서 애플리케이션을 만드는 개발자다.
-> "이 상황에 범용 설계 원칙을 ZLink에서는 구체적으로 어떻게 적용하는가"라는 질문에
-> 대한 답을 찾는다.
+> "ZLink에서는 무엇이 사실이고, 무엇이 정책인가"라는 질문에 대한 답을 찾는다.
 
 이 문서는 다음 부분으로 나뉜다.
 
-- **원칙의 ZLink 적용** — 범용 원칙(특히 아키텍처 선택)을 ZLink 코어와 ZLink 기반
-  애플리케이션 각각에 어떻게 적용하는지.
-- **ZLink 고유 개념과 계약** — RoutingId·handle·public contract처럼 이 코드베이스에서만
+- **아키텍처 구조** — 코어·바인딩·프레임워크의 레이어드 구조와, ZLink 기반 애플리케이션의
+  헥사고날 구조.
+- **도메인 어휘와 공개 계약** — RoutingId·handle·public contract처럼 이 코드베이스에서만
   쓰이는 어휘와, 그 어휘가 지켜야 하는 계약.
-- **시스템 소프트웨어 전용 규칙** — 헤더/구현 분리처럼 시스템 소프트웨어에만 해당하는 구체
-  규칙.
+- **코드·테스트 규칙** — 주석 배치, 테스트 커버리지, 리팩토링·회귀 테스트처럼 시스템
+  소프트웨어 개발에 구체적으로 적용되는 규칙.
 
 ---
 
-# 1부 — 원칙의 ZLink 적용
+# 1부 — 아키텍처 구조
 
-## 아키텍처 선택 적용
+## 코어·바인딩·프레임워크: 레이어드 + public contract/runtime 분리
 
-범용 문서 2부는 헥사고날과 레이어드+public contract/runtime 분리를 "선택지"로 설명한다.
-ZLink 생태계에서는 대상에 따라 아래처럼 확정한다.
-
-**ZLink 코어·바인딩 자체 (시스템 소프트웨어) → 레이어드 + public contract/runtime 분리.**
 공개 계약은 언어를 넘나들며 오래 안정적으로 유지해야 하고, transport·codec·platform 세부는
-자유롭게 바꿀 수 있어야 한다.
+자유롭게 바꿀 수 있어야 한다. 그래서 ZLink 코어·바인딩 자체는 레이어드 + public
+contract/runtime 분리를 쓴다.
 
 ```text
 +--------------------------------+
@@ -52,8 +47,8 @@ ZLink 생태계에서는 대상에 따라 아래처럼 확정한다.
 +--------------------------------+
 ```
 
-이 분리는 core 하나로 끝나지 않는다. core·bindings·framework 세 경계가 같은 패턴을
-독립적으로 반복한다 — 각 layer는 아래 layer의 **배포된 공개 표면**만 알고, 아래 layer의
+이 분리는 core 하나로 끝나지 않는다 — core·bindings·framework 세 경계가 같은 패턴을
+독립적으로 반복한다. 각 layer는 아래 layer의 **배포된 공개 표면**만 알고, 아래 layer의
 runtime 내부는 모른다.
 
 ```text
@@ -81,14 +76,18 @@ runtime 내부는 모른다.
 - **core**: `core/include/`(공개 헤더, `zlink.h`가 단일 기준)가 public contract이고
   `core/src/`가 runtime이다. `core/src/`를 직접 포함하는 코드는 core 밖에 없다.
 - **bindings/&lt;lang&gt;**: core의 공개 헤더와 빌드된 공유 라이브러리(패키지로 배포된 것)에만
-  의존한다. 바인딩 자신도 내부적으로 공개 표면(Contracts)과 구현(Runtime)을 나눈다 — .NET
-  바인딩의 분리가 다른 언어 바인딩이 수렴해야 할 기준이다.
+  의존한다. 바인딩 자신도 내부적으로 공개 표면(Contracts)과 구현(Runtime)을 나눈다 — 이
+  폴더 구조 정렬의 기준은 `.NET` 바인딩의 `Contracts`/`Runtime` 분리다
+  (`bindings/doc/spec/README.ko.md`). core의 실제 동작 기준(reference implementation)은
+  core(C/C++) 자신이며, `.NET`이 대체하는 것이 아니다.
 - **framework/languages/&lt;lang&gt;**: 바인딩의 소스가 아니라 배포된 패키지(NuGet
   `Systems.Zlink`, npm `@zlink-systems/zlink`, Maven `systems.zlink:zlink`)에 의존한다.
   바인딩 내부 구현을 참조하는 framework 코드는 없다.
 
-**ZLink를 사용해 만드는 애플리케이션(샘플, 게임 서버 등) → 헥사고날.** 업무 규칙과 use case가
-ZLink·Redis·HTTP 같은 구체 기술보다 오래 살아야 하기 때문이다.
+## ZLink 기반 애플리케이션: 헥사고날
+
+ZLink를 사용해 만드는 애플리케이션(샘플, 게임 서버 등)은 헥사고날을 쓴다. 업무 규칙과 use
+case가 ZLink·Redis·HTTP 같은 구체 기술보다 오래 살아야 하기 때문이다.
 
 샘플 자체의 로직은 단순해서 헥사고날 없이도 충분히 동작한다. 그런데도 샘플에 이 구조를
 쓰는 이유는, 샘플이 보여줘야 하는 것이 "ZLink API를 어떻게 부르는가"만이 아니기 때문이다.
@@ -143,57 +142,24 @@ Redis·파일·HTTP처럼 특정 외부 기술 구현은 `Infrastructure/Redis/`
 두 구조 모두 port와 adapter가 요청을 전달만 한다면 얕은 계층이다. 없애거나, 외부 기술의
 세부를 숨기고 application이 쓰기 쉬운 깊은 인터페이스로 책임을 키운다.
 
-## 정보 은닉 적용
-
-시스템 소프트웨어에서 public contract에는 ownership·lifecycle·timeout·cancellation·error
-contract처럼 호출자가 알아야 하는 의미만 둔다. runtime 자료구조·queue 구현·transport
-wiring·codec 세부는 계약에 새지 않게 숨긴다. 레이어드 구조에서도 각 계층은 서로 다른
-추상화를 제공해야 한다. public API와 runtime boundary가 같은 이름·같은 동작을 그대로
-전달만 한다면, 둘 중 하나는 불필요하거나 책임이 잘못 나뉜 것이다.
-
 ---
 
-# 2부 — ZLink 고유 개념과 계약
+# 2부 — 도메인 어휘와 공개 계약
 
 ## 시스템 소프트웨어의 도메인
 
 엔터프라이즈 소프트웨어의 도메인이 주문·결제·고객 같은 업무 개념이라면, ZLink 코어의 도메인은
-context·handle·socket·message·buffer·ownership·lifecycle·timeout·error code처럼 사용자가
-정확히 이해해야 하는 시스템 개념이다.
+context·handle·socket·message·buffer·ownership·lifecycle·timeout·cancellation·error code처럼
+사용자가 정확히 이해해야 하는 시스템 개념이다. public contract에는 호출자가 알아야 하는 이
+개념들의 의미만 둔다 — runtime 자료구조, queue 구현, transport wiring, codec 세부는 계약에
+새지 않게 숨긴다. public API와 runtime boundary가 같은 이름·같은 동작을 그대로 전달만
+한다면, 둘 중 하나는 불필요하거나 책임이 잘못 나뉜 것이다.
 
-## 시스템 이벤트 스토밍 어휘
+## 공개 API 설계 체크리스트
 
-이벤트 스토밍(범용 원칙 문서의 "두 번 설계하기" 참고)은 인터페이스를 스케치하기
-전에 "무슨 일이 일어나는가"를 사건으로 먼저 적는 발견 기법이다. ZLink 코어·바인딩에
-새 기능을 설계할 때는 업무 사건 대신 상태 전이·계약 사건을 먼저 적는다. 아래는 사건
-이름을 짓는 방식을 보여주는 예시이지, 지금 존재하는 API 목록이 아니다 — 실제 이름과
-existence 여부는 공개 헤더·spec을 기준으로 확인한다.
-
-예: `HandleCreated`, `BufferMoved`, `SocketBound`, `PeerDisconnected`, `ReadTimedOut`,
-`ResourceClosed`, `MessageMoved`.
-
-command는 API 호출이나 내부 runtime 요청이 된다. 예: `CreateHandle`, `SendMessage`,
-`PollReadable`, `CloseResource`. 이 호출이 어떤 사건을 만들고 어떤 오류 계약을 갖는지 적는다.
-
-entity와 aggregate(식별자로 판단하는 개체, 불변 조건을 함께 지키는 경계 — 범용 원칙
-문서의 "정보 은닉"·"코드 명확성" 참고) 후보는 business object가 아니라 handle·message
-buffer·identifier·socket endpoint·descriptor처럼 public contract에서 생명주기나
-소유권을 갖는 개념이다.
-
-## bounded context 적용
-
-bounded context(같은 단어가 같은 모델을 가리키는 경계 — 범용 원칙 문서의 "정보 은닉"
-참고)로 보면, runtime·transport·codec·storage·binding은 서로 다른 bounded context가
-**될 수 있는** 후보다 — 계층으로 나뉘어 있다는 사실만으로 자동 성립하지는 않는다. 판단
-기준은 `timeout`·`cancellation`·`backpressure`·`ownership` 같은 단어가 그 경계를 넘을 때
-**의미가 실제로 달라지는가**다. 예를 들어 transport 계층의 timeout(연결 타임아웃)과 API
-계층의 timeout(호출 타임아웃)이 다른 의미라면 경계를 명확히 하고, 같은 의미라면 억지로
-나누지 않는다.
-
-## 비즈니스 DDD 용어를 그대로 가져오지 않기
-
-`ContextAggregate`, `SocketRepository`, `MessageDomainService` 같은 이름은 호출자에게 도움이
-안 되면 피한다. 대신 아래를 분명히 한다.
+새 공개 API나 계약을 설계할 때는 아래를 먼저 분명히 한다. (`ContextAggregate`,
+`SocketRepository`, `MessageDomainService`처럼 업무 DDD 이름을 그대로 옮겨 붙이는 대신,
+아래 질문에 먼저 답한다.)
 
 - 어떤 객체가 생명주기를 소유하는가?
 - 누가 메모리와 핸들을 해제하는가?
@@ -254,8 +220,8 @@ command는 `zlink_close(handle)` 호출 자체이고, actor는 그 핸들을 쓰
 지켜주는 계약이다. 반면 context는 `zlink_ctx_term()` 이후 그 핸들을 다시 쓰는 것 자체가
 금지되고, 어기면 정의되지 않은 동작이다 — 걸러주는 런타임이 없는, 호출자가 스스로
 지켜야 하는 계약이다. 같은 단어 "종료"가 socket 계층과 context 계층에서 계약 강도가
-다르다는 사실이, 위 "bounded context 적용"에서 말한 "경계를 넘을 때 의미가 실제로
-달라지는가"의 실제 사례다.
+다르다는 사실은, bounded context — 같은 단어가 경계를 넘을 때 의미가 실제로 달라지는가 —
+를 판단하는 실제 사례다.
 
 **이름 일관성.** `ZLINK_CLOSE_BUSY`·`ZLINK_CLOSE_SHUTDOWN`·`ZLINK_CLOSE_INVALID_HANDLE`은
 `zlink_close`뿐 아니라 `zlink_ctx_term`·`zlink_ctx_shutdown`도 함께 쓰는 같은
@@ -264,21 +230,17 @@ command는 `zlink_close(handle)` 호출 자체이고, actor는 그 핸들을 쓰
 
 ---
 
-# 3부 — 시스템 소프트웨어 전용 규칙
+# 3부 — 코드·테스트 규칙
 
-## 주석 배치: 헤더/선언부 대 구현부
+## 주석 배치: 공개 계약 대 구현 이유
 
-범용 문서는 "인터페이스 계약 주석은 인터페이스가 선언되는 자리에 둔다"고만 말한다. ZLink는
-선언과 구현이 파일로 분리된 C/C++ 코어와, 언어별 바인딩을 함께 다루므로 이렇게 구체화한다.
-
-- **공개 API 계약**(시그니처 의미, 소유권, 오류 조건, timeout/cancellation 의미, 단위, null
-  의미)은 **헤더(`.h`/`.hpp`) — 또는 해당 언어의 공개 선언부(IDL, `.d.ts`, 인터페이스 파일
-  등)**에 둔다. 헤더/선언부만 보는 바인딩 개발자·소비자가 계약을 볼 수 있어야 한다.
-- **구현의 이유**(왜 이렇게 짰는지, 비자명한 트레이드오프, 특정 버그의 우회)는 `.c`/`.cpp`
-  코드 옆에 둔다. 구현을 고치는 개발자가 맥락을 잃지 않게 하기 위함이다.
-- **장기적인 아키텍처 결정**(왜 이 설계를 골랐는지, 어떤 대안을 버렸는지)은 ADR이나 설계
-  문서에 남기고, 헤더/구현부에서는 그 문서를 참조한다.
-- 하위 단계 설명 주석은 메서드 맨 위가 아니라 각 하위 단계 바로 위에 둔다 (범용 원칙과 동일).
+공개 API 주석·내부 주석의 형식과 기준은
+[`source-comment-principles.ko.md`](../source-comment-principles.ko.md)가 정본이다. ZLink는
+선언과 구현이 파일로 분리된 C/C++ 코어와 언어별 바인딩을 함께 다루므로 그 문서의 규칙이
+그대로 적용된다 — 공개 계약(소유권, 오류 조건, timeout/cancellation 의미, 단위, null 의미)은
+헤더(`.h`/`.hpp`) 또는 해당 언어의 공개 선언부(IDL, `.d.ts`, 인터페이스 파일 등)에, 구현의
+이유(왜 이렇게 짰는지, 비자명한 트레이드오프, 특정 버그의 우회)는 `.c`/`.cpp` 코드 옆에 둔다.
+장기적인 아키텍처 결정은 ADR이나 설계 문서에 남기고, 헤더/구현부에서는 그 문서를 참조한다.
 
 ## 테스트 커버리지 기준
 
@@ -296,6 +258,28 @@ ZLink의 기본 목표 커버리지는 **라인 커버리지 80%**다. 이 숫�
 분명한 계약 테스트를 우선한다. 목표는 모듈의 보장을 지키면서도 구현은 쉽게 리팩토링할 수
 있게 두는 것이다.
 
+## 리팩토링과 회귀 테스트
+
+ZLink는 [POSDDD](./posddd.ko.md) 기준 리팩토링을 수시로 한다 — 별도 일정을 잡아 큰 정리로
+미뤄두지 않는다.
+
+**언제, 어떻게 하는가.** 절차는 기계적이다: 관련 기능 개발이 회귀 테스트까지 통과하면,
+그 자리에서 바로 그 변경 범위를 [POSDDD](./posddd.ko.md)의 위험 신호 체크리스트(정보 누출,
+temporal decomposition, 얕은 모듈 등 17개 항목)로 훑는다. 해당하는 냄새가 하나라도 걸리면
+"나중에 정리하자"로 미루지 않고 그 자리에서 바로 리팩토링을 실행한다. 회귀 테스트가 초록인
+상태가 구조를 안전하게 바꿀 수 있는 시점이기 때문이다 — 통과를 확인하지 않은 채로 구조부터
+바꾸면 기능 결함과 리팩토링 결함이 뒤섞여 원인을 가리기 어렵다.
+
+이 검토는 코어·바인딩·프레임워크 각 경계를 독립적으로 대상으로 삼는다 — 한 경계의
+리팩토링이 다른 경계의 public contract를 건드리지 않아야 하기 때문이다(위
+"코어·바인딩·프레임워크" 절 참고).
+
+**회귀 테스트는 선택이 아니다.** 리팩토링이든 일반 기능 변경이든, 커밋 전에 관련 회귀
+테스트를 항상 실행하고 통과를 확인한다. 공개 계약을 건드리는 변경은 계약 테스트(공개 API
+동작·오류 코드·언어 간 parity)를, 내부 구조만 바꾸는 변경은 기존 스위트 전체를 최소
+기준으로 삼는다. 테스트로 확인하지 않은 리팩토링은 "더 나아 보이는 코드"이지 "검증된
+개선"이 아니다.
+
 ## ZLink 전용 위험 신호 체크리스트
 
 범용 문서의 17개 체크리스트에 더해 아래를 확인한다.
@@ -310,5 +294,5 @@ ZLink의 기본 목표 커버리지는 **라인 커버리지 80%**다. 이 숫�
 
 ---
 
-> 이 문서는 범용 원칙의 대체물이 아니라 적용 계층이다. 여기 없는 판단은
-> [POSDDD](./posddd.ko.md)를 따른다.
+> 이 문서에 없는 판단은 [POSDDD](./posddd.ko.md)를 따른다 — 이 문서가 다루는 것은 POSDDD가
+> 다루지 않는 ZLink 고유의 사실과 정책이다.

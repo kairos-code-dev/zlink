@@ -9,8 +9,28 @@ const controllers = new WeakMap<object, RuntimeEndpointConnections>();
 
 class RuntimeEndpointConnections implements ZLinkEndpointConnections {
   private socket?: ConnectableEndpointSocket;
+  private readonly endpoints: string[];
 
-  constructor(private readonly endpoints: string[]) {}
+  constructor(endpoints: readonly string[]) {
+    if (Array.isArray(endpoints) && Object.isExtensible(endpoints)) {
+      // Builder registration and the public handle must observe one mutable
+      // endpoint set. A frozen, sealed or external readonly array uses a
+      // private snapshot because it cannot safely be updated in place.
+      this.endpoints = endpoints as string[];
+      for (let index = this.endpoints.length - 1; index >= 0; index -= 1) {
+        if (this.endpoints.indexOf(this.endpoints[index]) !== index) {
+          this.endpoints.splice(index, 1);
+        }
+      }
+    } else {
+      this.endpoints = [];
+      for (const endpoint of endpoints) {
+        if (!this.endpoints.includes(endpoint)) {
+          this.endpoints.push(endpoint);
+        }
+      }
+    }
+  }
 
   connect(endpoint: string): void {
     if (!this.endpoints.includes(endpoint)) {
@@ -34,9 +54,13 @@ class RuntimeEndpointConnections implements ZLinkEndpointConnections {
   attach(socket: ConnectableEndpointSocket): void {
     this.socket = socket;
   }
+
+  detach(): void {
+    this.socket = undefined;
+  }
 }
 
-export function endpointConnections(owner: object, endpoints: string[]): ZLinkEndpointConnections {
+export function endpointConnections(owner: object, endpoints: readonly string[]): ZLinkEndpointConnections {
   let controller = controllers.get(owner);
   if (controller === undefined) {
     controller = new RuntimeEndpointConnections(endpoints);
@@ -48,4 +72,8 @@ export function endpointConnections(owner: object, endpoints: string[]): ZLinkEn
 export function attachEndpointConnections(owner: object, socket: ConnectableEndpointSocket): void {
   const controller = controllers.get(owner);
   controller?.attach(socket);
+}
+
+export function detachEndpointConnections(owner: object): void {
+  controllers.get(owner)?.detach();
 }

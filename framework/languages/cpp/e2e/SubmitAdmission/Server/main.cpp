@@ -471,7 +471,7 @@ class admission_actor_t : public zlink::framework::actor_t
   public:
     explicit admission_actor_t (
       zlink::framework::actor_context_t context) :
-        _actor_id (context.actor_ref ().actor_id ()),
+        _actor_id (context.actor_ref ().actor_id ().value ()),
         _context (std::move (context))
     {
     }
@@ -593,9 +593,9 @@ class ensure_actor_handler_t
           .defer ();
         const auto &ref = bound.value ().ref ();
         return {.operation_id = request.operation_id,
-                .actor_id = std::string (ref.actor_id ()),
+                .actor_id = std::string (ref.actor_id ().value ()),
                 .node_rid = std::string (ref.node_rid ().value ()),
-                .generation = ref.generation ()};
+                .generation = ref.object_generation ()};
     }
 
   private:
@@ -679,16 +679,17 @@ class submit_admission_stream_session_t final :
         if (packet_name == "admission-bind-actor") {
             const auto target = payload.parse_json<sa::actor_target_t> ();
             zlink::framework::actor_ref_t ref (
-              zlink::framework::node_rid_t::from_string (target.node_rid),
-              admission_actor_type, target.actor_id, target.generation);
+              zlink::framework::actor_id_t (target.actor_id), target.generation,
+              sa::mesh_name,
+              zlink::framework::node_rid_t::from_string (target.node_rid));
             auto bound = co_await _actors.bind_or_get (std::move (ref)).submit ();
             const auto &bound_ref = bound.ref ();
             stream
               .reply_packet (zlink::message_t::from_json (sa::actor_target_t{
                 .operation_id = target.operation_id,
-                .actor_id = std::string (bound_ref.actor_id ()),
+                .actor_id = std::string (bound_ref.actor_id ().value ()),
                 .node_rid = std::string (bound_ref.node_rid ().value ()),
-                .generation = bound_ref.generation ()}))
+                .generation = bound_ref.object_generation ()}))
               .submit ();
             co_return;
         }

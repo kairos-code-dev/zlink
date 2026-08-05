@@ -87,8 +87,26 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
         Staged staged,
         byte[] finalRoot,
         ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer) {
+        return publishAndReplayHidden(
+            staged,
+            finalRoot,
+            0,
+            replayer);
+    }
+
+    CompletionStage<Void> publishAndReplayHidden(
+        Staged staged,
+        byte[] finalRoot,
+        long targetOwnerGeneration,
+        ZLinkUserSpotAggregateStagingOwner.JournalReplayer replayer) {
         requireActive(staged);
         Objects.requireNonNull(replayer, "replayer");
+        if (targetOwnerGeneration <= 0) {
+            if (targetOwnerGeneration != 0) {
+                throw new IllegalArgumentException(
+                    "target owner generation must be positive");
+            }
+        }
         var decoded = ZLinkCanonicalActorRelocationEnvelope.decode(
             finalRoot,
             staged.request().relocationId(),
@@ -96,7 +114,13 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
             staged.request().restoreSnapshot());
         requireStagingPrefix(staged, decoded);
         return replayHidden(staged, decoded, replayer)
-            .thenRun(() -> publish(staged));
+            .thenRun(() -> {
+                if (targetOwnerGeneration == 0) {
+                    publish(staged);
+                } else {
+                    publish(staged, targetOwnerGeneration);
+                }
+            });
     }
 
     private CompletionStage<Void> replayHidden(
@@ -173,6 +197,19 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
                 "Actor accepted journal has not been replayed");
         }
         backend.publish(staged.actor(), staged.request());
+        staged.published = true;
+    }
+
+    private void publish(Staged staged, long targetOwnerGeneration) {
+        requireActive(staged);
+        if (!staged.replayed) {
+            throw new IllegalStateException(
+                "Actor accepted journal has not been replayed");
+        }
+        backend.publish(
+            staged.actor(),
+            staged.request(),
+            targetOwnerGeneration);
         staged.published = true;
     }
 
@@ -285,7 +322,21 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
                 "standalone Actor timer staging is unavailable"));
         }
 
-        void publish(Object actor, Request request);
+        default void publish(Object actor, Request request) {
+            throw new IllegalStateException(
+                "Actor publication requires a target owner generation");
+        }
+
+        default void publish(
+            Object actor,
+            Request request,
+            long targetOwnerGeneration) {
+            if (targetOwnerGeneration <= 0) {
+                throw new IllegalArgumentException(
+                    "target owner generation must be positive");
+            }
+            publish(actor, request);
+        }
 
         void openAdmission(Object actor);
 
@@ -355,11 +406,23 @@ final class ZLinkStandaloneActorRelocationStagingOwner {
 
         @Override
         public void publish(Object actor, Request request) {
+            throw new IllegalStateException(
+                "standalone Actor publication requires the committed owner generation");
+        }
+
+        @Override
+        public void publish(
+            Object actor,
+            Request request,
+            long targetOwnerGeneration) {
+            if (targetOwnerGeneration <= 0) {
+                throw new IllegalArgumentException(
+                    "target owner generation must be positive");
+            }
             actors.publishRelocatedActor(
                 (ZLinkActorRuntime.PreparedTransferredActor) actor,
                 request.targetSpotId(),
-                Math.incrementExact(
-                    request.sourceAuthorityOwnerGeneration()));
+                targetOwnerGeneration);
         }
 
         @Override

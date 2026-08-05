@@ -282,6 +282,7 @@ export class ZLinkSpotActivationLifecycle {
       activation = new ZLinkSpotActivation({
         meshName,
         spotId,
+        objectGeneration,
         spotType: implementation as unknown as Type<ZLinkSpot>,
         spot: instance as unknown as ZLinkSpot,
         serial,
@@ -372,6 +373,7 @@ export class ZLinkSpotActivationLifecycle {
     const activation = new ZLinkSpotActivation({
       meshName,
       spotId,
+      objectGeneration,
       spotType: implementation as unknown as Type<ZLinkSpot>,
       spot: instance as unknown as ZLinkSpot,
       serial,

@@ -8,10 +8,12 @@ namespace RegistrationCodec.Client.Scenarios;
 // RC-A5 verifies before/after filter ordering for dispatch.
 internal static class RcA5FilterOrderingScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient server)
+    public static async Task RunAsync(
+        ZLinkHttpClient requester,
+        ZLinkHttpClient evidenceServer)
     {
-        await server.Post("/registration/di-filter-order").Async<EchoRes[]>();
-        var lines = (await server.Post("/evidence/wait")
+        await requester.Post("/registration/di-filter-order").Async<EchoRes[]>();
+        var lines = (await evidenceServer.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["filter|", "packet=EchoDi"]))
             .Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(

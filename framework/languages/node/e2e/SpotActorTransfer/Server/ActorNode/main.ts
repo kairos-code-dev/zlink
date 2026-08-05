@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import {
   ZLinkMessage,
   ZLinkEncodedPayload,
+  ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkFrameworkRelocationMode,
   ZLinkFrameworkRelocationOutcome,
@@ -237,7 +238,7 @@ class TransferActor implements ZLinkActor {
       this.actorId,
       'join_completion',
       completion.status === 'failed'
-        ? `${completion.status}|${operationId}|kind=${completion.kind}|retriable=${completion.isRetriable}`
+        ? `${completion.status}|${operationId}|kind=${completion.kind}`
         : `${completion.status}|${operationId}`
     );
   }
@@ -750,7 +751,7 @@ function actorContextLocation(actor: TransferActor): { readonly spotId: unknown;
 
 function errorKind(error: unknown): string {
   return error instanceof ZLinkFrameworkException
-    ? error.kind
+    ? String(error.kind)
     : error instanceof Error
       ? error.message
       : String(error);
@@ -758,15 +759,26 @@ function errorKind(error: unknown): string {
 
 async function pushBound(context: { spotId: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
   const response = probeResponse(context, actor, request);
-  actor.context.boundSession.send(new BoundPushNotify(
-    response.scenario,
-    response.actorId,
-    response.spotId,
-    response.nodeRid,
-    response.stateVersion,
-    response.marker
-  )).submit();
-  evidence.add(request.scenario, actor.actorId, 'bound_push', request.marker);
+  try {
+    await actor.context.boundSession.send(new BoundPushNotify(
+      response.scenario,
+      response.actorId,
+      response.spotId,
+      response.nodeRid,
+      response.stateVersion,
+      response.marker
+    )).submit();
+    evidence.add(request.scenario, actor.actorId, 'bound_push', request.marker);
+  } catch (error) {
+    if (
+      request.scenario !== 'ST-E1A'
+      || !(error instanceof ZLinkFrameworkException)
+      || error.kind !== ZLinkFrameworkErrorKind.InvalidOperation
+    ) {
+      throw error;
+    }
+    evidence.add(request.scenario, actor.actorId, 'bound_push_rejected', errorKind(error));
+  }
   return response;
 }
 
@@ -814,7 +826,9 @@ Module({
         builder.configureLocations()
           .pollingIntervalMs(100)
           .ownerLeaseRenewIntervalMs(1000)
-          .ownerLeaseTtlMs(3000)
+          .ownerLeaseTtlMs(5000)
+          .ownerLeaseFencingMarginMs(500)
+          .ownerLeaseRenewTimeoutMs(500)
           .routeCacheMaxAgeMs(500)
           .messageFollowDurationMs(6000);
         builder.configureDispatch()
@@ -1036,6 +1050,16 @@ async function main(): Promise<void> {
           meshName: result.actor.meshName,
           nodeRid: String(result.actor.nodeRid)
         } satisfies ActorCreateRes;
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/destroy$/, handle: async (_body, match) => {
+        const actorId = match![1];
+        const actor = await requireActor(actorId);
+        const destroyed = await actorManager.destroy(actor);
+        actorScenarios.delete(actorId);
+        actorLifecycleStates.delete(actorId);
+        return { actorId, destroyed };
       }
     },
     {

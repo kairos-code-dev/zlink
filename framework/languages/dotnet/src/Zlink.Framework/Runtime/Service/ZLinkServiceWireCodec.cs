@@ -1477,7 +1477,9 @@ internal static partial class ZLinkServiceWireCodec
         //  draining=2를 이미 정의하고, admission guard도 field 1을 변경 가능한
         //  것으로 둔다. 기본값 serving을 유지해야 golden fixture가 바이트
         //  동일하게 남는다.
-        byte runtimeState = 1)
+        byte runtimeState = 1,
+        string securityIdentity = "none",
+        uint effectiveMaxMessageBytes = uint.MaxValue)
     {
         if (command is not (ServiceWireConstants.Command.Hello
             or ServiceWireConstants.Command.Admit
@@ -1489,12 +1491,15 @@ internal static partial class ZLinkServiceWireCodec
             throw new ArgumentOutOfRangeException(nameof(descriptorRevision));
         if (objectRole > (byte)ZLinkMeshNodeObjectRole.Server)
             throw new ArgumentOutOfRangeException(nameof(objectRole));
+        ArgumentException.ThrowIfNullOrWhiteSpace(securityIdentity);
+        if (effectiveMaxMessageBytes == 0)
+            throw new ArgumentOutOfRangeException(nameof(effectiveMaxMessageBytes));
         ArgumentNullException.ThrowIfNull(channels);
 
         var body = new WireWriter();
         body.Text8(meshName);
-        body.Text8("none");
-        body.U32(int.MaxValue);
+        body.Text8(securityIdentity);
+        body.U32(effectiveMaxMessageBytes);
         body.U64(lifecycleGeneration);
         body.U64(descriptorRevision);
         body.Text16(advertisedEndpoint, requireNonEmpty: true);

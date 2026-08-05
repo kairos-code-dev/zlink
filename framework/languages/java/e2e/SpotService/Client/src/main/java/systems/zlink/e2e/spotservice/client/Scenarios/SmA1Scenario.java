@@ -13,7 +13,7 @@ public final class SmA1Scenario extends SpotServiceScenarioContext {
 
     private void execute() {
         Contracts.StateRes first = eventually(() -> requestState("room-a", "a1", REQUEST_TIMEOUT));
-        ensure("room-a".equals(first.spotId()), "SM-A1 wrong spot rid");
+        ensure("room-a".equals(first.spotRid()), "SM-A1 wrong spot rid");
         ensure("play-a".equals(first.nodeRid()), "SM-A1 wrong owner node");
         System.out.println("scenario SM-A1 passed");
 

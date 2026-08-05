@@ -543,10 +543,6 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
             return;
         }
 
-        //  Send side of a node route request reply, paired with the
-        //  requester's node_request_result.
-        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_reply_send source={sourceRid}");
         try
         {
             await ReplyResponseAsync(
@@ -558,16 +554,10 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                     cancellationToken)
                 .ConfigureAwait(false);
             }
-        catch (Exception replyFailure)
+        catch (Exception)
         {
-            //  The submit throws on a non-Submitted status; without this
-            //  the failure reaches no log on the responding node.
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"route_reply_failed source={sourceRid} {replyFailure}");
             throw;
         }
-        Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-            $"route_reply_submitted source={sourceRid}");
         scope.Trace(_dispatchErrors, ZLinkMessageFlowOutcome.Replied);
     }
 
@@ -662,14 +652,8 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkCompletionAdmissionOwner.ResponderLease completionPermit,
         CancellationToken cancellationToken)
     {
-        //  A false CanReply drops the reply with no trace, so the handler
-        //  believes it answered while the requester waits out its deadline.
         if (!received.CanReply)
-        {
-            Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
-                "route_reply_dropped reason=cannot_reply");
             return ValueTask.CompletedTask;
-        }
 
         var replyParts = ZLinkEnvelopeCodec.EncodeParts(
             header, body, bodyType, _codecs);

@@ -20,7 +20,7 @@ public final class SmF5Scenario extends SpotServiceScenarioContext {
         ensure("route:sm-f5-before".equals(before.value()), "SM-F5 pre-close route-channel reply mismatch");
 
         Contracts.StateRes routed = eventually(() -> requestState("room-a", "sm-f5-route", REQUEST_TIMEOUT));
-        ensure("room-a".equals(routed.spotId()), "SM-F5 routed spot rid mismatch");
+        ensure("room-a".equals(routed.spotRid()), "SM-F5 routed spot rid mismatch");
         ensure("play-a".equals(routed.nodeRid()), "SM-F5 routed spot owner mismatch");
 
         closeSpot("room-a");

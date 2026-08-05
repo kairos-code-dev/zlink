@@ -155,6 +155,39 @@ public sealed class ActorHandoffTests
     }
 
     [Fact]
+    public void TargetReplayCompletion_ClosesCaptureAtTheEmptyBoundary()
+    {
+        var handoff = new ZLinkActorHandoffState(
+            "actor-1",
+            TimeProvider.System);
+        Assert.True(handoff.Import(CommitRequest("handoff-1", []), out _));
+        _ = handoff.PrepareImportedReplay([]);
+
+        using var body = Message.From("queued-during-replay");
+        using var frame = Frame(body, ActorRef("node-b", 1), "session-1");
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.Captured,
+            handoff.TryCapture(frame));
+
+        var replay = handoff.SnapshotFinalReplay();
+        Assert.Single(replay);
+        Assert.False(handoff.TryCompleteTransferredActorReplay("handoff-1"));
+
+        handoff.AcknowledgeReplayedFrame();
+        Assert.True(handoff.TryCompleteTransferredActorReplay("handoff-1"));
+
+        using var postCompletionBody = Message.From("after-replay");
+        using var postCompletion = Frame(
+            postCompletionBody,
+            ActorRef("node-b", 1),
+            "session-2");
+        Assert.Equal(
+            ZLinkActorHandoffCaptureResult.NotSealed,
+            handoff.TryCapture(postCompletion));
+        Assert.Empty(handoff.SnapshotFinalReplay());
+    }
+
+    [Fact]
     public void CaptureFenceFailureDoesNotReserveTheSourceOwnedReplyRoute()
     {
         var state = new ZLinkActorRuntimeState("actor-invalid-source-fence");

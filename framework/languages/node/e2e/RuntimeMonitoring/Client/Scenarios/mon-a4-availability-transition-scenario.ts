@@ -29,12 +29,12 @@ export async function runMonA4A(options: ClientOptions): Promise<ManagedProcess>
   );
   const drain = await postJsonWithin<RelocationResult>(options.serviceBUrl, '/admin/drain', {}, 35_000);
   ensure(drain.outcome === 0 && drain.reason === 0, 'normal replacement provider relocation did not complete.');
+  await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForRouteStatus(
     options.serviceUrl,
     (status) => !status.peers.some((peer) => peer.nodeRid === 'svc-b'),
     'normal replacement old provider remained in RouteMesh status after drain.'
   );
-  await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForPortState(options.serviceBUrl, false, 'normal replacement expected the old provider endpoint to stop.');
 
   const replacement = startReplacementService(options, 'svc-b-mon-a4-replacement');

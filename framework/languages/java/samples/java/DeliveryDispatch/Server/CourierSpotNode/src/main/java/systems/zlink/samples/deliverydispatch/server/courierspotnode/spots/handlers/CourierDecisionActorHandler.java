@@ -40,7 +40,7 @@ public final class CourierDecisionActorHandler
             return CompletableFuture.completedFuture(null);
         }
 
-        channels.sendToChannel(
+        return channels.sendToChannel(
                 SampleNames.DispatchChannel,
                 new Messages.OfferDeliveryResultMsg(
                     message.deliveryId(),
@@ -48,10 +48,10 @@ public final class CourierDecisionActorHandler
                     attempt.get(),
                     message.accepted(),
                     message.reason()))
-            .submit();
-        System.out.println("deliverydispatch courier-actor: decision delivery="
-            + message.deliveryId() + " courier=" + actor.actorId()
-            + " attempt=" + attempt.get() + " accepted=" + message.accepted());
-        return CompletableFuture.completedFuture(null);
+            .submit()
+            .thenRun(() -> System.out.println(
+                "deliverydispatch courier-actor: decision delivery="
+                    + message.deliveryId() + " courier=" + actor.actorId()
+                    + " attempt=" + attempt.get() + " accepted=" + message.accepted()));
     }
 }

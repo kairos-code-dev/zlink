@@ -11,7 +11,7 @@ internal class ScenarioStage(
         val value = spot.apply(request.op)
         spot.record("StageRequest", "${request.marker}|$value")
         return Contracts.StateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             value,
         )

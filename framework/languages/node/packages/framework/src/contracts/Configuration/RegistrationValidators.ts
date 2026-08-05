@@ -253,6 +253,12 @@ function validateChannelCapabilities(
         channel.publisher.bindHost,
         channel.publisher.advertiseHost
       );
+      validateFanoutPublisherIdentity(
+        channelName,
+        channel.routingId,
+        channel.routingIdPrefix,
+        peerLocationConfigured
+      );
     }
     if (channel.client !== undefined) {
       requirePeerSource(
@@ -528,6 +534,26 @@ function requirePeerSource(
     return;
   }
   throw new ZLinkConfigurationException(`${capabilityName} requires location stores or manual connections.`);
+}
+
+function validateFanoutPublisherIdentity(
+  channelName: string,
+  routingId: string | undefined,
+  routingIdPrefix: string | undefined,
+  peerLocationConfigured: boolean
+): void {
+  if (!peerLocationConfigured) return;
+  if (routingId !== undefined && routingIdPrefix !== undefined) {
+    throw new ZLinkConfigurationException(
+      `channel '${channelName}' publisher cannot combine a fixed routing id with an automatic routing id prefix.`
+    );
+  }
+  if (routingId === undefined && routingIdPrefix === undefined) {
+    throw new ZLinkConfigurationException(
+      `channel '${channelName}' publisher must select a fixed routing id or an automatic routing id prefix.`
+    );
+  }
+  if (routingId !== undefined) requireName(`channel '${channelName}' publisher routingId`, routingId);
 }
 
 function requireEndpoint(capabilityName: string, endpoint: string | undefined): void {

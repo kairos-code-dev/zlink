@@ -207,15 +207,20 @@ wait_process_exit() {
 
 wait_replacement_lease_expiry() {
   # A SIGKILL cannot remove the owner rows. Replacement must wait for the
-  # exact old owner lease to expire before the new lifecycle is admitted.
-  # actor-b is still serving, so its topology is the observable source for
-  # the old actor-a descriptor disappearing.
+  # exact old owner lease to expire before the new lifecycle is admitted. The
+  # surviving observer and retired owner are scenario-specific: the normal
+  # replacement flow uses actor-b to observe retired actor-a, while ST-B5
+  # uses actor-c to observe retired actor-b because actor-a is the source of
+  # the failed planned relocation and may be draining.
+  local retired_rid="${1:-actor-a}"
+  local observer_url="${2:-$NODE_B_URL}"
+  local observer_name="${3:-actor-b}"
   local deadline=$((SECONDS + REPLACEMENT_READY_TIMEOUT_SECONDS))
   local status
   while (( SECONDS < deadline )); do
     status="$(curl --max-time 2 --connect-timeout 1 -fsS \
-      "$NODE_B_URL/mesh/status" 2>/dev/null || true)"
-    if python3 - "$status" <<'PY'
+      "$observer_url/mesh/status" 2>/dev/null || true)"
+    if python3 - "$status" "$retired_rid" <<'PY'
 import json
 import sys
 
@@ -226,9 +231,10 @@ except json.JSONDecodeError:
 
 if status.get("state") != "Ready" or status.get("isReady") is not True:
     raise SystemExit(1)
+retired = sys.argv[2]
 if any(
-    peer.get("rid", "") == "actor-a"
-    or peer.get("rid", "").startswith("actor-a-")
+    peer.get("rid", "") == retired
+    or peer.get("rid", "").startswith(retired + "-")
     for peer in status.get("peers", [])
 ):
     raise SystemExit(1)
@@ -239,7 +245,7 @@ PY
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting ${REPLACEMENT_READY_TIMEOUT_SECONDS}s for the old actor-a owner lease to expire at $NODE_B_URL status=$status" >&2
+  echo "Timed out waiting ${REPLACEMENT_READY_TIMEOUT_SECONDS}s for the old ${retired_rid} owner lease to expire at ${observer_name} ($observer_url) status=$status" >&2
   return 1
 }
 
@@ -431,16 +437,18 @@ if [[ "$SCENARIO" == "ST-B5" ]]; then
   wait "$TARGET_CRASH_WATCHER_PID"
   wait_process_exit "$NODE_B_PID" actor-b
   # Replacement is allowed only after the exact old owner lease expires.
-  wait_replacement_lease_expiry
+  wait_replacement_lease_expiry actor-b "$NODE_C_URL" actor-c
   start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" 127.0.0.1
   NODE_B_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_B_URL" actor-b
+  wait_mesh_ready "$NODE_B_URL" actor-b "actor-c,actor-d,session-a,session-b"
+  wait_placement_ready "$NODE_B_URL" actor-b
   wait "$TARGET_CRASH_CLIENT_PID"
 elif [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-A1,ST-A2,ST-A3,ST-B1,ST-B3,ST-B4,ST-D1,ST-C3,ST-D2,ST-E1,ST-E1A,ST-E2,ST-F1,ST-F2,ST-F3,ST-F6"
   run_client "ST-B2"
   wait_process_exit "$NODE_A_PID" actor-a
-  wait_replacement_lease_expiry
+  wait_replacement_lease_expiry actor-a "$NODE_B_URL" actor-b
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1
@@ -451,7 +459,7 @@ elif [[ "$SCENARIO" == "all" ]]; then
   wait_all_placement_ready
   run_client "ST-C2"
   wait_process_exit "$NODE_A_PID" actor-a
-  wait_replacement_lease_expiry
+  wait_replacement_lease_expiry actor-a "$NODE_B_URL" actor-b
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" 127.0.0.1

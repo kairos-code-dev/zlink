@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -239,6 +240,52 @@ final class ZLinkActorClientRuntimeTest {
         assertEquals(ZLinkFrameworkErrorKind.NOT_FOUND, frameworkError.kind());
     }
 
+    @Test
+    void actorRequestDecodesFrameworkErrorEnvelope() {
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> new RecordingSpotNode(errorReply(
+                "{\"code\":\"NotFound\",\"message\":\"remote actor is missing\"}")),
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(storeWithActor("actor-1")),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofSeconds(5),
+            systems.zlink.framework.runtime.host.ZLinkTestAdmissionFactory.create());
+
+        CompletionException error = assertThrows(
+            CompletionException.class,
+            () -> client.requestToActor("actor-1", new Ping("hello"))
+                .submit(Pong.class)
+                .toCompletableFuture()
+                .join());
+
+        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
+        assertEquals(ZLinkFrameworkErrorKind.NOT_FOUND, frameworkError.kind());
+        assertEquals("remote actor is missing", frameworkError.getMessage());
+    }
+
+    @Test
+    void actorRequestMapsMalformedErrorEnvelopeToProtocolError() {
+        ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
+            () -> new RecordingSpotNode(errorReply("not-json")),
+            new ZLinkStoreLocationResolvers(
+                ZLinkRegisteredLocationStores.fromUnified(storeWithActor("actor-1")),
+                new systems.zlink.framework.locations.ZLinkLocationOptions()),
+            new ZLinkJsonMessageSerializer(),
+            Duration.ofSeconds(5),
+            systems.zlink.framework.runtime.host.ZLinkTestAdmissionFactory.create());
+
+        CompletionException error = assertThrows(
+            CompletionException.class,
+            () -> client.requestToActor("actor-1", new Ping("hello"))
+                .submit(Pong.class)
+                .toCompletableFuture()
+                .join());
+
+        ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
+        assertEquals(ZLinkFrameworkErrorKind.PROTOCOL_ERROR, frameworkError.kind());
+    }
+
     private static systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository
         storeWithActor(String actorId) {
         return storeWithActor(actorId, 7);
@@ -308,6 +355,19 @@ final class ZLinkActorClientRuntimeTest {
         return List.of(
             Message.from(ZLinkStreamHeaderCodec.encode(header)),
             Message.from(serializer.serialize(new Pong(value)).bytes()));
+    }
+
+    private static List<Message> errorReply(String body) {
+        ZLinkStreamHeader header = new ZLinkStreamHeader(
+            systems.zlink.framework.streams.ZLinkStreamMessageKind.ERROR,
+            systems.zlink.framework.streams.ZLinkStreamCodec.JSON,
+            java.util.EnumSet.noneOf(systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag.class),
+            java.util.Optional.of(1L),
+            "",
+            java.util.Map.of());
+        return List.of(
+            Message.from(ZLinkStreamHeaderCodec.encode(header)),
+            Message.from(body.getBytes(StandardCharsets.UTF_8)));
     }
 
     private record Ping(String value) {

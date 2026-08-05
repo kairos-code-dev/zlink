@@ -74,6 +74,22 @@ internal static class ZLinkServiceAdmissionGuard
             || expectedLifecycleGeneration
                 == incoming.LifecycleGeneration);
 
+    internal static bool MatchesExpectedTransportRoute(
+        string expectedEndpoint,
+        string expectedSecurityIdentity,
+        string authenticatedSecurityIdentity,
+        ulong expectedLifecycleGeneration,
+        ZLinkServiceWireCodec.AdmissionRecord incoming) =>
+        MatchesExpectedRoute(
+            expectedEndpoint,
+            expectedSecurityIdentity,
+            expectedLifecycleGeneration,
+            incoming)
+        && string.Equals(
+            expectedSecurityIdentity,
+            authenticatedSecurityIdentity,
+            StringComparison.Ordinal);
+
     internal static ZLinkServiceDuplicateConnectionDecision SelectConnection(
         RoutingId localRid,
         RoutingId peerRid,

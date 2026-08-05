@@ -182,6 +182,86 @@ wait_http_health() {
   wait_http "$@"
 }
 
+wait_framework_ready_logs() {
+  local log_dir="$1"
+  local require_peer_ready="${2:-0}"
+  local deadline=$((SECONDS + ${ZLINK_SAMPLE_WAIT_SECONDS:-60}))
+  while (( SECONDS < deadline )); do
+    local found_log=0
+    local all_ready=1
+    for log_file in "${log_dir}"/*.log; do
+      [[ -f "${log_file}" ]] || continue
+      case "$(basename "${log_file}")" in
+        build.log|client.log|*-client.log|flow-*.log)
+          continue
+          ;;
+      esac
+      found_log=1
+      if ! grep -q 'ZLINK_FRAMEWORK_READY' "${log_file}"; then
+        all_ready=0
+        break
+      fi
+    done
+    local peer_ready=1
+    if [[ "${require_peer_ready}" == "1" ]]; then
+      for log_file in "${log_dir}"/*.log; do
+        [[ -f "${log_file}" ]] || continue
+        case "$(basename "${log_file}")" in
+          build.log|client.log|*-client.log|flow-*.log)
+            continue
+            ;;
+        esac
+        if ! grep -q 'ZLINK_FRAMEWORK_PEER_READY' "${log_file}"; then
+          peer_ready=0
+          break
+        fi
+      done
+    fi
+    if [[ "${found_log}" == "1" && "${all_ready}" == "1" \
+        && "${peer_ready}" == "1" ]]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for Framework readiness in ${log_dir}" >&2
+  return 1
+}
+
+wait_framework_peer_ready_counts() {
+  local log_dir="$1"
+  shift
+  local deadline=$((SECONDS + ${ZLINK_SAMPLE_WAIT_SECONDS:-60}))
+  while (( SECONDS < deadline )); do
+    local all_ready=1
+    local spec log_name expected actual
+    for spec in "$@"; do
+      log_name="${spec%%:*}"
+      expected="${spec##*:}"
+      if [[ -z "${log_name}" || -z "${expected}" || ! "${expected}" =~ ^[0-9]+$ ]]; then
+        echo "Invalid Framework peer readiness specification: ${spec}" >&2
+        return 1
+      fi
+      if [[ ! -f "${log_dir}/${log_name}" ]]; then
+        all_ready=0
+        break
+      fi
+      actual="$({
+        rg 'ZLINK_FRAMEWORK_PEER_READY' "${log_dir}/${log_name}" || true
+      } | rg -o 'peer=[^ ]+' | sort -u | wc -l | tr -d ' ')"
+      if (( actual < expected )); then
+        all_ready=0
+        break
+      fi
+    done
+    if [[ "${all_ready}" == "1" ]]; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for Framework peer topology in ${log_dir}" >&2
+  return 1
+}
+
 gradle_run() {
   if declare -p ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS >/dev/null 2>&1; then
     ../../gradlew "${ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS[@]}" --no-daemon --no-parallel "$@" --quiet

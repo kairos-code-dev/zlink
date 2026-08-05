@@ -30,6 +30,12 @@ constexpr std::size_t max_application_state_bytes = 64u * 1024u * 1024u;
 constexpr std::uint32_t max_pending_records = 4096;
 constexpr std::uint32_t max_logical_timers = 4096;
 
+struct replay_ack_effect_progress_t
+{
+    std::uint64_t acknowledged = 0;
+    std::uint64_t acknowledged_records = 0;
+};
+
 void append_u32 (std::vector<std::uint8_t> &output, std::uint32_t value)
 {
     for (int shift = 24; shift >= 0; shift -= 8)
@@ -157,7 +163,7 @@ std::vector<std::uint8_t> encode_recoverable_payload (
         || context.target_node_routing_id.empty ()
         || context.target_node_generation == 0
         || context.participant_ids.empty ()
-        || context.participant_ids.size () > 2048
+        || context.participant_ids.size () > std::numeric_limits<std::uint32_t>::max ()
         || records.size () > max_pending_records) {
         return {};
     }
@@ -248,7 +254,7 @@ try
         || authority_version->empty () || !target_node
         || target_node->empty () || !target_generation
         || *target_generation == 0 || !participant_count
-        || *participant_count == 0 || *participant_count > 2048
+        || *participant_count == 0
         || reader.remaining ()
              < static_cast<std::size_t> (*participant_count) * 8u + 4u) {
         return std::nullopt;
@@ -786,6 +792,11 @@ bool maintenance_runtime_t::prepare_replay_source (
     std::vector<std::uint64_t> registered;
     for (auto &[participant, participant_records] : grouped) {
         const auto high_water = participant_records.size ();
+        const auto records_for_ack =
+          std::make_shared<std::vector<protocol::relocation_data_t>> (
+            participant_records);
+        const auto effect_progress =
+          std::make_shared<replay_ack_effect_progress_t> ();
         if (!_relocation_wire->register_source ({
               context.relocation,
               context.target_attempt_generation,
@@ -794,9 +805,22 @@ bool maintenance_runtime_t::prepare_replay_source (
               context.target_node_routing_id,
               context.target_node_generation,
               high_water,
-              [callback = context.acknowledged, participant] (
-                std::uint64_t value) {
-                  callback (participant, value);
+              [callback = context.acknowledged,
+               record_callback = context.acknowledged_records,
+               records_for_ack,
+               participant,
+               effect_progress] (std::uint64_t value) {
+                  if (value > effect_progress->acknowledged) {
+                      if (callback)
+                          callback (participant, value);
+                      effect_progress->acknowledged = value;
+                  }
+                  if (record_callback
+                      && value > effect_progress->acknowledged_records) {
+                      record_callback (
+                        participant, *records_for_ack, value);
+                      effect_progress->acknowledged_records = value;
+                  }
               },
               std::move (participant_records)})) {
             for (const auto registered_participant : registered) {
@@ -1203,6 +1227,8 @@ relocation_result_t maintenance_runtime_t::recover_impl (
         auto context = std::move (recoverable->wire->context);
         context.prepare_target = recovery_callbacks->prepare_target;
         context.acknowledged = recovery_callbacks->acknowledged;
+        context.acknowledged_records =
+          recovery_callbacks->acknowledged_records;
         context.complete_source_terminal =
           recovery_callbacks->complete_source_terminal;
         context.complete_target = recovery_callbacks->complete_target;
@@ -1262,7 +1288,7 @@ maintenance_runtime_t::recover_aggregate_impl (
     *recovery_callbacks,
   std::stop_token cancellation)
 {
-    if (sources.size () < 2 || sources.size () > 1024) {
+    if (sources.size () < 2) {
         return {
           relocation_terminal_t::conflict,
           relocation_reason_t::inventory_mismatch,
@@ -1440,6 +1466,8 @@ maintenance_runtime_t::recover_aggregate_impl (
         auto context = std::move (recoverable->wire->context);
         context.prepare_target = recovery_callbacks->prepare_target;
         context.acknowledged = recovery_callbacks->acknowledged;
+        context.acknowledged_records =
+          recovery_callbacks->acknowledged_records;
         context.complete_source_terminal =
           recovery_callbacks->complete_source_terminal;
         context.complete_target = recovery_callbacks->complete_target;
@@ -1932,7 +1960,8 @@ std::vector<std::uint8_t> maintenance_runtime_t::encode_aggregate (
   const std::vector<frozen_object_state_t> &participants,
   const inventory_digest_t &inventory_digest)
 {
-    if (participants.size () < 2 || participants.size () > 1024)
+    if (participants.size () < 2
+        || participants.size () > std::numeric_limits<std::uint32_t>::max ())
         return {};
     std::vector<std::uint8_t> output (
       aggregate_envelope_magic.begin (),
@@ -1980,7 +2009,6 @@ try
     reader_t reader (encoded);
     const auto participant_count = reader.u32 ();
     if (!participant_count || *participant_count < 2
-        || *participant_count > 1024
         || reader.remaining ()
              < static_cast<std::size_t> (*participant_count) * 4u
                  + inventory_digest_t{}.size ()) {
@@ -2575,6 +2603,7 @@ void public_host_runtime_t::configure_relocation (
         throw std::logic_error (
           "relocation providers must be configured once before host start");
     }
+    _relocation_authority = authority;
     _session_relocations = relocations;
     auto maintenance =
       std::make_unique<stateful::maintenance_runtime_t> (
@@ -2598,6 +2627,7 @@ void public_host_runtime_t::configure_maintenance (
           "maintenance providers must be configured once before host start");
     }
     auto targets = providers.targets;
+    _relocation_authority = providers.authority;
     _session_relocations = providers.relocations;
     auto maintenance =
       std::make_unique<stateful::maintenance_runtime_t> (

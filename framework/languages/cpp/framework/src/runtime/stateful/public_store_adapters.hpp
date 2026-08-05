@@ -592,15 +592,26 @@ class public_aggregate_authority_adapter_t final :
       const std::vector<object_ref_t> &sources,
       std::string target_node_id,
       location_owner_token_t target_owner,
-      std::vector<relocation_capacity_fence_t>,
+      std::vector<relocation_capacity_fence_t> relocation_capacity_fences,
       std::string relocation_reference,
       std::uint32_t checksum_crc32c,
       inventory_digest_t inventory_digest) override
     {
-        if (sources.size () < 2 || target_node_id.empty ()
+        if (sources.size () < 2 || relocation_capacity_fences.size () != sources.size ()
+            || target_node_id.empty ()
             || target_owner.owner_id.empty ()
             || target_owner.lease_generation <= 0)
             return {};
+        std::map<std::string, relocation_capacity_fence_t> capacity_by_authority;
+        for (std::size_t index = 0; index < sources.size (); ++index) {
+            if (relocation_capacity_fences[index].value.empty ())
+                return {};
+            const auto [_, inserted] = capacity_by_authority.emplace (
+              public_authority_store_adapter_t::authority_key (sources[index]).value,
+              std::move (relocation_capacity_fences[index]));
+            if (!inserted)
+                return {};
+        }
         std::vector<std::pair<authority_snapshot_t,
                               authority_relocation_reference_t>>
           snapshots;
@@ -670,13 +681,18 @@ class public_aggregate_authority_adapter_t final :
         std::vector<aggregate_participant_t> participants;
         participants.reserve (snapshots.size ());
         for (const auto &[snapshot, reference] : snapshots) {
+            const auto capacity = capacity_by_authority.find (
+              public_authority_store_adapter_t::authority_key (reference.source).value);
+            if (capacity == capacity_by_authority.end ())
+                return {};
             participants.push_back ({
               public_authority_store_adapter_t::authority_key (
                 reference.source),
               snapshot.store_version,
               authority_generation_transition_t::new_owner,
               public_authority_store_adapter_t::encode (reference),
-              {}});
+              {},
+              std::optional<relocation_capacity_fence_t>{capacity->second}});
         }
         std::sort (
           participants.begin (), participants.end (),
@@ -688,16 +704,21 @@ class public_aggregate_authority_adapter_t final :
              index != public_digest.value.size (); ++index)
             public_digest.value[index] =
               static_cast<std::byte> (inventory_digest[index]);
-        const auto prepared =
-          _store->prepare_aggregate ({
-            aggregate_id,
-            generation,
-            std::move (participants),
-            public_digest,
-            {sources.front ().mesh_name, target_node->rid},
-            target_node->lifecycle_generation,
-            capacity,
-            target_owner}).result ().value ();
+        aggregate_prepare_request_t request;
+        request.aggregate_id = aggregate_id;
+        request.aggregate_generation = generation;
+        request.participants = std::move (participants);
+        request.inventory_digest = public_digest;
+        request.target_descriptor = {sources.front ().mesh_name, target_node->rid};
+        request.target_descriptor_lifecycle_generation = target_node->lifecycle_generation;
+        request.capacity_bundle = capacity;
+        request.target_owner = target_owner;
+        for (const auto &participant : request.participants) {
+            if (!participant.capacity_fence)
+                return {};
+            request.capacity_fences.push_back (*participant.capacity_fence);
+        }
+        const auto prepared = _store->prepare_aggregate (std::move (request)).result ().value ();
         const auto *created =
           std::get_if<aggregate_prepared_t> (&prepared);
         const auto *existing =
@@ -706,19 +727,12 @@ class public_aggregate_authority_adapter_t final :
             return {aggregate_publish_status_t::conflict, {}, {}};
         const auto public_fence =
           created ? created->fence : existing->fence;
-        const auto local_fence =
-          aggregate_relocation_fence_t{
-            _next_fence.fetch_add (1, std::memory_order_relaxed)};
+        const auto local_fence = aggregate_relocation_fence_t{
+          public_fence.aggregate_generation, public_fence};
         std::vector<authority_relocation_reference_t> current;
         current.reserve (snapshots.size ());
         for (auto &[_, reference] : snapshots)
             current.push_back (std::move (reference));
-        {
-            std::lock_guard lock (_mutex);
-            _prepared.emplace (
-              local_fence.value,
-              prepared_t{public_fence, sources});
-        }
         return {aggregate_publish_status_t::prepared,
                 local_fence, std::move (current)};
     }
@@ -726,27 +740,28 @@ class public_aggregate_authority_adapter_t final :
     aggregate_publish_result_t commit (
       aggregate_relocation_fence_t fence) override
     {
-        prepared_t prepared;
-        {
-            std::lock_guard lock (_mutex);
-            const auto found = _prepared.find (fence.value);
-            if (found == _prepared.end ())
-                return {};
-            prepared = found->second;
-        }
+        if (fence.value == 0
+            || fence.durable_fence.aggregate_generation == 0)
+            return {};
+        const auto participants =
+          _store->read_aggregate_participants (fence.durable_fence)
+            .result ()
+            .value ();
+        if (!participants)
+            return {};
         const auto committed =
           _store->commit_aggregate (
-            prepared.fence).result ().value ();
+            fence.durable_fence).result ().value ();
         if (committed != aggregate_commit_result_t::committed
             && committed
                  != aggregate_commit_result_t::already_committed)
             return {aggregate_publish_status_t::conflict, fence, {}};
         std::vector<authority_relocation_reference_t> current;
-        for (const auto &source : prepared.sources) {
+        current.reserve (participants->size ());
+        for (const auto &participant : *participants) {
             const auto read =
               _store->read_authority (
-                public_authority_store_adapter_t::authority_key (
-                  source)).result ().value ();
+                participant.key).result ().value ();
             const auto decoded =
               public_authority_store_adapter_t::decode_current (
                 read);
@@ -754,41 +769,21 @@ class public_aggregate_authority_adapter_t final :
                 return {};
             current.push_back (*decoded);
         }
-        {
-            std::lock_guard lock (_mutex);
-            _prepared.erase (fence.value);
-        }
         return {aggregate_publish_status_t::committed,
                 fence, std::move (current)};
     }
 
     void abort (aggregate_relocation_fence_t fence) override
     {
-        std::optional<aggregate_fence_t> public_fence;
-        {
-            std::lock_guard lock (_mutex);
-            const auto found = _prepared.find (fence.value);
-            if (found != _prepared.end ()) {
-                public_fence = found->second.fence;
-                _prepared.erase (found);
-            }
-        }
-        if (public_fence)
+        if (fence.value != 0
+            && fence.durable_fence.aggregate_generation != 0)
             (void) _store->abort_aggregate (
-              *public_fence).result ().value ();
+              fence.durable_fence).result ().value ();
     }
 
   private:
-    struct prepared_t
-    {
-        aggregate_fence_t fence;
-        std::vector<object_ref_t> sources;
-    };
     zlink::framework::location_repository_t *_store;
-    std::mutex _mutex;
-    std::map<std::uint64_t, prepared_t> _prepared;
     std::atomic<std::uint64_t> _next_generation{1};
-    std::atomic<std::uint64_t> _next_fence{1};
 };
 
 } // namespace zlink::framework::runtime::stateful

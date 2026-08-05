@@ -184,6 +184,7 @@ function validateSchema(schema) {
   validateRelocationRetentionPolicy(schema.relocationRetentionPolicy, fail);
   validateRelocationStorageProfile(schema.relocationStorageProfile, fail);
   validateFrameworkJsonV1Profile(schema.frameworkJsonV1Profile, fail);
+  validateFrameworkMultipartV1Profile(schema.frameworkMultipartV1Profile, fail);
   validateMaintenanceAdmissionProfile(schema.maintenanceAdmissionProfile, fail);
   validateTerminationResultProfile(schema.terminationResultProfile, fail);
   validateDurableFormats(schema.durableFormats, types, bounds, fail);
@@ -3621,6 +3622,179 @@ function validateFrameworkJsonFixture(schema, schemaPath) {
   return 1;
 }
 
+function decodeFrameworkMultipartFrame(profile, encodedHex) {
+  if (typeof encodedHex !== "string" || !/^(?:[0-9a-f]{2})+$/.test(encodedHex)) {
+    throw new Error("must be non-empty lowercase whole-byte hex");
+  }
+  const bytes = Buffer.from(encodedHex, "hex");
+  if (bytes.length < 11 || bytes[0] !== 1) {
+    throw new Error("invalid application envelope header");
+  }
+  const bodyLength = bytes.readUInt32BE(1);
+  if (bodyLength !== bytes.length - 5) {
+    throw new Error("body length does not cover the exact envelope body");
+  }
+  let offset = 5;
+  const packetLength = bytes[offset++];
+  if (packetLength === 0 || bytes.length - offset < packetLength + 1) {
+    throw new Error("packet name is truncated or empty");
+  }
+  const packetName = bytes.subarray(offset, offset + packetLength).toString("utf8");
+  offset += packetLength;
+  if (packetName !== profile.packetName) {
+    throw new Error("packet name does not match framework-multipart-v1");
+  }
+  const contentLength = bytes[offset++];
+  if (contentLength === 0 || bytes.length - offset < contentLength + 4) {
+    throw new Error("content type is truncated or empty");
+  }
+  const contentType = bytes.subarray(offset, offset + contentLength).toString("utf8");
+  offset += contentLength;
+  if (contentType !== profile.contentType) {
+    throw new Error("content type does not match framework-multipart-v1");
+  }
+  const payloadLength = bytes.readUInt32BE(offset);
+  offset += 4;
+  if (payloadLength !== bytes.length - offset) {
+    throw new Error("payload length does not cover the exact payload");
+  }
+
+  const payload = bytes.subarray(offset);
+  if (payload.length < 4) {
+    throw new Error("multipart payload is missing the part count");
+  }
+  const count = payload.readUInt32BE(0);
+  if (count < profile.minimumParts) {
+    throw new Error("multipart payload must contain at least one part");
+  }
+  const remaining = payload.length - 4;
+  if (count > Math.floor(remaining / 4)) {
+    throw new Error("multipart part count exceeds the remaining length");
+  }
+
+  const partsHex = [];
+  offset = 4;
+  for (let index = 0; index < count; index++) {
+    if (payload.length - offset < 4) {
+      throw new Error("multipart part length is truncated");
+    }
+    const length = payload.readUInt32BE(offset);
+    offset += 4;
+    if (length > payload.length - offset) {
+      throw new Error("multipart part is truncated");
+    }
+    partsHex.push(payload.subarray(offset, offset + length).toString("hex"));
+    offset += length;
+  }
+  if (offset !== payload.length) {
+    throw new Error("multipart payload has trailing bytes");
+  }
+  return { partsHex };
+}
+
+function encodeFrameworkMultipartFrame(profile, partsHex) {
+  if (!Array.isArray(partsHex) || partsHex.length < profile.minimumParts) {
+    throw new Error("multipart fixture must contain at least one part");
+  }
+  const parts = partsHex.map((part, index) => {
+    if (typeof part !== "string" || !/^(?:[0-9a-f]{2})*$/.test(part)) {
+      throw new Error(`part ${index} must be lowercase whole-byte hex`);
+    }
+    return Buffer.from(part, "hex");
+  });
+  const payloadLength = 4 + parts.reduce((total, part) => total + 4 + part.length, 0);
+  const payload = Buffer.alloc(payloadLength);
+  payload.writeUInt32BE(parts.length, 0);
+  let payloadOffset = 4;
+  for (const part of parts) {
+    payload.writeUInt32BE(part.length, payloadOffset);
+    payloadOffset += 4;
+    part.copy(payload, payloadOffset);
+    payloadOffset += part.length;
+  }
+  const packet = Buffer.from(profile.packetName, "utf8");
+  const contentType = Buffer.from(profile.contentType, "utf8");
+  const bodyLength = 1 + packet.length + 1 + contentType.length + 4 + payload.length;
+  const frame = Buffer.alloc(1 + 4 + bodyLength);
+  frame[0] = 1;
+  frame.writeUInt32BE(bodyLength, 1);
+  let offset = 5;
+  frame[offset++] = packet.length;
+  packet.copy(frame, offset);
+  offset += packet.length;
+  frame[offset++] = contentType.length;
+  contentType.copy(frame, offset);
+  offset += contentType.length;
+  frame.writeUInt32BE(payload.length, offset);
+  offset += 4;
+  payload.copy(frame, offset);
+  return frame;
+}
+
+function validateFrameworkMultipartFixtureData(fixture, profile, location, fail) {
+  if (fixture.format !== profile.name
+      || JSON.stringify(fixture.consumers) !== JSON.stringify(profile.consumers)
+      || fixture.encoding !== profile.encoding
+      || fixture.trailingBytes !== profile.trailingBytes) {
+    fail(location, "must identify framework-multipart-v1, its four runtime consumers and exact encoding rules");
+  }
+
+  const valid = fixture.valid ?? [];
+  if (valid.length !== 1) {
+    fail(`${location}.valid`, "must contain exactly one canonical multipart fixture");
+  }
+  for (const item of valid) {
+    try {
+      const decoded = decodeFrameworkMultipartFrame(profile, item.encodedHex);
+      if (JSON.stringify(decoded.partsHex) !== JSON.stringify(item.partsHex)) {
+        fail(`${location}.valid.${item.name}`, "decoded parts do not match the canonical fixture");
+      }
+      const reencoded = encodeFrameworkMultipartFrame(profile, item.partsHex);
+      if (reencoded.toString("hex") !== item.encodedHex) {
+        fail(`${location}.valid.${item.name}`, "parts do not re-encode to the canonical frame bytes");
+      }
+    } catch (error) {
+      fail(`${location}.valid.${item.name}`, `failed: ${error.message}`);
+    }
+  }
+
+  const expectedInvalid = [
+    ["wrong-content-type", "contentType"],
+    ["zero-count", "minimumParts"],
+    ["truncated-part", "partLength"],
+    ["trailing-byte", "trailingBytes"],
+  ];
+  if (JSON.stringify((fixture.invalid ?? []).map(({ name, reason }) => [name, reason]))
+      !== JSON.stringify(expectedInvalid)) {
+    fail(`${location}.invalid`, "must cover the exact multipart rejection matrix");
+  }
+  for (const item of fixture.invalid ?? []) {
+    try {
+      decodeFrameworkMultipartFrame(profile, item.encodedHex);
+      fail(`${location}.invalid.${item.name}`, "negative fixture was accepted");
+    } catch {
+      // The fixture is valid only when the common decoder rejects it.
+    }
+  }
+}
+
+function validateFrameworkMultipartFixture(schema, schemaPath) {
+  const profile = schema.frameworkMultipartV1Profile;
+  const fixturePath = path.resolve(path.dirname(schemaPath), profile.goldenFixture);
+  const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  const errors = [];
+  validateFrameworkMultipartFixtureData(
+    fixture,
+    profile,
+    `fixture:${profile.name}`,
+    (location, message) => errors.push(`${location}: ${message}`),
+  );
+  if (errors.length > 0) {
+    throw new SchemaValidationError(errors);
+  }
+  return 1;
+}
+
 function isAuthorityKeyUnreserved(byte) {
   return (byte >= 0x41 && byte <= 0x5a)
     || (byte >= 0x61 && byte <= 0x7a)
@@ -5886,6 +6060,27 @@ function validateFrameworkJsonV1Profile(profile, fail) {
   }
 }
 
+function validateFrameworkMultipartV1Profile(profile, fail) {
+  const expected = {
+    name: "framework-multipart-v1",
+    consumers: ["cpp", "dotnet", "jvm", "node"],
+    packetName: "ZLinkFrameworkMultipart",
+    contentType: "application/x-zlink-multipart",
+    encoding: "u32-big-endian-part-count-then-u32-big-endian-length-prefixed-opaque-parts",
+    minimumParts: 1,
+    partCountValidation: "validate-count-against-remaining-length-before-part-array-allocation",
+    trailingBytes: "forbidden",
+    applicationInterpretation: "framework-only-message-part-storage",
+    goldenFixture: "golden/framework-multipart-v1.json",
+  };
+  if (!isObject(profile) || JSON.stringify(profile) !== JSON.stringify(expected)) {
+    fail(
+      "$.frameworkMultipartV1Profile",
+      "must define the exact cross-language framework-multipart-v1 profile",
+    );
+  }
+}
+
 function validateMaintenanceAdmissionProfile(profile, fail) {
   const expected = {
     preflight: "validate-capability-eligibility-and-bounded-headroom-without-final-reservation",
@@ -7305,6 +7500,7 @@ if (process.argv[1] && scriptPath === path.resolve(process.argv[1])) {
     const fixtureCount = validateGoldenFixtures(schema, schemaPath);
     const logicalFixtureCount = validateRelocationLogicalFixture(schema, schemaPath);
     const jsonFixtureCount = validateFrameworkJsonFixture(schema, schemaPath);
+    const multipartFixtureCount = validateFrameworkMultipartFixture(schema, schemaPath);
     const authorityKeyFixtureCount = validateAuthorityKeyFixture(schema, schemaPath);
     const amendmentFixtureCount = validateContractAmendmentFixture(schemaPath);
     const selfTestCount = selfTest
@@ -7318,6 +7514,7 @@ if (process.argv[1] && scriptPath === path.resolve(process.argv[1])) {
       `service wire schema valid: ${summary.commands} commands, ${summary.types} types, `
         + `${summary.flags} flags, ${summary.bounds} bounds, ${fixtureCount} durable fixtures, `
         + `${logicalFixtureCount} logical fixture, ${jsonFixtureCount} JSON fixture, `
+        + `${multipartFixtureCount} multipart fixture, `
         + `${authorityKeyFixtureCount} authority key fixture, `
         + `${amendmentFixtureCount} amendment fixture${suffix}`,
     );

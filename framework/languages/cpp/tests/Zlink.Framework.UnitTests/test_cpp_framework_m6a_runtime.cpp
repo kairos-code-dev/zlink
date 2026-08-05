@@ -704,7 +704,26 @@ void verify_signed_weight_contract ()
 
 void verify_independent_mailbox_domains_and_claim_fence ()
 {
-    mesh::service_mailbox_t mailbox (4, 64, 2, 32);
+    constexpr auto fixed_work_cost = runtime::dispatch_limits::fixed_work_byte_cost;
+    mesh::service_mailbox_t owner_scoped (1, 4096, 1, 4096);
+    assert (owner_scoped.try_enqueue (
+      {"owner-a", mesh::service_mailbox_domain_t::application,
+       {{1}}}));
+    auto owner_a_claim = owner_scoped.try_claim_owner (
+      mesh::service_mailbox_domain_t::application, "owner-a", 1, 4096);
+    assert (owner_a_claim && owner_a_claim->records.size () == 1);
+    assert (!owner_scoped.try_enqueue (
+      {"owner-a", mesh::service_mailbox_domain_t::application,
+       {{2}}}));
+    assert (owner_scoped.try_enqueue (
+      {"owner-b", mesh::service_mailbox_domain_t::application,
+       {{3}}}));
+    assert (owner_scoped.release (*owner_a_claim));
+    assert (owner_scoped.try_enqueue (
+      {"owner-a", mesh::service_mailbox_domain_t::application,
+       {{6}}}));
+
+    mesh::service_mailbox_t mailbox (4, 4096, 2, 4096);
     assert (mailbox.try_enqueue (
       {"owner-a", mesh::service_mailbox_domain_t::application,
        {{1, 2, 3}}}));
@@ -747,6 +766,22 @@ void verify_independent_mailbox_domains_and_claim_fence ()
             == 0);
     assert (mailbox.release (*remaining));
 
+    mesh::service_mailbox_t accounting (2, fixed_work_cost + 3, 1,
+                                        fixed_work_cost + 3);
+    assert (accounting.try_enqueue (
+      {"accounted", mesh::service_mailbox_domain_t::application,
+       {{1, 2, 3}}}));
+    assert (accounting.pending_bytes (
+              mesh::service_mailbox_domain_t::application)
+            == fixed_work_cost + 3);
+    assert (!accounting.try_enqueue (
+      {"accounted", mesh::service_mailbox_domain_t::application,
+       {{4}}}));
+    auto accounted = accounting.try_claim (
+      mesh::service_mailbox_domain_t::application, 1, 1);
+    assert (accounted && accounted->records.size () == 1);
+    assert (accounting.release (*accounted));
+
     assert (mailbox.try_enqueue (
       {"owner-large", mesh::service_mailbox_domain_t::application,
        {std::vector<std::uint8_t> (20, 7)}}));
@@ -755,15 +790,15 @@ void verify_independent_mailbox_domains_and_claim_fence ()
     assert (oversized && oversized->records.size () == 1);
     assert (mailbox.release (*oversized));
 
-    mesh::service_mailbox_t saturated (1, 64, 1, 64);
+    mesh::service_mailbox_t saturated (1, 1024, 1, 1024);
     assert (saturated.try_enqueue (
       {"first", mesh::service_mailbox_domain_t::application,
        {{1}}}));
     mesh::service_mailbox_record_t retained{
-      "second", mesh::service_mailbox_domain_t::application,
+      "first", mesh::service_mailbox_domain_t::application,
       {{2, 3, 4}}};
     assert (!saturated.try_enqueue (std::move (retained)));
-    assert (retained.owner == "second");
+    assert (retained.owner == "first");
     assert ((retained.parts
              == std::vector<std::vector<std::uint8_t>>{{2, 3, 4}}));
     auto first = saturated.try_claim (
@@ -773,7 +808,7 @@ void verify_independent_mailbox_domains_and_claim_fence ()
     auto second = saturated.try_claim (
       mesh::service_mailbox_domain_t::application, 1, 64);
     assert (second && second->records.size () == 1);
-    assert (second->records.front ().owner == "second");
+    assert (second->records.front ().owner == "first");
     assert ((second->records.front ().parts
              == std::vector<std::vector<std::uint8_t>>{{2, 3, 4}}));
     assert (saturated.release (*second));

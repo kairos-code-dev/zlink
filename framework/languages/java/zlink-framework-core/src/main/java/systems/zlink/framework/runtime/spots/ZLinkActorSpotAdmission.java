@@ -33,6 +33,11 @@ final class ZLinkActorSpotAdmission {
         List<Message> handoffReplies) {
     }
 
+    private record CommittedJoin(
+        ZLinkActorRuntime.PreparedTransferredActor prepared,
+        long authorityOwnerGeneration) {
+    }
+
     private ZLinkActorRuntime actors;
     private ZLinkSessionRelocationPeerClient sessionRoutes;
     private java.util.function.BooleanSupplier draining = () -> false;
@@ -408,7 +413,7 @@ final class ZLinkActorSpotAdmission {
                         request.coreMembershipEpoch() + 1);
                 }
                 return runtime.commitDeferredJoinRelocation(request)
-                    .thenApply(ignored -> {
+                    .thenApply(authorityOwnerGeneration -> {
                         aggregateCommitted.set(true);
                         runtime.traceActorTransferMarker(
                             "location_committed",
@@ -418,10 +423,14 @@ final class ZLinkActorSpotAdmission {
                             prepared.actorRef(),
                             spotId,
                             request.coreMembershipEpoch() + 1);
-                        return prepared;
+                        return new CommittedJoin(
+                            prepared,
+                            authorityOwnerGeneration);
                     });
             })
-            .thenCompose(prepared -> {
+            .thenCompose(committed -> {
+                ZLinkActorRuntime.PreparedTransferredActor prepared =
+                    committed.prepared();
                 ZLinkActor actor =
                     runtime.publishPreparedTransferredActor(prepared);
                 runtime.setEntrySpotNodeRid(actor, request.sourceEntrySpotNodeRid());
@@ -450,7 +459,8 @@ final class ZLinkActorSpotAdmission {
                             .thenCompose(ignored ->
                                 switchBoundSessionRoute(
                                     request,
-                                    primaryNode)))
+                                    primaryNode,
+                                    committed.authorityOwnerGeneration())))
                     .thenCompose(ignored -> {
                         boolean entryTarget = spotSurface instanceof systems.zlink.framework.spots.ZLinkEntrySpot<?>;
                         if (!entryTarget) {
@@ -524,7 +534,8 @@ final class ZLinkActorSpotAdmission {
 
     private CompletionStage<Void> switchBoundSessionRoute(
         ZLinkActorSpotRoutePackets.TransferRequest request,
-        ZLinkInternalSpotNode primaryNode) {
+        ZLinkInternalSpotNode primaryNode,
+        long authorityOwnerGeneration) {
         byte[] command44 = request.sessionRouteCommand44();
         if (command44.length == 0) {
             return CompletableFuture.completedFuture(null);
@@ -537,21 +548,22 @@ final class ZLinkActorSpotAdmission {
         var codec =
             new systems.zlink.framework.runtime.internal.service
                 .ZLinkServiceM6BWireCodec();
-        var command = codec.decodeSessionRelocationRoute(command44);
+        var intent = codec.decodeSessionRelocationRouteIntent(command44);
         java.util.UUID relocationId =
             java.util.UUID.fromString(request.transferId());
-        if (command.relocation().high()
+        if (intent.relocation().high()
                 != relocationId.getMostSignificantBits()
-            || command.relocation().low()
+            || intent.relocation().low()
                 != relocationId.getLeastSignificantBits()
-            || !command.actor().actorId().equals(request.actorId())
-            || command.actor().generation()
+            || !intent.actor().actorId().equals(request.actorId())
+            || intent.actor().generation()
                 != request.actorGeneration()
-            || !command.targetNodeRid().equals(primaryNode.routingId())) {
+            || !intent.targetNodeRid().equals(primaryNode.routingId())) {
             return CompletableFuture.failedFuture(
                 new ZLinkConfigurationException(
                     "bound Session route command does not match direct Join"));
         }
+        var command = intent.materialize(authorityOwnerGeneration);
         primaryNode.rememberActorAuthority(
             new ZLinkBackendActorRef(
                 primaryNode.routingId(),

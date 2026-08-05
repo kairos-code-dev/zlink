@@ -222,8 +222,9 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     static zlink::framework::actor_ref_t to_actor_ref (const yd::await_actor_binding_t &actor)
     {
         return zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (actor.node_rid), yd::actor_type,
-          actor.actor_id, actor.generation);
+          zlink::framework::actor_id_t (actor.actor_id), actor.generation,
+          yd::spot_channel,
+          zlink::framework::node_rid_t::from_string (actor.node_rid));
     }
 
     zlink::framework::result_t<zlink::framework::session_actor_t>

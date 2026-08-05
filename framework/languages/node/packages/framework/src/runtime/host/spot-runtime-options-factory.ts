@@ -52,9 +52,14 @@ export interface ZLinkSpotRuntimeOptionsFactoryOptions {
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly releaseInstanceAuthority: (
     meshName: string,
-    spotId: string
+    spotId: string,
+    objectGeneration: bigint
   ) => Promise<void>;
   readonly beginInstanceIdleClosingAuthority: (
+    meshName: string,
+    spotId: string
+  ) => Promise<boolean>;
+  readonly beginInstanceClosingAuthority: (
     meshName: string,
     spotId: string
   ) => Promise<boolean>;
@@ -139,10 +144,12 @@ export class ZLinkSpotRuntimeOptionsFactory {
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
-      releaseInstanceAuthority: (meshName, spotId) =>
-        this.options.releaseInstanceAuthority(meshName, String(spotId)),
+      releaseInstanceAuthority: (meshName, spotId, objectGeneration) =>
+        this.options.releaseInstanceAuthority(meshName, String(spotId), objectGeneration),
       beginInstanceIdleClosingAuthority: (meshName, spotId) =>
         this.options.beginInstanceIdleClosingAuthority(meshName, String(spotId)),
+      beginInstanceClosingAuthority: (meshName, spotId) =>
+        this.options.beginInstanceClosingAuthority(meshName, String(spotId)),
       instanceSpotApplicationTargetProvider: (meshName, spotId) =>
         this.options.spotNodeRuntime()
           ?.meshNode(meshName)

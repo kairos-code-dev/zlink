@@ -221,7 +221,11 @@ final class ZLinkSpotRoutedOutbound {
                         packetName,
                         routerChannelId,
                         spotId);
-                    return messages.decodeReply(replyParts, replyType);
+                    try {
+                        return messages.decodeReply(replyParts, replyType);
+                    } finally {
+                        replyParts.forEach(Message::close);
+                    }
                 });
         } finally {
             parts.forEach(Message::close);

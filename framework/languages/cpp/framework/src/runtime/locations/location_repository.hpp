@@ -445,6 +445,7 @@ struct aggregate_participant_t
       authority_generation_transition_t::new_owner;
     std::vector<std::byte> authority_payload;
     std::vector<std::byte> membership_mutation;
+    std::optional<relocation_capacity_fence_t> capacity_fence;
 };
 struct aggregate_prepare_request_t
 {
@@ -456,11 +457,14 @@ struct aggregate_prepare_request_t
     std::uint64_t target_descriptor_lifecycle_generation = 0;
     placement_capacity_bundle_t capacity_bundle;
     location_owner_token_t target_owner;
+    std::vector<relocation_capacity_fence_t> capacity_fences;
 };
 struct aggregate_fence_t
 {
     aggregate_id_t aggregate_id;
     std::uint64_t aggregate_generation = 0;
+    // Carries the manifest digest across private aggregate retries.
+    std::optional<inventory_digest_t> inventory_digest;
 };
 struct aggregate_prepared_t
 {
@@ -617,6 +621,21 @@ class location_repository_t
     virtual task_t<aggregate_abort_result_t> abort_aggregate (
       aggregate_fence_t fence,
       std::stop_token cancellation = {}) = 0;
+    virtual task_t<std::optional<std::vector<aggregate_participant_t>>>
+    read_aggregate_participants (
+      aggregate_fence_t fence,
+      std::stop_token cancellation = {})
+    {
+        if (cancellation.stop_requested ())
+            return task_t<std::optional<std::vector<aggregate_participant_t>>> (
+              detail::boundary_failure<
+                std::optional<std::vector<aggregate_participant_t>>> (
+                detail::boundary_error_t::cancelled,
+                "aggregate read cancelled"));
+        return task_t<std::optional<std::vector<aggregate_participant_t>>> (
+          result_t<std::optional<std::vector<aggregate_participant_t>>>::success (
+            std::nullopt));
+    }
     virtual task_t<std::int64_t> remove_all_by_owner (
       location_owner_token_t owner) = 0;
     virtual task_t<std::optional<std::uint64_t>>

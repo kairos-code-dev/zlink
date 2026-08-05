@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/actors/actor_ref_access.hpp"
 #include <runtime/locations/location_repository.hpp>
 #include "runtime/locations/location_lifecycle.hpp"
 #include "runtime/locations/location_runtime.hpp"
@@ -26,7 +27,7 @@ actor_location_t make_actor (std::string actor_id, std::int64_t generation = 0)
     return actor_location_t{.mesh_name = "node-a",
                             .actor_id = std::move (actor_id),
                             .actor_type = "player",
-                            .actor_ref = zlink::framework::actor_ref_t (
+                            .actor_ref = zlink::framework::detail::actor_ref_access_t::make (
                               zlink::framework::node_rid_t::from_string ("node-a"),
                               "player", actor_id_copy, 1),
                             .owner_node_rid = zlink::routing_id_t::from ("node-a"),

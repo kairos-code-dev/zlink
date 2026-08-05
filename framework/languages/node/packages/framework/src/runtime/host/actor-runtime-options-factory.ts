@@ -63,6 +63,12 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly createActorLocationResolver: () => ZLinkStoreLocationResolvers | undefined;
   readonly forgetDestroyedActorRef: (actorId: string) => void;
   readonly rememberDestroyedActorRef: (actorId: string, actorRef: ActorRef) => void;
+  /**
+   * Drops a cached direct route when the local Actor incarnation changes.
+   * Authority deletion and recreation are separate store mutations, so a
+   * positive route cache must not bridge the two incarnations.
+   */
+  readonly invalidateActorRoute: (actorId: string) => void;
   readonly publishActorAuthority: NonNullable<
     ZLinkActorManagerOptions['publishActorAuthority']
   >;
@@ -208,6 +214,7 @@ export class ZLinkActorRuntimeOptionsFactory {
         return this.options.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal);
       },
       actorDestroyedCleanup: (actorId) => {
+        this.options.invalidateActorRoute(actorId);
         const actorRef = this.options.actorManager()?.getState(actorId)?.nativeActorRef as ActorRef | undefined;
         if (actorRef !== undefined) {
           this.options.rememberDestroyedActorRef(actorId, actorRef);

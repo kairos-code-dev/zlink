@@ -25,6 +25,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
@@ -45,6 +46,7 @@
 #include <stdexcept>
 #include <span>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <unordered_set>
 #include <vector>
@@ -107,9 +109,9 @@ class session_transport_failure_t final : public std::runtime_error
 };
 
 /* One listener-wide readiness scheduler owns the receive cursor for all
- * externally accepted STREAM connections. A connection worker may block while
- * it finishes one already-ready frame, but it cannot claim another receive
- * turn until the scheduler has visited the other ready connections. */
+ * externally accepted STREAM connections. Native workers keep incomplete
+ * frames in a per-connection buffer and release the lease before waiting for
+ * more bytes, so one partial frame cannot block another connection. */
 class stream_receive_scheduler_t final
 {
     struct slot_t
@@ -120,6 +122,7 @@ class stream_receive_scheduler_t final
         int fd;
         bool granted = false;
         bool closed = false;
+        bool buffered_ready = false;
         std::condition_variable changed;
     };
 
@@ -171,6 +174,13 @@ class stream_receive_scheduler_t final
         {
             if (_owner != nullptr && _slot != nullptr) {
                 _owner->release_turn (_slot);
+            }
+        }
+
+        void set_buffered_ready (bool ready) const noexcept
+        {
+            if (_owner != nullptr && _slot != nullptr) {
+                _owner->set_buffered_ready (_slot, ready);
             }
         }
 
@@ -322,11 +332,24 @@ class stream_receive_scheduler_t final
         wake ();
     }
 
+    void set_buffered_ready (const std::shared_ptr<slot_t> &slot, bool ready) noexcept
+    {
+        {
+            std::lock_guard lock (_mutex);
+            if (slot->closed) {
+                return;
+            }
+            slot->buffered_ready = ready;
+        }
+        wake ();
+    }
+
     void run () noexcept
     {
         for (;;) {
             std::vector<std::shared_ptr<slot_t>> candidates;
             std::vector<pollfd> poll_fds;
+            bool has_buffered_ready = false;
             {
                 std::lock_guard lock (_mutex);
                 if (_stopped) {
@@ -337,11 +360,16 @@ class stream_receive_scheduler_t final
                     if (!slot->closed && !slot->granted && slot->fd >= 0) {
                         candidates.push_back (slot);
                         poll_fds.push_back (pollfd{slot->fd, POLLIN, 0});
+                        has_buffered_ready = has_buffered_ready || slot->buffered_ready;
                     }
                 }
             }
 
-            const int ready = ::poll (poll_fds.data (), poll_fds.size (), -1);
+            /* Keep kernel readiness in the same candidate snapshot as
+             * user-space buffered frames. A buffered frame must not suppress
+             * a newly readable connection from the round-robin set. */
+            const int ready = ::poll (
+              poll_fds.data (), poll_fds.size (), has_buffered_ready ? 0 : -1);
             if (ready < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -352,7 +380,7 @@ class stream_receive_scheduler_t final
                 drain_wake ();
             }
 
-            if (ready <= 0) {
+            if (ready <= 0 && !has_buffered_ready) {
                 continue;
             }
 
@@ -373,7 +401,8 @@ class stream_receive_scheduler_t final
                 for (std::size_t offset = 0; offset < candidates.size (); ++offset) {
                     const auto index = (start + offset) % candidates.size ();
                     const auto &slot = candidates[index];
-                    if (poll_fds[index + 1].revents == 0 || slot->closed || slot->granted) {
+                    if ((!slot->buffered_ready && poll_fds[index + 1].revents == 0)
+                        || slot->closed || slot->granted) {
                         continue;
                     }
                     selected = slot;
@@ -1494,7 +1523,7 @@ class stream_host_service_t::listener_t
                 runtime::host::public_host_runtime_t::remote_actor_ref (
                   zlink::routing_id_t::from (
                     std::string (actor.node_rid ().value ())),
-                  std::string (actor.actor_id ()), actor.generation ());
+                  std::string (actor.actor_id ().value ()), actor.object_generation ());
               const auto resolved =
                 _mesh_node->native_node ().resolve_actor (native_actor);
               if (!resolved) {
@@ -1851,6 +1880,7 @@ class stream_host_service_t::listener_t
 
         std::mutex mutex;
         int fd;
+        std::vector<std::uint8_t> receive_buffer;
     };
 
     struct frame_t
@@ -1943,6 +1973,10 @@ class stream_host_service_t::listener_t
                 ::close (accepted);
                 break;
             }
+            /* Keep accepted sockets blocking for writes. Native receives use
+             * MSG_DONTWAIT, so a partial frame still releases the scheduler
+             * turn without converting transient send backpressure into a
+             * transport failure. */
             trace_stream_host ("accept", _stream);
             auto connection = std::make_shared<native_tcp_connection_t> (accepted);
             {
@@ -2117,39 +2151,6 @@ class stream_host_service_t::listener_t
     }
 #endif
 
-    std::vector<std::uint8_t> read_exact_native (native_tcp_connection_t &connection,
-                                                 std::size_t size)
-    {
-        std::vector<std::uint8_t> bytes (size);
-        std::size_t offset = 0;
-        while (offset < bytes.size ()) {
-            int fd = -1;
-            {
-                const std::lock_guard<std::mutex> lock (connection.mutex);
-                fd = connection.fd;
-            }
-            if (fd < 0) {
-                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                             "stream native socket closed");
-            }
-            const auto received = ::recv (fd, bytes.data () + offset, bytes.size () - offset, 0);
-            const int received_errno = errno;
-            if (received < 0) {
-                if (received_errno == EINTR) {
-                    continue;
-                }
-                throw session_transport_failure_t (received_errno,
-                                                   std::strerror (received_errno));
-            }
-            if (received == 0) {
-                throw detail::make_boundary_exception (detail::boundary_error_t::disconnected,
-                                             "STREAM TCP peer disconnected");
-            }
-            offset += static_cast<std::size_t> (received);
-        }
-        return bytes;
-    }
-
     template <typename TStream>
     std::optional<frame_t>
     read_frame (TStream &socket,
@@ -2285,33 +2286,97 @@ class stream_host_service_t::listener_t
         trace_stream_host ("write-completion", _stream, header, "result=success");
     }
 
-    std::optional<frame_t>
-    read_frame_native (native_tcp_connection_t &connection,
-                       const std::function<bool (const stream_header_t &)> &admit_payload)
+    bool native_buffer_has_complete_frame (const native_tcp_connection_t &connection) const
     {
-        auto prefix = read_exact_native (connection, 6);
+        if (connection.receive_buffer.size () < 6) {
+            return false;
+        }
+        const auto &prefix = connection.receive_buffer;
         const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
         const auto payload_size = (static_cast<std::size_t> (prefix[2]) << 24)
                                   | (static_cast<std::size_t> (prefix[3]) << 16)
                                   | (static_cast<std::size_t> (prefix[4]) << 8)
                                   | static_cast<std::size_t> (prefix[5]);
         validate_stream_frame_size (header_size, payload_size);
-        auto header_bytes = read_exact_native (connection, header_size);
-        auto header = _runtime.decode_header (header_bytes);
-        if (!header) {
-            throw framework_exception_t (header.error_kind (), header.error ()
-                                                                 ? header.error ()->what ()
-                                                                 : "STREAM header decode failed");
+        return connection.receive_buffer.size () >= 6u + header_size + payload_size;
+    }
+
+    std::optional<frame_t>
+    read_frame_native (native_tcp_connection_t &connection,
+                       const std::function<bool (const stream_header_t &)> &admit_payload)
+    {
+        constexpr std::size_t receive_chunk_size = 64u * 1024u;
+        for (;;) {
+            if (connection.receive_buffer.size () >= 6) {
+                const auto &prefix = connection.receive_buffer;
+                const auto header_size = static_cast<std::size_t> (
+                  (prefix[0] << 8) | prefix[1]);
+                const auto payload_size = (static_cast<std::size_t> (prefix[2]) << 24)
+                                          | (static_cast<std::size_t> (prefix[3]) << 16)
+                                          | (static_cast<std::size_t> (prefix[4]) << 8)
+                                          | static_cast<std::size_t> (prefix[5]);
+                validate_stream_frame_size (header_size, payload_size);
+                const auto frame_size = 6u + header_size + payload_size;
+                if (connection.receive_buffer.size () >= frame_size) {
+                    std::vector<std::uint8_t> header_bytes (
+                      connection.receive_buffer.begin () + 6,
+                      connection.receive_buffer.begin () + 6 + header_size);
+                    auto header = _runtime.decode_header (header_bytes);
+                    if (!header) {
+                        throw framework_exception_t (
+                          header.error_kind (),
+                          header.error () ? header.error ()->what ()
+                                          : "STREAM header decode failed");
+                    }
+                    auto decoded_header = header.value ();
+                    if (decoded_header.kind () != stream_message_kind_t::control
+                        && admit_payload && !admit_payload (decoded_header)) {
+                        return std::nullopt;
+                    }
+                    std::vector<std::uint8_t> payload_bytes (
+                      connection.receive_buffer.begin () + 6 + header_size,
+                      connection.receive_buffer.begin () + frame_size);
+                    connection.receive_buffer.erase (
+                      connection.receive_buffer.begin (),
+                      connection.receive_buffer.begin () + frame_size);
+                    trace_stream_host ("read-frame", _stream, decoded_header,
+                                       "payload_bytes="
+                                         + std::to_string (payload_bytes.size ()));
+                    return frame_t{decoded_header, message_from_bytes (payload_bytes)};
+                }
+            }
+
+            int fd = -1;
+            {
+                const std::lock_guard<std::mutex> lock (connection.mutex);
+                fd = connection.fd;
+            }
+            if (fd < 0) {
+                throw detail::make_boundary_exception (
+                  detail::boundary_error_t::disconnected,
+                  "stream native socket closed");
+            }
+            std::array<std::uint8_t, receive_chunk_size> chunk{};
+            const auto received = ::recv (
+              fd, chunk.data (), chunk.size (), MSG_DONTWAIT);
+            const int received_errno = errno;
+            if (received < 0) {
+                if (received_errno == EINTR)
+                    continue;
+                if (received_errno == EAGAIN || received_errno == EWOULDBLOCK)
+                    return std::nullopt;
+                throw session_transport_failure_t (received_errno,
+                                                   std::strerror (received_errno));
+            }
+            if (received == 0) {
+                throw detail::make_boundary_exception (
+                  detail::boundary_error_t::disconnected,
+                  "STREAM TCP peer disconnected");
+            }
+            connection.receive_buffer.insert (
+              connection.receive_buffer.end (), chunk.begin (),
+              chunk.begin () + received);
         }
-        auto decoded_header = header.value ();
-        if (decoded_header.kind () != stream_message_kind_t::control
-            && admit_payload && !admit_payload (decoded_header)) {
-            return std::nullopt;
-        }
-        auto payload_bytes = read_exact_native (connection, payload_size);
-        trace_stream_host ("read-frame", _stream, decoded_header,
-                           "payload_bytes=" + std::to_string (payload_bytes.size ()));
-        return frame_t{decoded_header, message_from_bytes (payload_bytes)};
     }
 
     void write_all_native (native_tcp_connection_t &connection,
@@ -2513,12 +2578,27 @@ class stream_host_service_t::listener_t
             auto receive_lease =
               _receive_scheduler.register_connection (stream_native_handle (*connection));
             while (!_stop->load (std::memory_order_acquire)) {
-                if (!receive_lease.wait_turn (
-                      [this] { return _stop->load (std::memory_order_acquire); })) {
-                    break;
-                }
                 receive_batch_budget_t batch;
                 while (!_stop->load (std::memory_order_acquire) && batch.can_receive ()) {
+                    if (!receive_lease.wait_turn (
+                          [this] { return _stop->load (std::memory_order_acquire); })) {
+                        break;
+                    }
+                    /* The synchronous TLS/WebSocket read may wait for the
+                     * remainder of a frame. Do not keep the listener-wide
+                     * receive lease while waiting; one partial connection
+                     * must not block the other connections. A new lease is
+                     * acquired for every frame, which also bounds a peer's
+                     * turn by the shared batch limits. */
+                    if constexpr (!std::is_same_v<TStream, tcp::socket>) {
+                        /* TLS and WebSocket implementations may retain
+                         * decrypted or frame bytes outside the kernel fd.
+                         * Keep this slot eligible for the next frame; the
+                         * blocking read still happens after the lease is
+                         * released. */
+                        receive_lease.set_buffered_ready (true);
+                    }
+                    receive_lease.release_turn ();
                     auto frame = read_frame (*connection, [this] (const stream_header_t &) {
                         return !_inbound_budget
                                || _inbound_budget->wait_for_application_capacity (
@@ -2602,7 +2682,6 @@ class stream_host_service_t::listener_t
                     }
                     flush_writes (*connection, stream, flushed, *write_mutex);
                 }
-                receive_lease.release_turn ();
             }
         }
         catch (const boost::system::system_error &error) {
@@ -2756,18 +2835,40 @@ class stream_host_service_t::listener_t
             }
             auto receive_lease = _receive_scheduler.register_connection (native_fd);
             while (!_stop->load (std::memory_order_acquire)) {
-                if (!receive_lease.wait_turn (
-                      [this] { return _stop->load (std::memory_order_acquire); })) {
-                    break;
-                }
                 receive_batch_budget_t batch;
                 while (!_stop->load (std::memory_order_acquire) && batch.can_receive ()) {
-                    auto frame = read_frame_native (*connection, [this] (const stream_header_t &) {
-                        return !_inbound_budget
-                               || _inbound_budget->wait_for_application_capacity (
-                                 [this] { return _stop->load (std::memory_order_acquire); });
+                    if (!receive_lease.wait_turn (
+                          [this] { return _stop->load (std::memory_order_acquire); })) {
+                        break;
+                    }
+                    bool application_capacity_blocked = false;
+                    auto frame = read_frame_native (*connection, [this, &application_capacity_blocked] (
+                                                                 const stream_header_t &) {
+                        if (!_inbound_budget
+                            || _inbound_budget->can_start_application_receive ()) {
+                            return true;
+                        }
+                        application_capacity_blocked = true;
+                        return false;
                     });
+                    /* The native parser never waits for application HWM
+                     * capacity while it owns the listener-wide lease. A
+                     * complete frame remains in receive_buffer and the
+                     * connection waits below, after releasing the lease. */
+                    receive_lease.set_buffered_ready (
+                      !application_capacity_blocked
+                      && native_buffer_has_complete_frame (*connection));
+                    receive_lease.release_turn ();
                     if (!frame) {
+                        if (application_capacity_blocked) {
+                            if (!_inbound_budget->wait_for_application_capacity (
+                                  [this] { return _stop->load (std::memory_order_acquire); })) {
+                                break;
+                            }
+                            receive_lease.set_buffered_ready (
+                              native_buffer_has_complete_frame (*connection));
+                            continue;
+                        }
                         break;
                     }
                     auto received_frame = std::move (*frame);
@@ -2845,7 +2946,6 @@ class stream_host_service_t::listener_t
                     }
                     flush_writes_native (*connection, stream, flushed, *write_mutex);
                 }
-                receive_lease.release_turn ();
             }
         }
         catch (const session_transport_failure_t &error) {

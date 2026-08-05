@@ -1245,7 +1245,8 @@ int run_cross_process_delivery ()
         auto target_spot = node.get_or_create_spot ("target-spot");
         auto target_actor = node.create_actor ("vertical.actor", "target-actor", {}, 5s);
         const std::uint64_t formal_descriptors[2]{
-          target_spot.status ().lifecycle_generation (), target_actor.ref ().generation ()};
+          target_spot.status ().lifecycle_generation (),
+          target_actor.ref ().object_generation ()};
         if (write (formal_descriptor_pipe[1], formal_descriptors,
                    sizeof (formal_descriptors))
             != sizeof (formal_descriptors)) {

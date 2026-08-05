@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <cerrno>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <future>
@@ -524,6 +526,60 @@ int connect_loopback (std::uint16_t port)
         return -1;
     }
     return socket_fd;
+}
+
+std::vector<std::uint8_t> make_native_stream_frame (
+  const zlink::framework::detail::stream_runtime_t &runtime,
+  const zlink::framework::detail::stream_header_t &header,
+  const zlink::message_t &payload)
+{
+    const auto encoded_header = runtime.encode_header (header);
+    if (!encoded_header) {
+        throw std::runtime_error ("failed to encode STREAM fairness frame header");
+    }
+    const auto payload_bytes = payload.to_bytes ();
+    const auto header_size = encoded_header.value ().size ();
+    std::vector<std::uint8_t> frame;
+    frame.reserve (6 + header_size + payload_bytes.size ());
+    frame.push_back (static_cast<std::uint8_t> ((header_size >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (header_size & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 24) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 16) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> ((payload_bytes.size () >> 8) & 0xff));
+    frame.push_back (static_cast<std::uint8_t> (payload_bytes.size () & 0xff));
+    frame.insert (frame.end (), encoded_header.value ().begin (), encoded_header.value ().end ());
+    frame.insert (frame.end (), payload_bytes.begin (), payload_bytes.end ());
+    return frame;
+}
+
+void send_native_bytes (int socket_fd,
+                        const std::vector<std::uint8_t> &bytes,
+                        std::size_t offset,
+                        std::size_t length)
+{
+    if (offset > bytes.size () || length > bytes.size () - offset) {
+        throw std::runtime_error ("invalid STREAM fairness frame range");
+    }
+    const auto end = offset + length;
+    while (offset < end) {
+        const auto sent = ::send (socket_fd, bytes.data () + offset, end - offset,
+                                  MSG_NOSIGNAL);
+        if (sent < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            throw std::runtime_error ("failed to send STREAM fairness frame");
+        }
+        if (sent == 0) {
+            throw std::runtime_error ("STREAM fairness frame send made no progress");
+        }
+        offset += static_cast<std::size_t> (sent);
+    }
+}
+
+void send_native_bytes (int socket_fd, const std::vector<std::uint8_t> &bytes)
+{
+    send_native_bytes (socket_fd, bytes, 0, bytes.size ());
 }
 
 } // namespace
@@ -1234,6 +1290,87 @@ int main ()
         transport_host.stop ();
         return 36;
     }
+
+    /* common internals §7.6 / transport liveness §4: a connection that has
+     * only part of a frame must release the listener turn while it waits for
+     * more bytes. A second connection must therefore deliver its complete
+     * frame before the first connection completes. */
+    auto transport_runtime = zlink::framework::detail::stream_runtime_t::from (
+      transport_zlink);
+    const zlink::framework::detail::stream_header_t fairness_header (
+      zlink::framework::detail::stream_message_kind_t::send,
+      zlink::framework::stream_codec_t::raw,
+      zlink::framework::detail::stream_header_flags_t::none,
+      std::nullopt,
+      "fairness-probe");
+    const auto fairness_frame = make_native_stream_frame (
+      transport_runtime, fairness_header, zlink::message_t::from (std::string ("fairness")));
+    const int partial_client = connect_loopback (transport_port);
+    if (partial_client < 0 || !transport_session.wait_connected (4)) {
+        if (partial_client >= 0) {
+            ::close (partial_client);
+        }
+        transport_host.stop ();
+        return 39;
+    }
+    send_native_bytes (partial_client, fairness_frame, 0, 1);
+    /* Leave only the first byte at the listener. The second client must not
+     * wait for the rest of this frame before it can be dispatched. */
+    const int ready_client = connect_loopback (transport_port);
+    if (ready_client < 0 || !transport_session.wait_connected (5)) {
+        ::close (partial_client);
+        if (ready_client >= 0) {
+            ::close (ready_client);
+        }
+        transport_host.stop ();
+        return 40;
+    }
+    send_native_bytes (ready_client, fairness_frame);
+    if (!transport_session.wait_packets (2)) {
+        ::close (partial_client);
+        ::close (ready_client);
+        transport_host.stop ();
+        return 41;
+    }
+    send_native_bytes (partial_client, fairness_frame, 1, fairness_frame.size () - 1);
+    if (!transport_session.wait_packets (3)) {
+        ::close (partial_client);
+        ::close (ready_client);
+        transport_host.stop ();
+        return 42;
+    }
+    ::shutdown (partial_client, SHUT_RDWR);
+    ::close (partial_client);
+    ::shutdown (ready_client, SHUT_RDWR);
+    ::close (ready_client);
+
+    /* The receive batch is limited to 64 frames. Keep 65 complete frames in
+     * one user-space read so the final frame has no new kernel readability
+     * event to wake the scheduler; the buffered-ready handoff must schedule
+     * it again without another client write. */
+    const int buffered_client = connect_loopback (transport_port);
+    if (buffered_client < 0 || !transport_session.wait_connected (6)) {
+        if (buffered_client >= 0) {
+            ::close (buffered_client);
+        }
+        transport_host.stop ();
+        return 43;
+    }
+    const auto buffered_payload = zlink::message_t::from (std::string (512, 'x'));
+    std::vector<std::uint8_t> buffered_frames;
+    for (int index = 0; index < 65; ++index) {
+        const auto frame = make_native_stream_frame (
+          transport_runtime, fairness_header, buffered_payload);
+        buffered_frames.insert (buffered_frames.end (), frame.begin (), frame.end ());
+    }
+    send_native_bytes (buffered_client, buffered_frames);
+    if (!transport_session.wait_packets (68)) {
+        ::close (buffered_client);
+        transport_host.stop ();
+        return 44;
+    }
+    ::shutdown (buffered_client, SHUT_RDWR);
+    ::close (buffered_client);
 
     transport_host.stop ();
 

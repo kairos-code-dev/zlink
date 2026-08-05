@@ -1,6 +1,9 @@
 import 'reflect-metadata';
 import http from 'node:http';
+import { setTimeout as delay } from 'node:timers/promises';
 import { NestFactory } from '@nestjs/core';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
 import { createGameApiModule } from './GameApi/game-api-module';
 import { startGameApiServer } from './GameApi/game-api-server';
 import { createQuestMissionModule } from './QuestMission/gamequest-quest-module';
@@ -10,6 +13,7 @@ import { GAMEQUEST_LOCATION_STORE } from './Configuration/tokens';
 import { GAMEQUEST_SAMPLE_CONFIG } from './Configuration/sample-config';
 import type { GameQuestServerConfig } from './Configuration/sample-config';
 import type { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import { SampleNames } from '../Shared/Configuration/sample-names';
 
 type GameQuestRole = 'api-a' | 'api-b' | 'mission-a' | 'mission-b';
 
@@ -21,6 +25,12 @@ async function bootstrapGameQuest(role: GameQuestRole): Promise<void> {
     abortOnError: true
   });
   const config = app.get<GameQuestServerConfig>(GAMEQUEST_SAMPLE_CONFIG);
+  if (!isApi) {
+    await waitForRouteMeshReady(
+      app.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME),
+      SampleNames.playerQuestSpotMesh
+    );
+  }
   const httpServer = isApi
     ? await startGameApiServer(app, config, role)
     : await startMissionSelfCheckServer(config, role, app.get(PlayerQuestSpotProvisioner));
@@ -32,6 +42,25 @@ async function bootstrapGameQuest(role: GameQuestRole): Promise<void> {
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     await closeNestRuntime(app);
     await app.get<ZLinkRedisLocationStore>(GAMEQUEST_LOCATION_STORE).dispose();
+  }
+}
+
+async function waitForRouteMeshReady(
+  runtime: ZLinkRouteMeshRuntime,
+  meshName: string
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const status = runtime.snapshot(meshName);
+    if (status.isReady && status.placement.isAvailable) return;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `GameQuest RouteMesh '${meshName}' did not become ready before startup deadline.`
+      );
+    }
+    // The HTTP health endpoint is published only after this barrier so the
+    // sample client cannot submit an Instance intent before placement exists.
+    await delay(10);
   }
 }
 

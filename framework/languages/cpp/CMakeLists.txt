@@ -1893,7 +1893,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
     zlink::framework
     zlink::stream_e2e_client)
   target_include_directories(zlink_cpp_cross_language_host PRIVATE
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
 
   # These executables still exercise the removed SpotMesh/SpotNode host surface.
   # Keep them available as explicit migration targets, but do not make a normal

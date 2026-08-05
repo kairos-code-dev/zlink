@@ -5,14 +5,14 @@ import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActor
 import systems.zlink.e2e.kotlin.spotservice.session.spots.UserSpot
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 
 class UserActorEchoHandler : ZLinkSuspendingSpotActorRequestHandler<UserSpot, ScenarioActor, Contracts.ActorEchoReq, Contracts.ActorEchoRes> {
     @ZLinkSpotActorRequest(packetName = "ActorEchoReq")
     override suspend fun handle(
         spot: UserSpot,
         actor: ScenarioActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.ActorEchoReq,
     ): Contracts.ActorEchoRes {
         val seq = actor.nextSequence()

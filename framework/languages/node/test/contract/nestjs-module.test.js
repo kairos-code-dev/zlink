@@ -1647,7 +1647,9 @@ test('Nest builders preserve process listener identity and global Actor dispatch
     .setBindHost('127.0.0.2')
     .setAdvertiseHost('parties.internal')
     .objects().client();
-  builder.addFanoutChannel('events').enablePublisher();
+  builder.addFanoutChannel('events')
+    .setRoutingIdPrefix('events')
+    .enablePublisher();
   builder.addStreamNode('gateway')
     .bind()
     .enableActorDispatch()
@@ -1790,7 +1792,9 @@ test('framework options builder maps the formal RouteMesh registration flow into
     builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
     builder.configureStreamCompression().use(streamCompressionCodec);
     const events = builder.addFanoutChannel('events');
-    events.enablePublisher('tcp://127.0.0.1:9402');
+    events
+      .routingId('events-node')
+      .enablePublisher('tcp://127.0.0.1:9402');
     events.enableSubscriber('tcp://127.0.0.1:9402');
     const route = builder.addRouteMesh('route');
     route.listen('tcp://127.0.0.1:9403');

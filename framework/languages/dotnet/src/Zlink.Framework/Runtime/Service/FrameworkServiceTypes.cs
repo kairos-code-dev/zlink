@@ -265,6 +265,8 @@ internal interface IUserSpotOperationTarget
 
 internal interface IRelocationReplyRelayTarget
 {
+    // The target owns payload for every completion path. It either transfers
+    // the messages to the pending operation or disposes them before returning.
     ValueTask<ZLinkServiceWireCodec.ReplyRelayAckRecord?> RelayAsync(
         ZLinkServiceWireCodec.ReplyRelayRecord relay,
         RoutingId sourceNodeRid,

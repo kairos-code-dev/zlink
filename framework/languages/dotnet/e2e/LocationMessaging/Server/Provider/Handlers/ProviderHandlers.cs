@@ -44,6 +44,27 @@ internal sealed class ProfileCommandHandler(EvidenceStore evidence)
     }
 }
 
+internal sealed class BackpressureCommandHandler(
+    EvidenceStore evidence,
+    BackpressureGate gate)
+    : IZLinkSendHandler<BackpressureMsg>
+{
+    public async ValueTask HandleAsync(
+        BackpressureMsg command,
+        IZLinkMessageContext context,
+        CancellationToken cancellationToken)
+    {
+        evidence.Add(
+            $"profile-command-start|rid={evidence.Rid}|command={command.CommandId}"
+            + $"|payloadBytes={command.Payload.Length}|packet={context.PacketName}");
+        await gate.WaitAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"profile-command|rid={evidence.Rid}|command={command.CommandId}"
+            + $"|payloadBytes={command.Payload.Length}|packet={context.PacketName}");
+    }
+}
+
 internal sealed class PayloadRequestHandler(EvidenceStore evidence)
     : IZLinkRequestHandler<PayloadReq, PayloadRes>
 {

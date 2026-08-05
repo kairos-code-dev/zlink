@@ -50,7 +50,9 @@ public final class ZLinkStreamHeaderCodec {
             throw new IllegalArgumentException("STREAM header packet name length is missing");
         }
         int nameLength = Byte.toUnsignedInt(bytes[offset++]);
-        if (nameLength == 0 || bytes.length - offset < nameLength) {
+        boolean reply = isReply(kind);
+        if ((reply && nameLength != 0) || (!reply && nameLength == 0)
+            || bytes.length - offset < nameLength) {
             throw new IllegalArgumentException("STREAM header packet name is invalid");
         }
         String packetName = new String(bytes, offset, nameLength, StandardCharsets.UTF_8);
@@ -148,10 +150,13 @@ public final class ZLinkStreamHeaderCodec {
         Optional<String> correlationId,
         Optional<String> flowId,
         Optional<ZLinkFlowOrigin> flowOrigin) {
-        if (packetName == null || packetName.isBlank()) {
+        boolean reply = isReply(kind);
+        if (!reply && (packetName == null || packetName.isBlank())) {
             throw new IllegalArgumentException("packetName is required");
         }
-        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
+        byte[] name = reply
+            ? new byte[0]
+            : packetName.getBytes(StandardCharsets.UTF_8);
         byte[] metadataBytes = encodeMetadata(metadata);
         boolean hasMetadata = metadataBytes.length > 0;
         boolean hasCorrelationId = correlationId != null
@@ -224,6 +229,10 @@ public final class ZLinkStreamHeaderCodec {
     private static boolean isKnownKind(byte value) {
         int kind = Byte.toUnsignedInt(value);
         return kind >= KIND_SEND && kind <= 5;
+    }
+
+    private static boolean isReply(int kind) {
+        return kind == KIND_RESPONSE || kind == KIND_ERROR;
     }
 
     private static int encodeFlowOrigin(ZLinkFlowOrigin origin) {

@@ -668,7 +668,7 @@ public sealed class LocationLifecycleTests
     }
 
     [Fact]
-    public async Task Spot_Handle_Resolver_Uses_The_Row_And_Misses_When_The_Lease_Expires()
+    public async Task Spot_Handle_Resolver_Uses_The_Row_And_Reports_Unavailable_When_The_Lease_Expires()
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
@@ -697,13 +697,14 @@ public sealed class LocationLifecycleTests
         Assert.Equal(RoutingId.From("node-a"), handle.Snapshot.NodeRid);
         Assert.Equal(spotId, handle.SpotId);
 
-        // No heartbeat: once the owner lease expires the row is stale and
-        // the resolver reports a clean miss instead of a wrong node.
+        // No heartbeat: once the owner lease expires the durable row remains,
+        // but its route cannot be used. Report Unavailable instead of exposing
+        // a stale node or treating the known authority as NotFound.
         fixture.Time.Advance(fixture.Options.OwnerLeaseTtl + TimeSpan.FromSeconds(1));
 
-        Assert.Null(await resolver.ResolveSpotHandleAsync(
-            spotId,
-            CancellationToken.None));
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await resolver.ResolveSpotHandleAsync(spotId, CancellationToken.None));
+        Assert.Equal(ZLinkFrameworkErrorKind.Unavailable, error.Kind);
     }
 
     [Fact]

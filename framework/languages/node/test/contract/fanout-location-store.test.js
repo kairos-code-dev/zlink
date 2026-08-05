@@ -125,13 +125,13 @@ test('automatic fanout registration requires only the opaque location provider S
   }), /Location Store must implement read, write, and scan/);
 
   assert.throws(() => internal.createFrameworkRegistration({
-    channels: { events: { publisher: { bind: 'tcp://127.0.0.1:9501' } } },
+    channels: { events: { routingId: 'publisher', publisher: { bind: 'tcp://127.0.0.1:9501' } } },
     locations: { storeInstance: {} }
   }), /Location Store must implement read, write, and scan/);
 
   const provider = new internal.ZLinkInMemoryProviderLocationStore();
   assert.doesNotThrow(() => internal.createFrameworkRegistration({
-    channels: { events: { publisher: { bind: 'tcp://127.0.0.1:9501' } } },
+    channels: { events: { routingId: 'publisher', publisher: { bind: 'tcp://127.0.0.1:9501' } } },
     locations: { storeInstance: provider }
   }));
   assert.equal(provider.updateFanoutPublisher, undefined);

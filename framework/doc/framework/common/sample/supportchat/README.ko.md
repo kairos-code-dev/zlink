@@ -128,7 +128,7 @@ actor를 ConversationSpot participant로 사용한다.
 | identity actor를 준비한다. | Actor GetOrCreate | stable ActorId와 type으로 기존 actor를 재사용한다. [상호작용 모델 §2.1](../../spec/03-interaction-model.ko.md#21-상호작용을-시작하는-public-interface) |
 | 새 conversation의 logical address를 만든다. | User Spot manager Create | Framework가 global SpotId를 발급하고 owner를 선택한다. [Framework API](../../spec/06-framework-api.ko.md) |
 | actor를 ConversationSpot에 참여시킨다. | public actor join | ActorRef나 owner NodeRid를 application payload로 보내지 않는다. [Spot·Actor membership](../../spec/15-spot-actor.ko.md) |
-| 대화 상태를 순서대로 변경한다. | Spot turn | domain aggregate의 mutable state를 한 execution gate에서 변경한다. [Async execution policy](../../spec/05-async-execution-policy.md) |
+| 대화 상태를 순서대로 변경한다. | Spot turn | domain aggregate의 mutable state를 한 execution gate에서 변경한다. [Async execution policy](../../spec/05-async-execution-policy.ko.md) |
 | current ConversationId actor로 relay한다. | session metadata routing | Session이 payload를 domain decode하지 않고 metadata로 bound actor를 고른다. [Session–Actor dispatch](../../spec/20-session-actor-dispatch.ko.md) |
 | owner 장애를 표현한다. | failure/failover policy | Ready owner 장애는 자동 replacement가 아니다. [Failure policy](../../spec/31-failure-failover-policy.ko.md#42-기존-actor와-spot) |
 

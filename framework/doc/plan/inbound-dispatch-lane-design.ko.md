@@ -706,8 +706,9 @@ Review coordinator는 각 round를 시작하기 전에 candidate commit SHA와 �
 
 - 이 설계 문서와 1단계에서 갱신한 Core 정식 spec
 - `AGENTS.md`, [스펙 문서 작성 가이드](../../../doc/principal/documentation/spec-writing-guide.ko.md),
-  [source comment 원칙](../../../doc/principal/source-comment-principles.ko.md)과
-  [software design 원칙](../../../doc/principal/software-design-principles.ko.md)
+  [source comment 원칙](../../../doc/principal/source-comment-principles.ko.md),
+  [POSDDD 설계 원칙](../../../doc/principal/dev/posddd.ko.md)과
+  [ZLink 시스템 개발 원칙](../../../doc/principal/dev/zlink-system-design-principles.ko.md)
 - C public header, Core source, test, benchmark와 monitoring 변경
 - 비교 기준 commit부터 candidate commit까지의 전체 diff
 - 이전 round finding과 수정 commit, test·benchmark 결과

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using Systems.Zlink.Framework.Runtime.Protocol;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -30,7 +31,9 @@ internal static class ZLinkActorCreationTerminalCodec
             {
                 var header = ZLinkEnvelopeCodec.DecodeHeader(messages);
                 application = ZLinkApplicationPayloadEnvelopeCodec.Encode(
-                    header.MessageName,
+                    string.IsNullOrEmpty(header.MessageName)
+                        ? ZLinkApplicationPayloadEnvelopeCodec.CreationPacketName
+                        : header.MessageName,
                     header.ContentType,
                     reply[1].Span);
             }

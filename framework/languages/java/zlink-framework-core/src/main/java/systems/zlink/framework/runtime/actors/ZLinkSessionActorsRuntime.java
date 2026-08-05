@@ -551,7 +551,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                 || bindingGeneration < 0
                 || lastAcceptedSessionSequence < 0
                 || targetAuthorityOwnerGeneration
-                    != sourceAuthorityOwnerGeneration + 1) {
+                    <= sourceAuthorityOwnerGeneration) {
                 throw new IllegalArgumentException(
                     "relocation binding-route generations are invalid");
             }

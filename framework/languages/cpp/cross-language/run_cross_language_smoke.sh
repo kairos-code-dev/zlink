@@ -354,6 +354,42 @@ stage_node_connector_cpp_stream_server() {
   RESULTS+=("codec: Browser TypeScript STREAM connector (LZ4) -> C++ stream server (frame + compression)")
 }
 
+# --- messageFollow wire: C++ raw owner <-> Node raw owner ---------------------
+stage_cpp_node_message_follow() {
+  local cpp_port node_port cpp_endpoint node_endpoint
+  cpp_port="$(free_port)"
+  node_port="$(free_port)"
+  cpp_endpoint="tcp://127.0.0.1:${cpp_port}"
+  node_endpoint="tcp://127.0.0.1:${node_port}"
+  start_cpp cpp-message-follow message-follow \
+    --node-rid cpp-message-follow \
+    --peer-rid node-message-follow \
+    --bind-endpoint "${cpp_endpoint}" \
+    --peer-endpoint "${node_endpoint}" \
+    --event-file "${RUN_DIR}/cpp-message-follow.events" \
+    --ready-file "${RUN_DIR}/cpp-message-follow.ready"
+  start_node node-message-follow message-follow \
+    --node-rid node-message-follow \
+    --peer-rid cpp-message-follow \
+    --bind-endpoint "${node_endpoint}" \
+    --peer-endpoint "${cpp_endpoint}" \
+    --event-file "${RUN_DIR}/node-message-follow.events"
+  wait_for_ready "${RUN_DIR}/cpp-message-follow.ready" 30
+  wait_for_ready "${RUN_DIR}/node-message-follow.ready" 30
+  wait_for_line "${RUN_DIR}/cpp-message-follow.events" \
+    "message-follow-received|source-node=node-message-follow|target-node=cpp-message-follow|operation-low=202" 60
+  wait_for_line "${RUN_DIR}/node-message-follow.events" \
+    "message-follow-received|source-node=cpp-message-follow|target-node=node-message-follow|operation-low=101" 60
+  stop_all
+  RESULTS+=("message-follow: C++ and Node raw owners (command 50 + route fence)")
+}
+
+if [[ "${ZLINK_CPP_CROSS_LANGUAGE_STAGE:-all}" == "message-follow" ]]; then
+  stage_cpp_node_message_follow
+  echo "cross-language smoke stage=message-follow result=passed"
+  exit 0
+fi
+
 stage_cpp_client_dotnet_channel_server
 stage_dotnet_client_cpp_channel_server
 stage_cpp_publisher_dotnet_subscriber
@@ -365,6 +401,7 @@ stage_node_client_cpp_channel_server
 stage_cpp_publisher_node_subscriber
 stage_node_publisher_cpp_subscriber
 stage_node_connector_cpp_stream_server
+stage_cpp_node_message_follow
 
 for result in "${RESULTS[@]}"; do
   echo "ok - ${result}"

@@ -12,16 +12,18 @@ const managedServicePath = path.resolve(
   '../../e2e/RuntimeMonitoring/Client/Support/managed-service.ts'
 );
 
-test('MON-A2 changes provider membership and compares projection payloads', () => {
+test('MON-A2 changes provider membership and compares public status projections', () => {
   const source = fs.readFileSync(scenarioPath, 'utf8');
   assert.match(source, /serviceBUrl, '\/shutdown'/);
   assert.match(source, /startServiceB\(options,/);
   const managedService = fs.readFileSync(managedServicePath, 'utf8');
   assert.match(managedService, /options\.filteredServiceMain/);
-  assert.match(source, /TopologyChanged/);
-  assert.match(source, /ServiceSummaryChanged/);
-  assert.match(source, /removed\.topology < baseline\.topology/);
-  assert.match(source, /restored\.topology >= baseline\.topology/);
-  assert.match(source, /removed\.summary < baseline\.summary/);
-  assert.match(source, /restored\.summary >= baseline\.summary/);
+  assert.match(source, /waitForRouteStatus\(/);
+  assert.match(source, /'\/locations\/peers'/);
+  assert.match(source, /removed\.readyPeerCount/);
+  assert.match(source, /status\.readyPeerCount > removed\.readyPeerCount/);
+  assert.match(source, /BigInt\(restored\.sequence\) > BigInt\(baseline\.sequence\)/);
+  assert.match(source, /routeStatusesFromEvidence/);
+  assert.match(source, /status\.peers\.every/);
+  assert.match(source, /status\.peers\.some/);
 });

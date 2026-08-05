@@ -691,11 +691,15 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                 });
         }
 
-        synchronized void commitSourceQueue() {
+        synchronized void commitSourceQueue(
+            Map<String, Long> targetOwnerGenerations) {
             if (terminal || committed || prepared == null) {
                 throw new IllegalStateException(
                     "Actor relocation source queue cannot be committed");
             }
+            Objects.requireNonNull(
+                targetOwnerGenerations,
+                "targetOwnerGenerations");
             ZLinkSpotRetireControl.ParticipantFence participant =
                 stageRequest.participants().stream()
                     .filter(value ->
@@ -712,9 +716,9 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
                     new ZLinkSpotRelocationReplyRoutes.CommittedFence(
                         participant.authorityKey(),
                         1L,
-                        Math.incrementExact(
-                            participant
-                                .sourceAuthorityOwnerGeneration()))));
+                        targetOwnerGeneration(
+                            targetOwnerGenerations,
+                            participant.authorityKey()))));
             if (actors.commitActorRelocation(
                     owned.actorId(), seal).isEmpty()) {
                 throw new IllegalStateException(
@@ -846,5 +850,16 @@ final class ZLinkStandaloneActorRelocationSourceBuilder {
 
     private static <T> CompletionStage<T> failed(Throwable failure) {
         return CompletableFuture.failedFuture(failure);
+    }
+
+    private static long targetOwnerGeneration(
+        Map<String, Long> generations,
+        String authorityKey) {
+        Long generation = generations.get(authorityKey);
+        if (generation == null || generation <= 0) {
+            throw new IllegalArgumentException(
+                "committed owner generation is absent: " + authorityKey);
+        }
+        return generation;
     }
 }

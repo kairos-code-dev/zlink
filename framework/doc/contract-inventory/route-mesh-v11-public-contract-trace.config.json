@@ -6,13 +6,13 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 2842,
-      "sha256": "9d1d44d9cf1ef965b3386e33369115fbddf64e12f2f17d66d0a9e6e444f8e5a0",
+      "count": 2846,
+      "sha256": "d998ff39dde1979a836e08547ba63e4e2993dd610f6ab9759209959e8c3f2012",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 749,
-      "sha256": "1e120f107977c1e6e78d59703ed69a2257715e179b64377553c163d363e3f0bf",
+      "count": 750,
+      "sha256": "2da19aff96ab84867d3c45196418ab78f0d5ee77557f34c51129e28be869e9c5",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {

@@ -6,10 +6,12 @@ import type { HttpRoute } from '../Support/http-server';
 export function createPublisherEndpoints(
   fanout: ZLinkFanoutClient,
   evidence: EvidenceStore,
-  stop: () => void
+  stop: () => void,
+  channelName: string = PubSubNames.channel
 ): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'publisher', rid: evidence.rid }) },
+    { method: 'GET', path: '/status/listener', handle: () => fanout.getListenerStatus(channelName) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } },
@@ -25,7 +27,7 @@ export function createPublisherEndpoints(
       handle: async (body) => {
         const request = body as PublishRequest;
         const event = new EventMsg(request.runId, Number(request.sequence), request.value);
-        await fanout.publish(PubSubNames.channel, event).submit();
+        await fanout.publish(channelName, request.topic, event).submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };
       }
     },
@@ -35,7 +37,7 @@ export function createPublisherEndpoints(
       handle: async (body) => {
         const request = body as PublishRequest;
         const event = new MissingEventMsg(request.runId, Number(request.sequence), request.value);
-        await fanout.publish(PubSubNames.channel, event).submit();
+        await fanout.publish(channelName, request.topic, event).submit();
         return { status: 'published', topic: request.topic, runId: request.runId, sequence: event.sequence };
       }
     }

@@ -7,6 +7,7 @@ import java.lang.reflect.Proxy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -173,7 +174,8 @@ final class ZLinkCanonicalRelocationStateMachineTest {
                 "relocation-root",
                 0,
                 root,
-                new byte[] {1}),
+                new byte[] {1},
+                Map.of(authorityKey, 6L)),
             List.of(new ZLinkAuthorityEntry(
                 authorityKey, targetAuthority)));
         AtomicInteger ackCount = new AtomicInteger();

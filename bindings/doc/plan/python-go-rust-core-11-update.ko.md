@@ -218,7 +218,7 @@ pattern·transport matrix, 반복 통계, baseline 비교와 성능 threshold �
 1. DDD 관점에서 message, buffer, native handle, socket, callback의 lifecycle과 ownership을 누가 소유하는지,
    state transition과 error mapping의 invariant가 어느 경계에 있는지 정리한다. Binding, raw FFI와 Core의
    책임을 섞거나 DDD 이름만 붙인 전달 계층을 만들지 않는다.
-2. [`software-design-principles.md`](../../../doc/principal/software-design-principles.md)의 POSD 기준으로
+2. [`posddd.md`](../../../doc/principal/dev/posddd.md)의 POSD 기준으로
    shallow module, pass-through method, information leakage, temporal decomposition, 중복 abstraction과 호출자에게
    전가된 복잡성을 찾는다. 비자명한 변경은 두 가지 이상 대안을 비교한 뒤 책임 경계와 caller 부담이 더 작은
    안을 선택한다.

@@ -258,7 +258,7 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             sessionRouteCommand44);
     }
 
-    public CompletionStage<Void> commitDeferredJoinRelocation(
+    public CompletionStage<Long> commitDeferredJoinRelocation(
         ZLinkActorSpotRoutePackets.TransferRequest request) {
         ZLinkDeferredJoinAcceptedRecovery recovery =
             deferredJoinAcceptedRecovery;
@@ -2525,9 +2525,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 var source = authority.sourceActorOwner();
                 var sessionOwner = authority.sessionOwner();
                 var target = authority.targetActorOwner();
-                var command =
+                var intent =
                     new systems.zlink.framework.runtime.internal.service
-                        .ZLinkServiceM6BWireCodec.SessionRelocationRoute(
+                        .ZLinkServiceM6BWireCodec.SessionRelocationRouteIntent(
                             new systems.zlink.framework.runtime.internal.service
                                 .ZLinkServiceM6BWireCodec.RelocationIdentity(
                                     relocationId.getMostSignificantBits(),
@@ -2559,14 +2559,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                                 .ZLinkServiceM6BWireCodec
                                 .SessionRelocationRouteAction.COMMIT,
                             authority.sourceAuthorityOwnerGeneration(),
-                            Math.incrementExact(
-                                authority.sourceAuthorityOwnerGeneration()),
                             targetNodeRid,
                             target.lifecycleGeneration(),
                             session.lastAcceptedSessionSequence());
                 return new systems.zlink.framework.runtime.internal.service
                     .ZLinkServiceM6BWireCodec()
-                    .encodeSessionRelocationRoute(command);
+                    .encodeSessionRelocationRouteIntent(intent);
             });
     }
 

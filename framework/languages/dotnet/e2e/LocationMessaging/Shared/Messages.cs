@@ -6,6 +6,8 @@ public sealed record ProfileRes(string Value, string ProviderRid);
 
 public sealed record ProfileMsg(string CommandId);
 
+public sealed record BackpressureMsg(string CommandId, string Payload);
+
 public sealed record MissingProfileReq(string Value);
 
 public sealed record MissingProfileMsg(string CommandId);
@@ -67,3 +69,10 @@ public sealed record ExpectedFailureRes(string ErrorKind);
 public sealed record DrainResultRes(string Result, string? Reason = null);
 
 public sealed record RequestOutcomeRes(string Value, string Outcome);
+
+public sealed record RuntimeInboundStatusRes(
+    ulong ApplicationHwmBytes,
+    ulong PendingPayloadBytes,
+    ulong QueuedPayloadBytes,
+    ulong ActivePayloadBytes,
+    bool ApplicationReceivePaused);

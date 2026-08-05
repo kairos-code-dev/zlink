@@ -300,12 +300,16 @@ function toPublicMessageFlowEvent(flow: ZLinkRuntimeMessageFlowEvent): ZLinkMess
     action: flow.errorAction,
     packetName: flow.packetName,
     channelName: flow.channelName,
+    meshName: flow.meshName,
     topic: flow.topic,
     correlationId: flow.correlationId,
     sourceRid: flow.sourceRid,
+    targetRid: flow.targetRid,
     flowId: flow.flowId,
     flowOrigin: flow.flowOrigin,
     spotId: flow.spotId,
+    instanceSpotType: flow.instanceSpotType,
+    activationState: flow.activationState,
     actorId: flow.actorId,
     messageSizeBytes: flow.messageSize
   };
@@ -348,6 +352,8 @@ function messageFlowSurface(
     case ZLinkDispatchErrorSurface.SpotRoute:
     case ZLinkDispatchErrorSurface.SpotSubscription:
       return 'spot';
+    case ZLinkDispatchErrorSurface.InstanceSpot:
+      return 'instance_spot';
     case ZLinkDispatchErrorSurface.SpotActor:
       return 'actor';
     case ZLinkDispatchErrorSurface.StreamSession:
@@ -400,12 +406,16 @@ export function flowLine(
     field('label', label),
     field('packet', flow.packetName),
     field('channel', flow.channelName),
+    field('mesh', flow.meshName),
     field('topic', flow.topic),
     field('corr', flow.correlationId),
     field('flow', flow.flowId),
     field('origin', flow.flowOrigin),
     field('src', flow.sourceRid),
+    field('target', flow.targetRid),
     field('spot', flow.spotId),
+    field('instance_type', flow.instanceSpotType),
+    field('activation_state', flow.activationState),
     field('actor', flow.actorId),
     field('errorReason', flow.errorReason),
     field('errorAction', flow.errorAction),
@@ -427,10 +437,14 @@ export function errorLine(event: ZLinkDispatchFailure, label: string | undefined
     field('label', label),
     field('packet', event.packetName),
     field('channel', event.channelName),
+    field('mesh', event.meshName),
     field('topic', event.topic),
     field('corr', event.correlationId),
     field('src', event.sourceRid),
+    field('target', event.targetRid),
     field('spot', event.spotId),
+    field('instance_type', event.instanceSpotType),
+    field('activation_state', event.activationState),
     field('actor', event.actorId),
     field('errorType', event.errorType),
     field('errorMessage', event.errorMessage)

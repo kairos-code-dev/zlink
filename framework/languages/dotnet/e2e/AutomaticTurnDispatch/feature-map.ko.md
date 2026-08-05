@@ -46,8 +46,8 @@ runner는 선택한 수와 scenario별 완료 marker 수가 모두 같은지 확
 
 | 시나리오 | 상태 | 누락 범위 |
 |---|---|---|
-| TD-D4 | 미구현 | PerActor의 `Async`는 같은 Actor만 차단 |
-| TD-D5 | 미구현 | 지원하지 않는 문맥의 `Yield`는 제출 전에 실패 |
-| TD-D6 | 미구현 | Self awaited request와 same-gate `Async` 선검증 |
-| TD-E2A | 미구현 | Handler 실패 시 비활성 Join barrier 폐기 |
-| TD-F5A | 미구현 | 대기 중 host `Shutdown` |
+| TD-D4 | process 통과 | `logs/20260805-103107-1129457/`에서 Actor A의 `Async` 대기 중 Actor B handler가 먼저 완료되고, 같은 Actor A의 후속 request는 첫 handler 뒤 FIFO로 완료되는 것을 file evidence와 message-flow trace로 확인했다. |
+| TD-D5 | process 통과 | 같은 로그에서 지원하지 않는 context의 `Yield`가 `InvalidOperation`으로 제출 전에 끝나고 remote handler evidence가 없으며, `Async` 대조 경로는 정상 완료되는 것을 확인했다. |
+| TD-D6 | process 통과 | 같은 로그에서 Actor self-request와 Spot same-gate `Async`가 `InvalidOperation`으로 거부되고, one-way send와 후속 probe는 정상 동작하는 것을 확인했다. |
+| TD-E2A | process 통과 | 같은 로그에서 exception·cancellation handler failure 뒤 deferred Join callback과 target/source lifecycle marker가 생성되지 않고 source Actor가 계속 요청을 처리하는 것을 확인했다. |
+| TD-F5A | process 통과 | `logs/20260805-103328-1139599/`에서 pending `Async`가 `Shutdown` 뒤 public stream error로 terminal 처리되고, 재시작한 Play가 같은 Spot에 recovery probe를 한 번 처리하는 것을 file evidence와 message-flow trace로 확인했다. |

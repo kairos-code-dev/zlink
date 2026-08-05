@@ -37,6 +37,9 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
   readonly meshNodeDescriptor?: (
     meshName: string
   ) => ZLinkMeshNodeDescriptor | undefined;
+  readonly localPlacementCounts?: (
+    meshName: string
+  ) => ZLinkLocalPlacementCounts | undefined;
   readonly isLocationStoreHealthy?: () => boolean;
   readonly hostState?: () => ZLinkFrameworkRuntimeState;
   readonly admission: ZLinkRuntimeAdmissionGate;
@@ -48,6 +51,11 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
   readonly shutdownResources?: (meshName: string, signal: AbortSignal) => Promise<void>;
   readonly cleanupHostResources: (signal: AbortSignal) => Promise<void>;
   readonly forceStopResources: (meshName: string) => Promise<void>;
+}
+
+export interface ZLinkLocalPlacementCounts {
+  readonly activeActorCount: number;
+  readonly activeSpotCount: number;
 }
 
 interface ZLinkMeshDrainState {
@@ -96,6 +104,20 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     if (node === undefined) throw routeNotFound(meshName);
     const status = node.status();
     const descriptor = this.options.meshNodeDescriptor?.(meshName);
+    const localPlacementCounts = this.options.localPlacementCounts?.(meshName);
+    const populationCapacity = descriptor === undefined || localPlacementCounts === undefined
+      ? descriptor?.populationCapacity
+      : {
+          ...descriptor.populationCapacity,
+          actors: {
+            ...descriptor.populationCapacity.actors,
+            active: localPlacementCounts.activeActorCount
+          },
+          spots: {
+            ...descriptor.populationCapacity.spots,
+            active: localPlacementCounts.activeSpotCount
+          }
+        };
     const backendPeers = node.peers();
     const peerChannels = backendPeers.map((peer) => peer.routingId === null
       ? { names: [] as readonly string[], weights: [] as readonly number[] }
@@ -139,10 +161,11 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const objectRole = descriptor?.objectRole ?? ZLinkObjectRole.None;
     const placementWeight = descriptor?.placementWeight ?? 0;
     const capacityAvailable = descriptor !== undefined
+      && populationCapacity !== undefined
       && hasRemainingCapacity(descriptor.activationConcurrency)
       && (
-        hasRemainingCapacity(descriptor.populationCapacity.actors)
-        || hasRemainingCapacity(descriptor.populationCapacity.spots)
+        hasRemainingCapacity(populationCapacity.actors)
+        || hasRemainingCapacity(populationCapacity.spots)
       );
     const placementAvailable = objectRole === ZLinkObjectRole.Server
       && placementWeight > 0
@@ -161,8 +184,8 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       peers,
       placement: {
         isAvailable: placementAvailable,
-        activeActorCount: descriptor?.populationCapacity.actors.active ?? 0,
-        activeSpotCount: descriptor?.populationCapacity.spots.active ?? 0,
+        activeActorCount: populationCapacity?.actors.active ?? 0,
+        activeSpotCount: populationCapacity?.spots.active ?? 0,
         unavailableReason: placementAvailable
           ? undefined
           : localTopologyState !== ZLinkTopologyState.Ready
@@ -588,7 +611,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
           sequence: terminalSequence,
           observedAt: new Date()
         };
-        for (const observer of state.observers) observer.complete(terminalStatus);
+        for (const observer of state.observers) observer.seal(terminalStatus);
       } else if (snapshotAvailable) {
         for (const observer of state.observers) observer.push(current);
       }

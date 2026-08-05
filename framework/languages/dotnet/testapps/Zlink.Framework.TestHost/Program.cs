@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Systems.Zlink;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Messaging;
 
@@ -210,10 +211,25 @@ internal sealed class RouteClientStartupRequestHostedService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var reply = await client
-            .RequestToNode(channelName, RoutingId.From("node-route"), new TestHostRouteRequest(value))
-            .Timeout(TimeSpan.FromSeconds(5))
-            .Async<TestHostRouteReply>(cancellationToken);
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
+        TestHostRouteReply reply;
+        while (true)
+        {
+            try
+            {
+                reply = await client
+                    .RequestToNode(channelName, RoutingId.From("node-route"), new TestHostRouteRequest(value))
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async<TestHostRouteReply>(cancellationToken);
+                break;
+            }
+            catch (ZLinkFrameworkException exception)
+                when (exception.Kind == ZLinkFrameworkErrorKind.Unavailable
+                      && DateTimeOffset.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25), cancellationToken);
+            }
+        }
         sink.Append($"route-client|{reply.Value}");
     }
 

@@ -36,10 +36,9 @@ final class ZLinkStreamWireProtocol {
     }
 
     static byte[] encodeHeader(Header header) {
-        validateHeader(header);
-        byte[] name = isReply(header.kind())
-            ? new byte[0]
-            : header.name().getBytes(StandardCharsets.UTF_8);
+        String wireName = isReply(header.kind()) ? "" : header.name();
+        validateHeader(header, wireName);
+        byte[] name = wireName.getBytes(StandardCharsets.UTF_8);
         byte[] metadata = header.metadata().isEmpty()
             ? new byte[0]
             : encodeMetadata(header.metadata());
@@ -288,9 +287,14 @@ final class ZLinkStreamWireProtocol {
     }
 
     private static void validateHeader(Header header) {
+        validateHeader(header, header.name());
+    }
+
+    private static void validateHeader(Header header, String packetName) {
         validateEnum(header.kind(), header.codec(), header.flags());
-        byte[] name = header.name().getBytes(StandardCharsets.UTF_8);
-        if ((!isReply(header.kind()) && name.length == 0)
+        byte[] name = packetName.getBytes(StandardCharsets.UTF_8);
+        if ((isReply(header.kind()) && name.length != 0)
+            || (!isReply(header.kind()) && name.length == 0)
             || name.length > MAX_PACKET_NAME_BYTES) {
             throw new IllegalArgumentException("packet name is invalid");
         }

@@ -315,7 +315,7 @@ reasoning level은 현재 guide, candidate 위험도와 사용 가능한 reviewe
 #### POSD·DDD review 기준
 
 POSD·DDD finding을 판정하는 reviewer는 Sol High 이상을 사용하며 contract 일치 여부와 함께
-[`software-design-principles.ko.md`](../../../../doc/principal/software-design-principles.ko.md)를 기준으로
+[`posddd.ko.md`](../../../../doc/principal/dev/posddd.ko.md)를 기준으로
 다음 질문에 답한다.
 
 1. POSD 관점에서 shallow module, information leakage, pass-through method·variable, temporal
@@ -1827,7 +1827,7 @@ Review 직전에 기준 commit 또는 working tree manifest, `git status --short
 ##### Sample POSD·DDD review 기준
 
 Sample POSD·DDD finding은 Sol High 이상 reviewer가
-[`software-design-principles.ko.md`](../../../../doc/principal/software-design-principles.ko.md)를 기준으로
+[`posddd.ko.md`](../../../../doc/principal/dev/posddd.ko.md)를 기준으로
 다음 내용을 함께 검토한다.
 
 - 새 helper, wrapper, mapper 또는 adapter가 요청을 전달만 하는 shallow module인지 확인한다.

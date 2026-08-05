@@ -205,6 +205,34 @@ test('backend mesh adapter creates a named MeshNode through the public binding A
   }
 });
 
+test('new MeshNode processes receive distinct lifecycle generations', async () => {
+  const factory = new backend.ZLinkNodeBackendAdapterFactory();
+  const context = factory.createChannelAdapter().createContext();
+  const meshAdapter = factory.createMeshAdapter();
+  const first = meshAdapter.createMeshNode(context, {
+    meshName: 'backend.generation',
+    routingId: 'backend-generation-node'
+  });
+  const second = meshAdapter.createMeshNode(context, {
+    meshName: 'backend.generation',
+    routingId: 'backend-generation-node'
+  });
+
+  try {
+    const firstGeneration = first.status().lifecycleGeneration;
+    const secondGeneration = second.status().lifecycleGeneration;
+    assert.ok(firstGeneration > 0n);
+    assert.ok(secondGeneration > 0n);
+    assert.ok(firstGeneration <= BigInt(Number.MAX_SAFE_INTEGER));
+    assert.ok(secondGeneration <= BigInt(Number.MAX_SAFE_INTEGER));
+    assert.notEqual(firstGeneration, secondGeneration);
+  } finally {
+    first.close();
+    second.close();
+    await context.dispose();
+  }
+});
+
 test('backend mesh dispatch pump drains a local channel record through claim and receive batches', async () => {
   const factory = new backend.ZLinkNodeBackendAdapterFactory();
   const context = factory.createChannelAdapter().createContext();
@@ -230,7 +258,8 @@ test('backend mesh dispatch pump drains a local channel record through claim and
     sender.start();
     sender.connectPeer({
       endpoint: receiverEndpoint,
-      expectedRid: receiver.status().routingId
+      expectedRid: receiver.status().routingId,
+      expectedSecurityIdentity: 'default'
     });
     const received = new Promise((resolve, reject) => {
       const timeout = setTimeout(

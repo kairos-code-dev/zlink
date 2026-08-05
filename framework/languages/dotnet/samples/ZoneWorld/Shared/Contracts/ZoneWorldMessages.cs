@@ -201,6 +201,6 @@ public sealed record DeliverWorldAnnounceMsg(string AnnouncementId, string Text)
 /// Runner-only Actor request used after relocation to verify that Message Follow
 /// preserves the original payload and reply route.
 /// </summary>
-public sealed record MessageFollowProbeReq(string ProbeId, byte[] Payload);
+public sealed record MessageFollowProbeReq(string ActorId, string ProbeId, byte[] Payload);
 
 public sealed record MessageFollowProbeRes(string ProbeId, byte[] Payload);

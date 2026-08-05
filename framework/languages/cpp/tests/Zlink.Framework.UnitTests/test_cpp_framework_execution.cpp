@@ -853,7 +853,7 @@ bool verify_idle_instance_spot_eviction_closes_local_context ()
     using namespace zlink::framework::detail;
 
     auto node = std::make_shared<spot_node_builder_state_t> ("idle-node");
-    node->instance_spot_idle_timeout = std::chrono::milliseconds (1);
+    node->instance_spot_idle_timeout = std::chrono::hours (1);
 
     auto executor = std::make_shared<runtime::offload_executor_t> (1);
     auto context = std::make_shared<spot_context_state_t> ();
@@ -867,6 +867,14 @@ bool verify_idle_instance_spot_eviction_closes_local_context ()
     context->serial_executor = executor;
     context->serial_queue = std::make_shared<runtime::serial_execution_queue_t> (
       *executor, runtime::serial_execution_queue_options_t{});
+    const auto set_last_application_work = [&context] (std::chrono::seconds age) {
+        context->last_application_work_completed_ns.store (
+          std::chrono::duration_cast<std::chrono::nanoseconds> (
+            std::chrono::steady_clock::now ().time_since_epoch ())
+            .count ()
+            - std::chrono::duration_cast<std::chrono::nanoseconds> (age).count (),
+          std::memory_order_relaxed);
+    };
     context->last_application_work_completed_ns.store (
       std::chrono::duration_cast<std::chrono::nanoseconds> (
         std::chrono::steady_clock::now ().time_since_epoch ())
@@ -890,6 +898,7 @@ bool verify_idle_instance_spot_eviction_closes_local_context ()
       context->spot_id, spot_context_access_t::create (context));
 
     bool admission_called = false;
+    bool late_application_post_rejected = false;
     node->admit_instance_spot_idle_eviction = [&] (
       const spot_id_t &spot_id,
       std::string_view spot_name,
@@ -900,14 +909,22 @@ bool verify_idle_instance_spot_eviction_closes_local_context ()
         if (spot_id != "instance-1" || spot_name != "instance-player"
             || object_generation != 7 || authority_owner_generation != 11)
             return false;
+        late_application_post_rejected = !context->try_post_serial (
+          "late-idle-eviction-application", [] {});
         return close_local ();
     };
 
     spot_node_runtime_t runtime (node);
+    set_last_application_work (std::chrono::seconds (0));
+    runtime.evict_idle_spots ();
+    if (admission_called || context->idle_eviction_in_progress) {
+        return false;
+    }
+    set_last_application_work (std::chrono::hours (2));
     runtime.evict_idle_spots ();
     executor->drain ();
 
-    return admission_called && closing_called
+    return admission_called && late_application_post_rejected && closing_called
            && closing_reason == spot_close_reason_t::idle_evicted
            && context->closed && !context->node
            && !context->spot_instance
@@ -1348,15 +1365,16 @@ int main ()
             "completion-node");
         zlink::framework::detail::spot_node_runtime_t completion_runtime (
           completion_state);
-        const zlink::framework::actor_ref_t completion_actor (
-          zlink::framework::node_rid_t::from_string ("completion-node"),
-          "player", "completion-actor", 7);
+        const zlink::framework::actor_ref_t completion_actor =
+          zlink::framework::detail::actor_ref_access_t::make (
+            zlink::framework::node_rid_t::from_string ("completion-node"),
+            "player", "completion-actor", 7);
         const std::string completion_key = "player:completion-actor";
         auto completion_instance = std::make_shared<int> (42);
         completion_state->actor_instances.emplace (
           completion_key, completion_instance);
         completion_state->actor_generations.emplace (
-          completion_key, completion_actor.generation ());
+          completion_key, completion_actor.object_generation ());
         completion_state->actor_spot_ids.emplace (
           completion_key,
           zlink::framework::spot_id_t ("source-spot"));
@@ -1543,9 +1561,10 @@ int main ()
         zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
         zlink::framework::serializer_registry_t actor_serializers;
         actor_gateway.bind_serializers (actor_serializers);
-        const zlink::framework::actor_ref_t barrier_actor (
-          zlink::framework::node_rid_t::from_string ("barrier-node"),
-          "player", "barrier-actor", 1);
+        const zlink::framework::actor_ref_t barrier_actor =
+          zlink::framework::detail::actor_ref_access_t::make (
+            zlink::framework::node_rid_t::from_string ("barrier-node"),
+            "player", "barrier-actor", 1);
         actor_gateway.on_join_spot (
           [&] (const auto &actor, auto, const auto &, auto) {
               record_barrier_event ("production-join");

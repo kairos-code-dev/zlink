@@ -544,7 +544,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     actorId: string,
     actorType: string,
     createRequest: unknown,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    nativeActorRef?: ZLinkBackendActorRef
   ): Promise<ZLinkActorLocalCreateResult> {
     this.rememberActorMeshFromType(actorId, actorType);
     return await this.createOrGet(
@@ -553,7 +554,9 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       false,
       createRequest,
       signal,
-      false
+      false,
+      30_000,
+      nativeActorRef
     );
   }
 
@@ -577,6 +580,12 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
 
   snapshotStates(): readonly ZLinkActorRuntimeState[] {
     return [...this.states.values()];
+  }
+
+  activeActorCount(meshName: string): number {
+    return [...this.states.values()].filter((state) =>
+      state.meshName === meshName && state.actor !== undefined
+    ).length;
   }
 
   async destroyActor(
@@ -637,7 +646,8 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     request: unknown,
     signal?: AbortSignal,
     claimLocation = true,
-    timeoutMs = 30_000
+    timeoutMs = 30_000,
+    nativeActorRef?: ZLinkBackendActorRef
   ): Promise<ZLinkActorLocalCreateResult> {
     const deadline = Date.now() + timeoutMs;
     const requestedMeshName = this.actorMeshNames.get(actorId);
@@ -654,6 +664,9 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
         );
       }
       const state = existingState ?? this.getOrCreateState(actorId);
+      if (nativeActorRef !== undefined) {
+        state.setNativeActorRef(nativeActorRef);
+      }
       const createRequest = this.createRequestMessage(request);
       if (request !== undefined && createRequest.nativeRequest !== undefined) {
         state.setCreateRequestPayload(createRequest.nativeRequest.data());

@@ -17,7 +17,7 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkJavaRawMeshNodeApplicationPayloadTest {
     @Test
-    void typedActorRequestUsesStreamPacketNameAndRestoresRequestHeader() {
+    void typedActorRequestUsesFrameworkMultipartAndRestoresAllParts() {
         byte[] body = "{\"actorId\":\"actor-1\"}".getBytes(
             java.nio.charset.StandardCharsets.UTF_8);
         ZLinkStreamHeader request = new ZLinkStreamHeader(
@@ -33,8 +33,21 @@ final class ZLinkJavaRawMeshNodeApplicationPayloadTest {
             var wirePayload = ZLinkJavaRawMeshNode.applicationPayload(
                 List.of(header, payload));
 
-            assertEquals("JoinTargetReq", wirePayload.packetName());
-            assertArrayEquals(body, wirePayload.payload());
+            assertEquals(
+                systems.zlink.framework.runtime.protocol.ServiceWireConstants
+                    .FRAMEWORK_MULTIPART_PACKET_NAME,
+                wirePayload.packetName());
+            List<Message> decoded =
+                systems.zlink.framework.runtime.internal.service
+                    .ZLinkServiceM6AWireCodec.decodeFrameworkMultipart(
+                        wirePayload);
+            try {
+                assertArrayEquals(
+                    header.toByteArray(), decoded.getFirst().toByteArray());
+                assertArrayEquals(body, decoded.get(1).toByteArray());
+            } finally {
+                decoded.forEach(Message::close);
+            }
 
             List<Message> restored =
                 ZLinkJavaRawMeshNode.applicationMessages(
@@ -65,31 +78,49 @@ final class ZLinkJavaRawMeshNodeApplicationPayloadTest {
             var wirePayload = ZLinkJavaRawMeshNode.applicationPayload(
                 List.of(packetName, payload));
 
-            assertEquals("plain.packet", wirePayload.packetName());
-            assertArrayEquals(new byte[] {1, 2, 3}, wirePayload.payload());
+            assertEquals(
+                systems.zlink.framework.runtime.protocol.ServiceWireConstants
+                    .FRAMEWORK_MULTIPART_PACKET_NAME,
+                wirePayload.packetName());
+            List<Message> decoded =
+                systems.zlink.framework.runtime.internal.service
+                    .ZLinkServiceM6AWireCodec.decodeFrameworkMultipart(
+                        wirePayload);
+            try {
+                assertEquals("plain.packet", decoded.getFirst().toUtf8String());
+                assertArrayEquals(
+                    new byte[] {1, 2, 3}, decoded.get(1).toByteArray());
+            } finally {
+                decoded.forEach(Message::close);
+            }
         }
     }
 
     @Test
     void applicationMessagesPreserveTheSelectedStreamCodec() {
-        var payload = new systems.zlink.framework.runtime.internal.service
-            .ZLinkServiceM6AWireCodec.ApplicationPayload(
-                "CustomReq",
-                "application/x-protobuf",
-                new byte[] {4, 5, 6});
-
-        List<Message> restored = ZLinkJavaRawMeshNode.applicationMessages(
-            payload,
-            true,
-            11L,
-            ZLinkStreamCodec.PROTOBUF);
-        try {
-            ZLinkStreamHeader header = ZLinkStreamHeaderCodec.decodeOrPlain(
-                restored.getFirst().toByteArray());
-            assertEquals(ZLinkStreamCodec.PROTOBUF, header.codec());
-            assertEquals(Optional.of(11L), header.requestSequence());
-        } finally {
-            restored.forEach(Message::close);
+        ZLinkStreamHeader request = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.PROTOBUF,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(11L),
+            "CustomReq",
+            Map.of());
+        try (Message header = Message.from(ZLinkStreamHeaderCodec.encode(request));
+             Message payload = Message.from(new byte[] {4, 5, 6})) {
+            List<Message> restored = ZLinkJavaRawMeshNode.applicationMessages(
+                ZLinkJavaRawMeshNode.applicationPayload(
+                    List.of(header, payload)),
+                true,
+                11L);
+            try {
+                ZLinkStreamHeader restoredHeader =
+                    ZLinkStreamHeaderCodec.decodeOrPlain(
+                        restored.getFirst().toByteArray());
+                assertEquals(ZLinkStreamCodec.PROTOBUF, restoredHeader.codec());
+                assertEquals(Optional.of(11L), restoredHeader.requestSequence());
+            } finally {
+                restored.forEach(Message::close);
+            }
         }
     }
 }

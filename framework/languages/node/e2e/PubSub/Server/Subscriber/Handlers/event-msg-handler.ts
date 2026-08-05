@@ -1,14 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  ZLinkMessageFlowOutcome,
   type ZLinkMessageFlowEvent,
   type ZLinkMessageFlowObserver,
-  type ZLinkPublishContext,
+  type ZLinkPublishMessageContext,
   type ZLinkFanoutHandler,
-  type ZLinkRuntimeEventHandler,
-  type ZLinkSocketEvent
 } from '@zlink-systems/framework';
-import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
 import { PubSubNames, type EventMsg } from '../../../Shared/messages';
 import { SUBSCRIBER_OPTIONS, type SubscriberOptions } from '../Configuration/subscriber-options';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -21,7 +17,7 @@ export class EventMsgHandler implements ZLinkFanoutHandler<EventMsg> {
     private readonly options: SubscriberOptions
   ) {}
 
-  async handle(message: EventMsg, context: ZLinkPublishContext): Promise<void> {
+  async handle(message: EventMsg, context: ZLinkPublishMessageContext): Promise<void> {
     if (this.options.handlerDelayMs > 0 && message.value.startsWith('slow-')) {
       this.evidence.add(
         `delay-start|rid=${this.evidence.rid}|run=${message.runId}|topic=${context.topic}`
@@ -49,7 +45,7 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
   constructor(private readonly evidence: EvidenceStore) {}
 
   onMessageFlow(flow: ZLinkMessageFlowEvent): void {
-    if (flow.outcome !== ZLinkMessageFlowOutcome.Error) {
+    if (flow.outcome !== 'failed') {
       return;
     }
 
@@ -57,25 +53,11 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
       'dispatch-error'
       + `|surface=${flow.surface}`
       + `|kind=${flow.messageKind}`
-      + `|reason=${flow.errorReason}`
-      + `|action=${flow.errorAction}`
+      + `|reason=${flow.reason ?? '<null>'}`
+      + `|action=${flow.action ?? '<null>'}`
       + `|packet=${flow.packetName ?? '<null>'}`
       + `|channel=${flow.channelName ?? '<null>'}`
       + `|topic=${flow.topic ?? '<null>'}`
-    );
-  }
-}
-
-@Injectable()
-@zlinkRuntimeEventHandler()
-export class SubscriberSocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
-  constructor(private readonly evidence: EvidenceStore) {}
-
-  async handle(event: ZLinkSocketEvent): Promise<void> {
-    if (event.sourceName !== `${PubSubNames.channel}.subscriber`) return;
-    this.evidence.add(
-      `monitor-socket|source=${event.sourceName}|kind=${event.event}`
-      + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
     );
   }
 }

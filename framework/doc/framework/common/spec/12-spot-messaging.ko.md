@@ -43,7 +43,7 @@ Channel에 참여한 node마다 message를 한 번 보내고, 각 node가 자신
 - Payload와 metadata:
   [03 메시지 모델](04-message-model.ko.md)
 - Callback의 비동기 실행:
-  [04 비동기 실행 정책](05-async-execution-policy.md)
+  [04 비동기 실행 정책](05-async-execution-policy.ko.md)
 
 ### 1.1 공통 동작을 .NET API로 표현한 예시
 
@@ -471,7 +471,7 @@ Ready Spot에 보내는 일반 direct send는 source의 송신 경로가 message
 Send timeout까지 수락하지 못하면 `DeadlineExceeded`, Spot이나 route가 없으면
 `NotFound`, runtime이 종료 중이면 `ShuttingDown`으로 실패한다.
 Cancellation과 caller process에서 발생한 오류의 자세한 경계는
-[04 비동기 실행 정책 §1.3](05-async-execution-policy.md#13-one-way-submit)을 따른다.
+[04 비동기 실행 정책 §1.3](05-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
 
 Cold activation이 필요한 submit도 선택한 target으로 보내는 송신 경로가 activation
 envelope를 수락하면 완료한다. Target이 생성 권한을 확보하고 factory를 실행하여
@@ -854,7 +854,7 @@ Spot application queue와 Actor queue는 한도가 있다. 한도를 넘겼을 �
 
 | 계열 | 포화한 대기열 | 호출자가 받는 결과 |
 |---|---|---|
-| Send·one-way | **같은 runtime**의 outbound 또는 Spot·Actor 대기열 | [Async 실행 정책 §1](05-async-execution-policy.md)을 따른다 — send timeout까지 자리를 기다리고, 내부 waiter까지 모두 찼으면 `DeadlineExceeded` |
+| Send·one-way | **같은 runtime**의 outbound 또는 Spot·Actor 대기열 | [Async 실행 정책 §1](05-async-execution-policy.ko.md)을 따른다 — send timeout까지 자리를 기다리고, 내부 waiter까지 모두 찼으면 `DeadlineExceeded` |
 | Send·one-way | **다른 node**의 Spot·Actor 대기열 | **결과가 없다.** Send는 source outbound queue가 수락한 시점에 이미 완료했다([Framework 오류 모델 §4](32-framework-error-model.ko.md)). 이후의 target admission 실패는 완료된 결과를 바꾸지 않으며 metric·log·trace로만 남는다 |
 | Publish (시작 전) | worker 자리 또는 source-local outbound | send timeout까지 기다린다. 확보하지 못하면 `DeadlineExceeded` |
 | Publish (시작 후) | local Spot 대기열 | **기다리지 않고 건너뛴다.** publish는 이미 정상 완료했고, 이 실패는 publish 전용 결과나 관측 값으로 집계하지 않는다(§4.3) |
@@ -903,7 +903,7 @@ Member Actor가 `Yield`한 경우에는 User Spot execution gate만 반환하고
 실행할 수 있지만 같은 Actor의 다음 job은 현재 continuation이 끝날 때까지 시작하지 않는다.
 
 자세한 실행 규칙은
-[Async 실행 정책 §1.1](05-async-execution-policy.md#11-submit-async와-yield)을
+[Async 실행 정책 §1.1](05-async-execution-policy.ko.md#11-submit-async와-yield)을
 따른다.
 
 Actor 업무 payload는 Spot application queue나 Spot callback을 거치지 않는다.
@@ -954,7 +954,7 @@ subscription은 Logical Multicast가 현재 node에서 message를 전달할 Spot
 제외한다.
 
 One-way와 request가 완료되는 조건은
-[04 비동기 실행 정책](05-async-execution-policy.md)이 정의한다.
+[04 비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 Spot을 종료할 때 전체 처리 순서는
 [54 Graceful Drain](28-graceful-drain-handoff.ko.md)이 정의한다.
 

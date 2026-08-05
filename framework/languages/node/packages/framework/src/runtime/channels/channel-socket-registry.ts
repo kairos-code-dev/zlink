@@ -1,7 +1,8 @@
 import {
   ZLinkFrameworkRuntimeState,
   type RoutingId,
-  type ZLinkClientServerServerDescriptor
+  type ZLinkClientServerServerDescriptor,
+  type ZLinkFanoutPublisherDescriptor
 } from '../../contracts';
 import { ZLinkSocketNativeEventType } from '../diagnostics/internal-event-contracts';
 import {
@@ -107,7 +108,6 @@ export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
-  private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly routeMembers = new ZLinkRouteMemberSnapshot();
   private readonly clientServerIdentities = new Map<string, {
@@ -147,6 +147,8 @@ export class ZLinkChannelSocketRegistry {
     new Map<string, Set<(event: ZLinkBackendSocketMonitorEvent) => void>>();
   private readonly fanoutMonitorHandlers =
     new Map<string, Set<(event: ZLinkBackendSocketMonitorEvent) => void>>();
+  private readonly fanoutTopologyHandlers =
+    new Map<string, Set<() => void>>();
 
   constructor(
     private readonly registration: ZLinkFrameworkRegistration,
@@ -163,7 +165,6 @@ export class ZLinkChannelSocketRegistry {
       ...[...this.fanoutConnections.values()].map(value => value.subscriber),
       ...this.channelRouters.values(),
       ...this.publishers.values(),
-      ...this.subscribers.values(),
       ...this.routeRouters.values()
     ];
     this.clientDealers.clear();
@@ -176,6 +177,7 @@ export class ZLinkChannelSocketRegistry {
     this.clientServerServerPeers.clear();
     this.clientServerMonitorHandlers.clear();
     this.fanoutMonitorHandlers.clear();
+    this.fanoutTopologyHandlers.clear();
     this.fanoutConnections.clear();
     this.fanoutPublisherNextBeacon.clear();
     if (this.clientServerLivenessTimer !== undefined) {
@@ -184,7 +186,6 @@ export class ZLinkChannelSocketRegistry {
     }
     this.channelRouters.clear();
     this.publishers.clear();
-    this.subscribers.clear();
     this.routeRouters.clear();
     this.routeMembers.clear();
     this.disposeSubmitters();
@@ -734,6 +735,37 @@ export class ZLinkChannelSocketRegistry {
     return this.clientServerDiscovery.fanoutEndpoints(channelName);
   }
 
+  admitFanoutPublisher(
+    descriptor: ZLinkFanoutPublisherDescriptor,
+    connectionId: string
+  ): boolean {
+    const connection = this.fanoutConnections.get(connectionId);
+    if (connection === undefined || !connection.ready) return false;
+    const admitted = this.clientServerDiscovery.admitFanoutPublisher({
+      channelName: descriptor.channelName,
+      publisherRoutingId: String(descriptor.publisherRid),
+      lifecycleGeneration: descriptor.lifecycleGeneration,
+      descriptorRevision: descriptor.descriptorRevision,
+      advertisedEndpoint: descriptor.endpoint,
+      state: runtimeStateName(descriptor.state)
+    }, fanoutDiscoveryConnectionId(connectionId));
+    this.notifyFanoutTopology(descriptor.channelName);
+    return admitted;
+  }
+
+  removeFanoutPublisher(
+    descriptor: ZLinkFanoutPublisherDescriptor,
+    connectionId: string
+  ): boolean {
+    const removed = this.clientServerDiscovery.removeFanoutPublisher(
+      descriptor.channelName,
+      String(descriptor.publisherRid),
+      fanoutDiscoveryConnectionId(connectionId)
+    );
+    this.notifyFanoutTopology(descriptor.channelName);
+    return removed;
+  }
+
   setClientServerServerDescriptor(
     descriptor: ZLinkClientServerServerDescriptor | undefined,
     channelName: string
@@ -1055,6 +1087,52 @@ export class ZLinkChannelSocketRegistry {
         }
       }
     };
+  }
+
+  fanoutTopologyMonitoringSource(channelName: string): {
+    onChange(handler: () => void): void;
+    dispose(): Promise<void>;
+  } {
+    if (this.registration.channels.get(channelName)?.subscriber === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout subscriber '${channelName}' is not registered.`
+      );
+    }
+    let handler: (() => void) | undefined;
+    let disposed = false;
+    return {
+      onChange: next => {
+        if (disposed) return;
+        if (handler !== undefined) {
+          this.fanoutTopologyHandlers.get(channelName)?.delete(handler);
+        }
+        handler = next;
+        let handlers = this.fanoutTopologyHandlers.get(channelName);
+        if (handlers === undefined) {
+          handlers = new Set();
+          this.fanoutTopologyHandlers.set(channelName, handlers);
+        }
+        handlers.add(next);
+      },
+      dispose: async () => {
+        disposed = true;
+        if (handler !== undefined) {
+          const handlers = this.fanoutTopologyHandlers.get(channelName);
+          handlers?.delete(handler);
+          if (handlers?.size === 0) this.fanoutTopologyHandlers.delete(channelName);
+        }
+      }
+    };
+  }
+
+  private notifyFanoutTopology(channelName: string): void {
+    for (const handler of this.fanoutTopologyHandlers.get(channelName) ?? []) {
+      try {
+        handler();
+      } catch {
+        // Monitoring observers cannot change transport lifecycle results.
+      }
+    }
   }
 
   private tickFanoutLiveness(nowMs: number): void {
@@ -1409,28 +1487,14 @@ export class ZLinkChannelSocketRegistry {
     return publisher;
   }
 
-  subscriber(channelName: string): ZLinkBackendSubscriberSocket {
-    const existing = this.subscribers.get(channelName);
-    if (existing !== undefined) {
-      return existing;
-    }
-
+  fanoutPublisherEndpoint(channelName: string): string | undefined {
     const channel = this.registration.channels.get(channelName);
-    if (channel?.subscriber === undefined) {
-      throw new ZLinkConfigurationException(`Channel subscriber '${channelName}' is not registered.`);
+    const publisher = this.publishers.get(channelName);
+    const boundEndpoint = publisher?.lastEndpoint;
+    if (channel?.publisher === undefined || boundEndpoint === undefined || boundEndpoint.length === 0) {
+      return undefined;
     }
-
-    const subscriber = this.adapter.createSubscriberSocket(this.context);
-    subscriber.setChannelName(channelName);
-    subscriber.setSubscription('');
-    if ((channel.subscriber.manualConnections ?? []).length > 0) {
-      for (const endpoint of channel.subscriber.manualConnections ?? []) {
-        subscriber.connect(endpoint);
-      }
-    }
-    attachEndpointConnections(channel.subscriber, subscriber);
-    this.subscribers.set(channelName, subscriber);
-    return subscriber;
+    return advertisedEndpoint(boundEndpoint, channel.publisher.advertiseHost);
   }
 
   routeRouter(routerChannelId: string): ZLinkBackendRouterSocket {
@@ -1682,6 +1746,10 @@ function deriveRoutingId(baseRoutingId: string, suffix: string): string {
     );
   }
   return derived;
+}
+
+function fanoutDiscoveryConnectionId(connectionId: string): string {
+  return `fanout:${connectionId.replaceAll('\0', '/')}`;
 }
 
 function newLifecycleGeneration(): bigint {

@@ -30,6 +30,8 @@ import type { ZLinkTimerRelocationState } from './spot-timer';
 export interface ZLinkSpotActivationOptions {
   readonly meshName: string;
   readonly spotId: RoutingId;
+  /** Object generation for an Instance activation; absent for non-Instance Spots. */
+  readonly objectGeneration?: bigint;
   readonly spotType: Type<ZLinkSpot>;
   readonly spot: ZLinkSpot;
   readonly serial: ZLinkSpotSerialExecutor;
@@ -67,6 +69,7 @@ export class ZLinkSpotCloseOccupiedError extends Error {
 export class ZLinkSpotActivation {
   readonly meshName: string;
   readonly spotId: RoutingId;
+  readonly objectGeneration?: bigint;
   readonly spotType: Type<ZLinkSpot>;
   readonly spot: ZLinkSpot;
   readonly serial: ZLinkSpotSerialExecutor;
@@ -102,6 +105,7 @@ export class ZLinkSpotActivation {
   constructor(options: ZLinkSpotActivationOptions) {
     this.meshName = options.meshName;
     this.spotId = options.spotId;
+    this.objectGeneration = options.objectGeneration;
     this.spotType = options.spotType;
     this.spot = options.spot;
     this.serial = options.serial;

@@ -12,6 +12,7 @@ type ZoneNodeSettings = {
   nodeId: string;
   spotRouterEndpoint: string;
   faultTickZone?: string | null;
+  faultTickSignalPath?: string;
   disableBots?: boolean;
   botStartSignalPath?: string;
   waitForPlacementPeer?: boolean;
@@ -97,6 +98,9 @@ function validateConfiguration(
   for (const key of roleKeys(expectedRole)) requireString(role, key, expectedRole);
   if (expectedRole === 'zoneNode' && role.botStartSignalPath !== undefined) {
     requireString(role, 'botStartSignalPath', expectedRole);
+  }
+  if (expectedRole === 'zoneNode' && role.faultTickSignalPath !== undefined) {
+    requireString(role, 'faultTickSignalPath', expectedRole);
   }
   if (expectedRole === 'zoneNode' && role.placementWeightAfterZoneCreation !== undefined) {
     const weight = role.placementWeightAfterZoneCreation;

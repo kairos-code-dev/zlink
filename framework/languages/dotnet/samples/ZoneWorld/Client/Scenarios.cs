@@ -1,4 +1,5 @@
 using Systems.Zlink.Stream.Connector.Contracts;
+using System.Text;
 using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Client;
@@ -25,6 +26,7 @@ public static class Scenarios
             ["ZW-B2"] = B2CrossNodeRelocation,
             ["ZW-B3"] = B3IntraNodeZoneChange,
             ["ZW-B5"] = B5ActorGenerationPreserved,
+            ["ZW-B6"] = B6MessageFollow,
             ["ZW-C1"] = C1WatchNodes,
             ["ZW-C4"] = C4SpotEventReported,
             ["ZW-D1"] = D1AnnounceAllNodes,
@@ -398,6 +400,76 @@ public static class Scenarios
         ZlinkStreamAssert.Ensure(
             before.OwnerNodeRid != after.OwnerNodeRid,
             "relocation changes the current owner");
+    }
+
+    /// <summary>
+    /// Primes the Gateway's normal public Actor client before relocation, then submits a one-way
+    /// probe and a request through that same client immediately after the owner changes. The
+    /// bounded route cache makes both calls enter the previous owner, where Message Follow must
+    /// deliver them to the committed target without application retry or route reconstruction.
+    /// </summary>
+    private static async ValueTask B6MessageFollow(ClientOptions options, CancellationToken ct)
+    {
+        var playerId = Unique("b6");
+        await using var probes = await RelocationProbeClient.ConnectAsync(
+            options.GatewayEndpoint,
+            ct);
+        var pair = await probes.SelectPairAsync(ct);
+        ZlinkStreamAssert.Ensure(
+            pair.Error is null,
+            "a release run requires adjacent Zone Spots with different current owners");
+
+        await using var player = await GameClient.ConnectAsync(options, playerId, ct);
+        var initialState = player.Connector.WaitFor<ZoneStateNotify>()
+            .Where(message => message.Payload.Players.Any(p => p.PlayerId == playerId))
+            .Timeout(TimeSpan.FromSeconds(15))
+            .Async(ct);
+        await player.JoinWorldAsync(ct);
+        await initialState;
+
+        var source = ZoneCenter(pair.SourceZoneId);
+        var target = ZoneCenter(pair.TargetZoneId);
+        await MoveToAsync(player, source.X, source.Y, ct);
+        var before = await probes.FindActorAsync(playerId, ct);
+        ZlinkStreamAssert.Ensure(
+            before.Error is null && before.OwnerNodeRid == pair.SourceOwnerNodeRid,
+            "the selected source zone owns the actor before Message Follow is primed");
+
+        var primed = await probes.PrimeMessageFollowRouteAsync(playerId, ct);
+        ZlinkStreamAssert.Ensure(
+            primed.ProbeId.StartsWith("prime-", StringComparison.Ordinal)
+            && primed.Payload.AsSpan().SequenceEqual("route-prime"u8),
+            "the public Actor request can prime the source route without changing its payload");
+
+        await MoveToAsync(player, target.X, target.Y, ct);
+        var after = await probes.FindActorAsync(playerId, ct);
+        ZlinkStreamAssert.Ensure(
+            after.Error is null
+            && after.OwnerNodeRid == pair.TargetOwnerNodeRid
+            && after.OwnerNodeRid != before.OwnerNodeRid
+            && after.ObjectGeneration == before.ObjectGeneration,
+            "the probe actor moved to the target owner without changing its generation");
+
+        var oneWayId = $"one-way-{Unique("b6")}";
+        var requestId = $"request-{Unique("b6")}";
+        var oneWayPayload = Encoding.UTF8.GetBytes("one-way-payload");
+        var requestPayload = Encoding.UTF8.GetBytes("request-payload");
+        var oneWay = probes.SendMessageFollowProbeAsync(playerId, oneWayId, oneWayPayload);
+        var request = probes.RequestMessageFollowProbeAsync(
+            playerId,
+            requestId,
+            requestPayload,
+            ct);
+
+        await oneWay;
+        var reply = await request;
+        ZlinkStreamAssert.Ensure(
+            reply.ProbeId == requestId
+            && reply.Payload.AsSpan().SequenceEqual(requestPayload),
+            "the followed request preserves its payload and reply correlation");
+        Console.WriteLine(
+            $"message-follow-probe completed actor={playerId} one_way={oneWayId} request={requestId} "
+            + $"generation={after.ObjectGeneration}");
     }
 
     private static (int X, int Y) ZoneCenter(string zoneId) => zoneId switch

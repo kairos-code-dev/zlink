@@ -49,7 +49,7 @@ class support_user_actor_t : public actor_t
 {
   public:
     explicit support_user_actor_t (actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         actor_context (std::move (value))
     {
@@ -805,11 +805,11 @@ class ensure_support_user_actor_handler_t
         if (const auto *existing =
               std::get_if<actor_create_existing_t> (&created))
             co_return ensure_support_user_actor_res_t{
-              actor_ref_snapshot_t::from (existing->actor)};
+              actor_location_t::from (existing->actor)};
         if (const auto *actor =
               std::get_if<actor_create_created_t> (&created))
             co_return ensure_support_user_actor_res_t{
-              actor_ref_snapshot_t::from (actor->actor)};
+              actor_location_t::from (actor->actor)};
         throw framework_exception_t (
           framework_error_kind_t::rejected,
           "support actor creation was rejected");
@@ -856,7 +856,7 @@ class ensure_agent_conversation_handler_t
                              role_t::agent,
                              request.roster_actor_id})
                          .submit ();
-        actor_ref_t actor;
+        std::optional<actor_ref_t> actor;
         if (const auto *existing =
               std::get_if<actor_create_existing_t> (&created))
             actor = existing->actor;
@@ -872,7 +872,7 @@ class ensure_agent_conversation_handler_t
             joined =
               co_await _actor_client
                 .request (
-                  actor.actor_id (),
+                  actor->actor_id (),
                   join_conversation_req_t{
                     request.roster_actor_id, role_t::agent, request.display_name})
                 .submit<join_conversation_res_t> ();
@@ -880,12 +880,12 @@ class ensure_agent_conversation_handler_t
             joined =
               co_await _actor_client
                 .request (
-                  actor.actor_id (),
+                  actor->actor_id (),
                   schedule_conversation_join_req_t{request.conversation_id})
                 .submit<join_conversation_res_t> ();
         }
         co_return ensure_agent_conversation_res_t{
-          actor_ref_snapshot_t::from (actor),
+          actor_location_t::from (*actor),
           joined.scheduled,
           joined.state};
     }

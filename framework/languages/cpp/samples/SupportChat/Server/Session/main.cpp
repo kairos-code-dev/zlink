@@ -69,7 +69,7 @@ class supportchat_session_t final : public packet_stream_session_t
                                                           authenticated.actor_id};
             auto ensured = co_await _channels.request ("supportchat.support", ensure)
                               .submit<ensure_support_user_actor_res_t> ();
-            auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
+            auto actor_ref = ensured.actor.to_actor_ref (sample_names_t::mesh);
             auto bound = co_await _actors.bind_or_get (actor_ref).submit ();
             _identity_actor_id = std::string (bound.actor_id ());
             _identity_display_name = authenticated.display_name;
@@ -121,7 +121,7 @@ class supportchat_session_t final : public packet_stream_session_t
                                             zlink::message_t::from_json (join_conversation_req_t {}))
                 .submit ();
             co_return ensure_agent_conversation_res_t{
-              actor_ref_snapshot_t::from (actor.ref ()),
+              actor_location_t::from (actor.ref ()),
               false,
               refreshed.parse_json<join_conversation_res_t> ().state};
         }
@@ -132,7 +132,7 @@ class supportchat_session_t final : public packet_stream_session_t
                       ensure_agent_conversation_req_t{_identity_actor_id, _identity_display_name,
                                                       conversation_id})
             .submit<ensure_agent_conversation_res_t> ();
-        auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
+        auto actor_ref = ensured.actor.to_actor_ref (sample_names_t::mesh);
         auto bound = co_await _actors.bind_or_get (actor_ref).submit ();
         const auto conversation_actor_id = std::string (bound.actor_id ());
         _conversation_actor_ids[conversation_id] = conversation_actor_id;

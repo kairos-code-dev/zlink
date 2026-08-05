@@ -496,6 +496,102 @@ test('ZLinkSpotManager waits for Instance close cleanup before rematerializing t
   await manager.close('test.mesh', spotId);
 });
 
+test('ZLinkSpotManager does not merge pending Instance materialization generations', async () => {
+  const firstStarted = createDeferred();
+  const releaseFirst = createDeferred();
+  let initialized = 0;
+  class GenerationAwareInstanceSpot {
+    async onInitialize() {
+      initialized++;
+      if (initialized === 1) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+      }
+    }
+  }
+  const spotId = zlink.RoutingId.from('generation-aware-instance');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['generation-aware', GenerationAwareInstanceSpot]])
+    ]])
+  });
+
+  const first = manager.materializeInstance('test.mesh', 'generation-aware', spotId, 1n);
+  await firstStarted.promise;
+  const second = manager.materializeInstance('test.mesh', 'generation-aware', spotId, 2n);
+  await Promise.resolve();
+  assert.equal(initialized, 1);
+
+  releaseFirst.resolve();
+  await first;
+  await second;
+  assert.equal(initialized, 2);
+  await manager.close('test.mesh', spotId);
+});
+
+test('ZLinkSpotManager converges to a newer Instance generation observed during dispatch', async () => {
+  const firstStarted = createDeferred();
+  const releaseFirst = createDeferred();
+  let targetGeneration = 1n;
+  let initialized = 0;
+  const handled = [];
+  class GenerationAwareInstanceSpot {
+    async onInitialize() {
+      initialized++;
+      if (initialized === 1) {
+        targetGeneration = 2n;
+        firstStarted.resolve();
+        await releaseFirst.promise;
+      }
+    }
+  }
+  class PingPacket {
+    handle(_spot, message) {
+      handled.push(message);
+    }
+  }
+  const spotId = zlink.RoutingId.from('generation-converge-instance');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['generation-aware', GenerationAwareInstanceSpot]])
+    ]]),
+    spotPacketHandlers: [{
+      spotType: GenerationAwareInstanceSpot,
+      handlerType: PingPacket,
+      packetName: 'PingPacket'
+    }],
+    instanceSpotApplicationTargetProvider: () => ({
+      stableType: 'generation-aware',
+      objectGeneration: targetGeneration
+    })
+  });
+  const parts = channelProtocol.encodeChannelEnvelopeParts(
+    3,
+    'instance',
+    'PingPacket',
+    { generation: true }
+  ).map((part) => zlink.Message.from(part));
+  try {
+    const dispatch = manager.dispatchMeshInstance(
+      'test.mesh',
+      { ownerKind: framework.ReadyOwnerKind.Spot, spotId },
+      { kind: framework.ReceiveKind.InstanceSpotActivation, operationKind: 0, parts }
+    );
+    await firstStarted.promise;
+    releaseFirst.resolve();
+    await dispatch;
+  } finally {
+    for (const part of parts) part.close();
+  }
+  assert.equal(initialized, 2);
+  assert.deepEqual(handled, [{ generation: true }]);
+  await manager.close('test.mesh', spotId);
+});
+
 test('ZLinkSpotManager waits for Instance application quiescence before rematerializing', async () => {
   const releaseQuiescence = createDeferred();
   let initialized = 0;
@@ -524,6 +620,139 @@ test('ZLinkSpotManager waits for Instance application quiescence before remateri
   assert.equal(await close, true);
   await rematerialize;
 
+  assert.equal(initialized, 2);
+  await manager.close('test.mesh', spotId);
+});
+
+test('ZLinkSpotManager establishes the durable Closing fence before explicit Instance cleanup', async () => {
+  const order = [];
+  let closingCalls = 0;
+  class ExplicitCloseInstanceSpot {
+    async onClosing() {
+      closingCalls++;
+      order.push('local-close');
+    }
+  }
+  const spotId = zlink.RoutingId.from('explicit-durable-close');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['explicit', ExplicitCloseInstanceSpot]])
+    ]]),
+    async beginInstanceClosingAuthority(meshName, candidateSpotId) {
+      assert.equal(meshName, 'test.mesh');
+      assert.equal(String(candidateSpotId), String(spotId));
+      order.push('durable-closing');
+      return true;
+    }
+  });
+
+  await manager.materializeInstance('test.mesh', 'explicit', spotId, 1n);
+  assert.equal(await manager.close('test.mesh', spotId), true);
+  assert.deepEqual(order, ['durable-closing', 'local-close']);
+  assert.equal(closingCalls, 1);
+  assert.equal(await manager.find('test.mesh', spotId), null);
+});
+
+test('ZLinkSpotManager defers an Instance context close until activation completion', async () => {
+  const releaseQuiescence = createDeferred();
+  const events = [];
+  let durableCloseCalls = 0;
+  class DeferredCloseInstanceSpot {}
+  const spotId = zlink.RoutingId.from('deferred-activation-close');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['deferred', DeferredCloseInstanceSpot]])
+    ]]),
+    instanceSpotApplicationQuiescenceProvider: async () => {
+      events.push('wait-for-terminal');
+      await releaseQuiescence.promise;
+    },
+    async beginInstanceClosingAuthority() {
+      durableCloseCalls++;
+      events.push('durable-closing');
+      return true;
+    }
+  });
+
+  await manager.materializeInstance('test.mesh', 'deferred', spotId, 1n);
+  let closeResult;
+  const operation = manager.executeOnSpot(
+    DeferredCloseInstanceSpot,
+    spotId,
+    async (spot) => {
+      closeResult = await spot.context.close();
+      events.push('close-returned');
+    }
+  );
+
+  await waitFor(() => closeResult !== undefined);
+  assert.equal(closeResult, true);
+  assert.equal(durableCloseCalls, 0);
+  assert.deepEqual(events, ['wait-for-terminal', 'close-returned']);
+
+  releaseQuiescence.resolve();
+  await operation;
+  await waitFor(() => durableCloseCalls === 1);
+  assert.equal(await manager.find('test.mesh', spotId), null);
+  assert.deepEqual(events, ['wait-for-terminal', 'close-returned', 'durable-closing']);
+});
+
+test('ZLinkSpotManager leaves an explicit Instance intact when the durable Closing CAS loses', async () => {
+  let closingCalls = 0;
+  class CasLosingInstanceSpot {
+    async onClosing() {
+      closingCalls++;
+    }
+  }
+  const spotId = zlink.RoutingId.from('explicit-durable-close-cas-loser');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['explicit', CasLosingInstanceSpot]])
+    ]]),
+    beginInstanceClosingAuthority: async () => false
+  });
+
+  await manager.materializeInstance('test.mesh', 'explicit', spotId, 1n);
+  assert.equal(await manager.close('test.mesh', spotId), false);
+  assert.equal(closingCalls, 0);
+  assert.notEqual(await manager.find('test.mesh', spotId), null);
+  await manager.close('test.mesh', spotId);
+});
+
+test('ZLinkSpotManager blocks Instance rematerialization while durable close CAS is pending', async () => {
+  const releaseClosing = createDeferred();
+  let initialized = 0;
+  class CasPendingInstanceSpot {
+    async onInitialize() {
+      initialized++;
+    }
+  }
+  const spotId = zlink.RoutingId.from('explicit-durable-close-pending');
+  const manager = new framework.DefaultZLinkSpotManager({
+    spotFactories: [],
+    instanceSpotFactories: new Map([[
+      'test.mesh',
+      new Map([['explicit', CasPendingInstanceSpot]])
+    ]]),
+    beginInstanceClosingAuthority: async () => await releaseClosing.promise
+  });
+
+  await manager.materializeInstance('test.mesh', 'explicit', spotId, 1n);
+  const close = manager.close('test.mesh', spotId);
+  const rematerialize = manager.materializeInstance('test.mesh', 'explicit', spotId, 2n);
+
+  await Promise.resolve();
+  assert.equal(initialized, 1);
+  assert.equal(manager.isInstanceClosing('test.mesh', spotId), true);
+  releaseClosing.resolve(true);
+  assert.equal(await close, true);
+  await rematerialize;
   assert.equal(initialized, 2);
   await manager.close('test.mesh', spotId);
 });

@@ -7,19 +7,43 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-namespace zlink::framework
+namespace zlink::samples::supportchat
 {
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+
+using zlink::framework::actor_id_t;
+using zlink::framework::actor_ref_t;
+using zlink::framework::node_rid_t;
+
+struct actor_location_t
+{
+    node_rid_t node_rid;
+    std::string actor_id;
+    std::uint64_t generation = 0;
+
+    static actor_location_t from (const actor_ref_t &actor_ref)
+    {
+        return actor_location_t{actor_ref.node_rid (),
+                                std::string (actor_ref.actor_id ().value ()),
+                                actor_ref.object_generation ()};
+    }
+
+    actor_ref_t to_actor_ref (std::string mesh_name) const
+    {
+        return actor_ref_t (actor_id_t (actor_id), generation, std::move (mesh_name), node_rid);
+    }
+};
+
+inline void to_json (nlohmann::json &json, const actor_location_t &value)
 {
     json = {{"nodeRid", std::string (value.node_rid.value ())},
             {"actorId", value.actor_id},
             {"generation", value.generation}};
 }
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+
+inline void from_json (const nlohmann::json &json, actor_location_t &value)
 {
     const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
                                                     : json.value ("node_rid", std::string{});
@@ -28,13 +52,6 @@ inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
                                                : json.value ("actor_id", std::string{});
     value.generation = json.value ("generation", std::uint64_t{0});
 }
-} // namespace zlink::framework
-#endif
-
-namespace zlink::samples::supportchat
-{
-
-using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct role_t
 {
@@ -142,7 +159,7 @@ struct ensure_support_user_actor_req_t
 struct ensure_support_user_actor_res_t
 {
     static constexpr const char *packet_name = "EnsureSupportUserActorRes";
-    actor_ref_snapshot_t actor;
+    actor_location_t actor;
 };
 
 struct ensure_agent_conversation_req_t
@@ -156,7 +173,7 @@ struct ensure_agent_conversation_req_t
 struct ensure_agent_conversation_res_t
 {
     static constexpr const char *packet_name = "EnsureAgentConversationRes";
-    actor_ref_snapshot_t actor;
+    actor_location_t actor;
     bool scheduled{false};
     conversation_state_t state;
 };
@@ -477,7 +494,7 @@ inline void to_json (nlohmann::json &json, const ensure_support_user_actor_res_t
 
 inline void from_json (const nlohmann::json &json, ensure_support_user_actor_res_t &value)
 {
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.actor = json.value ("actor", actor_location_t{});
 }
 
 inline void to_json (nlohmann::json &json, const ensure_agent_conversation_req_t &value)
@@ -503,7 +520,7 @@ inline void to_json (nlohmann::json &json, const ensure_agent_conversation_res_t
 
 inline void from_json (const nlohmann::json &json, ensure_agent_conversation_res_t &value)
 {
-    value.actor = json.value ("actor", actor_ref_snapshot_t{});
+    value.actor = json.value ("actor", actor_location_t{});
     value.scheduled = json.value ("scheduled", false);
     value.state = json.value ("state", conversation_state_t{});
 }

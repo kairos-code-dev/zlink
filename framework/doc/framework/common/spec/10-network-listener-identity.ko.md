@@ -170,6 +170,23 @@ endpoint와 client remote endpoint를 모두 명시해야 한다.
 Wildcard host와 port `0`은 local bind 입력에만 사용할 수 있다. Advertised endpoint,
 [Location Store](01-glossary.ko.md#location-store) record나 manual peer 설정에 남아 있으면 startup 설정 오류다.
 
+### 4.1 Publisher가 확인하는 listener 상태
+
+Publisher application은 publisher capability가 제공하는 listener 상태 조회로
+현재 listener가 remote process에 제공하는 endpoint를 확인할 수 있다. 이 조회는
+host가 시작되어 listener bind가 완료된 뒤에만 성공한다. 반환되는 port는 설정에
+입력한 port가 아니라 operating system이 실제로 선택한 bound port다.
+
+조회 결과의 endpoint는 `AdvertiseHost`와 실제 bound port를 결합한 advertised
+endpoint다. `AdvertiseHost`를 지정하지 않았으면 listener의 bind endpoint를
+사용한다. 이 결과는 현재 process의 publisher listener를 확인하기 위한 값이며,
+remote publisher descriptor의 내부 generation이나 discovery 상태를 공개하지
+않는다.
+
+Listener를 다시 시작하면 조회 결과의 endpoint가 달라질 수 있다. Application은
+이 값을 subscriber 설정에 복사하지 않고, automatic subscriber가 current
+descriptor를 따라가는지 확인하는 관찰 자료로만 사용한다.
+
 ## 5. Listener 종류별 record
 
 확정된 [advertised endpoint](01-glossary.ko.md#advertised-endpoint)는 listener

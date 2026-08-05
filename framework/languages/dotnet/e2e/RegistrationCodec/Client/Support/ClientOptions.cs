@@ -4,6 +4,7 @@ namespace RegistrationCodec.Client.Support;
 internal sealed record ClientOptions(
     string ChannelEndpoint,
     string ServerUrl,
+    string ScenarioRequesterUrl,
     string CodecRequesterUrl,
     string InvalidServerProject,
     string ConfigDir,

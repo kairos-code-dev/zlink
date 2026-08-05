@@ -1086,11 +1086,14 @@ final class ZLinkUserSpotRetireSourceBuilder {
         }
 
         synchronized ZLinkUserSpotRelocationBarrier.Committed
-            commitSourceBarrier() {
+            commitSourceBarrier(Map<String, Long> targetOwnerGenerations) {
             if (terminal || sourceCommitted || finalPrepared == null) {
                 throw new IllegalStateException(
                     "source relocation final root is not prepared or is terminal");
             }
+            Objects.requireNonNull(
+                targetOwnerGenerations,
+                "targetOwnerGenerations");
             Map<String, ZLinkSpotRelocationReplyRoutes.CommittedFence>
                 replyFences = new java.util.LinkedHashMap<>();
             for (int index = 0;
@@ -1104,8 +1107,9 @@ final class ZLinkUserSpotRetireSourceBuilder {
                     new ZLinkSpotRelocationReplyRoutes.CommittedFence(
                         participant.authorityKey(),
                         index + 1L,
-                        Math.incrementExact(
-                            participant.sourceAuthorityOwnerGeneration())));
+                        targetOwnerGeneration(
+                            targetOwnerGenerations,
+                            participant.authorityKey())));
             }
             if (relocationReplies == null) {
                 throw new IllegalStateException(
@@ -1307,5 +1311,16 @@ final class ZLinkUserSpotRetireSourceBuilder {
 
     private static <T> CompletionStage<T> failed(Throwable failure) {
         return CompletableFuture.failedFuture(failure);
+    }
+
+    private static long targetOwnerGeneration(
+        Map<String, Long> generations,
+        String authorityKey) {
+        Long generation = generations.get(authorityKey);
+        if (generation == null || generation <= 0) {
+            throw new IllegalArgumentException(
+                "committed owner generation is absent: " + authorityKey);
+        }
+        return generation;
     }
 }

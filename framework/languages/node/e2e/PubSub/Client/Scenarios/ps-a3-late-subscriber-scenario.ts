@@ -4,9 +4,8 @@ import { PubSubNames } from '../../Shared/messages';
 import { getJson } from '../../../http-client';
 import { NetworkFaultProxy } from '../Support/network-fault-proxy';
 import { ensure } from '../Support/scenario-assert';
-import { evidenceCount, waitForConnection, waitForEvent } from '../Support/subscriber-observation';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
-import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
+import { publishEvent, publishUntilDelivered } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsA3(
   publisher: string,
@@ -23,17 +22,14 @@ export async function runPsA3(
   );
   try {
     await subscriber.waitReady();
-    const connectionOffset = await evidenceCount(lateSubscriberUrl);
     fault.unblock();
-    await waitForConnection(lateSubscriberUrl, connectionOffset);
-
-    const afterReadyRun = randomUUID().replaceAll('-', '');
-    await publishEvent(publisher, PubSubNames.mainTopic, afterReadyRun, 2, 'after-ready');
-    const evidence = await waitForEvent(lateSubscriberUrl, afterReadyRun, 2, 'after-ready');
-    const allEvidence = await getJson<readonly string[]>(lateSubscriberUrl, '/evidence');
+    const afterReadyRun = await publishUntilDelivered(
+      publisher, lateSubscriberUrl, PubSubNames.mainTopic, 2, 'after-ready'
+    );
+    const evidence = await getJson<readonly string[]>(lateSubscriberUrl, '/evidence');
     ensure(
       evidence.some((line) => line.includes(`run=${afterReadyRun}`))
-        && allEvidence.every((line) => !line.includes(`run=${beforeReadyRun}`)),
+        && evidence.every((line) => !line.includes(`run=${beforeReadyRun}`)),
       'PS-A3 late subscriber replayed before-ready or missed the first after-ready event.'
     );
     console.log('scenario PS-A3 passed');

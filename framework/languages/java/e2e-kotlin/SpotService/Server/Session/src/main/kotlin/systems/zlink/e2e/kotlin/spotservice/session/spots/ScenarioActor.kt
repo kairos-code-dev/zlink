@@ -11,7 +11,7 @@ class ScenarioActor(
     private var profile = Contracts.ActorProfile("", 0, listOf())
     private var sequence = 0
 
-    override fun actorId(): String = actorId
+    fun actorId(): String = actorId
 
     override fun context(): ZLinkActorContext = context
 

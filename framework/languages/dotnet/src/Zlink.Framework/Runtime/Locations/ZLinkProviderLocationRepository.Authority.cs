@@ -57,6 +57,65 @@ internal sealed partial class ZLinkProviderLocationRepository
             ZLinkAuthorityMutation mutation,
             CancellationToken cancellationToken = default)
     {
+        // Only the complete NewOwner handoff has an auxiliary capacity fence.
+        // Preserve and Delete conflicts must retain their caller-visible
+        // single-CAS semantics; retrying those here could hide an owner or
+        // lifecycle transition from their coordinator.
+        var retriesCapacityContention = mutation is ZLinkAuthorityMutation.Put
+        {
+            GenerationTransition: ZLinkAuthorityGenerationTransition.NewOwner,
+            RelocationCapacityFence: not null
+        };
+        if (!retriesCapacityContention)
+            return await CompareExchangeAuthorityCoreAsync(
+                    key,
+                    expectedStoreVersion,
+                    mutation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+        // A NewOwner CAS also fences source and target capacity records. Those
+        // records can change while the authority version remains unchanged.
+        // Rebuild the complete atomic write for that narrow case; returning the
+        // first provider conflict would turn unrelated capacity contention into
+        // a source-side handoff failure.
+        const int maximumCapacityContentionRetries = 8;
+        for (var attempt = 0; ; attempt++)
+        {
+            var result = await CompareExchangeAuthorityCoreAsync(
+                    key,
+                    expectedStoreVersion,
+                    mutation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (attempt >= maximumCapacityContentionRetries
+                || result is not ZLinkAuthorityCompareExchangeResult.Conflict
+                    {
+                        Current: ZLinkAuthorityReadResult.Found current
+                    }
+                || !string.Equals(
+                    current.Snapshot.StoreVersion,
+                    expectedStoreVersion,
+                    StringComparison.Ordinal)
+                || current.Snapshot.Allocation.State
+                   != ZLinkPlacementAllocationState.Active)
+                return result;
+
+            var delayMilliseconds = Math.Min(32, 1 << Math.Min(attempt, 5));
+            await Task.Delay(
+                    TimeSpan.FromMilliseconds(delayMilliseconds),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask<ZLinkAuthorityCompareExchangeResult>
+        CompareExchangeAuthorityCoreAsync(
+            ZLinkAuthorityKey key,
+            string expectedStoreVersion,
+            ZLinkAuthorityMutation mutation,
+            CancellationToken cancellationToken)
+    {
         ValidateAuthorityKey(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedStoreVersion);
         ArgumentNullException.ThrowIfNull(mutation);

@@ -12,6 +12,7 @@ import { runStC3 } from './Scenarios/st-c3-callback-failure-scenario';
 import { runStD1 } from './Scenarios/st-d1-stateless-transfer-scenario';
 import { runStD2 } from './Scenarios/st-d2-stateful-transfer-scenario';
 import { runStE1 } from './Scenarios/st-e1-source-restart-recovery-scenario';
+import { runStE1A } from './Scenarios/st-e1a-new-incarnation-explicit-bind-scenario';
 import { runStE2 } from './Scenarios/st-e2-target-restart-recovery-scenario';
 import { runStF1 } from './Scenarios/st-f1-packet-order-scenario';
 import { runStF2 } from './Scenarios/st-f2-in-flight-order-scenario';
@@ -41,6 +42,7 @@ const scenarios: Readonly<Record<string, () => Promise<void>>> = {
   'ST-C1': runStC1, 'ST-C2': runStC2, 'ST-C3': runStC3,
   'ST-D1': runStD1, 'ST-D2': runStD2,
   'ST-E1': runStE1, 'ST-E2': runStE2,
+  'ST-E1A': runStE1A,
   'ST-F1': runStF1, 'ST-F2': runStF2, 'ST-F3': runStF3,
   'ST-F4': runStF4, 'ST-F5': runStF5,
   'ST-F6': runStF6,

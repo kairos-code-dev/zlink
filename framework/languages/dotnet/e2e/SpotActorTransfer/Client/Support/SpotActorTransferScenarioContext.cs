@@ -538,6 +538,18 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         ?? throw new InvalidOperationException(
             "Actor workload reply was null.");
 
+    public async Task<RelocationWorkloadProbeRes> RequestActorWorkloadProbeAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        (await submittingNode.Post("/workload/actors/request-probe")
+                .Body(request)
+                .Timeout(TimeSpan.FromMilliseconds(
+                    request.TimeoutMilliseconds))
+                .Async<RelocationWorkloadProbeRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Actor workload probe response was null.");
+
     public Task SendActorWorkloadAsync(
         ZLinkHttpClient submittingNode,
         RelocationWorkloadCallReq request) =>
@@ -568,6 +580,18 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             .Body
         ?? throw new InvalidOperationException(
             "Spot workload reply was null.");
+
+    public async Task<RelocationWorkloadProbeRes> RequestSpotWorkloadProbeAsync(
+        ZLinkHttpClient submittingNode,
+        RelocationWorkloadCallReq request) =>
+        (await submittingNode.Post("/workload/spots/request-probe")
+                .Body(request)
+                .Timeout(TimeSpan.FromMilliseconds(
+                    request.TimeoutMilliseconds))
+                .Async<RelocationWorkloadProbeRes>())
+            .Body
+        ?? throw new InvalidOperationException(
+            "Spot workload probe response was null.");
 
     public Task SendSpotWorkloadAsync(
         ZLinkHttpClient submittingNode,

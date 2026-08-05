@@ -499,11 +499,11 @@ function requireApplicationMetadata(value: unknown): Readonly<Record<string, str
 }
 
 function optionalFlowId(value: unknown): string | undefined {
-  return value === undefined ? undefined : requireFlowId(value);
+  return value === undefined || value === null ? undefined : requireFlowId(value);
 }
 
 function optionalFlowOrigin(value: unknown): ZLinkFlowOrigin | undefined {
-  return value === undefined ? undefined : requireFlowOrigin(value);
+  return value === undefined || value === null ? undefined : requireFlowOrigin(value);
 }
 
 function requireFlowId(value: unknown): string {

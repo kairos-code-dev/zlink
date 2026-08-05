@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -111,46 +112,103 @@ void enqueue_inbound_observer_notification (connector_state_t &state,
     });
 }
 
-std::optional<packet_t> read_stream_packet (connector_state_t &state)
+result_t<std::vector<std::uint8_t>>
+read_exact_from_connection (const std::shared_ptr<stream_connection_t> &connection,
+                            std::size_t size)
 {
-    auto prefix = read_exact (state, 6);
+    if (!connection) {
+        return result_t<std::vector<std::uint8_t>>::failure (
+          error_code_t::disconnected, "stream connector is not connected");
+    }
+    std::vector<std::uint8_t> bytes (size);
+    std::size_t offset = 0;
+    while (offset < size) {
+        boost::system::error_code error;
+        const auto read = connection->read_some (bytes.data () + offset, size - offset, error);
+        if (error) {
+            return result_t<std::vector<std::uint8_t>>::failure (
+              error_code_t::disconnected, error.message ());
+        }
+        if (read == 0) {
+            return result_t<std::vector<std::uint8_t>>::failure (
+              error_code_t::disconnected, "stream connector returned a zero-byte read");
+        }
+        offset += read;
+    }
+    return result_t<std::vector<std::uint8_t>>::success (std::move (bytes));
+}
+
+result_t<packet_t> read_stream_packet (
+  connector_state_t &state,
+  const std::shared_ptr<stream_connection_t> &connection)
+{
+    auto prefix_result = read_exact_from_connection (connection, 6);
+    if (!prefix_result) {
+        return result_t<packet_t>::failure (
+          prefix_result.error_code (), prefix_result.error ()->message);
+    }
+    const auto &prefix = prefix_result.value ();
     const auto header_size = static_cast<std::size_t> ((prefix[0] << 8) | prefix[1]);
     const auto payload_size =
       (static_cast<std::size_t> (prefix[2]) << 24) | (static_cast<std::size_t> (prefix[3]) << 16)
       | (static_cast<std::size_t> (prefix[4]) << 8) | static_cast<std::size_t> (prefix[5]);
     if (!frame_codec_t::validate_receive_frame_size (header_size, payload_size, state.options)) {
-        state.inbound_error =
-          error_t{error_code_t::frame_too_large, "Inbound stream frame exceeds configured limits."};
-        boost::system::error_code ignored;
-        if (state.connection) {
-            state.connection->close (ignored);
-        }
-        return std::nullopt;
+        return result_t<packet_t>::failure (
+          error_code_t::frame_too_large, "Inbound stream frame exceeds configured limits.");
     }
-    auto header_bytes = read_exact (state, header_size);
-    auto payload_bytes = read_exact (state, payload_size);
+    auto header_result = read_exact_from_connection (connection, header_size);
+    if (!header_result) {
+        return result_t<packet_t>::failure (
+          header_result.error_code (), header_result.error ()->message);
+    }
+    auto payload_result = read_exact_from_connection (connection, payload_size);
+    if (!payload_result) {
+        return result_t<packet_t>::failure (
+          payload_result.error_code (), payload_result.error ()->message);
+    }
+    auto header_bytes = std::move (header_result.value ());
+    auto payload_bytes = std::move (payload_result.value ());
     auto decoded = header_codec_t{}.decode (header_bytes);
     if (!decoded) {
-        return packet_t{"unknown", {}, codec_t::raw, false, zlink::message_t::from (std::string{})};
+        return result_t<packet_t>::failure (decoded.error_code (), decoded.error ()->message);
     }
     auto header = decoded.value ();
     enqueue_inbound_observer_notification (state, header, payload_size, payload_bytes);
     state.last_inbound_received = std::chrono::steady_clock::now ();
     const bool compressed = has_flag (header.flags, header_flags_t::payload_compressed);
-    auto payload = message_from_bytes (payload_bytes);
+    zlink::message_t payload;
+    try {
+        payload = message_from_bytes (payload_bytes);
+    }
+    catch (const std::exception &error) {
+        return result_t<packet_t>::failure (error_code_t::frame_decode_failed, error.what ());
+    }
     if (compressed) {
         if (!state.compression_codec) {
-            throw std::runtime_error ("stream connector compression codec is not configured");
+            return result_t<packet_t>::failure (
+              error_code_t::decompression_failed,
+              "stream connector compression codec is not configured");
         }
         if (state.options.compression == compression_t::lz4 && !state.lz4_enabled) {
-            throw std::runtime_error ("LZ4 compression is not enabled");
+            return result_t<packet_t>::failure (error_code_t::decompression_failed,
+                                                "LZ4 compression is not enabled");
         }
-        payload = state.compression_codec->decompress (payload,
-                                                       state.options.max_receive_payload_size);
-        if (payload.size () > state.options.max_receive_payload_size) {
-            throw std::runtime_error (
-              "decompressed stream payload exceeds maximum stream payload size");
+        try {
+            payload = state.compression_codec->decompress (
+              payload, state.options.max_receive_payload_size);
+            if (payload.size () > state.options.max_receive_payload_size) {
+                return result_t<packet_t>::failure (
+                  error_code_t::decompression_failed,
+                  "decompressed stream payload exceeds maximum stream payload size");
+            }
         }
+        catch (const std::exception &error) {
+            return result_t<packet_t>::failure (error_code_t::decompression_failed,
+                                                error.what ());
+        }
+    }
+    if (header.kind == message_kind_t::control && header.name == "$zlink.heartbeat.ping") {
+        state.heartbeat_pong_due = true;
     }
     packet_t packet;
     packet.name = std::move (header.name);
@@ -158,7 +216,7 @@ std::optional<packet_t> read_stream_packet (connector_state_t &state)
     packet.codec = header.codec;
     packet.compressed = compressed;
     packet.payload = std::move (payload);
-    return packet;
+    return result_t<packet_t>::success (std::move (packet));
 }
 
 } // namespace
@@ -174,21 +232,28 @@ void dispatch_packet (connector_state_t &state, const packet_t &packet)
     }
 }
 
-std::vector<packet_t> drain_available_pushes (connector_state_t &state)
+result_t<std::vector<packet_t>>
+drain_available_pushes (connector_state_t &state,
+                        const std::shared_ptr<stream_connection_t> &connection)
 {
     std::vector<packet_t> packets;
-    while (state.connection && state.connection->is_open ()) {
+    while (connection && connection->is_open ()) {
         boost::system::error_code error;
-        if (state.connection->available (error) == 0 || error) {
-            return packets;
+        if (connection->available (error) == 0) {
+            if (error) {
+                return result_t<std::vector<packet_t>>::failure (
+                  error_code_t::disconnected, error.message ());
+            }
+            return result_t<std::vector<packet_t>>::success (std::move (packets));
         }
-        auto packet = read_stream_packet (state);
+        auto packet = read_stream_packet (state, connection);
         if (!packet) {
-            return packets;
+            return result_t<std::vector<packet_t>>::failure (
+              packet.error_code (), packet.error ()->message);
         }
-        packets.push_back (std::move (*packet));
+        packets.push_back (std::move (packet.value ()));
     }
-    return packets;
+    return result_t<std::vector<packet_t>>::success (std::move (packets));
 }
 
 } // namespace zlink::stream_connector::detail

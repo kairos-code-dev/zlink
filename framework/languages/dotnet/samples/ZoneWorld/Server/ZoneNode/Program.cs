@@ -67,11 +67,10 @@ builder.Services.AddZLinkFramework(options =>
         redis.KeyPrefix = $"{shared.RedisKeyPrefix}relocation:";
     }));
     options.ConfigureDispatch()
-        // Zone ticks continuously fan out state, border snapshots, and bot moves. Logging every
-        // dispatch transition turns the sample log into a second high-volume workload and can
-        // starve the stream scenarios that the runner is meant to verify. Keep failures visible
-        // without tracing every successful tick.
-        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
+        // Normal records the required key transitions. The runner redirects this process's
+        // output to its per-run log file, so the flow evidence remains available without
+        // relying on a console scroll.
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
     options.AddHandlersFromAssemblyOf(typeof(ZoneSpot));
 
     // The node that hosts no zone registers the broadcast subscriber and nothing else — no

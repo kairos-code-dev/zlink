@@ -5,13 +5,11 @@ import { getJson } from '../../../http-client';
 import { NetworkFaultProxy } from '../Support/network-fault-proxy';
 import { ensure } from '../Support/scenario-assert';
 import {
-  evidenceCount,
-  waitForConnection,
-  waitForDisconnection,
-  waitForEvent
+  waitForEvent,
+  waitForNoEvent
 } from '../Support/subscriber-observation';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
-import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
+import { publishEvent, publishUntilDelivered } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsA4(
   publisher: string,
@@ -27,33 +25,31 @@ export async function runPsA4(
   );
   try {
     await subscriber.waitReady();
-    let offset = await evidenceCount(reconnectSubscriberUrl);
     fault.unblock();
-    await waitForConnection(reconnectSubscriberUrl, offset);
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, 1, 'before-disconnect');
+    const baselineRun = await publishUntilDelivered(
+      publisher, reconnectSubscriberUrl, PubSubNames.mainTopic, 1, 'before-disconnect'
+    );
     await Promise.all([
-      ...fastSubscribers.map((url) => waitForEvent(url, runId, 1, 'before-disconnect')),
-      waitForEvent(reconnectSubscriberUrl, runId, 1, 'before-disconnect')
+      ...fastSubscribers.map((url) => waitForEvent(url, baselineRun, 1, 'before-disconnect'))
     ]);
 
-    offset = await evidenceCount(reconnectSubscriberUrl);
     fault.block();
-    await waitForDisconnection(reconnectSubscriberUrl, offset);
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, 2, 'while-disconnected');
-    await Promise.all(fastSubscribers.map((url) => waitForEvent(url, runId, 2, 'while-disconnected')));
+    const disconnectedRun = runId;
+    await publishEvent(publisher, PubSubNames.mainTopic, disconnectedRun, 2, 'while-disconnected');
+    await Promise.all(fastSubscribers.map((url) => waitForEvent(url, disconnectedRun, 2, 'while-disconnected')));
+    await waitForNoEvent(reconnectSubscriberUrl, disconnectedRun, 2, 'while-disconnected');
 
-    offset = await evidenceCount(reconnectSubscriberUrl);
     fault.unblock();
-    await waitForConnection(reconnectSubscriberUrl, offset);
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, 3, 'after-reconnect');
+    const afterReconnectRun = await publishUntilDelivered(
+      publisher, reconnectSubscriberUrl, PubSubNames.mainTopic, 3, 'after-reconnect'
+    );
     await Promise.all([
-      ...fastSubscribers.map((url) => waitForEvent(url, runId, 3, 'after-reconnect')),
-      waitForEvent(reconnectSubscriberUrl, runId, 3, 'after-reconnect')
+      ...fastSubscribers.map((url) => waitForEvent(url, afterReconnectRun, 3, 'after-reconnect'))
     ]);
     const evidence = await getJson<readonly string[]>(reconnectSubscriberUrl, '/evidence');
     ensure(
       !subscriber.hasExited
-        && evidence.every((line) => !line.includes(`run=${runId}`) || !line.includes('seq=2|')),
+        && evidence.every((line) => !line.includes(`run=${disconnectedRun}`) || !line.includes('seq=2|')),
       'PS-A4 restarted the application or replayed the disconnected event.'
     );
     console.log('scenario PS-A4 passed');

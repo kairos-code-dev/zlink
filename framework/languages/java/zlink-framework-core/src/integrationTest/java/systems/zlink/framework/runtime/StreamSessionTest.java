@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
@@ -109,7 +110,11 @@ final class StreamSessionTest {
 
             client.getOutputStream().write(frame(requestHeader(11L, "MustFail"), bytes("bad")));
             client.getOutputStream().flush();
-            assertErrorReply(client.getInputStream(), 11L, "public failure");
+            assertErrorReply(
+                client.getInputStream(),
+                11L,
+                "IllegalStateException",
+                "public failure");
 
             client.getOutputStream().write(frame(requestHeader(12L, "Ping"), bytes("again")));
             client.getOutputStream().flush();
@@ -509,7 +514,11 @@ final class StreamSessionTest {
         assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
     }
 
-    private static void assertErrorReply(InputStream input, long requestSeq, String expectedBody)
+    private static void assertErrorReply(
+        InputStream input,
+        long requestSeq,
+        String expectedCode,
+        String expectedMessage)
         throws Exception {
         byte[] prefix = input.readNBytes(6);
         assertEquals(6, prefix.length);
@@ -520,13 +529,18 @@ final class StreamSessionTest {
         byte[] body = readExact(input, bodySize);
 
         if (Byte.toUnsignedInt(header[1]) == 5) {
-            assertErrorReply(input, requestSeq, expectedBody);
+            assertErrorReply(
+                input, requestSeq, expectedCode, expectedMessage);
             return;
         }
         assertEquals(0xF2, Byte.toUnsignedInt(header[0]));
         assertEquals(4, Byte.toUnsignedInt(header[1]));
+        assertEquals(1, Byte.toUnsignedInt(header[2]));
         assertEquals(requestSeq, ByteBuffer.wrap(header, 4, Long.BYTES).getLong());
-        assertEquals(expectedBody, new String(body, StandardCharsets.UTF_8));
+        assertEquals(0, Byte.toUnsignedInt(header[12]));
+        var error = new ObjectMapper().readTree(body);
+        assertEquals(expectedCode, error.get("code").asText());
+        assertEquals(expectedMessage, error.get("message").asText());
     }
 
     private static void assertSend(InputStream input, String expectedPacketName, String expectedBody)

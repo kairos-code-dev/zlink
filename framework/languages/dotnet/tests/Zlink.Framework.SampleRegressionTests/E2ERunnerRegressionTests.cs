@@ -89,7 +89,7 @@ public sealed partial class RegressionTests
         Assert.Contains("action=Drop", rmC5, StringComparison.Ordinal);
         Assert.Contains("ProviderEvidence.WaitFromEitherAsync", rmC5, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.WhenAll(providerAEvidence, providerBEvidence)", rmC5, StringComparison.Ordinal);
-        Assert.Contains("nameof(TimeoutException)", rmC8, StringComparison.Ordinal);
+        Assert.Contains("ZLinkFrameworkErrorKind.ProtocolError", rmC8, StringComparison.Ordinal);
         Assert.DoesNotContain(".Failed", rmC2 + rmC5 + rmC8, StringComparison.Ordinal);
 
         var providerEvidence = File.ReadAllText(Path.Combine(
@@ -366,11 +366,14 @@ public sealed partial class RegressionTests
         var consumer = File.ReadAllText(Path.Combine(root, "Server", "Consumer", "ConsumerHostFactory.cs"));
         var provider = File.ReadAllText(Path.Combine(root, "Server", "Provider", "ProviderHostFactory.cs"));
 
-        Assert.Contains("private const int SlowSendCount = 64", scenario, StringComparison.Ordinal);
-        Assert.Contains("private const int PressureEvidenceCount = 5", scenario, StringComparison.Ordinal);
-        Assert.Contains("SendHighWaterMark = 4", consumer, StringComparison.Ordinal);
+        Assert.Contains("private const ulong ApplicationHwmBytes = 1UL * 1024 * 1024", scenario, StringComparison.Ordinal);
+        Assert.Contains("private const int BlockerPayloadBytes = 2 * 1024 * 1024", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("SendHighWaterMark = 4", consumer, StringComparison.Ordinal);
         Assert.Contains("ReceiveHighWaterMark = 4", provider, StringComparison.Ordinal);
-        Assert.Contains("evidence.Count(line => line.Contains(marker", scenario, StringComparison.Ordinal);
+        Assert.Contains("/profile/backpressure/release", scenario, StringComparison.Ordinal);
+        Assert.Contains("/runtime/status", scenario, StringComparison.Ordinal);
+        Assert.Contains("ApplicationReceivePaused", scenario, StringComparison.Ordinal);
+        Assert.Contains("PendingPayloadBytes", scenario, StringComparison.Ordinal);
         Assert.DoesNotContain("Task.Delay(TimeSpan.FromSeconds(10))", scenario, StringComparison.Ordinal);
     }
 

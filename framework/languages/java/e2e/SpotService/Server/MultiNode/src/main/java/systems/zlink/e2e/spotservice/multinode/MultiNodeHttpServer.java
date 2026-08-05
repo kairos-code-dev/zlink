@@ -6,14 +6,12 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import org.springframework.context.SmartLifecycle;
-import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.MultiNodeSpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
@@ -27,7 +25,6 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
     private final ZLinkRouteClient routes;
     private final ZLinkActorManager actors;
     private final ZLinkActorClient actorClient;
-    private final SpotHandleResolver spotHandles;
     private final ZLinkRouteMeshRuntime meshRuntime;
     private HttpServer server;
     private boolean running;
@@ -40,7 +37,6 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         ZLinkRouteClient routes,
         ZLinkActorManager actors,
         ZLinkActorClient actorClient,
-        SpotHandleResolver spotHandles,
         ZLinkRouteMeshRuntime meshRuntime) {
         this.state = state;
         this.json = json;
@@ -49,7 +45,6 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         this.routes = routes;
         this.actors = actors;
         this.actorClient = actorClient;
-        this.spotHandles = spotHandles;
         this.meshRuntime = meshRuntime;
     }
 
@@ -88,7 +83,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                 var result = getLocalSpot(request.spotRid());
                 state.record("MultiNodeCreateSpot", request.spotRid(), result.state().name());
                 writeJson(exchange, new Contracts.MultiNodeCreateSpotRes(
-                    result.spotId(),
+                    result.spot().spotId(),
                     state.nodeRid(),
                     result.state().name(),
                     0));
@@ -100,7 +95,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                 var result = getLocalSpot(request.spotRid());
                 state.record("SpotOnlyCreate", request.spotRid(), result.state().name());
                 writeJson(exchange, new Contracts.CreateSpotRes(
-                    result.spotId(),
+                    result.spot().spotId(),
                     state.nodeRid(),
                     result.state().name()));
             }));
@@ -115,7 +110,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                             + "|" + request.targetSpotRid() + "/7/" + request.marker()),
                     10_000);
                 writeJson(exchange, new Contracts.SpotOnlyMeshRes(
-                    result.spotId(),
+                    result.spot().spotId(),
                     request.targetSpotRid(),
                     extractSpotOnlyValue(evidence, request),
                     request.marker()));
@@ -126,14 +121,24 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
                     Contracts.SpotOnlyJoinReq.class);
                 var actor = actors.getOrCreate(
                         request.actorId(),
-                        "scenario",
-                        new Contracts.ActorAuthReq(
+                        "scenario")
+                    .request(new Contracts.ActorAuthReq(
                             request.actorId(),
                             new Contracts.ActorProfile("Spot Only", 6, java.util.List.of("spot-only"))))
+                    .submit()
+                    .thenApply(result -> {
+                        if (result instanceof systems.zlink.framework.actors.ZLinkActorCreateResult.Existing existing) {
+                            return existing.actor();
+                        }
+                        if (result instanceof systems.zlink.framework.actors.ZLinkActorCreateResult.Created created) {
+                            return created.actor();
+                        }
+                        throw new IllegalStateException("spot-only actor creation was rejected");
+                    })
                     .toCompletableFuture()
                     .get(5, java.util.concurrent.TimeUnit.SECONDS);
                 Contracts.SpotOnlyJoinRes result = actorClient
-                    .requestToActor(actor, request)
+                    .requestToActor(actor.actorId(), request)
                     .timeout(java.time.Duration.ofSeconds(10))
                     .submit(Contracts.SpotOnlyJoinRes.class).toCompletableFuture().join();
                 state.waitFor(
@@ -165,7 +170,9 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         String spotRid,
         ZLinkMessage request) {
         try {
-            return spots.getOrCreate(MultiNodeSpot.class, RoutingId.from(spotRid), request)
+            return spots.getOrCreate(spotRid, "multi-node")
+                .request(request)
+                .submit()
                 .toCompletableFuture()
                 .get(5, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException error) {
@@ -183,7 +190,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         String suffix = request.targetSpotRid() + "/7/" + request.marker();
         return evidence.entries().stream()
             .filter(entry -> "SpotOnlyRequest".equals(entry.marker())
-                && request.sourceSpotRid().equals(entry.spotId())
+                && request.sourceSpotRid().equals(entry.spotRid())
                 && suffix.equals(entry.value()))
             .findFirst()
             .map(entry -> 7)
@@ -197,10 +204,7 @@ public final class MultiNodeHttpServer implements SmartLifecycle {
         while (System.nanoTime() < deadline) {
             try {
                 return routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandles.resolveSpotHandle(RoutingId.from(request.spotRid()))
-                            .toCompletableFuture().join()
-                            .orElseThrow(() -> new IllegalStateException("spot not found: " + request.spotRid())),
+                        request.spotRid(),
                         new Contracts.MultiNodeStateReq(request.delta()))
                     .timeout(java.time.Duration.ofSeconds(2))
                     .submit(Contracts.MultiNodeStateRes.class).toCompletableFuture().join();

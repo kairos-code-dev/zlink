@@ -8,7 +8,6 @@
 #include <zlink/framework.hpp>
 
 #include <cstdlib>
-#include <iostream>
 #include <string_view>
 
 namespace zlink::samples::tictactoe

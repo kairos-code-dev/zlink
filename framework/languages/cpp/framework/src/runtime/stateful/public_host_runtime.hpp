@@ -15,6 +15,8 @@
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Sockets/results.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
+
+#include "runtime/actors/actor_ref_access.hpp"
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <chrono>
@@ -168,6 +170,13 @@ struct receive_record_t
     std::optional<actor_join_completion_t> join_completion;
     std::optional<actor_control_t> actor_control;
     std::optional<send_ready_data_t> send_ready;
+    /* An application mailbox claim remains reserved until the framework
+     * handler reaches a terminal result. A callback that submits the record
+     * asynchronously calls retain_mailbox_reservation before returning and
+     * calls release_mailbox_reservation at that terminal boundary.
+     * Infrastructure and local records leave both callbacks empty. */
+    std::function<void ()> retain_mailbox_reservation;
+    std::function<void ()> release_mailbox_reservation;
     std::function<void ()> complete_stateful_dispatch;
 };
 
@@ -176,7 +185,7 @@ struct ready_record_t
     owner_kind_t owner_kind = owner_kind_t::node;
     ready_domain_t domain = ready_domain_t::application;
     std::string spot_id;
-    actor_ref_t actor;
+    std::optional<actor_ref_t> actor;
     std::string channel_name;
 };
 
@@ -531,6 +540,7 @@ class public_host_runtime_t :
     bool complete_relocation_remote (
       const zlink::routing_id_t &target_node,
       protocol::relocation_complete_t complete,
+      protocol::request_source_fence_t expected_target,
       std::chrono::milliseconds timeout,
       bool wait_for_target);
     bool complete_relocated_source (
@@ -538,6 +548,9 @@ class public_host_runtime_t :
       std::uint64_t sequence,
       const protocol::reply_relay_t &relay,
       const std::optional<protocol::application_payload_t> &reply);
+    bool acknowledge_relocated_source (
+      const stateful::object_ref_t &owner,
+      const protocol::wire_operation_id_t &operation);
     stateful::stateful_error_t ingest_stateful (
       const stateful::object_ref_t &owner);
     bool route_session_remote (
@@ -617,7 +630,7 @@ class public_host_runtime_t :
       std::string actor_id,
       std::uint64_t generation)
     {
-        return actor_ref_t (
+        return ::zlink::framework::detail::actor_ref_access_t::make (
           node_rid_t::from_string (node.to_string ()), {},
           std::move (actor_id), generation);
     }
@@ -734,8 +747,13 @@ class public_host_runtime_t :
       _session_route_terminals;
     using relocation_attempt_key_t =
       std::tuple<std::uint64_t, std::uint64_t, std::uint64_t>;
+    struct relocation_target_attempt_t;
     bool try_finalize_relocation_target (
       const relocation_attempt_key_t &key);
+    bool send_relocation_target_terminal (
+      const relocation_attempt_key_t &key);
+    bool relocation_target_authority_committed (
+      const relocation_target_attempt_t &attempt) const noexcept;
     struct relocation_target_attempt_t
     {
         protocol::relocation_prepare_t prepare;
@@ -745,13 +763,35 @@ class public_host_runtime_t :
         bool reserved = false;
         std::optional<protocol::relocation_complete_t> completion;
         std::vector<std::uint8_t> completion_source_routing_id;
+        bool target_finalized = false;
+        std::optional<protocol::relocation_complete_t> terminal_response;
+        std::chrono::steady_clock::time_point attempt_expires_at{};
+    };
+    std::vector<relocation_target_attempt_t>
+    take_expired_relocation_target_attempts_locked (
+      std::chrono::steady_clock::time_point now);
+    void expire_relocation_target_attempts ();
+    void cleanup_expired_relocation_target_attempts (
+      std::vector<relocation_target_attempt_t> attempts) noexcept;
+    struct relocation_completion_wait_t
+    {
+        protocol::relocation_coordinator_fence_t coordinator;
+        protocol::request_source_fence_t expected_target;
+        protocol::source_cleanup_state_t source_cleanup_state =
+          protocol::source_cleanup_state_t::pending;
+        bool accepted = false;
     };
     std::map<relocation_attempt_key_t, protocol::relocation_ready_t>
       _relocation_ready_responses;
-    std::set<relocation_attempt_key_t>
+    std::map<relocation_attempt_key_t, relocation_completion_wait_t>
       _relocation_complete_responses;
     std::map<relocation_attempt_key_t, relocation_target_attempt_t>
       _relocation_target_attempts;
+    std::shared_ptr<stateful::authority_relocation_port_t>
+      _relocation_authority;
+    static constexpr std::size_t relocation_terminal_capacity = 65'536;
+    static constexpr auto relocation_attempt_retention =
+      std::chrono::minutes (5);
     std::condition_variable _relocation_changed;
     struct user_spot_terminal_record_t
     {

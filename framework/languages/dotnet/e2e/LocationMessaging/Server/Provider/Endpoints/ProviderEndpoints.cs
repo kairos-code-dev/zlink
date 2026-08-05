@@ -45,6 +45,7 @@ internal static class ProviderEndpoints
                     .ToArray();
                 var matches = rows.Where(row =>
                         row.Role == request.Role
+                        && row.State == nameof(ZLinkLocationTopologyState.Ready)
                         && row.NodeRid is { } nodeRid
                         && (nodeRid == request.NodeRid
                             || nodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal)))
@@ -82,6 +83,26 @@ internal static class ProviderEndpoints
             return Results.Ok(new LocationStatusRes(
                 status.StoreHealthy,
                 status.OwnerLeaseHealthy));
+        });
+        app.MapGet("/runtime/status", (IZLinkFrameworkRuntime runtime) =>
+        {
+            var inbound = runtime.Status.InboundDispatch;
+            return Results.Ok(new RuntimeInboundStatusRes(
+                inbound.ApplicationHwmBytes,
+                inbound.PendingPayloadBytes,
+                inbound.QueuedPayloadBytes,
+                inbound.ActivePayloadBytes,
+                inbound.ApplicationReceivePaused));
+        });
+        app.MapPost("/profile/backpressure/reset", (BackpressureGate gate) =>
+        {
+            gate.Reset();
+            return Results.Ok(new { status = "ready" });
+        });
+        app.MapPost("/profile/backpressure/release", (BackpressureGate gate) =>
+        {
+            gate.Release();
+            return Results.Ok(new { status = "released" });
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,

@@ -64,13 +64,17 @@ public sealed class RegressionTests
         // are exempt from the regression-section requirement.
         // API examples remain tied to regression evidence and stay in the strict set.
         // 사용 가이드는 온보딩 산문이라 계약 문서가 아니다 — 세 패키지 가이드를 모두 제외한다.
-        var narrativeRoots = new[]
+        var excludedRoots = new[]
         {
-            Path.Combine(directory, "guide")
+            Path.Combine(directory, "guide"),
+            // The reference tree is an unlisted preview and is not part of the
+            // public contract document set until its ownership and nav entry are
+            // finalized.
+            Path.Combine(directory, "reference")
         };
         var actualDocuments = Directory
             .EnumerateFiles(directory, "*.ko.md", SearchOption.AllDirectories)
-            .Where(path => !narrativeRoots.Any(root => IsUnderDirectory(path, root, false)))
+            .Where(path => !excludedRoots.Any(root => IsUnderDirectory(path, root, false)))
             .Where(path => !string.Equals(
                 Path.GetFileName(path),
                 "public-symbol-delta-v11.ko.md",

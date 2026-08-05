@@ -27,7 +27,7 @@ payload는 Actor 자신의 queue에 제출한다. Queue에 들어온 handler를 
 | [Spot](01-glossary.ko.md#spot) [membership](01-glossary.ko.md#membership) transaction과 relocation | [Spot Actor](15-spot-actor.ko.md) |
 | STREAM session 연동 | [Session Actor Dispatch](20-session-actor-dispatch.ko.md) |
 | Payload와 metadata | [메시지 모델](04-message-model.ko.md) |
-| Callback 실행과 completion | [비동기 실행 정책](05-async-execution-policy.md) |
+| Callback 실행과 completion | [비동기 실행 정책](05-async-execution-policy.ko.md) |
 
 ## 2. Actor identity와 서로 독립적인 상태
 
@@ -101,7 +101,7 @@ Actor가 Entry Spot이나 user Spot에 있거나 remote MeshNode에 있어도 �
 - Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.
 
 User Spot execution mode와 `Yield` continuation의 실행 규칙은
-[비동기 실행 정책](05-async-execution-policy.md#11-submit-async와-yield)이
+[비동기 실행 정책](05-async-execution-policy.ko.md#11-submit-async와-yield)이
 정의한다.
 
 ### 3.1 Deferred Join barrier

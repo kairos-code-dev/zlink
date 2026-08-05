@@ -98,14 +98,6 @@ class tictactoe_entry_spot_t : public entry_spot_t<player_actor_t>
   private:
     void on_player_win_milestone (const player_win_milestone_event_t &event);
 
-    static actor_ref_t actor_ref_for (const player_actor_t &actor)
-    {
-        return actor_ref_t (node_rid_t::from_string (actor.node_rid.empty ()
-                                                       ? std::string (sample_names_t::spot_node)
-                                                       : actor.node_rid),
-                            sample_names_t::actor_type, actor.actor_id, actor.generation);
-    }
-
     entry_spot_context_t _context;
     std::map<std::string, player_actor_t *> observers;
 };

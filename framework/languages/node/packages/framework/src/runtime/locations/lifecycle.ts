@@ -210,8 +210,12 @@ export class ZLinkLocationLifecycle {
     );
   }
 
-  async releaseSpot(meshName: string, spotId: RoutingId): Promise<void> {
-    await this.spotClaims.release(meshName, spotId);
+  async releaseSpot(
+    meshName: string,
+    spotId: RoutingId,
+    expectedObjectGeneration?: bigint
+  ): Promise<void> {
+    await this.spotClaims.release(meshName, spotId, expectedObjectGeneration);
   }
 
   async beginInstanceSpotClosing(meshName: string, spotId: RoutingId): Promise<boolean> {

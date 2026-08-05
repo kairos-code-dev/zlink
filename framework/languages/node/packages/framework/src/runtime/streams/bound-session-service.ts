@@ -456,8 +456,9 @@ function requireBoundSessionGeneration(actorRef: ActorRef): bigint {
   const generation = (actorRef as ActorRef & { bindingGeneration?: bigint }).bindingGeneration;
   if (generation === undefined || generation <= 0n) {
     throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.RouteNotConnected,
-      `Actor '${actorRef.actorId}' has no current bound-session generation.`
+      ZLinkFrameworkInternalErrorKind.ActorSessionNotBound,
+      `Actor '${actorRef.actorId}' has no current bound-session generation.`,
+      true
     );
   }
   return generation;

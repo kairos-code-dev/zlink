@@ -1,5 +1,6 @@
 package systems.zlink.samples.deliverydispatch.server.customergateway;
 
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 
@@ -21,8 +22,8 @@ public final class CustomerActor implements ZLinkActor {
         return context;
     }
 
-    public void push(Object message) {
-        context.boundSession()
+    public CompletionStage<Void> push(Object message) {
+        return context.boundSession()
             .send(message)
             .submit();
     }

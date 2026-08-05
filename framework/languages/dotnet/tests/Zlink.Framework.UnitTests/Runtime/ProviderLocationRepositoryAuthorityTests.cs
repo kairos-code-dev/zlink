@@ -477,6 +477,74 @@ public sealed class ProviderLocationRepositoryAuthorityTests
     }
 
     [Fact]
+    public async Task SharedOpaqueProvider_RelocationOwnerCommitRetriesUnchangedAuthorityAfterCapacityConflict()
+    {
+        var inner = new ZLinkInMemoryProviderLocationStore();
+        var provider = new AuthorityCapacityConflictOnceLocationStore(inner);
+        var source = new ZLinkProviderLocationRepository(provider);
+        var target = new ZLinkProviderLocationRepository(provider);
+        var sourceOwner = await ClaimAsync(source, "source-owner");
+        var targetOwner = await ClaimAsync(target, "target-owner");
+        var sourceDescriptor = Descriptor("source", sourceOwner);
+        var targetDescriptor = Descriptor("target", targetOwner);
+        _ = await source.UpdateMeshNodeAsync(
+            sourceDescriptor,
+            ZLinkLocationWriteIntent.NewClaim);
+        _ = await target.UpdateMeshNodeAsync(
+            targetDescriptor,
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var request = Reservation(
+            "actor:relocation-capacity-retry",
+            sourceDescriptor,
+            sourceOwner);
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await source.ReserveAsync(request));
+        var created = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await source.CommitAsync(
+                reserved.Reservation,
+                new byte[] { 0x33 })).Snapshot;
+        var relocation = new ZLinkRelocationCapacityReservationRequest(
+            Guid.NewGuid(),
+            request.Key,
+            created.StoreVersion,
+            ZLinkPlacementObjectKind.Actor,
+            "player",
+            new ZLinkMeshNodeDescriptorKey(
+                "play",
+                sourceDescriptor.Rid),
+            sourceDescriptor.LifecycleGeneration,
+            sourceOwner,
+            new ZLinkMeshNodeDescriptorKey(
+                "play",
+                targetDescriptor.Rid),
+            targetDescriptor.LifecycleGeneration,
+            targetOwner,
+            new ZLinkCapacityVector(1, 0, null));
+        var capacity = Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.Reserved>(
+            await target.ReserveRelocationCapacityAsync(relocation));
+        provider.ResetAuthorityMoveAttempts();
+        provider.ConflictNextAuthorityMove = true;
+
+        var moved = Assert.IsType<ZLinkAuthorityCompareExchangeResult.Stored>(
+            await source.CompareExchangeAuthorityAsync(
+                request.Key,
+                created.StoreVersion,
+                new ZLinkAuthorityMutation.Put(
+                    new byte[] { 0x34 },
+                    ZLinkAuthorityGenerationTransition.NewOwner,
+                    targetOwner,
+                    capacity.Fence)));
+
+        Assert.Equal(2, provider.AuthorityMoveAttempts);
+        Assert.Equal(targetOwner.OwnerId, moved.Snapshot.OwnerId);
+        Assert.Equal(
+            capacity.TargetAuthorityOwnerGeneration,
+            moved.Snapshot.AuthorityOwnerGeneration);
+    }
+
+    [Fact]
     public async Task Stale_Authority_Delete_Submits_The_Expected_Version_Fence()
     {
         var inner = new ZLinkInMemoryProviderLocationStore();
@@ -2761,6 +2829,54 @@ public sealed class ProviderLocationRepositoryAuthorityTests
                 if (ConflictNextAggregateCommit)
                 {
                     ConflictNextAggregateCommit = false;
+                    return ValueTask.FromResult<ZLinkStoreWriteResult>(
+                        new ZLinkStoreWriteResult.Conflict(
+                            DateTimeOffset.UtcNow));
+                }
+            }
+            return inner.WriteAsync(request, cancellationToken);
+        }
+
+        public ValueTask<ZLinkStoreScanResult> ScanAsync(
+            ZLinkStoreScanRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.ScanAsync(request, cancellationToken);
+    }
+
+    private sealed class AuthorityCapacityConflictOnceLocationStore(
+        IZLinkLocationStore inner) : IZLinkLocationStore
+    {
+        public bool ConflictNextAuthorityMove { get; set; }
+
+        public int AuthorityMoveAttempts { get; private set; }
+
+        public void ResetAuthorityMoveAttempts() => AuthorityMoveAttempts = 0;
+
+        public ValueTask<ZLinkStoreReadResult> ReadAsync(
+            ZLinkStoreKey key,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAsync(key, cancellationToken);
+
+        public ValueTask<ZLinkStoreWriteResult> WriteAsync(
+            ZLinkStoreWriteRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var hasAuthorityPut = request.Mutations
+                .OfType<ZLinkStoreMutation.Put>()
+                .Any(static put => put.Key.Value.StartsWith(
+                    "zlink:v11:authority:",
+                    StringComparison.Ordinal));
+            var hasCapacityPut = request.Mutations
+                .OfType<ZLinkStoreMutation.Put>()
+                .Any(static put => put.Key.Value.StartsWith(
+                    "zlink:v11:capacity:",
+                    StringComparison.Ordinal));
+            if (hasAuthorityPut && hasCapacityPut)
+            {
+                AuthorityMoveAttempts++;
+                if (ConflictNextAuthorityMove)
+                {
+                    ConflictNextAuthorityMove = false;
                     return ValueTask.FromResult<ZLinkStoreWriteResult>(
                         new ZLinkStoreWriteResult.Conflict(
                             DateTimeOffset.UtcNow));

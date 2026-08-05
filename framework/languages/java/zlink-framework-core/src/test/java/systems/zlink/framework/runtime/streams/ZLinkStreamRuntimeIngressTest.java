@@ -84,7 +84,7 @@ final class ZLinkStreamRuntimeIngressTest {
     }
 
     @Test
-    void doesNotPauseForAnActiveHandlerAtApplicationHwm()
+    void continuesReceivingButSerializesSessionDispatchAtApplicationHwm()
         throws Exception {
         TestSession.holdFirstDispatch = true;
         FakeStream stream = new FakeStream();
@@ -99,12 +99,14 @@ final class ZLinkStreamRuntimeIngressTest {
         assertTrue(session.dispatchCount.get() >= 1);
         assertFalse(session.firstDispatch.isDone());
 
-        assertTrue(session.secondDispatchLatch.await(5, TimeUnit.SECONDS));
         assertEquals(2, stream.successfulReceives.get());
-        assertEquals(2, session.dispatchCount.get());
-        assertEquals(List.of("first", "second"), session.packetNames);
+        assertFalse(session.secondDispatchLatch.await(100, TimeUnit.MILLISECONDS));
+        assertEquals(1, session.dispatchCount.get());
 
         session.firstDispatch.complete(null);
+        assertTrue(session.secondDispatchLatch.await(5, TimeUnit.SECONDS));
+        assertEquals(2, session.dispatchCount.get());
+        assertEquals(List.of("first", "second"), session.packetNames);
     }
 
     @Test
@@ -213,6 +215,25 @@ final class ZLinkStreamRuntimeIngressTest {
             0,
             lastRegistration.inboundDispatchBudget().snapshot().pendingPayloadBytes());
         assertNull(TestSession.lastSession.get());
+    }
+
+    @Test
+    void waitsForReceiveLoopQuiescenceBeforeClosingTheStream() throws Exception {
+        FakeStream stream = new FakeStream();
+        stream.enqueue(PEER_A, new byte[0]);
+        stream.blockFirstReceiveIgnoringInterrupt();
+        ZLinkStreamRuntime runtime = start(stream, 0);
+        runtimes.add(runtime);
+
+        assertTrue(stream.firstReceiveEntered.await(5, TimeUnit.SECONDS));
+        CompletableFuture<Void> close = CompletableFuture.runAsync(
+            () -> runtime.closeAsync().toCompletableFuture().join());
+        Thread.sleep(2_200);
+        assertEquals(0, stream.closeCalls.get());
+
+        stream.firstReceiveRelease.countDown();
+        close.get(5, TimeUnit.SECONDS);
+        assertEquals(1, stream.closeCalls.get());
     }
 
     private ZLinkStreamRuntime start(FakeStream stream, long hwm) {
@@ -364,7 +385,9 @@ final class ZLinkStreamRuntimeIngressTest {
         private final CountDownLatch firstReceiveEntered = new CountDownLatch(1);
         private final CountDownLatch firstReceiveRelease = new CountDownLatch(1);
         private volatile boolean blockFirstReceive;
+        private volatile boolean ignoreFirstReceiveInterrupt;
         private volatile boolean failHeartbeatPongSend;
+        private final AtomicInteger closeCalls = new AtomicInteger();
         private boolean notificationsEnabled;
         private boolean boundAfterNotifications;
         private ZLinkBackendStreamErrorHandler errorHandler;
@@ -388,8 +411,13 @@ final class ZLinkStreamRuntimeIngressTest {
             blockFirstReceive = true;
         }
 
+        private void blockFirstReceiveIgnoringInterrupt() {
+            blockFirstReceive = true;
+            ignoreFirstReceiveInterrupt = true;
+        }
+
         @Override public String name() { return "fake-stream"; }
-        @Override public void close() { }
+        @Override public void close() { closeCalls.incrementAndGet(); }
         @Override public void bind(String endpoint) {
             boundAfterNotifications = notificationsEnabled;
         }
@@ -414,7 +442,17 @@ final class ZLinkStreamRuntimeIngressTest {
                 blockFirstReceive = false;
                 firstReceiveEntered.countDown();
                 try {
-                    if (!firstReceiveRelease.await(5, TimeUnit.SECONDS)) {
+                    if (ignoreFirstReceiveInterrupt) {
+                        while (true) {
+                            try {
+                                firstReceiveRelease.await();
+                                break;
+                            } catch (InterruptedException ignored) {
+                                // The fake backend models a native receive that
+                                // cannot be cancelled by an executor interrupt.
+                            }
+                        }
+                    } else if (!firstReceiveRelease.await(5, TimeUnit.SECONDS)) {
                         throw new AssertionError("first STREAM receive was not released");
                     }
                 } catch (InterruptedException interrupted) {

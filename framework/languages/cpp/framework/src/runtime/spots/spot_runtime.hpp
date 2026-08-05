@@ -13,6 +13,8 @@
 #include "runtime/stateful/maintenance_runtime.hpp"
 
 #include <zlink/framework/contracts/actors/actor.hpp>
+
+#include "runtime/actors/actor_ref_access.hpp"
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
@@ -264,9 +266,11 @@ inline void record_actor_instance_index_unlocked (spot_node_builder_state_t &nod
     if (instance == nullptr) {
         return;
     }
-    erase_actor_instance_index_unlocked (node, actor_ref.actor_type (), actor_ref.actor_id ());
-    const auto actor_type = std::string (actor_ref.actor_type ());
-    const auto actor_id = std::string (actor_ref.actor_id ());
+    erase_actor_instance_index_unlocked (
+      node, ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref),
+      actor_ref.actor_id ().value ());
+    const auto actor_type = std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref));
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
     node.actor_instance_index[instance] = {actor_type, actor_id};
     // Internal Actor packets contain the logical Actor id but not its stable
     // type. Keep the type index when an instance is installed so a recreated
@@ -358,6 +362,13 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
     bool enter_callback ();
     void leave_callback ();
     bool is_current_callback_thread () const;
+    bool admission_blocked () const noexcept
+    {
+        std::lock_guard<std::mutex> lock (callback_mutex);
+        return callback_admission_closed || idle_eviction_in_progress;
+    }
+
+    bool idle_quiescent () const;
 
     bool try_post_serial (
       std::string name,
@@ -466,12 +477,22 @@ class spot_context_state_t : public std::enable_shared_from_this<spot_context_st
             return false;
         }
         std::lock_guard<std::recursive_mutex> node_lock (owner->mutex);
-        if (closed || actor_count != 0 || !is_instance_spot ()) {
+        const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds> (
+          std::chrono::steady_clock::now ().time_since_epoch ())
+                              .count ();
+        const auto timeout_ns = std::chrono::duration_cast<std::chrono::nanoseconds> (
+          owner->instance_spot_idle_timeout)
+                                  .count ();
+        const auto last_ns = last_application_work_completed_ns.load (
+          std::memory_order_relaxed);
+        if (closed || !is_instance_spot () || !idle_quiescent () || last_ns <= 0
+            || now_ns < last_ns || now_ns - last_ns < timeout_ns) {
             return false;
         }
         {
             std::lock_guard<std::mutex> callback_lock (callback_mutex);
-            if (callback_depth != 0 || close_requested) {
+            if (!idle_eviction_in_progress || callback_depth != 0
+                || close_requested || callback_admission_closed) {
                 return false;
             }
             callback_admission_closed = true;
@@ -874,7 +895,7 @@ class spot_node_runtime_t
                                                      TActor &actor,
                                                      const zlink::message_t &request)
     {
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::not_found, "actor ref is empty");
         }
@@ -910,7 +931,7 @@ class spot_node_runtime_t
                                                            TActor &actor,
                                                            const zlink::message_t &request)
     {
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::not_found, "actor ref is empty");
         }
@@ -959,7 +980,7 @@ class spot_node_runtime_t
     template <typename TActor>
     result_t<void> leave_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return result_t<void>::failure (framework_error_kind_t::not_found,
                                             "actor ref is empty");
         }
@@ -970,7 +991,7 @@ class spot_node_runtime_t
     template <typename TActor>
     result_t<void> notify_on_disconnect_actor (const actor_ref_t &actor_ref, TActor &actor)
     {
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return result_t<void>::failure (framework_error_kind_t::not_found,
                                             "actor ref is empty");
         }
@@ -981,7 +1002,7 @@ class spot_node_runtime_t
         }
         const auto found_generation = _state->actor_generations.find (key);
         if (found_generation != _state->actor_generations.end ()
-            && found_generation->second != actor_ref.generation ()) {
+            && found_generation->second != actor_ref.object_generation ()) {
             return detail::boundary_failure<void> (detail::boundary_error_t::stale_generation,
                                             "actor generation is stale");
         }
@@ -1087,7 +1108,7 @@ class spot_node_runtime_t
 
     static std::string actor_key (const actor_ref_t &actor_ref)
     {
-        return std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ());
+        return std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) + ":" + std::string (actor_ref.actor_id ().value ());
     }
 
     /* Registration of a factory-owned actor instance. The lookup and the
@@ -1221,9 +1242,9 @@ class spot_node_runtime_t
               return task_t<void> (result_t<void>::success ());
           };
         auto committed =
-          actor_ref_t (node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
-                       std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
-                       actor_ref.generation () + 1);
+          ::zlink::framework::detail::actor_ref_access_t::make (node_rid_t::from_string (effective_spot_node_rid (_state->snapshot)),
+                       std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)), std::string (actor_ref.actor_id ().value ()),
+                       actor_ref.object_generation () + 1);
         if constexpr (detail::entry_spot_type<TSpot>) {
             if (_state->actor_created_keys.insert (key).second) {
                 notify_on_create_actor<TActor> (context_state, actor, create_request);
@@ -1232,7 +1253,7 @@ class spot_node_runtime_t
         notify_on_actor_joined<TActor> (context_state, actor);
         record_actor_context_route_unlocked (*_state, key,
                                              effective_spot_node_rid (_state->snapshot),
-                                             context_state, actor_ref.generation () + 1);
+                                             context_state, actor_ref.object_generation () + 1);
         return committed;
     }
 

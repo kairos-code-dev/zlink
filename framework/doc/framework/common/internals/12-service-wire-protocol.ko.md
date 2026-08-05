@@ -107,6 +107,30 @@ Complete message 상한은 startup admission에서 정한다.
 Typed payload는 packet name, contract 정보와 serializer payload를 하나의 envelope로 보존한다. Application code에
 raw frame 조합, codec table 또는 maintenance field를 노출하지 않는다.
 
+### Framework multipart application profile
+
+여러 Framework message part를 하나의 application payload로 전달하는 service messaging command에서는 outer
+application envelope에 공통 profile을 사용한다. 이 envelope의 packet name은 `ZLinkFrameworkMultipart`이고 content type은
+`application/x-zlink-multipart`로 고정한다. 실제 application message의 packet name과 bytes는 envelope의
+payload 안에 있는 part 순서로 보존한다.
+
+Actor creation처럼 command 자체가 별도의 application-payload envelope를 정의한 operation은 이 profile의
+대상이 아니다. 그 operation의 packet name과 content type은 해당 operation 계약을 따른다.
+
+Payload는 다음 순서로 encoding한다.
+
+1. 4-byte big-endian part count
+2. 각 part의 4-byte big-endian byte length
+3. length만큼의 opaque bytes
+
+Part count는 1 이상이어야 한다. Decoder는 결과 list를 만들기 전에 count가 남은 bytes로 표현할 수 있는지
+확인하고, 각 length가 남은 범위를 넘지 않는지 확인한다. 모든 part를 읽은 뒤 남은 bytes가 있으면 거부한다.
+Framework는 part의 내용을 업무 의미로 해석하지 않고 원래 bytes를 각 Message로 복원한다.
+
+Application HWM 회계에는 이 profile의 count·length와 outer envelope가 포함되지 않는다. Header와 body를 함께
+전달하는 Framework 경로에서는 application payload part인 body의 크기를 사용하고, part가 하나뿐인 경로에서는
+그 part의 크기를 사용한다. Content-type frame과 Framework metadata도 payload byte 합계에 넣지 않는다.
+
 ## 3. Command space
 
 Wire v1은 다음 41개 command를 사용한다. `7..15`와 `51..255`는 reserved이며 다른 의미로 재사용하지 않는다.

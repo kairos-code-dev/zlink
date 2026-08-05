@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import { Injectable } from '@nestjs/common';
 import { zlinkSpotPacketHandler, zlinkSpotSubscriptionHandler } from '@zlink-systems/nestjs';
 import type {
@@ -30,7 +31,9 @@ class ZoneTickHandler implements ZLinkSpotTimerHandler<ZoneSpot> {
   async handle(spot: ZoneSpot, _tick: ZLinkTimerTick): Promise<void> {
     try {
       const zoneId = String(spot.context.spotId);
-      if (this.config.zoneNode?.faultTickZone === zoneId && !this.faultInjected) {
+      const faultSignalPath = this.config.zoneNode?.faultTickSignalPath;
+      const faultIsArmed = faultSignalPath === undefined || fs.existsSync(faultSignalPath);
+      if (this.config.zoneNode?.faultTickZone === zoneId && !this.faultInjected && faultIsArmed) {
         this.faultInjected = true;
         console.log(`zone tick fault injected zone=${zoneId}`);
         throw new Error(`injected tick failure for ${zoneId}`);

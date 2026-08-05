@@ -35,7 +35,19 @@ import {
   ZLinkSpotCloseReason,
   ZLinkSpotKind
 } from '../../contracts';
-import type { ZLinkRuntimeEventPublisher } from '../diagnostics';
+import {
+  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
+  ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
+  ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
+  ZLinkDispatchErrorSurface,
+  ZLinkDispatchMessageKind
+} from '../../contracts/Dispatch/ZLinkDispatchOptions';
+import {
+  createInboundFlow,
+  flowIfEnabled,
+  runWithFlow,
+  type ZLinkRuntimeEventPublisher
+} from '../diagnostics';
 import { ZLinkBufferMessage as RuntimeMessage } from '../backend/runtime-message';
 import { SubmitResult } from '../backend/runtime-values';
 import {
@@ -51,7 +63,8 @@ import {
 } from '../configuration';
 import {
   ZLinkFrameworkInternalErrorKind,
-  createInternalFrameworkException
+  createInternalFrameworkException,
+  internalFrameworkErrorKind
 } from '../framework-errors-internal';
 import type {
   ZLinkBackendSpot,
@@ -222,9 +235,14 @@ export interface ZLinkSpotManagerOptions {
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly releaseInstanceAuthority?: (
     meshName: string,
-    spotId: RoutingId
+    spotId: RoutingId,
+    objectGeneration: bigint
   ) => Promise<void>;
   readonly beginInstanceIdleClosingAuthority?: (
+    meshName: string,
+    spotId: RoutingId
+  ) => Promise<boolean>;
+  readonly beginInstanceClosingAuthority?: (
     meshName: string,
     spotId: RoutingId
   ) => Promise<boolean>;
@@ -273,7 +291,8 @@ export class DefaultZLinkSpotManager {
   >();
   private readonly pendingInstanceCloses = new Map<string, Promise<boolean>>();
   private readonly pendingInstanceTerminals = new Map<string, number>();
-  private readonly deferredInstanceAuthorityReleases = new Set<string>();
+  private readonly pendingInstanceTerminalGenerations = new Map<string, Map<string, number>>();
+  private readonly deferredInstanceAuthorityReleases = new Map<string, Set<bigint>>();
   private idleSweepTimer?: ReturnType<typeof setTimeout>;
   private idleSweepRunning = false;
 
@@ -356,13 +375,29 @@ export class DefaultZLinkSpotManager {
         if (!this.isInstanceFactory(meshName, activation.spotType)) {
           return this.locationClaim.release(meshName, spotId);
         }
-        const key = `${meshName}\0${String(spotId)}`;
-        if (this.pendingInstanceTerminals.has(key)) {
-          this.deferredInstanceAuthorityReleases.add(key);
+        const currentApplication = this.options.instanceSpotApplicationTargetProvider?.(
+          meshName,
+          spotId
+        );
+        if (
+          activation.objectGeneration !== undefined
+          && currentApplication?.objectGeneration !== activation.objectGeneration
+        ) {
+          // A superseded local application must not release the authority row
+          // that now belongs to the newer object generation.
           return Promise.resolve();
         }
-        this.deferredInstanceAuthorityReleases.delete(key);
-        return this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve();
+        const key = `${meshName}\0${String(spotId)}`;
+        const objectGeneration = activation.objectGeneration;
+        if (objectGeneration === undefined) {
+          return Promise.resolve();
+        }
+        if (this.pendingInstanceTerminals.has(key)) {
+          this.deferInstanceAuthorityRelease(key, objectGeneration);
+          return Promise.resolve();
+        }
+        this.removeDeferredInstanceAuthorityRelease(key, objectGeneration);
+        return this.releaseInstanceAuthority(meshName, spotId, objectGeneration);
       },
       metrics: options.metrics
     });
@@ -377,6 +412,10 @@ export class DefaultZLinkSpotManager {
     return this.activations.activeActivations().filter(activation =>
       activation.meshName === meshName
       && this.activations.resolve(meshName, activation.spotId) === activation);
+  }
+
+  activeSpotCount(meshName: string): number {
+    return this.activations.list(meshName).length;
   }
 
   resolveRelocationActivation(
@@ -445,6 +484,8 @@ export class DefaultZLinkSpotManager {
   ): Promise<void> {
     const factory = this.requireInstanceFactory(meshName, instanceType);
     const key = `${meshName}\0${String(spotId)}`;
+    const materializationKey = instanceMaterializationKey(meshName, spotId, objectGeneration);
+    const materializationPrefix = instanceMaterializationPrefix(meshName, spotId);
     for (;;) {
       // A close seals admission before cleanup removes the activation. An
       // explicit Instance intent arriving at that boundary must wait for the
@@ -468,7 +509,23 @@ export class DefaultZLinkSpotManager {
             `Instance Spot '${String(spotId)}' is assigned to another type.`
           );
         }
-        return;
+        if (current.objectGeneration === objectGeneration) return;
+        if (
+          current.objectGeneration === undefined
+          || current.objectGeneration > objectGeneration
+        ) {
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
+            `Instance Spot '${String(spotId)}' has a newer application generation.`
+          );
+        }
+        // A newer authority route may become visible while the previous
+        // application factory is still completing. Dispose that older
+        // activation before publishing the requested generation. The
+        // generation-aware release callback prevents this cleanup from
+        // releasing the newer authority row.
+        await this.discardInstance(meshName, spotId);
+        continue;
       }
 
       const lifecycleActivation = this.activations.activeActivations().find((activation) =>
@@ -481,7 +538,15 @@ export class DefaultZLinkSpotManager {
         );
       }
 
-      let pending = this.pendingInstanceMaterializations.get(key);
+      let pending = this.pendingInstanceMaterializations.get(materializationKey);
+      if (pending === undefined) {
+        const otherPending = [...this.pendingInstanceMaterializations.entries()]
+          .find(([pendingKey]) => pendingKey.startsWith(`${materializationPrefix}\0`))?.[1];
+        if (otherPending !== undefined) {
+          await awaitWithAbort(otherPending, signal);
+          continue;
+        }
+      }
       if (pending === undefined) {
         const metric = this.options.metrics?.startInstanceSpotActivation(meshName, instanceType);
         pending = this.activationLifecycle.materializeInstance(
@@ -501,10 +566,10 @@ export class DefaultZLinkSpotManager {
               throw error;
             }
           );
-        this.pendingInstanceMaterializations.set(key, pending);
+        this.pendingInstanceMaterializations.set(materializationKey, pending);
         void pending.finally(() => {
-          if (this.pendingInstanceMaterializations.get(key) === pending) {
-            this.pendingInstanceMaterializations.delete(key);
+          if (this.pendingInstanceMaterializations.get(materializationKey) === pending) {
+            this.pendingInstanceMaterializations.delete(materializationKey);
           }
         }).catch(() => undefined);
       }
@@ -521,6 +586,12 @@ export class DefaultZLinkSpotManager {
     const activation = this.activations.resolve(meshName, spotId);
     return activation !== undefined
       && activation.spotType === this.requireInstanceFactory(meshName, instanceType);
+  }
+
+  isInstanceMaterializing(meshName: string, spotId: RoutingId): boolean {
+    const prefix = instanceMaterializationPrefix(meshName, spotId);
+    return [...this.pendingInstanceMaterializations.keys()]
+      .some(key => key.startsWith(`${prefix}\0`));
   }
 
   isInstanceClosing(meshName: string, spotId: RoutingId): boolean {
@@ -568,38 +639,88 @@ export class DefaultZLinkSpotManager {
     return activation.beginIdleEviction();
   }
 
-  async completeInstanceTerminal(meshName: string, spotId: RoutingId): Promise<boolean> {
+  async completeInstanceTerminal(
+    meshName: string,
+    spotId: RoutingId,
+    objectGeneration: bigint
+  ): Promise<boolean> {
     const key = `${meshName}\0${String(spotId)}`;
     const pending = this.pendingInstanceTerminals.get(key);
     if (pending === undefined) return false;
+    this.removePendingInstanceTerminalGeneration(key, objectGeneration);
     if (pending > 1) {
       this.pendingInstanceTerminals.set(key, pending - 1);
       return false;
     }
     this.pendingInstanceTerminals.delete(key);
+    this.pendingInstanceTerminalGenerations.delete(key);
     const pendingClose = this.pendingInstanceCloses.get(key);
-    const deferredRelease = this.deferredInstanceAuthorityReleases.delete(key);
     if (pendingClose !== undefined) {
-      this.deferredInstanceAuthorityReleases.add(key);
+      this.deferInstanceAuthorityRelease(key, objectGeneration);
       await pendingClose;
       return true;
     }
+    const deferredRelease = this.deferredInstanceAuthorityReleases.get(key)?.has(objectGeneration) === true;
     if (
       !deferredRelease
       && this.activations.closingOperation(meshName, spotId) === undefined
     ) {
       return false;
     }
-    await (this.options.releaseInstanceAuthority?.(meshName, spotId) ?? Promise.resolve());
+    const currentApplication = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
+    if (
+      currentApplication !== undefined
+      && currentApplication.objectGeneration !== objectGeneration
+    ) {
+      this.removeDeferredInstanceAuthorityRelease(key, objectGeneration);
+      return false;
+    }
+    this.removeDeferredInstanceAuthorityRelease(key, objectGeneration);
+    await this.releaseInstanceAuthority(meshName, spotId, objectGeneration);
     return true;
   }
 
-  beginInstanceTerminal(meshName: string, spotId: RoutingId): void {
+  beginInstanceTerminal(meshName: string, spotId: RoutingId, objectGeneration: bigint): void {
     const key = `${meshName}\0${String(spotId)}`;
     this.pendingInstanceTerminals.set(
       key,
       (this.pendingInstanceTerminals.get(key) ?? 0) + 1
     );
+    const generations = this.pendingInstanceTerminalGenerations.get(key) ?? new Map<string, number>();
+    const generationKey = objectGeneration.toString();
+    generations.set(generationKey, (generations.get(generationKey) ?? 0) + 1);
+    this.pendingInstanceTerminalGenerations.set(key, generations);
+  }
+
+  private deferInstanceAuthorityRelease(key: string, objectGeneration: bigint): void {
+    const generations = this.deferredInstanceAuthorityReleases.get(key) ?? new Set<bigint>();
+    generations.add(objectGeneration);
+    this.deferredInstanceAuthorityReleases.set(key, generations);
+  }
+
+  private removeDeferredInstanceAuthorityRelease(key: string, objectGeneration: bigint): void {
+    const generations = this.deferredInstanceAuthorityReleases.get(key);
+    if (generations === undefined) return;
+    generations.delete(objectGeneration);
+    if (generations.size === 0) this.deferredInstanceAuthorityReleases.delete(key);
+  }
+
+  private removePendingInstanceTerminalGeneration(key: string, objectGeneration: bigint): void {
+    const generations = this.pendingInstanceTerminalGenerations.get(key);
+    if (generations === undefined) return;
+    const generationKey = objectGeneration.toString();
+    const pending = generations.get(generationKey);
+    if (pending === undefined || pending <= 1) generations.delete(generationKey);
+    else generations.set(generationKey, pending - 1);
+  }
+
+  private releaseInstanceAuthority(
+    meshName: string,
+    spotId: RoutingId,
+    objectGeneration: bigint
+  ): Promise<void> {
+    return this.options.releaseInstanceAuthority?.(meshName, spotId, objectGeneration)
+      ?? Promise.resolve();
   }
 
   private requireInstanceFactory(
@@ -861,6 +982,7 @@ export class DefaultZLinkSpotManager {
       return false;
     }
     const currentTurn = activation.serial.isCurrentTurn;
+    const isInstance = this.isInstanceFactory(meshName, activation.spotType);
     const beginClose = () => {
       const seal = activation.sealExecution();
       const operation = this.activations.startClose(
@@ -875,33 +997,53 @@ export class DefaultZLinkSpotManager {
       return operation;
     };
 
-    const waitForApplication = this.isInstanceFactory(meshName, activation.spotType)
-      ? this.options.instanceSpotApplicationQuiescenceProvider?.(meshName, spotId, signal)
-      : undefined;
-    if (waitForApplication !== undefined) {
-      const deferredClose = waitForApplication.then(async () => {
+    if (isInstance) {
+      const beginAuthorityClose = reason === ZLinkSpotCloseReason.ExplicitClose
+        ? this.options.beginInstanceClosingAuthority
+        : undefined;
+      // Register the close gate before waiting for the current application
+      // and activation-authority terminal completions. A close requested from
+      // a handler cannot publish Closing until that handler's durable inbox
+      // completion has removed the recovery fence.
+      const trackedClosePromise = (async () => {
+        const waitForApplication = this.options.instanceSpotApplicationQuiescenceProvider?.(
+          meshName,
+          spotId,
+          signal
+        );
+        if (waitForApplication !== undefined) {
+          await waitForApplication;
+        }
+        if (
+          beginAuthorityClose !== undefined
+          && !await beginAuthorityClose(meshName, spotId)
+        ) {
+          return false;
+        }
         const operation = beginClose();
         if (operation === undefined) return false;
         return await operation.ready;
-      });
-      let trackedClose: Promise<boolean>;
-      trackedClose = deferredClose.finally(() => {
-        if (this.pendingInstanceCloses.get(key) === trackedClose) {
+      })().finally(() => {
+        if (this.pendingInstanceCloses.get(key) === trackedClosePromise) {
           this.pendingInstanceCloses.delete(key);
         }
       });
-      this.pendingInstanceCloses.set(key, trackedClose);
+      this.pendingInstanceCloses.set(key, trackedClosePromise);
       if (currentTurn) {
+        // The current turn must return before its terminal completion can
+        // release the activation recovery fence and allow the durable close
+        // CAS. The registered close gate prevents a second admission while
+        // that detached close finishes.
         this.options.detachedTaskRunner?.runDetached(
           `instance spot close ${String(spotId)}`,
-          async () => { await trackedClose; }
+          async () => { await trackedClosePromise; }
         );
         if (this.options.detachedTaskRunner === undefined) {
-          void trackedClose.catch(() => undefined);
+          void trackedClosePromise.catch(() => undefined);
         }
         return true;
       }
-      return await trackedClose;
+      return await trackedClosePromise;
     }
 
     const operation = beginClose();
@@ -1181,15 +1323,31 @@ export class DefaultZLinkSpotManager {
     meshName: string,
     spotId: RoutingId
   ): Promise<void> {
-    if (this.activations.resolve(meshName, spotId) !== undefined) return;
-    const target = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
+    let target = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
     if (target === undefined) return;
-    await this.materializeInstance(
-      meshName,
-      target.stableType,
-      spotId,
-      target.objectGeneration
-    );
+    for (;;) {
+      const current = this.activations.resolve(meshName, spotId);
+      if (
+        current !== undefined
+        && current.objectGeneration === target.objectGeneration
+        && current.spotType === this.requireInstanceFactory(meshName, target.stableType)
+      ) return;
+      await this.materializeInstance(
+        meshName,
+        target.stableType,
+        spotId,
+        target.objectGeneration
+      );
+      const latest = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
+      if (latest === undefined) {
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotMoving,
+          `Instance Spot target '${String(spotId)}' no longer has a Ready application target.`
+        );
+      }
+      if (latest.objectGeneration === target.objectGeneration) return;
+      target = latest;
+    }
   }
 
   async dispatchMeshInstance(
@@ -1203,44 +1361,148 @@ export class DefaultZLinkSpotManager {
         'MeshNode Instance Spot record is missing the owner Spot RID.'
       );
     }
-    await this.ensureInstanceApplicationActivation(meshName, spotId);
-    const activation = this.activations.resolve(meshName, spotId);
-    if (activation === undefined || !this.isInstanceFactory(meshName, activation.spotType)) {
-      throw new ZLinkConfigurationException(
-        `MeshNode Instance Spot target '${String(spotId)}' is not active.`
-      );
-    }
     const envelope = decodeChannelEnvelope(record.parts);
-    const codecs = this.options.messageSerializers === undefined
-      ? undefined
-      : { serializers: this.options.messageSerializers };
-    const decodePayload = () => decodeChannelPayload(envelope, codecs);
-    const context = {
-      channelName: envelope.header.channelName,
-      contentType: envelope.header.contentType,
-      workOptions: zlinkSerialWorkOptions(
-        envelope.payload.byteLength,
-        record.applicationMetadata?.byteLength ?? zlinkMetadataByteLength(envelope.header.metadata)
-      )
-    };
-    if (record.operationKind !== OperationKind.InstanceSpotRequest) {
-      await this.routedSpotPackets.sendEncoded(spotId, envelope.packetName, decodePayload, context);
-      return;
-    }
-    try {
-      const response = await this.routedSpotPackets.requestEncoded(
+    const inboundFlow = createInboundFlow(
+      envelope.header.flowId,
+      envelope.header.flowOrigin,
+      this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true
+    );
+    await runWithFlow(inboundFlow, async () => {
+      const request = record.operationKind === OperationKind.InstanceSpotRequest;
+      this.traceInstanceMessage(
+        ZLinkMessageFlowOutcome.Received,
+        meshName,
         spotId,
-        envelope.packetName,
-        decodePayload,
-        context
+        record,
+        envelope,
+        'activating'
       );
-      requireMeshSpotReply(record.reply(encodeChannelReplyParts(envelope.header, response, codecs)));
-    } catch (error) {
-      requireMeshSpotReply(record.reply(encodeChannelErrorReplyParts(
-        envelope.header,
-        error instanceof Error ? error.message : String(error)
-      )));
-    }
+      try {
+        await this.ensureInstanceApplicationActivation(meshName, spotId);
+        const activation = this.activations.resolve(meshName, spotId);
+        if (activation === undefined || !this.isInstanceFactory(meshName, activation.spotType)) {
+          throw new ZLinkConfigurationException(
+            `MeshNode Instance Spot target '${String(spotId)}' is not active.`
+          );
+        }
+        const target = this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId);
+        if (target !== undefined && activation.objectGeneration !== target.objectGeneration) {
+          throw createInternalFrameworkException(
+            ZLinkFrameworkInternalErrorKind.SpotGenerationStale,
+            `Instance Spot target '${String(spotId)}' application generation is stale.`
+          );
+        }
+        const codecs = this.options.messageSerializers === undefined
+          ? undefined
+          : { serializers: this.options.messageSerializers };
+        const decodePayload = () => decodeChannelPayload(envelope, codecs);
+        const context = {
+          channelName: envelope.header.channelName,
+          contentType: envelope.header.contentType,
+          workOptions: zlinkSerialWorkOptions(
+            envelope.payload.byteLength,
+            record.applicationMetadata?.byteLength ?? zlinkMetadataByteLength(envelope.header.metadata)
+          )
+        };
+        if (!request) {
+          await this.routedSpotPackets.sendEncoded(spotId, envelope.packetName, decodePayload, context);
+          this.traceInstanceMessage(
+            ZLinkMessageFlowOutcome.Dispatched,
+            meshName,
+            spotId,
+            record,
+            envelope,
+            'ready',
+            target?.stableType
+          );
+          return;
+        }
+        const response = await this.routedSpotPackets.requestEncoded(
+          spotId,
+          envelope.packetName,
+          decodePayload,
+          context
+        );
+        requireMeshSpotReply(record.reply(encodeChannelReplyParts(envelope.header, response, codecs)));
+        this.traceInstanceMessage(
+          ZLinkMessageFlowOutcome.Replied,
+          meshName,
+          spotId,
+          record,
+          envelope,
+          'ready',
+          target?.stableType
+        );
+      } catch (error) {
+        const reason = instanceDispatchErrorReason(error);
+        if (!request) {
+          this.traceInstanceMessage(
+            ZLinkMessageFlowOutcome.Dropped,
+            meshName,
+            spotId,
+            record,
+            envelope,
+            'closing',
+            undefined,
+            reason
+          );
+          return;
+        }
+        this.options.dispatchErrors?.report({
+          surface: ZLinkDispatchErrorSurface.InstanceSpot,
+          messageKind: ZLinkDispatchMessageKind.Request,
+          packetName: envelope.packetName,
+          channelName: envelope.header.channelName,
+          meshName,
+          correlationId: envelope.header.correlationId ?? undefined,
+          sourceRid: record.sourceNodeRid === null ? undefined : String(record.sourceNodeRid),
+          spotId: String(spotId),
+          instanceSpotType: this.options.instanceSpotApplicationTargetProvider?.(meshName, spotId)?.stableType,
+          activationState: 'closing',
+          flowId: envelope.header.flowId,
+          flowOrigin: envelope.header.flowOrigin,
+          reason,
+          action: ZLinkDispatchErrorAction.ReplyError,
+          error
+        });
+        requireMeshSpotReply(record.reply(encodeChannelErrorReplyParts(
+          envelope.header,
+          error instanceof Error ? error.message : String(error)
+        )));
+      }
+    });
+  }
+
+  private traceInstanceMessage(
+    outcome: ZLinkMessageFlowOutcome,
+    meshName: string,
+    spotId: RoutingId,
+    record: ReceiveRecord,
+    envelope: ReturnType<typeof decodeChannelEnvelope>,
+    activationState: 'activating' | 'ready' | 'closing',
+    instanceSpotType?: string,
+    errorReason?: ZLinkDispatchErrorReason
+  ): void {
+    const flow = flowIfEnabled(this.options.dispatchErrors?.flow, outcome);
+    if (flow === undefined) return;
+    flow.trace({
+      outcome,
+      surface: ZLinkDispatchErrorSurface.InstanceSpot,
+      messageKind: record.operationKind === OperationKind.InstanceSpotRequest
+        ? ZLinkDispatchMessageKind.Request
+        : ZLinkDispatchMessageKind.Send,
+      packetName: envelope.packetName,
+      channelName: envelope.header.channelName,
+      meshName,
+      correlationId: envelope.header.correlationId ?? undefined,
+      sourceRid: record.sourceNodeRid === null ? undefined : String(record.sourceNodeRid),
+      spotId: String(spotId),
+      instanceSpotType,
+      activationState,
+      flowId: envelope.header.flowId,
+      flowOrigin: envelope.header.flowOrigin,
+      errorReason
+    });
   }
 
   async dispatchMeshActor(meshName: string, owner: ReadyRecord, record: ReceiveRecord): Promise<void> {
@@ -2119,6 +2381,21 @@ export class DefaultZLinkSpotManager {
 
 }
 
+function instanceDispatchErrorReason(error: unknown): ZLinkDispatchErrorReason {
+  if (error instanceof ZLinkFrameworkException) {
+    const kind = internalFrameworkErrorKind(error);
+    if (
+      kind === ZLinkFrameworkInternalErrorKind.SpotGenerationStale
+      || kind === ZLinkFrameworkInternalErrorKind.SpotMoving
+      || kind === ZLinkFrameworkInternalErrorKind.SpotRouteNotFound
+      || kind === ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+    ) {
+      return ZLinkDispatchErrorReason.StaleTarget;
+    }
+  }
+  return ZLinkDispatchErrorReason.HandlerException;
+}
+
 interface ZLinkFormalRemoteTransferRequest {
   readonly actorType: string;
   readonly transferId: string;
@@ -2262,6 +2539,18 @@ function requireMeshName(meshName: string): void {
   if (meshName.length === 0) {
     throw new ZLinkConfigurationException('Spot operations require a mesh name.');
   }
+}
+
+function instanceMaterializationPrefix(meshName: string, spotId: RoutingId): string {
+  return `${meshName}\0${String(spotId)}`;
+}
+
+function instanceMaterializationKey(
+  meshName: string,
+  spotId: RoutingId,
+  objectGeneration: bigint
+): string {
+  return `${instanceMaterializationPrefix(meshName, spotId)}\0${objectGeneration}`;
 }
 
 function isAbortSignal(value: unknown): value is AbortSignal {

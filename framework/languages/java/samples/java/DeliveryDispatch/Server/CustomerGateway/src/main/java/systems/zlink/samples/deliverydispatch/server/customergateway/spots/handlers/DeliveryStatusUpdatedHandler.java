@@ -5,7 +5,6 @@ import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.samples.deliverydispatch.server.customergateway.CustomerActor;
 import systems.zlink.samples.deliverydispatch.server.customergateway.spots.CustomerEntrySpot;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 public final class DeliveryStatusUpdatedHandler
@@ -19,11 +18,10 @@ public final class DeliveryStatusUpdatedHandler
         CustomerActor actor,
         ZLinkMessageContext context,
         Messages.DeliveryStatusUpdatedMsg message) {
-        actor.push(new Messages.DeliveryStatusNotify(
+        return actor.push(new Messages.DeliveryStatusNotify(
             message.deliveryId(),
             message.status(),
             message.courierId(),
             message.occurredAt()));
-        return CompletableFuture.completedFuture(null);
     }
 }

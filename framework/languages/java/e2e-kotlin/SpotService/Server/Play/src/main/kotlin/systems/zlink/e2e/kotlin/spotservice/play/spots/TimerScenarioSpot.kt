@@ -16,7 +16,7 @@ import systems.zlink.framework.spots.ZLinkTimerOptions
 import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy
 
 class TimerScenarioSpot(
-    private val context: ZLinkSpotContext,
+    override val context: ZLinkSpotContext,
     private val evidence: ScenarioState
 ) : ZLinkSuspendingSpot<ZLinkActor>() {
     override suspend fun onActorJoinSuspending(actorId: String, request: ZLinkMessage) = systems.zlink.framework.spots.ZLinkSpotActorJoinResult.reject("unsupported")
@@ -32,15 +32,13 @@ class TimerScenarioSpot(
     private var overrunTimer: ZLinkTimer? = null
     private var idleKeepRecorded = false
 
-    override fun context(): ZLinkSpotContext = context
-
     override fun configure() {
         context.handlers().addHandler<TimerActivityHandler>()
         context.handlers().addHandler<TimerStatusHandler>()
     }
 
     override suspend fun onCreateSuspending(request: ZLinkMessage): ZLinkSpotCreateResponse {
-        val rid = context.spotRid().toString()
+        val rid = context.spotId()
         if (rid.startsWith("timer-overrun-")) {
             val overrunPolicy = when {
                 rid.endsWith("catchup") -> ZLinkTimerOverrunPolicy.CATCH_UP_BOUNDED
@@ -62,24 +60,26 @@ class TimerScenarioSpot(
         return ZLinkSpotCreateResponse.accept()
     }
 
-    override suspend fun onClosingSuspending() {
+    override suspend fun onClosingSuspending(
+        closingContext: systems.zlink.framework.spots.ZLinkSpotClosingContext,
+    ) {
         status = "closed"
-        evidence.record("IdleClosed", context.spotRid().toString(), "closed")
+        evidence.record("IdleClosed", context.spotId(), "closed")
     }
 
     fun activity(value: String) {
         lastActivity = Instant.now()
         status = "active:$value"
-        evidence.record("IdleActivity", context.spotRid().toString(), value)
+        evidence.record("IdleActivity", context.spotId(), value)
     }
 
     fun activityStatus(): Contracts.TimerActivityRes =
-        Contracts.TimerActivityRes(context.spotRid().toString(), status)
+        Contracts.TimerActivityRes(context.spotId(), status)
 
-    fun status(): Contracts.TimerStatusRes = Contracts.TimerStatusRes(context.spotRid().toString(), status)
+    fun status(): Contracts.TimerStatusRes = Contracts.TimerStatusRes(context.spotId(), status)
 
     fun idleTick() {
-        val rid = context.spotRid().toString()
+        val rid = context.spotId()
         if (rid == "idle-close" &&
             Duration.between(lastActivity, Instant.now()).compareTo(Duration.ofMillis(700)) > 0
         ) {
@@ -96,7 +96,7 @@ class TimerScenarioSpot(
     fun overrunTick(deliveryIndex: Long, skipped: Long) {
         tickCount += 1
         skippedTicks += skipped
-        val rid = context.spotRid().toString()
+        val rid = context.spotId()
         status = "ticks=$tickCount,skipped=$skippedTicks"
         evidence.record("TimerOverrunTick", rid, "$deliveryIndex/$skipped/$tickCount")
         if (tickCount >= 3 && overrunTimer != null) {

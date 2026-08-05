@@ -17,7 +17,6 @@ public final class SmA3Scenario extends SpotServiceScenarioContext {
         ensure("play-a".equals(roomA.nodeRid()), "SM-A3 room-a owner mismatch");
         ensure("play-b".equals(roomB.nodeRid()), "SM-A3 room-b owner mismatch");
         System.out.println("scenario SM-A3 passed");
-        System.out.println("scenario SM-A4 passed");
 
     }
 }

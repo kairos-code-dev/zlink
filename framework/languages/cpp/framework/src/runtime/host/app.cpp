@@ -107,7 +107,7 @@ class store_actor_directory_t final : public actor_directory_t
           : std::nullopt;
         if (!snapshot || snapshot->allocation.state != placement_allocation_state_t::active
             || snapshot->allocation.object_kind != placement_object_kind_t::actor
-            || !projection || projection->actor.actor_id () != actor_id) {
+            || !projection || projection->actor.actor_id ().value () != actor_id) {
             return task_t<std::optional<actor_ref_t>> (
               result_t<std::optional<actor_ref_t>>::success (std::nullopt));
         }
@@ -3009,7 +3009,7 @@ void app_t::run_shared_relocation (
                             [&] (const auto &actor) {
                                 return supports (
                                   placement_object_kind_t::actor,
-                                  actor.actor_type ());
+                                  ::zlink::framework::detail::actor_ref_access_t::actor_type (actor));
                             });
                       });
                     if (target == live.end ()) {
@@ -3044,9 +3044,9 @@ void app_t::run_shared_relocation (
                         }
                         sources.push_back (*source);
                         stable_types.emplace_back (
-                          actor.actor_type ());
+                          ::zlink::framework::detail::actor_ref_access_t::actor_type (actor));
                         aggregate_actor_ids.insert (
-                          std::string (actor.actor_id ()));
+                          std::string (actor.actor_id ().value ()));
                     }
 
                     std::vector<authority_snapshot_t> authorities;
@@ -3197,7 +3197,7 @@ void app_t::run_shared_relocation (
                     continue;
                 for (const auto &actor : actors) {
                     if (aggregate_actor_ids.contains (
-                          std::string (actor.actor_id ())))
+                          std::string (actor.actor_id ().value ())))
                         continue;
                     if (shutdown_requested ()) {
                         terminal.reason =
@@ -3228,7 +3228,7 @@ void app_t::run_shared_relocation (
                                        return capability.object_kind
                                                 == placement_object_kind_t::actor
                                               && capability.stable_type
-                                                   == actor.actor_type ();
+                                                   == ::zlink::framework::detail::actor_ref_access_t::actor_type (actor);
                                    });
                       });
                     if (target == live.end ()) {
@@ -3240,7 +3240,7 @@ void app_t::run_shared_relocation (
 
                     const auto authority_key =
                       authority_key_t{
-                        "1:" + std::string (actor.actor_id ())};
+                        "1:" + std::string (actor.actor_id ().value ())};
                     const auto authority_read =
                       location_store->get ()
                         .read_authority (authority_key)
@@ -3254,9 +3254,9 @@ void app_t::run_shared_relocation (
                         || authority->allocation.object_kind
                              != placement_object_kind_t::actor
                         || authority->allocation.stable_type
-                             != actor.actor_type ()
+                             != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor)
                         || authority->object_generation
-                             != actor.generation ()
+                             != actor.object_generation ()
                         || authority->allocation.target.node_rid.value ()
                              != local_rid->to_string ()) {
                         terminal.reason =
@@ -3272,7 +3272,7 @@ void app_t::run_shared_relocation (
                         1, std::memory_order_relaxed);
                     std::vector<std::byte> reservation_seed;
                     const auto seed =
-                      std::string (actor.actor_id ())
+                      std::string (actor.actor_id ().value ())
                       + ":" + std::to_string (
                         authority->object_generation)
                       + ":" + std::to_string (
@@ -3305,7 +3305,7 @@ void app_t::run_shared_relocation (
                             authority_key,
                             authority->store_version,
                             placement_object_kind_t::actor,
-                            std::string (actor.actor_type ()),
+                            std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor)),
                             authority->allocation.target,
                             target_owner,
                             authority->allocation.capacity_bundle})

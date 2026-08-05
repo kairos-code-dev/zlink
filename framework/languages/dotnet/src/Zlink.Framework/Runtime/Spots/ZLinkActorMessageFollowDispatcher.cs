@@ -90,7 +90,7 @@ internal static class ZLinkActorMessageFollowDispatcher
 
         if (route == ZLinkActorFrameRoute.MessageFollow)
         {
-            runtime.LogActorHandoff("message_follow_relay");
+            runtime.LogActorHandoff($"message_follow_relay actor={frameActor.ActorId}");
         }
 
         return route == ZLinkActorFrameRoute.MessageFollow;

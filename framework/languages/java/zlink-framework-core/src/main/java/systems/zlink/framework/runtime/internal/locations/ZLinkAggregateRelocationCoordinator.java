@@ -11,7 +11,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -198,6 +200,7 @@ public final class ZLinkAggregateRelocationCoordinator {
         Objects.requireNonNull(cancellation, "cancellation");
         var publication = new java.util.concurrent.atomic.AtomicReference<
             ZLinkCanonicalRelocationAuthorityStateCodec.Published>();
+        Map<String, Long> ownerGenerations = new LinkedHashMap<>();
         CompletionStage<Void> reads = CompletableFuture.completedFuture(null);
         for (ExpectedParticipant participant : expected) {
             reads = reads.thenCompose(ignored -> authorityStore.read(
@@ -214,11 +217,9 @@ public final class ZLinkAggregateRelocationCoordinator {
                             snapshot.payload());
                     ZLinkCanonicalRelocationAuthorityStateCodec.Published first =
                         publication.get();
-                    boolean ownerGenerationMatches =
-                        participant.sourceAuthorityOwnerGeneration()
-                            != Long.MAX_VALUE
-                        && snapshot.authorityOwnerGeneration()
-                            == participant.sourceAuthorityOwnerGeneration() + 1;
+                    boolean ownerGenerationMatches = ownerGenerationAdvanced(
+                        participant.sourceAuthorityOwnerGeneration(),
+                        snapshot.authorityOwnerGeneration());
                     if (payload == null
                         || snapshot.objectGeneration()
                             != participant.objectGeneration()
@@ -241,6 +242,9 @@ public final class ZLinkAggregateRelocationCoordinator {
                             "published relocation participant has a different fence: "
                                 + participant.authorityKey()));
                     }
+                    ownerGenerations.put(
+                        participant.authorityKey(),
+                        snapshot.authorityOwnerGeneration());
                     publication.compareAndSet(null, payload);
                     return CompletableFuture.completedFuture(null);
                 }));
@@ -257,7 +261,8 @@ public final class ZLinkAggregateRelocationCoordinator {
                         selected.reference(),
                         selected.checksumCrc32c(),
                         root.payload(),
-                        root.inventoryDigest()))
+                        root.inventoryDigest(),
+                        ownerGenerations))
                     : failed(new RelocationDataLostException(
                         "published relocation root inventory differs")));
         });
@@ -281,12 +286,19 @@ public final class ZLinkAggregateRelocationCoordinator {
         String reference,
         long checksumCrc32c,
         byte[] payload,
-        byte[] inventoryDigest) {
+        byte[] inventoryDigest,
+        Map<String, Long> targetOwnerGenerations) {
         public PublishedRoot {
             Objects.requireNonNull(reference, "reference");
             payload = Objects.requireNonNull(payload, "payload").clone();
             inventoryDigest = Objects.requireNonNull(
                 inventoryDigest, "inventoryDigest").clone();
+            targetOwnerGenerations = immutableOwnerGenerations(
+                targetOwnerGenerations);
+        }
+
+        public long targetOwnerGeneration(String authorityKey) {
+            return ownerGeneration(targetOwnerGenerations, authorityKey);
         }
 
         @Override public byte[] payload() { return payload.clone(); }
@@ -327,11 +339,9 @@ public final class ZLinkAggregateRelocationCoordinator {
                     var payload = ZLinkCanonicalRelocationAuthorityStateCodec
                         .decode(snapshot.payload());
                     var first = shared.get();
-                    boolean ownerGenerationMatches =
-                        participant.sourceAuthorityOwnerGeneration()
-                            != Long.MAX_VALUE
-                        && snapshot.authorityOwnerGeneration()
-                            == participant.sourceAuthorityOwnerGeneration() + 1;
+                    boolean ownerGenerationMatches = ownerGenerationAdvanced(
+                        participant.sourceAuthorityOwnerGeneration(),
+                        snapshot.authorityOwnerGeneration());
                     if (payload == null
                         || !payload.sourceCleanupCompleted()
                         || snapshot.objectGeneration()
@@ -496,6 +506,9 @@ public final class ZLinkAggregateRelocationCoordinator {
                     if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
                         || snapshot.objectGeneration()
                             != participant.objectGeneration()
+                        || !ownerGenerationAdvanced(
+                            participant.sourceAuthorityOwnerGeneration(),
+                            snapshot.authorityOwnerGeneration())
                         || !snapshot.ownerId().equals(targetOwner.ownerId())
                         || snapshot.ownerLeaseGeneration()
                             != targetOwner.leaseGeneration()) {
@@ -545,6 +558,10 @@ public final class ZLinkAggregateRelocationCoordinator {
                                 current,
                                 snapshots.stream()
                                     .map(ZLinkAuthoritySnapshot::storeVersion)
+                                    .toList(),
+                                snapshots.stream()
+                                    .map(ZLinkAuthoritySnapshot
+                                        ::authorityOwnerGeneration)
                                     .toList()));
                     }
                     long mutationGeneration = canonicalMutationGeneration(
@@ -554,8 +571,6 @@ public final class ZLinkAggregateRelocationCoordinator {
                     for (int index = 0; index < expected.size(); index++) {
                         var participant = expected.get(index);
                         var snapshot = snapshots.get(index);
-                        var state = ZLinkCanonicalRelocationAuthorityStateCodec
-                            .decode(snapshot.payload());
                         mutations.add(new Participant(
                             participant.authorityKey(),
                             snapshot.allocation().objectKind(),
@@ -563,7 +578,7 @@ public final class ZLinkAggregateRelocationCoordinator {
                             snapshot.authorityOwnerGeneration(),
                             snapshot.storeVersion(),
                             ZLinkAuthorityGenerationTransition.PRESERVE,
-                            state.applicationPayload(),
+                            snapshot.payload(),
                             new byte[0]));
                     }
                     var allocation = snapshots.getFirst().allocation();
@@ -596,6 +611,7 @@ public final class ZLinkAggregateRelocationCoordinator {
         ZLinkServiceRelocationEnvelopeCodec.Envelope root,
         ZLinkStoreCancellation cancellation) {
         List<String> versions = new ArrayList<>();
+        List<Long> ownerGenerations = new ArrayList<>();
         CompletionStage<Void> reads = CompletableFuture.completedFuture(null);
         for (ExpectedParticipant participant : participants) {
             reads = reads.thenCompose(ignored -> authorityStore.read(
@@ -606,9 +622,11 @@ public final class ZLinkAggregateRelocationCoordinator {
                             "canonical replay authority disappeared");
                     }
                     versions.add(snapshot.storeVersion());
+                    ownerGenerations.add(snapshot.authorityOwnerGeneration());
                 }));
         }
-        return reads.thenApply(ignored -> new CanonicalProgress(root, versions));
+        return reads.thenApply(ignored -> new CanonicalProgress(
+            root, versions, ownerGenerations));
     }
 
     private static long canonicalMutationGeneration(
@@ -785,9 +803,9 @@ public final class ZLinkAggregateRelocationCoordinator {
         return publication != null
             && publication.sourceCleanupCompleted()
             && snapshot.objectGeneration() == participant.objectGeneration()
-            && participant.sourceAuthorityOwnerGeneration() != Long.MAX_VALUE
-            && snapshot.authorityOwnerGeneration()
-                == participant.sourceAuthorityOwnerGeneration() + 1
+            && ownerGenerationAdvanced(
+                participant.sourceAuthorityOwnerGeneration(),
+                snapshot.authorityOwnerGeneration())
             && snapshot.ownerId().equals(targetOwner.ownerId())
             && snapshot.ownerLeaseGeneration() == targetOwner.leaseGeneration()
             && publication.aggregateId().equals(activatedFence.aggregateId())
@@ -801,9 +819,9 @@ public final class ZLinkAggregateRelocationCoordinator {
         ExpectedParticipant participant,
         ZLinkLocationOwnerToken targetOwner) {
         return snapshot.objectGeneration() == participant.objectGeneration()
-            && participant.sourceAuthorityOwnerGeneration() != Long.MAX_VALUE
-            && snapshot.authorityOwnerGeneration()
-                == participant.sourceAuthorityOwnerGeneration() + 1
+            && ownerGenerationAdvanced(
+                participant.sourceAuthorityOwnerGeneration(),
+                snapshot.authorityOwnerGeneration())
             && snapshot.ownerId().equals(targetOwner.ownerId())
             && snapshot.ownerLeaseGeneration() == targetOwner.leaseGeneration();
     }
@@ -839,16 +857,27 @@ public final class ZLinkAggregateRelocationCoordinator {
 
     public record CanonicalProgress(
         ZLinkServiceRelocationEnvelopeCodec.Envelope root,
-        List<String> participantStoreVersions) {
+        List<String> participantStoreVersions,
+        List<Long> participantOwnerGenerations) {
         public CanonicalProgress {
             Objects.requireNonNull(root, "root");
             participantStoreVersions = List.copyOf(
                 Objects.requireNonNull(
                     participantStoreVersions,
                     "participantStoreVersions"));
+            participantOwnerGenerations = List.copyOf(Objects.requireNonNull(
+                participantOwnerGenerations,
+                "participantOwnerGenerations"));
             if (participantStoreVersions.isEmpty()) {
                 throw new IllegalArgumentException(
                     "canonical progress requires participant versions");
+            }
+            if (participantOwnerGenerations.size()
+                != participantStoreVersions.size()
+                || participantOwnerGenerations.stream().anyMatch(
+                    value -> value == null || value <= 0)) {
+                throw new IllegalArgumentException(
+                    "canonical progress owner generations are invalid");
             }
         }
 
@@ -861,6 +890,18 @@ public final class ZLinkAggregateRelocationCoordinator {
                     "participantId is outside the canonical inventory");
             }
             return participantStoreVersions.get((int) participantId - 1);
+        }
+
+        public long ownerGeneration(long participantId) {
+            if (participantId == 0
+                || Long.compareUnsigned(
+                    participantId,
+                    Integer.toUnsignedLong(
+                        participantOwnerGenerations.size())) > 0) {
+                throw new IllegalArgumentException(
+                    "participantId is outside the canonical inventory");
+            }
+            return participantOwnerGenerations.get((int) participantId - 1);
         }
     }
 
@@ -941,7 +982,7 @@ public final class ZLinkAggregateRelocationCoordinator {
                         snapshot.authorityOwnerGeneration(),
                         snapshot.storeVersion(),
                         ZLinkAuthorityGenerationTransition.PRESERVE,
-                        current.applicationPayload(),
+                        snapshot.payload(),
                         new byte[0]));
                     return CompletableFuture.completedFuture(null);
                 }));
@@ -1013,6 +1054,7 @@ public final class ZLinkAggregateRelocationCoordinator {
                 ZLinkCanonicalRelocationAuthorityStateCodec.publish(
                     participant.applicationAuthorityPayload(),
                     request,
+                    participant.ownerTransition(),
                     stored,
                     sourceCleanupCompleted);
             mutations.add(new ZLinkAggregateParticipant(
@@ -1090,22 +1132,25 @@ public final class ZLinkAggregateRelocationCoordinator {
                     && (attempt.result() == ZLinkAggregateCommitResult.COMMITTED
                         || attempt.result()
                             == ZLinkAggregateCommitResult.ALREADY_COMMITTED)) {
-                    return CompletableFuture.completedFuture(
-                        new Published(
+                    return readPublishedOwnerGenerations(prepared, cancellation)
+                        .thenApply(generations -> new Published(
                             prepared.fence(),
                             prepared.stored(),
                             prepared.request(),
-                            prepared.inventoryDigest()));
+                            prepared.inventoryDigest(),
+                            generations));
                 }
                 Throwable original = attempt.failure() == null
                     ? new AuthorityConflictException(attempt.result())
                     : unwrap(attempt.failure());
                 return isPublished(prepared).thenCompose(published -> published
-                    ? CompletableFuture.completedFuture(new Published(
-                        prepared.fence(),
-                        prepared.stored(),
-                        prepared.request(),
-                        prepared.inventoryDigest()))
+                    ? readPublishedOwnerGenerations(prepared, cancellation)
+                        .thenApply(generations -> new Published(
+                            prepared.fence(),
+                            prepared.stored(),
+                            prepared.request(),
+                            prepared.inventoryDigest(),
+                            generations))
                     : failed(original));
             });
     }
@@ -1323,16 +1368,167 @@ public final class ZLinkAggregateRelocationCoordinator {
         ZLinkAggregateFence fence,
         ZLinkRelocationStored stored,
         Request request,
-        byte[] inventoryDigest) {
+        byte[] inventoryDigest,
+        Map<String, Long> targetOwnerGenerations) {
         public Published {
             Objects.requireNonNull(request, "request");
             inventoryDigest = inventoryDigest.clone();
+            targetOwnerGenerations = immutableOwnerGenerations(
+                targetOwnerGenerations);
+            if (!targetOwnerGenerations.keySet().equals(
+                request.participants().stream()
+                    .map(Participant::authorityKey)
+                    .collect(java.util.stream.Collectors.toSet()))) {
+                throw new IllegalArgumentException(
+                    "published owner generations do not match participants");
+            }
+        }
+
+        public long targetOwnerGeneration(String authorityKey) {
+            return ownerGeneration(targetOwnerGenerations, authorityKey);
         }
 
         @Override
         public byte[] inventoryDigest() {
             return inventoryDigest.clone();
         }
+    }
+
+    /** Reads provider-issued owner generations after a target commit. */
+    public CompletionStage<Map<String, Long>> readTargetOwnerGenerations(
+        List<ExpectedParticipant> participants,
+        ZLinkLocationOwnerToken targetOwner,
+        ZLinkStoreCancellation cancellation) {
+        List<ExpectedParticipant> expected = List.copyOf(
+            Objects.requireNonNull(participants, "participants"));
+        Objects.requireNonNull(targetOwner, "targetOwner");
+        Objects.requireNonNull(cancellation, "cancellation");
+        if (expected.isEmpty()) {
+            throw new IllegalArgumentException(
+                "target owner generations require participants");
+        }
+        Map<String, Long> generations = new LinkedHashMap<>();
+        CompletionStage<Void> reads = CompletableFuture.completedFuture(null);
+        for (ExpectedParticipant participant : expected) {
+            reads = reads.thenCompose(ignored -> authorityStore.read(
+                    participant.authorityKey(), cancellation)
+                .thenCompose(read -> {
+                    if (!(read instanceof ZLinkAuthoritySnapshot snapshot)
+                        || snapshot.objectGeneration()
+                            != participant.objectGeneration()
+                        || !ownerGenerationAdvanced(
+                            participant.sourceAuthorityOwnerGeneration(),
+                            snapshot.authorityOwnerGeneration())
+                        || !snapshot.ownerId().equals(targetOwner.ownerId())
+                        || snapshot.ownerLeaseGeneration()
+                            != targetOwner.leaseGeneration()) {
+                        return failed(new RelocationDataLostException(
+                            "target owner generation differs: "
+                                + participant.authorityKey()));
+                    }
+                    generations.put(
+                        participant.authorityKey(),
+                        snapshot.authorityOwnerGeneration());
+                    return CompletableFuture.completedFuture(null);
+                }));
+        }
+        return reads.thenApply(ignored -> Map.copyOf(generations));
+    }
+
+    private CompletionStage<Map<String, Long>> readPublishedOwnerGenerations(
+        Prepared prepared,
+        ZLinkStoreCancellation cancellation) {
+        Objects.requireNonNull(cancellation, "cancellation");
+        Map<String, Long> generations = new LinkedHashMap<>();
+        CompletionStage<Void> reads = CompletableFuture.completedFuture(null);
+        for (Participant participant : prepared.request().participants()) {
+            reads = reads.thenCompose(ignored -> authorityStore.read(
+                    participant.authorityKey(), cancellation)
+                .thenCompose(read -> {
+                    if (!(read instanceof ZLinkAuthoritySnapshot snapshot)
+                        || snapshot.objectGeneration()
+                            != participant.objectGeneration()
+                        || !ownerGenerationMatches(
+                            participant, snapshot.authorityOwnerGeneration())
+                        || !snapshot.ownerId().equals(
+                            prepared.request().targetOwner().ownerId())
+                        || snapshot.ownerLeaseGeneration()
+                            != prepared.request().targetOwner()
+                                .leaseGeneration()) {
+                        return failed(new RelocationDataLostException(
+                            "committed relocation owner generation differs: "
+                                + participant.authorityKey()));
+                    }
+                    var payload = ZLinkCanonicalRelocationAuthorityStateCodec
+                        .decode(snapshot.payload());
+                    if (payload == null
+                        || !payload.reference().equals(
+                            prepared.stored().reference())
+                        || payload.checksumCrc32c()
+                            != prepared.stored().checksumCrc32c()
+                        || !payload.aggregateId().equals(
+                            prepared.fence().aggregateId())
+                        || payload.aggregateGeneration()
+                            != prepared.fence().aggregateGeneration()
+                        || !payload.targetOwnerId().equals(
+                            prepared.request().targetOwner().ownerId())
+                        || payload.targetOwnerLeaseGeneration()
+                            != prepared.request().targetOwner()
+                                .leaseGeneration()) {
+                        return failed(new RelocationDataLostException(
+                            "committed relocation publication differs: "
+                                + participant.authorityKey()));
+                    }
+                    generations.put(
+                        participant.authorityKey(),
+                        snapshot.authorityOwnerGeneration());
+                    return CompletableFuture.completedFuture(null);
+                }));
+        }
+        return reads.thenApply(ignored -> Map.copyOf(generations));
+    }
+
+    private static boolean ownerGenerationMatches(
+        Participant participant,
+        long actualGeneration) {
+        return participant.ownerTransition()
+                == ZLinkAuthorityGenerationTransition.PRESERVE
+            ? actualGeneration == participant.authorityOwnerGeneration()
+            : ownerGenerationAdvanced(
+                participant.authorityOwnerGeneration(), actualGeneration);
+    }
+
+    private static boolean ownerGenerationAdvanced(
+        long sourceGeneration,
+        long targetGeneration) {
+        return sourceGeneration != Long.MAX_VALUE
+            && targetGeneration > sourceGeneration;
+    }
+
+    private static Map<String, Long> immutableOwnerGenerations(
+        Map<String, Long> generations) {
+        Objects.requireNonNull(generations, "targetOwnerGenerations");
+        if (generations.isEmpty()
+            || generations.entrySet().stream().anyMatch(entry ->
+                entry.getKey() == null || entry.getKey().isBlank()
+                    || entry.getValue() == null || entry.getValue() <= 0)) {
+            throw new IllegalArgumentException(
+                "target owner generations are invalid");
+        }
+        return Map.copyOf(generations);
+    }
+
+    private static long ownerGeneration(
+        Map<String, Long> generations,
+        String authorityKey) {
+        Long generation = generations.get(
+            Objects.requireNonNull(authorityKey, "authorityKey"));
+        if (generation == null) {
+            throw new IllegalArgumentException(
+                "authority key is absent from owner generations: "
+                    + authorityKey);
+        }
+        return generation;
     }
 
     public static final class AuthorityConflictException

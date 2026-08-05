@@ -606,7 +606,7 @@ run_sm_g1() {
     ZLINK_KOTLIN_E2E_SM_G1_FAILED_FILE="${failed_file}" \
     ZLINK_KOTLIN_E2E_SM_G1_RESTARTED_FILE="${restarted_file}" \
     ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-      timeout -k 5s 180s zlink_kotlin_e2e_run "$(role_bin client)" >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
+      zlink_kotlin_e2e_run_timeout 180s "$(role_bin client)" >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
   client_pid="$!"
   pids+=("${client_pid}")
 
@@ -726,7 +726,7 @@ run_client_mode() {
       ZLINK_KOTLIN_E2E_MULTI_HTTP_A_ENDPOINT="${MULTI_HTTP_A:-}" \
       ZLINK_KOTLIN_E2E_MULTI_HTTP_B_ENDPOINT="${MULTI_HTTP_B:-}" \
       ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s 75s zlink_kotlin_e2e_run "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+        zlink_kotlin_e2e_run_timeout 75s "$(role_bin client)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
     if [[ "${status}" == "0" ]] && grep -q "spot-service kotlin e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then

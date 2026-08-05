@@ -3,6 +3,8 @@ import { URL } from 'node:url';
 import type {
   StartOrderReq
 } from '../../Shared/Contracts/messages';
+import type { ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { SampleNames } from '../../Shared/Configuration/sample-names';
 import { OrderStore } from '../Shared/Store/order-store';
 import { OrderWorkflowRouterPort } from './Application/order-workflow-router-port';
 import { StartOrderUseCase } from './Application/start-order-use-case';
@@ -12,13 +14,23 @@ function createCommerceApiServer(
   role: string,
   store: OrderStore,
   startOrder: StartOrderUseCase,
-  workflowRouter: OrderWorkflowRouterPort
+  workflowRouter: OrderWorkflowRouterPort,
+  routeMeshRuntime: ZLinkRouteMeshRuntime
 ): http.Server {
   return http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', endpoint);
       if (request.method === 'GET' && url.pathname === '/health') {
-        sendJson(response, 200, { ok: true, role });
+        const mesh = routeMeshRuntime.snapshot(SampleNames.orderWorkflowSpotMesh);
+        const ready = mesh.isReady && mesh.readyPeerCount >= 2;
+        sendJson(response, ready ? 200 : 503, {
+          ok: ready,
+          role,
+          routeMesh: {
+            isReady: mesh.isReady,
+            readyPeerCount: mesh.readyPeerCount
+          }
+        });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/orders/start') {

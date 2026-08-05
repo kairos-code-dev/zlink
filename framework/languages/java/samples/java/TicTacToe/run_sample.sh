@@ -204,6 +204,7 @@ wait_endpoint api-a-http "http://127.0.0.1:${api_a_http_port}"
 pids+=("$!")
 wait_log_contains "${log_dir}/api-b.log" "Started ApiProgram"
 wait_endpoint api-b-http "http://127.0.0.1:${api_b_http_port}"
+wait_framework_ready_logs "${log_dir}" 1
 
 # The Play ports can accept traffic before the peer Route Mesh connection has
 # converged. Let the process topology settle before the first actor request.

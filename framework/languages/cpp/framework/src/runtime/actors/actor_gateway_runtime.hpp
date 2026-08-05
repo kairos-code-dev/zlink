@@ -2,6 +2,8 @@
 #pragma once
 
 #include <zlink/framework/contracts/actors/actor.hpp>
+
+#include "runtime/actors/actor_ref_access.hpp"
 #include <zlink/framework/contracts/channels/channel.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 

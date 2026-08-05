@@ -745,7 +745,7 @@ key와 공백만 있는 key는 의미가 모호하므로 두 방향의 allowlist
 Spot의 직렬 실행 queue에 제출된다. Entry Spot timer도
 서로 다른 Entry Spot instance를 전역 직렬화하지 않는다.
 
-Timer backend 선택은 [비동기 실행 정책](../../../../05-async-execution-policy.md#5-spot-timer)을 따른다.
+Timer backend 선택은 [비동기 실행 정책](../../../../05-async-execution-policy.ko.md#5-spot-timer)을 따른다.
 `timer_tick_t`는 공통 timer dispatch metadata만 제공한다.
 
 ActorGateway session relay의 public 표면은 `session_actor_manager_t`, `session_actor_t`,

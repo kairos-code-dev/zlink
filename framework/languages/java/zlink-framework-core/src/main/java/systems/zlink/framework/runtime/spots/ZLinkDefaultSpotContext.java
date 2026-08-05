@@ -7,8 +7,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
@@ -633,21 +631,10 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         Objects.requireNonNull(actorId, "actorId");
         streamTrace("actor-enqueue spot=" + spotId() + " actor=" + actorId
             + " shared=" + sharedSpotGate());
-        boolean sharedGateAlreadyOwned = sharedSpotGate()
-            && dispatchQueue.isCurrent();
-        Executor sharedGateContext = sharedGateAlreadyOwned
-            ? captureSharedGateContext()
-            : null;
-        return host.enqueueActorDispatch(
+        CompletionStage<Void> queued = host.enqueueActorDispatch(
             actorId,
             payloadBytes,
             () -> {
-                if (sharedGateAlreadyOwned) {
-                    return runOnOwnedSharedGate(
-                        actorId,
-                        sharedGateContext,
-                        operation);
-                }
                 // The Actor queue owns payload admission. The shared Spot
                 // gate reserves only its fixed turn cost here.
                 return sharedSpotGate()
@@ -655,59 +642,12 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                         () -> runActorApplication(actorId, true, operation))
                     : runActorApplication(actorId, false, operation);
             });
-    }
-
-    private Executor captureSharedGateContext() {
-        AtomicReference<Runnable> capturedRunner = new AtomicReference<>();
-        AtomicReference<Runnable> pendingCommand = new AtomicReference<>();
-        ZLinkAsyncSerialQueue.propagateCurrent(capturedRunner::set).execute(() -> {
-            Runnable command = pendingCommand.getAndSet(null);
-            if (command == null) {
-                throw new IllegalStateException(
-                    "shared Spot context capture command is missing");
-            }
-            command.run();
-        });
-        Runnable runner = Objects.requireNonNull(
-            capturedRunner.get(),
-            "shared Spot context capture did not produce a runner");
-        return command -> {
-            if (!pendingCommand.compareAndSet(null, command)) {
-                throw new IllegalStateException(
-                    "shared Spot context was already used");
-            }
-            runner.run();
-        };
-    }
-
-    private CompletionStage<Void> runOnOwnedSharedGate(
-        String actorId,
-        Executor sharedGateContext,
-        Supplier<CompletionStage<Void>> operation) {
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        try {
-            sharedGateContext.execute(() -> {
-                try (var actor = systems.zlink.framework.runtime.internal.handlers
-                         .ZLinkSuspendInvocationContext.enterActorDispatch(actorId)) {
-                    CompletionStage<Void> stage = runActorApplication(
-                        actorId,
-                        true,
-                        operation);
-                    stage.whenComplete((ignored, error) -> {
-                        if (error == null) {
-                            result.complete(null);
-                        } else {
-                            result.completeExceptionally(error);
-                        }
-                    });
-                } catch (RuntimeException failure) {
-                    result.completeExceptionally(failure);
-                }
-            });
-        } catch (RuntimeException failure) {
-            result.completeExceptionally(failure);
-        }
-        return result;
+        // A shared Spot turn may submit an Actor turn to the same gate. Yield
+        // the current turn while that Actor turn acquires the gate; otherwise
+        // the Actor queue would wait for the turn that is waiting for it.
+        return sharedSpotGate() && dispatchQueue.isCurrent()
+            ? ZLinkAsyncSerialQueue.yieldCurrent(queued)
+            : queued;
     }
 
     private CompletionStage<Void> runActorApplication(
@@ -716,8 +656,13 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         Supplier<CompletionStage<Void>> operation) {
         streamTrace("actor-start spot=" + spotId()
             + " actor=" + actorId);
-        CompletionStage<Void> stage = runApplicationExecution(
-            actorId, yieldAllowed, operation);
+        CompletionStage<Void> stage;
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterActorDispatch(actorId)) {
+            stage = runApplicationExecution(actorId, yieldAllowed, operation);
+        } catch (RuntimeException failure) {
+            stage = CompletableFuture.failedFuture(failure);
+        }
         stage.whenComplete((ignored, error) -> streamTrace(
             "actor-complete spot=" + spotId()
                 + " actor=" + actorId
@@ -740,6 +685,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     CompletionStage<Void> enqueueLifecycle(
         Supplier<CompletionStage<Void>> operation) {
+        boolean dispatchTurnAlreadyOwned = dispatchQueue.isCurrent();
         CompletionStage<Void> barrier;
         if (sharedSpotGate() || timerQueues.isEmpty()) {
             barrier = java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -751,8 +697,21 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
                         .toCompletableFuture())
                     .toArray(java.util.concurrent.CompletableFuture[]::new));
         }
-        return barrier.thenCompose(ignored -> dispatchQueue.enqueue(() ->
-            runApplicationExecution(null, false, operation)));
+        CompletionStage<Void> queued = barrier.thenCompose(ignored ->
+            dispatchQueue.enqueueLifecycleBarrier(() ->
+                runLifecycleExecution(operation)));
+        // Lifecycle dispatch can be requested while the current Spot turn is
+        // still composing its event. Yield that turn before waiting for the
+        // lifecycle entry, otherwise the queued entry cannot acquire the
+        // shared gate that the current turn is holding.
+        return dispatchTurnAlreadyOwned
+            ? ZLinkAsyncSerialQueue.yieldCurrent(queued)
+            : queued;
+    }
+
+    @Override
+    public boolean usesSharedExecutionGate() {
+        return sharedSpotGate();
     }
 
     CompletionStage<Void> awaitAllLanes() {

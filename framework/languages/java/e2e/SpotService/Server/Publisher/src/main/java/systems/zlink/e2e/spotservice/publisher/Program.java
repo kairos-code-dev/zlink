@@ -36,7 +36,7 @@ public final class Program {
         try {
             ZLinkSpotPublisherClient publisher = context.getBean(ZLinkSpotPublisherClient.class);
             publisher.publish(
-                    Contracts.SPOT_MESH,
+                    Contracts.ROUTE_CHANNEL,
                     "spot.events",
                     new Contracts.MeshMsg("c4-publisher"))
                 .submit();
@@ -57,6 +57,7 @@ public final class Program {
             var mesh = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(publisher.spotPublisherEndpoint())
                 .setRoutingId(RoutingId.from("publisher"));
+            mesh.channelName(Contracts.ROUTE_CHANNEL).client();
             mesh.configureSpotPublisher();
         };
     }

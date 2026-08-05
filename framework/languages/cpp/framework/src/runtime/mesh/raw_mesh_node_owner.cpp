@@ -2168,6 +2168,18 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                        && source->object_generation
                             == target->object_generation;
             }();
+            const auto authority_generation_increases = std::visit (
+              [] (const auto &source, const auto &target) {
+                  using source_type = std::decay_t<decltype (source)>;
+                  using target_type = std::decay_t<decltype (target)>;
+                  if constexpr (!std::is_same_v<source_type, target_type>) {
+                      return false;
+                  } else {
+                      return target.authority_owner_generation
+                             > source.authority_owner_generation;
+                  }
+              },
+              notice.source, notice.target);
             const auto local = _topology.local_descriptor ();
             const auto target_matches_topology = std::visit (
               [&local, this] (const auto &target) {
@@ -2183,6 +2195,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
               },
               notice.target);
             if (!source_matches_peer || !same_object
+                || !authority_generation_increases
                 || !target_matches_topology) {
                 return raw_mesh_pump_result_t::protocol_error;
             }

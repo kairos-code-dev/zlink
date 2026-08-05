@@ -20,7 +20,7 @@ import systems.zlink.framework.runtime.configuration.ZLinkInboundDispatchRegistr
 
 final class ZLinkInboundDispatchBudgetTest {
     @Test
-    void pausesQueuedBytesAndWakesWhenHandlerStarts() {
+    void keepsHandlerBytesReservedUntilTerminalCompletion() {
         ZLinkInboundDispatchBudget budget = new ZLinkInboundDispatchBudget(10);
         AtomicInteger wakeups = new AtomicInteger();
         budget.onCapacityAvailable(wakeups::incrementAndGet);
@@ -33,10 +33,10 @@ final class ZLinkInboundDispatchBudgetTest {
 
         lease.handlerStarted();
         assertEquals(
-            new ZLinkInboundDispatchBudget.Snapshot(10, 10, 0, 10, false),
+            new ZLinkInboundDispatchBudget.Snapshot(10, 10, 0, 10, true),
             budget.snapshot());
-        assertTrue(budget.canStartApplicationReceive());
-        assertEquals(1, wakeups.get());
+        assertFalse(budget.canStartApplicationReceive());
+        assertEquals(0, wakeups.get());
 
         lease.close();
         lease.close();

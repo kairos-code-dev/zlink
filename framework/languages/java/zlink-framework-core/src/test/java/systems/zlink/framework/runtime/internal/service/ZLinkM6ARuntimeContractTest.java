@@ -360,6 +360,30 @@ final class ZLinkM6ARuntimeContractTest {
     }
 
     @Test
+    void oldConnectionAckCannotReadyOrRenewAReplacementConnection() {
+        var liveness = new ZLinkServiceLivenessRegistry(
+            Duration.ofSeconds(5), Duration.ofSeconds(15));
+        RoutingId peer = RoutingId.from("peer-replaced");
+
+        liveness.admit(peer, "old-pipe", 0);
+        long oldProbe = liveness.tick(Duration.ofSeconds(5).toNanos())
+            .probes()
+            .getFirst()
+            .probeId();
+
+        liveness.admit(peer, "new-pipe", Duration.ofSeconds(6).toNanos());
+        assertFalse(liveness.acknowledge(
+            peer,
+            "old-pipe",
+            oldProbe,
+            Duration.ofSeconds(7).toNanos()));
+        assertFalse(liveness.isReady(peer, "new-pipe"));
+        assertEquals(
+            List.of(peer),
+            liveness.tick(Duration.ofSeconds(22).toNanos()).timedOutNodes());
+    }
+
+    @Test
     void topologySelectionCanExcludeAnAdmittedButNotReadyPeer() {
         var topology = new ZLinkServiceTopologyRegistry(
             descriptor("mesh", "local", 1, 1, List.of(), 100));

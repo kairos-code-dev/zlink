@@ -66,6 +66,7 @@ import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwner;
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore;
@@ -114,8 +115,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 context.getBean(ZLinkRouteMeshRuntime.class);
             ZLinkRouteMeshRuntimeOptions routeMeshRuntimeOptions =
                 context.getBean(ZLinkRouteMeshRuntimeOptions.class);
+            ZLinkFrameworkRuntime runtime =
+                context.getBean(ZLinkFrameworkRuntime.class);
 
             assertTrue(lifecycle.isRunning());
+            assertSame(runtime, context.getBean(ZLinkFrameworkRuntime.class));
+            assertSame(runtime, lifecycle.runtimeBean());
             assertInstanceOf(ZLinkFrameworkLifecycle.class, client);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, runtimeOptions);
             assertInstanceOf(ZLinkFrameworkLifecycle.class, fanout);

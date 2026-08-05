@@ -6,18 +6,18 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.SmartLifecycle;
-import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.locationprovider.ZLinkLocationStore;
 import systems.zlink.framework.channels.ZLinkRouteClient;
-import systems.zlink.framework.runtime.internal.locations.ZLinkLocationRepository;
-import systems.zlink.framework.locations.ZLinkPageRequest;
-import systems.zlink.framework.spots.SpotHandle;
-import systems.zlink.framework.spots.SpotHandleResolver;
-import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime;
 import systems.zlink.framework.monitoring.ZLinkPeerState;
 import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationMode;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRelocationOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final ScenarioState state;
@@ -25,10 +25,11 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final String endpoint;
     private final ZLinkSpotManager spots;
     private final ZLinkRouteClient routes;
-    private final SpotHandleResolver spotHandles;
     private final ZLinkRouteMeshRuntime meshRuntime;
-    private final ZLinkLocationStore locationStore;
+    private final ZLinkRouteMeshRuntimeOptions meshOptions;
+    private final ObjectProvider<ZLinkFrameworkRuntime> frameworkRuntimes;
     private HttpServer server;
+    private ExecutorService executor;
     private boolean running;
 
     public EvidenceHttpServer(
@@ -37,17 +38,17 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         String endpoint,
         ZLinkSpotManager spots,
         ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles,
         ZLinkRouteMeshRuntime meshRuntime,
-        ZLinkLocationStore locationStore) {
+        ZLinkRouteMeshRuntimeOptions meshOptions,
+        ObjectProvider<ZLinkFrameworkRuntime> frameworkRuntimes) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.spots = spots;
         this.routes = routes;
-        this.spotHandles = spotHandles;
         this.meshRuntime = meshRuntime;
-        this.locationStore = locationStore;
+        this.meshOptions = meshOptions;
+        this.frameworkRuntimes = frameworkRuntimes;
     }
 
     @Override
@@ -58,6 +59,12 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         try {
             URI uri = URI.create(endpoint);
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
+            executor = Executors.newFixedThreadPool(4, runnable -> {
+                Thread thread = new Thread(runnable, "evidence-http");
+                thread.setDaemon(true);
+                return thread;
+            });
+            server.setExecutor(executor);
             server.createContext("/health", exchange -> {
                 byte[] body = "ok\n".getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(200, body.length);
@@ -71,19 +78,54 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     .count();
                 write(exchange, ready >= expected ? 200 : 503, ready + "\n");
             });
+            server.createContext("/placement-weight", exchange -> {
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    write(exchange, 405, "POST required\n");
+                    return;
+                }
+                Contracts.PlacementWeightReq request = json.readValue(
+                    exchange.getRequestBody(),
+                    Contracts.PlacementWeightReq.class);
+                var placement = meshOptions.mesh(Contracts.SPOT_MESH);
+                placement.setPlacementWeight(request.weight());
+                write(exchange, 200, json.writeValueAsString(
+                    new Contracts.PlacementWeightRes(placement.placementWeight())));
+            });
+            server.createContext("/location/ready", exchange -> {
+                boolean ready = meshRuntime.snapshot(Contracts.SPOT_MESH)
+                    .placement()
+                    .isAvailable();
+                write(exchange, ready ? 200 : 503, ready ? "ready\n" : "pending\n");
+            });
             server.createContext("/location/spot-owner", exchange -> {
                 String spotRid = queryValue(exchange.getRequestURI(), "spotRid");
                 var spot = spots.find(spotRid)
                     .toCompletableFuture().join().orElse(null);
-                var owner = spot == null ? null : locationStore.listMeshNodes(
-                        Contracts.SPOT_MESH,
-                        ZLinkPageRequest.firstPage())
-                    .toCompletableFuture().join().items().stream()
-                    .filter(node -> node.rid().equals(spot.nodeRid()))
-                    .map(node -> node.ownerId())
-                    .findFirst().orElse(null);
+                // The public SpotRef exposes the current owner node. The lease owner id
+                // remains an internal location detail and is not used by application calls.
+                String owner = spot == null ? null : spot.nodeRid().toString();
                 write(exchange, owner == null ? 404 : 200,
                     owner == null ? "absent\n" : owner + "\n");
+            });
+            server.createContext("/admin/relocate", exchange -> {
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    write(exchange, 405, "POST required\n");
+                    return;
+                }
+                try {
+                    var result = frameworkRuntimes.getObject().relocate(
+                            new ZLinkFrameworkRelocationOptions(
+                                ZLinkFrameworkRelocationMode.PLANNED_MAINTENANCE,
+                                null,
+                                java.time.Duration.ofSeconds(30)))
+                        .toCompletableFuture()
+                        .join();
+                    write(exchange, 200, json.writeValueAsString(
+                        new Contracts.RelocationRes(
+                            result.outcome().name(), result.reason().name())));
+                } catch (RuntimeException error) {
+                    write(exchange, 500, failureText(error));
+                }
             });
             server.createContext("/evidence", exchange -> {
                 byte[] body = json.writeValueAsBytes(state.snapshot());
@@ -115,8 +157,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     Contracts.CreateSpotReq.class);
                 var result = getOrCreateUserSpot(request.spotRid());
                 write(exchange, 200, json.writeValueAsString(new Contracts.CreateSpotRes(
-                    result.spotId(),
-                    state.nodeRid(),
+                    result.spot().spotId(),
+                    result.spot().nodeRid().toString(),
                     result.state().name())));
             });
             server.createContext("/spot/state/request", exchange -> {
@@ -135,8 +177,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     exchange.getRequestBody(),
                     Contracts.SpotMissingHandlerReq.class);
                 boolean failed = fails(() -> routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid()),
+                        request.spotRid(),
                         new Contracts.MissingSpotReq("noop"))
                     .timeout(java.time.Duration.ofSeconds(2))
                     .submit(Contracts.StateRes.class).toCompletableFuture().join());
@@ -151,8 +192,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     Contracts.SpotMissingCommandReq.class);
                 try {
                     routes.sendToSpot(
-                            Contracts.ROUTE_CHANNEL,
-                            spotHandle(request.spotRid()),
+                            request.spotRid(),
                             new Contracts.MissingSpotMsg(request.marker()))
                         .submit();
                 } catch (RuntimeException ignored) {
@@ -184,18 +224,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     write(exchange, 400, "missing rid\n");
                     return;
                 }
-                boolean closed;
-                try {
-                    closed = spots.close(RoutingId.from(rid))
-                        .toCompletableFuture()
-                        .get(5, java.util.concurrent.TimeUnit.SECONDS);
-                } catch (InterruptedException error) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("spot close interrupted", error);
-                } catch (java.util.concurrent.ExecutionException
-                         | java.util.concurrent.TimeoutException error) {
-                    throw new IllegalStateException("spot close failed", error);
-                }
+                boolean closed = closeSpot(rid);
                 write(exchange, 200, "{\"closed\":" + closed + "}\n");
             });
             server.createContext("/admin/create-timer", exchange -> {
@@ -205,7 +234,9 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     return;
                 }
                 try {
-                    spots.getOrCreate(TimerScenarioSpot.class, RoutingId.from(rid), ZLinkMessage.of("e2e"))
+                    spots.getOrCreate(rid, localSpotType("timer"))
+                        .request("e2e")
+                        .submit()
                         .toCompletableFuture()
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
                 } catch (InterruptedException error) {
@@ -224,7 +255,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     return;
                 }
                 try {
-                    spots.getOrCreate(MismatchedSpot.class, RoutingId.from(rid))
+                    spots.getOrCreate(rid, localSpotType("mismatched"))
+                        .submit()
                         .toCompletableFuture()
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
                     write(exchange, 500, "{\"mismatch\":false}\n");
@@ -240,7 +272,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
                     state.record("SpotTypeMismatch", rid, error.getMessage());
                 }
                 try {
-                    spots.getOrCreate(UserSpot.class, RoutingId.from(rid))
+                    spots.getOrCreate(rid, localSpotType("user"))
+                        .submit()
                         .toCompletableFuture()
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
                     state.record("SpotTypeMismatchStateOk", rid, "existing");
@@ -256,13 +289,19 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.start();
             running = true;
         } catch (Exception error) {
+            if (executor != null) {
+                executor.shutdownNow();
+                executor = null;
+            }
             throw new IllegalStateException("failed to start evidence endpoint " + endpoint, error);
         }
     }
 
     private systems.zlink.framework.spots.ZLinkSpotCreateResult getOrCreateUserSpot(String spotRid) {
         try {
-            return spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), ZLinkMessage.of("e2e"))
+            return spots.getOrCreate(spotRid, localSpotType("user"))
+                .request("e2e")
+                .submit()
                 .toCompletableFuture()
                 .get(5, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException error) {
@@ -274,6 +313,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         }
     }
 
+    private String localSpotType(String family) {
+        return family;
+    }
+
     private Contracts.StateRes requestStateWithRetry(Contracts.SpotStateRouteReq request) {
         long deadline = System.nanoTime() + java.time.Duration.ofSeconds(10).toNanos();
         RuntimeException lastFailure = null;
@@ -281,8 +324,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             try {
                 String op = request.op() + "-" + request.delta();
                 return routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid()),
+                        request.spotRid(),
                         new Contracts.StateReq(op))
                     .timeout(java.time.Duration.ofSeconds(2))
                     .submit(Contracts.StateRes.class).toCompletableFuture().join();
@@ -330,8 +372,7 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         while (System.nanoTime() < deadline) {
             try {
                 return routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(spotRid),
+                        spotRid,
                         packet)
                     .timeout(java.time.Duration.ofSeconds(2))
                     .submit(responseType).toCompletableFuture().join();
@@ -359,9 +400,13 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         }
     }
 
-    private SpotHandle spotHandle(String spotRid) {
-        return spotHandles.resolveSpotHandle(RoutingId.from(spotRid)).toCompletableFuture().join()
-            .orElseThrow(() -> new IllegalStateException("spot not found: " + spotRid));
+    private boolean closeSpot(String spotRid) {
+        return spots.find(spotRid)
+            .thenCompose(found -> found
+                .map(spots::close)
+                .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(false)))
+            .toCompletableFuture()
+            .join();
     }
 
     private static String queryValue(URI uri, String name) {
@@ -407,6 +452,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         if (server != null) {
             server.stop(0);
             server = null;
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
         }
         running = false;
     }

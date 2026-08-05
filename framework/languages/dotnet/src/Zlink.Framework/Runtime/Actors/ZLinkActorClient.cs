@@ -161,13 +161,22 @@ internal sealed class ZLinkActorClient(
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.InvalidOperation,
                 "Actor direct messaging requires a Location Store.");
-        var row = await rows.ResolveActorRowAsync(
+        var resolution = await rows.ResolveActorRowWithStatusAsync(
                 new ZLinkActorLocationKey(actorId),
                 cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.NotFound,
-                $"Actor route '{actorId}' was not found.");
+            .ConfigureAwait(false);
+        if (resolution.Row is null)
+        {
+            var kind = resolution.Kind == ZLinkLocationResolutionKind.KnownUnavailable
+                ? ZLinkFrameworkErrorKind.Unavailable
+                : ZLinkFrameworkErrorKind.NotFound;
+            throw new ZLinkFrameworkException(
+                kind,
+                kind == ZLinkFrameworkErrorKind.Unavailable
+                    ? $"Actor route '{actorId}' is currently unavailable."
+                    : $"Actor route '{actorId}' was not found.");
+        }
+        var row = resolution.Row;
         return new ResolvedActorRoute(
             row.MeshName,
             row.ActorRef,

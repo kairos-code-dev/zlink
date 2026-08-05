@@ -15,10 +15,10 @@ public final class RouteReqHandler
     public java.util.concurrent.CompletionStage<Contracts.RouteRes> handle(
         Contracts.RouteReq request,
         ZLinkRouteMessageContext context) {
-        state.record("RouteReq", context.routingId().toString(), request.value());
+        state.record("RouteReq", context.sourceNodeRid().toString(), request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.RouteRes(
             "route:" + request.value(),
             state.nodeRid(),
-            context.routingId().toString()));
+            context.sourceNodeRid().toString()));
     }
 }

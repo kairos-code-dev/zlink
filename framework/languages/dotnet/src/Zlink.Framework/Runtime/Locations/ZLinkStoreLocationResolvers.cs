@@ -101,11 +101,71 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken = default)
     {
+        var result = await ResolveSpotRowWithStatusAsync(
+                key,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return result.Row;
+    }
+
+    internal async ValueTask<
+        (ZLinkResolvedSpotLocation? Row, ZLinkLocationResolutionKind Kind)>
+        ResolveSpotRowWithStatusAsync(
+            ZLinkSpotLocationKey key,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await ResolveSpotRowCoreAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        return (result.Row, result.Kind);
+    }
+
+    internal async ValueTask<ZLinkResolvedActorLocation?> ResolveActorRowAsync(
+        ZLinkActorLocationKey key,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ResolveActorRowWithStatusAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        return result.Row;
+    }
+
+    internal async ValueTask<
+        (ZLinkResolvedActorLocation? Row, ZLinkLocationResolutionKind Kind)>
+        ResolveActorRowWithStatusAsync(
+            ZLinkActorLocationKey key,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await ResolveActorRowCoreAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        return (result.Row, result.Kind);
+    }
+
+    /// <summary>Resolve plus live-row presence: callers that retry a transient
+    /// resolve window (a claimed-but-unpublished generation-0 row, a lagging
+    /// replica view) need to distinguish it from a confirmed miss. A row owned
+    /// by an expired process is a miss even while stale storage remains.</summary>
+    internal async ValueTask<(ZLinkResolvedActorLocation? Row, bool RowPresent)>
+        ResolveActorRowWithPresenceAsync(
+            ZLinkActorLocationKey key,
+            CancellationToken cancellationToken = default)
+    {
+        var result = await ResolveActorRowCoreAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        return (result.Row, result.LiveRowPresent);
+    }
+
+    private async ValueTask<
+        (ZLinkResolvedSpotLocation? Row,
+            bool LiveRowPresent,
+            ZLinkLocationResolutionKind Kind)>
+        ResolveSpotRowCoreAsync(
+            ZLinkSpotLocationKey key,
+            CancellationToken cancellationToken)
+    {
         if (TryGetCached(_spotRoutes, key, out var cached))
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
                 $"resolve_spot_row spot={key.SpotId} source=cache hit={cached is not null}");
-            return cached;
+            return (cached, true, ZLinkLocationResolutionKind.Ready);
         }
 
         ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -132,7 +192,12 @@ internal sealed class ZLinkStoreLocationResolvers :
         if (row is null)
         {
             InvalidateSpotRoute(key);
-            return null;
+            return (
+                null,
+                liveRowPresent,
+                raw is null
+                    ? ZLinkLocationResolutionKind.Missing
+                    : ZLinkLocationResolutionKind.KnownUnavailable);
         }
 
         if (!await AdmitAndCacheReadyRouteAsync(
@@ -145,31 +210,24 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             _observed.ForgetSpot(key);
             InvalidateSpotRoute(key);
-            return null;
+            return (
+                null,
+                liveRowPresent,
+                ZLinkLocationResolutionKind.KnownUnavailable);
         }
-        return row;
+        return (row, liveRowPresent, ZLinkLocationResolutionKind.Ready);
     }
 
-    internal async ValueTask<ZLinkResolvedActorLocation?> ResolveActorRowAsync(
-        ZLinkActorLocationKey key,
-        CancellationToken cancellationToken = default)
-    {
-        var (row, _) = await ResolveActorRowWithPresenceAsync(key, cancellationToken)
-            .ConfigureAwait(false);
-        return row;
-    }
-
-    /// <summary>Resolve plus live-row presence: callers that retry a transient
-    /// resolve window (a claimed-but-unpublished generation-0 row, a lagging
-    /// replica view) need to distinguish it from a confirmed miss. A row owned
-    /// by an expired process is a miss even while stale storage remains.</summary>
-    internal async ValueTask<(ZLinkResolvedActorLocation? Row, bool RowPresent)>
-        ResolveActorRowWithPresenceAsync(
+    private async ValueTask<
+        (ZLinkResolvedActorLocation? Row,
+            bool LiveRowPresent,
+            ZLinkLocationResolutionKind Kind)>
+        ResolveActorRowCoreAsync(
             ZLinkActorLocationKey key,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
     {
         if (TryGetCached(_actorRoutes, key, out var cached))
-            return (cached, true);
+            return (cached, true, ZLinkLocationResolutionKind.Ready);
 
         var authority = await ZLinkLocationStoreRead.ExecuteAsync(
             _health,
@@ -195,7 +253,12 @@ internal sealed class ZLinkStoreLocationResolvers :
         if (row is null)
         {
             InvalidateActorRoute(key);
-            return (null, liveRowPresent);
+            return (
+                null,
+                liveRowPresent,
+                raw is null
+                    ? ZLinkLocationResolutionKind.Missing
+                    : ZLinkLocationResolutionKind.KnownUnavailable);
         }
 
         if (!await AdmitAndCacheReadyRouteAsync(
@@ -208,9 +271,12 @@ internal sealed class ZLinkStoreLocationResolvers :
         {
             _observed.ForgetActor(key);
             InvalidateActorRoute(key);
-            return (null, false);
+            return (
+                null,
+                liveRowPresent,
+                ZLinkLocationResolutionKind.KnownUnavailable);
         }
-        return (row, liveRowPresent);
+        return (row, liveRowPresent, ZLinkLocationResolutionKind.Ready);
     }
 
     internal void InvalidateSpotRoute(ZLinkSpotLocationKey key)

@@ -147,7 +147,13 @@ final class ZLinkDeferredJoinCompletionAuthorityTest {
         journal.completeSourceCleanupAndRelease(delivered, actor)
             .toCompletableFuture().join();
 
-        assertArrayEquals(steady, locations.rows.get(authorityKey).payload());
+        var released = new ZLinkActorAuthorityPayloadCodec()
+            .decode(locations.rows.get(authorityKey).payload())
+            .orElseThrow();
+        assertEquals("owner-b", released.ownerId());
+        assertEquals(12, released.ownerLeaseGeneration());
+        assertEquals(RoutingId.from("node-b"), released.nodeRid());
+        assertEquals(11, released.nodeGeneration());
         assertEquals(17, locations.rows.get(authorityKey).objectGeneration());
         assertEquals(10,
             locations.rows.get(authorityKey).authorityOwnerGeneration());

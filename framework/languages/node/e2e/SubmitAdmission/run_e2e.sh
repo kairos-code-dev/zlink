@@ -89,7 +89,8 @@ done
 if [[ "$NEEDS_NATIVE" == 1 ]]; then
   PACKAGE_NATIVE_DIR="$PACKAGE_ROOT/node_modules/@zlink-systems/zlink/prebuilds/linux-x64"
   PACKAGE_ADDON="$PACKAGE_NATIVE_DIR/zlink.node"
-  PACKAGE_CORE="$PACKAGE_NATIVE_DIR/libzlink.so.10"
+  PACKAGE_SONAME="libzlink.so.${PACKAGE_VERSION%%.*}"
+  PACKAGE_CORE="$PACKAGE_NATIVE_DIR/$PACKAGE_SONAME"
   SOURCE_CORE="$REPO_ROOT/core/build/lib/libzlink.so.$PACKAGE_VERSION"
   if [[ ! -f "$SOURCE_CORE" || ! -f "$PACKAGE_CORE" || ! -f "$PACKAGE_ADDON" ]]; then
     echo "Candidate native artifact is incomplete." >&2

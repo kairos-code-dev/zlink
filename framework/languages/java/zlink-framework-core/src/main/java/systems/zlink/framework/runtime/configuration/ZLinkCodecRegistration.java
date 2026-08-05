@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder;
@@ -18,7 +20,10 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
     private static final String DEFAULT_JSON_CONTENT_TYPE = "application/json";
     private static final String LEGACY_JSON_CONTENT_TYPE =
         "application/zlink-framework-json-v1";
+    private static final int MAX_TYPE_CACHE_ENTRIES = 1024;
     private final Map<String, RegisteredSerializer> serializers = new LinkedHashMap<>();
+    private final Map<Class<?>, String> contentTypeCache = new ConcurrentHashMap<>();
+    private final AtomicInteger contentTypeCacheSize = new AtomicInteger();
     private final Map<String, ZLinkStreamCodec> streamCodecsByContentType = new LinkedHashMap<>();
     private final Map<ZLinkStreamCodec, String> contentTypesByStreamCodec = new LinkedHashMap<>();
 
@@ -53,6 +58,8 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
             throw new ZLinkConfigurationException("custom serializer content type must not be blank");
         }
         serializers.put(normalized, new RegisteredSerializer(serializer, canSerialize, fallbackSerializer));
+        contentTypeCache.clear();
+        contentTypeCacheSize.set(0);
     }
 
     @Override
@@ -156,9 +163,15 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         if (type == null) {
             return DEFAULT_JSON_CONTENT_TYPE;
         }
-        return singleSerializerFor(serializers, type)
+        String cached = contentTypeCache.get(type);
+        if (cached != null) {
+            return cached;
+        }
+        String contentType = singleSerializerFor(serializers, type)
             .map(Map.Entry::getKey)
             .orElse(DEFAULT_JSON_CONTENT_TYPE);
+        cacheContentType(type, contentType);
+        return contentType;
     }
 
     /**
@@ -194,18 +207,45 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
     private static Optional<Map.Entry<String, RegisteredSerializer>> singleSerializerFor(
         Map<String, RegisteredSerializer> serializers,
         Class<?> type) {
-        var matches = serializers.entrySet().stream()
-            .filter(entry -> entry.getValue().canSerialize().test(type))
-            .toList();
-        if (matches.isEmpty()) {
+        Map.Entry<String, RegisteredSerializer> match = null;
+        StringBuilder ambiguousTypes = null;
+        for (Map.Entry<String, RegisteredSerializer> entry : serializers.entrySet()) {
+            if (!entry.getValue().canSerialize().test(type)) {
+                continue;
+            }
+            if (match == null) {
+                match = entry;
+                continue;
+            }
+            if (ambiguousTypes == null) {
+                ambiguousTypes = new StringBuilder(match.getKey());
+            }
+            ambiguousTypes.append(", ").append(entry.getKey());
+        }
+        if (match == null) {
             return Optional.empty();
         }
-        if (matches.size() > 1) {
+        if (ambiguousTypes != null) {
             throw new ZLinkConfigurationException(
                 "payload serializer is ambiguous for type " + type.getName() + ": "
-                    + matches.stream().map(Map.Entry::getKey).toList());
+                    + "[" + ambiguousTypes + "]");
         }
-        return Optional.of(matches.get(0));
+        return Optional.of(match);
+    }
+
+    private void cacheContentType(Class<?> type, String contentType) {
+        int reserved = contentTypeCacheSize.get();
+        while (reserved < MAX_TYPE_CACHE_ENTRIES
+            && !contentTypeCacheSize.compareAndSet(reserved, reserved + 1)) {
+            reserved = contentTypeCacheSize.get();
+        }
+        if (reserved >= MAX_TYPE_CACHE_ENTRIES) {
+            return;
+        }
+        String previous = contentTypeCache.putIfAbsent(type, contentType);
+        if (previous != null) {
+            contentTypeCacheSize.decrementAndGet();
+        }
     }
 
     private record RegisteredSerializer(
@@ -217,6 +257,9 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
     private static final class CompositeSerializer implements ZLinkMessageSerializer {
         private final Map<String, RegisteredSerializer> serializers;
         private final ZLinkMessageSerializer fallback;
+        private final Map<Class<?>, ZLinkMessageSerializer> serializerCache =
+            new ConcurrentHashMap<>();
+        private final AtomicInteger serializerCacheSize = new AtomicInteger();
 
         CompositeSerializer(
             Map<String, RegisteredSerializer> serializers,
@@ -244,9 +287,26 @@ public final class ZLinkCodecRegistration implements ZLinkCodecRegistryBuilder, 
         }
 
         private ZLinkMessageSerializer serializerFor(Class<?> type) {
-            return singleSerializerFor(serializers, type)
+            ZLinkMessageSerializer cached = serializerCache.get(type);
+            if (cached != null) {
+                return cached;
+            }
+            ZLinkMessageSerializer selected = singleSerializerFor(serializers, type)
                 .map(entry -> entry.getValue().serializer())
                 .orElse(fallback);
+            int reserved = serializerCacheSize.get();
+            while (reserved < MAX_TYPE_CACHE_ENTRIES
+                && !serializerCacheSize.compareAndSet(reserved, reserved + 1)) {
+                reserved = serializerCacheSize.get();
+            }
+            if (reserved < MAX_TYPE_CACHE_ENTRIES) {
+                ZLinkMessageSerializer previous = serializerCache.putIfAbsent(type, selected);
+                if (previous != null) {
+                    serializerCacheSize.decrementAndGet();
+                    return previous;
+                }
+            }
+            return selected;
         }
     }
 }

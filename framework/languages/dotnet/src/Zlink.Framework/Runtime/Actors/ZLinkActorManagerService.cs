@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Service;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.Runtime.Actors;
 
@@ -213,7 +214,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
         var eligible = FilterRouteReadyCandidates(source, placementEligible);
         var encoded = createRequest.Encode(runtime.Registration.Codecs);
         var applicationPayload = ZLinkApplicationPayloadEnvelopeCodec.Encode(
-            string.Empty,
+            ZLinkApplicationPayloadEnvelopeCodec.CreationPacketName,
             encoded.ContentType,
             encoded.Payload.Bytes.Span);
         var applicationHash = System.Security.Cryptography.SHA256.HashData(applicationPayload);

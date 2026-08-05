@@ -136,6 +136,11 @@ export const ZLINK_FRAMEWORK_INTERNAL_ERROR_KIND_VALUES: Readonly<Record<ZLinkFr
   [ZLinkFrameworkInternalErrorKind.InvalidOperation]: 40
 });
 
+const INTERNAL_KIND_BY_WIRE_FAILURE_CODE: ReadonlyMap<number, ZLinkFrameworkInternalErrorKind> = new Map(
+  Object.entries(ZLINK_FRAMEWORK_INTERNAL_ERROR_KIND_VALUES)
+    .map(([kind, code]) => [code + 1, kind as ZLinkFrameworkInternalErrorKind])
+);
+
 const INTERNAL_KIND = new WeakMap<ZLinkFrameworkException, ZLinkFrameworkInternalErrorKind>();
 
 export function createInternalFrameworkException(
@@ -162,4 +167,52 @@ export function internalFrameworkErrorKind(
 export function internalFrameworkErrorCode(error: ZLinkFrameworkException): number {
   const kind = INTERNAL_KIND.get(error);
   return kind === undefined ? error.kind : ZLINK_FRAMEWORK_INTERNAL_ERROR_KIND_VALUES[kind];
+}
+
+/** Decodes the stateful reply failureCode convention without exposing wire offsets to callers. */
+export function internalFrameworkErrorKindFromWireFailureCode(
+  failureCode: number
+): ZLinkFrameworkInternalErrorKind | undefined {
+  return INTERNAL_KIND_BY_WIRE_FAILURE_CODE.get(failureCode);
+}
+
+/** Restores a typed failure only when its wire terminal result is canonical. */
+export function internalFrameworkErrorKindFromWireReply(
+  terminalResult: number,
+  failureCode: number
+): ZLinkFrameworkInternalErrorKind | undefined {
+  // ServiceStaleGenerationError is emitted as NotFound with the historical
+  // stale-route code, while the same internal code is also used by Conflict
+  // replies from the actor route protocol.
+  if (terminalResult === 102 && failureCode === 21) {
+    return ZLinkFrameworkInternalErrorKind.ActorLocationStale;
+  }
+  const kind = internalFrameworkErrorKindFromWireFailureCode(failureCode);
+  if (kind === undefined) return undefined;
+  const expectedTerminalResult = [1, 6, 8, 9, 10, 11, 14].includes(failureCode)
+    ? 102
+    : [2, 5, 13, 17, 19, 20, 35].includes(failureCode)
+      ? 105
+      : [3, 4, 7, 21, 33, 34].includes(failureCode)
+        ? 107
+        : [12, 16].includes(failureCode)
+          ? 104
+          : [15, 18, 22].includes(failureCode)
+            ? 106
+            : undefined;
+  return expectedTerminalResult === terminalResult ? kind : undefined;
+}
+
+const BOUNDARY_WIRE_TERMINAL_RESULTS = new Set([
+  101, 103, 108, 109, 110, 111, 112, 113
+]);
+
+/** Checks the terminal and failure-code pair before a transport maps it. */
+export function isCanonicalWireReplyTerminal(
+  terminalResult: number,
+  failureCode: number
+): boolean {
+  if (terminalResult === 0) return failureCode === 0;
+  if (BOUNDARY_WIRE_TERMINAL_RESULTS.has(terminalResult)) return failureCode === 0;
+  return internalFrameworkErrorKindFromWireReply(terminalResult, failureCode) !== undefined;
 }

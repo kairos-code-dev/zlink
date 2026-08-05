@@ -44,6 +44,9 @@ import {
   M6A_SERVICE_WIRE_MAJOR,
   M6A_SERVICE_WIRE_REQUIRED_CAPABILITY,
   M6aServiceWireCommand,
+  decodeRouteMeshAdmission,
+  decodeReplyHeader,
+  encodeReplyHeader,
   encodeRouteMeshAdmission
 } from '../../packages/framework/src/runtime/foundation/service-wire-m6a-codec';
 
@@ -75,6 +78,42 @@ function descriptor(
   };
 }
 
+function runtimeStateWireValue(frame: Uint8Array): number {
+  const bytes = Buffer.from(frame);
+  let offset = 5;
+  assert.equal(bytes[offset++], 1);
+  const bodyLength = bytes.readUInt32BE(offset);
+  offset += 4;
+  const bodyEnd = offset + bodyLength;
+
+  offset += 1 + bytes[offset]!;
+  offset += 1 + bytes[offset]!;
+  offset += 4 + 8 + 8;
+  const endpointLength = bytes.readUInt16BE(offset);
+  offset += 2 + endpointLength;
+  const channelCount = bytes.readUInt16BE(offset);
+  offset += 2;
+  for (let index = 0; index < channelCount; index++) {
+    offset += 1 + bytes[offset]! + 4;
+  }
+
+  const extensionLength = bytes.readUInt32BE(offset);
+  offset += 4;
+  assert.equal(offset + extensionLength, bodyEnd);
+  const extensionEnd = offset + extensionLength;
+  while (offset < extensionEnd) {
+    const id = bytes[offset++];
+    const length = bytes.readUInt32BE(offset);
+    offset += 4;
+    if (id === 1) {
+      assert.equal(length, 1);
+      return bytes[offset]!;
+    }
+    offset += length;
+  }
+  assert.fail('runtime-state descriptor field was not encoded');
+}
+
 test('M6A runtime command subset matches the generated wire schema', () => {
   assert.deepEqual(M6A_SERVICE_WIRE_MAGIC, SERVICE_WIRE_MAGIC);
   assert.equal(M6A_SERVICE_WIRE_MAJOR, SERVICE_WIRE_MAJOR);
@@ -82,6 +121,61 @@ test('M6A runtime command subset matches the generated wire schema', () => {
   for (const name of Object.keys(M6aServiceWireCommand) as Array<keyof typeof M6aServiceWireCommand>) {
     assert.equal(M6aServiceWireCommand[name], ServiceWireCommand[name]);
   }
+});
+
+test('RouteMesh runtime state uses the shared service wire values', () => {
+  const expected = [
+    ['preparing', 0],
+    ['serving', 1],
+    ['draining', 2],
+    ['stopped', 3],
+    ['error', 4]
+  ] as const;
+
+  for (const [state, wireValue] of expected) {
+    const frame = encodeRouteMeshAdmission(M6aServiceWireCommand.update, {
+      ...descriptor(`state-${state}`),
+      state
+    });
+    assert.equal(runtimeStateWireValue(frame), wireValue);
+    assert.equal(
+      decodeRouteMeshAdmission(frame, M6aServiceWireCommand.update, `state-${state}`).state,
+      state
+    );
+  }
+
+  const retiring = encodeRouteMeshAdmission(M6aServiceWireCommand.update, {
+    ...descriptor('state-retiring'),
+    state: 'retiring'
+  });
+  assert.equal(runtimeStateWireValue(retiring), 2);
+  assert.equal(
+    decodeRouteMeshAdmission(
+      retiring,
+      M6aServiceWireCommand.update,
+      'state-retiring'
+    ).state,
+    'draining'
+  );
+});
+
+test('reply header preserves the schema tail length field', () => {
+  const empty = encodeReplyHeader(7n);
+  assert.equal(empty.byteLength, 23);
+  assert.deepEqual(decodeReplyHeader(empty), {
+    correlation: 7n,
+    terminalResult: 0,
+    failureCode: 0,
+    tail: Buffer.alloc(0)
+  });
+
+  const tail = encodeReplyHeader(8n, 102, 17, Uint8Array.from([1, 2, 3]));
+  assert.deepEqual(decodeReplyHeader(tail), {
+    correlation: 8n,
+    terminalResult: 102,
+    failureCode: 17,
+    tail: Buffer.from([1, 2, 3])
+  });
 });
 
 test('topology snapshots fence reconnect and exclude retiring placement targets', () => {

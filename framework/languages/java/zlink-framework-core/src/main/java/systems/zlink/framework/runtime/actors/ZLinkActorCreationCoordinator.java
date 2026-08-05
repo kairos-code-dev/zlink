@@ -23,6 +23,10 @@ import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.internal.locations.*;
 import systems.zlink.framework.runtime.internal.locations
     .ZLinkLocationRepository;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeState;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeStatus;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerEntry;
+import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.locations.ZLinkActorAuthorityPayloadCodec;
@@ -53,7 +57,6 @@ public final class ZLinkActorCreationCoordinator
     private final ZLinkLocationRepository locations;
     private final ZLinkActorRuntime actors;
     private final ZLinkMessageSerializer serializer;
-    private final Duration defaultTimeout;
     private final ZLinkActorAuthorityPayloadCodec authorities =
         new ZLinkActorAuthorityPayloadCodec();
     private final ZLinkServiceM6AWireCodec payloads =
@@ -68,8 +71,7 @@ public final class ZLinkActorCreationCoordinator
         ZLinkInternalMeshNode node,
         ZLinkLocationRepository locations,
         ZLinkActorRuntime actors,
-        ZLinkMessageSerializer serializer,
-        Duration defaultTimeout) {
+        ZLinkMessageSerializer serializer) {
         this.meshName = java.util.Objects.requireNonNull(
             meshName, "meshName");
         this.node = java.util.Objects.requireNonNull(node, "node");
@@ -78,8 +80,6 @@ public final class ZLinkActorCreationCoordinator
         this.actors = java.util.Objects.requireNonNull(actors, "actors");
         this.serializer = java.util.Objects.requireNonNull(
             serializer, "serializer");
-        this.defaultTimeout = java.util.Objects.requireNonNull(
-            defaultTimeout, "defaultTimeout");
     }
 
     @Override
@@ -171,6 +171,23 @@ public final class ZLinkActorCreationCoordinator
         streamTrace("actor-create reserve-start actor=" + actorId
             + " target=" + target.rid()
             + " entry=" + entry.spotId());
+        if (!isExactReadyTarget(target, node.status(), node.peers())) {
+            streamTrace("actor-create reserve-deferred actor=" + actorId
+                + " target=" + target.rid()
+                + " generation=" + target.lifecycleGeneration());
+            if (System.currentTimeMillis() >= deadline) {
+                return failed("Actor placement target is no longer ready");
+            }
+            return awaitConflict().thenCompose(ignored ->
+                resumeOrCreate(
+                    operation,
+                    actorId,
+                    actorType,
+                    requestEnvelope,
+                    getOrCreate,
+                    deadline,
+                    excludedTargets));
+        }
         String key = ZLinkAuthorityKeyCodec.actor(actorId);
         byte[] creating = authorities.encode(
             ZLinkActorAuthorityPayloadCodec.State.CREATING,
@@ -254,7 +271,7 @@ public final class ZLinkActorCreationCoordinator
                 streamTrace("actor-create mesh-request actor=" + actorId
                     + " target=" + target.rid());
                 return node.requestActorCreate(
-                        target.rid(), intent, defaultTimeout)
+                        target.rid(), intent, remainingTimeout(deadline))
                     .thenCompose(response -> {
                         streamTrace("actor-create mesh-response actor=" + actorId);
                         return completedResult(response.terminalEnvelope());
@@ -271,6 +288,14 @@ public final class ZLinkActorCreationCoordinator
                                         unwrap(failure)));
                     });
             });
+    }
+
+    private static Duration remainingTimeout(long deadlineUnixMs) {
+        long remainingMillis = deadlineUnixMs - System.currentTimeMillis();
+        if (remainingMillis <= 0) {
+            return Duration.ofNanos(1);
+        }
+        return Duration.ofMillis(remainingMillis);
     }
 
     private CompletionStage<ZLinkActorCreateResult> existing(
@@ -687,6 +712,8 @@ public final class ZLinkActorCreationCoordinator
         return locations.listMeshNodes(
                 meshName, ZLinkPageRequest.firstPage())
             .thenCompose(page -> {
+                MeshNodeStatus localStatus = node.status();
+                List<MeshPeerEntry> peerSnapshot = node.peers();
                 List<ZLinkMeshNodeDescriptor> candidates =
                     page.items().stream()
                         .filter(candidate ->
@@ -702,12 +729,20 @@ public final class ZLinkActorCreationCoordinator
                                     .anyMatch(capability ->
                                         capability.objectKind()
                                             == ZLinkPlacementObjectKind.ACTOR
-                                            && capability.stableType()
+                                        && capability.stableType()
                                                 .equals(actorType)
-                                            && hasCapacity(
+                                        && hasCapacity(
                                                 candidate,
-                                                capability)))
+                                                capability))
+                                && isExactReadyTarget(
+                                    candidate, localStatus, peerSnapshot))
                         .toList();
+                streamTrace("actor-create candidates actorType=" + actorType
+                    + " count=" + candidates.size()
+                    + " nodes=" + candidates.stream()
+                        .map(candidate -> candidate.rid()
+                            + "@" + candidate.lifecycleGeneration())
+                        .toList());
                 if (candidates.isEmpty()) {
                     if (System.currentTimeMillis() >= deadline) {
                         return failed("No Ready Actor placement target");
@@ -747,6 +782,26 @@ public final class ZLinkActorCreationCoordinator
         return candidates.stream()
             .filter(candidate -> candidate.rid().equals(localRoutingId))
             .findFirst();
+    }
+
+    static boolean isExactReadyTarget(
+        ZLinkMeshNodeDescriptor candidate,
+        MeshNodeStatus localStatus,
+        List<MeshPeerEntry> peers) {
+        java.util.Objects.requireNonNull(candidate, "candidate");
+        java.util.Objects.requireNonNull(localStatus, "localStatus");
+        java.util.Objects.requireNonNull(peers, "peers");
+        if (candidate.rid().equals(localStatus.routingId())) {
+            return candidate.meshName().equals(localStatus.meshName())
+                && localStatus.state() == MeshNodeState.READY
+                && candidate.lifecycleGeneration()
+                    == localStatus.lifecycleGeneration();
+        }
+        return peers.stream().anyMatch(peer ->
+            peer.routingId().equals(candidate.rid())
+                && peer.lifecycleGeneration()
+                    == candidate.lifecycleGeneration()
+                && peer.state() == MeshPeerState.ADMITTED);
     }
 
     public CompletionStage<ZLinkActorRuntime.EntrySpotTarget>

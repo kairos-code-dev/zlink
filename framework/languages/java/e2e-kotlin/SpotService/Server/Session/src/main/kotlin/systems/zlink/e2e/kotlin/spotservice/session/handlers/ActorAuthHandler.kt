@@ -3,10 +3,12 @@ package systems.zlink.e2e.kotlin.spotservice.session.handlers
 import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.framework.actors.ZLinkActorManager
+import systems.zlink.framework.actors.ZLinkActorCreateResult
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
+import systems.zlink.framework.kotlin.kotlin
 
 class ActorAuthHandler(
     private val actors: ZLinkActorManager,
@@ -21,8 +23,14 @@ class ActorAuthHandler(
         dispatch: ZLinkSessionDispatchContext,
         request: Contracts.ActorAuthReq
     ) {
-        val actor = actors.getOrCreate(request.actorId, "scenario", request)
-            .await()
+        val actor = when (val result = actors.kotlin()
+            .getOrCreate(request.actorId, "scenario")
+            .request(request)
+            .await()) {
+            is ZLinkActorCreateResult.Existing -> result.actor
+            is ZLinkActorCreateResult.Created -> result.actor
+            is ZLinkActorCreateResult.Rejected -> error("actor creation was rejected")
+        }
         val bound = context.actors().bind(actor)
             .await()
         evidence.record("ActorSessionBound", "session", request.actorId)

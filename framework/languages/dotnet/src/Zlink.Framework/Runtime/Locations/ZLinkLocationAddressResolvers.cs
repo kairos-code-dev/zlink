@@ -33,7 +33,12 @@ internal sealed class ZLinkLocationAddressResolvers
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(spotId);
         var key = new ZLinkSpotLocationKey(spotId);
-        var row = await _rows.ResolveSpotRowAsync(key, cancellationToken).ConfigureAwait(false);
+        var resolution = await _rows.ResolveSpotRowWithStatusAsync(
+                key,
+                cancellationToken)
+            .ConfigureAwait(false);
+        ThrowIfKnownUnavailable(resolution.Kind, $"Spot '{spotId}'");
+        var row = resolution.Row;
         if (row is null) return null;
         var handle = new ZLinkResolvedSpotHandle(
             ToSnapshot(row),
@@ -50,8 +55,12 @@ internal sealed class ZLinkLocationAddressResolvers
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
         var key = new ZLinkActorLocationKey(actorId);
-        var row = await _rows.ResolveActorRowAsync(key, cancellationToken)
+        var resolution = await _rows.ResolveActorRowWithStatusAsync(
+                key,
+                cancellationToken)
             .ConfigureAwait(false);
+        ThrowIfKnownUnavailable(resolution.Kind, $"Actor '{actorId}'");
+        var row = resolution.Row;
         if (row is null)
         {
             return null;
@@ -74,17 +83,39 @@ internal sealed class ZLinkLocationAddressResolvers
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken)
     {
-        var row = await _rows.ResolveSpotRowAsync(key, cancellationToken).ConfigureAwait(false);
-        return row is null ? null : (ToSnapshot(row), row.SpotGeneration);
+        var resolution = await _rows.ResolveSpotRowWithStatusAsync(
+                key,
+                cancellationToken)
+            .ConfigureAwait(false);
+        ThrowIfKnownUnavailable(resolution.Kind, $"Spot '{key.SpotId}'");
+        return resolution.Row is not { } row
+            ? null
+            : (ToSnapshot(row), row.SpotGeneration);
     }
 
     private async ValueTask<(ZLinkSpotHandleSnapshot Snapshot, ulong Version)?> RefreshActorAsync(
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken)
     {
-        var row = await _rows.ResolveActorRowAsync(key, cancellationToken)
+        var resolution = await _rows.ResolveActorRowWithStatusAsync(
+                key,
+                cancellationToken)
             .ConfigureAwait(false);
-        return row is null ? null : (ToSnapshot(row), row.MembershipEpoch);
+        ThrowIfKnownUnavailable(resolution.Kind, $"Actor '{key.ActorId}'");
+        return resolution.Row is not { } row
+            ? null
+            : (ToSnapshot(row), row.MembershipEpoch);
+    }
+
+    private static void ThrowIfKnownUnavailable(
+        ZLinkLocationResolutionKind kind,
+        string target)
+    {
+        if (kind != ZLinkLocationResolutionKind.KnownUnavailable)
+            return;
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.Unavailable,
+            $"{target} is currently unavailable.");
     }
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkResolvedSpotLocation row)

@@ -131,7 +131,7 @@ final class ZLinkDeferredJoinAcceptedRecovery {
                 value.fence().aggregateGeneration()));
     }
 
-    CompletionStage<Void> commitPrepared(
+    CompletionStage<Long> commitPrepared(
         Manifest manifest,
         ZLinkBackendActorRef actor) {
         if (authorityJournal == null || !manifest.hasAggregateFence()) {
@@ -143,7 +143,8 @@ final class ZLinkDeferredJoinAcceptedRecovery {
             new UUID(
                 manifest.aggregateIdHigh(),
                 manifest.aggregateIdLow()),
-            manifest.aggregateGeneration());
+            manifest.aggregateGeneration(),
+            actor);
     }
 
     CompletionStage<Void> awaitTargetCommit(

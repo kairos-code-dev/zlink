@@ -63,7 +63,7 @@ struct player_actor_t : framework::actor_t
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
         node_rid = std::string (actor_ref.node_rid ().value ());
-        generation = actor_ref.generation ();
+        generation = actor_ref.object_generation ();
     }
 
     void set_actor_context (actor_context_t actor_context) const
@@ -171,7 +171,7 @@ struct player_actor_factory_t final
             std::stop_token) override
     {
         auto actor = std::make_shared<player_actor_t> (
-          std::string (context.actor_ref ().actor_id ()));
+          std::string (context.actor_ref ().actor_id ().value ()));
         actor->set_actor_ref (context.actor_ref ());
         actor->set_actor_context (std::move (context));
         co_return actor;

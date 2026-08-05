@@ -30,10 +30,11 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
@@ -64,13 +65,16 @@ class MultiNodeApplication {
         actorClient: ZLinkActorClient,
         evidence: MultiNodeEvidenceStore,
         context: ConfigurableApplicationContext,
-        handles: SpotHandleResolver,
     ): MultiNodeHttpServer =
-        MultiNodeHttpServer(options, json, spots, routes, actors, actorClient, evidence, context, handles)
+        MultiNodeHttpServer(options, json, spots, routes, actors, actorClient, evidence, context)
 
     @Bean
-    fun multiNodeFramework(options: MultiNodeOptions): ZLinkFrameworkConfigurer =
+    fun multiNodeFramework(
+        options: MultiNodeOptions,
+        relocationStore: ZLinkRedisRelocationStore,
+    ): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { framework ->
+            framework.addRelocationStore(relocationStore)
             Files.createDirectories(Path.of(options.logDir))
             val node = MultiNodeKind.fromRid(options.rid)
             framework.configureDispatch()
@@ -87,7 +91,7 @@ class MultiNodeApplication {
                 )
                 .setRoutingId(RoutingId.from(node.rid))
             if (!options.spotOnly) {
-                mesh.channelName(node.routeChannel)
+                mesh.channelName(node.routeChannel).server()
             }
             @Suppress("UNCHECKED_CAST")
             val spotClass = node.spotClass as Class<ZLinkSpot<*>>
@@ -108,6 +112,14 @@ class MultiNodeApplication {
     fun locationStore(): ZLinkRedisLocationStore =
         ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
+        )
+
+    @Bean
+    fun relocationStore(): ZLinkRedisRelocationStore =
+        ZLinkRedisRelocationStore(
+            ZLinkRedisRelocationOptions()
                 .setConnectionString(Env.get("e2e.redis.location.endpoint"))
                 .setKeyPrefix(Env.get("e2e.location.key.prefix"))
         )
@@ -141,7 +153,6 @@ class MultiNodeHttpServer(
     private val actorClient: ZLinkActorClient,
     private val evidence: MultiNodeEvidenceStore,
     private val context: ConfigurableApplicationContext,
-    private val handles: SpotHandleResolver,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var running = false
@@ -213,11 +224,8 @@ class MultiNodeHttpServer(
 
     private fun createLocalSpot(request: Contracts.MultiNodeCreateSpotReq): Contracts.MultiNodeCreateSpotRes {
         val node = MultiNodeKind.fromRid(options.rid)
-        val spot = if (node == MultiNodeKind.NODE_A) {
-            spots.getOrCreate(MultiNodeSpotA::class.java, RoutingId.from(request.spotRid))
-        } else {
-            spots.getOrCreate(MultiNodeSpotB::class.java, RoutingId.from(request.spotRid))
-        }
+        spots.getOrCreate(request.spotRid, "multi-node")
+            .submit()
             .toCompletableFuture()
             .join()
         val value = if (options.spotOnly) {
@@ -235,11 +243,8 @@ class MultiNodeHttpServer(
     }
 
     private fun requestState(request: Contracts.MultiNodeStateRouteReq): Contracts.MultiNodeStateRes {
-        val node = MultiNodeKind.fromRid(options.rid)
         return routes.requestToSpot(
-            node.routeChannel,
-            handles.resolveSpotHandle(RoutingId.from(request.spotRid)).toCompletableFuture().get(5, TimeUnit.SECONDS)
-                .orElseThrow { IllegalStateException("spot handle was not found: ${request.spotRid}") },
+            request.spotRid,
             Contracts.MultiNodeStateReq("add", request.delta)
         )
             .timeout(Duration.ofSeconds(2))
@@ -247,11 +252,9 @@ class MultiNodeHttpServer(
     }
 
     private fun requestSendSpotOnly(request: Contracts.SpotOnlyMeshReq): Contracts.SpotOnlyMeshRes {
-        val created = spots.getOrCreate(
-            MultiNodeKind.fromRid(options.rid).spotClass,
-            RoutingId.from(request.sourceSpotRid),
-            ZLinkMessage.of(request)
-        )
+        val created = spots.getOrCreate(request.sourceSpotRid, "multi-node")
+            .request(ZLinkMessage.of(request))
+            .submit()
             .toCompletableFuture()
             .join()
         evidence.waitUntil(
@@ -267,10 +270,18 @@ class MultiNodeHttpServer(
 
     private fun joinSpotOnly(request: Contracts.SpotOnlyJoinReq): Contracts.SpotOnlyJoinRes {
         val actor = actors.create(request.actorId, "multi-node")
+            .request(request)
+            .submit()
             .toCompletableFuture()
             .join()
+        val actorId = when (actor) {
+            is systems.zlink.framework.actors.ZLinkActorCreateResult.Existing -> actor.actor().actorId()
+            is systems.zlink.framework.actors.ZLinkActorCreateResult.Created -> actor.actor().actorId()
+            is systems.zlink.framework.actors.ZLinkActorCreateResult.Rejected ->
+                throw IllegalStateException("actor creation was rejected")
+        }
         return actorClient.requestToActor(
-            actor,
+            actorId,
             request
         )
             .timeout(Duration.ofSeconds(5))

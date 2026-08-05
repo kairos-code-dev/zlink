@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "actor_gateway_runtime.hpp"
+#include "actor_ref_access.hpp"
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
@@ -81,22 +82,6 @@ actor_ref_t::actor_ref_t (actor_id_t actor_id,
     }
 }
 
-actor_ref_t::actor_ref_t (node_rid_t node_rid,
-                          std::string actor_type,
-                          std::string actor_id,
-                          std::uint64_t generation) :
-    _actor_id (actor_id_t (std::move (actor_id))),
-    _object_generation (generation),
-    _node_rid (std::move (node_rid)),
-    _actor_type (std::move (actor_type))
-{
-    if (generation == 0
-        || generation > static_cast<std::uint64_t> (std::numeric_limits<std::int64_t>::max ())) {
-        throw std::invalid_argument (
-          "ActorRef ObjectGeneration must be from 1 through INT64_MAX");
-    }
-}
-
 const node_rid_t &actor_ref_t::node_rid () const noexcept
 {
     return _node_rid;
@@ -117,21 +102,6 @@ std::string_view actor_ref_t::mesh_name () const noexcept
     return _mesh_name;
 }
 
-std::string_view actor_ref_t::actor_type () const noexcept
-{
-    return _actor_type;
-}
-
-std::uint64_t actor_ref_t::generation () const noexcept
-{
-    return _object_generation;
-}
-
-bool actor_ref_t::empty () const noexcept
-{
-    return _actor_id.empty ();
-}
-
 bound_session_t::bound_session_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
 {
 }
@@ -139,7 +109,8 @@ bound_session_t::bound_session_t () : _state (std::make_shared<detail::actor_gat
 bound_session_t::bound_session_t (std::shared_ptr<detail::actor_gateway_state_t> state,
                                   actor_ref_t actor_ref,
                                   std::uint64_t expected_binding_generation) :
-    _state (std::move (state)), _actor_ref (std::move (actor_ref)),
+    _state (std::move (state)),
+    _actor_ref (std::make_shared<actor_ref_t> (std::move (actor_ref))),
     _expected_binding_generation (expected_binding_generation)
 {
 }
@@ -218,10 +189,16 @@ bound_session_send_call_t bound_session_t::send_typed (std::string packet_name,
 
 task_t<void> bound_session_t::disconnect ()
 {
+    if (!_state || !_actor_ref) {
+        return task_t<void> (result_t<void>::failure (
+          framework_error_kind_t::not_configured,
+          "bound session does not reference an actor"));
+    }
     const std::lock_guard lock (_state->mutex);
-    const auto found = _state->actors_by_id.find (std::string (_actor_ref.actor_id ()));
+    const auto found = _state->actors_by_id.find (
+      std::string (_actor_ref->actor_id ().value ()));
     if (found != _state->actors_by_id.end ()) {
-        if (found->second.ref.generation () != _actor_ref.generation ()) {
+        if (found->second.ref.object_generation () != _actor_ref->object_generation ()) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::invalid_operation,
               "actor generation is stale"));
@@ -236,6 +213,11 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
                                                         stream_codec_t codec,
                                                         const zlink::message_t &payload)
 {
+    if (!_state || !_actor_ref) {
+        return bound_session_send_call_t (send_call_t (result_t<void>::failure (
+          framework_error_kind_t::not_configured,
+          "bound session does not reference an actor")));
+    }
     std::function<task_t<void> (std::string,
                                 stream_codec_t,
                                 const zlink::message_t &)> sink;
@@ -243,7 +225,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
     stream_header_t header;
     {
         const std::lock_guard lock (_state->mutex);
-        const auto actor_id = std::string (_actor_ref.actor_id ());
+        const auto actor_id = std::string (_actor_ref->actor_id ().value ());
         const auto found = _state->actors_by_id.find (actor_id);
         remote_sender = _state->bound_session_sender;
         if (found != _state->actors_by_id.end () && found->second.disconnected) {
@@ -257,18 +239,19 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
             header = stream_header_t (stream_message_kind_t::send, codec,
                                       stream_header_flags_t::none, std::nullopt, packet_name);
         }
-        else if (found->second.ref.actor_type () != _actor_ref.actor_type ()) {
+        else if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+                 != ::zlink::framework::detail::actor_ref_access_t::actor_type (*_actor_ref)) {
             return bound_session_send_call_t (
               send_call_t (result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                                     "actor id is already bound to another type")));
         }
-        else if (found->second.ref.generation () != _actor_ref.generation ()) {
+        else if (found->second.ref.object_generation () != _actor_ref->object_generation ()) {
             return bound_session_send_call_t (send_call_t (result_t<void>::failure (
               framework_error_kind_t::invalid_operation,
               "actor generation is stale")));
         }
         else {
-            found->second.ref = _actor_ref;
+            found->second.ref = *_actor_ref;
             header = stream_header_t (stream_message_kind_t::send, codec,
                                       stream_header_flags_t::none, std::nullopt, packet_name);
             _state->bound_session_pushes.push_back (
@@ -287,7 +270,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
     return bound_session_send_call_t (send_call_t (
       std::move (packet_name),
       [sink = std::move (sink), remote_sender = std::move (remote_sender),
-       actor_ref = _actor_ref, expected_binding_generation = _expected_binding_generation,
+       actor_ref = *_actor_ref, expected_binding_generation = _expected_binding_generation,
        header = std::move (header),
        payload, codec] (const std::string &name,
                   const send_call_t::metadata_map_t &) mutable {
@@ -308,8 +291,7 @@ bound_session_send_call_t bound_session_t::send_erased (std::string packet_name,
 }
 
 actor_context_t::actor_context_t () :
-    _state (std::make_shared<detail::actor_gateway_state_t> ()),
-    _actor_ref (std::make_shared<actor_ref_t> ())
+    _state (std::make_shared<detail::actor_gateway_state_t> ())
 {
 }
 
@@ -337,7 +319,7 @@ const actor_id_t &actor_context_t::actor_id () const noexcept
 
 std::uint64_t actor_context_t::object_generation () const noexcept
 {
-    return _actor_ref->generation ();
+    return _actor_ref ? _actor_ref->object_generation () : 0;
 }
 
 std::string_view actor_context_t::mesh_name () const noexcept
@@ -347,11 +329,12 @@ std::string_view actor_context_t::mesh_name () const noexcept
 
 bool actor_context_t::has_same_source_fence (const actor_context_t &other) const noexcept
 {
-    return _state == other._state
+    return _state == other._state && _actor_ref && other._actor_ref
            && _actor_ref->node_rid ().value () == other._actor_ref->node_rid ().value ()
-           && _actor_ref->actor_type () == other._actor_ref->actor_type ()
+           && ::zlink::framework::detail::actor_ref_access_t::actor_type (*_actor_ref)
+                == ::zlink::framework::detail::actor_ref_access_t::actor_type (*other._actor_ref)
            && _actor_ref->actor_id () == other._actor_ref->actor_id ()
-           && _actor_ref->generation () == other._actor_ref->generation ()
+           && _actor_ref->object_generation () == other._actor_ref->object_generation ()
            && _mesh_name == other._mesh_name;
 }
 
@@ -362,7 +345,8 @@ std::optional<spot_id_t> actor_context_t::spot_id () const
         const std::lock_guard lock (_state->mutex);
         query = _state->membership_query;
     }
-    if (!query || _actor_ref->empty ()) {
+    if (!query || !_actor_ref
+        || ::zlink::framework::detail::actor_ref_access_t::empty (*_actor_ref)) {
         return std::nullopt;
     }
     return query (*_actor_ref);
@@ -376,7 +360,11 @@ serializer_registry_t *actor_context_t::serializer_registry () const noexcept
 std::optional<zlink::message_t> actor_context_t::create_payload () const
 {
     const std::lock_guard lock (_state->mutex);
-    const auto found = _state->actors_by_id.find (std::string (_actor_ref->actor_id ()));
+    if (!_actor_ref) {
+        return std::nullopt;
+    }
+    const auto found = _state->actors_by_id.find (
+      std::string (_actor_ref->actor_id ().value ()));
     if (found == _state->actors_by_id.end ()) {
         return std::nullopt;
     }
@@ -385,6 +373,9 @@ std::optional<zlink::message_t> actor_context_t::create_payload () const
 
 bound_session_t actor_context_t::bound_session () const
 {
+    if (!_actor_ref) {
+        return bound_session_t ();
+    }
     return bound_session_t (_state, *_actor_ref, _source_binding_generation);
 }
 
@@ -396,7 +387,8 @@ actor_context_t::join_spot_erased (spot_id_t spot_id,
     detail::actor_gateway_state_t::join_spot_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
-        if (_actor_ref->empty ()) {
+        if (!_actor_ref
+            || ::zlink::framework::detail::actor_ref_access_t::empty (*_actor_ref)) {
             return result_t<detail::actor_join_reply_t>::failure (
               framework_error_kind_t::not_found, "actor ref is empty");
         }
@@ -421,7 +413,7 @@ actor_context_t::join_spot_erased (spot_id_t spot_id,
                                     std::nullopt,
                                     std::nullopt,
                                     std::string (spot_id),
-                                    std::string (_actor_ref->actor_id ()),
+                                    std::string (_actor_ref->actor_id ().value ()),
                                     std::nullopt};
     });
     auto joined = dispatcher (*_actor_ref, spot_id, request, timeout);
@@ -441,14 +433,15 @@ actor_context_t::join_spot_erased (spot_id_t spot_id,
                                       std::nullopt,
                                       std::nullopt,
                                       std::string (spot_id),
-                                      std::string (_actor_ref->actor_id ()),
+                                      std::string (_actor_ref->actor_id ().value ()),
                                       std::nullopt};
       });
 
     if (joined.value ().result_code == 0) {
         const std::lock_guard lock (_state->mutex);
         *_actor_ref = joined.value ().actor;
-        auto found = _state->actors_by_id.find (std::string (_actor_ref->actor_id ()));
+        auto found = _state->actors_by_id.find (
+          std::string (_actor_ref->actor_id ().value ()));
         if (found != _state->actors_by_id.end ()) {
             found->second.ref = *_actor_ref;
         }
@@ -460,10 +453,11 @@ result_t<std::shared_ptr<detail::deferred_barrier_t>>
 actor_context_t::reserve_join_barrier () const
 {
     detail::actor_gateway_state_t::join_barrier_reserver_t reserver;
-    actor_ref_t actor;
+    std::optional<actor_ref_t> actor;
     {
         const std::lock_guard lock (_state->mutex);
-        if (_actor_ref->empty ()) {
+        if (!_actor_ref
+            || ::zlink::framework::detail::actor_ref_access_t::empty (*_actor_ref)) {
             return result_t<std::shared_ptr<detail::deferred_barrier_t>>::failure (
               framework_error_kind_t::not_found,
               "Actor join barrier source is empty");
@@ -476,7 +470,7 @@ actor_context_t::reserve_join_barrier () const
         actor = *_actor_ref;
         reserver = _state->join_barrier_reserver;
     }
-    return reserver (actor);
+    return reserver (*actor);
 }
 
 actor_join_call_t actor_context_t::join_entry_spot_payload (
@@ -492,7 +486,9 @@ actor_join_call_t actor_context_t::join_entry_spot_payload (
           zlink::message_t effective_request = request;
           {
               const std::lock_guard lock (context->_state->mutex);
-              if (context->_actor_ref->empty ()) {
+                  if (!context->_actor_ref
+                      || ::zlink::framework::detail::actor_ref_access_t::empty (
+                        *context->_actor_ref)) {
                   throw framework_exception_t (
                     framework_error_kind_t::not_found,
                     "actor ref is empty");
@@ -505,7 +501,7 @@ actor_join_call_t actor_context_t::join_entry_spot_payload (
               dispatcher = context->_state->join_entry_spot_dispatcher;
               if (effective_request.to_string ().empty ()) {
                   const auto found = context->_state->actors_by_id.find (
-                    std::string (context->_actor_ref->actor_id ()));
+                    std::string (context->_actor_ref->actor_id ().value ()));
                   if (found != context->_state->actors_by_id.end ()
                       && found->second.create_payload) {
                       effective_request = *found->second.create_payload;
@@ -525,7 +521,8 @@ actor_join_call_t actor_context_t::join_entry_spot_payload (
               const std::lock_guard lock (context->_state->mutex);
               *context->_actor_ref = joined.value ().actor;
               auto found =
-                context->_state->actors_by_id.find (std::string (context->_actor_ref->actor_id ()));
+                context->_state->actors_by_id.find (
+                  std::string (context->_actor_ref->actor_id ().value ()));
               if (found != context->_state->actors_by_id.end ()) {
                   found->second.ref = *context->_actor_ref;
               }
@@ -534,10 +531,6 @@ actor_join_call_t actor_context_t::join_entry_spot_payload (
       [context] {
           return context->reserve_join_barrier ();
       });
-}
-
-session_actor_t::session_actor_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
-{
 }
 
 session_actor_t::session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state,
@@ -559,7 +552,7 @@ const actor_ref_t &session_actor_t::ref () const noexcept
 
 std::string_view session_actor_t::actor_id () const noexcept
 {
-    return _ref.actor_id ();
+    return _ref.actor_id ().value ();
 }
 
 actor_context_t session_actor_t::context () const
@@ -583,11 +576,11 @@ task_t<void> session_actor_t::relay_internal (const zlink::message_t &payload)
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
-        if (_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (_ref)) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::not_found, "session actor is not bound"));
         }
-        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
+        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ().value ()));
         if (found != _state->actors_by_id.end () && found->second.disconnected) {
             return task_t<void> (detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
                                                           "actor session is disconnected"));
@@ -606,7 +599,7 @@ task_t<void> session_actor_t::relay_internal (const zlink::message_t &payload)
               framework_error_kind_t::not_configured,
               "actor session binding is stale"));
         }
-        if (found->second.ref.generation () != _ref.generation ()) {
+        if (found->second.ref.object_generation () != _ref.object_generation ()) {
             return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::invalid_operation,
               "actor generation is stale"));
@@ -654,11 +647,11 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
     detail::actor_gateway_state_t::relay_dispatcher_t dispatcher;
     {
         const std::lock_guard lock (_state->mutex);
-        if (_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (_ref)) {
             return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::not_found, "session actor is not bound"));
         }
-        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
+        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ().value ()));
         if (found != _state->actors_by_id.end () && found->second.disconnected) {
             return relay_request_call_t (detail::boundary_failure<zlink::message_t> (detail::boundary_error_t::disconnected, "actor session is disconnected"));
         }
@@ -676,7 +669,7 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
               framework_error_kind_t::not_configured,
               "actor session binding is stale"));
         }
-        if (found->second.ref.generation () != _ref.generation ()) {
+        if (found->second.ref.object_generation () != _ref.object_generation ()) {
             return relay_request_call_t (result_t<zlink::message_t>::failure (
               framework_error_kind_t::invalid_operation,
               "actor generation is stale"));
@@ -704,7 +697,7 @@ relay_request_call_t session_actor_t::relay_request (const zlink::message_t &pay
             dispatch_error_surface_t::spot_actor, dispatch_message_kind_t::actor_request,
             dispatch_error_reason_t::reply_path_missing, dispatch_error_action_t::fail_caller,
             std::string (header->packet_name ()), std::nullopt, std::nullopt, std::nullopt,
-            std::string (_ref.actor_id ()), std::nullopt, std::nullopt,
+            std::string (_ref.actor_id ().value ()), std::nullopt, std::nullopt,
             std::make_exception_ptr (missing_reply)});
         return relay_request_call_t (
           detail::result_access_t::failure<zlink::message_t> (missing_reply));
@@ -729,7 +722,7 @@ task_t<void> session_actor_t::notify_disconnected ()
     std::uint64_t binding_token = 0;
     {
         const std::lock_guard lock (_state->mutex);
-        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ()));
+        const auto found = _state->actors_by_id.find (std::string (_ref.actor_id ().value ()));
         if (found != _state->actors_by_id.end ()) {
             if (_binding_token != 0
                 && found->second.binding_token != _binding_token) {
@@ -737,7 +730,7 @@ task_t<void> session_actor_t::notify_disconnected ()
                   framework_error_kind_t::not_configured,
                   "actor session binding is stale"));
             }
-            if (found->second.ref.generation () != _ref.generation ()) {
+            if (found->second.ref.object_generation () != _ref.object_generation ()) {
                 return task_t<void> (result_t<void>::failure (
                   framework_error_kind_t::invalid_operation,
                   "actor generation is stale"));
@@ -768,7 +761,7 @@ task_t<void> session_actor_t::notify_disconnected ()
     }
     if (binding_token != 0) {
         detail::actor_gateway_runtime_t (_state).unbind_session_stream (
-          std::string (_ref.actor_id ()), std::move (session_id),
+          std::string (_ref.actor_id ().value ()), std::move (session_id),
           binding_token);
     }
     return task_t<void> (std::move (notified));
@@ -838,7 +831,7 @@ result_t<session_actor_t> session_actor_manager_t::create_erased (
         }
         dispatcher = _state->create_dispatcher;
     }
-    actor_ref_t ref;
+    std::optional<actor_ref_t> ref;
     if (dispatcher) {
         auto created = dispatcher (actor_type, actor_id, request);
         if (!created) {
@@ -848,11 +841,11 @@ result_t<session_actor_t> session_actor_manager_t::create_erased (
         }
         ref = created.value ();
     } else {
-        ref = actor_ref_t (
+        ref = ::zlink::framework::detail::actor_ref_access_t::make (
           node_rid_t::from_string (std::string (detail::local_actor_node_placeholder)),
           actor_type, actor_id, 1);
     }
-    detail::actor_record_t record{ref, false, false};
+    detail::actor_record_t record{*ref, false, false};
     record.create_payload = std::move (request);
     {
         const std::lock_guard lock (_state->mutex);
@@ -862,7 +855,7 @@ result_t<session_actor_t> session_actor_manager_t::create_erased (
               framework_error_kind_t::already_exists, "actor already exists");
         }
     }
-    return result_t<session_actor_t>::success (session_actor_t (_state, ref));
+    return result_t<session_actor_t>::success (session_actor_t (_state, *ref));
 }
 
 std::optional<session_actor_t> session_actor_manager_t::find (std::string actor_id) const
@@ -923,7 +916,8 @@ result_t<session_actor_t> session_actor_manager_t::get_or_create_erased (
               found->second.bound && !found->second.binding_session_id.empty ()
               && !current_session_id.empty ()
               && found->second.binding_session_id != current_session_id;
-            if (found->second.ref.actor_type () != actor_type) {
+            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+                != actor_type) {
                 return result_t<session_actor_t>::failure (
                   framework_error_kind_t::type_mismatch,
                   "actor id is already bound to another type");
@@ -963,22 +957,23 @@ request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor
 {
     {
         const std::lock_guard lock (_state->mutex);
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
               framework_error_kind_t::not_found, "actor ref is empty"));
         }
-        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
         if (found == _state->actors_by_id.end ()) {
-            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
+            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ().value ()),
                                           detail::actor_record_t{actor_ref, true, false});
         } else {
-            if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+                != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
                 return request_call_t<session_actor_t> (
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::type_mismatch,
                     "actor id is already bound to another type"));
             }
-            if (found->second.ref.generation () != actor_ref.generation ()) {
+            if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
                 return request_call_t<session_actor_t> (
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::invalid_operation,
@@ -1005,22 +1000,23 @@ request_call_t<session_actor_t> session_actor_manager_t::bind_or_get (actor_ref_
 {
     {
         const std::lock_guard lock (_state->mutex);
-        if (actor_ref.empty ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
             return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
               framework_error_kind_t::not_found, "actor ref is empty"));
         }
-        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
         if (found == _state->actors_by_id.end ()) {
-            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
+            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ().value ()),
                                           detail::actor_record_t{actor_ref, true, false});
         } else {
-            if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+            if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+                != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
                 return request_call_t<session_actor_t> (
                   result_t<session_actor_t>::failure (
                     framework_error_kind_t::type_mismatch,
                     "actor id is already bound to another type"));
             }
-            if (found->second.ref.generation () <= actor_ref.generation ()) {
+            if (found->second.ref.object_generation () <= actor_ref.object_generation ()) {
                 found->second.ref = actor_ref;
             }
             actor_ref = found->second.ref;
@@ -1046,7 +1042,7 @@ std::uint64_t session_actor_manager_t::bind_current_session (
     if (!_binding_context) {
         return 0;
     }
-    const auto actor_id = std::string (actor_ref.actor_id ());
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
     const std::lock_guard binding_lock (_binding_context->mutex);
     if (!_binding_context->stream) {
         return 0;
@@ -1127,7 +1123,7 @@ void detail::session_actor_manager_access_t::disconnect (session_actor_manager_t
     }
     for (const auto &[actor_id, token] : bindings) {
         detail::actor_gateway_state_t::disconnect_dispatcher_t dispatcher;
-        actor_ref_t actor;
+        std::optional<actor_ref_t> actor;
         {
             const std::lock_guard lock (manager._state->mutex);
             const auto found = manager._state->actors_by_id.find (actor_id);
@@ -1142,9 +1138,10 @@ void detail::session_actor_manager_access_t::disconnect (session_actor_manager_t
                 dispatcher = manager._state->disconnect_dispatcher;
             }
         }
-        if (dispatcher && !actor.empty ()) {
+        if (dispatcher && actor
+            && !::zlink::framework::detail::actor_ref_access_t::empty (*actor)) {
             try {
-                (void) dispatcher (actor);
+                (void) dispatcher (*actor);
             }
             catch (...) {
             }
@@ -1190,13 +1187,14 @@ std::optional<actor_bound_session_route_t>
 actor_gateway_runtime_t::bound_session_route (const actor_ref_t &actor_ref) const
 {
     const std::lock_guard lock (_state->mutex);
-    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
     if (found == _state->actors_by_id.end () || !found->second.bound
-        || found->second.ref.actor_type () != actor_ref.actor_type ()
-        || found->second.ref.generation () != actor_ref.generation ()
+        || ::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+             != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)
+        || found->second.ref.object_generation () != actor_ref.object_generation ()
         || (found->second.bound_session_route
             && found->second.bound_session_route->object_generation
-                 != actor_ref.generation ())) {
+                 != actor_ref.object_generation ())) {
         return std::nullopt;
     }
     return found->second.bound_session_route;
@@ -1221,7 +1219,7 @@ actor_context_t actor_gateway_runtime_t::actor_context (
   std::uint64_t source_binding_generation) const
 {
     const std::lock_guard lock (_state->mutex);
-    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
     if (found == _state->actors_by_id.end ())
         return actor_context_t (_state, actor_ref, source_binding_generation);
     if (source_binding_generation != 0)
@@ -1240,24 +1238,25 @@ bool actor_gateway_runtime_t::same_context_source_fence (
 result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &actor_ref)
 {
     const std::lock_guard lock (_state->mutex);
-    if (actor_ref.empty ()) {
+    if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::not_found,
                                         "actor ref is empty");
     }
-    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
     if (found == _state->actors_by_id.end ()) {
         return result_t<void>::success ();
     }
-    if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+    if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+        != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                         "actor id is already bound to another type");
     }
-    if (found->second.ref.generation () != actor_ref.generation ()) {
+    if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
         return result_t<void>::failure (
           framework_error_kind_t::invalid_operation,
-          "actor generation is stale. actor=" + std::string (actor_ref.actor_id ())
-            + ", current=" + std::to_string (found->second.ref.generation ())
-            + ", received=" + std::to_string (actor_ref.generation ()));
+          "actor generation is stale. actor=" + std::string (actor_ref.actor_id ().value ())
+            + ", current=" + std::to_string (found->second.ref.object_generation ())
+            + ", received=" + std::to_string (actor_ref.object_generation ()));
     }
     found->second.ref = actor_ref;
     return result_t<void>::success ();
@@ -1266,22 +1265,23 @@ result_t<void> actor_gateway_runtime_t::update_actor_ref (const actor_ref_t &act
 result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_ref)
 {
     const std::lock_guard lock (_state->mutex);
-    if (actor_ref.empty ()) {
+    if (::zlink::framework::detail::actor_ref_access_t::empty (actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::not_found,
                                         "actor ref is empty");
     }
-    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+    const auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ().value ()));
     if (found == _state->actors_by_id.end ()) {
         return result_t<void>::success ();
     }
-    if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+    if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+        != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
         return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                         "actor id is already bound to another type");
     }
-    if (found->second.ref.generation () != actor_ref.generation ()) {
+    if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
         return result_t<void>::success ();
     }
-    _state->bound_session_sinks.erase (std::string (actor_ref.actor_id ()));
+    _state->bound_session_sinks.erase (std::string (actor_ref.actor_id ().value ()));
     _state->actors_by_id.erase (found);
     return result_t<void>::success ();
 }
@@ -1292,7 +1292,7 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
                                                    std::string session_id,
                                                    std::uint64_t binding_token)
 {
-    actor_ref_t actor_ref;
+    std::optional<actor_ref_t> actor_ref;
     actor_gateway_state_t::bound_session_registrar_t registrar;
     {
         const std::lock_guard lock (_state->mutex);
@@ -1323,8 +1323,9 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
         };
         registrar = _state->bound_session_registrar;
     }
-    if (registrar && !actor_ref.empty ()) {
-        auto registered = registrar (actor_ref);
+    if (registrar && actor_ref
+        && !::zlink::framework::detail::actor_ref_access_t::empty (*actor_ref)) {
+        auto registered = registrar (*actor_ref);
         if (!registered) {
             unbind_session_stream (actor_id, {}, binding_token);
             throw framework_exception_t (
@@ -1341,7 +1342,7 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
                                                   stream_codec_t codec,
                                                   bool replace_existing)
 {
-    const auto actor_id = std::string (actor_ref.actor_id ());
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
     bind_session_sink (
       std::move (actor_ref),
       [state = _state, actor_id, route_client = std::move (route_client),
@@ -1350,7 +1351,7 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
        std::string packet_name,
        stream_codec_t payload_codec,
        const zlink::message_t &payload) mutable {
-          actor_ref_t current_actor_ref;
+          std::optional<actor_ref_t> current_actor_ref;
           {
               const std::lock_guard lock (state->mutex);
               const auto found = state->actors_by_id.find (actor_id);
@@ -1363,7 +1364,7 @@ void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
           try {
               route_client
                 .send_to_node (route_channel_name, target_node_rid,
-                               make_actor_bound_session_route_request (current_actor_ref,
+                               make_actor_bound_session_route_request (*current_actor_ref,
                                                                        packet_name, payload_codec,
                                                                        payload))
                 .submit ().result ().value ();
@@ -1385,7 +1386,7 @@ void actor_gateway_runtime_t::bind_session_sink (
   stream_codec_t codec,
   bool replace_existing)
 {
-    const auto actor_id = std::string (actor_ref.actor_id ());
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
     const std::lock_guard lock (_state->mutex);
     auto found = _state->actors_by_id.find (actor_id);
     if (found == _state->actors_by_id.end ()) {
@@ -1417,7 +1418,7 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
                                                           std::uint64_t binding_token,
                                                           std::uint64_t session_sequence)
 {
-    const auto actor_id = std::string (actor_ref.actor_id ());
+    const auto actor_id = std::string (actor_ref.actor_id ().value ());
     const std::lock_guard lock (_state->mutex);
     auto found = _state->actors_by_id.find (actor_id);
     if (found == _state->actors_by_id.end ()) {
@@ -1426,7 +1427,7 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
                             actor_record_t{.ref = actor_ref, .bound = true, .disconnected = false})
                   .first;
     } else {
-        if (found->second.ref.generation () != actor_ref.generation ())
+        if (found->second.ref.object_generation () != actor_ref.object_generation ())
             return;
         found->second.ref = actor_ref;
         found->second.bound = true;
@@ -1438,7 +1439,7 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
         binding_token = found->second.binding_token;
     found->second.bound_session_route = actor_bound_session_route_t{
       std::move (node_rid), std::move (session_rid),
-      actor_ref.generation (), node_generation,
+      actor_ref.object_generation (), node_generation,
       authority_owner_generation, owner_lease_generation,
       binding_generation, binding_token, session_sequence};
 }
@@ -1475,23 +1476,24 @@ result_t<void> actor_gateway_runtime_t::dispatch_bound_session_send (
                                 const zlink::message_t &)> sink;
     {
         const std::lock_guard lock (_state->mutex);
-        const auto actor_id = std::string (actor_ref.actor_id ());
+        const auto actor_id = std::string (actor_ref.actor_id ().value ());
         const auto found = _state->actors_by_id.find (actor_id);
         if (found == _state->actors_by_id.end () || !found->second.bound) {
             return result_t<void>::failure (framework_error_kind_t::not_configured,
                                             "actor session is not bound");
         }
-        if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+        if (::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.ref)
+            != ::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)) {
             return result_t<void>::failure (framework_error_kind_t::type_mismatch,
                                             "actor id is already bound to another type");
         }
-        if (found->second.ref.generation () != actor_ref.generation ()) {
+        if (found->second.ref.object_generation () != actor_ref.object_generation ()) {
             return result_t<void>::failure (framework_error_kind_t::invalid_operation,
                                             "actor generation is stale");
         }
         if (found->second.bound_session_route) {
             auto &route = *found->second.bound_session_route;
-            if (route.object_generation != actor_ref.generation ()
+            if (route.object_generation != actor_ref.object_generation ()
                 || (route.binding_generation != 0
                     && found->second.source_binding_generation != 0
                     && route.binding_generation

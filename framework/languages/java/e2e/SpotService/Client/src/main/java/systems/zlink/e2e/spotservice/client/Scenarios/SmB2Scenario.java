@@ -34,7 +34,7 @@ public final class SmB2Scenario extends SpotServiceScenarioContext {
                 .timeout(Duration.ofSeconds(15))
                 .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
             ensure(actorId.equals(joined.actorId()), "SM-B2 remote join actor mismatch");
-            ensure("room-a".equals(joined.spotId()), "SM-B2 remote join spot mismatch");
+            ensure("room-a".equals(joined.spotRid()), "SM-B2 remote join spot mismatch");
             ensure("play-a".equals(joined.nodeRid()), "SM-B2 remote join did not cross to play-a");
 
             var userPush = connector.waitFor(Contracts.ActorPushNotify.class)
@@ -46,7 +46,7 @@ public final class SmB2Scenario extends SpotServiceScenarioContext {
                 .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             Contracts.ActorPushNotify push = userPush.toCompletableFuture().join().payload();
             ensure("user:remote-user-echo".equals(userReply.value()), "SM-B4 remote actor reply mismatch");
-            ensure("room-a".equals(userReply.spotId()), "SM-B4 remote actor reply spot mismatch");
+            ensure("room-a".equals(userReply.spotRid()), "SM-B4 remote actor reply spot mismatch");
             ensure("play-a".equals(userReply.nodeRid()), "SM-B4 remote actor reply node mismatch");
             ensure("push:remote-user-echo".equals(push.value()), "SM-D2 remote bound-session push mismatch");
             ensure(actorId.equals(push.actorId()), "SM-D2 remote bound-session push actor mismatch");

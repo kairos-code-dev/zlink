@@ -193,6 +193,107 @@ async function streamConnector() {
   await instance.close();
 }
 
+function messageFollowRoute(
+  targetNodeRid,
+  actorNodeRid,
+  targetNodeGeneration,
+  authorityOwnerGeneration
+) {
+  return {
+    kind: 'actor',
+    actor: {
+      nodeRid: actorNodeRid,
+      actorId: 'cross-language-message-follow',
+      generation: 1n
+    },
+    targetNodeRid,
+    targetNodeGeneration,
+    authorityOwnerGeneration,
+    ownerLeaseGeneration: 8n
+  };
+}
+
+async function messageFollow() {
+  const { ZLinkNodeRawMeshBackend } = require(path.join(
+    nodeRoot,
+    'packages/framework/dist/runtime/backend/node/node-raw-mesh-backend.js'
+  ));
+  const localRid = require_('node-rid');
+  const peerRid = require_('peer-rid');
+  const backend = new ZLinkNodeRawMeshBackend('message-follow', localRid);
+  let sent = false;
+  let received = false;
+  let finished = false;
+  backend.setBind(require_('bind-endpoint'));
+  backend.setMessageFollowHandler((record) => {
+    appendEvent(
+      `message-follow-received|source-node=${record.source.targetNodeRid}`
+      + `|target-node=${record.target.targetNodeRid}`
+      + `|operation-low=${record.originalOperation.low.toString()}`
+    );
+    received = true;
+  });
+  backend.start();
+  backend.connectPeer({
+    endpoint: require_('peer-endpoint'),
+    expectedRid: peerRid,
+    expectedLifecycleGeneration: 1n
+  });
+  writeReady();
+
+  const finish = (code, error) => {
+    if (finished) return;
+    finished = true;
+    if (error) console.error(`node message-follow failed: ${error}`);
+    backend.close();
+    process.exitCode = code;
+  };
+  const deadline = Date.now() + 60_000;
+  const timer = setInterval(() => {
+    try {
+      const peer = backend.peers().find(
+        (entry) => String(entry.routingId) === peerRid
+      );
+      const routeReady = peer !== undefined
+        && backend.isPeerRouteReady(peerRid, peer.lifecycleGeneration);
+      if (!sent && routeReady) {
+        const local = backend.status();
+        backend.sendMessageFollowNotification(peerRid, {
+          source: messageFollowRoute(
+            localRid,
+            localRid,
+            local.lifecycleGeneration,
+            7n
+          ),
+          target: messageFollowRoute(
+            peerRid,
+            localRid,
+            peer.lifecycleGeneration,
+            8n
+          ),
+          hopCount: 1,
+          queuedMessages: 1,
+          queuedBytes: 64,
+          originalOperation: { high: 3n, low: 202n },
+          originalReplyRouteId: 11n
+        });
+        appendEvent('message-follow-sent|operation-low=202');
+        sent = true;
+      }
+      if (sent && received) {
+        clearInterval(timer);
+        finish(0);
+      } else if (Date.now() >= deadline) {
+        clearInterval(timer);
+        finish(1, new Error(`exchange timed out (sent=${sent}, received=${received})`));
+      }
+    } catch (error) {
+      clearInterval(timer);
+      finish(1, error);
+    }
+  }, 2);
+}
+
 async function main() {
   switch (mode) {
     case 'channel-server': return channelServer();
@@ -200,6 +301,7 @@ async function main() {
     case 'channel-subscriber': return channelSubscriber();
     case 'channel-publisher': return channelPublisher();
     case 'browser-stream-connector': return streamConnector();
+    case 'message-follow': return messageFollow();
     default: throw new Error(`unsupported mode '${mode}'`);
   }
 }

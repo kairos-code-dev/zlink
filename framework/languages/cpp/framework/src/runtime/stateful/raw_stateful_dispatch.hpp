@@ -11,11 +11,14 @@
 #include <cstdint>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace zlink::framework::runtime::stateful
 {
@@ -82,6 +85,13 @@ class raw_stateful_dispatch_t
       std::uint64_t sequence,
       const protocol::reply_relay_t &relay,
       const std::optional<protocol::application_payload_t> &reply);
+    bool acknowledge_relocated_source (
+      const object_ref_t &owner,
+      const protocol::wire_operation_id_t &operation);
+    stateful_error_t discard_pending (const object_ref_t &owner);
+    stateful_error_t discard_pending (
+      const object_ref_t &owner,
+      std::uint64_t sequence);
 
   private:
     struct delivery_key_t
@@ -95,12 +105,15 @@ class raw_stateful_dispatch_t
 
     struct pending_delivery_t
     {
+        object_ref_t owner;
         protocol::application_payload_t payload;
         mesh::service_mailbox_record_t transport;
         bool request = false;
         std::function<bool (
           const std::optional<protocol::application_payload_t> &)>
           relocated_terminal;
+        std::shared_ptr<mesh::service_mailbox_claim_t> mailbox_claim;
+        bool relocated_completing = false;
     };
 
     static std::string mailbox_owner (const object_ref_t &owner);
@@ -116,9 +129,12 @@ class raw_stateful_dispatch_t
     mesh::raw_mesh_node_owner_t *_transport;
     accepted_record_authority_resolver_t _authority_resolver;
     std::mutex _mutex;
+    std::condition_variable _pending_condition;
     std::map<std::pair<object_kind_t, std::string>, std::uint64_t>
       _next_sequence;
     std::map<delivery_key_t, pending_delivery_t> _pending;
+    std::map<delivery_key_t, object_ref_t> _pending_reservations;
+    std::map<delivery_key_t, object_ref_t> _discarding_owners;
 };
 
 enum class raw_relocation_replay_result_t
@@ -151,6 +167,7 @@ struct raw_relocation_target_registration_t
     std::uint64_t relocation_source_node_generation = 0;
     protocol::relocation_object_t object;
     std::function<bool (const protocol::relocation_data_t &)> stage;
+    std::function<void (const protocol::relocation_data_t &)> rollback;
 };
 
 struct raw_relocation_source_registration_t
@@ -207,6 +224,14 @@ class raw_relocation_replay_coordinator_t
         std::chrono::hours (24));
 
     bool register_target (raw_relocation_target_registration_t registration);
+    bool seal_target (
+      const protocol::relocation_id_t &relocation,
+      std::uint64_t target_attempt_generation,
+      std::uint64_t participant_id);
+    bool drain_target (
+      const protocol::relocation_id_t &relocation,
+      std::uint64_t target_attempt_generation,
+      std::uint64_t participant_id);
     bool unregister_target (
       const protocol::relocation_id_t &relocation,
       std::uint64_t target_attempt_generation,
@@ -258,6 +283,18 @@ class raw_relocation_replay_coordinator_t
         std::uint64_t participant_id = 0;
         bool operator< (const key_t &other) const noexcept;
     };
+    struct target_activity_guard_t
+    {
+        raw_relocation_replay_coordinator_t *owner = nullptr;
+        key_t target;
+        bool active = false;
+
+        target_activity_guard_t (
+          raw_relocation_replay_coordinator_t *owner,
+          key_t target) noexcept;
+        ~target_activity_guard_t () noexcept;
+        void activate () noexcept { active = true; }
+    };
     struct target_state_t
     {
         raw_relocation_target_registration_t registration;
@@ -266,12 +303,26 @@ class raw_relocation_replay_coordinator_t
         std::map<std::pair<std::uint64_t, std::uint64_t>, std::uint64_t>
           accepted_operations;
         std::optional<std::uint64_t> staging_sequence;
+        std::size_t accepted_bytes = 0;
+        std::size_t staging_bytes = 0;
+        std::size_t active_stages = 0;
+        bool closing = false;
+        bool removing = false;
+    };
+    struct target_group_state_t
+    {
+        std::size_t participant_count = 0;
+        std::size_t record_count = 0;
+        std::size_t byte_count = 0;
+        std::map<std::pair<std::uint64_t, std::uint64_t>, key_t>
+          staging_operations;
     };
     struct source_state_t
     {
         raw_relocation_source_registration_t registration;
         std::uint64_t high_water = 0;
         bool armed = false;
+        bool acknowledging = false;
         clock_t::time_point next_retry{};
     };
     struct terminal_key_t
@@ -299,6 +350,7 @@ class raw_relocation_replay_coordinator_t
     static key_t key (const protocol::relocation_id_t &relocation,
                       std::uint64_t target_attempt_generation,
                       std::uint64_t participant_id);
+    void release_target_activity (const key_t &target) noexcept;
     static std::string mailbox_owner (const std::vector<std::uint8_t> &rid);
     raw_relocation_replay_result_t process_data (
       const mesh::service_mailbox_record_t &record,
@@ -318,7 +370,9 @@ class raw_relocation_replay_coordinator_t
 
     mesh::raw_mesh_node_owner_t *_transport;
     mutable std::mutex _gate;
+    std::condition_variable _gate_condition;
     std::map<key_t, target_state_t> _targets;
+    std::map<key_t, target_group_state_t> _target_groups;
     std::map<key_t, source_state_t> _sources;
     std::map<terminal_key_t, terminal_source_state_t> _terminal_sources;
     std::map<terminal_key_t, terminal_target_state_t> _terminal_targets;

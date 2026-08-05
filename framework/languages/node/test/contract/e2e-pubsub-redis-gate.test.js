@@ -10,7 +10,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(pubSubRoot, relativePath), 'utf8');
 }
 
-test('PubSub keeps classic fanout independent from RouteMesh location discovery', () => {
+test('PubSub keeps classic fanout descriptors independent from RouteMesh discovery', () => {
   const publisher = read('Server/Publisher/publisher-host-factory.ts');
   const subscriber = read('Server/Subscriber/subscriber-host-factory.ts');
   const runner = read('run_e2e.sh');
@@ -18,13 +18,23 @@ test('PubSub keeps classic fanout independent from RouteMesh location discovery'
 
   for (const source of [publisher, subscriber]) {
     assert.doesNotMatch(source, /useInMemoryLocationStores/);
-    assert.doesNotMatch(source, /addLocationStore\(createRedisLocationStore\(/);
-    assert.doesNotMatch(source, /locationMessagingOptions\(\)/);
+    assert.doesNotMatch(source, /addRouteMesh\(/);
+    assert.doesNotMatch(source, /addClientServerChannel\(/);
+    assert.match(source, /addFanoutChannel\(/);
   }
-  assert.match(subscriber, /\.connect\(options\.publisherEndpoint\)/);
+  assert.match(
+    publisher,
+    /if \(options\.redisEndpoint !== undefined && options\.redisKeyPrefix !== undefined\)[\s\S]*addLocationStore\(createRedisLocationStore\(/
+  );
+  assert.match(publisher, /options\.publisherIdentityMode/);
+  assert.match(
+    subscriber,
+    /if \(options\.redisEndpoint !== undefined && options\.redisKeyPrefix !== undefined\)[\s\S]*addLocationStore\(createRedisLocationStore\(/
+  );
+  assert.match(subscriber, /\.enableSubscriber\(options\.publisherEndpoint\)/);
 
-  assert.doesNotMatch(runner, /start_redis_container/);
-  assert.doesNotMatch(runner, /--redis-endpoint "\$REDIS_ENDPOINT"/);
-  assert.doesNotMatch(runner, /--redis-key-prefix "\$REDIS_KEY_PREFIX"/);
+  assert.match(runner, /SCENARIO\^\^.*PS-D1[\s\S]*start_redis_container/);
+  assert.match(runner, /SCENARIO\^\^.*PS-E2C[\s\S]*start_redis_container/);
+  assert.match(runner, /start_configured_server pub-a[\s\S]*--publisher-endpoint "\$PUB_ENDPOINT"/);
   assert.match(featureMap, /classic fanout/i);
 });

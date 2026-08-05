@@ -270,9 +270,11 @@ public final class ZLinkDeferredJoinCompletionAuthority {
         });
     }
 
-    public CompletionStage<Void> commitPrepared(
+    public CompletionStage<Long> commitPrepared(
         UUID aggregateId,
-        long aggregateGeneration) {
+        long aggregateGeneration,
+        ZLinkBackendActorRef actor) {
+        Objects.requireNonNull(actor, "actor");
         return authority.commitAggregate(
                 new ZLinkAggregateFence(
                     aggregateId,
@@ -281,11 +283,37 @@ public final class ZLinkDeferredJoinCompletionAuthority {
             .thenCompose(result ->
                 result == ZLinkAggregateCommitResult.COMMITTED
                     || result == ZLinkAggregateCommitResult.ALREADY_COMMITTED
-                    ? CompletableFuture.completedFuture(null)
+                    ? readCommittedOwnerGeneration(actor)
                     : CompletableFuture.failedFuture(
                         new IllegalStateException(
                             "direct Join relocation aggregate commit failed: "
                                 + result)));
+    }
+
+    private CompletionStage<Long> readCommittedOwnerGeneration(
+        ZLinkBackendActorRef actor) {
+        return authority.read(
+                ZLinkAuthorityKeyCodec.actor(actor.actorId()),
+                NEVER)
+            .thenApply(result -> {
+                if (!(result instanceof ZLinkAuthoritySnapshot snapshot)
+                    || snapshot.objectGeneration() != actor.generation()) {
+                    throw new IllegalStateException(
+                        "direct Join Actor authority is missing after commit");
+                }
+                var payload = new ZLinkActorAuthorityPayloadCodec()
+                    .decode(
+                        ZLinkCanonicalRelocationAuthorityStateCodec
+                            .applicationPayloadOrOriginal(snapshot.payload()))
+                    .orElseThrow(() -> new IllegalStateException(
+                        "direct Join Actor authority is invalid after commit"));
+                if (!payload.actorId().equals(actor.actorId())
+                    || !payload.nodeRid().equals(actor.nodeRid())) {
+                    throw new IllegalStateException(
+                        "direct Join Actor authority owner differs after commit");
+                }
+                return snapshot.authorityOwnerGeneration();
+            });
     }
 
     /**

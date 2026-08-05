@@ -700,6 +700,7 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
 {
     std::vector<std::uint8_t> heartbeat_frame;
     std::optional<error_t> timeout_error;
+    std::shared_ptr<stream_connection_t> timed_out_connection;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (generation != state->heartbeat_generation || state->close_requested.load ()
@@ -711,10 +712,8 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
           state->last_inbound_received != steady_clock_t::time_point{}
           && now - state->last_inbound_received >= state->options.heartbeat.timeout;
         if (heartbeat_timed_out) {
-            if (state->connection) {
-                boost::system::error_code ignored;
-                state->connection->close (ignored);
-            }
+            timed_out_connection = state->connection;
+            state->write_in_progress = false;
             ++state->heartbeat_generation;
             state->heartbeat_timer.reset ();
             timeout_error =
@@ -733,9 +732,10 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
             }
         }
     }
-    if (timeout_error) {
+    if (timed_out_connection) {
         publish_error (*state, *timeout_error);
         change_state (state, connection_state_t::disconnected, *timeout_error);
+        timed_out_connection->shutdown_and_close_async ();
         schedule_reconnect (state);
         return;
     }
@@ -797,7 +797,9 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
             return;
         }
 
-        while (!transport_error) {
+        // A stream read can report both bytes and EOF. Decode the bytes that
+        // arrived before applying the terminal transport error.
+        while (true) {
             auto frame = try_take_inbound_frame (*state);
             if (!frame) {
                 break;
@@ -875,18 +877,23 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
     if (transport_error) {
         stop_heartbeat_monitor (state);
         std::vector<std::uint64_t> request_ids;
+        std::shared_ptr<stream_connection_t> failed_connection;
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
             for (const auto &[request_seq, _] : state->pending_requests) {
                 request_ids.push_back (request_seq);
             }
-            boost::system::error_code ignored;
-            if (state->connection) {
-                state->connection->close (ignored);
-            }
+            failed_connection = state->connection;
+            state->write_in_progress = false;
         }
+        // The state transition must precede socket cancellation. The
+        // cancellation completion can otherwise overwrite the original
+        // protocol or transport error with Operation canceled.
         publish_error (*state, *transport_error);
         change_state (state, connection_state_t::disconnected, *transport_error);
+        if (failed_connection) {
+            failed_connection->shutdown_and_close_async ();
+        }
         for (auto request_seq : request_ids) {
             complete_pending_request (
               state, request_seq,
@@ -917,23 +924,32 @@ void schedule_request_pump (std::shared_ptr<connector_state_t> state)
         connection = state->connection;
     }
     trace_connector_write (*state, "read-start");
-    connection->async_read_some (8192, [state] (boost::system::error_code error,
-                                                std::vector<std::uint8_t> bytes) mutable {
+    connection->async_read_some (
+      8192,
+      [state, connection] (boost::system::error_code error,
+                           std::vector<std::uint8_t> bytes) mutable {
         std::optional<error_t> transport_error;
         trace_connector_write (*state, "read-completion",
                                error ? "result=failure error=" + error.message ()
                                      : "result=success bytes=" + std::to_string (bytes.size ()));
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
+            // A close can leave the previous connection's completion queued
+            // while a reconnect installs a new connection. Do not let that
+            // stale completion consume the new connection's read state.
+            if (state->connection != connection) {
+                return;
+            }
             state->read_in_progress = false;
+            if (!bytes.empty ()) {
+                state->inbound_buffer.insert (state->inbound_buffer.end (), bytes.begin (),
+                                              bytes.end ());
+            }
             if (error) {
                 transport_error = error_t{
                   state->close_requested.load () ? error_code_t::closed
                                                  : error_code_t::disconnected,
                   state->close_requested.load () ? "stream connector is closed" : error.message ()};
-            } else if (!bytes.empty ()) {
-                state->inbound_buffer.insert (state->inbound_buffer.end (), bytes.begin (),
-                                              bytes.end ());
             }
             state->state_changed.notify_all ();
         }
@@ -1034,11 +1050,24 @@ void start_next_async_write (std::shared_ptr<connector_state_t> state)
         trace_connector_write (*state, "write-start", "bytes=" + std::to_string (frame_size));
         connection->async_write (
           std::move (write.frame),
-          [state, callback = std::move (write.callback),
+          [state, connection, callback = std::move (write.callback),
            frame_size] (boost::system::error_code error) mutable {
               boost::asio::post (
                 state->write_strand,
-                [state, callback = std::move (callback), frame_size, error] () mutable {
+                [state, connection, callback = std::move (callback), frame_size, error] () mutable {
+                    bool stale_connection = false;
+                    {
+                        std::lock_guard<std::mutex> lock (state->transport_mutex);
+                        stale_connection = state->connection != connection;
+                    }
+                    if (stale_connection) {
+                        if (callback) {
+                            callback (result_t<void>::failure (
+                              error_code_t::disconnected,
+                              "stream connector connection was replaced"));
+                        }
+                        return;
+                    }
                     trace_connector_write (
                       *state, "write-completion",
                       error ? "result=failure bytes=" + std::to_string (frame_size)
@@ -1468,25 +1497,61 @@ void submit_request_async (std::shared_ptr<void> state_handle,
       });
 }
 
+result_t<std::vector<packet_t>>
+drain_sync_available_pushes (const std::shared_ptr<connector_state_t> &state,
+                             std::shared_ptr<stream_connection_t> &connection)
+{
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (state->close_requested.load () || !is_transport_connected (*state)
+            || state->read_in_progress) {
+            return result_t<std::vector<packet_t>>::success ({});
+        }
+        state->read_in_progress = true;
+        connection = state->connection;
+    }
+
+    // `available()` and the following reads are serialized by the transport's
+    // own strand. They must run without transport_mutex: a transport
+    // completion can otherwise wait for this state mutex while this caller is
+    // waiting for the transport strand.
+    auto result = drain_available_pushes (*state, connection);
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (state->connection == connection) {
+            state->read_in_progress = false;
+        }
+        state->state_changed.notify_all ();
+    }
+    return result;
+}
+
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
 {
     std::deque<std::function<void ()>> deliveries;
     std::deque<std::function<void ()>> packet_deliveries;
+    std::optional<error_t> inbound_error;
+    std::shared_ptr<stream_connection_t> inbound_error_connection;
+    std::shared_ptr<stream_connection_t> sync_connection;
+    auto drained = drain_sync_available_pushes (state, sync_connection);
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
-        if (is_transport_connected (*state) && !state->read_in_progress) {
-            for (auto &packet : drain_available_pushes (*state)) {
+        if (!drained) {
+            inbound_error = error_t{
+              drained.error_code (),
+              drained.error () ? drained.error ()->message : "stream connector frame read failed"};
+            inbound_error_connection = sync_connection;
+        } else {
+            for (auto &packet : drained.value ()) {
                 if (!is_control_packet (packet)) {
                     (void) enqueue_received_message (*state, std::move (packet));
                 }
             }
-            if (auto inbound_error = take_inbound_error (*state)) {
-                publish_error (*state, *inbound_error);
-                change_state (state, connection_state_t::disconnected, *inbound_error);
-                return result_t<void>::failure (inbound_error->code, inbound_error->message);
-            }
-            if (auto pong = send_due_pong (*state); !pong) {
-                return pong;
+        }
+        if (!inbound_error) {
+            inbound_error = take_inbound_error (*state);
+            if (inbound_error) {
+                inbound_error_connection = state->connection;
             }
         }
         std::deque<packet_t> packets;
@@ -1507,6 +1572,15 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
             }
         }
     }
+    if (inbound_error) {
+        publish_error (*state, *inbound_error);
+        change_state (state, connection_state_t::disconnected, *inbound_error);
+        if (inbound_error_connection) {
+            inbound_error_connection->shutdown_and_close_async ();
+        }
+        return result_t<void>::failure (inbound_error->code, inbound_error->message);
+    }
+    queue_due_pong (state);
     {
         std::lock_guard<std::mutex> lock (state->delivery_mutex);
         deliveries.swap (state->delivery_queue);
@@ -1530,44 +1604,67 @@ result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,
 {
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
+        std::optional<error_t> inbound_error;
+        std::shared_ptr<stream_connection_t> inbound_error_connection;
+        std::shared_ptr<stream_connection_t> sync_connection;
+        auto drained = drain_sync_available_pushes (state, sync_connection);
         {
             std::unique_lock<std::mutex> lock (state->transport_mutex);
-            if (is_transport_connected (*state) && !state->read_in_progress) {
-                for (auto &packet : drain_available_pushes (*state)) {
+            if (!drained) {
+                inbound_error = error_t{
+                  drained.error_code (),
+                  drained.error () ? drained.error ()->message
+                                    : "stream connector frame read failed"};
+                inbound_error_connection = sync_connection;
+            } else {
+                for (auto &packet : drained.value ()) {
                     if (!is_control_packet (packet)) {
                         (void) enqueue_received_message (*state, std::move (packet));
                     }
                 }
-                if (auto inbound_error = take_inbound_error (*state)) {
-                    publish_error (*state, *inbound_error);
-                    change_state (state, connection_state_t::disconnected, *inbound_error);
-                    return result_t<packet_t>::failure (inbound_error->code,
-                                                        inbound_error->message);
+            }
+            if (!inbound_error) {
+                inbound_error = take_inbound_error (*state);
+                if (inbound_error) {
+                    inbound_error_connection = state->connection;
                 }
             }
-            if (!state->dispatch_queue.empty ()) {
-                auto packet = std::move (state->dispatch_queue.front ());
-                state->dispatch_queue.pop_front ();
-                return result_t<packet_t>::success (std::move (packet));
-            }
-            if (!is_transport_connected (*state)) {
-                if (state->close_requested.load ()) {
-                    return result_t<packet_t>::failure (error_code_t::closed,
-                                                        "stream connector is closed");
+            if (!inbound_error) {
+                if (!state->dispatch_queue.empty ()) {
+                    auto packet = std::move (state->dispatch_queue.front ());
+                    state->dispatch_queue.pop_front ();
+                    return result_t<packet_t>::success (std::move (packet));
                 }
-                if (state->last_disconnect_error) {
-                    return result_t<packet_t>::failure (state->last_disconnect_error->code,
-                                                        state->last_disconnect_error->message);
+                if (!is_transport_connected (*state)) {
+                    if (state->close_requested.load ()) {
+                        return result_t<packet_t>::failure (error_code_t::closed,
+                                                            "stream connector is closed");
+                    }
+                    if (state->last_disconnect_error) {
+                        return result_t<packet_t>::failure (state->last_disconnect_error->code,
+                                                            state->last_disconnect_error->message);
+                    }
+                    return result_t<packet_t>::failure (error_code_t::disconnected,
+                                                        "stream connector is not connected");
                 }
-                return result_t<packet_t>::failure (error_code_t::disconnected,
-                                                    "stream connector is not connected");
+                const auto next_check =
+                  std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
+                state->state_changed.wait_until (lock, next_check, [&] {
+                    return !state->dispatch_queue.empty () || !is_transport_connected (*state);
+                });
             }
-            const auto next_check =
-              std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
-            state->state_changed.wait_until (lock, next_check, [&] {
-                return !state->dispatch_queue.empty () || !is_transport_connected (*state);
-            });
         }
+
+        if (inbound_error) {
+            publish_error (*state, *inbound_error);
+            change_state (state, connection_state_t::disconnected, *inbound_error);
+            if (inbound_error_connection) {
+                inbound_error_connection->shutdown_and_close_async ();
+            }
+            return result_t<packet_t>::failure (inbound_error->code, inbound_error->message);
+        }
+
+        queue_due_pong (state);
 
         if (steady_clock_t::now () >= deadline) {
             return result_t<packet_t>::failure (error_code_t::request_timeout,
@@ -1583,48 +1680,71 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
 {
     const auto deadline = steady_clock_t::now () + timeout;
     for (;;) {
+        std::optional<error_t> inbound_error;
+        std::shared_ptr<stream_connection_t> inbound_error_connection;
+        std::shared_ptr<stream_connection_t> sync_connection;
+        auto drained = drain_sync_available_pushes (state, sync_connection);
         {
             std::unique_lock<std::mutex> lock (state->transport_mutex);
-            if (is_transport_connected (*state) && !state->read_in_progress) {
-                for (auto &packet : drain_available_pushes (*state)) {
+            if (!drained) {
+                inbound_error = error_t{
+                  drained.error_code (),
+                  drained.error () ? drained.error ()->message
+                                    : "stream connector frame read failed"};
+                inbound_error_connection = sync_connection;
+            } else {
+                for (auto &packet : drained.value ()) {
                     if (!is_control_packet (packet)) {
                         (void) enqueue_received_message (*state, std::move (packet));
                     }
                 }
-                if (auto inbound_error = take_inbound_error (*state)) {
-                    publish_error (*state, *inbound_error);
-                    change_state (state, connection_state_t::disconnected, *inbound_error);
-                    return result_t<packet_t>::failure (inbound_error->code,
-                                                        inbound_error->message);
+            }
+            if (!inbound_error) {
+                inbound_error = take_inbound_error (*state);
+                if (inbound_error) {
+                    inbound_error_connection = state->connection;
                 }
             }
-            for (auto iter = state->dispatch_queue.begin (); iter != state->dispatch_queue.end ();
-                 ++iter) {
-                if ((packet_name.empty () || iter->name == packet_name)
-                    && (!predicate || predicate (*iter))) {
-                    auto packet = std::move (*iter);
-                    state->dispatch_queue.erase (iter);
-                    return result_t<packet_t>::success (std::move (packet));
+            if (!inbound_error) {
+                for (auto iter = state->dispatch_queue.begin (); iter != state->dispatch_queue.end ();
+                     ++iter) {
+                    if ((packet_name.empty () || iter->name == packet_name)
+                        && (!predicate || predicate (*iter))) {
+                        auto packet = std::move (*iter);
+                        state->dispatch_queue.erase (iter);
+                        return result_t<packet_t>::success (std::move (packet));
+                    }
                 }
+                if (!is_transport_connected (*state)) {
+                    if (state->close_requested.load ()) {
+                        return result_t<packet_t>::failure (error_code_t::closed,
+                                                            "stream connector is closed");
+                    }
+                    if (state->last_disconnect_error) {
+                        return result_t<packet_t>::failure (state->last_disconnect_error->code,
+                                                            state->last_disconnect_error->message);
+                    }
+                    return result_t<packet_t>::failure (error_code_t::disconnected,
+                                                        "stream connector is not connected");
+                }
+                const auto next_check =
+                  std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
+                state->state_changed.wait_until (lock, next_check, [&] {
+                    return !state->dispatch_queue.empty () || !is_transport_connected (*state);
+                });
             }
-            if (!is_transport_connected (*state)) {
-                if (state->close_requested.load ()) {
-                    return result_t<packet_t>::failure (error_code_t::closed,
-                                                        "stream connector is closed");
-                }
-                if (state->last_disconnect_error) {
-                    return result_t<packet_t>::failure (state->last_disconnect_error->code,
-                                                        state->last_disconnect_error->message);
-                }
-                return result_t<packet_t>::failure (error_code_t::disconnected,
-                                                    "stream connector is not connected");
-            }
-            const auto next_check =
-              std::min (deadline, steady_clock_t::now () + std::chrono::milliseconds (1));
-            state->state_changed.wait_until (lock, next_check, [&] {
-                return !state->dispatch_queue.empty () || !is_transport_connected (*state);
-            });
         }
+
+        if (inbound_error) {
+            publish_error (*state, *inbound_error);
+            change_state (state, connection_state_t::disconnected, *inbound_error);
+            if (inbound_error_connection) {
+                inbound_error_connection->shutdown_and_close_async ();
+            }
+            return result_t<packet_t>::failure (inbound_error->code, inbound_error->message);
+        }
+
+        queue_due_pong (state);
 
         if (steady_clock_t::now () >= deadline) {
             return result_t<packet_t>::failure (error_code_t::request_timeout,
@@ -1663,20 +1783,17 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
     auto state = std::static_pointer_cast<connector_state_t> (state_handle);
     std::optional<packet_t> matched_packet;
     std::optional<error_t> inbound_error;
+    std::shared_ptr<stream_connection_t> inbound_error_connection;
     std::uint64_t wait_id = 0;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
-        if (is_transport_connected (*state) && !state->read_in_progress) {
-            for (auto &packet : drain_available_pushes (*state)) {
-                if (!is_control_packet (packet)) {
-                    (void) enqueue_received_message (*state, std::move (packet));
-                }
-            }
-            inbound_error = take_inbound_error (*state);
-            if (inbound_error) {
-                publish_error (*state, *inbound_error);
-                change_state (state, connection_state_t::disconnected, *inbound_error);
-            }
+        /* The asynchronous read pump owns transport reads after connect. Do
+         * not synchronously query the socket while holding transport_mutex:
+         * the query is serialized on the transport strand and may need an I/O
+         * worker that is waiting for this mutex. */
+        inbound_error = take_inbound_error (*state);
+        if (inbound_error) {
+            inbound_error_connection = state->connection;
         }
         for (auto iter = state->dispatch_queue.begin (); iter != state->dispatch_queue.end ();
              ++iter) {
@@ -1696,6 +1813,14 @@ void submit_wait_async (std::shared_ptr<void> state_handle,
                   wait_id, pending_wait_t{wait_id, std::move (packet_name), std::move (predicate),
                                           std::move (callback)});
             }
+        }
+    }
+
+    if (inbound_error) {
+        publish_error (*state, *inbound_error);
+        change_state (state, connection_state_t::disconnected, *inbound_error);
+        if (inbound_error_connection) {
+            inbound_error_connection->shutdown_and_close_async ();
         }
     }
 

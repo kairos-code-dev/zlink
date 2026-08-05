@@ -16,7 +16,7 @@ public final class SmC3Scenario extends SpotServiceScenarioContext {
         ensure("play-a".equals(requestReply.nodeRid()), "SM-C3 source spot owner mismatch");
         sendOutbound("room-b", "c3-send");
         Contracts.OutboundRes reply = eventually(() -> requestOutbound("room-b", "c3-request"));
-        ensure("room-b".equals(reply.spotId()), "SM-C3 wrong target spot");
+        ensure("room-b".equals(reply.spotRid()), "SM-C3 wrong target spot");
         ensure("play-b".equals(reply.nodeRid()), "SM-C3 wrong target node");
         System.out.println("scenario SM-C3 passed");
 

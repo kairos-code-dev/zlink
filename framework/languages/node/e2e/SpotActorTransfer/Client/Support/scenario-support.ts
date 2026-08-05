@@ -262,6 +262,16 @@ export async function createActor(
   } satisfies ActorCreateReq);
 }
 
+export async function destroyActor(node: HttpClient, actorId: string): Promise<boolean> {
+  const result = await post<{ readonly actorId: string; readonly destroyed: boolean }>(
+    node,
+    `/actors/${actorId}/destroy`,
+    {}
+  );
+  require(result.actorId === actorId, `Destroy response actor mismatch for '${actorId}'.`);
+  return result.destroyed;
+}
+
 export async function joinActor(node: HttpClient, actorId: string, request: JoinTargetReq): Promise<JoinTargetRes> {
   return await post(node, `/actors/${actorId}/join`, {
     ...request,

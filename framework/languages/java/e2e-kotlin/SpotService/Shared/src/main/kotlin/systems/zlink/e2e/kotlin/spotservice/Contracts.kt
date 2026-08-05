@@ -12,6 +12,7 @@ class Contracts private constructor() {
         const val MULTI_SPOT_NODE_B: String = "multi-node-b"
         const val MULTI_ROUTE_CHANNEL_A: String = "multi-route-a"
         const val MULTI_ROUTE_CHANNEL_B: String = "multi-route-b"
+        const val CHANNEL_HANDLER_GROUP: String = "spot-service-channel-handlers"
     }
 
     @JvmRecord
@@ -135,6 +136,12 @@ class Contracts private constructor() {
         val spotRid: String,
         val nodeRid: String
     )
+
+    @JvmRecord
+    data class PlacementWeightReq(val weight: Int)
+
+    @JvmRecord
+    data class PlacementWeightRes(val weight: Int)
 
     @JvmRecord
     data class SpotSlowRouteReq(

@@ -476,7 +476,9 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
     this.channel.subscriber ??= { manualConnections: [] };
     if (endpoint !== undefined) {
       this.channel.subscriber.manualConnections ??= [];
-      this.channel.subscriber.manualConnections.push(endpoint);
+      if (!this.channel.subscriber.manualConnections.includes(endpoint)) {
+        this.channel.subscriber.manualConnections.push(endpoint);
+      }
     }
     return this;
   }

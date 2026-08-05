@@ -9,7 +9,7 @@ const SampleNames = {
 } as const;
 
 const SampleTimings = {
-  requestTimeout: 2000,
+  requestTimeout: 5000,
   idleTimeout: 3000,
   closeGraceTimeout: 1000,
   clientTimeout: 10000

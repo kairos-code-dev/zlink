@@ -5,6 +5,7 @@ umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
+RUN_DIR="$(cd "${RUN_DIR}" && pwd)"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"

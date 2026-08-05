@@ -1,6 +1,5 @@
 package systems.zlink.samples.deliverydispatch.server.courierspotnode.spots.handlers;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler;
 import systems.zlink.framework.ZLinkMessageContext;
@@ -23,10 +22,9 @@ public final class OfferDeliveryActorHandler
         CourierActor actor,
         ZLinkMessageContext context,
         Messages.OfferDeliveryMsg message) {
-        actor.offer(message);
-        System.out.println("deliverydispatch courier-actor: offer pushed delivery="
-            + message.deliveryId() + " courier=" + actor.actorId()
-            + " attempt=" + message.attempt());
-        return CompletableFuture.completedFuture(null);
+        return actor.offer(message).thenRun(() ->
+            System.out.println("deliverydispatch courier-actor: offer pushed delivery="
+                + message.deliveryId() + " courier=" + actor.actorId()
+                + " attempt=" + message.attempt()));
     }
 }

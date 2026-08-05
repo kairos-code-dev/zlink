@@ -6,14 +6,14 @@ import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioEntrySpot
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 
 class EntryActorDestroyHandler : ZLinkSuspendingEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, Contracts.DestroyActorReq, Contracts.DestroyActorRes> {
     @ZLinkSpotActorRequest(packetName = "DestroyActorReq")
     override suspend fun handle(
         spot: ScenarioEntrySpot,
         actor: ScenarioActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.DestroyActorReq,
     ): Contracts.DestroyActorRes {
         if (request.actorId != actor.actorId()) {

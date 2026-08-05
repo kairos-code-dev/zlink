@@ -111,7 +111,7 @@ export class ServiceTopologyRegistry {
       validateDescriptor(descriptor);
       requireText(connectionId, 'connectionId');
       requireText(connectionDiscriminator, 'connectionDiscriminator');
-    } catch {
+    } catch (error) {
       return 'invalidDescriptor';
     }
     if (descriptor.meshName !== this.local.meshName) return 'meshMismatch';

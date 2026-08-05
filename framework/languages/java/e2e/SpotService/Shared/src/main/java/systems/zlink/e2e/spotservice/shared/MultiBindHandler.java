@@ -1,6 +1,8 @@
 package systems.zlink.e2e.spotservice.shared;
 
 import systems.zlink.framework.actors.ZLinkActorManager;
+import systems.zlink.framework.actors.ActorRef;
+import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.streams.ZLinkSessionContext;
 import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -35,8 +37,21 @@ public final class MultiBindHandler
 
     private java.util.concurrent.CompletionStage<Void> bind(
         ZLinkSessionContext context, String actorId, Contracts.MultiBindReq request) {
-        return actors.getOrCreate(actorId, "scenario", new Contracts.ActorAuthReq(actorId, request.profile()))
+        return actors.getOrCreate(actorId, "scenario")
+            .request(new Contracts.ActorAuthReq(actorId, request.profile()))
+            .submit()
+            .thenApply(MultiBindHandler::createdActor)
             .thenCompose(context.actors()::bind)
             .thenAccept(ignored -> evidence.record("ActorSessionBound", "session", actorId));
+    }
+
+    private static ActorRef createdActor(ZLinkActorCreateResult result) {
+        if (result instanceof ZLinkActorCreateResult.Existing existing) {
+            return existing.actor();
+        }
+        if (result instanceof ZLinkActorCreateResult.Created created) {
+            return created.actor();
+        }
+        throw new IllegalStateException("actor creation was rejected");
     }
 }

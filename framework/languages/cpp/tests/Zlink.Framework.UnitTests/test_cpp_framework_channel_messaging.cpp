@@ -3286,7 +3286,7 @@ int main ()
     auto stream_runtime = zlink::framework::detail::stream_runtime_t::from (stream_builder);
     auto stream = stream_runtime.open_session ("routed-bound-session");
     zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
-    auto actor_ref = zlink::framework::actor_ref_t (
+    auto actor_ref = zlink::framework::detail::actor_ref_access_t::make (
       zlink::framework::node_rid_t::from_string ("play-node"), "PlayerActor", "observer", 3);
     auto bound_actor = actor_gateway.manager ().bind (actor_ref).submit ().result ();
     if (!bound_actor) {

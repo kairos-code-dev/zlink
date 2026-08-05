@@ -23,7 +23,7 @@ function createClient(endpoint: string, label: string): ZlinkStreamConnector {
     endpoint,
     codec: connector.zlinkStreamJsonCodec,
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
-    requestTimeoutMs: 3000,
+    requestTimeoutMs: 5000,
     waitTimeoutMs: 10000,
     heartbeat: { enabled: false }
   });

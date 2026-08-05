@@ -8,14 +8,23 @@ import { getStatus, postStatus } from '../../../http-client';
 export class ServerProcessLauncher {
   constructor(private readonly options: ClientOptions) {}
 
-  startSubscriber(name: string, httpUrl: string, evidenceFile: string, publisherEndpoint?: string): DynamicProcess {
+  startSubscriber(
+    name: string,
+    httpUrl: string,
+    evidenceFile: string,
+    publisherEndpoint?: string,
+    subscriberMode?: 'mixed'
+  ): DynamicProcess {
     const config = this.writeConfig(name, {
       rid: name,
       httpUrl,
       evidenceFile: path.join(this.options.logDir, evidenceFile),
       logDir: this.options.logDir,
       handlerDelayMs: 0,
-      publisherEndpoint
+      publisherEndpoint,
+      subscriberMode,
+      redisEndpoint: this.options.redisEndpoint,
+      redisKeyPrefix: this.options.redisKeyPrefix
     });
     return this.start(
       name,
@@ -25,19 +34,77 @@ export class ServerProcessLauncher {
     );
   }
 
+  startSubscriberWithRedis(
+    name: string,
+    httpUrl: string,
+    evidenceFile: string,
+    redisEndpoint: string,
+    redisKeyPrefix: string
+  ): DynamicProcess {
+    const config = this.writeConfig(name, {
+      rid: name,
+      httpUrl,
+      evidenceFile: path.join(this.options.logDir, evidenceFile),
+      logDir: this.options.logDir,
+      handlerDelayMs: 0,
+      redisEndpoint,
+      redisKeyPrefix
+    });
+    return this.start(name, this.options.subscriberMain, ['--config', config], httpUrl);
+  }
+
   startPublisher(): DynamicProcess {
-    const config = this.writeConfig('pub-restart', {
-      rid: 'pub-a',
-      httpUrl: this.options.publisherUrl,
-      publisherEndpoint: this.options.publisherEndpoint,
-      evidenceFile: path.join(this.options.logDir, 'pub-restart.evidence.log'),
+    return this.startPublisherNamed(
+      'pub-restart',
+      this.options.publisherUrl,
+      this.options.publisherEndpoint,
+      'pub-a'
+    );
+  }
+
+  startPublisherNamed(
+    name: string,
+    httpUrl: string,
+    publisherEndpoint: string,
+    rid = name,
+    publisherAdvertiseHost?: string
+  ): DynamicProcess {
+    const config = this.writeConfig(name, {
+      rid,
+      httpUrl,
+      publisherEndpoint,
+      publisherAdvertiseHost,
+      redisEndpoint: this.options.redisEndpoint,
+      redisKeyPrefix: this.options.redisKeyPrefix,
+      evidenceFile: path.join(this.options.logDir, `${name}.evidence.log`),
+      logDir: this.options.logDir
+    });
+    return this.start(name, this.options.publisherMain, ['--config', config], httpUrl);
+  }
+
+  startPublisherIdentityValidation(
+    name: string,
+    httpUrl: string,
+    publisherEndpoint: string,
+    publisherIdentityMode: 'missing' | 'both',
+    redisEndpoint: string,
+    redisKeyPrefix: string
+  ): DynamicProcess {
+    const config = this.writeConfig(name, {
+      rid: name,
+      httpUrl,
+      publisherEndpoint,
+      publisherIdentityMode,
+      redisEndpoint,
+      redisKeyPrefix,
+      evidenceFile: path.join(this.options.logDir, `${name}.evidence.log`),
       logDir: this.options.logDir
     });
     return this.start(
-      'pub-restart',
+      name,
       this.options.publisherMain,
       ['--config', config],
-      this.options.publisherUrl
+      httpUrl
     );
   }
 
@@ -69,6 +136,10 @@ export class DynamicProcess {
     return this.child.exitCode !== null || this.child.signalCode !== null;
   }
 
+  get exitCode(): number | null {
+    return this.child.exitCode;
+  }
+
   async waitReady(): Promise<void> {
     for (let i = 0; i < 120; i += 1) {
       if (this.hasExited) {
@@ -84,6 +155,19 @@ export class DynamicProcess {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`Process did not become ready: ${this.httpUrl}`);
+  }
+
+  async waitForExit(timeoutMs = 5000): Promise<number | null> {
+    if (this.hasExited) return this.exitCode;
+    return new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`Process did not exit within ${timeoutMs}ms: ${this.httpUrl}`));
+      }, timeoutMs);
+      this.child.once('exit', (code) => {
+        clearTimeout(timer);
+        resolve(code);
+      });
+    });
   }
 
   async stop(): Promise<void> {

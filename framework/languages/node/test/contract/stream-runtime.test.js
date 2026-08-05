@@ -7,7 +7,13 @@ const framework = require('../../packages/framework/dist/internal');
 const {
   ZLinkSubmitStatus
 } = require('../../packages/framework/dist/runtime/messaging/submission-result');
+const {
+  RequestResult
+} = require('../../packages/framework/dist/runtime/backend/runtime-values');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
+const {
+  ZLinkNativeFallbackBoundSession
+} = require('../../packages/framework/dist/runtime/streams/native-fallback-bound-session');
 const {
   ZLinkRemoteBoundSessionRelay
 } = require('../../packages/framework/dist/runtime/host/remote-bound-session-relay');
@@ -112,6 +118,76 @@ test('managed stream binds Session Actors through the Framework service without 
   assert.equal(typeof rawStreamSocket.sendBoundActor, 'undefined');
 });
 
+test('managed stream treats an actor-destroy stale unbind as idempotent cleanup', async () => {
+  const operations = new Map();
+  let nextOperation = 1n;
+  const operation = (kind) => {
+    const id = { high: 0n, low: nextOperation++ };
+    operations.set(id.low, kind);
+    return id;
+  };
+  const service = {
+    start() {},
+    shutdown() { return 0; },
+    close() {},
+    status() {
+      return {
+        state: 2,
+        lifecycleGeneration: 1n,
+        sessionCount: 1n,
+        bindingCount: 0n,
+        pendingMessageCount: 0n,
+        pendingByteCount: 0n,
+        lastError: 0
+      };
+    },
+    lookupActor() { return operation('lookup'); },
+    bindActor() { return operation('bind'); },
+    unbindActor() { return operation('unbind'); },
+    bindings() { return [{ actor: { actorId: 'actor-destroy', generation: 1n }, bindingGeneration: 1n }]; },
+    sendToActor() { return 0; }
+  };
+  const completions = {
+    async wait(id) {
+      const kind = operations.get(id.low);
+      return {
+        terminalResult: kind === 'unbind' ? RequestResult.NotFound : RequestResult.Ok,
+        failureErrno: kind === 'unbind' ? 21 : 0,
+        operationKind: 0,
+        kindData: kind === 'lookup'
+          ? {
+              kind: 'actorLookupCompletion',
+              location: { actor: { actorId: 'actor-destroy', generation: 1n, nodeRid: 'node-a' } }
+            }
+          : null,
+        parts: []
+      };
+    }
+  };
+  const stream = new framework.ZLinkManagedStream(
+    {
+      sendTimeoutMs: 1000,
+      sendHighWaterMark: 16,
+      onSendReady() {},
+      send() { return true; },
+      disconnectPeer() {},
+      recv() { return undefined; }
+    },
+    'session-rid',
+    undefined,
+    service,
+    completions
+  );
+
+  await stream.bindActor({
+    actorId: 'actor-destroy',
+    objectGeneration: 1n,
+    meshName: 'play',
+    nodeRid: 'node-a'
+  }, 1000);
+  await assert.doesNotReject(() => stream.unbindActor('actor-destroy', 1000));
+});
+
 test('ZLinkStreamBindingRuntime creates dotnet-shaped session context and closes through stream', async () => {
   let closed = 0;
   const runtime = new framework.ZLinkStreamBindingRuntime();
@@ -134,6 +210,54 @@ test('ZLinkStreamBindingRuntime creates dotnet-shaped session context and closes
   assert.equal(context.remoteAddr, 'tcp://remote');
   await context.close();
   assert.equal(closed, 1);
+});
+
+test('built stream runtime rejects an unbound fallback disconnect without native or transport close', async () => {
+  let nativeDisconnects = 0;
+  let transportDisconnects = 0;
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    transport: {
+      async send() {
+        throw new Error('unbound fallback must not send through the transport');
+      },
+      async disconnect() {
+        transportDisconnects += 1;
+      }
+    },
+    nativeActorNodeProvider: () => ({
+      async closeActorBoundSession() {
+        nativeDisconnects += 1;
+      }
+    })
+  });
+  const session = new ZLinkNativeFallbackBoundSession({
+    runtime,
+    routedTransport: {},
+    actorRefProvider: () => ({
+      actorId: 'actor-unbound-runtime',
+      objectGeneration: 1n,
+      meshName: 'mesh',
+      nodeRid: 'node-a',
+      bindingGeneration: 0n
+    }),
+    nativeActorNodeProvider: () => ({
+      async closeActorBoundSession() {
+        nativeDisconnects += 1;
+      }
+    }),
+    localActorProvider: () => true,
+    remoteBoundSessionTargetProvider: () => undefined,
+    remoteActorPacketTargetProvider: () => undefined,
+    actorId: 'actor-unbound-runtime',
+    reportError: () => undefined
+  });
+
+  await assert.rejects(
+    () => session.disconnect(),
+    error => error?.kind === framework.ZLinkFrameworkErrorKind.InvalidOperation
+  );
+  assert.equal(nativeDisconnects, 0);
+  assert.equal(transportDisconnects, 0);
 });
 
 test('session actors bind actor refs, expose bound actors, and reject missing routing id', async () => {
@@ -648,7 +772,7 @@ test('runtime host bound session uses routed Session target before native Sessio
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
       routerChannelId,
       targetNodeRid,
@@ -816,7 +940,7 @@ test('runtime host bound session uses routed Session target before stale local r
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
       routerChannelId,
       targetNodeRid,
@@ -909,7 +1033,7 @@ test('runtime host bound session uses Spot route target even when route channel 
     routeSends.push({ routerChannelId, targetNodeRid, packetName, message, signal });
     return Promise.resolve();
   };
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, request, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, request, signal) => {
     spotSends.push({
       routerChannelId,
       targetNodeRid,
@@ -1004,7 +1128,7 @@ test('runtime host local actor uses its current routed session target', async ()
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
   });
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, payload) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, payload) => {
     routed.push({ routerChannelId, targetNodeRid, packetName, payload });
     return { ok: true };
   };
@@ -1210,7 +1334,7 @@ test('runtime host remote bound session send submits a routed Session command', 
   host.routeTransport.requestToSpot = async () => {
     throw new Error('bound session send must not wait for a routed reply');
   };
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
       routerChannelId,
       targetNodeRid,
@@ -1259,7 +1383,7 @@ test('runtime host remote bound session receiver forwards through actor remote t
   const routeReleased = new Promise((resolve) => {
     resolveRoute = resolve;
   });
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
       routerChannelId,
       targetNodeRid,
@@ -1855,7 +1979,7 @@ test('runtime host routed bound session receiver forwards through actor remote t
   const routeReleased = new Promise((resolve) => {
     resolveRoute = resolve;
   });
-  host.routeTransport.submit = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
+  host.routeTransport.submitInfrastructure = async (routerChannelId, targetNodeRid, packetName, message, signal) => {
     routeCalls.push({
       routerChannelId,
       targetNodeRid,

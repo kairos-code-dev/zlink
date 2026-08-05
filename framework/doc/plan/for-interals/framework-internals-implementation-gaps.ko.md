@@ -27,7 +27,7 @@ runtime이 무엇을 고쳐야 하는지 정리한 목록이다. 배경과 판�
 
 | 언어 | 확정 갭 | 특히 큰 것 |
 |---|---|---|
-| C++ | local runtime 구현은 A1 · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2까지 반영 | 남은 판정은 A2 mixed-process, A3 경쟁 process, A9 전체 topology matrix, D6 공통 기본값 측정이다. C++ 단독 unit·sample 결과와 공통 gate를 분리해 기록한다 |
+| C++ | local runtime 구현은 A1 · A2 · A3 · A4 · A6 · A8 · A9 · A10 · A11 · B2 · B3 · D1 · D2까지 반영 | C++와 Node가 command 50을 교환하는 process 검증은 통과했다. relay 성공부터 cache 무효화까지 이어지는 언어 간 process, A3 경쟁 process, A9 전체 topology matrix, D6 공통 기본값 측정은 남아 있다. C++ 단독 unit·sample 결과와 공통 gate는 분리해 기록한다 |
 | .NET | A2 mixed-process · A3 remaining process evidence · A9 cross-language matrix · D6 common decision | D2는 atomic pending·sharded active accounting으로 해소했고 D3 bounded receive reservation과 D4 copy audit를 반영했다. local runtime과 대표 .NET process matrix는 통과했으며, mixed-process relay·남은 Instance Spot 행·공통 값 판정이 남아 있다 |
 | Java | A2(mixed-process) · A3(cross-node 경쟁 규칙) · A4(D6) · A5(wire) · A6(D6) · A8(payload audit) · A9(process matrix) · A10(D6) · D4 · D6 | public error kind, queue 구조, idle eviction local path, 수신 budget과 command 50 local path는 구현했지만 mixed-process wire·기본값·전체 process evidence·내부 copy 회계가 남아 있다 |
 | Node | A1(RouteMesh) · A2 · A3 · A4 · A6 · A8 · A10 · A11 · B4b · B5 · D1 · D4 | Spot·Actor queue에 한도가 아예 없다 |
@@ -265,9 +265,9 @@ relay success와 source notification을 함께 검증한 cross-language gate는 
 
 | 언어 | 현재 | 확인 위치 |
 |---|---|---|
-| C++ | 현재 worktree에 command 50 codec·source notification·cache invalidation diff가 있다. mixed-process gate는 남아 있다 | `cpp/runtime/protocol/service_wire_codec.cpp`, `cpp/runtime/mesh/mesh_node_runtime.cpp`, `cpp/runtime/actors/actor_client.cpp` |
-| .NET | command 50 codec와 source/target fence 검증을 거쳐 Actor·Spot relay 성공 후 source node에 route-level notification을 한 번만 보낸다. 수신 측은 조건이 맞는 cache entry만 제거한다. local unit과 .NET process 경로는 통과했지만 mixed-language process gate는 남아 있다 | `dotnet/Runtime/Service/ZLinkServiceMessageFollowWireCodec.cs`, `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`, `dotnet/Runtime/Locations/ZLinkStoreLocationResolvers.cs` |
-| Java | command 50 codec·known-command 판정·admitted peer 뒤의 raw infrastructure dispatch·M6B relay success·source notification·exact route-fence cache invalidation을 연결했다. Java 내부 unit/integration/sample은 통과했지만 mixed-language process gate는 남아 있다 | `java/runtime/internal/service/ZLinkServiceMessageFollowWireCodec.java`, `java/runtime/binding/ZLinkJavaRawMeshNode.java`, `java/runtime/actors/ZLinkActorRuntime.java`, `java/runtime/locations/ZLinkStoreLocationResolvers.java` |
+| C++ | command 50 codec·source notification·cache invalidation을 연결했다. C++와 Node가 raw owner 사이에서 command 50을 교환하고 양쪽 runtime의 admission을 확인하는 검증은 통과했지만, relay 성공부터 source cache 무효화까지의 전 구간을 언어가 섞인 process로 검증하는 gate는 남아 있다 | `cpp/runtime/protocol/service_wire_codec.cpp`, `cpp/runtime/mesh/mesh_node_runtime.cpp`, `cpp/runtime/actors/actor_client.cpp`, `cpp/cross-language/run_cross_language_smoke.sh` |
+| .NET | command 50 codec와 source/target fence 검증을 거쳐 Actor·Spot relay 성공 후 source node에 route-level notification을 한 번만 보낸다. 수신 측은 조건이 맞는 cache entry만 제거한다. local unit과 .NET process 경로는 통과했지만 여러 언어의 process를 함께 사용하는 검증은 남아 있다 | `dotnet/Runtime/Service/ZLinkServiceMessageFollowWireCodec.cs`, `dotnet/Runtime/Service/ZLinkManagedMeshNode.cs`, `dotnet/Runtime/Locations/ZLinkStoreLocationResolvers.cs` |
+| Java | command 50 codec·known-command 판정·admitted peer 뒤의 raw infrastructure dispatch·M6B relay success·source notification·exact route-fence cache invalidation을 연결했다. Java 내부 unit/integration/sample은 통과했지만 여러 언어의 process를 함께 사용하는 검증은 남아 있다 | `java/runtime/internal/service/ZLinkServiceMessageFollowWireCodec.java`, `java/runtime/binding/ZLinkJavaRawMeshNode.java`, `java/runtime/actors/ZLinkActorRuntime.java`, `java/runtime/locations/ZLinkStoreLocationResolvers.java` |
 | Node | 통지가 optional method 호출이고 **구현체가 없다** | `node/runtime/host/index.ts:404-410`, `node/runtime/actors/actor-transport-delivery-gate.ts:3-16` |
 
 **현재 선행 과제 — 공통 command의 구현 정합성이다.** command 50은 source·target route
@@ -1000,14 +1000,41 @@ session dispatch는 각 session의 serial queue에서 수행한다. 따라서 �
 | `ctest ... -L framework-unit` | 31/31 PASS |
 | `ctest ... -L framework-contract` | 8/8 PASS |
 | installed package consumer 및 tooling configure | PASS, `zlink_cpp` 11.2.0 |
-| 전체 CTest | 수정 후 fresh aggregate 56/56 PASS (`100% tests passed, 0 tests failed out of 56`) |
-| ASan targeted | `actor_gateway`, `execution`, `channel_messaging`, `stream_framework` 4/4 PASS; LeakSanitizer 오류 없음 |
-| framework sample smoke | 전체 aggregate 6/6 PASS; 추가 반복은 TicTacToe 10회, GameQuest 12회, SupportChat 15회 PASS |
+| C++ non-sample aggregate | 전용 `TMPDIR`에서 CTest 50/50 PASS |
+| C++ ASan targeted | `m6c_runtime`, `actor_gateway`, `execution`, `channel_messaging`, `stream_framework` 5/5 PASS; m6c LeakSanitizer 오류 없음 |
+| framework sample smoke | 전용 `TMPDIR`에서 6/6 PASS |
 | RegistryMessaging `RM-C7` | 실제 provider process 결과 `api-a=180`, `api-b=60`, PASS |
 
-W3(A2·D5)는 C++ local path를 구현했지만 command 50의 mixed-process 상호운용 검증은 남아
-있다. D6의 상한 값은 현재 C++ 기본값과 unit evidence가 있어도 공통 contract의 측정·허용
-범위가 확정된 것은 아니며, STREAM 전체 process matrix와 함께 남은 조건으로 관리한다.
+W3(A2·D5)의 C++와 Node 간 직접 command 50 교환은 저장소 전용 `TMPDIR`에서 양쪽
+runtime의 admission 확인을 포함해 통과했다. 다만 relay 성공 뒤 송신측 route cache를
+조건부로 무효화하는 전 구간과 네 언어가 섞인 relay process 검증은 남아 있다. D6의 상한 값은 현재 C++ 기본값과
+unit evidence가 있어도 공통 contract의 측정·허용 범위가 확정된 것은 아니며, STREAM을
+포함한 전체 언어×topology process matrix와 함께 남은 조건으로 관리한다.
+
+### 2026-08-04 후속 C++ 검증
+
+공통 `spec`과 `internals`의 mailbox·dispatch·lifecycle 조건을 다시 대조한 뒤 다음
+회귀를 추가하고 현재 source에서 재실행했다.
+
+| 검증 | 결과 |
+|---|---|
+| `service_mailbox_t` byte 회계 | `parts` byte와 `fixed_work_byte_cost`를 함께 계산하고 overflow를 saturation하는 경계 unit PASS |
+| Instance Spot idle eviction | timeout 이전 non-candidate 확인, callback 중 late application post 거절, timeout 이후 `IdleEvicted` 종료 PASS |
+| Native STREAM의 미완성 frame 수신 | 미완성 frame이 다른 connection의 완전한 frame을 막지 않는 경로 PASS |
+| Native STREAM의 buffer 재예약 | 한 번에 받은 65개 완전한 frame의 마지막 frame을 다시 예약하는 경로 PASS |
+| C++ non-sample aggregate | 전용 `TMPDIR`에서 CTest 50/50 PASS |
+| C++ sample smoke | 전용 `TMPDIR`에서 6/6 PASS |
+| C++ ASan | `m6c_runtime`, `actor_gateway`, `execution`, `channel_messaging`, `stream_framework` 5/5 PASS; m6c leak 오류 없음 |
+| C++ relocation hold | capture 실패 FIFO 복구, held byte 회계, aggregate 1,024 record·16 MiB 경계 PASS |
+| Node | `verify:m6b-runtime` 62/62 PASS; workspace build PASS |
+| C++와 Node의 MessageFollow | 전용 `TMPDIR`에서 양쪽 admission 확인과 command 50 양방향 교환 PASS |
+
+추가 확인 결과, `buffered_ready`가 있는 경우에도 scheduler가 `poll(..., 0)`으로
+kernel에서 읽을 수 있는 다른 connection을 함께 수집하도록 수정했다. 따라서 user-space
+buffer가 계속 남아 있을 때 다른 connection이 후보에서 빠지는 상태를 제거했다. 다만 언어×RouteMesh×
+ClientServer×service×STREAM×fanout 전체 process matrix, 실제 cross-node idle 경쟁과
+Store rollback, 그리고 relay 성공부터 source cache invalidation까지의 mixed-process
+전 구간은 아직 실행하지 않았으므로 완료로 올리지 않는다.
 
 ---
 

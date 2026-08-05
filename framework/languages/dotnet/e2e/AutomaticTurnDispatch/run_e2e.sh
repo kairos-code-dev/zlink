@@ -739,6 +739,8 @@ if scenario_selected shutdown; then
     --scenario shutdown-wait \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --play-a-url "$PLAY_A_HTTP" \
+    --play-b-url "$PLAY_B_HTTP" \
     --request-id "$SHUTDOWN_ID" \
     --spot-rid "$SHUTDOWN_SPOT"
   dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-shutdown-wait.json" \
@@ -785,6 +787,8 @@ if scenario_selected shutdown; then
     --scenario shutdown-recovery \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --play-a-url "$PLAY_A_HTTP" \
+    --play-b-url "$PLAY_B_HTTP" \
     --request-id "${SHUTDOWN_ID}-recovery" \
     --spot-rid "$SHUTDOWN_SPOT"
   dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-shutdown-recovery.json" \

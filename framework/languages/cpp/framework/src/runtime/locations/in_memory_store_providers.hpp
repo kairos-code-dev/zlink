@@ -230,13 +230,9 @@ class in_memory_location_store_t final : public location_store_t
     static void validate_write (
       const store_write_request_t &request)
     {
-        if (request.conditions.size ()
-              + request.mutations.size ()
-            > 2048)
-            throw std::invalid_argument (
-              "location write exceeds 2048 keys");
         std::set<std::string> conditions;
         std::set<std::string> mutations;
+        std::set<std::string> keys;
         std::size_t encoded_size = 0;
         for (const auto &condition : request.conditions) {
             const auto &key = std::visit (
@@ -248,6 +244,7 @@ class in_memory_location_store_t final : public location_store_t
             if (!conditions.insert (key.value).second)
                 throw std::invalid_argument (
                   "location write repeats a condition key");
+            keys.insert (key.value);
             encoded_size += key.value.size ();
             if (const auto *version =
                   std::get_if<store_version_condition_t> (
@@ -271,6 +268,7 @@ class in_memory_location_store_t final : public location_store_t
             if (!mutations.insert (key->value).second)
                 throw std::invalid_argument (
                   "location write repeats a mutation key");
+            keys.insert (key->value);
             encoded_size += key->value.size ();
             if (const auto *put =
                   std::get_if<store_put_t> (&mutation)) {
@@ -285,6 +283,9 @@ class in_memory_location_store_t final : public location_store_t
                 encoded_size += put->bytes.size ();
             }
         }
+        if (keys.size () > 2048)
+            throw std::invalid_argument (
+              "location write exceeds 2048 unique keys");
         if (encoded_size > 4u * 1024u * 1024u)
             throw std::invalid_argument (
               "location write exceeds 4 MiB");

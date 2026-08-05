@@ -46,6 +46,30 @@ import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
 import { ZLinkClientServerLocationRuntime } from './client-server-location-runtime';
 import { ZLinkFanoutLocationRuntime } from './fanout-location-runtime';
 import type { ZLinkInboundDispatchBudget } from '../dispatch/inbound-dispatch-budget';
+import {
+  attachEndpointConnections,
+  detachEndpointConnections,
+  endpointConnections
+} from '../../contracts/Configuration/RuntimeEndpointConnections';
+
+interface ManualFanoutSubscriberState {
+  readonly channelName: string;
+  readonly endpoint: string;
+  readonly index: number;
+  readonly connectionId: string;
+  readonly taskRunner: ZLinkRuntimeTaskRunner;
+  readonly dispatcher: ZLinkChannelPublishDispatcher;
+  desired: boolean;
+  transition: Promise<void>;
+  openingToken?: symbol;
+  active?: ManualFanoutSubscriberActive;
+  stopping?: ManualFanoutSubscriberActive;
+}
+
+interface ManualFanoutSubscriberActive {
+  readonly token: symbol;
+  readonly loop: ZLinkSubscriberReceiveLoop;
+}
 
 export interface ZLinkChannelRuntimeLifecycleOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -65,9 +89,13 @@ export class ZLinkChannelRuntimeLifecycle {
   private readonly receiveRoundRobin = new ZLinkReceiveRoundRobinCoordinator();
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
+  private readonly manualFanoutSubscribers = new Map<string, ManualFanoutSubscriberState>();
+  private readonly manualFanoutSubscriberOwners = new Set<object>();
   private readonly routeReceiveLoops: Array<{ stop(): Promise<void> }> = [];
   private readonly meshChannelDispatchers = new Map<string, ZLinkChannelRequestDispatcher>();
   private readonly meshRouteDispatchers = new Map<string, ZLinkRoutePacketDispatcher>();
+  private nextManualFanoutIndex = 0;
+  private disposed = false;
   private locationAutoConnect?: ZLinkChannelLocationAutoConnectContext;
   private clientServerLocation?: ZLinkClientServerLocationRuntime;
   private fanoutLocation?: ZLinkFanoutLocationRuntime;
@@ -272,7 +300,22 @@ export class ZLinkChannelRuntimeLifecycle {
 
   async dispose(signal?: AbortSignal): Promise<void> {
     const channelLoops = [...this.channelReceiveLoops];
-    const subscriberLoops = [...this.subscriberReceiveLoops];
+    const manualStates = [...this.manualFanoutSubscribers.values()];
+    this.disposed = true;
+    for (const state of manualStates) state.desired = false;
+    for (const owner of this.manualFanoutSubscriberOwners) {
+      detachEndpointConnections(owner);
+    }
+    this.manualFanoutSubscriberOwners.clear();
+    this.manualFanoutSubscribers.clear();
+    const manualLoops = new Set(
+      manualStates
+        .map(state => state.active?.loop ?? state.stopping?.loop)
+        .filter((loop): loop is ZLinkSubscriberReceiveLoop => loop !== undefined)
+    );
+    const subscriberLoops = [...this.subscriberReceiveLoops]
+      .filter(loop => !manualLoops.has(loop));
+    const manualTransitions = manualStates.map(state => this.drainManualFanoutSubscriber(state));
     const routeLoops = [...this.routeReceiveLoops];
     const clientServerLocation = this.clientServerLocation;
     const fanoutLocation = this.fanoutLocation;
@@ -292,7 +335,8 @@ export class ZLinkChannelRuntimeLifecycle {
       ...routeLoops.map((loop) => loop.stop())
     ];
     const transportStopped = await Promise.allSettled([
-      ...loopStops
+      ...loopStops,
+      ...manualTransitions
     ]);
     const descriptorStopped = clientServerLocation === undefined
       ? []
@@ -407,81 +451,237 @@ export class ZLinkChannelRuntimeLifecycle {
         unhandled: this.options.registration.dispatch?.unhandled,
         metrics: this.options.dispatchServices.metrics()
       });
-      const endpoints = channel.subscriber.manualConnections ?? [];
-      for (const [index, endpoint] of endpoints.entries()) {
-        tasks.push(this.openManualFanoutSubscriber(
+      const endpointHandle = endpointConnections(
+        channel.subscriber,
+        channel.subscriber.manualConnections ?? []
+      );
+      const endpoints = endpointHandle.listConnections();
+      this.manualFanoutSubscriberOwners.add(channel.subscriber);
+      attachEndpointConnections(channel.subscriber, {
+        connect: endpoint => this.requestManualFanoutConnect(
           channelName,
           endpoint,
-          index,
           taskRunner,
           dispatcher
-        ));
+        ),
+        disconnect: endpoint => this.requestManualFanoutDisconnect(
+          channelName,
+          endpoint
+        )
+      });
+      for (const endpoint of endpoints) {
+        const state = this.getOrCreateManualFanoutSubscriber(
+          channelName,
+          endpoint,
+          this.nextManualFanoutIndex++,
+          taskRunner,
+          dispatcher
+        );
+        tasks.push(this.openManualFanoutSubscriber(state));
       }
     }
     return tasks;
   }
 
-  private openManualFanoutSubscriber(
+  private getOrCreateManualFanoutSubscriber(
     channelName: string,
     endpoint: string,
     index: number,
     taskRunner: ZLinkRuntimeTaskRunner,
     dispatcher: ZLinkChannelPublishDispatcher
-  ): Promise<void> {
-    const connectionId = `manual\0${channelName}\0${endpoint}`;
+  ): ManualFanoutSubscriberState {
+    const key = manualFanoutSubscriberKey(channelName, endpoint);
+    const existing = this.manualFanoutSubscribers.get(key);
+    if (existing !== undefined) {
+      existing.desired = true;
+      return existing;
+    }
+    const state: ManualFanoutSubscriberState = {
+      channelName,
+      endpoint,
+      index,
+      connectionId: key,
+      taskRunner,
+      dispatcher,
+      desired: true,
+      transition: Promise.resolve()
+    };
+    this.manualFanoutSubscribers.set(key, state);
+    return state;
+  }
+
+  private requestManualFanoutConnect(
+    channelName: string,
+    endpoint: string,
+    taskRunner: ZLinkRuntimeTaskRunner,
+    dispatcher: ZLinkChannelPublishDispatcher
+  ): void {
+    if (this.disposed) return;
+    const state = this.getOrCreateManualFanoutSubscriber(
+      channelName,
+      endpoint,
+      this.nextManualFanoutIndex++,
+      taskRunner,
+      dispatcher
+    );
+    state.desired = true;
+    this.enqueueManualFanoutTransition(state, async () => {
+      if (!state.desired || state.active !== undefined || this.taskRunner !== taskRunner) return;
+      void this.openManualFanoutSubscriber(state).catch(error => taskRunner.errorSink
+        .reportRuntimeTaskException(
+          `subscriber:${state.channelName}:manual:${state.index}:open`,
+          error
+        ));
+    });
+  }
+
+  private requestManualFanoutDisconnect(channelName: string, endpoint: string): void {
+    const state = this.manualFanoutSubscribers.get(manualFanoutSubscriberKey(channelName, endpoint));
+    if (state === undefined) return;
+    state.desired = false;
+    this.enqueueManualFanoutTransition(state, async () => {
+      try {
+        await this.closeManualFanoutSubscriber(state);
+      } finally {
+        if (!state.desired) this.manualFanoutSubscribers.delete(state.connectionId);
+      }
+    });
+  }
+
+  private enqueueManualFanoutTransition(
+    state: ManualFanoutSubscriberState,
+    transition: () => Promise<void> | void
+  ): void {
+    state.transition = state.transition
+      .then(transition, transition)
+      .catch(error => state.taskRunner.errorSink.reportRuntimeTaskException(
+        `subscriber:${state.channelName}:manual:${state.index}:lifecycle`,
+        error
+      ));
+  }
+
+  private openManualFanoutSubscriber(state: ManualFanoutSubscriberState): Promise<void> {
+    const { channelName, endpoint, connectionId, taskRunner, dispatcher } = state;
+    if (this.disposed || !state.desired || this.taskRunner !== taskRunner) {
+      return Promise.resolve();
+    }
+    const token = Symbol(`manual-fanout:${channelName}:${endpoint}`);
+    state.openingToken = token;
     let loop: ZLinkSubscriberReceiveLoop;
     let reconnecting = false;
-    const subscriber = this.options.sockets.openFanoutSubscriberConnection(
-      channelName,
-      connectionId,
-      endpoint,
-      {
-        onReady() {},
-        onTerminated: () => {
-          if (reconnecting) return;
-          reconnecting = true;
-          setImmediate(() => {
-            void loop.stop()
-              .then(() => this.removeSubscriberReceiveLoop(loop))
-              .then(() => this.options.sockets
-                .closeFanoutSubscriberConnection(connectionId))
-              .then(() => {
-                if (this.taskRunner === taskRunner) {
-                  void this.openManualFanoutSubscriber(
-                    channelName,
-                    endpoint,
-                    index,
-                    taskRunner,
-                    dispatcher
+    try {
+      const subscriber = this.options.sockets.openFanoutSubscriberConnection(
+        channelName,
+        connectionId,
+        endpoint,
+        {
+          onReady() {},
+          onTerminated: () => {
+            if (this.disposed
+              || (state.active?.token !== token && state.openingToken !== token)
+              || reconnecting) return;
+            reconnecting = true;
+            setImmediate(() => {
+              if (this.disposed
+                || (state.active?.token !== token && state.openingToken !== token)) {
+                reconnecting = false;
+                return;
+              }
+              this.enqueueManualFanoutTransition(state, async () => {
+                reconnecting = false;
+                if (this.disposed || state.active?.token !== token) return;
+                try {
+                  await this.closeManualFanoutSubscriber(state, token);
+                } catch (error) {
+                  taskRunner.errorSink.reportRuntimeTaskException(
+                    `subscriber:${state.channelName}:manual:${state.index}:cleanup`,
+                    error
                   );
                 }
-              })
-              .catch(error => taskRunner.errorSink
-                .reportRuntimeTaskException(
-                  `subscriber:${channelName}:manual:${index}:reconnect`,
-                  error
-                ));
-          });
+                if (this.shouldReconnectManualFanoutSubscriber(state)) {
+                  void this.openManualFanoutSubscriber(state).catch(error => taskRunner.errorSink
+                    .reportRuntimeTaskException(
+                      `subscriber:${state.channelName}:manual:${state.index}:reconnect`,
+                      error
+                    ));
+                }
+              });
+            });
+          }
         }
-      }
+      );
+      loop = new ZLinkSubscriberReceiveLoop(
+        this.options.adapter,
+        subscriber,
+        dispatcher,
+        message => this.options.sockets.handleFanoutInboundResult(
+          connectionId,
+          message,
+          subscriber
+        ),
+        this.options.inboundDispatchBudget,
+        this.receiveRoundRobin
+      );
+      state.openingToken = undefined;
+      state.active = { token, loop };
+      this.subscriberReceiveLoops.push(loop);
+      return taskRunner.run(
+        `subscriber:${channelName}:manual:${state.index}`,
+        signal => loop.run(signal)
+      );
+    } catch (error) {
+      state.openingToken = undefined;
+      return Promise.allSettled([
+        this.options.sockets.closeFanoutSubscriberConnection(connectionId)
+      ]).then(results => {
+        const closeError = results[0].status === 'rejected' ? results[0].reason : undefined;
+        if (closeError === undefined) throw error;
+        throw new AggregateError(
+          [error, closeError],
+          `Fanout subscriber '${connectionId}' failed to open and close.`
+        );
+      });
+    }
+  }
+
+  private async closeManualFanoutSubscriber(
+    state: ManualFanoutSubscriberState,
+    expectedToken?: symbol
+  ): Promise<void> {
+    const active = state.active;
+    if (active === undefined || (expectedToken !== undefined && active.token !== expectedToken)) return;
+    state.active = undefined;
+    state.stopping = active;
+    const errors: unknown[] = [];
+    try {
+      await active.loop.stop();
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      this.removeSubscriberReceiveLoop(active.loop);
+      state.stopping = undefined;
+    }
+    try {
+      await this.options.sockets.closeFanoutSubscriberConnection(state.connectionId);
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Fanout subscriber '${state.connectionId}' cleanup failed.`);
+    }
+  }
+
+  private shouldReconnectManualFanoutSubscriber(state: ManualFanoutSubscriberState): boolean {
+    return !this.disposed && state.desired;
+  }
+
+  private drainManualFanoutSubscriber(state: ManualFanoutSubscriberState): Promise<void> {
+    state.transition = state.transition.then(
+      () => this.closeManualFanoutSubscriber(state),
+      () => this.closeManualFanoutSubscriber(state)
     );
-    loop = new ZLinkSubscriberReceiveLoop(
-      this.options.adapter,
-      subscriber,
-      dispatcher,
-      message => this.options.sockets.handleFanoutInboundResult(
-        connectionId,
-        message,
-        subscriber
-      ),
-      this.options.inboundDispatchBudget,
-      this.receiveRoundRobin
-    );
-    this.subscriberReceiveLoops.push(loop);
-    return taskRunner.run(
-      `subscriber:${channelName}:manual:${index}`,
-      signal => loop.run(signal)
-    );
+    return state.transition;
   }
 
   private startFanoutSubscriberLoop(
@@ -633,6 +833,10 @@ function requireChannelHandlerType(
 
 function meshChannelKey(meshName: string, channelName: string): string {
   return `${meshName}\u0000${channelName}`;
+}
+
+function manualFanoutSubscriberKey(channelName: string, endpoint: string): string {
+  return `manual\0${channelName}\0${endpoint}`;
 }
 
 function hasClientServerLocationTopology(registration: ZLinkFrameworkRegistration): boolean {

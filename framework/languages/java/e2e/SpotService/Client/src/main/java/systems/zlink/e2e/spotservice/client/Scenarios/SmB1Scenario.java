@@ -41,8 +41,8 @@ public final class SmB1Scenario extends SpotServiceScenarioContext {
                 .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             Contracts.ActorPushNotify entry = entryPush.toCompletableFuture().join().payload();
             ensure("entry:entry-echo".equals(entryReply.value()), "SM-B1 entry actor request mismatch");
-            ensure("entry".equals(entryReply.spotId()), "SM-D3 entry bind spot mismatch");
-            ensure("entry".equals(entry.spotId()), "SM-D3 entry push spot mismatch");
+            ensure("entry".equals(entryReply.spotRid()), "SM-D3 entry bind spot mismatch");
+            ensure("entry".equals(entry.spotRid()), "SM-D3 entry push spot mismatch");
             ensure("actor-local-1".equals(entryReply.actorId()), "SM-D3 entry bind actor mismatch");
             ensure("actor-local-1".equals(entry.actorId()), "SM-D3 entry push actor mismatch");
             ensure(entryReply.requestSeq() == 1, "SM-B3 entry request sequence mismatch");
@@ -56,7 +56,7 @@ public final class SmB1Scenario extends SpotServiceScenarioContext {
                 .request(new Contracts.ActorJoinReq("room-a", profile, profile.tags()))
                 .metadata("actor-id", "actor-local-1")
                 .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
-            ensure("room-a".equals(joined.spotId()), "SM-B1 joined spot mismatch");
+            ensure("room-a".equals(joined.spotRid()), "SM-B1 joined spot mismatch");
             ensure(profile.tags().equals(joined.tags()), "SM-B3 join payload tags mismatch");
             ensure(profile.displayName().equals(joined.displayName()), "SM-B3 join payload display name mismatch");
             ensure(profile.level() == joined.level(), "SM-B3 join payload level mismatch");
@@ -71,9 +71,9 @@ public final class SmB1Scenario extends SpotServiceScenarioContext {
                 .metadata("actor-id", "actor-local-1")
                 .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
             Contracts.ActorPushNotify user1 = userPush1.toCompletableFuture().join().payload();
-            ensure("room-a".equals(userReply1.spotId()), "SM-B1 user actor spot mismatch");
-            ensure("room-a".equals(joined.spotId()), "SM-D3 user bind spot mismatch");
-            ensure("room-a".equals(user1.spotId()), "SM-D3 user push spot mismatch");
+            ensure("room-a".equals(userReply1.spotRid()), "SM-B1 user actor spot mismatch");
+            ensure("room-a".equals(joined.spotRid()), "SM-D3 user bind spot mismatch");
+            ensure("room-a".equals(user1.spotRid()), "SM-D3 user push spot mismatch");
             ensure("actor-local-1".equals(userReply1.actorId()), "SM-D3 user relay actor mismatch");
             ensure("actor-local-1".equals(user1.actorId()), "SM-D3 user push actor mismatch");
             ensure("user:user-echo-1".equals(userReply1.value()), "SM-B1 user actor request mismatch");

@@ -298,7 +298,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   .target_spot_id = target_spot,
                   .target_node_rid = native->status ().routing_id ()};
                 runtime::host::actor_transfer_token_t transfer_token;
-                runtime::host::actor_transfer_prepare_result_t transfer_result;
+                runtime::host::actor_transfer_prepare_result_t transfer_result{
+                  transfer_prepare.actor, 0};
                 try {
                     if (request.actor_authority_owner_generation != 0) {
                         const auto target_spot_object =
@@ -355,9 +356,9 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   request.actor_id, next_membership_epoch);
             }
             if (request.finalize && !request.bound_session_node_rid.empty ()) {
-                const auto target_actor_ref = actor_ref_t (
-                  runtime.node_rid (), std::string (actor_ref.actor_type ()),
-                  std::string (actor_ref.actor_id ()), actor_ref.generation ());
+                const auto target_actor_ref = ::zlink::framework::detail::actor_ref_access_t::make (
+                  runtime.node_rid (), std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)),
+                  std::string (actor_ref.actor_id ().value ()), actor_ref.object_generation ());
                 const auto actor_ref_updated =
                   actor_gateway.update_actor_ref (target_actor_ref);
                 if (!actor_ref_updated) {
@@ -490,9 +491,9 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto reply = spot_actor_packet_route_reply_t{
               .actor_ref_present = true,
               .actor_node_rid = std::string (current_actor_ref.node_rid ().value ()),
-              .actor_type = std::string (current_actor_ref.actor_type ()),
-              .actor_id = std::string (current_actor_ref.actor_id ()),
-              .actor_generation = current_actor_ref.generation (),
+              .actor_type = std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (current_actor_ref)),
+              .actor_id = std::string (current_actor_ref.actor_id ().value ()),
+              .actor_generation = current_actor_ref.object_generation (),
               .has_reply = relayed.value ().has_value (),
               .payload =
                 relayed.value () ? relayed.value ()->to_bytes () : std::vector<std::uint8_t>{}};
@@ -519,9 +520,9 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
         auto actor_gateway = bind_actor_route (actor_ref, header, received);
-        const auto entry_actor_ref = actor_ref_t (
-          runtime.node_rid (), std::string (actor_ref.actor_type ()),
-          std::string (actor_ref.actor_id ()), actor_ref.generation ());
+        const auto entry_actor_ref = ::zlink::framework::detail::actor_ref_access_t::make (
+          runtime.node_rid (), std::string (::zlink::framework::detail::actor_ref_access_t::actor_type (actor_ref)),
+          std::string (actor_ref.actor_id ().value ()), actor_ref.object_generation ());
         auto joined =
           request.spot_id.empty ()
             ? runtime.join_actor_to_entry_spot_erased (

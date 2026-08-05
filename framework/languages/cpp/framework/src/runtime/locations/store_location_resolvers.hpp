@@ -33,13 +33,16 @@ class actor_location_observer_t
         std::lock_guard lock (_gate);
         const auto key = location_key_codec_t::encode_actor_key (
           actor_location_key_t{row.mesh_name, row.actor_id});
-        const auto version = std::pair{row.membership_epoch, row.actor_ref.generation ()};
+        const auto version = std::pair{
+          row.membership_epoch,
+          row.actor_ref ? row.actor_ref->object_generation () : std::uint64_t{0}};
         auto &observed = _generations[key];
         if (version < observed) {
             return false;
         }
         observed = version;
-        return !row.actor_ref.empty ();
+        return row.actor_ref
+               && !::zlink::framework::detail::actor_ref_access_t::empty (*row.actor_ref);
     }
 
   private:
@@ -210,7 +213,7 @@ class store_location_resolvers_t final : public spot_address_resolver_t,
             return completed (std::optional<spot_address_t>{});
         }
         const auto projection = decode_actor_authority_payload (authority->payload);
-        if (!projection || projection->actor.actor_id () != actor_id)
+        if (!projection || projection->actor.actor_id ().value () != actor_id)
             return completed (std::optional<spot_address_t>{});
         auto address = spot_address_t{
           authority->allocation.target.mesh_name,

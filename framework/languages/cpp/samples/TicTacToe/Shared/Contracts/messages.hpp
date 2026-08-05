@@ -8,19 +8,43 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
-namespace zlink::framework
+namespace zlink::samples::tictactoe
 {
-inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+
+using zlink::framework::actor_id_t;
+using zlink::framework::actor_ref_t;
+using zlink::framework::node_rid_t;
+
+struct actor_location_t
+{
+    node_rid_t node_rid;
+    std::string actor_id;
+    std::uint64_t generation = 0;
+
+    static actor_location_t from (const actor_ref_t &actor_ref)
+    {
+        return actor_location_t{actor_ref.node_rid (),
+                                std::string (actor_ref.actor_id ().value ()),
+                                actor_ref.object_generation ()};
+    }
+
+    actor_ref_t to_actor_ref (std::string mesh_name) const
+    {
+        return actor_ref_t (actor_id_t (actor_id), generation, std::move (mesh_name), node_rid);
+    }
+};
+
+inline void to_json (nlohmann::json &json, const actor_location_t &value)
 {
     json = {{"nodeRid", std::string (value.node_rid.value ())},
             {"actorId", value.actor_id},
             {"generation", value.generation}};
 }
-inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+
+inline void from_json (const nlohmann::json &json, actor_location_t &value)
 {
     const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
                                                     : json.value ("node_rid", std::string{});
@@ -29,13 +53,6 @@ inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
                                                : json.value ("actor_id", std::string{});
     value.generation = json.value ("generation", std::uint64_t{0});
 }
-} // namespace zlink::framework
-#endif
-
-namespace zlink::samples::tictactoe
-{
-
-using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 template <typename T>
 void write_nullable (nlohmann::json &json, const char *name, const std::optional<T> &value)

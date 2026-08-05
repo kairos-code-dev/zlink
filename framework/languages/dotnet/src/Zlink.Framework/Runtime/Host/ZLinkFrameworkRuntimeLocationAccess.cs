@@ -36,10 +36,15 @@ internal sealed partial class ZLinkFrameworkRuntime
             as ZLinkStoreLocationResolvers;
         if (rows is null)
             return null;
-        var row = await rows.ResolveSpotRowAsync(
+        var resolution = await rows.ResolveSpotRowWithStatusAsync(
                 new ZLinkSpotLocationKey(address.SpotId),
                 cancellationToken)
             .ConfigureAwait(false);
+        if (resolution.Kind == ZLinkLocationResolutionKind.KnownUnavailable)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.Unavailable,
+                $"Instance Spot '{address.SpotId}' is currently unavailable.");
+        var row = resolution.Row;
         if (row is null
             || row.SpotKind != ZLinkSpotKind.Instance
             || (!string.IsNullOrEmpty(address.InstanceSpotType)

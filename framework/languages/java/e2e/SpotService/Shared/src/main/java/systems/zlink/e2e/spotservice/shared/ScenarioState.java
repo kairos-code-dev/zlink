@@ -54,9 +54,9 @@ public final class ScenarioState {
         Contracts.EvidenceSnapshot snapshot,
         List<String> fragments) {
         List<String> lines = snapshot.entries().stream()
-            .map(entry -> entry.marker()
+            .<String>map(entry -> entry.marker()
                 + "|" + entry.nodeRid()
-                + "|" + entry.spotId()
+                + "|" + entry.spotRid()
                 + "|" + entry.value())
             .toList();
         return fragments.stream().allMatch(fragment ->
@@ -65,11 +65,11 @@ public final class ScenarioState {
 
     private static List<String> evidenceLines(Contracts.EvidenceSnapshot snapshot) {
         return snapshot.entries().stream()
-            .map(entry -> entry.marker()
+            .<String>map(entry -> entry.marker()
                 + "|"
                 + entry.nodeRid()
                 + "|"
-                + entry.spotId()
+                + entry.spotRid()
                 + "|"
                 + entry.value())
             .toList();

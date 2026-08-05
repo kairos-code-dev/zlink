@@ -2,6 +2,7 @@ package systems.zlink.framework.spring.internal.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -14,6 +15,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorEvent;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshMonitorStatus;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshNodeMonitor;
@@ -260,21 +265,66 @@ final class ZLinkRouteMeshRuntimeServiceTest {
     }
 
     @Test
-    void runtimeOptionsApplyLiveMessageSizeChannelAndPlacementWeights() {
-        FakeNode node = new FakeNode();
-        var options = new ZLinkRouteMeshRuntimeOptionsService(
-            () -> Map.of("mesh", node));
+    void runtimeOptionsDelegatesToCoreRuntimeOptions() {
+        var nodeOptions = new ZLinkMeshNodeRuntimeOptions() {
+            @Override
+            public long maxMessageSize() {
+                return 4096;
+            }
 
-        options.meshNode("mesh").maxMessageSize(4096);
-        options.channel("channel").weight(10_000);
-        options.mesh("mesh").setPlacementWeight(0);
+            @Override
+            public void maxMessageSize(long value) {
+            }
+        };
+        var meshChannelOptions = new ZLinkMeshChannelRuntimeOptions() {
+            @Override
+            public int weight() {
+                return 100;
+            }
 
-        assertEquals(4096, options.meshNode("mesh").maxMessageSize());
-        assertEquals(10_000, options.channel("channel").weight());
-        assertEquals(0, options.mesh("mesh").placementWeight());
-        assertThrows(
-            ZLinkConfigurationException.class,
-            () -> options.mesh("mesh").setPlacementWeight(10_001));
+            @Override
+            public void weight(int value) {
+            }
+        };
+        var placementOptions = new ZLinkMeshPlacementRuntimeOptions() {
+            @Override
+            public int placementWeight() {
+                return 100;
+            }
+
+            @Override
+            public void setPlacementWeight(int value) {
+            }
+        };
+        ZLinkRouteMeshRuntimeOptions delegate = new ZLinkRouteMeshRuntimeOptions() {
+            @Override
+            public ZLinkMeshNodeRuntimeOptions meshNode(String meshName) {
+                return nodeOptions;
+            }
+
+            @Override
+            public ZLinkMeshChannelRuntimeOptions channel(
+                String meshName,
+                String channelName) {
+                return meshChannelOptions;
+            }
+
+            @Override
+            public ZLinkMeshPlacementRuntimeOptions mesh(String meshName) {
+                return placementOptions;
+            }
+
+            @Override
+            public ZLinkMeshChannelRuntimeOptions channel(String channelName) {
+                return meshChannelOptions;
+            }
+        };
+        var options = new ZLinkRouteMeshRuntimeOptionsService(() -> delegate);
+
+        assertSame(nodeOptions, options.meshNode("mesh"));
+        assertSame(meshChannelOptions, options.channel("mesh", "channel"));
+        assertSame(placementOptions, options.mesh("mesh"));
+        assertSame(meshChannelOptions, options.channel("channel"));
     }
 
     private static ZLinkRouteMeshRuntimeService runtime(FakeNode node) {

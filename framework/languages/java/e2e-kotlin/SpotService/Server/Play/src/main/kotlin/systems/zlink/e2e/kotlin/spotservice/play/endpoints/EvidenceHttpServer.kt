@@ -20,9 +20,10 @@ import java.util.concurrent.TimeoutException
 import org.springframework.context.SmartLifecycle
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions
 import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.SpotHandle
-import systems.zlink.framework.spots.SpotHandleResolver
+import systems.zlink.framework.spots.SpotRef
+import systems.zlink.framework.spots.ZLinkSpotCreateResult
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class EvidenceHttpServer(
@@ -31,7 +32,7 @@ class EvidenceHttpServer(
     private val endpoint: String,
     private val spots: ZLinkSpotManager,
     private val routes: ZLinkRouteClient,
-    private val handles: SpotHandleResolver,
+    private val meshOptions: ZLinkRouteMeshRuntimeOptions,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
     private var executor: java.util.concurrent.ExecutorService? = null
@@ -46,6 +47,19 @@ class EvidenceHttpServer(
             val nextServer = HttpServer.create(InetSocketAddress(uri.host, uri.port), 0)
             nextServer.createContext("/health") { exchange ->
                 write(exchange, 200, "ok\n")
+            }
+            nextServer.createContext("/placement-weight") { exchange ->
+                handle(exchange) {
+                    requirePost(exchange)
+                    val request = readJson(exchange, Contracts.PlacementWeightReq::class.java)
+                    val placement = meshOptions.mesh(Contracts.SPOT_MESH)
+                    placement.setPlacementWeight(request.weight)
+                    writeJson(
+                        exchange,
+                        200,
+                        Contracts.PlacementWeightRes(placement.placementWeight()),
+                    )
+                }
             }
             nextServer.createContext("/evidence") { exchange ->
                 val body = json.writeValueAsBytes(state.snapshot())
@@ -73,10 +87,15 @@ class EvidenceHttpServer(
                 handle(exchange) {
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.CreateSpotReq::class.java)
-                    spots.getOrCreate(UserSpot::class.java, RoutingId.from(request.spotRid))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
-                    writeJson(exchange, 200, Contracts.CreateSpotRes(request.spotRid, state.nodeRid()))
+                    val result = createSpot(request.spotRid, localSpotType("user"))
+                    writeJson(
+                        exchange,
+                        200,
+                        Contracts.CreateSpotRes(
+                            result.spot().spotId(),
+                            result.spot().nodeRid().toString(),
+                        )
+                    )
                 }
             }
             nextServer.createContext("/spot/state/request") { exchange ->
@@ -88,11 +107,7 @@ class EvidenceHttpServer(
                     } else {
                         Contracts.MissingSpotReq(request.op)
                     }
-                    val call = routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
-                        message
-                    )
+                    val call = routes.requestToSpot(request.spotRid, message)
                         .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
                     writeJson(exchange, 200, call.submit(Contracts.StateRes::class.java).toCompletableFuture().get(5, TimeUnit.SECONDS))
                 }
@@ -106,11 +121,7 @@ class EvidenceHttpServer(
                     } else {
                         Contracts.MissingSpotMsg(request.value)
                     }
-                    routes.sendToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
-                        message
-                    )
+                    routes.sendToSpot(request.spotRid, message)
                         .submit()
                     writeJson(exchange, 200, Contracts.AckRes(true))
                 }
@@ -120,8 +131,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotStageProbeReq::class.java)
                     val reply = routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
+                        request.spotRid,
                         Contracts.StageProbeReq(request.marker, request.op)
                     )
                         .timeout(Duration.ofSeconds(5))
@@ -134,8 +144,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotStageTimerReq::class.java)
                     routes.sendToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
+                        request.spotRid,
                         Contracts.StageTimerStartMsg(request.name, request.periodMilliseconds)
                     )
                         .submit()
@@ -151,8 +160,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotSlowRouteReq::class.java)
                     val call = routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
+                        request.spotRid,
                         Contracts.SlowReq(request.value)
                     )
                         .timeout(Duration.ofMillis(request.timeoutMilliseconds.coerceIn(1, 30_000).toLong()))
@@ -164,8 +172,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotOutboundRouteReq::class.java)
                     val reply = routes.requestToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle(request.spotRid),
+                        request.spotRid,
                         Contracts.OutboundReq(request.value)
                     )
                         .timeout(Duration.ofSeconds(5))
@@ -178,8 +185,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.SpotOutboundCommandReq::class.java)
                     routes.sendToSpot(
-                        Contracts.ROUTE_CHANNEL,
-                        spotHandle("room-a"),
+                        "room-a",
                         Contracts.SpotToSpotCommandReq(request.spotRid, request.value)
                     )
                         .submit()
@@ -195,7 +201,7 @@ class EvidenceHttpServer(
                     requirePost(exchange)
                     val request = readJson(exchange, Contracts.RoutePingHttpReq::class.java)
                     val reply = routes.requestToNode(
-                        Contracts.ROUTE_CHANNEL,
+                        Contracts.SPOT_MESH,
                         RoutingId.from(request.targetRid),
                         Contracts.RoutePingReq(request.value)
                     )
@@ -211,9 +217,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 val closed = try {
-                    spots.close(RoutingId.from(rid))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    closeSpot(rid)
                 } catch (error: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw IllegalStateException("spot close interrupted", error)
@@ -231,9 +235,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(TimerScenarioSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("e2e"))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    createSpot(rid, localSpotType("timer"), ZLinkMessage.of("e2e"))
                 } catch (error: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw IllegalStateException("timer spot create interrupted", error)
@@ -251,9 +253,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(UserSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("admin"))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    createSpot(rid, localSpotType("user"), ZLinkMessage.of("admin"))
                 } catch (error: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw IllegalStateException("user spot create interrupted", error)
@@ -271,9 +271,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(MismatchedSpot::class.java, RoutingId.from(rid), ZLinkMessage.of("admin"))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    createSpot(rid, localSpotType("mismatched"), ZLinkMessage.of("admin"))
                 } catch (error: InterruptedException) {
                     Thread.currentThread().interrupt()
                     throw IllegalStateException("alternate spot create interrupted", error)
@@ -291,9 +289,7 @@ class EvidenceHttpServer(
                     return@createContext
                 }
                 try {
-                    spots.getOrCreate(MismatchedSpot::class.java, RoutingId.from(rid))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    createSpot(rid, localSpotType("mismatched"))
                     write(exchange, 500, "{\"mismatch\":false}\n")
                     return@createContext
                 } catch (error: InterruptedException) {
@@ -307,9 +303,7 @@ class EvidenceHttpServer(
                     state.record("SpotTypeMismatch", rid, error.message)
                 }
                 try {
-                    spots.getOrCreate(UserSpot::class.java, RoutingId.from(rid))
-                        .toCompletableFuture()
-                        .get(5, TimeUnit.SECONDS)
+                    createSpot(rid, localSpotType("user"))
                     state.record("SpotTypeMismatchStateOk", rid, "existing")
                 } catch (error: InterruptedException) {
                     Thread.currentThread().interrupt()
@@ -343,11 +337,31 @@ class EvidenceHttpServer(
     override fun isRunning(): Boolean =
         running
 
-    private fun spotHandle(spotRid: String): SpotHandle =
-        handles.resolveSpotHandle(RoutingId.from(spotRid))
+    private fun createSpot(
+        spotId: String,
+        stableType: String,
+        request: Any? = null,
+    ): ZLinkSpotCreateResult {
+        var call = spots.getOrCreate(spotId, stableType)
+        if (request != null) {
+            call = call.request(request)
+        }
+        return call.submit()
             .toCompletableFuture()
             .get(5, TimeUnit.SECONDS)
-            .orElseThrow { IllegalStateException("spot handle was not found: $spotRid") }
+    }
+
+    private fun localSpotType(family: String): String = family
+
+    private fun closeSpot(spotId: String): Boolean {
+        val spot: SpotRef = spots.find(spotId)
+            .toCompletableFuture()
+            .get(5, TimeUnit.SECONDS)
+            .orElseThrow { IllegalStateException("spot was not found: $spotId") }
+        return spots.close(spot)
+            .toCompletableFuture()
+            .get(5, TimeUnit.SECONDS)
+    }
 
     private fun queryValue(uri: URI, name: String): String? {
         val query = uri.rawQuery

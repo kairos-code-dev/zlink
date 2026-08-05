@@ -208,6 +208,20 @@ public sealed class RequestFailureMappingTests
         Assert.Equal(expected, error.Kind);
     }
 
+    [Theory]
+    [InlineData(true, SubmitResult.NotConnected)]
+    [InlineData(false, SubmitResult.Terminated)]
+    public void Native_Terminated_Submit_Is_Unavailable_Only_While_Source_Is_Serving(
+        bool sourceAcceptsApplicationOperations,
+        SubmitResult expected)
+    {
+        var result = ZLinkManagedMeshNode.NormalizeNativeSubmitFailure(
+            ZlinkSubmitException.ErrorCode.Terminated,
+            sourceAcceptsApplicationOperations);
+
+        Assert.Equal(expected, result);
+    }
+
     [Fact]
     public async Task SpotRouteNativeReply_CancellationDisposesLateOkReply()
     {

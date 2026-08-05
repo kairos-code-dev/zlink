@@ -49,7 +49,7 @@ final class ZLinkCanonicalRelocationStateMachine
     private static final ZLinkStoreCancellation OPEN = () -> false;
     private static final int OFFER_MESSAGES_PER_PARTICIPANT = 64;
     private static final String ACTOR_AUTHORITY_PREFIX = "zla1:a:";
-    private static final int SCAN_PAGE_SIZE = 1024;
+    private static final int SCAN_PAGE_SIZE = 1000;
 
     private final ZLinkInternalMeshNode node;
     private final String meshName;
@@ -471,9 +471,10 @@ final class ZLinkCanonicalRelocationStateMachine
         synchronized (slot) {
             if (control.phase() == 4 && control.sequence() == 1) {
                 if (slot.published() == null) {
-                    slot.published(slot.staged().thenCompose(
+                    CompletionStage<Void> publish = slot.staged().thenCompose(
                         ignored -> slot.request().thenCompose(
-                            target::publish)));
+                            target::publish));
+                    slot.published(publish);
                 }
                 transition = slot.published();
             } else if (control.phase() == 9 && control.sequence() == 2) {

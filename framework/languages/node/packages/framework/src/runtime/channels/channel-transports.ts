@@ -1,6 +1,13 @@
-import { ZLinkFrameworkInternalErrorKind, createInternalFrameworkException, internalFrameworkErrorKind  } from '../framework-errors-internal';
+import {
+  ZLinkFrameworkInternalErrorKind,
+  createInternalFrameworkException,
+  internalFrameworkErrorKind,
+  internalFrameworkErrorKindFromWireReply,
+  isCanonicalWireReplyTerminal
+} from '../framework-errors-internal';
 import { ZLinkBufferMessage } from '../backend/runtime-message';
 import {
+  RequestResult,
   SubmitResult,
   isZLinkBackendResultError,
   type ZLinkBackendMessageLike as MessageLike
@@ -15,6 +22,7 @@ import type {
 import {
   ZLinkFrameworkException
 } from '../../contracts';
+import type { ZLinkFanoutListenerStatus } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import {
   requireOneWayCompletion,
@@ -81,6 +89,7 @@ export interface ZLinkChannelClientTransport {
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
   ): ZLinkSubmitResult | Promise<ZLinkSubmitResult>;
+  getFanoutListenerStatus?(channelName: string): ZLinkFanoutListenerStatus;
 }
 
 export interface ZLinkSpotPublisherClientTransport {
@@ -210,6 +219,7 @@ interface ZLinkChannelTransportRuntime {
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
   ): Promise<ZLinkSubmitResult>;
+  getFanoutListenerStatus(channelName: string): ZLinkFanoutListenerStatus;
   canRouteChannel(routerChannelId: string): boolean;
   canRoutePacketChannel(routerChannelId: string): boolean;
   tryRouteSubmit(
@@ -334,6 +344,10 @@ export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport
     metadata?: ReadonlyMap<string, string>
   ): Promise<ZLinkSubmitResult> {
     return this.requireManager().publish(channelName, topic, packetName, event, signal, metadata);
+  }
+
+  getFanoutListenerStatus(channelName: string): ZLinkFanoutListenerStatus {
+    return this.requireManager().getFanoutListenerStatus(channelName);
   }
 
   private requireManager(): ZLinkChannelTransportRuntime {
@@ -1172,13 +1186,27 @@ function mapMeshSubmissionError(error: unknown, operation: string): Error {
 }
 
 function meshRequestFailure(meshName: string, result: number, nativeErrno: number): ZLinkFrameworkException {
-  const kind: ZLinkFrameworkInternalErrorKindType = result === 102
-    ? ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
-    : ZLinkFrameworkInternalErrorKind.RouteNotConnected;
+  const canonical = isCanonicalWireReplyTerminal(result, nativeErrno);
+  const wireKind = canonical
+    ? internalFrameworkErrorKindFromWireReply(result, nativeErrno)
+    : undefined;
+  const kind: ZLinkFrameworkInternalErrorKindType = !canonical
+    ? ZLinkFrameworkInternalErrorKind.RequestProtocolError
+    : result === RequestResult.NotFound
+      ? ZLinkFrameworkInternalErrorKind.RequestTargetNotFound
+      : result === RequestResult.TimedOut
+        ? ZLinkFrameworkInternalErrorKind.DeadlineExceeded
+        : result === RequestResult.Terminated
+          ? ZLinkFrameworkInternalErrorKind.RuntimeShutdown
+          : result === RequestResult.Conflict || result === RequestResult.InternalError
+            ? wireKind ?? ZLinkFrameworkInternalErrorKind.RequestProtocolError
+            : result === RequestResult.NotConnected || result === RequestResult.Backpressured
+              ? ZLinkFrameworkInternalErrorKind.RouteNotConnected
+              : wireKind ?? ZLinkFrameworkInternalErrorKind.RequestFailed;
   return createInternalFrameworkException(
     kind,
     `MeshNode '${meshName}' request failed with result ${result} and errno ${nativeErrno}.`,
-    result === 109 || result === 113
+    result === RequestResult.NotConnected || result === RequestResult.Backpressured
   );
 }
 

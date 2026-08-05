@@ -1,5 +1,4 @@
 // MON-A6: Placement 집계와 capacity 결과를 대조한다 시나리오를 검증한다.
-import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../../../http-client';
 import { waitForRouteStatusAt } from '../Support/public-status';
@@ -16,6 +15,9 @@ interface ActorResult {
   readonly actorId?: string;
   readonly errorKind?: string;
 }
+
+// The public Node error enum assigns CapacityExceeded the wire value 6.
+const capacityExceededErrorKind = '6';
 
 export async function runMonA6(options: ClientOptions): Promise<void> {
   await postJson<object>(options.serviceBUrl, '/admin/placement-exclude', {});
@@ -60,7 +62,7 @@ export async function runMonA6(options: ClientOptions): Promise<void> {
     const rejectedSpot = await createSpot(options);
     ensure(rejectedSpot.state === 'rejected', 'MON-A6 capacity limit accepted an additional Spot.');
     ensure(
-      rejectedSpot.errorKind === String(ZLinkFrameworkErrorKind.CapacityExceeded),
+      rejectedSpot.errorKind === capacityExceededErrorKind,
       'MON-A6 capacity rejection did not expose CapacityExceeded.'
     );
 

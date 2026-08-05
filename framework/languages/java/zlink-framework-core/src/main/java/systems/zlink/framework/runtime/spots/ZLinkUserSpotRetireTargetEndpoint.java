@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -247,7 +248,9 @@ final class ZLinkUserSpotRetireTargetEndpoint
                     target.staged(),
                     finalRequest,
                     productionReplayer(target, request))
-                    .thenRun(() -> target.published().set(true));
+                    .thenRun(() -> {
+                        target.published().set(true);
+                    });
             });
     }
 
@@ -415,8 +418,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
             new ZLinkServiceRelocationWireCodec.RelocationId(
                 request.fence().aggregateId().getMostSignificantBits(),
                 request.fence().aggregateId().getLeastSignificantBits()),
-            Math.incrementExact(
-                participant.fence().sourceAuthorityOwnerGeneration()),
+            progress.ownerGeneration(participant.id()),
             coordinatorFence,
             participant.id(),
             completion.sequence(),
@@ -762,22 +764,50 @@ final class ZLinkUserSpotRetireTargetEndpoint
             return CompletableFuture.failedFuture(new IllegalStateException(
                 "bound Session route switch runtime is unavailable"));
         }
-        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
-        for (ZLinkSpotRetireControl.SessionRouteFence route
-            : request.sessionRoutes()) {
-            var command = routeCommand(request, route);
-            chain = chain.thenCompose(ignored -> sessionRoutes.switchRoute(
-                    command,
-                    routeTimeout)
-                .thenApply(ack -> null));
-        }
-        return chain;
+        return coordinator.readTargetOwnerGenerations(
+                expectedParticipants(request),
+                new ZLinkLocationOwnerToken(
+                    request.targetOwnerId(),
+                    request.targetOwnerLeaseGeneration()),
+                OPEN)
+            .thenCompose(generations -> {
+                CompletionStage<Void> chain =
+                    CompletableFuture.completedFuture(null);
+                for (ZLinkSpotRetireControl.SessionRouteFence route
+                    : request.sessionRoutes()) {
+                    String authorityKey = request.participants().stream()
+                        .filter(participant -> participant.objectId().equals(
+                            route.actorId()))
+                        .map(ZLinkSpotRetireControl.ParticipantFence
+                            ::authorityKey)
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException(
+                            "session route participant is absent: "
+                                + route.actorId()));
+                    long targetOwnerGeneration = generations.getOrDefault(
+                        authorityKey,
+                        0L);
+                    var command = routeCommand(
+                        request,
+                        route,
+                        targetOwnerGeneration);
+                    chain = chain.thenCompose(ignored ->
+                        sessionRoutes.switchRoute(command, routeTimeout)
+                            .thenApply(ack -> null));
+                }
+                return chain;
+            });
     }
 
     private static ZLinkServiceM6BWireCodec.SessionRelocationRoute
         routeCommand(
             ZLinkSpotRetireControl.StageRequest request,
-            ZLinkSpotRetireControl.SessionRouteFence route) {
+            ZLinkSpotRetireControl.SessionRouteFence route,
+            long targetOwnerGeneration) {
+        if (targetOwnerGeneration <= 0) {
+            throw new IllegalArgumentException(
+                "session route target owner generation is invalid");
+        }
         return new ZLinkServiceM6BWireCodec.SessionRelocationRoute(
             new ZLinkServiceM6BWireCodec.RelocationIdentity(
                 request.fence().aggregateId().getMostSignificantBits(),
@@ -800,7 +830,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
                 route.bindingGeneration()),
             ZLinkServiceM6BWireCodec.SessionRelocationRouteAction.COMMIT,
             route.sourceAuthorityOwnerGeneration(),
-            Math.incrementExact(route.sourceAuthorityOwnerGeneration()),
+            targetOwnerGeneration,
             request.targetNodeRid(),
             request.targetNodeGeneration(),
             route.lastAcceptedSessionSequence());
@@ -861,6 +891,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
     private CompletionStage<Void> publishActor(
         ZLinkSpotRetireControl.StageRequest request) {
         ActorTargetStage target = requireActorStage(request);
+        var participant = request.participants().getFirst();
         return coordinator.readPublishedAggregate(
                 expectedParticipants(request),
                 new ZLinkAggregateFence(
@@ -874,6 +905,7 @@ final class ZLinkUserSpotRetireTargetEndpoint
             .thenCompose(root -> actorStaging.publishAndReplayHidden(
                 target.staged(),
                 root.payload(),
+                root.targetOwnerGeneration(participant.authorityKey()),
                 productionActorReplayer(target, request)))
             .thenRun(() -> target.published().set(true));
     }

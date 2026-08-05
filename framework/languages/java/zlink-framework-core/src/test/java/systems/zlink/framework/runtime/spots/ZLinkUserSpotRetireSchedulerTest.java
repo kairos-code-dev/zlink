@@ -132,7 +132,8 @@ final class ZLinkUserSpotRetireSchedulerTest {
                 Instant.now().plusSeconds(60),
                 Instant.now()),
             request,
-            new byte[32]);
+            new byte[32],
+            Map.of("spot:room-a", 6L));
     }
 
     private static ZLinkAggregateRelocationCoordinator.Request request() {

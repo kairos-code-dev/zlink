@@ -15,6 +15,8 @@ namespace
 
 constexpr std::size_t liveness_size = 13;
 constexpr std::size_t prefix_size = 5;
+constexpr auto relocation_resource_participant_limit =
+  static_cast<std::size_t> (relocationResourceParticipants);
 constexpr std::uint8_t application_payload_version = 1;
 constexpr std::uint8_t application_payload_flow_version = 2;
 
@@ -1550,8 +1552,9 @@ relocation_object_t read_object (std::span<const std::uint8_t> bytes,
 void append_participants (std::vector<std::uint8_t> &bytes,
                           const std::vector<relocation_participant_t> &values)
 {
-    if (values.size () > 2048)
-        throw service_wire_error_t ("relocation participant count exceeds 2048");
+    if (values.size () > relocation_resource_participant_limit)
+        throw service_wire_error_t (
+          "relocation participant count exceeds the protocol limit");
     append_u32 (bytes, static_cast<std::uint32_t> (values.size ()));
     std::uint64_t previous = 0;
     for (const auto &value : values) {
@@ -1593,8 +1596,15 @@ std::vector<relocation_participant_t> read_participants (
   std::span<const std::uint8_t> bytes, std::size_t &offset)
 {
     const auto count = read_u32 (bytes, offset);
-    if (count > 2048)
-        throw service_wire_error_t ("relocation participant count exceeds 2048");
+    if (count > relocation_resource_participant_limit)
+        throw service_wire_error_t (
+          "relocation participant count exceeds the protocol limit");
+    // Every participant has at least an ID, kind, empty identity length and
+    // two signed ordinals. Check the encoded lower bound before reserve so a
+    // truncated count cannot request memory that the frame cannot contain.
+    constexpr std::size_t minimum_encoded_participant_bytes = 8 + 1 + 2 + 8 + 8;
+    if (count > (bytes.size () - offset) / minimum_encoded_participant_bytes)
+        throw service_wire_error_t ("relocation participant count is truncated");
     std::vector<relocation_participant_t> result;
     result.reserve (count);
     std::uint64_t previous = 0;
@@ -1968,9 +1978,10 @@ std::vector<std::uint8_t> encode_relocation_control (
                             "application version");
             append_tlv (extension, 8, field);
             field.clear ();
-            if (value.participant_progress.size () > 2048)
+            if (value.participant_progress.size ()
+                > relocation_resource_participant_limit)
                 throw service_wire_error_t (
-                  "relocation participant progress count exceeds 2048");
+                  "relocation participant progress count exceeds the protocol limit");
             append_u32 (field, static_cast<std::uint32_t> (
                                  value.participant_progress.size ()));
             std::uint64_t previous = 0;
@@ -2064,9 +2075,10 @@ std::vector<std::uint8_t> encode_relocation_control (
             append_relocation_base (bytes, value);
             append_role (bytes, value.sender_role);
             bytes.push_back (value.response ? 1 : 0);
-            if (value.participants.size () > 2048)
+            if (value.participants.size ()
+                > relocation_resource_participant_limit)
                 throw service_wire_error_t (
-                  "relocation terminal participant count exceeds 2048");
+                  "relocation terminal participant count exceeds the protocol limit");
             append_u32 (bytes, static_cast<std::uint32_t> (
                                  value.participants.size ()));
             std::uint64_t previous = 0;
@@ -2220,9 +2232,14 @@ relocation_control_t decode_relocation_control (
                 }
                 else if (id == 9) {
                     const auto count = read_u32 (field, field_offset);
-                    if (count > 2048)
+                    if (count > relocation_resource_participant_limit)
                         throw service_wire_error_t (
-                          "relocation participant progress count exceeds 2048");
+                          "relocation participant progress count exceeds the protocol limit");
+                    constexpr std::size_t minimum_encoded_progress_bytes = 8 + 8 + 8;
+                    if (count > (field.size () - field_offset)
+                                   / minimum_encoded_progress_bytes)
+                        throw service_wire_error_t (
+                          "relocation participant progress count is truncated");
                     std::uint64_t previous = 0;
                     result.participant_progress.reserve (count);
                     for (std::uint32_t index = 0; index < count; ++index) {
@@ -2367,9 +2384,13 @@ relocation_control_t decode_relocation_control (
                 throw service_wire_error_t ("invalid relocation seal response");
             result.response = bytes[offset++] != 0;
             const auto count = read_u32 (bytes, offset);
-            if (count > 2048)
+            if (count > relocation_resource_participant_limit)
                 throw service_wire_error_t (
-                  "relocation terminal participant count exceeds 2048");
+                  "relocation terminal participant count exceeds the protocol limit");
+            constexpr std::size_t minimum_encoded_terminal_bytes = 8 + 8;
+            if (count > (bytes.size () - offset) / minimum_encoded_terminal_bytes)
+                throw service_wire_error_t (
+                  "relocation terminal participant count is truncated");
             result.participants.reserve (count);
             std::uint64_t previous = 0;
             for (std::uint32_t index = 0; index < count; ++index) {

@@ -131,6 +131,30 @@ test('channel header rejects correlation values that do not match the message ki
   );
 });
 
+test('channel header treats nullable flow fields as absent', () => {
+  const header = readable([
+    Buffer.from(JSON.stringify({
+      formatMarker: envelope.ZLINK_CHANNEL_FORMAT_MARKER,
+      kind: 1,
+      channelName: 'api',
+      messageName: 'Lookup',
+      contentType: 'application/json',
+      correlationId: 'cross-language-request',
+      deadline: null,
+      topic: null,
+      errorCode: null,
+      errorMessage: null,
+      source: null,
+      metadata: {},
+      flowId: null,
+      flowOrigin: null
+    }))
+  ]);
+
+  assert.equal(envelope.decodeChannelHeader(header).flowId, undefined);
+  assert.equal(envelope.decodeChannelHeader(header).flowOrigin, undefined);
+});
+
 test('IMP-ND-03 channel Error preserves the public framework kind without retry hints', () => {
   const requestParts = envelope.encodeChannelEnvelopeParts(1, 'api', 'Lookup', { id: 'a' });
   const request = envelope.decodeChannelEnvelope(readable(requestParts));

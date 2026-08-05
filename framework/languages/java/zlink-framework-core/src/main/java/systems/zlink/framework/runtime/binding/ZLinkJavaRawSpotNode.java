@@ -36,7 +36,10 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationRece
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.channels.ZLinkChannelContentTypeFrame;
+import systems.zlink.framework.runtime.internal.streams.ZLinkStreamErrorPayload;
+import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
+import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 
 /**
@@ -888,7 +891,13 @@ final class ZLinkJavaRawSpotNode
                     reply -> replyBoundStreamSession(
                         stream,
                         sourceSessionRid,
-                        reply));
+                        streamHeader,
+                        reply),
+                    failure -> replyBoundStreamError(
+                        stream,
+                        sourceSessionRid,
+                        streamHeader,
+                        failure));
             }
             return owner.sendBoundActor(
                 actor,
@@ -906,7 +915,14 @@ final class ZLinkJavaRawSpotNode
                         replyBoundStreamSession(
                             stream,
                             sourceSessionRid,
+                            streamHeader,
                             reply);
+                    } else {
+                        replyBoundStreamError(
+                            stream,
+                            sourceSessionRid,
+                            streamHeader,
+                            failure);
                     }
                 });
             return true;
@@ -975,17 +991,103 @@ final class ZLinkJavaRawSpotNode
             timeout);
     }
 
-    private static void replyBoundStreamSession(
+    private void replyBoundStreamSession(
         ZLinkJavaStreamSocket stream,
         RoutingId sessionRid,
+        ZLinkStreamHeader requestHeader,
         List<Message> reply) {
         try {
-            stream.sendBoundSessionPush(
+            streamTrace("bound Session reply received parts="
+                + (reply == null ? "null" : reply.size())
+                + " requestSequence="
+                + (requestHeader == null
+                    ? "null"
+                    : requestHeader.requestSequence().orElse(null)));
+            if (reply == null || reply.size() != 1) {
+                replyBoundStreamError(
+                    stream,
+                    sessionRid,
+                    requestHeader,
+                    new IllegalArgumentException(
+                        "bound Session reply requires one encoded STREAM frame"));
+                return;
+            }
+            byte[] frame = reply.getFirst().toByteArray();
+            ZLinkJavaStreamSocket.submitBoundSessionUntilAccepted(
+                stream.admissionTimeout(),
+                () -> {
+                    try (Message attempt = Message.from(frame)) {
+                        return stream.sendBoundSessionPush(
+                            sessionRid,
+                            List.of(attempt),
+                            SendFlags.DONT_WAIT);
+                    }
+                }).whenComplete((ignored, failure) -> {
+                    if (failure == null) {
+                        streamTrace("bound Session reply accepted");
+                    } else {
+                        streamTrace("bound Session reply rejected after retry: "
+                            + failure.getMessage());
+                        replyBoundStreamError(
+                            stream,
+                            sessionRid,
+                            requestHeader,
+                            failure);
+                    }
+                });
+        } catch (RuntimeException failure) {
+            replyBoundStreamError(
+                stream,
                 sessionRid,
-                reply,
-                SendFlags.DONT_WAIT);
+                requestHeader,
+                failure);
         } finally {
-            reply.forEach(Message::close);
+            if (reply != null) {
+                reply.forEach(Message::close);
+            }
+        }
+    }
+
+    private void replyBoundStreamError(
+        ZLinkJavaStreamSocket stream,
+        RoutingId sessionRid,
+        ZLinkStreamHeader requestHeader,
+        Throwable failure) {
+        if (requestHeader == null
+            || requestHeader.requestSequence().isEmpty()) {
+            return;
+        }
+        streamTrace("bound Session error reply scheduled requestSequence="
+            + requestHeader.requestSequence().orElseThrow()
+            + " failure="
+            + (failure == null ? "null" : failure.getClass().getSimpleName()));
+        try {
+            byte[] errorFrame = ZLinkStreamFrameCodec.encode(
+                ZLinkStreamHeaderCodec.encode(
+                    ZLinkStreamHeader.createErrorResponse(
+                        requestHeader,
+                        requestHeader.packetName())),
+                ZLinkStreamErrorPayload.encode(failure));
+            ZLinkJavaStreamSocket.submitBoundSessionUntilAccepted(
+                stream.admissionTimeout(),
+                () -> {
+                    try (Message attempt = Message.from(errorFrame)) {
+                        return stream.sendBoundSessionPush(
+                            sessionRid,
+                            List.of(attempt),
+                            SendFlags.DONT_WAIT);
+                    }
+                }).whenComplete((ignored, sendFailure) -> {
+                    if (sendFailure == null) {
+                        streamTrace("bound Session error reply accepted");
+                    } else {
+                        streamTrace("bound Session error rejected after retry: "
+                            + sendFailure.getMessage());
+                    }
+                });
+        } catch (RuntimeException encodingFailure) {
+            streamTrace("bound Session error encoding failed: "
+                + encodingFailure.getMessage());
         }
     }
 

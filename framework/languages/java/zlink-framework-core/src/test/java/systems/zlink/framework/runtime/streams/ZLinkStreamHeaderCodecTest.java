@@ -115,7 +115,7 @@ final class ZLinkStreamHeaderCodecTest {
         assertEquals(ZLinkStreamMessageKind.RESPONSE, response.kind());
         assertEquals(Optional.of(7L), response.requestSequence());
         assertEquals(Optional.of("corr-7"), response.correlationId());
-        assertEquals("ReplyPacket", response.packetName());
+        assertEquals("", response.packetName());
         assertTrue(response.flags().contains(ZLinkStreamHeaderFlag.PAYLOAD_COMPRESSED));
         assertTrue(response.flags().contains(ZLinkStreamHeaderFlag.HAS_METADATA));
     }
@@ -183,6 +183,9 @@ final class ZLinkStreamHeaderCodecTest {
             ZLinkStreamHeaderCodec.decodeOrPlain(hex("f2 02 01 00 04 4a 6f 69 6e")));
         assertThrows(IllegalArgumentException.class, () ->
             ZLinkStreamHeaderCodec.decodeOrPlain(hex("f2 04 00 01 00 00 00 00 00 00 00 07 05 45 72 72 6f 72")));
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamHeaderCodec.decodeOrPlain(hex(
+                "f2 03 01 01 00 00 00 00 00 00 00 07 01 52")));
     }
 
     private static byte[] hex(String value) {

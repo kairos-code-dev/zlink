@@ -37,7 +37,8 @@ internal sealed class TestHostMessageFlowListener : IDisposable
             + $" surface={Tag(activity, "surface")}"
             + $" kind={Tag(activity, "message_kind")}"
             + $" packet={Tag(activity, "packet_name")}"
-            + $" flow={Tag(activity, "flow_id")}";
+            + $" flow={Tag(activity, "flow_id")}"
+            + $" origin={Tag(activity, "flow_origin")}";
         lock (_fileGate) File.AppendAllText(_filePath, line + Environment.NewLine);
     }
 

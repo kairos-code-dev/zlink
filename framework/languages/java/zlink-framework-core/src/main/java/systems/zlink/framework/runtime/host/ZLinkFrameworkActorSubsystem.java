@@ -125,8 +125,7 @@ final class ZLinkFrameworkActorSubsystem {
                                 meshNode,
                                 locationStore,
                                 actors,
-                                serializer,
-                                registration.defaultRequestTimeout());
+                                serializer);
                     meshNode.setActorCreateOperationHandler(creation);
                     actors.setCreationSubmitter(creation);
                     actors.setEntrySpotTargetSelector(

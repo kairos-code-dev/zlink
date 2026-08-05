@@ -111,6 +111,7 @@ start_role api-a "$(app_bin Server/CommerceApi CommerceApi)" "$api_a_config"
 start_role api-b "$(app_bin Server/CommerceApi CommerceApi)" "$api_b_config"
 wait_http "$api_a_http"
 wait_http "$api_b_http"
+wait_framework_ready_logs "$LOG_DIR" 1
 echo "topology=ready"
 "$(app_bin Client Client)" --config "$client_config" >"$LOG_DIR/client.log" 2>&1
 cat "$LOG_DIR/client.log"

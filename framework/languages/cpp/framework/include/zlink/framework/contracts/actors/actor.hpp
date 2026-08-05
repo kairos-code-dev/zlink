@@ -18,7 +18,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <stdexcept>
 #include <variant>
 #include <string>
@@ -33,12 +32,12 @@ namespace zlink::framework
 namespace detail
 {
 inline bool is_valid_actor_id (std::string_view value) noexcept;
+class actor_ref_access_t;
 }
 
 class actor_id_t final
 {
   public:
-    actor_id_t () = default;
     explicit actor_id_t (std::string value) : _value (std::move (value))
     {
         if (!detail::is_valid_actor_id (_value)) {
@@ -48,33 +47,11 @@ class actor_id_t final
     }
 
     std::string_view value () const noexcept { return _value; }
-    bool empty () const noexcept { return _value.empty (); }
     auto operator<=> (const actor_id_t &) const = default;
-
-    /* Internal framework call sites still cross std::string-owned maps. This
-     * conversion is removed from the installed compatibility surface once all
-     * runtime storage uses actor_id_t directly. */
-    operator std::string_view () const noexcept { return _value; }
-    operator std::string () const { return _value; }
 
   private:
     std::string _value;
 };
-
-inline bool operator== (const actor_id_t &lhs, std::string_view rhs) noexcept
-{
-    return lhs.value () == rhs;
-}
-
-inline bool operator== (std::string_view lhs, const actor_id_t &rhs) noexcept
-{
-    return lhs == rhs.value ();
-}
-
-inline std::ostream &operator<< (std::ostream &stream, const actor_id_t &actor_id)
-{
-    return stream << actor_id.value ();
-}
 
 namespace detail
 {
@@ -135,56 +112,26 @@ class actor_create_call_state_t;
 class spot_node_runtime_t;
 } // namespace detail
 
-class actor_ref_t
+class actor_ref_t final
 {
   public:
-    actor_ref_t () = default;
     actor_ref_t (actor_id_t actor_id,
                  std::uint64_t object_generation,
                  std::string mesh_name,
                  node_rid_t node_rid);
-
-    /* Kept private to the current runtime migration path. New application
-     * code uses the exact actor_id/generation/mesh/node declaration above. */
-    actor_ref_t (node_rid_t node_rid,
-                 std::string actor_type,
-                 std::string actor_id,
-                 std::uint64_t generation = 1);
 
     const node_rid_t &node_rid () const noexcept;
     const actor_id_t &actor_id () const noexcept;
     std::uint64_t object_generation () const noexcept;
     std::string_view mesh_name () const noexcept;
 
-    /* Runtime migration aliases. */
-    std::string_view actor_type () const noexcept;
-    std::uint64_t generation () const noexcept;
-    bool empty () const noexcept;
-
   private:
+    friend class detail::actor_ref_access_t;
     actor_id_t _actor_id;
     std::uint64_t _object_generation = 0;
     std::string _mesh_name;
     node_rid_t _node_rid;
     std::string _actor_type;
-};
-
-struct actor_ref_snapshot_t
-{
-    node_rid_t node_rid;
-    std::string actor_id;
-    std::uint64_t generation = 0;
-
-    static actor_ref_snapshot_t from (const actor_ref_t &actor_ref)
-    {
-        return actor_ref_snapshot_t{actor_ref.node_rid (), std::string (actor_ref.actor_id ()),
-                                    actor_ref.generation ()};
-    }
-
-    actor_ref_t to_actor_ref (std::string actor_type) const
-    {
-        return actor_ref_t (node_rid, std::move (actor_type), actor_id, generation);
-    }
 };
 
 class actor_client_t;
@@ -740,7 +687,7 @@ class bound_session_t
                                            const zlink::message_t &payload);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
-    actor_ref_t _actor_ref;
+    std::shared_ptr<actor_ref_t> _actor_ref;
     std::uint64_t _expected_binding_generation = 0;
 };
 
@@ -883,7 +830,6 @@ class actor_context_t
 class session_actor_t
 {
   public:
-    session_actor_t ();
     ~session_actor_t ();
 
     session_actor_t (session_actor_t &&) noexcept;

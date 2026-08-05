@@ -4,7 +4,7 @@ title: "Framework 메시지 계약"
 
 # Framework 메시지 계약
 
-[스펙 목차](README.ko.md) · [이전: ZLink Framework 상호작용 모델](03-interaction-model.ko.md) · [다음: 비동기 실행과 handler turn](05-async-execution-policy.md)
+[스펙 목차](README.ko.md) · [이전: ZLink Framework 상호작용 모델](03-interaction-model.ko.md) · [다음: 비동기 실행과 handler turn](05-async-execution-policy.ko.md)
 
 > **이 장이 정의하는 것** — typed 메시지, application metadata, 응답과 오류의 공개 계약.
 

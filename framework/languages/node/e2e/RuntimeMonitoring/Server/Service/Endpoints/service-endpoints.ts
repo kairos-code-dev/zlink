@@ -195,7 +195,10 @@ export function createServiceEndpoints(
       handle: async () => {
         const result = await frameworkRuntime.relocate({ mode: ZLinkFrameworkRelocationMode.PlannedMaintenance });
         evidence.add(`admin|rid=${evidence.rid}|action=retire|outcome=${result.outcome}|reason=${result.reason}`);
-        return result;
+        return {
+          ...result,
+          effectiveTargetApplicationVersion: String(result.effectiveTargetApplicationVersion)
+        };
       }
     },
     {

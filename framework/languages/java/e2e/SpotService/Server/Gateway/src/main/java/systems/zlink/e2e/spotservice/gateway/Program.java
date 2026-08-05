@@ -73,14 +73,9 @@ public final class Program {
             if (spotOnly) {
                 System.out.println("[topology] role=gateway route_mesh=enabled route_channel=disabled");
             } else {
-                node.channelName(Contracts.ROUTE_CHANNEL);
-                node.peerConnections().connect(
-                    RoutingId.from("play-a"), gateway.routeAEndpoint());
-                node.peerConnections().connect(
-                    RoutingId.from("play-b"), gateway.routeBEndpoint());
+                node.channelName(Contracts.ROUTE_CHANNEL).client();
             }
-            options.addClientServerChannel(Contracts.EGRESS_CHANNEL)
-                .enableClient(gateway.ingressAEndpoint());
+            options.addClientServerChannel(Contracts.EGRESS_CHANNEL).client();
         };
     }
 

@@ -24,14 +24,21 @@ class RemoteActorAuthHandler(
         request: Contracts.ActorRemoteAuthReq
     ) {
         val ensured = routes.requestToNode(
-            Contracts.ROUTE_CHANNEL,
+            Contracts.SPOT_MESH,
             RoutingId.from(request.nodeRid),
             Contracts.EnsureActorReq(request.actorId, request.profile)
         )
             .submit(Contracts.EnsureActorRes::class.java).await()
         val bound = try {
             context.actors()
-                .bind(ActorRef(RoutingId.from(ensured.nodeRid), ensured.actorId, ensured.generation))
+                .bind(
+                    ActorRef(
+                        ensured.actorId,
+                        ensured.generation,
+                        Contracts.SPOT_MESH,
+                        RoutingId.from(ensured.nodeRid),
+                    )
+                )
                 .await()
         } catch (error: Throwable) {
             evidence.record("RemoteActorSessionBindFailed", "session", error.javaClass.simpleName)

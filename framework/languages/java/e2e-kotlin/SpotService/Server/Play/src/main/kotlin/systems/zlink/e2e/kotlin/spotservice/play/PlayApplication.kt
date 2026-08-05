@@ -8,7 +8,6 @@ import systems.zlink.e2e.kotlin.spotservice.play.handlers.*
 import systems.zlink.e2e.kotlin.spotservice.play.spots.*
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.util.concurrent.CompletableFuture
-import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -19,13 +18,14 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder
 import systems.zlink.framework.channels.ZLinkRouteClient
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
-import systems.zlink.framework.messaging.ZLinkMessage
-import systems.zlink.framework.spots.ZLinkSpotManager
-import systems.zlink.framework.spots.SpotHandleResolver
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
+import systems.zlink.framework.spots.ZLinkSpotManager
 
 @EnableZLinkFramework
 @SpringBootApplication(
@@ -45,7 +45,7 @@ class PlayApplication {
         json: ObjectMapper,
         spots: ZLinkSpotManager,
         routes: ZLinkRouteClient,
-        handles: SpotHandleResolver,
+        meshOptions: ZLinkRouteMeshRuntimeOptions,
     ): EvidenceHttpServer =
         EvidenceHttpServer(
             state,
@@ -53,14 +53,19 @@ class PlayApplication {
             Env.get("e2e.http.endpoint"),
             spots,
             routes,
-            handles,
+            meshOptions,
         )
 
     @Bean
-    fun playFramework(state: ScenarioState): ZLinkFrameworkConfigurer =
+    fun playFramework(
+        state: ScenarioState,
+        relocationStore: ZLinkRedisRelocationStore,
+    ): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("e2e.log.dir", "logs")
+            options.addRelocationStore(relocationStore)
+            options.addHandlersFromPackageOf(IngressCommandHandler::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -71,7 +76,7 @@ class PlayApplication {
                     }
                     state.record(
                         "DispatchError",
-                        error.spotRid() ?: "",
+                        error.spotId() ?: "",
                         error.surface().toString() +
                             "|" + error.errorReason() +
                             "/" + error.errorAction() +
@@ -82,7 +87,7 @@ class PlayApplication {
             val node: ZLinkMeshNodeBuilder = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(Env.get("e2e.route.endpoint"))
                 .setRoutingId(RoutingId.from(nodeRid))
-            node.channelName(Contracts.ROUTE_CHANNEL)
+            node.channelName(Contracts.ROUTE_CHANNEL).server()
             if (nodeRid != "play-a") {
                 node.peerConnections().connect(
                     RoutingId.from("play-a"),
@@ -111,14 +116,10 @@ class PlayApplication {
                 Env.get("e2e.ingress.a.endpoint")
             }
             val ingress: ClientServerChannelBuilder = options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
-                .enableServer(Env.get("e2e.ingress.endpoint"))
-                .enableClient(peerIngress)
-                .setRoutingId(RoutingId.from(nodeRid))
-            ingress.addSendHandler(
-                IngressCommandHandler::class.java,
-                Contracts.OutboundMsg::class.java
-            )
-            ingress.addRequestHandler(NoopIngressHandler::class.java, String::class.java, String::class.java)
+            ingress.server()
+                .listen(Env.get("e2e.ingress.endpoint").substringAfterLast(':').toInt())
+                .addHandlerGroup(Contracts.CHANNEL_HANDLER_GROUP)
+            ingress.client().connect(peerIngress)
             node.objects().server()
                 .addEntrySpot(ScenarioEntrySpot::class.java)
                 .addSpotFactory(
@@ -167,16 +168,12 @@ class PlayApplication {
         )
 
     @Bean
-    fun createOwnedSpot(
-        spots: ZLinkSpotManager,
-        state: ScenarioState
-    ): ApplicationRunner =
-        ApplicationRunner {
-            val spotRid = if (state.nodeRid() == "play-a") "room-a" else "room-b"
-            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
-                .toCompletableFuture()
-                .join()
-        }
+    fun relocationStore(): ZLinkRedisRelocationStore =
+        ZLinkRedisRelocationStore(
+            ZLinkRedisRelocationOptions()
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
+        )
 
     companion object {
         @JvmStatic

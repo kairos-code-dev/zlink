@@ -80,6 +80,37 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void ZoneWorld_Enables_Key_Transitions_And_Persists_Process_Logs()
+    {
+        var sampleRoot = ResolveSampleRoot("ZoneWorld");
+        var participants = new[]
+        {
+            Path.Combine(sampleRoot, "Server", "Gateway", "Program.cs"),
+            Path.Combine(sampleRoot, "Server", "Ops", "Program.cs"),
+            Path.Combine(sampleRoot, "Server", "ZoneNode", "Program.cs")
+        };
+
+        foreach (var participant in participants)
+        {
+            var source = File.ReadAllText(participant);
+            Assert.Contains(
+                ".Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal)",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                ".Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors)",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        var runner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
+        Assert.Contains(
+            "\"$@\" >>\"$LOG_DIR/$name.log\" 2>&1 &",
+            runner,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ZoneWorld_Uses_Global_Actor_Routes_After_Membership_Callbacks()
     {
         var sampleRoot = ResolveSampleRoot("ZoneWorld");
@@ -149,8 +180,12 @@ public sealed partial class RegressionTests
         var runner = File.ReadAllText(Path.Combine(sampleRoot, "run_sample.sh"));
 
         Assert.Contains("[\"ZW-B5\"] = B5ActorGenerationPreserved", scenarios, StringComparison.Ordinal);
+        Assert.Contains("[\"ZW-B6\"] = B6MessageFollow", scenarios, StringComparison.Ordinal);
         Assert.Contains("SelectPairAsync", scenarios, StringComparison.Ordinal);
         Assert.Contains("before.ObjectGeneration == after.ObjectGeneration", scenarios, StringComparison.Ordinal);
+        Assert.Contains("RequestMessageFollowProbeAsync", scenarios, StringComparison.Ordinal);
+        Assert.Contains("SendMessageFollowProbeAsync", scenarios, StringComparison.Ordinal);
+        Assert.Contains("message-follow-probe completed actor={playerId}", scenarios, StringComparison.Ordinal);
         Assert.Contains(
             "ZW-B2 ZW-B3 ZW-B5 ZW-B6 ZW-F2",
             runner,
@@ -159,12 +194,11 @@ public sealed partial class RegressionTests
             "ZW-B1 ZW-B2 ZW-B3 ZW-B4 ZW-B5 ZW-B6",
             runner,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("[\"ZW-B6\"]", scenarios, StringComparison.Ordinal);
-        Assert.DoesNotContain("pass ZW-B6", runner, StringComparison.Ordinal);
-        Assert.Contains(
-            "ZW-B6 remains withheld until the framework exposes a supported operational",
-            runner,
-            StringComparison.Ordinal);
+        Assert.Contains("pass ZW-B6", runner, StringComparison.Ordinal);
+        Assert.Contains("message_follow_relay", runner, StringComparison.Ordinal);
+        Assert.Contains("payload=", runner, StringComparison.Ordinal);
+        Assert.Contains("relay_hits\" -eq 2", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("ZW-B6 remains withheld", runner, StringComparison.Ordinal);
     }
 
     [Fact]

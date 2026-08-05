@@ -199,6 +199,29 @@ public sealed class RelocationProbeClient(IZlinkStreamConnector connector) : IAs
         connector.Request(new ActorLocationProbeReq(actorId))
             .Async<ActorLocationProbeRes>(cancellationToken);
 
+    public ValueTask<MessageFollowProbeRes> PrimeMessageFollowRouteAsync(
+        string actorId,
+        CancellationToken cancellationToken) =>
+        connector.Request(new MessageFollowProbeReq(
+                actorId,
+                $"prime-{actorId}",
+                "route-prime"u8.ToArray()))
+            .Async<MessageFollowProbeRes>(cancellationToken);
+
+    public ValueTask SendMessageFollowProbeAsync(
+        string actorId,
+        string probeId,
+        byte[] payload) =>
+        connector.Send(new MessageFollowProbeReq(actorId, probeId, payload)).Async();
+
+    public ValueTask<MessageFollowProbeRes> RequestMessageFollowProbeAsync(
+        string actorId,
+        string probeId,
+        byte[] payload,
+        CancellationToken cancellationToken) =>
+        connector.Request(new MessageFollowProbeReq(actorId, probeId, payload))
+            .Async<MessageFollowProbeRes>(cancellationToken);
+
     public ValueTask DisposeAsync() => connector.DisposeAsync();
 }
 

@@ -188,6 +188,16 @@ message·byte·time batch를 사용한다. D2의 HWM pending 회계와 B3의 주
 runtime helper로 모으고, Spot kind를 bool이 아닌 enum으로 바꾸며, C++ 내부 test의
 umbrella `<zlink.hpp>` 의존도 제거했다.
 
+추가로 공통 spec의 mailbox 회계와 dispatch loop 조건을 다시 대조했다. C++
+`service_mailbox_t`는 이제 `parts`의 byte에 `fixed_work_byte_cost`를 더하고, 합산이
+`std::size_t` 범위를 넘으면 최댓값으로 고정한다. 경계 검증은 고정 비용을 포함한
+admission 결과와 두 축의 원자적 실패를 확인한다. Native STREAM 수신 경로는 끝나지 않은
+frame의 바이트를 connection별 buffer에 보관하고 `MSG_DONTWAIT`로 읽는다. 한 번의
+batch 뒤 buffer에 완전한 frame이 남으면 다음 scheduler 실행을 예약하며, 이 상태에서도
+`poll(..., 0)`으로 kernel에서 읽을 수 있는 다른 connection을 같은 회전 후보에 포함한다.
+Idle eviction은 idle timeout과 serial lane·timer·relocation·callback quiescence를
+확인한 뒤 admission을 봉인하고, Store transaction 뒤에도 같은 조건을 다시 확인한다.
+
 구현 비교에는 공통 internals의 [직렬 실행](../../framework/common/internals/02-serialization.ko.md),
 [대상 선택과 위치 캐시](../../framework/common/internals/06-routing-and-cache.ko.md),
 [수신과 dispatch 루프](../../framework/common/internals/07-dispatch-loop.ko.md),
@@ -207,17 +217,30 @@ umbrella `<zlink.hpp>` 의존도 제거했다.
 - `framework-unit`: 31/31 PASS
 - `framework-contract`: 8/8 PASS
 - `test_cpp_framework_install_consumer`, `test_cpp_framework_tooling_contract`: PASS
-- 전체 CTest: 수정 후 fresh aggregate에서 56/56 PASS, `100% tests passed, 0 tests failed out of 56`을
-  확인했다. 여기에는 unit·contract, installed package consumer, connector·HTTP와 6개
-  framework sample이 포함된다.
-- ASan targeted gate: `actor_gateway`, `execution`, `channel_messaging`, `stream_framework`
-  4/4 PASS. LeakSanitizer 오류 없이 종료했다.
+- C++ non-sample aggregate: 최신 코드에서 `ctest --repeat until-fail:5`로 50/50 PASS를
+  5회 반복 확인했다. 여기에는
+  unit·contract, installed package consumer, connector·HTTP가 포함된다.
+- ASan/LSan targeted gate: 최신 `m6c_runtime`을 5회 반복해 모두 PASS시켰고,
+  LeakSanitizer 오류 없이 종료했다.
 - framework sample smoke: 전체 aggregate 6/6 PASS를 확인했다. 추가 반복은 TicTacToe 10회,
   GameQuest 12회, SupportChat 15회 연속 PASS였다.
 - `RegistryMessaging/run_e2e.sh RM-C7`: 두 provider process가 `api-a=180`, `api-b=60`을
   기록하고 PASS
+- Idle eviction unit 검증: timeout 이전에는 candidate와 admission flag를 만들지 않고, timeout
+  이후에는 callback 안의 application post를 거절한 뒤 `IdleEvicted`로 닫는 경로 PASS
+- Native STREAM 공정성 unit 검증: 미완성 frame이 있는 connection보다 다른 connection의
+  완전한 frame을 먼저 전달하고, 한 번에 받은 65개 frame의 마지막 frame을 다시 예약하는
+  경로 PASS
+- mailbox unit 검증: payload byte와 작업당 고정 비용을 함께 계산하는 경계 검증 PASS
+- relocation hold unit 검증: capture 실패 뒤 held application work의 FIFO 복구, held byte 회계 보존,
+  aggregate hold의 1,024 record·16 MiB 경계 PASS
+- Node `verify:m6b-runtime`: 67/67 PASS; Node workspace build PASS
+- C++와 Node의 MessageFollow 대상 process 검증: 양쪽 runtime의 admission과 command 50
+  교환 PASS (`TMPDIR`은 저장소 전용 임시 디렉터리 사용)
 
-W3(A2·D5)는 C++ local path를 구현했지만 command 50의 mixed-process 상호운용 검증은 남아
-있다. D6의 batch·owner 점유 상한 값은
+W3(A2·D5)의 직접 C++와 Node 간 command 50 교환은 통과했다. 다만 relay 성공 뒤 송신측
+route cache를 조건부로 무효화하는 전 구간을 언어 간 process로 검증한 증거는 아직 없다.
+D6의 batch·owner 점유 상한 값은
 현재 C++ 기본값과 unit evidence가 있지만 공통 contract의 측정·허용 범위가 확정된 것은
-아니다. 이 두 조건과 STREAM 전체 process matrix는 남은 설계·검증 항목으로 분리한다.
+아니다. 이 두 조건과 STREAM을 포함한 전체 언어×topology process matrix는 남은
+설계·검증 항목으로 분리한다.

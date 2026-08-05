@@ -367,6 +367,7 @@ internal sealed partial class ZLinkSpotActivation
 
     internal async ValueTask ReplayFinalTransferredActorHandoffAsync(
         ZLinkActorRuntimeState actorState,
+        string handoffId,
         CancellationToken cancellationToken)
     {
         var actorRef = actorState.NativeActorRef
@@ -378,7 +379,11 @@ internal sealed partial class ZLinkSpotActivation
             var frames = actorState.Handoff.SnapshotFinalReplay();
             _runtime.LogActorHandoff(
                 $"handoff_final_replay_snapshot actor={actorState.ActorId} frames={frames.Count}");
-            if (frames.Count == 0) return;
+            if (frames.Count == 0
+                && actorState.Handoff.TryCompleteTransferredActorReplay(handoffId))
+                return;
+            if (frames.Count == 0)
+                continue;
 
             await _dispatcher.DispatchActorReplayFramesAsync(
                     ZLinkActorHandoffFrames.Restore(actorRef, frames),

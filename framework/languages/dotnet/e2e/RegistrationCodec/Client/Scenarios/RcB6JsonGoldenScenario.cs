@@ -7,9 +7,9 @@ namespace RegistrationCodec.Client.Scenarios;
 
 internal static class RcB6JsonGoldenScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient server)
+    public static async Task RunAsync(ZLinkHttpClient requester)
     {
-        var result = (await server.Post("/codec/json-golden")
+        var result = (await requester.Post("/codec/json-golden")
             .Async<JsonGoldenRes>()).Body;
 
         ZlinkStreamAssert.Ensure(result.DisplayName == "Ada Lovelace", "RC-B6 display name changed.");

@@ -7,9 +7,10 @@ import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -24,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.errors.ZlinkRecvException;
@@ -60,6 +62,11 @@ final class ZLinkChannelRuntimeTest {
                     spotId,
                     1L,
                     systems.zlink.framework.spots.ZLinkSpotKind.USER)));
+        return handlers(resolver);
+    }
+
+    private static ZLinkHandlerActivator handlers(
+        SpotTransportAddressResolver resolver) {
         return ZLinkHandlerActivator.services()
             .add(SpotTransportAddressResolver.class, resolver);
     }
@@ -104,9 +111,11 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
-    void routeRequestTreatsMissingChannelMemberAsTransientReadiness() {
-        assertTrue(ZLinkChannelRequestSubmitter.isRetriableSubmit(
+    void routeRequestTreatsMissingChannelMemberAsTerminalSubmitFailure() {
+        assertFalse(ZLinkChannelRequestSubmitter.isRetriableSubmit(
             new ZlinkSubmitException(SubmitResult.NOT_FOUND, 2)));
+        assertFalse(ZLinkChannelRequestSubmitter.isRetriableSubmit(
+            new ZlinkSubmitException(SubmitResult.NOT_FOUND, 113)));
     }
 
     @Test
@@ -115,7 +124,7 @@ final class ZLinkChannelRuntimeTest {
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.spotNode.requestFailuresRemaining = 1;
-        backend.spotNode.requestFailureResult = SubmitResult.NOT_FOUND;
+        backend.spotNode.requestFailureResult = SubmitResult.NOT_CONNECTED;
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
@@ -358,6 +367,72 @@ final class ZLinkChannelRuntimeTest {
         }
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(
+        value = ZLinkBackendRequestResult.class,
+        names = {"TIMED_OUT", "NOT_CONNECTED", "TERMINATED"})
+    void routeRequestDeliversTerminalCallbackResultWithoutResubmitting(
+        ZLinkBackendRequestResult terminalResult) throws Exception {
+        var scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        FakeRouterSocket router = new FakeRouterSocket();
+        router.requestResult = terminalResult;
+        router.requestReplyParts = List.of(Message.from("same-payload".getBytes()));
+        var submitter = new ZLinkChannelRequestSubmitter(
+            scheduler, Duration.ofMillis(300));
+        CompletableFuture<ZLinkBackendRequestResult> completion =
+            new CompletableFuture<>();
+        try {
+            submitter.submitRoute(
+                router,
+                RoutingId.from("play-node"),
+                List.of(Message.from("same-payload".getBytes())),
+                reply -> {
+                    completion.complete(reply.result());
+                    reply.parts().forEach(Message::close);
+                },
+                Duration.ofMillis(300),
+                new CompletableFuture<>());
+
+            assertEquals(terminalResult, completion.get(1, TimeUnit.SECONDS));
+            Thread.sleep(40);
+            assertEquals(1, router.requestAttempts);
+        } finally {
+            router.close();
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void routeRequestAcceptsReplyThatEqualsTheOriginalPayload() throws Exception {
+        var scheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        FakeRouterSocket router = new FakeRouterSocket();
+        router.requestResult = ZLinkBackendRequestResult.OK;
+        router.requestReplyParts = List.of(Message.from("same-payload".getBytes()));
+        var submitter = new ZLinkChannelRequestSubmitter(
+            scheduler, Duration.ofMillis(300));
+        CompletableFuture<ZLinkBackendRequestResult> completion =
+            new CompletableFuture<>();
+        try {
+            submitter.submitRoute(
+                router,
+                RoutingId.from("play-node"),
+                List.of(Message.from("same-payload".getBytes())),
+                reply -> {
+                    completion.complete(reply.result());
+                    reply.parts().forEach(Message::close);
+                },
+                Duration.ofMillis(300),
+                new CompletableFuture<>());
+
+            assertEquals(ZLinkBackendRequestResult.OK, completion.get(1, TimeUnit.SECONDS));
+            Thread.sleep(40);
+            assertEquals(1, router.requestAttempts);
+        } finally {
+            router.close();
+            scheduler.shutdownNow();
+        }
+    }
+
     @Test
     void meshNodeAndChannelCallsEncodeImmutableApplicationMetadata() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -494,6 +569,41 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void spotRouterNodeRequestCompletesUnavailableOnTransportNotConnectedReply() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.requestResults.add(
+            ZLinkBackendRequestResult.NOT_CONNECTED);
+        backend.spotNode.entrySpot.requestReplyParts = List.of(
+            Message.from("{\"value\":\"reply\"}".getBytes()));
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(), handlers())) {
+            runtime.registerSpotRouterNode("play.route", backend.spotNode);
+
+            var failure = org.junit.jupiter.api.Assertions.assertThrows(
+                java.util.concurrent.CompletionException.class,
+                () -> runtime.requestToSpot(
+                    "room-spot",
+                    new TestRequest("hello"))
+                .timeout(Duration.ofMillis(300))
+                .submit(TestReply.class)
+                .toCompletableFuture()
+                .join());
+
+            var frameworkError = assertInstanceOf(
+                systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                failure.getCause());
+            assertEquals(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.UNAVAILABLE,
+                frameworkError.kind());
+            assertEquals(1, backend.spotNode.entrySpot.requestAttempts);
+        }
+    }
+
+    @Test
     void spotRouterNodeSendRetriesUntilConnectedRouteIsReady() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
@@ -539,6 +649,74 @@ final class ZLinkChannelRuntimeTest {
             assertInstanceOf(ZLinkFrameworkException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("NOT_FOUND"));
             assertEquals(1L, backend.spotNode.entrySpot.lastSpotGeneration);
+        }
+    }
+
+    @Test
+    void staleSpotReplyInvalidatesRouteBeforeTheNextSpotRequest() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.setDefaultRequestTimeout(Duration.ofMillis(300));
+        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
+        backend.spotNode.entrySpot.requestResults.add(
+            ZLinkBackendRequestResult.NOT_FOUND);
+        backend.spotNode.entrySpot.requestResults.add(
+            ZLinkBackendRequestResult.OK);
+        backend.spotNode.entrySpot.requestReplyParts = List.of(
+            Message.from("{\"value\":\"fresh\"}".getBytes()));
+        AtomicInteger resolves = new AtomicInteger();
+        AtomicInteger invalidations = new AtomicInteger();
+        SpotTransportAddressResolver resolver = new SpotTransportAddressResolver() {
+            @Override
+            public java.util.concurrent.CompletionStage<Optional<SpotTransportAddress>>
+                resolve(String spotId) {
+                long generation = resolves.incrementAndGet();
+                return CompletableFuture.completedFuture(Optional.of(
+                    new SpotTransportAddress(
+                        "play.route",
+                        RoutingId.from("play-node"),
+                        spotId,
+                        generation,
+                        systems.zlink.framework.spots.ZLinkSpotKind.USER)));
+            }
+
+            @Override
+            public void invalidate(String spotId) {
+                invalidations.incrementAndGet();
+            }
+        };
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            options.registration(),
+            new ZLinkJsonMessageSerializer(),
+            handlers(resolver))) {
+            runtime.registerSpotRouterNode("play.route", backend.spotNode);
+
+            CompletionException failure = assertThrows(
+                CompletionException.class,
+                () -> runtime.requestToSpot(
+                        "room-spot",
+                        new TestRequest("stale"))
+                    .timeout(Duration.ofMillis(300))
+                    .submit(TestReply.class)
+                    .toCompletableFuture()
+                    .join());
+            assertEquals(
+                ZLinkFrameworkErrorKind.NOT_FOUND,
+                assertInstanceOf(ZLinkFrameworkException.class, failure.getCause())
+                    .kind());
+
+            TestReply reply = runtime.requestToSpot(
+                    "room-spot",
+                    new TestRequest("fresh"))
+                .timeout(Duration.ofMillis(300))
+                .submit(TestReply.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("fresh", reply.value());
+            assertEquals(2, resolves.get());
+            assertEquals(1, invalidations.get());
+            assertEquals(2L, backend.spotNode.entrySpot.lastSpotGeneration);
         }
     }
 
@@ -1595,6 +1773,7 @@ final class ZLinkChannelRuntimeTest {
         int replyCount;
         int requestAttempts;
         int requestFailuresRemaining;
+        ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
         RoutingId connectRoutingId;
         List<Message> requestReplyParts = List.of();
 
@@ -1621,7 +1800,7 @@ final class ZLinkChannelRuntimeTest {
                     new ZlinkSubmitException(SubmitResult.NOT_CONNECTED, 107));
             }
             callback.handle(new ZLinkBackendReceived(
-                ZLinkBackendRequestResult.OK,
+                requestResult,
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -1851,6 +2030,8 @@ final class ZLinkChannelRuntimeTest {
         int requestAttempts;
         int requestFailuresRemaining;
         ZLinkBackendRequestResult requestResult = ZLinkBackendRequestResult.OK;
+        final ArrayDeque<ZLinkBackendRequestResult> requestResults =
+            new ArrayDeque<>();
         SendFlags lastRequestFlags;
         long lastSpotGeneration;
         List<Message> requestReplyParts = List.of();
@@ -1886,8 +2067,11 @@ final class ZLinkChannelRuntimeTest {
                 requestFailuresRemaining--;
                 return false;
             }
+            ZLinkBackendRequestResult result = requestResults.isEmpty()
+                ? requestResult
+                : requestResults.removeFirst();
             callback.handle(new ZLinkBackendReceived(
-                requestResult,
+                result,
                 Optional.empty(),
                 Optional.of(spotId),
                 Optional.empty(),

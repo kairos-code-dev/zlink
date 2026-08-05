@@ -5,6 +5,7 @@ import type {
 } from './service-stateful-registry';
 import { operationRequiresReply } from './service-runtime-contracts';
 import { ServiceWireProtocolError } from './service-wire-m6a-codec';
+import { isCanonicalWireReplyTerminal } from '../framework-errors-internal';
 import {
   SERVICE_WIRE_MAGIC,
   SERVICE_WIRE_MAJOR,
@@ -1470,7 +1471,8 @@ export function decodeStatefulReply(
   frame: Uint8Array,
   expectedCorrelation: bigint,
   operationKind: 'spotRequest' | 'actorRequest' | 'actorLookup' | 'actorDestroy' | 'actorJoin' | 'streamBind'
-    | 'instanceSpotRequest' | 'userSpotCreate' | 'userSpotClose' | 'actorCreate'
+    | 'instanceSpotRequest' | 'userSpotCreate' | 'userSpotClose' | 'actorCreate',
+  hasPayload = false
 ): ServiceStatefulReply {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -1479,6 +1481,7 @@ export function decodeStatefulReply(
   if (correlation !== expectedCorrelation) fail('Stateful reply correlation mismatch.');
   const terminalResult = reader.u32('terminalResult');
   const failureCode = reader.u32('failureCode');
+  validateReplyTerminal(terminalResult, failureCode, hasPayload);
   let tail: ServiceStatefulReplyTail | undefined;
   if (terminalResult === 0) {
     if (operationKind === 'actorLookup') {
@@ -1645,25 +1648,11 @@ function validateReplyTerminal(
   failureCode: number,
   hasPayload: boolean
 ): void {
-  if (terminalResult === 0) {
-    if (failureCode !== 0) throw new RangeError('Successful terminalResult requires failureCode none.');
-    return;
+  if (hasPayload && terminalResult !== 0) {
+    throw new RangeError('Failed stateful reply must not carry a payload.');
   }
-  if ([101, 103, 108, 109, 110, 111, 112, 113].includes(terminalResult)) {
-    if (failureCode !== 0 || hasPayload) {
-      throw new RangeError('Boundary terminalResult requires failureCode none and no payload.');
-    }
-    return;
-  }
-  const expected = new Map<number, number>([
-    ...[1, 6, 8, 9, 10, 11, 14].map(code => [code, 102] as const),
-    ...[2, 5, 13, 17, 19, 20, 35].map(code => [code, 105] as const),
-    ...[3, 4, 7, 21, 33, 34].map(code => [code, 107] as const),
-    ...[12, 16].map(code => [code, 104] as const),
-    ...[15, 18, 22].map(code => [code, 106] as const)
-  ]).get(failureCode);
-  if (expected === undefined || terminalResult !== expected || hasPayload) {
-    throw new RangeError('Typed terminalResult does not match its framework failureCode.');
+  if (!isCanonicalWireReplyTerminal(terminalResult, failureCode)) {
+    throw new RangeError('Stateful reply terminalResult does not match its framework failureCode.');
   }
 }
 

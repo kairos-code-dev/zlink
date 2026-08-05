@@ -82,6 +82,12 @@ public final class ZLinkStoreSpotHandleResolver
                 Optional.empty())));
     }
 
+    @Override
+    public void invalidate(String spotId) {
+        addresses.invalidateSpotRoute(
+            java.util.Objects.requireNonNull(spotId, "spotId"));
+    }
+
     private static <T> CompletionStage<T> flowAware(CompletionStage<T> source) {
         return systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(source);
     }

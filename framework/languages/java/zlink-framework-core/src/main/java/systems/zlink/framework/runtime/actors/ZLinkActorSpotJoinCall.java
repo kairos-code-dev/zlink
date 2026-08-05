@@ -201,18 +201,28 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
     }
 
     CompletionStage<ZLinkActorJoinOutcome> execute() {
-        return execute(null);
+        return execute(
+            null,
+            saturatedDeadline(System.nanoTime(), timeout.toNanos()));
     }
 
     private CompletionStage<ZLinkActorJoinOutcome> execute(
         ZLinkActorJoinOperationId operationId) {
+        return execute(
+            operationId,
+            saturatedDeadline(System.nanoTime(), timeout.toNanos()));
+    }
+
+    private CompletionStage<ZLinkActorJoinOutcome> execute(
+        ZLinkActorJoinOperationId operationId,
+        long deadlineNanos) {
         rejectSameGateWait();
         traceJoinSent();
         Message requestPart = Message.from(request);
         ZLinkSpot<?> localSpot = services.spotResolver().apply(spotId);
         if (localSpot == null && services.routedTransport() != null
             && (internalRouteChannel != null || services.remoteAddressResolver() != null)) {
-            return manage(joinRemoteRoutedSpot(requestPart, operationId)
+            return manage(joinRemoteRoutedSpot(requestPart, operationId, deadlineNanos)
                 .whenComplete((ignored, error) -> requestPart.close())
                 .thenCompose(result -> applyCoreRemoteActorMigration(result)
                     .thenCompose(ignored -> decodeJoinResultAsync(result)))
@@ -272,7 +282,7 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         // wait.
         try (var ignored = systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.enterApplicationExecution(null)) {
-            return bounded.execute(operationId).handle((result, error) -> {
+            return bounded.execute(operationId, deadlineNanos).handle((result, error) -> {
                     if (error != null) {
                         Throwable cause = unwrap(error);
                         ZLinkFrameworkErrorKind kind = cause instanceof ZLinkFrameworkException framework
@@ -582,7 +592,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
 
     private CompletionStage<ZLinkBackendActorJoinResult> joinRemoteRoutedSpot(
         Message requestPart,
-        ZLinkActorJoinOperationId operationId) {
+        ZLinkActorJoinOperationId operationId,
+        long deadlineNanos) {
         CompletionStage<SpotTransportAddress> resolved = internalRouteChannel == null
             ? explicitRouterChannelId != null && !explicitRouterChannelId.isBlank()
                 ? CompletableFuture.completedFuture(new SpotTransportAddress(
@@ -652,7 +663,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                                     actorType,
                                     currentActorRef,
                                     admission.reply(),
-                                    operationId);
+                                    operationId,
+                                    deadlineNanos);
                             } finally {
                                 replyParts.forEach(Message::close);
                             }
@@ -672,7 +684,8 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         String actorType,
         ZLinkBackendActorRef currentActorRef,
         Message admissionReply,
-        ZLinkActorJoinOperationId operationId) {
+        ZLinkActorJoinOperationId operationId,
+        long deadlineNanos) {
         ZLinkActor actor = context.actor();
         byte[] admissionReplyBytes = admissionReply.toByteArray();
         AtomicBoolean sourceLeft = new AtomicBoolean();
@@ -830,11 +843,26 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                     services.actors().cancelRemoteMove(actor);
                     return CompletableFuture.failedFuture(cause);
                 }
-                return services.actors().findCommittedRemoteActor(
-                        currentActorRef.actorId(),
-                        address.targetNodeRid(),
-                        currentActorRef.generation())
-                    .thenCompose(committed -> {
+                // After source leave, the target may have committed the
+                // relocation even when the commit reply was lost. The
+                // authority record is eventually visible through the
+                // Location Store, so a single lookup would incorrectly
+                // report a committed Join as failed.
+                Duration remaining = remainingTimeout(deadlineNanos);
+                CompletionStage<java.util.Optional<systems.zlink.framework.actors.ActorRef>>
+                    committedStage;
+                if (remaining == null) {
+                    committedStage = CompletableFuture.completedFuture(
+                        java.util.Optional.empty());
+                } else {
+                    committedStage = ZLinkActorRetryScheduler.retryRouteUntilPresent(
+                        remaining,
+                        () -> services.actors().findCommittedRemoteActor(
+                            currentActorRef.actorId(),
+                            address.targetNodeRid(),
+                            currentActorRef.generation()));
+                }
+                return committedStage.thenCompose(committed -> {
                         if (committed.isEmpty()) {
                             admissionReply.close();
                             abortCoreTransfer(corePrepared);

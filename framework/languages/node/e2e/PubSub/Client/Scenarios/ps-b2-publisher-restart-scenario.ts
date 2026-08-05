@@ -4,26 +4,19 @@ import { PubSubNames } from '../../Shared/messages';
 import { getStatus, postJsonWithin, postStatus } from '../../../http-client';
 import { ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
 import {
-  evidenceCount,
-  waitForConnection,
-  waitForDisconnection,
-  waitForEvent,
-  waitForPublisherRow
+  waitForEvent
 } from '../Support/subscriber-observation';
 import { ServerProcessLauncher, type DynamicProcess } from '../Support/server-process-launcher';
-import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
+import { publishEvent, publishUntilAllDelivered } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsB2(
   publisher: string,
   subscribers: readonly string[],
-  processes: ServerProcessLauncher,
-  publisherEndpoint: string
+  processes: ServerProcessLauncher
 ): Promise<DynamicProcess> {
   const runId = randomUUID().replaceAll('-', '');
   await publishEvent(publisher, PubSubNames.mainTopic, runId, 1, 'before-publisher-restart');
   await Promise.all(subscribers.map((url) => waitForEvent(url, runId, 1, 'before-publisher-restart')));
-  await waitForPublisherRow(subscribers[0], true, publisherEndpoint);
-  const disconnectOffsets = await Promise.all(subscribers.map(evidenceCount));
 
   const drain = await postJsonWithin<{ readonly kind: string; readonly reason?: string }>(
     publisher, '/admin/drain', {}, 35_000
@@ -32,9 +25,6 @@ export async function runPsB2(
     drain.kind === 'drained' && drain.reason === undefined,
     `PS-B2 expected terminal Drained, got ${drain.kind}/${drain.reason ?? ''}.`
   );
-  await waitForPublisherRow(subscribers[0], false);
-  await Promise.all(subscribers.map((url, index) => waitForDisconnection(url, disconnectOffsets[index])));
-
   await postStatus(`${publisher}/shutdown`);
   await eventually(async () => {
     try {
@@ -51,13 +41,11 @@ export async function runPsB2(
     ensure(isConnectionFailure(error), 'PS-B2 expected HTTP connection failure while publisher is down.');
   }
 
-  const connectionOffsets = await Promise.all(subscribers.map(evidenceCount));
   const restarted = processes.startPublisher();
   await restarted.waitReady();
-  await waitForPublisherRow(subscribers[0], true, publisherEndpoint);
-  await Promise.all(subscribers.map((url, index) => waitForConnection(url, connectionOffsets[index])));
-  await publishEvent(publisher, PubSubNames.mainTopic, runId, 3, 'after-publisher-restart');
-  await Promise.all(subscribers.map((url) => waitForEvent(url, runId, 3, 'after-publisher-restart')));
+  await publishUntilAllDelivered(
+    publisher, subscribers, PubSubNames.mainTopic, 3, 'after-publisher-restart'
+  );
   console.log('scenario PS-B2 passed');
   return restarted;
 }

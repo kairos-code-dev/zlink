@@ -72,6 +72,9 @@ cleanup() {
     if [[ ("$SCENARIO" == "MON-A4" || "$SCENARIO" == "all") && "$name" == "svc-a" && "$status" -eq 137 ]]; then
       continue
     fi
+    if [[ ("$SCENARIO" == "MON-A4B" || "$SCENARIO" == "all") && "$name" == "svc-b" && "$status" -eq 137 ]]; then
+      continue
+    fi
     if [[ "$status" -ne 0 && "$status" -ne 143 ]]; then
       background_failure=1
       echo "Background role $name exited unexpectedly with status $status." >&2

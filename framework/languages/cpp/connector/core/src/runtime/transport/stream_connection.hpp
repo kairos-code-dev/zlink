@@ -23,7 +23,8 @@ struct endpoint_parts_t
     std::string port;
 };
 
-std::unique_ptr<stream_connection_t> make_tcp_connection (boost::asio::ip::tcp::socket socket);
+std::unique_ptr<stream_connection_t> make_tcp_connection (boost::asio::io_context &io_context,
+                                                          boost::asio::ip::tcp::socket socket);
 std::optional<endpoint_parts_t> parse_tcp_endpoint (const std::string &endpoint);
 std::optional<endpoint_parts_t> parse_tls_endpoint (const std::string &endpoint);
 bool is_transport_connected (const connector_state_t &state);
@@ -37,6 +38,7 @@ void connect_tls_async (
   boost::asio::io_context &io_context,
   endpoint_parts_t endpoint,
   bool skip_server_certificate_validation,
+  std::shared_ptr<transport_connect_control_t> control,
   std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback);
 #endif
 

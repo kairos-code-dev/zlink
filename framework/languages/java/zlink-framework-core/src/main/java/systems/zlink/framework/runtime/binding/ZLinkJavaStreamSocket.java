@@ -13,6 +13,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
 import systems.zlink.contracts.messaging.Message;
@@ -21,6 +22,7 @@ import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
+import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorBindOperation;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorUnbindOperation;
@@ -144,6 +146,78 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
             .message(parts.getFirst())
             .flags(flags)
             .submit();
+    }
+
+    static CompletionStage<Void> submitBoundSessionUntilAccepted(
+        Duration timeout,
+        java.util.function.Supplier<Boolean> submit) {
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            throw new IllegalArgumentException(
+                "bound Session submission timeout must be positive");
+        }
+        if (submit == null) {
+            throw new IllegalArgumentException(
+                "bound Session submission callback is required");
+        }
+        long timeoutNanos;
+        try {
+            timeoutNanos = timeout.toNanos();
+        } catch (ArithmeticException overflow) {
+            timeoutNanos = Long.MAX_VALUE;
+        }
+        long deadlineValue;
+        try {
+            deadlineValue = Math.addExact(System.nanoTime(), timeoutNanos);
+        } catch (ArithmeticException overflow) {
+            deadlineValue = Long.MAX_VALUE;
+        }
+        final long deadline = deadlineValue;
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                boolean accepted;
+                try {
+                    accepted = Boolean.TRUE.equals(submit.get());
+                } catch (ZlinkSubmitException failure) {
+                    if (!isRetryableSubmit(failure.getResult())) {
+                        result.completeExceptionally(failure);
+                        return;
+                    }
+                    accepted = false;
+                } catch (RuntimeException failure) {
+                    result.completeExceptionally(failure);
+                    return;
+                }
+                if (accepted) {
+                    result.complete(null);
+                    return;
+                }
+                if (System.nanoTime() >= deadline) {
+                    result.completeExceptionally(new TimeoutException(
+                        "bound Session submission was not accepted before timeout"));
+                    return;
+                }
+                try {
+                    CompletableFuture.delayedExecutor(
+                        10,
+                        TimeUnit.MILLISECONDS).execute(this);
+                } catch (RuntimeException schedulingFailure) {
+                    result.completeExceptionally(schedulingFailure);
+                }
+            }
+        }
+        new Attempt().run();
+        return result;
+    }
+
+    private static boolean isRetryableSubmit(SubmitResult result) {
+        return result == SubmitResult.NOT_CONNECTED
+            || result == SubmitResult.BACKPRESSURED
+            || result == SubmitResult.NOT_FOUND;
     }
     @Override public synchronized boolean send(RoutingId routingId, String packetName, List<Message> parts, SendFlags flags) {
         return ZLinkJavaStreamFraming.submit(socket.send(routingId), 1, null, packetName, parts, flags);

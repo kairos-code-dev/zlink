@@ -145,11 +145,12 @@ internal sealed class PlayerWorldAnnouncementDeliveryHandler
 }
 
 /// <summary>
-/// Returns the probe payload unchanged. The runner sends this through a preserved
-/// previous-owner route when a supported route-injection harness is available.
+/// Returns the probe payload unchanged. The runner reaches this handler through the
+/// public Actor client after it has deliberately retained the previous-owner route.
 /// </summary>
 [ZLinkSpotActorRequestHandler(nameof(MessageFollowProbeReq))]
-internal sealed class PlayerMessageFollowProbeHandler
+internal sealed class PlayerMessageFollowProbeHandler(
+    ILogger<PlayerMessageFollowProbeHandler> logger)
     : IZLinkSpotActorRequestHandler<
         ZoneSpot,
         PlayerActor,
@@ -161,8 +162,40 @@ internal sealed class PlayerMessageFollowProbeHandler
         PlayerActor actor,
         IZLinkMessageContext context,
         MessageFollowProbeReq request,
-        CancellationToken cancellationToken) =>
-        ValueTask.FromResult(new MessageFollowProbeRes(request.ProbeId, request.Payload));
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "message-follow probe handled. actor={ActorId}, probe={ProbeId}, payload={Payload}",
+            actor.ActorId,
+            request.ProbeId,
+            Convert.ToHexString(request.Payload));
+        return ValueTask.FromResult(new MessageFollowProbeRes(request.ProbeId, request.Payload));
+    }
+
+/// <summary>
+/// Handles the one-way half of the runner-only Message Follow probe. The application records
+/// the operation because a one-way send has no reply that could prove target execution.
+/// </summary>
+[ZLinkSpotActorSendHandler(nameof(MessageFollowProbeReq))]
+internal sealed class PlayerMessageFollowProbeSendHandler(
+    ILogger<PlayerMessageFollowProbeSendHandler> logger)
+    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, MessageFollowProbeReq>
+{
+    public ValueTask HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        IZLinkMessageContext context,
+        MessageFollowProbeReq message,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "message-follow probe one-way handled. actor={ActorId}, probe={ProbeId}, payload={Payload}",
+            actor.ActorId,
+            message.ProbeId,
+            Convert.ToHexString(message.Payload));
+        return ValueTask.CompletedTask;
+    }
+}
 }
 
 /// <summary>

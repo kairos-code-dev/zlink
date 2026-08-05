@@ -65,7 +65,8 @@ final class ZLinkUserSpotRetireScheduler {
                 .commitAuthority(cancellation))
             .thenCompose(activated -> {
                 sourceCommitted.set(true);
-                request.source().commitSourceBarrier();
+                request.source().commitSourceBarrier(
+                    activated.targetOwnerGenerations());
                 return CompletableFuture.completedFuture(activated);
             })
             .thenCompose(activated -> request.client().publish(

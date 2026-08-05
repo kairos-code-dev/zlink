@@ -606,6 +606,7 @@ public final class ZLinkSpotRuntime
                 if (channels != null) {
                     channels.registerSpotRouterNode(nodeRegistration.meshName(), node);
                     for (String channelName : nodeRegistration.channelNames()) {
+                        publishers.register(channelName, node);
                         channels.registerSpotRouterNode(channelName, node);
                     }
                 }

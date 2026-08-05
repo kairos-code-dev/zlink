@@ -35,30 +35,41 @@ import { decodeActorAuthorityIdentity } from '../actors';
 
 interface StatefulAuthorityRouteSink {
   status(): ReturnType<ZLinkBackendMeshNode['status']>;
-  rememberSpotRoute(route: ServiceDirectSpotRouteFence): void;
+  rememberSpotRoute(
+    route: ServiceDirectSpotRouteFence,
+    expectedCurrentRoute?: ServiceDirectSpotRouteFence | null
+  ): void;
   forgetSpotRoute(
     spot: ServiceSpotRouteFence['spot'],
     authorityOwnerGeneration: bigint,
     storeVersion: string
   ): void;
-  registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void;
+  registerInstanceIntent(
+    instanceType: string,
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): void;
   forgetInstanceIntent(
     spotId: string,
+    objectGeneration: bigint,
     authorityOwnerGeneration: bigint,
     storeVersion: string
   ): void;
   recoverInstanceActivation(
     envelope: ServiceInstanceActivationRecoveryEnvelope,
-    route: ServiceInstanceRouteFence
-  ): Promise<void>;
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<boolean | void>;
   recoverPendingInstanceActivation(
     envelope: ServiceInstanceActivationRecoveryEnvelope,
-    pending: ServicePendingInstanceActivation
-  ): Promise<void>;
+    pending: ServicePendingInstanceActivation,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<boolean | void>;
   completeRecoveredInstanceActivation(
     target: ServiceInstanceActivationRecoveryEnvelope['target'],
-    route: ServiceInstanceRouteFence
-  ): Promise<ServiceInstanceRouteFence>;
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<ServiceInstanceRouteFence | undefined>;
 }
 
 interface AppliedAuthorityRoute {
@@ -102,6 +113,7 @@ export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
     authority: ZLinkAuthoritySnapshot,
     signal?: AbortSignal
   ) => Promise<void>;
+  readonly onSpotRouteChanged?: (spotId: string) => void;
 }
 
 /**
@@ -168,6 +180,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       const sink = asStatefulAuthorityRouteSink(node);
       if (sink === undefined) continue;
       sinks.push({ meshName, sink });
+      const previous = this.appliedByMesh.get(meshName) ?? new Map();
 
       const status = sink.status();
       for (const pending of snapshot.pending) {
@@ -182,7 +195,12 @@ export class ZLinkStatefulAuthorityRouteRuntime {
 
       for (const [key, route] of current) {
         if (route.meshName !== meshName) continue;
-        sink.rememberSpotRoute(route.spotRoute);
+        const previousRoute = previous.get(key);
+        const expectedSpotRoute = previousRoute?.spotRoute ?? null;
+        const expectedInstanceRoute = previousRoute?.kind === 'instance_spot'
+          ? previousRoute.instanceRoute
+          : null;
+        sink.rememberSpotRoute(route.spotRoute, expectedSpotRoute);
         if (route.kind === 'instance_spot') {
           const status = sink.status();
           if (
@@ -202,8 +220,10 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                     targetNodeGeneration: route.instanceRoute.targetNodeGeneration,
                     descriptorVersion: status.descriptorRevision.toString()
                   },
-                  route.instanceRoute
+                  route.instanceRoute,
+                  expectedInstanceRoute
                 );
+                if (released === undefined) continue;
                 const { activationRecovery: _, ...routeWithoutRecovery } = route;
                 const completed: AppliedAuthorityRoute = {
                   ...routeWithoutRecovery,
@@ -222,14 +242,15 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                   instanceRoute: released
                 };
                 current.set(key, completed);
-                sink.rememberSpotRoute(completed.spotRoute);
-                sink.registerInstanceIntent(route.stableType, released);
+                sink.rememberSpotRoute(completed.spotRoute, completed.spotRoute);
+                sink.registerInstanceIntent(route.stableType, released, released);
                 continue;
               } else {
                 const recovered = await this.recoverInstanceActivation(
                   sink,
                   route,
                   route.activationRecovery,
+                  expectedInstanceRoute,
                   signal
                 );
                 if (!recovered) {
@@ -240,9 +261,19 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                   );
                   continue;
                 }
+                sink.registerInstanceIntent(
+                  route.stableType,
+                  route.instanceRoute,
+                  route.instanceRoute
+                );
+                continue;
               }
             }
-            sink.registerInstanceIntent(route.stableType, route.instanceRoute);
+            sink.registerInstanceIntent(
+              route.stableType,
+              route.instanceRoute,
+              expectedInstanceRoute
+            );
           }
         }
       }
@@ -255,9 +286,11 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       const meshCurrent = new Map(
         [...current].filter(([, route]) => route.meshName === meshName)
       );
+      const changedSpotIds = new Set<string>();
       for (const [key, oldRoute] of previous) {
         const next = meshCurrent.get(key);
         if (oldRoute.meshName === meshName && !sameAppliedRoute(oldRoute, next)) {
+          changedSpotIds.add(String(oldRoute.spotRoute.spot.spotId));
           sink.forgetSpotRoute(
             oldRoute.spotRoute.spot,
             oldRoute.spotRoute.authorityOwnerGeneration,
@@ -266,13 +299,23 @@ export class ZLinkStatefulAuthorityRouteRuntime {
           if (oldRoute.kind === 'instance_spot' && oldRoute.meshName === meshName) {
             sink.forgetInstanceIntent(
               oldRoute.instanceRoute.targetSpotId,
+              oldRoute.instanceRoute.objectGeneration,
               oldRoute.instanceRoute.authorityOwnerGeneration,
               oldRoute.instanceRoute.storeVersion
             );
           }
         }
       }
+      for (const [key, nextRoute] of meshCurrent) {
+        const previousRoute = previous.get(key);
+        if (previousRoute === undefined || !sameAppliedRoute(previousRoute, nextRoute)) {
+          changedSpotIds.add(String(nextRoute.spotRoute.spot.spotId));
+        }
+      }
       this.appliedByMesh.set(meshName, meshCurrent);
+      for (const spotId of changedSpotIds) {
+        this.options.onSpotRouteChanged?.(spotId);
+      }
     }
   }
 
@@ -280,6 +323,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     sink: StatefulAuthorityRouteSink,
     route: AppliedAuthorityRoute,
     recovery: ServiceActivationRecoveryState,
+    expectedCurrentRoute: ServiceInstanceRouteFence | null,
     signal?: AbortSignal
   ): Promise<boolean> {
     const envelope = await this.readRecoveryEnvelope(recovery, signal);
@@ -297,8 +341,11 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       );
       return false;
     }
-    await sink.recoverInstanceActivation(envelope, route.instanceRoute);
-    return true;
+    return (await sink.recoverInstanceActivation(
+      envelope,
+      route.instanceRoute,
+      expectedCurrentRoute
+    )) !== false;
   }
 
   private async recoverPendingInstanceActivation(
@@ -355,7 +402,11 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       }
       return;
     }
-    await sink.recoverPendingInstanceActivation(envelope, recovery.pending);
+    if ((await sink.recoverPendingInstanceActivation(
+      envelope,
+      recovery.pending,
+      null
+    )) === false) return;
   }
 
   private async readRecoveryEnvelope(

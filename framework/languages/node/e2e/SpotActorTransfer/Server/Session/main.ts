@@ -89,6 +89,7 @@ class GatewaySessionFactory implements ZLinkSessionFactory<GatewaySession> {
 }
 
 class SessionModule {}
+
 const configuration = createSpotActorTransferConfigurationModule(
   SPOT_ACTOR_TRANSFER_OPTIONS,
   validateServerOptions
@@ -113,16 +114,20 @@ Module({
         builder.configureLocations()
           .pollingIntervalMs(100)
           .ownerLeaseRenewIntervalMs(1000)
-          .ownerLeaseTtlMs(3000);
+          .ownerLeaseTtlMs(5000)
+          .ownerLeaseFencingMarginMs(500)
+          .ownerLeaseRenewTimeoutMs(500);
         builder.configureDispatch()
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
           .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
           .traceLabel(options.rid);
-        builder.addRouteMesh(SpotActorTransferNames.mesh)
-          .listen(options.routerEndpoint).routingId(options.rid)
-          .channel(SpotActorTransferNames.mesh).server();
+        const mesh = builder.addRouteMesh(SpotActorTransferNames.mesh)
+          .listen(options.routerEndpoint).routingId(options.rid);
+        mesh.objects().client();
+        mesh.channel(SpotActorTransferNames.mesh).server();
         builder.addStreamNode(`${SpotActorTransferNames.mesh}-${options.rid}`)
           .bind(options.streamEndpoint)
+          .enableActorDispatch()
           .registerSession(GatewaySessionFactory);
         return builder.build();
       }

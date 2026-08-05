@@ -35,7 +35,7 @@ class OutboundRequestHandler {
             .submit()
         spot.record("SpotOutbound", "${request.value}/$channelReply")
         return Contracts.OutboundRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             channelReply,
         )

@@ -29,6 +29,7 @@ std::unique_ptr<stream_connection_t> connect_websocket (boost::asio::io_context 
 void connect_websocket_async (
   boost::asio::io_context &io_context,
   websocket_endpoint_parts_t endpoint,
+  std::shared_ptr<transport_connect_control_t> control,
   std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback);
 #ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
 std::unique_ptr<stream_connection_t>
@@ -39,6 +40,7 @@ void connect_websocket_secure_async (
   boost::asio::io_context &io_context,
   websocket_endpoint_parts_t endpoint,
   bool skip_server_certificate_validation,
+  std::shared_ptr<transport_connect_control_t> control,
   std::function<void (boost::system::error_code, std::unique_ptr<stream_connection_t>)> callback);
 #endif
 

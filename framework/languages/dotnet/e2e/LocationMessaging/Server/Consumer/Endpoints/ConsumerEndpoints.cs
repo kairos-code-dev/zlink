@@ -21,16 +21,19 @@ internal static class ConsumerEndpoints
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
         app.MapGet("/topology/ready", (
             int count,
+            string? mesh,
             IZLinkRouteMeshRuntime runtime) =>
         {
-            var snapshot = runtime.GetStatus(options.MeshName);
+            var meshName = ResolveMeshName(options, mesh);
+            var channelName = ResolveChannelName(meshName);
+            var snapshot = runtime.GetStatus(meshName);
             var readyCount = snapshot.Peers.Count(
                 static peer => peer.State == ZLinkPeerState.Ready);
             return Results.Ok(new
             {
                 ready = readyCount >= count
-                        && snapshot.Channels.Any(static channel =>
-                            channel.ChannelName == "profile"
+                        && snapshot.Channels.Any(channel =>
+                            channel.ChannelName == channelName
                             && channel.IsReady),
                 readyCount,
                 rid = string.Empty,
@@ -44,9 +47,11 @@ internal static class ConsumerEndpoints
                 })
             });
         });
-        app.MapGet("/topology/status", (IZLinkRouteMeshRuntime runtime) =>
+        app.MapGet("/topology/status", (
+            string? mesh,
+            IZLinkRouteMeshRuntime runtime) =>
         {
-            var snapshot = runtime.GetStatus(options.MeshName);
+            var snapshot = runtime.GetStatus(ResolveMeshName(options, mesh));
             return Results.Ok(new
             {
                 state = snapshot.State.ToString(),
@@ -58,6 +63,18 @@ internal static class ConsumerEndpoints
                     state = peer.State.ToString()
                 })
             });
+        });
+        app.MapGet("/locations/peers", async (
+            string? mesh,
+            IServiceProvider services,
+            CancellationToken cancellationToken) =>
+        {
+            var meshName = ResolveMeshName(options, mesh);
+            var query = services.GetRequiredService<IZLinkLocationRuntimeQuery>();
+            var peers = await query.ListTopologyAsync(
+                new ZLinkLocationTopologyFilter(meshName),
+                cancellationToken: cancellationToken);
+            return Results.Ok(peers.Items.Select(ToPeerLocationRow).ToArray());
         });
         app.MapPost("/node-direct/{targetRid}", async (
             string targetRid,
@@ -135,6 +152,7 @@ internal static class ConsumerEndpoints
                     .ToArray();
                 var matches = rows.Where(row =>
                     row.Role == request.Role
+                    && row.State == nameof(ZLinkLocationTopologyState.Ready)
                     && row.NodeRid is { } nodeRid
                     && (nodeRid == request.NodeRid
                         || nodeRid.StartsWith($"{request.NodeRid}-", StringComparison.Ordinal)));
@@ -164,6 +182,13 @@ internal static class ConsumerEndpoints
             IZLinkRouteClient channel) =>
         {
             var reply = await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5));
+            return Results.Ok(reply);
+        });
+        app.MapPost("/workflow/request", async (
+            WorkflowReq request,
+            IZLinkRouteClient channel) =>
+        {
+            var reply = await RequestWorkflowAsync(channel, request, TimeSpan.FromSeconds(5));
             return Results.Ok(reply);
         });
         app.MapPost("/profile/request/outcome", async (
@@ -224,13 +249,12 @@ internal static class ConsumerEndpoints
             var result = await RequestPayloadFailureAsync(channel, request);
             return Results.Ok(result);
         });
-        app.MapPost("/profile/backpressure/reset", () => Results.Ok(new { status = "ready" }));
         app.MapPost("/profile/backpressure/send", async (
-            ProfileMsg command,
+            BackpressureMsg command,
             IZLinkRouteClient channel,
             CancellationToken cancellationToken) =>
         {
-            var outcome = await SubmitProfileUnderPressureAsync(channel, command, cancellationToken);
+            var outcome = await SubmitBackpressureAsync(channel, command, cancellationToken);
             return Results.Ok(outcome);
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
@@ -248,6 +272,43 @@ internal static class ConsumerEndpoints
             .Timeout(timeout)
             .Async<ProfileRes>()
             .AsTask();
+
+    static Task<WorkflowRes> RequestWorkflowAsync(
+        IZLinkRouteClient channel,
+        WorkflowReq request,
+        TimeSpan timeout)
+        => channel.RequestToChannel("workflow", request)
+            .Timeout(timeout)
+            .Async<WorkflowRes>()
+            .AsTask();
+
+    static string ResolveMeshName(ConsumerOptions options, string? requestedMesh)
+    {
+        var meshName = string.IsNullOrWhiteSpace(requestedMesh)
+            ? options.MeshName
+            : requestedMesh;
+        if (meshName is not ("profile" or "workflow"))
+            throw new InvalidOperationException($"Unsupported LocationMessaging mesh '{meshName}'.");
+
+        return meshName;
+    }
+
+    static string ResolveChannelName(string meshName)
+        => meshName switch
+        {
+            "profile" => "profile",
+            "workflow" => "workflow",
+            _ => throw new InvalidOperationException($"No Channel is configured for mesh '{meshName}'.")
+        };
+
+    static PeerLocationRow ToPeerLocationRow(ZLinkLocationTopologyEntry peer)
+        => new(
+            peer.MeshName,
+            peer.NodeRid.ToString(),
+            "Router",
+            peer.Endpoint,
+            peer.Draining,
+            peer.State.ToString());
 
     static async Task<string> CaptureAsync(Func<Task> operation)
     {
@@ -280,11 +341,17 @@ internal static class ConsumerEndpoints
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<PayloadRes>();
             throw new InvalidOperationException(
-                "An oversized payload completed without the expected public timeout error.");
+                "An oversized payload completed without the expected public size error.");
         }
         catch (TimeoutException error)
         {
             return new ExpectedFailureRes(error.GetType().Name);
+        }
+        catch (ZLinkFrameworkException error) when (
+            error.Kind is ZLinkFrameworkErrorKind.ProtocolError
+                or ZLinkFrameworkErrorKind.DeadlineExceeded)
+        {
+            return new ExpectedFailureRes(error.Kind.ToString());
         }
     }
 
@@ -302,6 +369,12 @@ internal static class ConsumerEndpoints
         catch (TimeoutException error)
         {
             return new ExpectedFailureRes(error.GetType().Name);
+        }
+        catch (ZLinkFrameworkException error) when (
+            error.Kind is ZLinkFrameworkErrorKind.ProtocolError
+                or ZLinkFrameworkErrorKind.DeadlineExceeded)
+        {
+            return new ExpectedFailureRes(error.Kind.ToString());
         }
     }
 
@@ -324,9 +397,9 @@ internal static class ConsumerEndpoints
         }
     }
 
-    static async ValueTask<string> SubmitProfileUnderPressureAsync(
+    static async ValueTask<string> SubmitBackpressureAsync(
         IZLinkRouteClient channel,
-        ProfileMsg command,
+        BackpressureMsg command,
         CancellationToken cancellationToken)
     {
         try

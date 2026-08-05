@@ -189,14 +189,6 @@ class tictactoe_game_spot_t : public spot_t<player_actor_t>
         co_return;
     }
 
-    static actor_ref_t actor_ref_for (const player_actor_t &actor)
-    {
-        return actor_ref_t (node_rid_t::from_string (actor.node_rid.empty ()
-                                                       ? std::string (sample_names_t::spot_node)
-                                                       : actor.node_rid),
-                            sample_names_t::actor_type, actor.actor_id, actor.generation);
-    }
-
     spot_context_t _context;
     std::optional<tictactoe_match_t> _match;
     std::map<std::string, player_info_t> players;

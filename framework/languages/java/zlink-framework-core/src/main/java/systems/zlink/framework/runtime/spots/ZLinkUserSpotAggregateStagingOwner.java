@@ -67,13 +67,13 @@ final class ZLinkUserSpotAggregateStagingOwner {
                     cancellation,
                     preparedActors))
                 .thenApply(ignored -> new Staged(
-                    this,
-                    request,
-                    preparedSpot,
-                    preparedActors))
-                .exceptionallyCompose(failure -> discardPartial(
+                        this,
+                        request,
                         preparedSpot,
-                        preparedActors)
+                        preparedActors))
+                .exceptionallyCompose(failure -> discardPartial(
+                    preparedSpot,
+                    preparedActors)
                     .thenCompose(ignored -> CompletableFuture.failedFuture(
                         unwrap(failure)))));
     }

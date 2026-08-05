@@ -5,21 +5,17 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 
 public final class ScenarioActor implements ZLinkActor {
-    private final String actorId;
     private final ZLinkActorContext context;
     private Contracts.ActorProfile profile = new Contracts.ActorProfile("", 0, List.of());
     private int sequence;
 
     public ScenarioActor(
-        String actorId,
         ZLinkActorContext context) {
-        this.actorId = actorId;
         this.context = context;
     }
 
-    @Override
     public String actorId() {
-        return actorId;
+        return context.actorId();
     }
 
     @Override

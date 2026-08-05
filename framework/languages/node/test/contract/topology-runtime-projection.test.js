@@ -183,6 +183,65 @@ test('Manual RouteMesh without a Location Store reports ready when the host serv
   }
 });
 
+test('RouteMesh placement status uses current local object counts for availability', () => {
+  const gate = new internal.ZLinkRuntimeAdmissionGate();
+  const node = {
+    status() {
+      return {
+        routingId: 'node-a',
+        lifecycleGeneration: 1n,
+        descriptorRevision: 1n,
+        state: 3,
+        lastChangedMs: 1n
+      };
+    },
+    peers() { return []; },
+    peerChannels() { return { names: [], weights: [] }; }
+  };
+  const descriptor = {
+    objectRole: framework.ZLinkObjectRole.Server,
+    placementWeight: 100,
+    populationCapacity: {
+      actors: { active: 0, reserved: 0, limit: 2 },
+      spots: { active: 0, reserved: 0, limit: 2 },
+      spotTypes: []
+    },
+    activationConcurrency: { active: 0, limit: 8 },
+    channelWeights: {},
+    applicationVersion: 1n,
+    objectCapabilities: []
+  };
+  let counts = { activeActorCount: 1, activeSpotCount: 1 };
+  const runtime = new internal.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game'],
+    meshOptions: new Map([['game', { meshChannels: {} }]]),
+    meshNode: () => node,
+    meshNodeDescriptor: () => descriptor,
+    localPlacementCounts: () => counts,
+    admission: gate,
+    publishRetiring: async () => {},
+    rollbackRetiring: async () => {},
+    publishDraining: async () => {},
+    publishHostDraining: async () => {},
+    drainResources: async () => {},
+    cleanupHostResources: async () => {},
+    forceStopResources: async () => {}
+  });
+
+  runtime.markServing();
+  const serving = runtime.snapshot('game');
+  assert.equal(serving.placement.activeActorCount, 1);
+  assert.equal(serving.placement.activeSpotCount, 1);
+  assert.equal(serving.placement.isAvailable, true);
+
+  counts = { activeActorCount: 2, activeSpotCount: 2 };
+  const exhausted = runtime.snapshot('game');
+  assert.equal(exhausted.placement.activeActorCount, 2);
+  assert.equal(exhausted.placement.activeSpotCount, 2);
+  assert.equal(exhausted.placement.isAvailable, false);
+  assert.equal(exhausted.placement.unavailableReason, framework.ZLinkTopologyReason.CapacityExceeded);
+});
+
 test('Framework shutdown disposes the registered Location Store after runtime cleanup', async () => {
   let disposed = 0;
   const store = {
@@ -433,7 +492,7 @@ test('Relocation manual topology classification covers every local service regis
       subscriber: { manualConnections: ['tcp://127.0.0.1:19005'] },
       publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
     } } },
-    { channels: { events: { publisher: { bind: 'tcp://127.0.0.1:19006' } } } }
+    { channels: { events: { routingId: 'publisher', publisher: { bind: 'tcp://127.0.0.1:19006' } } } }
   ];
 
   for (const options of manualRegistrations) {
@@ -443,7 +502,7 @@ test('Relocation manual topology classification covers every local service regis
 
   const automaticPublisher = internal.createFrameworkRegistration({
     locations: { useInMemoryStores: true },
-    channels: { events: { publisher: { bind: 'tcp://127.0.0.1:19007' } } }
+    channels: { events: { routingId: 'publisher', publisher: { bind: 'tcp://127.0.0.1:19007' } } }
   });
   assert.equal(internal.hasUnsupportedManualTopology(automaticPublisher), false);
 });

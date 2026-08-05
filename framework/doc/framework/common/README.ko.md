@@ -4,7 +4,7 @@
 
 [가이드 홈](../index.ko.md)
 
-[스펙 목차](spec/README.ko.md) | [공개 계약 관리](spec/00-public-contract-governance.ko.md) | [공통 내부 구조](internals/README.ko.md) | [개요](spec/02-overview.ko.md) | [상호작용 모델](spec/03-interaction-model.ko.md) | [메시지 모델](spec/04-message-model.ko.md) | [channel topology](spec/07-channel-topology.ko.md) | [framework API](spec/06-framework-api.ko.md) | [비동기 실행](spec/05-async-execution-policy.md) | [Actor 모델](spec/14-actor-model.ko.md) | [Spot Actor Join / Relocation](spec/15-spot-actor.ko.md) | [Session Actor Dispatch 사용성](spec/20-session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/26-message-flow-tracing.ko.md) | [location runtime](spec/21-location-runtime.ko.md) | [Redis store](spec/22-location-store-redis.ko.md) | [spot 주소 메시징](spec/16-spot-address-messaging.ko.md) | [언어별 공개 계약](spec/server/languages/README.ko.md) | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
+[스펙 목차](spec/README.ko.md) | [공개 계약 관리](spec/00-public-contract-governance.ko.md) | [공통 내부 구조](internals/README.ko.md) | [개요](spec/02-overview.ko.md) | [상호작용 모델](spec/03-interaction-model.ko.md) | [메시지 모델](spec/04-message-model.ko.md) | [channel topology](spec/07-channel-topology.ko.md) | [framework API](spec/06-framework-api.ko.md) | [비동기 실행](spec/05-async-execution-policy.ko.md) | [Actor 모델](spec/14-actor-model.ko.md) | [Spot Actor Join / Relocation](spec/15-spot-actor.ko.md) | [Session Actor Dispatch 사용성](spec/20-session-actor-dispatch.ko.md) | [메시지 흐름 추적](spec/26-message-flow-tracing.ko.md) | [location runtime](spec/21-location-runtime.ko.md) | [Redis store](spec/22-location-store-redis.ko.md) | [spot 주소 메시징](spec/16-spot-address-messaging.ko.md) | [언어별 공개 계약](spec/server/languages/README.ko.md) | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -44,7 +44,7 @@
 | 3 | [03-message-model.ko.md](spec/04-message-model.ko.md) | 서버 간 multipart `header + payload` 메시지 구조, STREAM 단일 packet 경계, header 필드, payload codec 방향과 codec extension 정책을 다룬다. |
 | 4 | [10-channel-topology.ko.md](spec/07-channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑을 다룬다. |
 | 5 | [05-framework-api.ko.md](spec/06-framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `C++` standalone host 기준의 API 표면 방향을 다룬다. |
-| 6 | [비동기 실행과 coroutine 정책](spec/05-async-execution-policy.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
+| 6 | [비동기 실행과 coroutine 정책](spec/05-async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 7 | [22-actor-model.ko.md](spec/14-actor-model.ko.md) | actor 라이프사이클, session bind, user Spot join, outbound actor 호출과 등록 표면을 정의한다. |
 | 8 | [Spot Actor Join / Relocation](spec/15-spot-actor.ko.md) | actor가 Entry Spot과 user Spot 사이를 이동할 때의 admission, commit, callback 순서와 장애 처리를 정의한다. |
 | 9 | [Session Actor Dispatch](spec/20-session-actor-dispatch.ko.md) | session actor dispatch의 typed handler, route resolver, helper, `SessionProxy`, error 의미를 정의한다. |
@@ -143,7 +143,7 @@ framework 문서의 public 이름 규칙은
 - 단어 교체, 단어 생략, 의미가 같은 별도 이름 추가는 허용하지 않는다.
 - 파라미터 조합이 다르다는 이유만으로 이름을 늘리지 않는다.
 - async submit, blocking 대안 금지, coroutine adapter의 공통 의미는
-  [비동기 실행과 coroutine 정책](spec/05-async-execution-policy.md)을 따른다.
+  [비동기 실행과 coroutine 정책](spec/05-async-execution-policy.ko.md)을 따른다.
 - builder terminator 이름은 공통 의미를 유지하되, 각 언어의 fluent API 관례에 맞춰
   투영한다. 예를 들어 `.NET` awaitable terminator는 `Async(...)`, Java는
   `submit(...)` / `await(...)`, C++ coroutine terminator는 `async()`, Node.js

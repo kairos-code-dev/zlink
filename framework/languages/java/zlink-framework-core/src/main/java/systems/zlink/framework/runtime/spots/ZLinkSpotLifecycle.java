@@ -189,9 +189,9 @@ final class ZLinkSpotLifecycle {
             .thenCompose(backendSpot -> activationFactory
                 .activate(spotType, backendSpot, request)
                 .thenApply(created -> new PreparedUserSpot(
-                    spotId,
-                    objectGeneration,
-                    created)));
+                        spotId,
+                        objectGeneration,
+                        created)));
     }
 
     void publishReserved(PreparedUserSpot prepared) {

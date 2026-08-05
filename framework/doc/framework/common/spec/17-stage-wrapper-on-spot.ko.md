@@ -56,7 +56,7 @@ timer lane은 동시에 실행될 수 있으므로 application이 공유 Stage s
 책임진다.
 
 Callback이 비동기 작업을 기다리는 동안 turn을 유지하거나 반납하는 의미는
-[비동기 실행 정책](05-async-execution-policy.md)이 정한다. Wrapper는
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정한다. Wrapper는
 별도 scheduler나 lock 규칙으로 그 계약을 바꾸지 않는다.
 
 request reply continuation이 Spot 상태를 바꾸면 원래

@@ -16,6 +16,16 @@
 namespace
 {
 
+zlink::framework::actor_ref_t test_actor_ref (std::string node,
+                                              std::string actor_type,
+                                              std::string actor_id,
+                                              std::uint64_t generation)
+{
+    return zlink::framework::detail::actor_ref_access_t::make (
+      zlink::framework::node_rid_t::from_string (std::move (node)),
+      std::move (actor_type), std::move (actor_id), generation);
+}
+
 int relay_dispatch_scope_restores_nested_and_exception_state ()
 {
     using namespace zlink::framework;
@@ -147,8 +157,7 @@ int stale_session_unbind_preserves_rebind ()
 
     auto state = std::make_shared<actor_gateway_state_t> ();
     actor_gateway_runtime_t gateway (state);
-    const actor_ref_t actor (
-      node_rid_t::from_string ("actor-node"), "player", "actor-1", 7);
+    const actor_ref_t actor = test_actor_ref ("actor-node", "player", "actor-1", 7);
 
     gateway.bind_session_sink (
       actor,
@@ -214,10 +223,10 @@ int get_or_create_does_not_reuse_disconnected_record ()
     using namespace zlink::framework::detail;
 
     auto state = std::make_shared<actor_gateway_state_t> ();
-    const actor_ref_t stale (
-      node_rid_t::from_string ("actor-node-old"), "player", "actor-reconnect", 7);
-    const actor_ref_t current (
-      node_rid_t::from_string ("actor-node-new"), "player", "actor-reconnect", 8);
+    const actor_ref_t stale =
+      test_actor_ref ("actor-node-old", "player", "actor-reconnect", 7);
+    const actor_ref_t current =
+      test_actor_ref ("actor-node-new", "player", "actor-reconnect", 8);
     {
         const std::lock_guard lock (state->mutex);
         state->actors_by_id.emplace (
@@ -238,7 +247,7 @@ int get_or_create_does_not_reuse_disconnected_record ()
     auto manager = gateway.manager ();
     const auto created = manager.get_or_create ("player", "actor-reconnect");
     if (!created || created.value ().ref ().node_rid ().value () != "actor-node-new"
-        || created.value ().ref ().generation () != 8) {
+        || created.value ().ref ().object_generation () != 8) {
         return 1;
     }
     {
@@ -260,10 +269,10 @@ int get_or_create_refreshes_foreign_session_record ()
     using namespace zlink::framework::detail;
 
     auto state = std::make_shared<actor_gateway_state_t> ();
-    const actor_ref_t stale (
-      node_rid_t::from_string ("actor-node-old"), "player", "actor-foreign", 7);
-    const actor_ref_t current (
-      node_rid_t::from_string ("actor-node-current"), "player", "actor-foreign", 7);
+    const actor_ref_t stale =
+      test_actor_ref ("actor-node-old", "player", "actor-foreign", 7);
+    const actor_ref_t current =
+      test_actor_ref ("actor-node-current", "player", "actor-foreign", 7);
     {
         const std::lock_guard lock (state->mutex);
         state->actors_by_id.emplace (
@@ -312,10 +321,8 @@ int session_disconnect_is_all_settled_and_token_fenced ()
     actor_gateway_runtime_t gateway (state);
     auto manager = gateway.manager ();
     session_actor_manager_access_t::attach (manager, stream_t{});
-    const actor_ref_t first (
-      node_rid_t::from_string ("actor-node"), "player", "actor-a", 1);
-    const actor_ref_t second (
-      node_rid_t::from_string ("actor-node"), "player", "actor-b", 1);
+    const actor_ref_t first = test_actor_ref ("actor-node", "player", "actor-a", 1);
+    const actor_ref_t second = test_actor_ref ("actor-node", "player", "actor-b", 1);
 
     auto stale = manager.bind (first).submit ().result ().value ();
     auto current = manager.bind (first).submit ().result ().value ();
@@ -328,8 +335,8 @@ int session_disconnect_is_all_settled_and_token_fenced ()
     std::vector<std::string> disconnected;
     gateway.on_disconnect (
       [&] (const actor_ref_t &actor) {
-          disconnected.emplace_back (actor.actor_id ());
-          return actor.actor_id () == "actor-a"
+          disconnected.emplace_back (actor.actor_id ().value ());
+          return actor.actor_id ().value () == "actor-a"
                    ? result_t<void>::failure (
                        framework_error_kind_t::not_found,
                        "actor-a callback failed")
@@ -363,16 +370,14 @@ int logical_disconnect_is_selected_and_keeps_session_live ()
     actor_gateway_runtime_t gateway (state);
     auto manager = gateway.manager ();
     session_actor_manager_access_t::attach (manager, stream_t{});
-    const actor_ref_t first (
-      node_rid_t::from_string ("actor-node"), "player", "actor-a", 1);
-    const actor_ref_t second (
-      node_rid_t::from_string ("actor-node"), "player", "actor-b", 1);
+    const actor_ref_t first = test_actor_ref ("actor-node", "player", "actor-a", 1);
+    const actor_ref_t second = test_actor_ref ("actor-node", "player", "actor-b", 1);
     auto first_binding = manager.bind (first).submit ().result ().value ();
     auto second_binding = manager.bind (second).submit ().result ().value ();
     std::vector<std::string> disconnected;
     gateway.on_disconnect (
       [&] (const actor_ref_t &actor) {
-          disconnected.emplace_back (actor.actor_id ());
+          disconnected.emplace_back (actor.actor_id ().value ());
           return result_t<void>::success ();
       });
 
@@ -405,12 +410,12 @@ int route_update_preserves_object_generation ()
     actor_gateway_runtime_t gateway;
     auto manager = gateway.manager ();
     session_actor_manager_access_t::attach (manager, stream_t{});
-    const actor_ref_t original (
-      node_rid_t::from_string ("actor-node-a"), "player", "actor-route", 7);
+    const actor_ref_t original =
+      test_actor_ref ("actor-node-a", "player", "actor-route", 7);
     auto original_binding =
       manager.bind (original).submit ().result ().value ();
-    const actor_ref_t unaffected (
-      node_rid_t::from_string ("actor-node-a"), "player", "actor-other", 3);
+    const actor_ref_t unaffected =
+      test_actor_ref ("actor-node-a", "player", "actor-other", 3);
     auto unaffected_binding =
       manager.bind (unaffected).submit ().result ().value ();
 
@@ -425,8 +430,8 @@ int route_update_preserves_object_generation ()
             std::nullopt);
       });
 
-    const actor_ref_t relocated (
-      node_rid_t::from_string ("actor-node-b"), "player", "actor-route", 7);
+    const actor_ref_t relocated =
+      test_actor_ref ("actor-node-b", "player", "actor-route", 7);
     if (!gateway.update_actor_ref (relocated))
         return 1;
     if (!original_binding.relay ("packet", zlink::message_t{}).result ()
@@ -441,8 +446,8 @@ int route_update_preserves_object_generation ()
              != unaffected.node_rid ().value ()) {
         return 6;
     }
-    const actor_ref_t new_incarnation (
-      node_rid_t::from_string ("actor-node-c"), "player", "actor-route", 8);
+    const actor_ref_t new_incarnation =
+      test_actor_ref ("actor-node-c", "player", "actor-route", 8);
     const auto rejected = gateway.update_actor_ref (new_incarnation);
     if (rejected || rejected.error_kind () != framework_error_kind_t::invalid_operation)
         return 2;
@@ -465,10 +470,8 @@ int exact_session_generation_mismatch_is_invalid_operation ()
     actor_gateway_runtime_t gateway;
     auto manager = gateway.manager ();
     session_actor_manager_access_t::attach (manager, stream_t{});
-    const actor_ref_t current (
-      node_rid_t::from_string ("actor-node"), "player", "exact-actor", 3);
-    const actor_ref_t stale (
-      node_rid_t::from_string ("actor-node"), "player", "exact-actor", 2);
+    const actor_ref_t current = test_actor_ref ("actor-node", "player", "exact-actor", 3);
+    const actor_ref_t stale = test_actor_ref ("actor-node", "player", "exact-actor", 2);
     if (!manager.bind (current).submit ().result ()) {
         return 1;
     }
@@ -491,21 +494,19 @@ int actor_context_identity_and_source_fence_are_exact ()
     using namespace zlink::framework::detail;
 
     actor_gateway_runtime_t gateway;
-    const actor_ref_t source (
-      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 7);
-    const actor_ref_t same (
-      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 7);
-    const actor_ref_t successor (
-      node_rid_t::from_string ("actor-node-b"), "player", "actor-context", 7);
-    const actor_ref_t new_incarnation (
-      node_rid_t::from_string ("actor-node-a"), "player", "actor-context", 8);
+    const actor_ref_t source = test_actor_ref ("actor-node-a", "player", "actor-context", 7);
+    const actor_ref_t same = test_actor_ref ("actor-node-a", "player", "actor-context", 7);
+    const actor_ref_t successor =
+      test_actor_ref ("actor-node-b", "player", "actor-context", 7);
+    const actor_ref_t new_incarnation =
+      test_actor_ref ("actor-node-a", "player", "actor-context", 8);
 
     const auto source_context = gateway.actor_context (source);
     const auto same_context = gateway.actor_context (same);
     const auto successor_context = gateway.actor_context (successor);
     const auto new_incarnation_context = gateway.actor_context (new_incarnation);
 
-    if (source_context.actor_id () != "actor-context"
+    if (source_context.actor_id ().value () != "actor-context"
         || source_context.object_generation () != 7
         || source_context.actor_ref ().node_rid ().value () != "actor-node-a") {
         return 1;
@@ -527,8 +528,7 @@ int bound_session_route_preserves_private_fences ()
     using namespace zlink::framework::detail;
 
     actor_gateway_runtime_t gateway;
-    const actor_ref_t actor (
-      node_rid_t::from_string ("actor-node"), "player", "actor-fenced", 7);
+    const actor_ref_t actor = test_actor_ref ("actor-node", "player", "actor-fenced", 7);
     gateway.bind_session_sink (
       actor,
       [] (std::string, stream_codec_t, const zlink::message_t &) {

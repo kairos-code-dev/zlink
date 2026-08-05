@@ -153,9 +153,19 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         for (var participant : source.participants()) {
             ZLinkAuthoritySnapshot normalized = authority.rows.get(
                 participant.authorityKey());
-            assertArrayEquals(
-                participant.applicationAuthorityPayload(),
-                normalized.payload());
+            if (participant.objectKind() == ZLinkPlacementObjectKind.ACTOR) {
+                var actor = new ZLinkActorAuthorityPayloadCodec()
+                    .decode(normalized.payload())
+                    .orElseThrow();
+                assertEquals("owner-b", actor.ownerId());
+                assertEquals(12, actor.ownerLeaseGeneration());
+            } else {
+                var spot = new ZLinkServiceAuthorityPayloadCodec()
+                    .decode(normalized.payload())
+                    .orElseThrow();
+                assertEquals("owner-b", spot.ownerId());
+                assertEquals(12, spot.ownerLeaseGeneration());
+            }
             assertEquals(
                 participant.authorityOwnerGeneration() + 1,
                 normalized.authorityOwnerGeneration());
@@ -187,6 +197,29 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertEquals(new UUID(0, 9), decoded.aggregateId());
         assertEquals(7, decoded.aggregateGeneration());
         assertEquals("owner-b", decoded.targetOwnerId());
+
+        for (var participant : authority.prepared.participants()) {
+            var participantDecoded = ZLinkCanonicalRelocationAuthorityStateCodec
+                .decode(participant.authorityPayload());
+            assertNotNull(participantDecoded);
+            if (participant.authorityKey().startsWith("spot:")) {
+                var application = new ZLinkServiceAuthorityPayloadCodec()
+                    .decode(participantDecoded.applicationPayload())
+                    .orElseThrow();
+                assertEquals("owner-b", application.ownerId());
+                assertEquals(12, application.ownerLeaseGeneration());
+                assertEquals(RoutingId.from("node-b"), application.nodeRid());
+                assertEquals(4, application.nodeGeneration());
+            } else {
+                var actor = new ZLinkActorAuthorityPayloadCodec()
+                    .decode(participantDecoded.applicationPayload())
+                    .orElseThrow();
+                assertEquals("owner-b", actor.ownerId());
+                assertEquals(12, actor.ownerLeaseGeneration());
+                assertEquals(RoutingId.from("node-b"), actor.nodeRid());
+                assertEquals(4, actor.nodeGeneration());
+            }
+        }
     }
 
     @Test
@@ -274,6 +307,15 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertTrue(ZLinkCanonicalRelocationAuthorityStateCodec.decode(
             authority.rows.get("spot:room-a").payload())
             .sourceCleanupCompleted());
+        var published = ZLinkCanonicalRelocationAuthorityStateCodec.decode(
+            authority.rows.get("spot:room-a").payload());
+        assertEquals("owner-a", published.sourceOwnerId());
+        assertEquals("owner-b", published.targetOwnerId());
+        var application = new ZLinkServiceAuthorityPayloadCodec()
+            .decode(published.applicationPayload())
+            .orElseThrow();
+        assertEquals("owner-b", application.ownerId());
+        assertEquals(12, application.ownerLeaseGeneration());
         assertEquals(
             source.participants().getFirst().authorityOwnerGeneration() + 1,
             authority.rows.get("spot:room-a").authorityOwnerGeneration());
@@ -321,6 +363,41 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         assertInstanceOf(
             ZLinkAggregateRelocationCoordinator.RelocationDataLostException.class,
             failure.getCause());
+    }
+
+    @Test
+    void publishedAggregateUsesProviderGenerationWhenUnrelatedOwnersAdvanceCounter() {
+        FakeAuthorityStore authority = new FakeAuthorityStore();
+        authority.ownerGenerationGap = 3;
+        var coordinator = new ZLinkAggregateRelocationCoordinator(
+            authority,
+            new FakeRelocationStore());
+        var source = request();
+        var published = coordinator.commit(
+                coordinator.prepare(source, NEVER)
+                    .toCompletableFuture().join(),
+                NEVER)
+            .toCompletableFuture().join();
+
+        assertEquals(8L, published.targetOwnerGeneration("spot:room-a"));
+        assertEquals(8L, published.targetOwnerGeneration("actor:user-a"));
+        var expected = source.participants().stream()
+            .map(value -> new ZLinkAggregateRelocationCoordinator
+                .ExpectedParticipant(
+                    value.authorityKey(),
+                    value.objectGeneration(),
+                    value.authorityOwnerGeneration()))
+            .toList();
+
+        var root = coordinator.readPublishedAggregate(
+                expected,
+                published.fence(),
+                source.targetOwner(),
+                published.inventoryDigest(),
+                NEVER)
+            .toCompletableFuture().join();
+        assertEquals(8L, root.targetOwnerGeneration("spot:room-a"));
+        assertEquals(8L, root.targetOwnerGeneration("actor:user-a"));
     }
 
     @Test
@@ -594,6 +671,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
         private int prepareCount;
         private int commitCount;
         private int abortCount;
+        private long ownerGenerationGap = 1;
         private final Map<String, ZLinkAuthoritySnapshot> rows =
             new ConcurrentHashMap<>();
 
@@ -634,7 +712,7 @@ final class ZLinkAggregateRelocationCoordinatorTest {
                             + participant.authorityKey(),
                         participant.authorityPayload(),
                         source.objectGeneration(),
-                        source.authorityOwnerGeneration() + 1,
+                        source.authorityOwnerGeneration() + ownerGenerationGap,
                         prepared.targetOwner().ownerId(),
                         prepared.targetOwner().leaseGeneration(),
                         new ZLinkPlacementAllocation(

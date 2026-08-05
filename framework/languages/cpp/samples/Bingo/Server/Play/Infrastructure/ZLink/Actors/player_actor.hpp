@@ -45,7 +45,7 @@ struct player_actor_t : framework::actor_t
 
     void set_actor_ref (const actor_ref_t &actor_ref) const
     {
-        actor_id = std::string (actor_ref.actor_id ());
+        actor_id = std::string (actor_ref.actor_id ().value ());
     }
 
     void set_actor_context (actor_context_t actor_context) const

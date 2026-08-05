@@ -274,7 +274,7 @@ binding report에서 실제 client 수와 STREAM client 수가 같은지, memory
 ## 5. 고정 원칙
 
 - 성능 목표 달성이 작업의 우선 목적이지만, 개선 설계와 구현은
-  `doc/principal/software-design-principles.md`의 POSD 원칙을 계속 만족해야 한다.
+  `doc/principal/dev/posddd.md`의 POSDDD 원칙을 계속 만족해야 한다.
 - 성능 개선은 각 binding의 public API를 사용하는 일반 경로에서 이루어져야 한다.
 - perf 전용 public API, private API 접근, C API 직접 호출, 특정 입력만 겨냥한 우회는
   개선으로 인정하지 않는다.

@@ -1,16 +1,22 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLINK_LOCATION_RUNTIME_QUERY, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import type { ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, type ZLinkFanoutRuntime, type ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
+import {
+  ZLINK_FANOUT_RUNTIME,
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLinkModule,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
+import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { validateSubscriberOptions, SUBSCRIBER_OPTIONS, type SubscriberOptions } from './Configuration/subscriber-options';
 import { PUBSUB_OPTIONS, createPubSubConfigurationModule } from '../../configuration';
 import { createSubscriberEndpoints } from './Endpoints/operational-endpoints';
-import { EvidenceDispatchErrorObserver, EventMsgHandler, SubscriberSocketEventRecorder } from './Handlers/event-msg-handler';
+import { EvidenceDispatchErrorObserver, EventMsgHandler } from './Handlers/event-msg-handler';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
+import { FanoutStatusObserverProbe } from './Support/fanout-status-observer';
 
 export async function startSubscriberHost(): Promise<void> {
   let stopping = false;
@@ -19,14 +25,29 @@ export async function startSubscriberHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(SubscriberModule, { logger: false, abortOnError: false });
   const options = app.get(PUBSUB_OPTIONS, { strict: false }) as SubscriberOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const fanoutRuntime = app.get(ZLINK_FANOUT_RUNTIME, { strict: false }) as ZLinkFanoutRuntime | undefined;
+  const locationRuntimeQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as
+    ZLinkLocationRuntimeQuery | undefined;
+  const observerProbe = new FanoutStatusObserverProbe(
+    fanoutRuntime,
+    evidence,
+    options.channelName ?? PubSubNames.channel
+  );
   const server = await startHttpServer(
     options.httpUrl,
-    createSubscriberEndpoints(evidence, locations, () => { stopping = true; })
+    createSubscriberEndpoints(
+      evidence,
+      fanoutRuntime,
+      () => { stopping = true; },
+      observerProbe,
+      locationRuntimeQuery,
+      options.channelName ?? PubSubNames.channel
+    )
   );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  await observerProbe.stop();
   await closeHttpServer(server);
   await app.close();
 }
@@ -50,13 +71,22 @@ function createSubscriberModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addFanoutChannel(PubSubNames.channel)
-            .connect(options.publisherEndpoint)
+          if (options.redisEndpoint !== undefined && options.redisKeyPrefix !== undefined) {
+            builder.addLocationStore(createRedisLocationStore({
+              redisEndpoint: options.redisEndpoint,
+              redisKeyPrefix: `${options.redisKeyPrefix}:location`
+            }));
+            locationMessagingOptions(builder.configureLocations());
+          }
+          const fanout = builder.addFanoutChannel(options.channelName ?? PubSubNames.channel)
+            .enableSubscriber(options.publisherEndpoint)
             .routingId(options.rid)
             .addPublishHandler(PacketNames.eventMsg, EventMsgHandler);
+          if (options.subscriberMode === 'mixed') {
+            fanout.enableSubscriber();
+          }
           return {
             ...builder.build(),
-            monitoring: { socket: [{ sourceName: `${PubSubNames.channel}.subscriber` }] }
           };
         }
       })
@@ -72,7 +102,6 @@ function createSubscriberModule(): Function {
       },
       { provide: SUBSCRIBER_OPTIONS, useExisting: PUBSUB_OPTIONS },
       EventMsgHandler,
-      SubscriberSocketEventRecorder,
       EvidenceDispatchErrorObserver
     ]
   })(SubscriberModule);

@@ -66,7 +66,7 @@ struct actor_location_t
     std::string mesh_name;
     std::string actor_id;
     std::string actor_type;
-    actor_ref_t actor_ref;
+    std::optional<actor_ref_t> actor_ref;
     zlink::routing_id_t owner_node_rid = zlink::routing_id_t::from (std::uint32_t{0});
     std::uint64_t owner_node_generation = 0;
     std::string spot_id;

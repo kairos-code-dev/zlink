@@ -9,14 +9,12 @@ import systems.zlink.framework.kotlin.addHandler
 import systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpotContext
-import systems.zlink.framework.spots.ZLinkSpotActorJoinResult
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 
 class ScenarioEntrySpot(
-    private val context: ZLinkEntrySpotContext,
+    override val context: ZLinkEntrySpotContext,
     private val evidence: ScenarioState
 ) : ZLinkSuspendingEntrySpot<ScenarioActor>() {
-    override fun context(): ZLinkEntrySpotContext = context
-
     fun nodeRid(): String = evidence.nodeRid()
 
     fun record(marker: String, value: String) {
@@ -32,7 +30,7 @@ class ScenarioEntrySpot(
     override suspend fun onCreateActorSuspending(
         actor: ScenarioActor,
         createRequest: ZLinkMessage,
-    ) {
+    ): ZLinkActorCreateResponse {
         if (!createRequest.isEmpty) {
             val request = createRequest.decode(Contracts.ActorAuthReq::class.java)
             actor.applyProfile(request.profile)
@@ -45,14 +43,7 @@ class ScenarioEntrySpot(
             )
         }
         evidence.record("ActorCreated", "entry", actor.actorId() + "#" + actor.nextSequence())
-    }
-
-    override suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResult {
-        evidence.record("ActorEntryJoinRequested", "entry", actorId)
-        return ZLinkSpotActorJoinResult.accept()
+        return ZLinkActorCreateResponse.accept()
     }
 
     override suspend fun onJoinedActorSuspending(actor: ScenarioActor) {

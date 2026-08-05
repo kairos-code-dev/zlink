@@ -5,10 +5,15 @@ import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
@@ -17,6 +22,8 @@ import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.ZLinkMessageSerializer;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.errors.ZLinkFrameworkException;
 import systems.zlink.framework.runtime.actors.ZLinkSessionActorsRuntime;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.internal.streams.ZLinkStreamErrorPayload;
@@ -43,10 +50,14 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private final ZLinkMessageFlowTracer flow;
     private final Supplier<CompletionStage<Void>> closeAction;
     private final ZLinkOneWayCalls oneWayCalls;
+    private final ScheduledExecutorService replyRetryExecutor;
     private final ConcurrentHashMap<String, ZLinkStreamHeader> requestHeadersByFlow =
         new ConcurrentHashMap<>();
     private final ConcurrentHashMap<ZLinkStreamHeader, Boolean> claimedReplyHeaders =
         new ConcurrentHashMap<>();
+    private final java.util.Set<ReplyAttempt> replyAttempts =
+        ConcurrentHashMap.newKeySet();
+    private final AtomicBoolean replyRetriesClosed = new AtomicBoolean();
 
     ZLinkStreamSessionContextState(
         String streamNodeName,
@@ -77,7 +88,8 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                 } finally {
                     cleanup.run();
                 }
-            }));
+            }),
+            null);
     }
 
     ZLinkStreamSessionContextState(
@@ -91,6 +103,32 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         ZLinkMessageFlowTracer flow,
         Supplier<CompletionStage<Void>> closeAction,
         ZLinkOneWayCalls oneWayCalls) {
+        this(
+            streamNodeName,
+            stream,
+            routingId,
+            actors,
+            serializer,
+            defaultCodec,
+            compressionCodec,
+            flow,
+            closeAction,
+            oneWayCalls,
+            null);
+    }
+
+    ZLinkStreamSessionContextState(
+        String streamNodeName,
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId,
+        ZLinkSessionActors actors,
+        ZLinkMessageSerializer serializer,
+        ZLinkStreamCodec defaultCodec,
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkMessageFlowTracer flow,
+        Supplier<CompletionStage<Void>> closeAction,
+        ZLinkOneWayCalls oneWayCalls,
+        ScheduledExecutorService replyRetryExecutor) {
         this.streamNodeName = streamNodeName;
         this.stream = stream;
         this.routingId = routingId;
@@ -100,7 +138,8 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         this.compressionCodec = compressionCodec;
         this.flow = flow;
         this.closeAction = java.util.Objects.requireNonNull(closeAction, "closeAction");
-        this.oneWayCalls = oneWayCalls;
+        this.oneWayCalls = java.util.Objects.requireNonNull(oneWayCalls, "oneWayCalls");
+        this.replyRetryExecutor = replyRetryExecutor;
     }
 
     @Override
@@ -152,6 +191,15 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
             return runtime.notifyDisconnectedAll();
         }
         return CompletableFuture.completedFuture(null);
+    }
+
+    void closeReplyRetries() {
+        if (!replyRetriesClosed.compareAndSet(false, true)) {
+            return;
+        }
+        for (ReplyAttempt attempt : replyAttempts) {
+            attempt.cancel();
+        }
     }
 
     CompletionStage<systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec
@@ -333,31 +381,116 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         try (Message payload = Message.from(ZLinkStreamErrorPayload.encode(error))) {
             ZLinkStreamHeader replyHeader =
                 ZLinkStreamHeader.createErrorResponse(requestHeader, requestHeader.packetName());
-            submitReplyAsync(replyHeader, payload.toByteArray());
-            return java.util.concurrent.CompletableFuture.completedFuture(null);
+            return submitReplyAsync(replyHeader, payload.toByteArray());
         }
     }
 
-    private void submitReplyAsync(
+    private CompletionStage<Void> submitReplyAsync(
         ZLinkStreamHeader replyHeader,
         byte[] payloadBytes) {
-        long deadline = System.nanoTime() + ASYNC_REPLY_TIMEOUT_NANOS;
-        class Attempt implements Runnable {
-            @Override
-            public void run() {
-                try (Message payload = Message.from(payloadBytes)) {
-                    if (stream.reply(routingId, replyHeader, List.of(payload), SendFlags.DONT_WAIT)) {
-                        return;
-                    }
-                } catch (RuntimeException ignored) {
+        ReplyAttempt attempt = new ReplyAttempt(
+            replyHeader,
+            payloadBytes,
+            System.nanoTime() + ASYNC_REPLY_TIMEOUT_NANOS);
+        replyAttempts.add(attempt);
+        attempt.run();
+        return attempt.completion;
+    }
+
+    private final class ReplyAttempt implements Runnable {
+        private final ZLinkStreamHeader replyHeader;
+        private final byte[] payloadBytes;
+        private final long deadlineNanos;
+        private final CompletableFuture<Void> completion = new CompletableFuture<>();
+        private final AtomicBoolean terminal = new AtomicBoolean();
+        private volatile ScheduledFuture<?> retry;
+
+        private ReplyAttempt(
+            ZLinkStreamHeader replyHeader,
+            byte[] payloadBytes,
+            long deadlineNanos) {
+            this.replyHeader = replyHeader;
+            this.payloadBytes = payloadBytes;
+            this.deadlineNanos = deadlineNanos;
+        }
+
+        @Override
+        public void run() {
+            if (terminal.get()) {
+                return;
+            }
+            if (replyRetriesClosed.get()) {
+                cancel();
+                return;
+            }
+            try (Message payload = Message.from(payloadBytes)) {
+                if (replyRetriesClosed.get()) {
+                    cancel();
                     return;
                 }
-                if (System.nanoTime() < deadline) {
-                    CompletableFuture.delayedExecutor(10, TimeUnit.MILLISECONDS).execute(this);
+                if (stream.reply(
+                    routingId,
+                    replyHeader,
+                    List.of(payload),
+                    SendFlags.DONT_WAIT)) {
+                    complete();
+                    return;
                 }
+            } catch (RuntimeException failure) {
+                completeExceptionally(failure);
+                return;
+            }
+            if (replyRetriesClosed.get()) {
+                cancel();
+                return;
+            }
+            if (System.nanoTime() >= deadlineNanos) {
+                completeExceptionally(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED,
+                    "STREAM error reply was not admitted before the send deadline"));
+                return;
+            }
+            if (replyRetryExecutor == null) {
+                completeExceptionally(new IllegalStateException(
+                    "STREAM reply retry executor is unavailable"));
+                return;
+            }
+            try {
+                retry = replyRetryExecutor.schedule(this, 10, TimeUnit.MILLISECONDS);
+            } catch (RejectedExecutionException rejected) {
+                completeExceptionally(rejected);
             }
         }
-        new Attempt().run();
+
+        private void cancel() {
+            completeExceptionally(new CancellationException(
+                "STREAM runtime closed before the error reply was admitted"));
+        }
+
+        private void complete() {
+            if (!terminal.compareAndSet(false, true)) {
+                return;
+            }
+            cancelRetry();
+            replyAttempts.remove(this);
+            completion.complete(null);
+        }
+
+        private void completeExceptionally(Throwable failure) {
+            if (!terminal.compareAndSet(false, true)) {
+                return;
+            }
+            cancelRetry();
+            replyAttempts.remove(this);
+            completion.completeExceptionally(failure);
+        }
+
+        private void cancelRetry() {
+            ScheduledFuture<?> current = retry;
+            if (current != null) {
+                current.cancel(false);
+            }
+        }
     }
 
     private static Throwable unwrap(Throwable error) {

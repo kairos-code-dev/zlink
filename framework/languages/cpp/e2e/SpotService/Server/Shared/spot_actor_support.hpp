@@ -15,16 +15,16 @@ namespace
 zlink::framework::actor_ref_t to_actor_ref (const e2e::actor_ref_dto_t &actor)
 {
     return zlink::framework::actor_ref_t (
-      zlink::framework::node_rid_t::from_string (actor.node_rid), actor.actor_type, actor.actor_id,
-      actor.generation);
+      zlink::framework::actor_id_t (actor.actor_id), actor.generation, e2e::spot_mesh,
+      zlink::framework::node_rid_t::from_string (actor.node_rid));
 }
 
 e2e::actor_ref_dto_t from_actor_ref (const zlink::framework::actor_ref_t &actor)
 {
     return {.node_rid = std::string (actor.node_rid ().value ()),
-            .actor_type = std::string (actor.actor_type ()),
-            .actor_id = std::string (actor.actor_id ()),
-            .generation = actor.generation ()};
+            .actor_type = std::string (e2e::actor_type),
+            .actor_id = std::string (actor.actor_id ().value ()),
+            .generation = actor.object_generation ()};
 }
 
 std::string owner_for_key (const std::string &key)

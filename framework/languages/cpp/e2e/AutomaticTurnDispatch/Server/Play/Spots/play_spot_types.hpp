@@ -13,7 +13,7 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::play
 struct await_actor_t : zlink::framework::actor_t
 {
     explicit await_actor_t (zlink::framework::actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         _actor_context (std::move (value))
     {

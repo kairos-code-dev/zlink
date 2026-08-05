@@ -26,6 +26,7 @@ export type ZLinkMessageSurface =
   | 'node'
   | 'channel'
   | 'spot'
+  | 'instance_spot'
   | 'logical_multicast'
   | 'actor'
   | 'stream'

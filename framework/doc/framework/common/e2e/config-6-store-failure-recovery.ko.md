@@ -282,7 +282,7 @@ Store I/O가 느리다는 이유로 같은 process의 event loop나 application 
   100개를 보내 모두 완료한 뒤 Store response를 해제한다.
 - 검증: Channel requests는 Store gate 해제 전에 reply를 하나씩 받는다. Store operation도 해제 뒤 정식
   terminal을 반환한다.
-- 세부 동작: [비동기 실행 정책 §2](../spec/05-async-execution-policy.md)의 I/O 격리를
+- 세부 동작: [비동기 실행 정책 §2](../spec/05-async-execution-policy.ko.md)의 I/O 격리를
   검증한다.
 
 ### Track F — Relocation과 owner recovery의 public 결과를 확인

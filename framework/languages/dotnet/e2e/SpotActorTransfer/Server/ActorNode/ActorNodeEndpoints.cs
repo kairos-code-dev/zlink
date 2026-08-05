@@ -571,6 +571,44 @@ internal static class ActorNodeEndpoints
                 .Async<RelocationWorkloadReply>(cancellationToken);
             return Results.Ok(reply);
         });
+        app.MapPost("/workload/actors/request-probe", async (
+            RelocationWorkloadCallReq request,
+            IZLinkActorClient actors,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var reply = await actors
+                    .RequestToActor(
+                        request.TargetId,
+                        new RelocationWorkloadRequest(
+                            request.Scenario,
+                            request.Sequence,
+                            request.OperationId,
+                            request.SentUnixTimeMilliseconds,
+                            request.AbsoluteDeadlineUnixTimeMilliseconds))
+                    .Metadata(
+                        RelocationWorkloadMetadata.OperationId,
+                        request.OperationId)
+                    .Timeout(RemainingTimeout(request))
+                    .Async<RelocationWorkloadReply>(cancellationToken);
+                return Results.Ok(new RelocationWorkloadProbeRes(true, reply, null));
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return Results.Ok(new RelocationWorkloadProbeRes(
+                    false,
+                    null,
+                    error.Kind.ToString()));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new RelocationWorkloadProbeRes(
+                    false,
+                    null,
+                    nameof(ZLinkFrameworkErrorKind.DeadlineExceeded)));
+            }
+        });
         app.MapPost("/workload/actors/send", async (
             RelocationWorkloadCallReq request,
             IZLinkActorClient actors,
@@ -622,6 +660,44 @@ internal static class ActorNodeEndpoints
                 .Timeout(RemainingTimeout(request))
                 .Async<RelocationWorkloadReply>(cancellationToken);
             return Results.Ok(reply);
+        });
+        app.MapPost("/workload/spots/request-probe", async (
+            RelocationWorkloadCallReq request,
+            IZLinkSpotClient spots,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var reply = await spots
+                    .RequestToSpot(
+                        request.TargetId,
+                        new RelocationWorkloadRequest(
+                            request.Scenario,
+                            request.Sequence,
+                            request.OperationId,
+                            request.SentUnixTimeMilliseconds,
+                            request.AbsoluteDeadlineUnixTimeMilliseconds))
+                    .Metadata(
+                        RelocationWorkloadMetadata.OperationId,
+                        request.OperationId)
+                    .Timeout(RemainingTimeout(request))
+                    .Async<RelocationWorkloadReply>(cancellationToken);
+                return Results.Ok(new RelocationWorkloadProbeRes(true, reply, null));
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return Results.Ok(new RelocationWorkloadProbeRes(
+                    false,
+                    null,
+                    error.Kind.ToString()));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new RelocationWorkloadProbeRes(
+                    false,
+                    null,
+                    nameof(ZLinkFrameworkErrorKind.DeadlineExceeded)));
+            }
         });
         app.MapPost("/workload/spots/send", async (
             RelocationWorkloadCallReq request,

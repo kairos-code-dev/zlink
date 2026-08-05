@@ -24,7 +24,7 @@ inline zlink::routing_id_t multi_node_target_rid (const std::string &value)
 struct multi_node_actor_t : zlink::framework::actor_t
 {
     explicit multi_node_actor_t (zlink::framework::actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         _actor_context (std::move (value))
     {

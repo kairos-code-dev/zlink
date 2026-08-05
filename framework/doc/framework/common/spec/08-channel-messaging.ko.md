@@ -27,7 +27,7 @@ ChannelName은 socket이나 endpoint 이름이 아니다. 현재 process에 등�
 
 물리 연결과 [membership](01-glossary.ko.md#membership)은 [Channel topology](07-channel-topology.ko.md), payload와
 metadata는 [메시지 모델](04-message-model.ko.md), 완료와 실행 순서는
-[비동기 실행 정책](05-async-execution-policy.md)이 정의한다.
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 
 ## 2. 공통 동작을 .NET API로 표현한 예시
 
@@ -240,7 +240,7 @@ request는 이전 request의 자동 재전송이 아니라 별도 operation이�
 이전 target이 이미 업무를 실행했을 가능성을 고려하여 중복 실행을 처리해야 한다.
 
 One-way send의 수락 시점과 request의 최종 완료 조건은
-[비동기 실행 정책](05-async-execution-policy.md)이 정의한다.
+[비동기 실행 정책](05-async-execution-policy.ko.md)이 정의한다.
 
 ## 5. Handler를 찾고 실행하는 방법
 

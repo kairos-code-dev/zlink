@@ -23,6 +23,7 @@ import type {
   ZLinkBackendSendFlags,
   ZLinkBackendStreamSocket
 } from '../backend/contracts';
+import { RequestResult } from '../backend/runtime-values';
 import { ZLinkBufferMessage as NativeMessage } from '../backend/runtime-message';
 import type { StreamSessionService } from '../foundation/service-runtime-contracts';
 import {
@@ -273,7 +274,10 @@ export class ZLinkManagedStream implements ZLinkStream {
         operation,
         `Actor '${actorId}' native session unbind`,
         signal,
-        new Set([109])
+        // Destroy can remove the actor registry entry before the old
+        // session owner processes its cleanup. Both a disconnected route and
+        // that stale actor route are idempotent unbind outcomes.
+        new Set([RequestResult.NotConnected, RequestResult.NotFound])
       );
       this.nativeActorBindings.delete(actorId);
       return;

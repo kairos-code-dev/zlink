@@ -593,13 +593,9 @@ return result
     static void validate_write (
       const store_write_request_t &request)
     {
-        if (request.conditions.size ()
-              + request.mutations.size ()
-            > 2048)
-            throw std::invalid_argument (
-              "location write exceeds 2048 keys");
         std::set<std::string> conditions;
         std::set<std::string> mutations;
+        std::set<std::string> keys;
         std::size_t encoded = 0;
         for (const auto &condition : request.conditions) {
             const auto &key = std::visit (
@@ -612,6 +608,7 @@ return result
             if (!conditions.insert (key.value).second)
                 throw std::invalid_argument (
                   "location write repeats a condition key");
+            keys.insert (key.value);
             encoded += key.value.size ();
             if (const auto *version =
                   std::get_if<
@@ -633,6 +630,7 @@ return result
                         value.key.value).second)
                       throw std::invalid_argument (
                         "location write repeats a mutation key");
+                  keys.insert (value.key.value);
                   encoded += value.key.value.size ();
                   using value_t =
                     std::decay_t<decltype (value)>;
@@ -652,6 +650,9 @@ return result
               },
               mutation);
         }
+        if (keys.size () > 2048)
+            throw std::invalid_argument (
+              "location write exceeds 2048 unique keys");
         if (encoded > 4u * 1024u * 1024u)
             throw std::invalid_argument (
               "location write exceeds 4 MiB");

@@ -89,10 +89,10 @@ public final class DeliveryDispatchClientScenario {
             })
             .thenCompose(message -> {
                 Messages.OfferDeliveryNotify courierOffer = message.payload();
-                courier.send(new Messages.CourierDecision(
+                return courier.send(new Messages.CourierDecision(
                     courierOffer.deliveryId(), courierOffer.courierId(), true, null)).submit();
-                return statuses;
             })
+            .thenCompose(ignored -> statuses)
             .thenCompose(notifications -> {
                 ZLinkStreamAssert.ensure(
                     notifications.stream().allMatch(message ->
@@ -152,10 +152,10 @@ public final class DeliveryDispatchClientScenario {
             .thenCompose(ignored -> secondOffer)
             .thenCompose(message -> {
                 Messages.OfferDeliveryNotify acceptedOffer = message.payload();
-                courierB.send(new Messages.CourierDecision(
+                return courierB.send(new Messages.CourierDecision(
                     acceptedOffer.deliveryId(), acceptedOffer.courierId(), true, null)).submit();
-                return statuses;
             })
+            .thenCompose(ignored -> statuses)
             .thenAccept(notifications -> {
                 ZLinkStreamAssert.ensure(
                     notifications.get(0).payload().courierId().equals("courier-a"),

@@ -1,4 +1,5 @@
 // Verifies RM-A4 Same Rid Failover behavior.
+using System.Text.Json;
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -16,22 +17,22 @@ internal static class RmA4SameRidFailoverScenario
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-a4");
         var providerV1 = await cluster.StartProviderAsync("api-a-v1", "api-a");
         var consumer = await cluster.StartConsumerAsync("consumer");
-        using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
-            .Timeout(TimeSpan.FromMinutes(5))
-            .Build();
         using var observer = ZLinkHttpClient.Create(consumer.HttpUrl)
             .Timeout(TimeSpan.FromSeconds(40))
             .Build();
 
         await WaitForPeerAsync(observer, "api-a", present: true, providerV1.ChannelEndpoint);
 
-        var first = (await providerV1Client.Post("/profile/request")
+        var first = (await observer.Post("/profile/request")
             .Body(new ProfileReq("rm-a4-v1"))
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(
             first.ProviderRid == "api-a",
             "RM-A4 initial request should reach api-a.");
 
+        using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Build();
         await WaitForEvidenceAsync(providerV1Client, "value=rm-a4-v1");
 
         var drained = await cluster.StopAsync(providerV1);
@@ -42,19 +43,20 @@ internal static class RmA4SameRidFailoverScenario
 
         var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
         using var providerV2Client = ZLinkHttpClient.Create(providerV2.HttpUrl)
-            .Timeout(TimeSpan.FromMinutes(5))
+            .Timeout(TimeSpan.FromSeconds(10))
             .Build();
 
         // Wait until the runtime query shows one current api-a-prefixed row at
         // v2's endpoint; the previous physical RID must no longer be live.
-        await WaitForSingleLiveRowAsync(providerV2Client, providerV2.ChannelEndpoint);
+        await WaitForSingleLiveRowAsync(observer, providerV2.ChannelEndpoint);
+        await WaitForRouteReadyAsync(observer);
 
         var beforeV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);
         var beforeV2 = await ReadEvidenceAsync(providerV2Client);
         var marker = $"rm-a4-{Guid.NewGuid():N}";
         for (var i = 0; i < 20; i++)
         {
-            var reply = (await providerV2Client.Post("/profile/request")
+            var reply = (await observer.Post("/profile/request")
                 .Body(new ProfileReq($"{marker}-{i}"))
                 .Async<ProfileRes>()).Body;
             ZlinkStreamAssert.Ensure(
@@ -87,6 +89,24 @@ internal static class RmA4SameRidFailoverScenario
                 Present: true,
                 Endpoint: expectedEndpoint))
             .Async<PeerLocationRow[]>();
+    }
+
+    private static async Task WaitForRouteReadyAsync(ZLinkHttpClient client)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var status = (await client.Get("/topology/ready?count=1")
+                    .Async<JsonElement>())
+                .Body;
+            if (status.GetProperty("ready").GetBoolean())
+                return;
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+
+        throw new TimeoutException(
+            "RM-A4 replacement peer became visible before the profile Channel became ready.");
     }
 
     private static Task WaitForPeerAsync(

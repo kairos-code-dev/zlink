@@ -34,6 +34,7 @@ internal static class ProviderHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
         builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton<BackpressureGate>();
         builder.Services.AddSingleton(new E2eMessageFlowListener(
             Path.Combine(options.LogDir, $"{options.Rid}-flow.log"),
             options.Rid,
@@ -57,8 +58,10 @@ internal static class ProviderHostFactory
             //  This E2E host is not started inside a memory-limited
             //  container. Supply a deterministic finite limit so the
             //  default Auto HWM contract does not depend on the host.
-            framework.ConfigureInboundDispatch().ProcessMemoryLimitBytes =
-                1UL * 1024 * 1024 * 1024;
+            var inboundDispatch = framework.ConfigureInboundDispatch();
+            inboundDispatch.ProcessMemoryLimitBytes = 1UL * 1024 * 1024 * 1024;
+            if (options.ApplicationHwmBytes > 0)
+                inboundDispatch.ApplicationHwmBytes = options.ApplicationHwmBytes;
             // The official Redis extension registers the peer/spot/actor/route
             // stores and the owner lease store together (doc §2).
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => { redis.ConnectionString = options.RedisEndpoint
@@ -81,6 +84,7 @@ internal static class ProviderHostFactory
                 profile.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
                 profile.AddRequestHandler<PayloadRequestHandler, PayloadReq, PayloadRes>("PayloadReq");
                 profile.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
+                profile.AddSendHandler<BackpressureCommandHandler, BackpressureMsg>("BackpressureMsg");
             }
 
             if (!string.IsNullOrWhiteSpace(options.RouteEndpoint))

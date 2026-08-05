@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Systems.Zlink.Framework.Runtime.Protocol;
 using Zlink.Framework.AspNetCore;
@@ -62,7 +63,7 @@ public sealed class StatefulServiceRuntimeTests
         var applicationReply = ZLinkEnvelopeCodec.EncodeParts(
             new ZLinkEnvelopeHeader(
                 ZLinkMessageKind.Response,
-                string.Empty,
+                "actor.create.reply",
                 string.Empty,
                 ZLinkEnvelopeCodec.DefaultContentType,
                 "31",
@@ -116,6 +117,46 @@ public sealed class StatefulServiceRuntimeTests
         Assert.False(ZLinkInlineCreationIntentCodec.TryDecode(
             reference[..^1] + (reference[^1] == 'A' ? "B" : "A"),
             out _));
+    }
+
+    [Fact]
+    public void FrameworkMultipartGoldenFixtureMatchesTheManagedCodec()
+    {
+        var frameworkRoot = Common.FrameworkTestEnvironment.GetFrameworkRoot();
+        var fixturePath = Path.GetFullPath(
+            "../../runtime/protocol/golden/framework-multipart-v1.json",
+            frameworkRoot);
+        using var document = JsonDocument.Parse(File.ReadAllText(fixturePath));
+
+        var valid = document.RootElement.GetProperty("valid")[0];
+        var encoded = Convert.FromHexString(valid.GetProperty("encodedHex").GetString()!);
+        Assert.True(ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
+            encoded,
+            out var parts));
+        try
+        {
+            var expected = valid.GetProperty("partsHex").EnumerateArray()
+                .Select(static item => Convert.FromHexString(item.GetString()!))
+                .ToArray();
+            Assert.Equal(expected.Length, parts.Length);
+            for (var index = 0; index < parts.Length; index++)
+                Assert.Equal(expected[index], parts[index].AsReadOnlyMemory().ToArray());
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+
+        foreach (var invalid in document.RootElement.GetProperty("invalid").EnumerateArray())
+        {
+            var bytes = Convert.FromHexString(invalid.GetProperty("encodedHex").GetString()!);
+            Assert.False(
+                ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
+                    bytes,
+                    out var rejected),
+                invalid.GetProperty("name").GetString());
+            ZLinkMessageParts.DisposeAll(rejected);
+        }
     }
 
     [Fact]
@@ -2304,7 +2345,7 @@ public sealed class StatefulServiceRuntimeTests
             var spotId = $"production-spot-{suffix}";
             var authorityKey = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
             var creationPayload = ZLinkApplicationPayloadEnvelopeCodec.Encode(
-                string.Empty,
+                ZLinkApplicationPayloadEnvelopeCodec.CreationPacketName,
                 ZLinkEnvelopeCodec.DefaultContentType,
                 "{}"u8);
             var creationReference =
@@ -2998,6 +3039,7 @@ public sealed class StatefulServiceRuntimeTests
         Assert.True(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(0, 1));
         Assert.True(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(105, 0));
         Assert.False(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(105, 1));
+        Assert.False(ZLinkManagedMeshNode.IsReplyRelayPayloadAllowed(0, 2));
     }
 
     [Fact]

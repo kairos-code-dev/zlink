@@ -167,7 +167,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         var eligible = FilterRouteReadyCandidates(source, placementEligible);
         var encoded = request.Encode(_frameworkRegistration.Codecs);
         var applicationPayload = ZLinkApplicationPayloadEnvelopeCodec.Encode(
-            string.Empty,
+            ZLinkApplicationPayloadEnvelopeCodec.CreationPacketName,
             encoded.ContentType,
             encoded.Payload.Bytes.Span);
         var creationIntentReference =

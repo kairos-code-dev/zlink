@@ -135,6 +135,76 @@ test('authority-backed Spot resolution uses the same positive-only cache boundar
   assert.equal(reads, 2);
 });
 
+test('authority Spot resolution does not re-cache a route invalidated during the read', async () => {
+  let reads = 0;
+  let nodeRid = 'node-a';
+  let storeVersion = 'v1';
+  let releaseRead;
+  let signalReadStarted;
+  const readStarted = new Promise(resolve => {
+    signalReadStarted = resolve;
+  });
+  const authority = {
+    async readAuthority() {
+      reads += 1;
+      const readNodeRid = nodeRid;
+      const readStoreVersion = storeVersion;
+      if (reads === 1) {
+        signalReadStarted();
+        await new Promise(resolve => {
+          releaseRead = resolve;
+        });
+      }
+      return {
+        kind: 'snapshot',
+        storeVersion: { value: readStoreVersion },
+        payload: internal.encodeServiceUserSpotAuthorityPayload({
+          state: 'ready',
+          stableType: 'Room',
+          spotId: 'room-epoch',
+          ownerId: 'owner-a',
+          ownerLeaseGeneration: 2n,
+          ownerMeshName: 'play',
+          ownerNodeRid: readNodeRid,
+          ownerNodeGeneration: 3n
+        }),
+        objectGeneration: 4n,
+        authorityOwnerGeneration: 5n,
+        ownerId: 'owner-a',
+        ownerLeaseGeneration: 2n,
+        allocation: {
+          state: 'active',
+          objectKind: 'user_spot',
+          stableType: 'Room',
+          descriptor: { meshName: 'play', nodeRid: readNodeRid },
+          descriptorLifecycleGeneration: 3n,
+          capacity: { actors: 0, spots: 1 }
+        },
+        storeNow: new Date()
+      };
+    }
+  };
+  const resolver = new internal.ZLinkAuthoritySpotRouteResolver(
+    authority,
+    (meshName) => meshName,
+    undefined,
+    { remainingOwnerTokenLeaseMs: async () => 60_000 },
+    15_000,
+    () => 0
+  );
+
+  const pending = resolver.resolve('room-epoch');
+  await readStarted;
+  resolver.invalidate('room-epoch');
+  nodeRid = 'node-b';
+  storeVersion = 'v2';
+  releaseRead();
+
+  assert.equal((await pending).targetNodeRid, 'node-a');
+  assert.equal((await resolver.resolve('room-epoch')).targetNodeRid, 'node-b');
+  assert.equal(reads, 2);
+});
+
 test('authority Actor route carries every fence and a changed StoreVersion invalidates it', async () => {
   let reads = 0;
   let storeVersion = 'v1';
@@ -432,7 +502,7 @@ test('a direct Spot request maps a confirmed draining target to ShuttingDown wit
   assert.equal(refreshCount, 1);
 });
 
-test('Spot address requests preserve ShuttingDown when Core rejects a published draining target', async () => {
+test('Spot address requests preserve the original route failure after invalidation', async () => {
   class Lookup {}
   let targetState = framework.ZLinkFrameworkRuntimeState.Serving;
   let invalidated = 0;
@@ -472,7 +542,7 @@ test('Spot address requests preserve ShuttingDown when Core rejects a published 
     () => addressTransport.requestToSpotAddress('spot-1', new Lookup(), {
       instanceSpot: false
     }),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ShuttingDown
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.Unavailable
   );
   assert.equal(invalidated, 1);
 });

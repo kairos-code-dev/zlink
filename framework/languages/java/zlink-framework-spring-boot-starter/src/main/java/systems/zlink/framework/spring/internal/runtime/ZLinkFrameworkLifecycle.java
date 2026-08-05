@@ -320,6 +320,12 @@ public final class ZLinkFrameworkLifecycle
         return requireRuntime().meshNodesForInternalMonitoring();
     }
 
+    systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions
+    routeMeshRuntimeOptions() {
+        return (systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions)
+            requireRuntime().routeMeshRuntime();
+    }
+
     public ZLinkLocationRuntimeQuery monitoringLocationRuntimeQuery() {
         return requireRuntime().monitoringLocationRuntimeQuery();
     }
@@ -365,6 +371,15 @@ public final class ZLinkFrameworkLifecycle
         systems.zlink.framework.monitoring.ZLinkObservedStatus<
             systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeStatus> > observe() {
         return requireRuntime().observe();
+    }
+
+    /**
+     * Supplies the runtime instance for the lazy public Spring bean.
+     * The bean is resolved after SmartLifecycle startup, so this method does
+     * not start the runtime while the application context is being built.
+     */
+    public ZLinkFrameworkRuntime runtimeBean() {
+        return requireRuntime();
     }
 
     private ZLinkFrameworkRuntime requireRuntime() {

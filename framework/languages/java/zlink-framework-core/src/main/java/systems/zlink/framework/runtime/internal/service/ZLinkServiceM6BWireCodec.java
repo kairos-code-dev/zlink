@@ -18,6 +18,7 @@ import systems.zlink.framework.runtime.protocol.ServiceWireConstants;
  */
 public final class ZLinkServiceM6BWireCodec {
     private static final int PREFIX_BYTES = 5;
+    private static final int SESSION_ROUTE_INTENT_MARKER = 0xD1;
 
     public byte[] encodeSpotHeader(
         boolean request,
@@ -963,12 +964,14 @@ public final class ZLinkServiceM6BWireCodec {
         Objects.requireNonNull(route, "route");
         Writer writer = prefix(
             ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE, 0);
-        writeRelocationIdentity(writer, route.relocation());
-        writeCoordinatorFence(writer, route.coordinator());
-        writer.u8(route.senderRole().wireValue);
-        writeActorIdentity(writer, route.actor());
-        writeSessionOwner(writer, route.session());
-        writer.u8(route.action().wireValue);
+        writeSessionRelocationRoutePrefix(
+            writer,
+            route.relocation(),
+            route.coordinator(),
+            route.senderRole(),
+            route.actor(),
+            route.session(),
+            route.action());
         Writer selected = new Writer();
         if (route.action() == SessionRelocationRouteAction.COMMIT) {
             selected.nonzero(route.previousAuthorityOwnerGeneration(),
@@ -982,6 +985,36 @@ public final class ZLinkServiceM6BWireCodec {
             selected.nonzero(route.currentAuthorityOwnerGeneration(),
                 "currentAuthorityOwnerGeneration");
         }
+        byte[] body = selected.toByteArray();
+        writer.u16(body.length);
+        writer.bytes(body);
+        return writer.toByteArray();
+    }
+
+    /**
+     * Encodes the direct-Join route intent before the target owner generation
+     * has been assigned by the Location authority.
+     */
+    public byte[] encodeSessionRelocationRouteIntent(
+        SessionRelocationRouteIntent intent) {
+        Objects.requireNonNull(intent, "intent");
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE, 0);
+        writeSessionRelocationRoutePrefix(
+            writer,
+            intent.relocation(),
+            intent.coordinator(),
+            intent.senderRole(),
+            intent.actor(),
+            intent.session(),
+            intent.action());
+        Writer selected = new Writer();
+        selected.u8(SESSION_ROUTE_INTENT_MARKER);
+        selected.nonzero(intent.previousAuthorityOwnerGeneration(),
+            "previousAuthorityOwnerGeneration");
+        selected.rid(intent.targetNodeRid(), "targetNodeRid");
+        selected.nonzero(intent.targetNodeGeneration(), "targetNodeGeneration");
+        selected.u64(intent.lastAcceptedSessionSequence());
         byte[] body = selected.toByteArray();
         writer.u16(body.length);
         writer.bytes(body);
@@ -1022,6 +1055,64 @@ public final class ZLinkServiceM6BWireCodec {
         return new SessionRelocationRoute(relocation, coordinator, senderRole,
             actor, session, action, previous, current, targetNodeRid,
             targetNodeGeneration, highWater);
+    }
+
+    /** Decodes the direct-Join route intent stored in the transfer root. */
+    public SessionRelocationRouteIntent decodeSessionRelocationRouteIntent(
+        byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command() != ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE
+            || header.flags() != 0) {
+            throw protocol("frame is not a Session relocation route intent");
+        }
+        RelocationIdentity relocation = readRelocationIdentity(reader);
+        RelocationCoordinatorFence coordinator = readCoordinatorFence(reader);
+        RelocationRole senderRole = RelocationRole.fromWire(reader.u8("senderRole"));
+        ActorIdentity actor = readActorIdentity(reader);
+        SessionOwnerFence session = readSessionOwner(reader);
+        SessionRelocationRouteAction action =
+            SessionRelocationRouteAction.fromWire(reader.u8("action"));
+        if (action != SessionRelocationRouteAction.COMMIT) {
+            throw protocol("Session relocation route intent must commit");
+        }
+        Reader selected = reader.reader(reader.u16("routeBodyLength"));
+        if (selected.u8("intentMarker") != SESSION_ROUTE_INTENT_MARKER) {
+            throw protocol("invalid Session relocation route intent marker");
+        }
+        long previous = selected.nonzeroU64("previousAuthorityOwnerGeneration");
+        RoutingId targetNodeRid = selected.rid("targetNodeRid");
+        long targetNodeGeneration = selected.nonzeroU64("targetNodeGeneration");
+        long highWater = selected.u64("replayedHighWater");
+        selected.end();
+        reader.end();
+        return new SessionRelocationRouteIntent(
+            relocation,
+            coordinator,
+            senderRole,
+            actor,
+            session,
+            action,
+            previous,
+            targetNodeRid,
+            targetNodeGeneration,
+            highWater);
+    }
+
+    private static void writeSessionRelocationRoutePrefix(
+        Writer writer,
+        RelocationIdentity relocation,
+        RelocationCoordinatorFence coordinator,
+        RelocationRole senderRole,
+        ActorIdentity actor,
+        SessionOwnerFence session,
+        SessionRelocationRouteAction action) {
+        writeRelocationIdentity(writer, relocation);
+        writeCoordinatorFence(writer, coordinator);
+        writer.u8(senderRole.wireValue);
+        writeActorIdentity(writer, actor);
+        writeSessionOwner(writer, session);
+        writer.u8(action.wireValue);
     }
 
     public byte[] encodeSessionRelocationRouted(SessionRelocationRouted routed) {
@@ -1143,7 +1234,7 @@ public final class ZLinkServiceM6BWireCodec {
                 Objects.requireNonNull(targetNodeRid, "targetNodeRid");
                 if (previousAuthorityOwnerGeneration <= 0
                     || currentAuthorityOwnerGeneration
-                        != previousAuthorityOwnerGeneration + 1
+                        <= previousAuthorityOwnerGeneration
                     || targetNodeGeneration <= 0) {
                     throw protocol("commit route update is invalid");
                 }
@@ -1152,6 +1243,46 @@ public final class ZLinkServiceM6BWireCodec {
                 || lastAcceptedSessionSequence != 0) {
                 throw protocol("abort route update contains commit fields");
             }
+        }
+    }
+
+    public record SessionRelocationRouteIntent(
+        RelocationIdentity relocation, RelocationCoordinatorFence coordinator,
+        RelocationRole senderRole, ActorIdentity actor,
+        SessionOwnerFence session, SessionRelocationRouteAction action,
+        long previousAuthorityOwnerGeneration, RoutingId targetNodeRid,
+        long targetNodeGeneration, long lastAcceptedSessionSequence) {
+        public SessionRelocationRouteIntent {
+            Objects.requireNonNull(relocation, "relocation");
+            Objects.requireNonNull(coordinator, "coordinator");
+            Objects.requireNonNull(senderRole, "senderRole");
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(session, "session");
+            Objects.requireNonNull(action, "action");
+            Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+            if (senderRole != RelocationRole.TARGET
+                || action != SessionRelocationRouteAction.COMMIT
+                || previousAuthorityOwnerGeneration <= 0
+                || targetNodeGeneration <= 0
+                || lastAcceptedSessionSequence < 0) {
+                throw protocol("Session relocation route intent is invalid");
+            }
+        }
+
+        public SessionRelocationRoute materialize(
+            long currentAuthorityOwnerGeneration) {
+            return new SessionRelocationRoute(
+                relocation,
+                coordinator,
+                senderRole,
+                actor,
+                session,
+                action,
+                previousAuthorityOwnerGeneration,
+                currentAuthorityOwnerGeneration,
+                targetNodeRid,
+                targetNodeGeneration,
+                lastAcceptedSessionSequence);
         }
     }
 

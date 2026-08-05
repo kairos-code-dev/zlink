@@ -8,6 +8,9 @@
       "path": "./packages/framework"
     },
     {
+      "path": "./packages/stream-connector"
+    },
+    {
       "path": "./packages/framework-codec-msgpack"
     },
     {
@@ -21,9 +24,6 @@
     },
     {
       "path": "./packages/nestjs"
-    },
-    {
-      "path": "./packages/stream-connector"
     }
   ]
 }

@@ -89,20 +89,18 @@ final class ZLinkChannelRequestSubmitter {
         return payloads.stream().map(Message::from).toList();
     }
 
-    static boolean isRetriableResult(ZLinkBackendRequestResult result) {
-        return result == ZLinkBackendRequestResult.TIMED_OUT
-            || result == ZLinkBackendRequestResult.NOT_CONNECTED
-            || result == ZLinkBackendRequestResult.TERMINATED;
-    }
-
     static boolean isRetriableSubmit(Throwable error) {
         Throwable current = error;
         while (current != null) {
             if (current instanceof ZlinkSubmitException submit) {
+                // NOT_FOUND is a completed lookup result.  Do not reinterpret
+                // an accompanying native errno as a transient transport state.
+                if (submit.getResult() == SubmitResult.NOT_FOUND) {
+                    return false;
+                }
                 int errno = submit.getNativeErrno();
                 return submit.getResult() == SubmitResult.BACKPRESSURED
                     || submit.getResult() == SubmitResult.NOT_CONNECTED
-                    || submit.getResult() == SubmitResult.NOT_FOUND
                     || errno == ERRNO_EHOSTUNREACH
                     || errno == ERRNO_EHOSTUNREACH_WIN
                     || errno == ERRNO_ENETUNREACH
@@ -184,32 +182,10 @@ final class RouteRequestAttempt implements Runnable {
         ZLinkChannelRuntime.trace("route-request reply target=" + targetPeerRid
             + " result=" + reply.result()
             + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
-        if (reply.result() == ZLinkBackendRequestResult.OK
-            && ZLinkChannelRuntime.sameMessageParts(payloads, reply.parts())) {
-            reply.parts().forEach(Message::close);
-            ZLinkChannelRuntime.trace("route-request retry-echo target=" + targetPeerRid);
-            if (System.nanoTime() >= deadline) {
-                callback.handle(new ZLinkBackendReceived(
-                    ZLinkBackendRequestResult.TIMED_OUT,
-                    reply.routingId(),
-                    reply.spotId(),
-                    reply.requestSeq(),
-                    List.of()));
-            } else {
-                submitter.retry(this);
-            }
-            return;
-        }
-        if (reply.result() == ZLinkBackendRequestResult.OK
-            || !ZLinkChannelRequestSubmitter.isRetriableResult(reply.result())
-            || System.nanoTime() >= deadline) {
-            callback.handle(reply);
-            return;
-        }
-        reply.parts().forEach(Message::close);
-        ZLinkChannelRuntime.trace("route-request retry-result target=" + targetPeerRid
-            + " result=" + reply.result());
-        submitter.retry(this);
+        // A callback result is the terminal completion of an accepted request.
+        // The reply payload is application data, so it cannot be used to infer
+        // whether the transport delivered the original request back to us.
+        callback.handle(reply);
     }
 
     private void retryOrTimeout(String timeoutMessage) {

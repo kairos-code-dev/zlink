@@ -205,9 +205,11 @@ void actor_transfer_coordinator_t::activate_message_follow (
     std::lock_guard lock (_mutex);
     // At most one route per actor: a later relocation replaces the previous
     // target and restarts the bounded Message Follow duration.
-    _message_follow_routes[actor_key] = message_follow_route_t{
-      old_generation, std::move (target_actor), std::move (target_route), remove_at,
-      std::move (transfer_id), 0, 0, {}};
+    _message_follow_routes.insert_or_assign (
+      actor_key,
+      message_follow_route_t{old_generation, std::move (target_actor),
+                             std::move (target_route), remove_at,
+                             std::move (transfer_id), 0, 0, {}});
 }
 
 bool actor_transfer_coordinator_t::can_follow_stale_generation (
@@ -385,8 +387,9 @@ actor_transfer_coordinator_t::begin_commit (const std::string &transfer_id,
         return std::nullopt;
     }
     if (found->second.source_actor.actor_id () != source_actor.actor_id ()
-        || found->second.source_actor.actor_type () != source_actor.actor_type ()
-        || found->second.source_actor.generation () != source_actor.generation ()
+        || ::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.source_actor)
+             != ::zlink::framework::detail::actor_ref_access_t::actor_type (source_actor)
+        || found->second.source_actor.object_generation () != source_actor.object_generation ()
         || found->second.source_actor.node_rid ().value () != source_actor.node_rid ().value ()
         || found->second.target_spot_id != target_spot_id) {
         return std::nullopt;
@@ -414,8 +417,9 @@ actor_transfer_coordinator_t::pending_commit (const std::string &transfer_id,
     if (moving == _moves.end () || moving->second.transfer_id != transfer_id
         || moving->second.phase != actor_move_phase_t::target_committing
         || found->second.source_actor.actor_id () != source_actor.actor_id ()
-        || found->second.source_actor.actor_type () != source_actor.actor_type ()
-        || found->second.source_actor.generation () != source_actor.generation ()
+        || ::zlink::framework::detail::actor_ref_access_t::actor_type (found->second.source_actor)
+             != ::zlink::framework::detail::actor_ref_access_t::actor_type (source_actor)
+        || found->second.source_actor.object_generation () != source_actor.object_generation ()
         || found->second.source_actor.node_rid ().value () != source_actor.node_rid ().value ()
         || found->second.target_spot_id != target_spot_id) {
         return std::nullopt;

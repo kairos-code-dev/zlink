@@ -32,6 +32,12 @@ internal static class ConsumerHostFactory
             console.SingleLine = true;
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
+        builder.WebHost.ConfigureKestrel(server =>
+        {
+            // RM-C8 sends a 33 MiB JSON request to exercise the Framework
+            // transport bound, so HTTP admission must not reject it first.
+            server.Limits.MaxRequestBodySize = 64L * 1024 * 1024;
+        });
 
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(options);
@@ -109,6 +115,20 @@ internal static class ConsumerHostFactory
                 }
             }
 
+            if (options.RegisterWorkflowClient)
+            {
+                if (string.IsNullOrWhiteSpace(options.RedisEndpoint))
+                    throw new InvalidOperationException(
+                        "RegisterWorkflowClient requires a shared Redis location store.");
+
+                var workflowMesh = framework.AddRouteMesh("workflow")
+                    .Listen()
+                    .SetBindHost("127.0.0.1")
+                    .SetAdvertiseHost("127.0.0.1")
+                    .SetRoutingIdPrefix($"00-{options.TraceLabel}-workflow");
+                workflowMesh.Channel("workflow").Client();
+            }
+
             if (manualEndpoints.Count > 0)
             {
                 if (string.Equals(options.ObjectRole, "None", StringComparison.Ordinal))
@@ -117,8 +137,7 @@ internal static class ConsumerHostFactory
                     profileMesh.PeerConnections.Connect(endpoint);
             }
 
-            if (string.Equals(options.TraceLabel, "backpressure-consumer", StringComparison.Ordinal))
-                profileMesh.ConfigureRouterSocket().SendHighWaterMark = 4;
+            profileMesh.ConfigureRouterSocket().MaxMessageSize = options.MaxMessageSize;
 
         });
         builder.Services.AddHostedService<MeshConnectionEventObserver>();

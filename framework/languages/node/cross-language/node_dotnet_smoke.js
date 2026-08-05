@@ -59,7 +59,7 @@ async function crossLanguageManifest() {
     `dotnet-framework=${dotnetVersion}`,
     'topology=direct-channel,fanout,route-mesh,stream,redis-store',
     'payload=TestHostProfileRequest,TestHostPublishedEvent,TestHostRouteRequest,RawPing',
-    'codec=typed-json,stream-json,location-row-golden',
+    'codec=typed-json,stream-json,opaque-store-golden',
     'store-key=per-run-zlink:cross:node:<pid>:<timestamp>'
   ].join(' ');
 }
@@ -73,23 +73,16 @@ async function nodeDotnetRedisLocationRows(tempDir) {
   const redis = await startRedisContainer();
   const prefix = `zlink:cross:node:${process.pid}:${Date.now()}`;
   try {
-    await writeNodeLocationRows(redis.endpoint, `${prefix}:node`);
-    await runDotnetRedisCrossLanguageTest(
-      'FullyQualifiedName~RedisCrossLanguageTests.Dotnet_Reads_Node_Rows',
+    await nodeOpaqueStoreRoundTrip(redis.endpoint, `${prefix}:node`);
+    await runDotnetRedisProviderTest(
+      'FullyQualifiedName~RedisProviderSmokeTests.Dotnet_Opaque_Store_Round_Trip',
       redis.endpoint,
       prefix,
       tempDir
     );
-    await runDotnetRedisCrossLanguageTest(
-      'FullyQualifiedName~RedisCrossLanguageTests.Dotnet_Writes_Rows_For_Node_To_Read',
-      redis.endpoint,
-      prefix,
-      tempDir
-    );
-    await assertNodeReadsDotnetLocationRows(redis.endpoint, `${prefix}:dotnet`);
     return [
-      'Node Redis location and draining rows -> dotnet location store',
-      'dotnet Redis location and draining rows -> Node location store'
+      'Node Redis opaque Location Store round trip',
+      'dotnet Redis opaque Location Store round trip'
     ];
   } finally {
     await removeRedisPrefix(redis.endpoint, prefix);
@@ -97,108 +90,53 @@ async function nodeDotnetRedisLocationRows(tempDir) {
   }
 }
 
-async function writeNodeLocationRows(redisEndpoint, keyPrefix) {
+async function nodeOpaqueStoreRoundTrip(redisEndpoint, keyPrefix) {
   const store = new ZLinkRedisLocationStore({
     url: `redis://${redisEndpoint}`,
     keyPrefix
   });
+  const alpha = opaqueStoreKey('golden/node/alpha');
+  const beta = opaqueStoreKey('golden/node/beta');
   try {
-    await store.renewOwnerLease('node-owner', rid('node-node'), 30000);
-    assert.equal((await store.updatePeer({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
-      meshName: 'cross',
-      nodeRid: rid('node-node'),
-      role: framework.ZLinkLocationRole.Router,
-      endpoint: 'tcp://127.0.0.1:5320',
-      weight: 100,
-      draining: true,
-      value: 11n,
-      metadata: { 'route-endpoint': 'tcp://127.0.0.1:6320' },
-      capabilities: ['node', 'route'],
-      ownerId: 'node-owner',
-      generation: 0n,
-      updatedAt: new Date(0)
-    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
-    assert.equal((await store.updateSpot({
-      meshName: 'cross',
-      spotRid: rid('node-spot'),
-      spotType: 'node-game',
-      nodeRid: rid('node-node'),
-      spotKind: framework.ZLinkSpotKind.User,
-      routeEndpoint: 'tcp://127.0.0.1:5320',
-      ownerId: 'node-owner',
-      generation: 0n,
-      updatedAt: new Date(0)
-    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
-    assert.equal((await store.updateActor({
-      actorType: 'player',
-      actorId: 'node-actor',
-      actorRef: { nodeRid: rid('node-node'), actorId: 'node-actor', generation: 1n },
-      nodeRid: rid('node-node'),
-      generation: 0n,
-      locationKind: framework.ZLinkSpotKind.User,
-      spotMeshName: 'cross',
-      spotRid: rid('node-spot'),
-      spotKind: framework.ZLinkSpotKind.User,
-      ownerId: 'node-owner',
-      updatedAt: new Date(0)
-    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
-    assert.equal((await store.updateRoute({
-      routeKind: framework.ZLinkRouteKind.ActorSession,
-      routeKey: 'node-route',
-      ownerNodeRid: rid('node-node'),
-      ownerId: 'node-owner',
-      generation: 0n,
-      value: Uint8Array.from([5, 6, 7, 8]),
-      updatedAt: new Date(0)
-    }, framework.ZLinkLocationWriteIntent.NewClaim)).status, framework.ZLinkLocationWriteStatus.Stored);
+    const result = await store.write({
+      conditions: [
+        { kind: 'missing', key: alpha },
+        { kind: 'missing', key: beta }
+      ],
+      mutations: [
+        { kind: 'put', key: alpha, bytes: Uint8Array.from([0, 1, 255]) },
+        { kind: 'put', key: beta, bytes: Buffer.from('node-opaque-value') }
+      ]
+    });
+    assert.equal(result.kind, 'applied');
+
+    const alphaRead = await store.read(alpha);
+    assert.equal(alphaRead.kind, 'found');
+    assert.deepEqual([...alphaRead.value.bytes], [0, 1, 255]);
+    const betaRead = await store.read(beta);
+    assert.equal(betaRead.kind, 'found');
+    assert.equal(Buffer.from(betaRead.value.bytes).toString(), 'node-opaque-value');
+
+    const conflict = await store.write({
+      conditions: [{ kind: 'missing', key: alpha }],
+      mutations: [{ kind: 'put', key: alpha, bytes: Buffer.from('must-not-commit') }]
+    });
+    assert.equal(conflict.kind, 'conflict');
+    assert.deepEqual([...((await store.read(alpha)).value.bytes)], [0, 1, 255]);
   } finally {
     await store.dispose();
   }
 }
 
-async function assertNodeReadsDotnetLocationRows(redisEndpoint, keyPrefix) {
-  const store = new ZLinkRedisLocationStore({
-    url: `redis://${redisEndpoint}`,
-    keyPrefix
-  });
-  try {
-    const actor = await store.resolveActor({ actorType: 'player', actorId: 'dotnet-actor' });
-    assert.equal(actor.actorRef.actorId, 'dotnet-actor');
-    assert.equal(actor.actorRef.nodeRid.toHex(), rid('dotnet-node').toHex());
-    assert.equal(actor.actorRef.generation, 1n);
-    assert.equal(actor.nodeRid.toHex(), rid('dotnet-node').toHex());
-    assert.equal(actor.ownerId, 'dotnet-owner');
-
-    const spot = await store.resolveSpot({ meshName: 'cross', spotRid: rid('dotnet-spot') });
-    assert.equal(spot.spotType, 'dotnet-game');
-    assert.equal(spot.nodeRid.toHex(), rid('dotnet-node').toHex());
-
-    const route = await store.resolveRoute({
-      routeKind: framework.ZLinkRouteKind.ActorSession,
-      routeKey: 'dotnet-route'
-    });
-    assert.deepEqual([...route.value], [9, 8, 7, 6]);
-
-    const peers = await store.listPeers({
-      autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
-      meshName: 'cross',
-      role: framework.ZLinkLocationRole.Router,
-      nodeRid: rid('dotnet-node')
-    });
-    const peer = peers.find((row) => row.endpoint === 'tcp://127.0.0.1:5310');
-    assert.ok(peer);
-    assert.equal(peer.draining, true);
-    assert.equal(peer.metadata['route-endpoint'], 'tcp://127.0.0.1:6310');
-    assert.deepEqual(peer.capabilities, ['dotnet', 'route']);
-  } finally {
-    await store.dispose();
-  }
+function opaqueStoreKey(value) {
+  return { value };
 }
 
 async function nodeClientToDotnetChannelServer(tempDir) {
   const port = await reservePort();
+  const localPort = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
+  const localEndpoint = `tcp://127.0.0.1:${localPort}`;
   const eventFile = path.join(tempDir, 'node-client-dotnet-channel.events');
   const host = startDotnetHost(tempDir, 'node-client-dotnet-channel', [
     'channel-server',
@@ -217,7 +155,9 @@ async function nodeClientToDotnetChannelServer(tempDir) {
     imports: [nestjs.ZLinkModule.forRootFactory({
       useFactory: () => {
         const builder = nestjs.zlinkFramework();
-        builder.addRouteMesh('profiles').peerConnections().connect(endpoint);
+        const mesh = builder.addRouteMesh('profiles').listen(localEndpoint);
+        mesh.channel('profiles').client();
+        mesh.peerConnections().connect(rid('dotnet-channel-server'), endpoint);
         return builder.build();
       }
     })]
@@ -227,7 +167,23 @@ async function nodeClientToDotnetChannelServer(tempDir) {
   try {
     await host.ready;
     app = await NestFactory.createApplicationContext(ClientModule, { logger: false, abortOnError: false });
-    const client = app.get(nestjs.ZLINK_CHANNEL_CLIENT, { strict: false });
+    const routeMeshRuntime = app.get(nestjs.ZLINK_ROUTE_MESH_RUNTIME, { strict: false });
+    try {
+      await waitForCondition(
+        () => routeMeshRuntime.snapshot('profiles').channels.some(
+          channel => channel.channelName === 'profiles' && channel.isReady
+        ),
+        7000,
+        'Node RouteMesh profiles channel readiness'
+      );
+    } catch (error) {
+      error.message += `\nNode RouteMesh snapshot:\n${JSON.stringify(
+        routeMeshRuntime.snapshot('profiles'),
+        (_key, value) => typeof value === 'bigint' ? value.toString() : value
+      )}\nDotnet host output:\n${host.output()}`;
+      throw error;
+    }
+    const client = app.get(nestjs.ZLINK_ROUTE_CLIENT, { strict: false });
     let reply;
     try {
       reply = await withTimeout(
@@ -262,7 +218,6 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
   const eventFile = path.join(tempDir, 'node-publisher-dotnet-subscriber.events');
-  const topic = 'profile.changed';
   class TestHostPublishedEvent {
     constructor(value) { this.value = value; }
   }
@@ -291,7 +246,7 @@ async function nodePublisherToDotnetFanoutSubscriber(tempDir) {
       await publishUntilFileText(
         () => publisher.publish('profiles', new TestHostPublishedEvent('node-publish-to-dotnet')).submit(),
         eventFile,
-        (text) => text.includes(`${topic}:node-publish-to-dotnet`),
+        (text) => text.includes('node-publish-to-dotnet'),
         7000
       );
     } finally {
@@ -652,9 +607,12 @@ async function dotnetConnectorObservesNodeSessionClosing(tempDir) {
     ]);
     await host.ready;
     await waitForFileText(eventFile, (text) => text.includes('stream-client|') && text.includes('node-drain-pong'), 7000);
-    const drain = app.get(nestjs.ZLINK_DRAIN_CONTROL, { strict: false });
-    const drainResult = await drain.drain(5000);
-    assert.equal(drainResult.kind, 'drained');
+    const runtime = app.get(nestjs.ZLINK_FRAMEWORK_RUNTIME, { strict: false });
+    const shutdownResult = await runtime.shutdown({ deadlineMs: 5000 });
+    assert.equal(
+      shutdownResult.outcome,
+      framework.ZLinkFrameworkTerminationOutcome.Stopped
+    );
     await app.close();
     app = undefined;
     await waitForFileText(eventFile, (text) => text.includes('stream-disconnected|ServerDrain'), 7000);
@@ -672,6 +630,7 @@ function startDotnetHost(tempDir, name, args) {
     'run',
     '--project', dotnetTestHostProject,
     '--framework', 'net8.0',
+    ...(process.env.ZLINK_DOTNET_TESTHOST_NO_BUILD === '1' ? ['--no-build'] : []),
     '--',
     '--ready-file', readyFile,
     '--stop-file', stopFile,
@@ -856,12 +815,16 @@ async function removeRedisPrefix(endpoint, prefix) {
   }
 }
 
-async function runDotnetRedisCrossLanguageTest(filter, redisEndpoint, prefix, tempDir) {
+async function runDotnetRedisProviderTest(filter, redisEndpoint, prefix, tempDir) {
   await runProcess('dotnet', [
     'test',
     dotnetRedisTestsProject,
     '--framework', 'net8.0',
+    '--no-restore',
     '--filter', filter,
+    '-m:1',
+    '-p:UseSharedCompilation=false',
+    '-p:BuildInParallel=false',
     '--logger', `trx;LogFileName=${path.basename(filter).replace(/[^A-Za-z0-9_.-]/g, '_')}.trx`,
     '--results-directory', tempDir
   ], {

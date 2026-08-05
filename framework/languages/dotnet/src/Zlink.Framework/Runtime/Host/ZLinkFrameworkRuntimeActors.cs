@@ -786,6 +786,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                 $"Actor '{request.ActorId}' published authority identity is unreadable.",
                 retryAdvice: ZLinkRetryAdvice.DoNotRetry);
         var actorState = GetOrCreateActorState(request.ActorId);
+        Task<(ZLinkSessionRouteCommitRequest Request, RoutingId SessionOwnerNode)?>?
+            sessionRouteCommitTask = null;
 
         try
         {
@@ -878,9 +880,23 @@ internal sealed partial class ZLinkFrameworkRuntime
                     committedAuthority.NodeGeneration,
                     committedAuthority.OwnerLeaseGeneration);
             }
-            // Import while target admission remains closed. Application
-            // dispatch starts only after the target joined callback and Join
-            // completion callback succeed.
+            // The target temporary queue remains closed to application
+            // dispatch, but its bound-session route update must not wait for
+            // the joined callback. Otherwise a callback gate can keep the
+            // session route sealed and prevent frames from reaching that
+            // temporary queue (common spec 20 section 5).
+            if (actorState.TryGetCommittedRelocationSessionRoute(
+                    request.HandoffId,
+                    out _))
+            {
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"session_route_update_started actor={request.ActorId}");
+                sessionRouteCommitTask = CommitAndUnsealSessionRouteAsync(
+                        actorState,
+                        request.HandoffId,
+                        cancellationToken)
+                    .AsTask();
+            }
             try
             {
                 await CompleteTransferredActorTargetLifecycleAsync(
@@ -895,10 +911,19 @@ internal sealed partial class ZLinkFrameworkRuntime
                 // Authority has already moved. A target lifecycle failure is
                 // therefore terminal at the target and must not make the
                 // source reopen or roll back its old membership.
+                var terminalFailure = lifecycleFailure;
+                var routeFailure = await ObserveSessionRouteCommitTaskAsync(
+                        sessionRouteCommitTask,
+                        "actor-session-route-update-after-lifecycle-failure")
+                    .ConfigureAwait(false);
+                if (routeFailure is not null)
+                    terminalFailure = new AggregateException(
+                        lifecycleFailure,
+                        routeFailure);
                 await DeliverFailedTransferredActorJoinAsync(
                         actorState,
                         request,
-                        lifecycleFailure,
+                        terminalFailure,
                         cancellationToken)
                     .ConfigureAwait(false);
                 if (ownsRecordedCompletion)
@@ -908,7 +933,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 }
                 LogActorHandoff(
                     $"handoff_completion_failed_after_commit actor={request.ActorId} "
-                    + $"kind={MapPostCommitActorJoinFailure(lifecycleFailure)}");
+                    + $"kind={MapPostCommitActorJoinFailure(terminalFailure)}");
                 return;
             }
             var canonicalMaintenance = actorState.Handoff
@@ -919,8 +944,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                 + $"frames={request.Frames.Count}");
             if (!canonicalMaintenance)
                 actorState.Handoff.PrepareImportedReplay(request.Frames);
-            (ZLinkSessionRouteCommitRequest Request, RoutingId SessionOwnerNode)?
-                sessionRouteCommit = null;
             if (request.OperationIdHigh != 0 || request.OperationIdLow != 0)
             {
                 var actor = actorState.Actor
@@ -959,17 +982,13 @@ internal sealed partial class ZLinkFrameworkRuntime
                 await ReplayFinalTransferredActorHandoffAsync(
                         target,
                         actorState,
+                        request.HandoffId,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
-            // The target Actor callback and replay must complete before the
-            // session route receives its commit ACK. This keeps session
-            // delivery from observing a route that points at an unready Actor.
-            sessionRouteCommit = await CommitCompletedSessionRouteAsync(
-                    actorState,
-                    request.HandoffId,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            var sessionRouteCommit = sessionRouteCommitTask is null
+                ? null
+                : await sessionRouteCommitTask.ConfigureAwait(false);
             LogActorHandoff(
                 $"session_route_commit_{(sessionRouteCommit is null ? "not_required" : "acknowledged")} "
                 + $"actor={request.ActorId}");
@@ -989,15 +1008,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                         relocationId,
                         cancellationToken)
                     .ConfigureAwait(false);
-            if (sessionRouteCommit is not null)
-            {
-                actorState.CompleteRelocationSessionRoute(request.HandoffId);
-                await UnsealCompletedSessionRouteAsync(
-                        sessionRouteCommit.Value.Request,
-                        sessionRouteCommit.Value.SessionOwnerNode,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
             actorState.Handoff.Complete(request.HandoffId);
             {
                 var released = await new ZLinkRelocationPublicationCoordinator(
@@ -1024,6 +1034,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         }
         catch
         {
+            await ObserveSessionRouteCommitTaskAsync(
+                    sessionRouteCommitTask,
+                    "actor-session-route-update-after-handoff-failure")
+                .ConfigureAwait(false);
             if (ownsRecordedCompletion)
                 _actorHandoffAdmissions.CancelCompletion(request, spotId);
             throw;
@@ -1083,7 +1097,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         //  이미 다른 경로가 끝냈으면 commit이 null이라 그대로 no-op이다.
-        var commit = await CommitCompletedSessionRouteAsync(
+        var commit = await CommitAndUnsealSessionRouteAsync(
                 actorState,
                 handoffId,
                 cancellationToken)
@@ -1091,14 +1105,52 @@ internal sealed partial class ZLinkFrameworkRuntime
         Diagnostics.ZLinkFrameworkDebugLog.SpotDiscovery(
             $"relocation_session_route commit={(commit is null ? "none" : "present")} "
             + $"actor={actorState.ActorId} handoff={handoffId}");
+    }
+
+    private async ValueTask<(
+        ZLinkSessionRouteCommitRequest Request,
+        RoutingId SessionOwnerNode)?>
+        CommitAndUnsealSessionRouteAsync(
+            ZLinkActorRuntimeState actorState,
+            string handoffId,
+            CancellationToken cancellationToken)
+    {
+        var commit = await CommitCompletedSessionRouteAsync(
+                actorState,
+                handoffId,
+                cancellationToken)
+            .ConfigureAwait(false);
         if (commit is not { } completedRoute)
-            return;
+            return null;
+
         await UnsealCompletedSessionRouteAsync(
                 completedRoute.Request,
                 completedRoute.SessionOwnerNode,
                 cancellationToken)
             .ConfigureAwait(false);
+        // Keep the pending target route until the session owner confirms the
+        // seal is removed. This preserves the exact request for a retry when
+        // commit succeeded but unseal did not.
         actorState.CompleteRelocationSessionRoute(handoffId);
+        return completedRoute;
+    }
+
+    private static async ValueTask<Exception?> ObserveSessionRouteCommitTaskAsync(
+        Task<(ZLinkSessionRouteCommitRequest Request, RoutingId SessionOwnerNode)?>? task,
+        string operation)
+    {
+        if (task is null)
+            return null;
+        try
+        {
+            await task.ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            ZLinkFrameworkDebugLog.TaskFailure(operation, exception);
+            return exception;
+        }
     }
 
     private async ValueTask<(
@@ -2505,6 +2557,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             if (!actorState.Handoff.TryBeginJoinedNotification(handoffId)) return;
             try
             {
+                // Entry Spot callbacks are invoked from the routed handoff
+                // completion path, not from the actor dispatch mailbox. Mark
+                // the callback as the actor's lifecycle owner so a callback
+                // that requests DestroyActorAsync defers terminal cleanup
+                // until the callback returns instead of waiting on itself.
+                using var dispatch = actorState.EnterDeferredJoinExecution();
                 await _spots.EntrySpotActors.NotifyJoinedForRelocationAsync(
                         state,
                         actor,
@@ -2601,11 +2659,15 @@ internal sealed partial class ZLinkFrameworkRuntime
     private async ValueTask ReplayFinalTransferredActorHandoffAsync(
         ActorHandoffTarget target,
         ZLinkActorRuntimeState actorState,
+        string handoffId,
         CancellationToken cancellationToken)
     {
         if (target.UserSpot is { } userSpot)
         {
-            await userSpot.ReplayFinalTransferredActorHandoffAsync(actorState, cancellationToken)
+            await userSpot.ReplayFinalTransferredActorHandoffAsync(
+                    actorState,
+                    handoffId,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -2613,7 +2675,11 @@ internal sealed partial class ZLinkFrameworkRuntime
         while (true)
         {
             var frames = actorState.Handoff.SnapshotFinalReplay();
-            if (frames.Count == 0) return;
+            if (frames.Count == 0
+                && actorState.Handoff.TryCompleteTransferredActorReplay(handoffId))
+                return;
+            if (frames.Count == 0)
+                continue;
             await ReplayEntrySpotActorFramesAsync(actorState, frames, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -3721,7 +3787,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                     staleIdentity,
                     cancellationToken)
                 .ConfigureAwait(false);
-            throw staleIdentity;
+            // The relay has either sent the typed stale response or dropped a
+            // one-way frame. Do not surface the expected stale identity as a
+            // second dispatch failure; the old owner must not be retried.
+            return;
         }
         var parts = new[]
         {

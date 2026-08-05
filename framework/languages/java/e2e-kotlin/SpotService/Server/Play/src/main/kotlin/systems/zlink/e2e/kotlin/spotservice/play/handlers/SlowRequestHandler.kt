@@ -13,7 +13,7 @@ class SlowRequestHandler {
     ): Contracts.StateRes {
         kotlinx.coroutines.delay(1000)
         return Contracts.StateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             spot.apply("slow:${request.value}"),
         )

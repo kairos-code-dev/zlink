@@ -13,6 +13,7 @@ internal sealed record ClientOptions(
     string RedisKeyPrefix,
     string ProviderProject,
     string ConsumerProject,
+    string WorkflowProject,
     string ConfigDir,
     string LogDir,
     string Scenario)

@@ -205,6 +205,7 @@ wait_port "${api_b_host}" "${api_b_port}"
 wait_port "${matchmaking_router_host}" "${matchmaking_router_port}"
 wait_port "${play_a_router_host}" "${play_a_router_port}"
 wait_port "${play_b_router_host}" "${play_b_router_port}"
+wait_framework_ready_logs "${log_dir}" 1
 
 "$(app_bin Client Client)" --config "$client_config" >"${log_dir}/client.log" 2>&1
 

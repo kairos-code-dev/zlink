@@ -232,7 +232,7 @@ internal static class ZLinkClientServerControlProtocol
     internal static uint NormalizeMaximumMessageBytes(long configured)
     {
         if (configured <= 0)
-            return int.MaxValue;
+            return uint.MaxValue;
         return checked((uint)Math.Min(configured, uint.MaxValue));
     }
 

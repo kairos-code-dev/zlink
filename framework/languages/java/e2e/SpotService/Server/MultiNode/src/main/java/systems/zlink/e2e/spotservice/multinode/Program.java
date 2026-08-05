@@ -21,6 +21,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
@@ -61,7 +63,6 @@ public final class Program {
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         ZLinkActorManager actors,
         ZLinkActorClient actorClient,
-        systems.zlink.framework.spots.SpotHandleResolver spotHandles,
         systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime meshRuntime,
         MultiNodeOptions options) {
         return new MultiNodeHttpServer(
@@ -72,15 +73,18 @@ public final class Program {
             routes,
             actors,
             actorClient,
-            spotHandles,
             meshRuntime);
     }
 
     @Bean
-    ZLinkFrameworkConfigurer multiNodeFramework(ScenarioState state, MultiNodeOptions multi) {
+    ZLinkFrameworkConfigurer multiNodeFramework(
+        ScenarioState state,
+        MultiNodeOptions multi,
+        ZLinkRedisRelocationStore relocationStore) {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = multi.logDir();
+            options.addRelocationStore(relocationStore);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
@@ -101,13 +105,7 @@ public final class Program {
                     MultiNodeSpot.class,
                     factory -> factory.disableRelocation());
             if (!multi.spotOnly()) {
-                node.channelName(Contracts.ROUTE_CHANNEL);
-                if (!multi.routeEndpoint().equals(multi.routeAEndpoint())) {
-                    node.peerConnections().connect(multi.routeAEndpoint());
-                }
-                if (!multi.routeEndpoint().equals(multi.routeBEndpoint())) {
-                    node.peerConnections().connect(multi.routeBEndpoint());
-                }
+                node.channelName(Contracts.ROUTE_CHANNEL).server();
             } else {
                 System.out.println("[topology] role=" + nodeRid + " route_mesh=disabled");
             }
@@ -117,6 +115,13 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore(MultiNodeOptions options) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
+    }
+
+    @Bean
+    ZLinkRedisRelocationStore relocationStore(MultiNodeOptions options) {
+        return new ZLinkRedisRelocationStore(new ZLinkRedisRelocationOptions()
             .setConnectionString(options.redisLocationEndpoint())
             .setKeyPrefix(options.locationKeyPrefix()));
     }

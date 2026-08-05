@@ -36,6 +36,20 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 
 final class ZLinkJavaRawSpotNodeM6BTest {
     @Test
+    void boundSessionSubmissionRetriesTransientBackpressure()
+        throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+
+        ZLinkJavaStreamSocket.submitBoundSessionUntilAccepted(
+                Duration.ofSeconds(1),
+                () -> attempts.incrementAndGet() >= 2)
+            .toCompletableFuture()
+            .get(1, TimeUnit.SECONDS);
+
+        assertEquals(2, attempts.get());
+    }
+
+    @Test
     void remoteUserSpotCreateAndCloseUseExactTerminalOperations()
         throws Exception {
         String endpoint =

@@ -5,15 +5,18 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '../..');
 
-test('MON-A1 correlates socket transitions by remote address and routing id', () => {
+test('MON-A1 keeps Host and RouteMesh status sources separate', () => {
   const scenario = fs.readFileSync(path.join(
     root,
     'e2e/RuntimeMonitoring/Client/Scenarios/mon-a1-socket-events-scenario.ts'
   ), 'utf8');
 
-  assert.match(scenario, /parseSocketEvidence/);
-  assert.match(scenario, /remoteAddr\.startsWith\('tcp:\/\/'\)/);
-  assert.match(scenario, /routingId !== '<null>'/);
-  assert.match(scenario, /event\.remoteAddr === disconnected\.remoteAddr/);
-  assert.match(scenario, /event\.routingId === disconnected\.routingId/);
+  assert.match(scenario, /readHostStatus\(options\.serviceUrl\)/);
+  assert.match(scenario, /readRouteStatus\(options\.serviceUrl\)/);
+  assert.match(scenario, /waitForRouteStatus\(/);
+  assert.match(scenario, /BigInt\(routeAfter\.sequence\) > BigInt\(routeBefore\.sequence\)/);
+  assert.match(scenario, /BigInt\(hostAfter\.sequence\) >= BigInt\(hostBefore\.sequence\)/);
+  assert.match(scenario, /JSON\.stringify\(routeBefore\) !== JSON\.stringify\(routeAfter\)/);
+  assert.match(scenario, /routeStatusesFromEvidence/);
+  assert.match(scenario, /hostStatusesFromEvidence/);
 });

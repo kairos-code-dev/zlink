@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -104,6 +106,38 @@ final class ZLinkActorRetrySchedulerTest {
             .join();
 
         assertTrue(attempts.get() >= 2);
+    }
+
+    @Test
+    void routeLookupRetriesUntilACommittedValueIsVisible() {
+        AtomicInteger attempts = new AtomicInteger();
+
+        Optional<String> value = ZLinkActorRetryScheduler.retryRouteUntilPresent(
+                Duration.ofMillis(100),
+                () -> CompletableFuture.completedFuture(
+                    attempts.incrementAndGet() < 2
+                        ? Optional.empty()
+                        : Optional.of("committed")))
+            .toCompletableFuture()
+            .join();
+
+        assertTrue(value.isPresent());
+        assertTrue(attempts.get() >= 2);
+    }
+
+    @Test
+    void routeLookupPreservesStoreFailure() {
+        IllegalStateException failure = new IllegalStateException("store unavailable");
+
+        CompletionException observed = org.junit.jupiter.api.Assertions.assertThrows(
+            CompletionException.class,
+            () -> ZLinkActorRetryScheduler.retryRouteUntilPresent(
+                    Duration.ofMillis(100),
+                    () -> CompletableFuture.failedFuture(failure))
+                .toCompletableFuture()
+                .join());
+
+        assertTrue(observed.getCause() == failure);
     }
 
 }

@@ -251,7 +251,7 @@ void room_timer_handler_t::handle (room_spot_t &spot, const fw::timer_tick_t &) 
 struct obs_actor_t : fw::actor_t
 {
     explicit obs_actor_t (fw::actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         actor_context (std::move (value))
     {

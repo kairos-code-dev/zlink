@@ -35,6 +35,7 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
 import systems.zlink.framework.runtime.streams.ZLinkStreamFrameCodec;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.streams.ZLinkStreamMessageKind;
+import systems.zlink.framework.runtime.internal.streams.ZLinkStreamErrorPayload;
 
 public final class ZLinkActorClientRuntime implements ZLinkActorClient {
     private static final Duration FALLBACK_ROUTE_RETRY_TIMEOUT = Duration.ofSeconds(5);
@@ -339,9 +340,19 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
         Message payload,
         Class<TReply> replyType) {
         if (header.kind() == ZLinkStreamMessageKind.ERROR) {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.INTERNAL_FAILURE,
-                payload.toUtf8String());
+            try {
+                ZLinkStreamErrorPayload.Decoded error =
+                    ZLinkStreamErrorPayload.decode(payload.toByteArray());
+                ZLinkFrameworkErrorKind kind = error.frameworkKind() == null
+                    ? ZLinkFrameworkErrorKind.INTERNAL_FAILURE
+                    : error.frameworkKind();
+                throw new ZLinkFrameworkException(kind, error.message());
+            } catch (IllegalArgumentException invalidPayload) {
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.PROTOCOL_ERROR,
+                    "Actor request error reply payload is invalid.",
+                    invalidPayload);
+            }
         }
         return ZLinkMessagePayloads.deserialize(serializer, payload, replyType);
     }

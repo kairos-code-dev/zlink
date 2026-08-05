@@ -18,9 +18,9 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 
 /**
  * Accounts application payloads that have been received but have not reached
- * a terminal handler result. The receive pause threshold applies only to
- * payloads whose handler has not started; active payloads remain observable
- * until their terminal result releases them.
+ * a terminal handler result. The receive pause threshold includes both queued
+ * payloads and payloads whose handlers have started; a lease releases its
+ * reservation only after the handler reaches a terminal result.
  *
  * <p>The budget is shared by every application ingress owned by one Framework
  * runtime. A lease is acquired when a payload enters application dispatch and
@@ -71,7 +71,7 @@ public final class ZLinkInboundDispatchBudget {
     public boolean canStartApplicationReceive() {
         synchronized (payloadLock) {
             return !closed && (applicationHwmBytes == 0
-                || queuedPayloadBytesUnderLock() < applicationHwmBytes);
+                || pendingPayloadBytes < applicationHwmBytes);
         }
     }
 
@@ -105,7 +105,7 @@ public final class ZLinkInboundDispatchBudget {
                 return null;
             }
             if (applicationHwmBytes != 0
-                && queuedPayloadBytesUnderLock() >= applicationHwmBytes) {
+                && pendingPayloadBytes >= applicationHwmBytes) {
                 return null;
             }
             pendingPayloadBytes = addExact(
@@ -254,11 +254,7 @@ public final class ZLinkInboundDispatchBudget {
 
     private void updatePauseUnderLock() {
         receivePaused = applicationHwmBytes != 0
-            && queuedPayloadBytesUnderLock() >= applicationHwmBytes;
-    }
-
-    private long queuedPayloadBytesUnderLock() {
-        return pendingPayloadBytes - activePayloadBytes;
+            && pendingPayloadBytes >= applicationHwmBytes;
     }
 
     private static long addExact(long current, long value, String label) {

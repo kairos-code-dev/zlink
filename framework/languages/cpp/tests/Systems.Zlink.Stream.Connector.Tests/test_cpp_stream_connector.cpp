@@ -21,6 +21,7 @@
 #include <boost/beast/websocket.hpp>
 #ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
 #include <boost/asio/ssl/stream.hpp>
+#include <openssl/crypto.h>
 #endif
 
 #include <chrono>
@@ -61,6 +62,13 @@ static_assert (std::is_same_v<
                  std::vector<zlink::stream_connector::packet_t>>>);
 namespace
 {
+
+#ifdef ZLINK_STREAM_CONNECTOR_TEST_WITH_OPENSSL
+struct openssl_thread_cleanup_t
+{
+    ~openssl_thread_cleanup_t () { OPENSSL_thread_stop (); }
+};
+#endif
 
 class prefix_compression_codec_t final : public zlink::stream_connector::compression_codec_t
 {
@@ -122,11 +130,16 @@ class async_write_connection_t final : public zlink::stream_connector::detail::s
                                 : boost::system::error_code{});
     }
 
-    void shutdown_and_close () override { _open = false; }
+    void shutdown_and_close () override
+    {
+        _open = false;
+        read_completion = {};
+    }
 
     void close (boost::system::error_code &error) override
     {
         _open = false;
+        read_completion = {};
         error.clear ();
     }
 
@@ -193,11 +206,18 @@ class early_reply_connection_t final : public zlink::stream_connector::detail::s
         }
     }
 
-    void shutdown_and_close () override { _open = false; }
+    void shutdown_and_close () override
+    {
+        _open = false;
+        _pending_read = {};
+        write_completion = {};
+    }
 
     void close (boost::system::error_code &error) override
     {
         _open = false;
+        _pending_read = {};
+        write_completion = {};
         error.clear ();
     }
 
@@ -1693,6 +1713,24 @@ int main ()
             std::lock_guard<std::mutex> lock (state->transport_mutex);
             return state->pending_waits.empty ();
         };
+        const auto release_state = [] (const auto &state) {
+            if (!state)
+                return;
+            std::shared_ptr<zlink::stream_connector::detail::stream_connection_t>
+              connection;
+            {
+                std::lock_guard<std::mutex> lock (state->transport_mutex);
+                connection = std::move (state->connection);
+                state->pending_requests.clear ();
+                state->pending_waits.clear ();
+                state->pending_sends.clear ();
+                state->pending_writes.clear ();
+                state->dispatch_queue.clear ();
+                state->delivery_queue.clear ();
+            }
+            if (connection)
+                connection->shutdown_and_close ();
+        };
         zlink::stream_connector::connector_options_t async_send_options;
         async_send_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         auto async_send_state =
@@ -1907,7 +1945,7 @@ int main ()
             return 171;
         }
         early_reply_connection->complete_write ();
-        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        std::this_thread::sleep_for (std::chrono::milliseconds (500));
         if (!early_reply_seen.load () || early_reply_callback_count.load () != 1
             || !no_pending_requests (early_reply_state)) {
             return 173;
@@ -2076,6 +2114,17 @@ int main ()
             || wait_closed.error_code () != zlink::stream_connector::error_code_t::closed) {
             return 170;
         }
+        release_state (async_send_state);
+        release_state (async_write_failure_state);
+        release_state (async_closed_state);
+        release_state (async_disconnected_state);
+        release_state (async_validation_state);
+        release_state (async_request_write_failure_state);
+        release_state (early_reply_state);
+        release_state (mismatched_reply_state);
+        release_state (invalid_error_state);
+        release_state (interleaved_state);
+        release_state (receive_closed_state);
     }
 
     connector.send (login_request_t{}).packet_name ("login.uncompressed").submit ();
@@ -2123,6 +2172,7 @@ int main ()
             return 147;
         }
         disabled_connector.send (login_request_t{}).compress ().submit ();
+        disabled_connector.close ();
     }
 
     {
@@ -2166,6 +2216,7 @@ int main ()
         if (!custom_payload_seen) {
             return 145;
         }
+        custom_connector.close ();
     }
 
     zlink::stream_socket_t receive_server (context);
@@ -2625,6 +2676,7 @@ int main ()
     if (immediate_count != 1 || immediate.pending_dispatch_count () != 0) {
         return 10;
     }
+    immediate.close ();
 
     if (connector.codecs ().supports (zlink::stream_connector::codec_t::message_pack)) {
         return 11;
@@ -3193,6 +3245,8 @@ int main ()
             return;
         }
         inbound.send ().message (make_frame_prefix (0, 17)).submit ();
+        // Allow the frame to reach the connector before closing the test peer.
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
         inbound.close ();
     });
     zlink::stream_connector::connector_options_t oversized_receive_options;
@@ -3260,14 +3314,22 @@ int main ()
     oversized_wait_server.options ().notify (false);
     oversized_wait_server.bind ("tcp://127.0.0.1:0");
     const auto oversized_wait_endpoint = oversized_wait_server.options ().last_endpoint ();
-    joining_thread_t oversized_wait_server_thread ([&oversized_wait_server] {
-        zlink::received_t inbound;
-        if (oversized_wait_server.recv (inbound) != 0) {
-            return;
-        }
-        inbound.send ().message (make_frame_prefix (0, 17)).submit ();
-        inbound.close ();
-    });
+    std::atomic_bool oversized_wait_release{false};
+    joining_thread_t oversized_wait_server_thread (
+      [&oversized_wait_server, &oversized_wait_release] {
+          zlink::received_t inbound;
+          if (oversized_wait_server.recv (inbound) != 0) {
+              return;
+          }
+          inbound.send ().message (make_frame_prefix (0, 17)).submit ();
+          const auto deadline =
+            std::chrono::steady_clock::now () + std::chrono::seconds (3);
+          while (!oversized_wait_release
+                 && std::chrono::steady_clock::now () < deadline) {
+              std::this_thread::sleep_for (std::chrono::milliseconds (1));
+          }
+          inbound.close ();
+      });
     zlink::stream_connector::connector_options_t oversized_wait_options;
     oversized_wait_options.endpoint = oversized_wait_endpoint;
     oversized_wait_options.max_receive_payload_size = 16;
@@ -3280,7 +3342,8 @@ int main ()
       .packet_name ("oversized.wait.trigger")
       .submit ();
     auto oversized_wait_result =
-      oversized_wait_connector.wait_for ("oversized.wait", std::chrono::milliseconds (100));
+      oversized_wait_connector.wait_for ("oversized.wait", std::chrono::milliseconds (1500));
+    oversized_wait_release = true;
     oversized_wait_server_thread.join ();
     if (oversized_wait_result
         || oversized_wait_result.error_code ()
@@ -3413,6 +3476,9 @@ int main ()
     zlink::stream_connector::connector_options_t heartbeat_timeout_options;
     heartbeat_timeout_options.endpoint = heartbeat_timeout_server.options ().last_endpoint ();
     heartbeat_timeout_options.heartbeat.timeout = std::chrono::milliseconds (0);
+    // Keep the reconnecting state observable long enough to assert the
+    // timeout transition instead of racing an immediate reconnect.
+    heartbeat_timeout_options.reconnect.initial_delay = std::chrono::milliseconds (100);
     auto heartbeat_timeout_connector =
       zlink::stream_connector::connector_factory_t::create (heartbeat_timeout_options);
     if (!heartbeat_timeout_connector.connect ()) {
@@ -3484,6 +3550,7 @@ int main ()
       std::string ("tls://localhost:") + std::to_string (tls_acceptor.local_endpoint ().port ());
     std::atomic_bool tls_send_seen{false};
     joining_thread_t tls_server_thread ([&tls_acceptor, &tls_send_seen] {
+        openssl_thread_cleanup_t openssl_cleanup;
         boost::asio::ssl::context tls_context (boost::asio::ssl::context::tls_server);
         tls_context.use_certificate_chain_file (ZLINK_STREAM_CONNECTOR_TEST_CERT);
         tls_context.use_private_key_file (ZLINK_STREAM_CONNECTOR_TEST_KEY,
@@ -3540,6 +3607,7 @@ int main ()
                               + std::to_string (wss_acceptor.local_endpoint ().port ()) + "/stream";
     std::atomic_bool wss_send_seen{false};
     joining_thread_t wss_server_thread ([&wss_acceptor, &wss_send_seen] {
+        openssl_thread_cleanup_t openssl_cleanup;
         boost::asio::ssl::context tls_context (boost::asio::ssl::context::tls_server);
         tls_context.use_certificate_chain_file (ZLINK_STREAM_CONNECTOR_TEST_CERT);
         tls_context.use_private_key_file (ZLINK_STREAM_CONNECTOR_TEST_KEY,

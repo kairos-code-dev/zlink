@@ -21,14 +21,14 @@ public final class SmE1Scenario extends SpotServiceScenarioContext {
             "/spot/create",
             new Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes.class);
-        ensure(spotRid.equals(created.spotId()) && "play-a".equals(created.nodeRid()),
+        ensure(spotRid.equals(created.spotRid()) && "play-a".equals(created.nodeRid()),
             "SM-E1 spot was not created on play-a");
         Contracts.StateRes ready = postJson(
             ownerEndpoint,
             "/spot/state/request",
             new Contracts.SpotStateRouteReq(spotRid, "sm-e1-ready", 0),
             Contracts.StateRes.class);
-        ensure(spotRid.equals(ready.spotId()) && "play-a".equals(ready.nodeRid()),
+        ensure(spotRid.equals(ready.spotRid()) && "play-a".equals(ready.nodeRid()),
             "SM-E1 spot route was not ready on play-a");
         Contracts.SpotMissingHandlerRes missingRequest = postJson(
             ownerEndpoint,

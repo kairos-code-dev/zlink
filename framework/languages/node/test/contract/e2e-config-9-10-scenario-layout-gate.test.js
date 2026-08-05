@@ -11,6 +11,7 @@ test('Config 9 and 10 keep one client scenario file per documented id', () => {
     'SpotActorTransfer',
     [
       ...ids('ST', { A: 3, B: 4, C: 3, D: 2, E: 2, F: 6 }),
+      'ST-E1A',
       'ST-H1',
       'ST-H2',
       'ST-H3',
@@ -40,7 +41,7 @@ function assertScenarioLayout(configName, expectedIds) {
 
   const actualIds = files.map((name) => {
     const source = fs.readFileSync(path.join(scenarioDirectory, name), 'utf8');
-    const matches = [...new Set(source.match(/\b(?:TA|ST)-[A-Z][0-9]+\b/g) ?? [])];
+    const matches = [...new Set(source.match(/\b(?:TA|ST)-[A-Z][0-9]+[A-Z]?\b/g) ?? [])];
     assert.equal(matches.length, 1, `${configName}/${name} scenario id`);
     assert.match(source.split(/\r?\n/, 1)[0], new RegExp(`^// ${matches[0]}: `));
     if (matches[0] === 'ST-H2') {

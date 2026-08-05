@@ -8,7 +8,7 @@ import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
 import systems.zlink.framework.spots.ZLinkSpotContext
 
 class MismatchedSpot(
-    private val context: ZLinkSpotContext
+    override val context: ZLinkSpotContext
 ) : ZLinkSuspendingSpot<ZLinkActor>() {
     override suspend fun onActorJoinSuspending(actorId: String, request: systems.zlink.framework.messaging.ZLinkMessage) = systems.zlink.framework.spots.ZLinkSpotActorJoinResult.reject("unsupported")
     override suspend fun onJoinedActorSuspending(actor: ZLinkActor) {
@@ -16,8 +16,6 @@ class MismatchedSpot(
 
     override suspend fun onLeaveActorSuspending(actor: ZLinkActor) {
     }
-    override fun context(): ZLinkSpotContext = context
-
     override fun configure() {
     }
 }

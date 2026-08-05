@@ -34,7 +34,7 @@ builder.Services.AddZLinkFramework(options =>
         redis.KeyPrefix = shared.RedisKeyPrefix;
     }));
     options.ConfigureDispatch()
-        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
     options.AddHandlersFromAssemblyOf(typeof(PlayerSession));
 
     // The browser's end of the world.

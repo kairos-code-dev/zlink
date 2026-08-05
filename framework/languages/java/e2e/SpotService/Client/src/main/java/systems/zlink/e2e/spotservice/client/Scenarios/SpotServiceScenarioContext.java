@@ -27,6 +27,7 @@ import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver;
 
 public class SpotServiceScenarioContext {
     protected static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration RELOCATION_TIMEOUT = Duration.ofSeconds(45);
     protected static final Duration EVENTUAL_TIMEOUT = Duration.ofSeconds(30);
     private final ClientOptions options;
 
@@ -119,8 +120,7 @@ public class SpotServiceScenarioContext {
                 .submit(Contracts.JoinAdmittedUserSpotActorRes.class).toCompletableFuture().join();
             ensure(allowed.accepted(), "SM-B9 allowed join was rejected");
             ensure(actorId.equals(allowed.actorId()), "SM-B9 allowed actor mismatch");
-            ensure(spotRid.equals(allowed.spotId()), "SM-B9 allowed spot mismatch");
-            ensure(nodeRid.equals(allowed.nodeRid()), "SM-B9 allowed node mismatch");
+            ensure(spotRid.equals(allowed.spotRid()), "SM-B9 allowed spot mismatch");
 
             connector
                 .request(new Contracts.ActorAuthReq(rejectedActorId, rejectedProfile))
@@ -153,6 +153,23 @@ public class SpotServiceScenarioContext {
         }
     }
 
+    protected void setPlacementWeight(String endpoint, int weight) {
+        postJson(
+            endpoint,
+            "/placement-weight",
+            new Contracts.PlacementWeightReq(weight),
+            Contracts.PlacementWeightRes.class);
+    }
+
+    protected Contracts.RelocationRes relocate(String endpoint) {
+        return postJson(
+            endpoint,
+            "/admin/relocate",
+            new Contracts.RelocationReq(),
+            Contracts.RelocationRes.class,
+            RELOCATION_TIMEOUT);
+    }
+
     protected static long countEvidence(
         Contracts.EvidenceSnapshot evidence,
         String marker,
@@ -160,7 +177,7 @@ public class SpotServiceScenarioContext {
         String value) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotId())
+                && spotRid.equals(entry.spotRid())
                 && value.equals(entry.value()))
             .count();
     }
@@ -169,7 +186,7 @@ public class SpotServiceScenarioContext {
         Contracts.EvidenceSnapshot evidence,
         String spotRid) {
         return evidence.entries().stream()
-            .anyMatch(entry -> spotRid.equals(entry.spotId()));
+            .anyMatch(entry -> spotRid.equals(entry.spotRid()));
     }
 
     protected static void authenticateJoinAndEcho(
@@ -190,14 +207,14 @@ public class SpotServiceScenarioContext {
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
                 .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
-            ensure("room-a".equals(joined.spotId()), "SM-G1 joined spot mismatch");
+            ensure("room-a".equals(joined.spotRid()), "SM-G1 joined spot mismatch");
 
             Contracts.ActorEchoRes echo = connector
                 .request(new Contracts.ActorEchoReq(value, requestSeq, profile))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
                 .submit(Contracts.ActorEchoRes.class).toCompletableFuture().join();
-            ensure("room-a".equals(echo.spotId()), "SM-G1 actor spot mismatch");
+            ensure("room-a".equals(echo.spotRid()), "SM-G1 actor spot mismatch");
             ensure(("user:" + value).equals(echo.value()), "SM-G1 actor echo mismatch");
         } catch (Exception error) {
             throw new IllegalStateException("SM-G1 auth/join/echo failed", error);
@@ -236,7 +253,7 @@ public class SpotServiceScenarioContext {
         String actorId) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotId())
+                && spotRid.equals(entry.spotRid())
                 && entry.value().startsWith(actorId))
             .count();
     }
@@ -248,11 +265,11 @@ public class SpotServiceScenarioContext {
         String actorId) {
         return evidence.entries().stream()
             .filter(entry -> marker.equals(entry.marker())
-                && spotRid.equals(entry.spotId())
+                && spotRid.equals(entry.spotRid())
                 && entry.value().startsWith(actorId))
-            .map(entry -> entry.marker()
+            .<String>map(entry -> entry.marker()
                 + "|" + entry.nodeRid()
-                + "|" + entry.spotId()
+                + "|" + entry.spotRid()
                 + "|" + entry.value())
             .toList();
     }
@@ -357,9 +374,18 @@ public class SpotServiceScenarioContext {
         String path,
         Object request,
         Class<T> responseType) {
+        return postJson(endpoint, path, request, responseType, REQUEST_TIMEOUT);
+    }
+
+    protected static <T> T postJson(
+        String endpoint,
+        String path,
+        Object request,
+        Class<T> responseType,
+        Duration timeout) {
         try (ZLinkHttpClient http = ZLinkHttpClient.create(endpoint).build()) {
             HttpResponse<T> response = http.post(path)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(timeout)
                 .body(request)
                 .submit(responseType)
                 .toCompletableFuture()

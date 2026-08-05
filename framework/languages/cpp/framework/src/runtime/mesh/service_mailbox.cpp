@@ -2,7 +2,10 @@
 
 #include "runtime/mesh/service_mailbox.hpp"
 
+#include "runtime/dispatch/dispatch_limits.hpp"
+
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -46,19 +49,45 @@ bool service_mailbox_t::try_enqueue (service_mailbox_record_t &&record)
         throw std::invalid_argument (
           "service mailbox record requires an owner and retained payload");
     }
-    const auto record_bytes = retained_bytes (record);
+    const auto retained = retained_bytes (record);
+    if (retained.overflow) {
+        return false;
+    }
     std::lock_guard lock (_mutex);
     auto &target = domain (record.domain);
-    if (_closed || target.messages >= target.message_budget
-        || record_bytes > target.byte_budget - target.bytes) {
+    if (_closed) {
         return false;
     }
     const auto owner = record.owner;
     auto &queue = target.owners[owner];
-    queue.bytes += record_bytes;
+    const auto used_messages = record.domain == service_mailbox_domain_t::application
+                                  ? (queue.messages > std::numeric_limits<std::size_t>::max ()
+                                       - queue.active_messages
+                                       ? std::numeric_limits<std::size_t>::max ()
+                                       : queue.messages + queue.active_messages)
+                                  : (target.messages > std::numeric_limits<std::size_t>::max ()
+                                       - target.active_messages
+                                       ? std::numeric_limits<std::size_t>::max ()
+                                       : target.messages + target.active_messages);
+    const auto used_bytes = record.domain == service_mailbox_domain_t::application
+                              ? (queue.bytes > std::numeric_limits<std::size_t>::max ()
+                                   - queue.active_bytes
+                                   ? std::numeric_limits<std::size_t>::max ()
+                                   : queue.bytes + queue.active_bytes)
+                              : (target.bytes > std::numeric_limits<std::size_t>::max ()
+                                   - target.active_bytes
+                                   ? std::numeric_limits<std::size_t>::max ()
+                                   : target.bytes + target.active_bytes);
+    if (used_messages >= target.message_budget
+        || used_bytes > target.byte_budget
+        || retained.bytes > target.byte_budget - used_bytes) {
+        return false;
+    }
+    queue.bytes += retained.bytes;
+    ++queue.messages;
     queue.records.push_back (std::move (record));
     ++target.messages;
-    target.bytes += record_bytes;
+    target.bytes += retained.bytes;
     if (!queue.claimed && target.indexed.insert (owner).second) {
         target.ready.push_back (owner);
     }
@@ -140,30 +169,46 @@ service_mailbox_t::claim_owner_locked (
     std::size_t claimed_bytes = 0;
     while (!queue.records.empty ()
            && claim.records.size () < message_budget) {
-        const auto next_bytes = retained_bytes (queue.records.front ());
+        const auto retained = retained_bytes (queue.records.front ());
+        if (retained.overflow) {
+            break;
+        }
+        const auto next_bytes = retained.bytes;
         if (!claim.records.empty ()
             && (claimed_bytes >= byte_budget
                 || next_bytes > byte_budget - claimed_bytes)) {
             break;
         }
+        if (next_bytes > std::numeric_limits<std::size_t>::max () - claimed_bytes) {
+            break;
+        }
         claimed_bytes += next_bytes;
         queue.bytes -= next_bytes;
+        --queue.messages;
         source.bytes -= next_bytes;
         --source.messages;
+        queue.active_bytes += next_bytes;
+        ++queue.active_messages;
+        source.active_bytes += next_bytes;
+        ++source.active_messages;
+        claim.claimed_bytes += next_bytes;
+        ++claim.claimed_messages;
         claim.records.push_back (std::move (queue.records.front ()));
         queue.records.pop_front ();
     }
     return claim;
 }
 
-std::size_t
+service_mailbox_t::retained_size_t
 service_mailbox_t::retained_bytes (const service_mailbox_record_t &record)
 {
-    std::size_t result = 0;
+    std::size_t result = dispatch_limits::fixed_work_byte_cost;
     for (const auto &part : record.parts) {
+        if (part.size () > std::numeric_limits<std::size_t>::max () - result)
+            return {std::numeric_limits<std::size_t>::max (), true};
         result += part.size ();
     }
-    return result;
+    return {result, false};
 }
 
 bool service_mailbox_t::release (const service_mailbox_claim_t &claim)
@@ -175,9 +220,19 @@ bool service_mailbox_t::release (const service_mailbox_claim_t &claim)
         || found->second.claim_serial != claim.serial) {
         return false;
     }
+    if (claim.claimed_messages > found->second.active_messages
+        || claim.claimed_bytes > found->second.active_bytes
+        || claim.claimed_messages > target.active_messages
+        || claim.claimed_bytes > target.active_bytes) {
+        return false;
+    }
+    found->second.active_messages -= claim.claimed_messages;
+    found->second.active_bytes -= claim.claimed_bytes;
+    target.active_messages -= claim.claimed_messages;
+    target.active_bytes -= claim.claimed_bytes;
     found->second.claimed = false;
     found->second.claim_serial = 0;
-    if (found->second.records.empty ()) {
+    if (found->second.records.empty () && found->second.active_messages == 0) {
         target.owners.erase (found);
     } else if (target.indexed.insert (claim.owner).second) {
         target.ready.push_back (claim.owner);

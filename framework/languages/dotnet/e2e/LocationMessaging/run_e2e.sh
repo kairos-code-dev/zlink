@@ -19,6 +19,17 @@ LOCAL_READINESS_POLL_SECONDS=0.1
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=60
 
+PROVIDER_MAX_MESSAGE_SIZE=33554432
+CONSUMER_MAX_MESSAGE_SIZE=33554432
+PROVIDER_APPLICATION_HWM_BYTES=0
+if [[ "$SCENARIO" == "RM-C9" ]]; then
+  PROVIDER_MAX_MESSAGE_SIZE=4194304
+  CONSUMER_MAX_MESSAGE_SIZE=4194304
+  PROVIDER_APPLICATION_HWM_BYTES=1048576
+elif [[ "$SCENARIO" == "all" ]]; then
+  PROVIDER_APPLICATION_HWM_BYTES=1048576
+fi
+
 PROVIDER_PROJECT="$ROOT_DIR/Server/Provider/LocationMessaging.Provider.csproj"
 WORKFLOW_PROJECT="$ROOT_DIR/Server/Workflow/LocationMessaging.Workflow.csproj"
 CONSUMER_PROJECT="$ROOT_DIR/Server/Consumer/LocationMessaging.Consumer.csproj"
@@ -517,7 +528,8 @@ start_server api-a "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
-  --max-message-size 2097152 \
+  --max-message-size "$PROVIDER_MAX_MESSAGE_SIZE" \
+  --application-hwm-bytes "$PROVIDER_APPLICATION_HWM_BYTES" \
   --route-endpoint "$ROUTE_A" \
   --route-peer "$ROUTE_B" \
   --weight 100 \
@@ -532,7 +544,8 @@ start_server api-b "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
-  --max-message-size 2097152 \
+  --max-message-size "$PROVIDER_MAX_MESSAGE_SIZE" \
+  --application-hwm-bytes "$PROVIDER_APPLICATION_HWM_BYTES" \
   --route-endpoint "$ROUTE_B" \
   --route-peer "$ROUTE_A" \
   --weight 100 \
@@ -579,6 +592,7 @@ start_server backpressure-consumer "$CONSUMER_PROJECT" \
   --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --provider-endpoint "$API_A" \
   --trace-label backpressure-consumer \
+  --max-message-size "$CONSUMER_MAX_MESSAGE_SIZE" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
 
@@ -601,6 +615,7 @@ python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --provider-project "$PROVIDER_PROJECT" \
   --consumer-project "$CONSUMER_PROJECT" \
+  --workflow-project "$WORKFLOW_PROJECT" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO"
 dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \

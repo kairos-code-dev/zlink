@@ -345,7 +345,8 @@ export class ZLinkFrameworkRuntimeHost implements
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
       completions: (meshName) => this.spotNodeRuntime?.meshCompletionTable(meshName),
       codecs: { serializers: options.registration.messageSerializers },
-      defaultRequestTimeoutMs: options.registration.requestTimeoutMs ?? 30_000
+      defaultRequestTimeoutMs: options.registration.requestTimeoutMs ?? 30_000,
+      dispatchErrors: this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink)
     });
     this.spotRouterChannelIdForMesh = this.meshRouters.spotRouterChannelIdByMesh();
     this.locationOwner = new ZLinkLocationRuntimeOwner({
@@ -641,6 +642,15 @@ export class ZLinkFrameworkRuntimeHost implements
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
       meshNodeDescriptor: (meshName) =>
         this.spotNodeRuntime?.meshNodeDescriptor(meshName),
+      localPlacementCounts: (meshName) => {
+        const spotManager = this.spotManager;
+        const actorManager = this.actorManager;
+        if (spotManager === undefined || actorManager === undefined) return undefined;
+        return {
+          activeActorCount: actorManager.activeActorCount(meshName),
+          activeSpotCount: spotManager.activeSpotCount(meshName)
+        };
+      },
       isLocationStoreHealthy: () => {
         if (!hasConfiguredLocationStore(options.registration)) {
           return true;
@@ -853,9 +863,12 @@ export class ZLinkFrameworkRuntimeHost implements
       // Seal application admission before the public status reports that the
       // host no longer accepts work. This prevents status polling from racing
       // with the coordinator's synchronous seal step.
+      this.admission.close();
+      const unscopedStreamDrain = this.streamRuntime?.notifyUnscopedServerDrain();
       const shutdown = this.routeMeshCoordinator.shutdownHost(deadlineMs);
       this.setRuntimeState(ZLinkFrameworkRuntimeState.Draining);
       const drain = await shutdown;
+      await unscopedStreamDrain;
       await this.stop();
       if (drain.kind === 'forceStopped') {
         return this.completeTermination({
@@ -1321,6 +1334,11 @@ export class ZLinkFrameworkRuntimeHost implements
             registerAsyncInstanceActivationAuthority?: (
               authority: ServiceAsyncInstanceActivationAuthority
             ) => void;
+            registerInstanceIntent: (
+              instanceType: string,
+              route: import('../foundation/service-stateful-wire-codec').ServiceInstanceRouteFence,
+              expectedCurrentRoute?: import('../foundation/service-stateful-wire-codec').ServiceInstanceRouteFence | null
+            ) => void;
             registerInstanceApplicationLifecycle?: (
               lifecycle: import('../foundation/service-stateful-runtime')
                 .ServiceInstanceApplicationLifecycle
@@ -1333,6 +1351,11 @@ export class ZLinkFrameworkRuntimeHost implements
                 spotManager.isInstanceMaterialized(
                   meshName,
                   target.stableType,
+                  target.targetSpotId as never
+                ),
+              isMaterializing: (target) =>
+                spotManager.isInstanceMaterializing(
+                  meshName,
                   target.targetSpotId as never
                 ),
               isClosing: (target) =>
@@ -1361,9 +1384,17 @@ export class ZLinkFrameworkRuntimeHost implements
               discard: (target) =>
                 spotManager.discardInstance(meshName, target.targetSpotId as never),
               beginTerminal: (target) =>
-                spotManager.beginInstanceTerminal(meshName, target.targetSpotId as never),
+                spotManager.beginInstanceTerminal(
+                  meshName,
+                  target.targetSpotId as never,
+                  target.objectGeneration
+                ),
               completeTerminal: (target) =>
-                spotManager.completeInstanceTerminal(meshName, target.targetSpotId as never)
+                spotManager.completeInstanceTerminal(
+                  meshName,
+                  target.targetSpotId as never,
+                  target.objectGeneration
+                )
             });
           }
           activationNode.registerAsyncInstanceActivationAuthority?.(
@@ -1375,6 +1406,12 @@ export class ZLinkFrameworkRuntimeHost implements
               owner: () => this.locationOwner.currentRuntime?.currentOwnerToken,
               metrics: this.metrics,
               onReady: (target, route) => {
+                // Publish the in-memory route in the same synchronous
+                // continuation as the durable Ready commit. The activation
+                // continuation repeats this idempotently after it admits the
+                // first application message, but it must not leave a window
+                // where Store authority is Ready and target intent is absent.
+                activationNode.registerInstanceIntent(target.stableType, route);
                 this.locationOwner.currentLifecycle?.trackInstanceSpot({
                   meshName,
                   spotId: target.targetSpotId,
@@ -1412,7 +1449,9 @@ export class ZLinkFrameworkRuntimeHost implements
           recoverActor: (authority, signal) =>
             this.recoverPublishedActorAuthority(authority, signal),
           recoverRelocation: (authority, signal) =>
-            this.serviceRelocation.recoverPublishedAuthority(authority, signal)
+            this.serviceRelocation.recoverPublishedAuthority(authority, signal),
+          onSpotRouteChanged: (spotId) =>
+            this.cachedLocationSpotRouteResolver?.invalidate?.(spotId)
         });
         await statefulAuthorityRoutes.start(this.executionState.abortController.signal);
         this.statefulAuthorityRoutes = statefulAuthorityRoutes;
@@ -1816,6 +1855,11 @@ export class ZLinkFrameworkRuntimeHost implements
             target.stableType,
             target.targetSpotId as never
           ),
+        isMaterializing: (target) =>
+          spotManager.isInstanceMaterializing(
+            meshName,
+            target.targetSpotId as never
+          ),
         isClosing: (target) =>
           spotManager.isInstanceClosing(
             meshName,
@@ -1842,9 +1886,17 @@ export class ZLinkFrameworkRuntimeHost implements
         discard: (target) =>
           spotManager.discardInstance(meshName, target.targetSpotId as never),
         beginTerminal: (target) =>
-          spotManager.beginInstanceTerminal(meshName, target.targetSpotId as never),
+          spotManager.beginInstanceTerminal(
+            meshName,
+            target.targetSpotId as never,
+            target.objectGeneration
+          ),
         completeTerminal: (target) =>
-          spotManager.completeInstanceTerminal(meshName, target.targetSpotId as never)
+          spotManager.completeInstanceTerminal(
+            meshName,
+            target.targetSpotId as never,
+            target.objectGeneration
+          )
       });
     }
   }
@@ -1926,10 +1978,13 @@ export class ZLinkFrameworkRuntimeHost implements
       // coordinator after application initialization. The legacy location
       // claim would expose a Creating object before that Ready barrier.
       locationLifecycle: () => undefined,
-      releaseInstanceAuthority: (meshName, spotId) =>
-        this.locationOwner.currentLifecycle?.releaseSpot(meshName, spotId)
+      releaseInstanceAuthority: (meshName, spotId, objectGeneration) =>
+        this.locationOwner.currentLifecycle?.releaseSpot(meshName, spotId, objectGeneration)
         ?? Promise.resolve(),
       beginInstanceIdleClosingAuthority: (meshName, spotId) =>
+        this.locationOwner.currentLifecycle?.beginInstanceSpotClosing(meshName, spotId)
+        ?? Promise.resolve(false),
+      beginInstanceClosingAuthority: (meshName, spotId) =>
         this.locationOwner.currentLifecycle?.beginInstanceSpotClosing(meshName, spotId)
         ?? Promise.resolve(false),
       createLocationSpotRouteResolver: () => this.createLocationSpotRouteResolver(),
@@ -2036,9 +2091,11 @@ export class ZLinkFrameworkRuntimeHost implements
     const coordinator = new ZLinkUserSpotCreationCoordinator({
       store: locationStore,
       publishReadyRoute: (meshName, route) => {
+        this.cachedLocationSpotRouteResolver?.invalidate?.(route.spot.spotId);
         this.spotNodeRuntime?.meshNode(meshName)?.rememberSpotRoute?.(route);
       },
       forgetReadyRoute: (meshName, route) => {
+        this.cachedLocationSpotRouteResolver?.invalidate?.(route.spot.spotId);
         this.spotNodeRuntime?.meshNode(meshName)?.forgetSpotRoute?.(
           route.spot,
           route.authorityOwnerGeneration,
@@ -2257,11 +2314,27 @@ export class ZLinkFrameworkRuntimeHost implements
               } finally {
                 message.close();
               }
+              const entrySpot = node.entrySpot().status();
+              const nativeActorRef = node.restoreActorAuthority?.(
+                record.actorId,
+                record.stableType,
+                authority.objectGeneration,
+                authority.authorityOwnerGeneration,
+                String(entrySpot.routingId),
+                entrySpot.lifecycleGeneration,
+                1n
+              );
+              if (nativeActorRef === undefined) {
+                throw new ZLinkConfigurationException(
+                  'Remote Actor creation requires native authority restoration support.'
+                );
+              }
               const local = await actors.createReservedActorResult(
                 record.actorId,
                 record.stableType,
                 request,
-                createSignal
+                createSignal,
+                nativeActorRef
               );
               if (local.status === 'rejected') {
                 let reply: Buffer | undefined;
@@ -2411,6 +2484,7 @@ export class ZLinkFrameworkRuntimeHost implements
       createActorLocationResolver: () => this.createActorLocationResolver(),
       forgetDestroyedActorRef: (actorId) => this.destroyedActorRefs.delete(actorId),
       rememberDestroyedActorRef: (actorId, actorRef) => this.destroyedActorRefs.set(actorId, actorRef),
+      invalidateActorRoute: (actorId) => this.actorClientLocationResolver?.invalidateActorRoute(actorId),
       publishActorAuthority: async (actorType, actorRef, ownerNodeGeneration, signal) => {
         const store = this.locationOwner.currentStores?.locationStore;
         if (store === undefined) return;
@@ -2428,6 +2502,7 @@ export class ZLinkFrameworkRuntimeHost implements
           ownerNodeGeneration,
           owner
         }, signal);
+        this.actorClientLocationResolver?.invalidateActorRoute(actorRef.actorId);
       },
       reportPostCommitError: (error) =>
         this.runtimeOrPreStartErrorSink.reportRuntimeTaskException('post-commit actor binding', error),

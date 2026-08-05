@@ -160,12 +160,12 @@ final class KotlinConnectorWrapperTest {
                 assertEquals("Echo", request.name)
                 assertEquals("request", request.payload.toString(StandardCharsets.UTF_8))
                 server.sendFrame(
-                    Frame(
-                        kind = 3,
-                        requestSeq = request.requestSeq,
-                        name = "Echo",
-                        payload = "reply".toByteArray(StandardCharsets.UTF_8),
-                    ),
+                Frame(
+                    kind = 3,
+                    requestSeq = request.requestSeq,
+                    name = "",
+                    payload = "reply".toByteArray(StandardCharsets.UTF_8),
+                ),
                 )
 
                 val reply = replyFuture.await()
@@ -531,7 +531,7 @@ final class KotlinConnectorWrapperTest {
                     kind = 4,
                     codec = 1,
                     requestSeq = null,
-                    name = "RemoteError",
+                    name = "",
                     payload = """{"code":"remote","message":"remote failed"}"""
                         .toByteArray(StandardCharsets.UTF_8),
                 ),

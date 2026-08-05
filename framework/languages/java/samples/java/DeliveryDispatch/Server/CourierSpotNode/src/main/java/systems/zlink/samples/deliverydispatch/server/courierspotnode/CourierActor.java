@@ -3,6 +3,7 @@ package systems.zlink.samples.deliverydispatch.server.courierspotnode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -35,11 +36,11 @@ public final class CourierActor implements ZLinkActor {
     }
 
     /** Pushes the offer and returns. The courier takes as long as it takes. */
-    public void offer(Messages.OfferDeliveryMsg offer) {
+    public CompletionStage<Void> offer(Messages.OfferDeliveryMsg offer) {
         synchronized (gate) {
             offeredAttempts.put(offer.deliveryId(), offer.attempt());
         }
-        context.boundSession()
+        return context.boundSession()
             .send(new Messages.OfferDeliveryNotify(
                 offer.courierId(),
                 offer.deliveryId(),

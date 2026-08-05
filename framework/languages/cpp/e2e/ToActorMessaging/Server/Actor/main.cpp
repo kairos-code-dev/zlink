@@ -56,7 +56,7 @@ class to_actor_e2e_actor_t : public zlink::framework::actor_t
   public:
     explicit to_actor_e2e_actor_t (
       zlink::framework::actor_context_t context) :
-        _actor_id (context.actor_ref ().actor_id ()),
+        _actor_id (context.actor_ref ().actor_id ().value ()),
         _context (std::move (context))
     {
     }

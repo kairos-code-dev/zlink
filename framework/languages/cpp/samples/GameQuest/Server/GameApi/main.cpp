@@ -141,7 +141,7 @@ class player_actor_t : public zlink::framework::actor_t
 {
   public:
     explicit player_actor_t (actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         actor_context (std::move (value))
     {

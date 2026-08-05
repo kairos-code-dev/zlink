@@ -870,8 +870,7 @@ int main ()
         }
         bool rejected = false;
         try {
-            static_cast<void> (
-              protocol::encode_relocation_control (ready));
+            static_cast<void> (protocol::encode_relocation_control (ready));
         }
         catch (const protocol::service_wire_error_t &) {
             rejected = true;

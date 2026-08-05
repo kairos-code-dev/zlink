@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.actors;
 
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +68,51 @@ final class ZLinkActorRetryScheduler {
                         scheduleRoute(this);
                     }
                 }
+            }
+        }
+        new Attempt().run();
+        return result;
+    }
+
+    static <T> CompletionStage<Optional<T>> retryRouteUntilPresent(
+        Duration timeout,
+        Supplier<CompletionStage<Optional<T>>> lookup) {
+        CompletableFuture<Optional<T>> result = new CompletableFuture<>();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        class Attempt implements Runnable {
+            @Override
+            public void run() {
+                if (result.isDone()) {
+                    return;
+                }
+                CompletionStage<Optional<T>> lookupStage;
+                try {
+                    lookupStage = java.util.Objects.requireNonNull(
+                        lookup.get(), "route lookup stage");
+                } catch (RuntimeException failure) {
+                    result.completeExceptionally(failure);
+                    return;
+                }
+                lookupStage.whenComplete((value, error) -> {
+                    if (error != null) {
+                        // An empty result can represent eventual Store
+                        // visibility. A Store or protocol failure is already
+                        // terminal and must remain observable to the caller.
+                        result.completeExceptionally(error);
+                        return;
+                    }
+                    if (value == null || value.isPresent()) {
+                        result.complete(value == null
+                            ? Optional.empty()
+                            : value);
+                        return;
+                    }
+                    if (System.nanoTime() >= deadline) {
+                        result.complete(Optional.empty());
+                        return;
+                    }
+                    scheduleRoute(this);
+                });
             }
         }
         new Attempt().run();

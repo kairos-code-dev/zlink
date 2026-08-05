@@ -3,6 +3,8 @@
 
 #include <zlink/framework/contracts/actors/actor.hpp>
 
+#include "runtime/actors/actor_ref_access.hpp"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>

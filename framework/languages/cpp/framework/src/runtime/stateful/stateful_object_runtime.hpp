@@ -206,7 +206,11 @@ class stateful_object_runtime_t
       std::size_t application_capacity =
         dispatch_limits::application_mailbox_messages,
       std::size_t infrastructure_capacity =
-        dispatch_limits::control_mailbox_messages);
+        dispatch_limits::control_mailbox_messages,
+      std::size_t application_byte_capacity =
+        dispatch_limits::application_mailbox_bytes,
+      std::size_t infrastructure_byte_capacity =
+        dispatch_limits::control_mailbox_bytes);
 
     void configure_relocation_state (
       relocation_state_capture_t capture,
@@ -263,6 +267,11 @@ class stateful_object_runtime_t
                                   turn_record_t continuation);
     std::size_t pending (const object_ref_t &owner,
                          turn_domain_t domain) const;
+    std::size_t pending_bytes (const object_ref_t &owner,
+                               turn_domain_t domain) const;
+    stateful_error_t discard_application (
+      const object_ref_t &owner,
+      std::uint64_t sequence);
     stateful_error_t register_timer (const object_ref_t &owner,
                                      logical_timer_t timer);
     stateful_error_t cancel_timer (const object_ref_t &owner,
@@ -331,6 +340,11 @@ class stateful_object_runtime_t
         std::deque<turn_record_t> held_application;
         std::deque<turn_record_t> infrastructure;
         std::optional<turn_record_t> yielded_continuation;
+        std::size_t application_bytes = 0;
+        std::size_t held_application_bytes = 0;
+        std::size_t infrastructure_bytes = 0;
+        std::size_t application_active_bytes = 0;
+        std::size_t infrastructure_active_bytes = 0;
         bool application_active = false;
         bool infrastructure_active = false;
     };
@@ -361,6 +375,12 @@ class stateful_object_runtime_t
         std::vector<frozen_object_state_t> frozen;
     };
 
+    struct relocation_hold_state_t
+    {
+        std::size_t record_count = 0;
+        std::size_t byte_count = 0;
+    };
+
     static bool valid_text (const std::string &value);
     static bool same_exact_ref (const object_ref_t &left,
                                 const object_ref_t &right);
@@ -372,10 +392,17 @@ class stateful_object_runtime_t
       stateful_error_t &error) const;
     std::optional<placement_candidate_t> select_candidate_locked (
       const create_request_t &request) const;
+    stateful_error_t enqueue_locked (object_record_t &object,
+                                     turn_domain_t domain,
+                                     turn_record_t record);
+    static std::size_t retained_bytes (const turn_record_t &record) noexcept;
+    void move_held_application_locked (object_record_t &object);
     void release_pending_capacity_locked (const object_record_t &record);
 
     const std::size_t _application_capacity;
     const std::size_t _infrastructure_capacity;
+    const std::size_t _application_byte_capacity;
+    const std::size_t _infrastructure_byte_capacity;
     mutable std::mutex _mutex;
     std::condition_variable _quiescence;
     std::vector<placement_candidate_t> _candidates;
@@ -385,6 +412,7 @@ class stateful_object_runtime_t
     std::map<std::uint64_t, membership_move_t> _membership_moves;
     std::map<std::uint64_t, spot_close_token_t> _spot_closes;
     std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
+    std::map<std::uint64_t, relocation_hold_state_t> _relocation_holds;
     std::map<object_key_t, std::uint64_t>
       _relocation_restore_reservations;
     relocation_state_capture_t _relocation_state_capture;

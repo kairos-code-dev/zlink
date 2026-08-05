@@ -57,7 +57,10 @@ class location_lifecycle_t
     {
         (void) takeover;
         const auto now = std::chrono::system_clock::now ();
-        const auto generation = actor.actor_ref.generation ();
+        if (!actor.actor_ref) {
+            return {location_write_status_t::ignored_stale, std::move (actor), 0, now};
+        }
+        const auto generation = actor.actor_ref->object_generation ();
 
         {
             std::lock_guard lock (_state->gate);
@@ -88,7 +91,11 @@ class location_lifecycle_t
         if (found == _state->actors.end ())
             return {location_write_status_t::ignored_stale, 0, {}};
         found->second.actor = std::move (actor);
-        found->second.store_generation = found->second.actor.actor_ref.generation ();
+        if (!found->second.actor.actor_ref) {
+            return {location_write_status_t::ignored_stale, 0, {}};
+        }
+        found->second.store_generation =
+          found->second.actor.actor_ref->object_generation ();
         return {location_write_status_t::stored,
                 static_cast<std::int64_t> (found->second.store_generation),
                 std::chrono::system_clock::now ()};
@@ -149,8 +156,11 @@ class location_lifecycle_t
             actor = found->second.actor;
         }
 
+        if (!actor.actor_ref) {
+            return {location_write_status_t::ignored_stale, 0, {}};
+        }
         return {location_write_status_t::stored,
-                static_cast<std::int64_t> (actor.actor_ref.generation ()),
+                static_cast<std::int64_t> (actor.actor_ref->object_generation ()),
                 std::chrono::system_clock::now ()};
     }
 

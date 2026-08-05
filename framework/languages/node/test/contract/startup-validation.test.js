@@ -54,6 +54,30 @@ test('Node registration rejects mixed automatic and manual fanout subscriber sou
   }
 });
 
+test('Node registration requires an explicit identity mode for a Store-backed fanout publisher', () => {
+  assert.throws(
+    () => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+      builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+      builder.addFanoutChannel('events').enablePublisher();
+    })),
+    /publisher must select a fixed routing id or an automatic routing id prefix/
+  );
+
+  assert.doesNotThrow(() => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+    builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+    builder.addFanoutChannel('events')
+      .enablePublisher()
+      .setRoutingIdPrefix('events');
+  })));
+
+  assert.doesNotThrow(() => framework.createFrameworkRegistration(framework.createFrameworkOptions((builder) => {
+    builder.addLocationStore(new framework.ZLinkInMemoryProviderLocationStore());
+    builder.addFanoutChannel('events')
+      .enablePublisher()
+      .routingId('events-publisher');
+  })));
+});
+
 test('Node module registration rejects mixed automatic and manual fanout subscriber sources', () => {
   assert.throws(
     () => nestjs.zlinkFramework()

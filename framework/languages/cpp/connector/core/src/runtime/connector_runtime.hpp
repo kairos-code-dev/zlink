@@ -132,6 +132,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
     boost::asio::strand<boost::asio::io_context::executor_type> delivery_strand;
     std::shared_ptr<stream_connection_t> connection;
+    std::shared_ptr<transport_connect_control_t> connect_control;
     // Registered lifecycle callbacks must not outlive close(). Operation
     // completions use a separate path because close() completes them with a
     // closed result.

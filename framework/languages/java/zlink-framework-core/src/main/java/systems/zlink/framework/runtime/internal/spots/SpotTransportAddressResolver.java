@@ -10,4 +10,12 @@ public interface SpotTransportAddressResolver {
     }
 
     CompletionStage<Optional<SpotTransportAddress>> resolve(String spotId);
+
+    /**
+     * Removes a cached positive route after the target reports that the
+     * resolved owner no longer accepts it. Custom resolvers may keep this as
+     * a no-op when they do not cache routes.
+     */
+    default void invalidate(String spotId) {
+    }
 }

@@ -6,14 +6,14 @@ import systems.zlink.e2e.kotlin.spotservice.session.spots.UserSpot
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler
 import systems.zlink.framework.handlers.ZLinkSpotActorRequest
-import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
+import systems.zlink.framework.ZLinkMessageContext
 
 class UserActorLeaveHandler : ZLinkSuspendingSpotActorRequestHandler<UserSpot, ScenarioActor, Contracts.LeaveActorReq, Contracts.LeaveActorRes> {
     @ZLinkSpotActorRequest(packetName = "LeaveActorReq")
     override suspend fun handle(
         spot: UserSpot,
         actor: ScenarioActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: Contracts.LeaveActorReq,
     ): Contracts.LeaveActorRes {
         if (request.actorId != actor.actorId()) {

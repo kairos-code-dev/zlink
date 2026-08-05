@@ -15,11 +15,11 @@ public final class UserActorEchoHandler {
         int seq = actor.nextSequence();
         spot.record("ActorUserReq", actor.actorId() + "/" + request.value() + "#" + seq);
         actor.context().boundSession()
-            .send(new Contracts.ActorPushNotify(actor.actorId(), spot.spotId(), "push:" + request.value(), request.seq(), seq))
+            .send(new Contracts.ActorPushNotify(actor.actorId(), spot.spotRid(), "push:" + request.value(), request.seq(), seq))
             .submit();
         return CompletableFuture.completedFuture(new Contracts.ActorEchoRes(
             actor.actorId(),
-            spot.spotId(),
+            spot.spotRid(),
             spot.nodeRid(),
             "user:" + request.value(),
             request.seq(),

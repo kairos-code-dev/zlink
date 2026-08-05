@@ -175,6 +175,27 @@ public sealed class LocationResolverTests
         fixture.Time.Advance(LeaseTtl + TimeSpan.FromSeconds(1));
 
         Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(ActorKey));
+
+        var resolution = await fixture.Resolvers.ResolveActorRowWithStatusAsync(
+            ActorKey);
+        Assert.Null(resolution.Row);
+        Assert.Equal(
+            ZLinkLocationResolutionKind.KnownUnavailable,
+            resolution.Kind);
+    }
+
+    [Fact]
+    public async Task Missing_Actor_Is_Distinguished_From_An_Expired_Owner()
+    {
+        var fixture = await FixtureAsync();
+
+        var resolution = await fixture.Resolvers.ResolveActorRowWithStatusAsync(
+            ActorKey);
+
+        Assert.Null(resolution.Row);
+        Assert.Equal(
+            ZLinkLocationResolutionKind.Missing,
+            resolution.Kind);
     }
 
     [Fact]
@@ -234,6 +255,12 @@ public sealed class LocationResolverTests
 
         fixture.Time.Advance(LeaseTtl + TimeSpan.FromSeconds(1));
         Assert.Null(await fixture.Resolvers.ResolveSpotRowAsync(key));
+
+        var resolution = await fixture.Resolvers.ResolveSpotRowWithStatusAsync(key);
+        Assert.Null(resolution.Row);
+        Assert.Equal(
+            ZLinkLocationResolutionKind.KnownUnavailable,
+            resolution.Kind);
 
         var claim = await AuthorityLocationTestFixture.PublishSpotAsync(
             fixture.Store,

@@ -1,8 +1,9 @@
 package systems.zlink.e2e.spotservice.play;
 
 import java.nio.file.Path;
+import java.net.URI;
 import java.time.Duration;
-import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -32,7 +33,8 @@ import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
-import systems.zlink.framework.messaging.ZLinkMessage;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions;
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -72,9 +74,9 @@ public final class Program {
         com.fasterxml.jackson.databind.ObjectMapper json,
         ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
-        systems.zlink.framework.spots.SpotHandleResolver spotHandles,
         systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime meshRuntime,
-        ZLinkRedisLocationStore locationStore,
+        systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions meshOptions,
+        ObjectProvider<systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime> frameworkRuntimes,
         PlayOptions options) {
         return new EvidenceHttpServer(
             state,
@@ -82,16 +84,20 @@ public final class Program {
             options.httpEndpoint(),
             spots,
             routes,
-            spotHandles,
             meshRuntime,
-            locationStore);
+            meshOptions,
+            frameworkRuntimes);
     }
 
     @Bean
-    ZLinkFrameworkConfigurer playFramework(ScenarioState state, PlayOptions play) {
+    ZLinkFrameworkConfigurer playFramework(
+        ScenarioState state,
+        PlayOptions play,
+        ZLinkRedisRelocationStore relocationStore) {
         return options -> {
             String nodeRid = state.nodeRid();
             String logDir = play.logDir();
+            options.addRelocationStore(relocationStore);
             options.configureLocations().setOwnerLeaseRenewInterval(
                 Duration.ofMillis(play.locationHeartbeatMillis()));
             options.configureLocations().setOwnerLeaseTtl(
@@ -114,40 +120,28 @@ public final class Program {
             ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(play.routeEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
-            node.channelName(Contracts.ROUTE_CHANNEL);
+            node.channelName(Contracts.ROUTE_CHANNEL).server();
             node.addRouteRequestHandler(
                 RouteReqHandler.class,
                 Contracts.RouteReq.class,
                 Contracts.RouteRes.class);
-            if (!"play-a".equals(nodeRid)) {
-                node.peerConnections().connect(RoutingId.from("play-a"), play.routeAEndpoint());
-            }
-            if (!"play-b".equals(nodeRid)) {
-                node.peerConnections().connect(RoutingId.from("play-b"), play.routeBEndpoint());
-            }
-            String peerIngress = "play-a".equals(nodeRid)
-                ? play.ingressBEndpoint()
-                : play.ingressAEndpoint();
-            ClientServerChannelBuilder ingress = options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
-                .enableServer(play.ingressEndpoint())
-                .enableClient(peerIngress)
-                .setRoutingId(RoutingId.from(nodeRid));
-            ingress.addSendHandler(
+            ClientServerChannelBuilder ingress = options.addClientServerChannel(Contracts.INGRESS_CHANNEL);
+            var ingressServer = ingress.server()
+                .listen(URI.create(play.ingressEndpoint()).getPort());
+            ingressServer.addSendHandler(
                 IngressMsgHandler.class,
-                Contracts.OutboundMsg.class,
-                "OutboundMsg");
-            ingress.addRequestHandler(
+                Contracts.OutboundMsg.class);
+            ingressServer.addRequestHandler(
                 NoopIngressHandler.class,
                 Contracts.StateReq.class,
-                String.class,
-                "StateReq");
+                String.class);
             node.objects()
                 .server()
                 .addEntrySpot(ScenarioEntrySpot.class)
                 .addSpotFactory(
                     "user",
                     UserSpot.class,
-                    factory -> factory.disableRelocation())
+                    factory -> factory.recreateOnRelocation())
                 .addSpotFactory(
                     "mismatched",
                     MismatchedSpot.class,
@@ -188,15 +182,10 @@ public final class Program {
     }
 
     @Bean
-    ApplicationRunner createOwnedSpot(
-        ZLinkSpotManager spots,
-        ScenarioState state) {
-        return ignored -> {
-            String spotRid = "play-a".equals(state.nodeRid()) ? "room-a" : "room-b";
-            spots.getOrCreate(UserSpot.class, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
-                .toCompletableFuture()
-                .join();
-        };
+    ZLinkRedisRelocationStore relocationStore(PlayOptions options) {
+        return new ZLinkRedisRelocationStore(new ZLinkRedisRelocationOptions()
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 
     private static String configPath(String[] args) {

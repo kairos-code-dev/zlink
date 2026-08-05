@@ -297,6 +297,12 @@ export class ZLinkStreamRuntimeManager {
       .map((node) => node.runtime.drainCloseSessions()));
   }
 
+  async notifyUnscopedServerDrain(): Promise<void> {
+    await Promise.all([...this.nodes.values()]
+      .filter((node) => node.meshName === undefined)
+      .map((node) => node.runtime.drainCloseSessions()));
+  }
+
 }
 
 export class ZLinkStreamSessionRuntime extends ZLinkStreamSessionRuntimeCore {

@@ -18,12 +18,15 @@ import systems.zlink.e2e.kotlin.spotservice.session.handlers.RemoteActorAuthHand
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.ScenarioSession
 import systems.zlink.e2e.kotlin.spotservice.session.handlers.SlowSessionHandler
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActorFactory
+import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioActor
 import systems.zlink.e2e.kotlin.spotservice.session.spots.ScenarioEntrySpot
 import systems.zlink.e2e.kotlin.spotservice.session.spots.UserSpot
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions
+import systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spring.EnableZLinkFramework
@@ -53,10 +56,14 @@ class SessionApplication {
         )
 
     @Bean
-    fun sessionFramework(state: ScenarioState): ZLinkFrameworkConfigurer =
+    fun sessionFramework(
+        state: ScenarioState,
+        relocationStore: ZLinkRedisRelocationStore,
+    ): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             val nodeRid = state.nodeRid()
             val logDir = Env.get("e2e.log.dir", "logs")
+            options.addRelocationStore(relocationStore)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile("$logDir/$nodeRid-flow.log")
@@ -67,7 +74,7 @@ class SessionApplication {
                     }
                     state.record(
                         "DispatchError",
-                        error.spotRid() ?: "",
+                        error.spotId() ?: "",
                         error.surface().toString() +
                             "|" + error.errorReason() +
                             "/" + error.errorAction() +
@@ -78,7 +85,7 @@ class SessionApplication {
             val mesh = options.addRouteMesh(Contracts.SPOT_MESH)
                 .listen(Env.get("e2e.spot.endpoint"))
                 .setRoutingId(RoutingId.from(nodeRid))
-            mesh.channelName(Contracts.ROUTE_CHANNEL)
+            mesh.channelName(Contracts.ROUTE_CHANNEL).server()
             mesh.peerConnections().connect(Env.get("e2e.route.a.endpoint", ""))
             mesh.peerConnections().connect(Env.get("e2e.route.b.endpoint", ""))
             mesh.objects().server()
@@ -111,13 +118,23 @@ class SessionApplication {
         )
 
     @Bean
+    fun relocationStore(): ZLinkRedisRelocationStore =
+        ZLinkRedisRelocationStore(
+            ZLinkRedisRelocationOptions()
+                .setConnectionString(Env.get("e2e.redis.location.endpoint"))
+                .setKeyPrefix(Env.get("e2e.location.key.prefix"))
+        )
+
+    @Bean
     fun createOwnedSpot(
         spots: ZLinkSpotManager,
         state: ScenarioState
     ): ApplicationRunner =
         ApplicationRunner {
             val spotRid = if (state.nodeRid() == "session-a") "actor-room-a" else "actor-room-b"
-            spots.getOrCreate(UserSpot::class.java, RoutingId.from(spotRid), ZLinkMessage.of("bootstrap"))
+            spots.getOrCreate(spotRid, "user")
+                .request(ZLinkMessage.of("bootstrap"))
+                .submit()
                 .toCompletableFuture()
                 .join()
         }

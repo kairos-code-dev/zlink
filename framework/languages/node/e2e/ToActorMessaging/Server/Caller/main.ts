@@ -39,7 +39,7 @@ Module({
           redisEndpoint: options.redisEndpoint,
           redisKeyPrefix: options.redisKeyPrefix
         }));
-        Object.assign(builder.configureLocations(), locationMessagingOptions());
+        locationMessagingOptions(builder.configureLocations());
         builder
           .configureDispatch()
           .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

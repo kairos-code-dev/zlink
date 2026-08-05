@@ -84,6 +84,26 @@ sequenceDiagram
     Note over A,B: factory는 한 번만 실행된다<br/>진 쪽은 만들어진 객체를 대상으로 삼는다
 ```
 
+### Ready 기록과 대상 route의 공개 순서
+
+Instance Spot은 Location Store에 `Ready`가 기록된 것만으로 대상 node의 수신 준비가
+끝나지 않는다. 대상 runtime도 같은 route를 내부 `instance intent` projection에 즉시
+반영해야 한다. 이 projection은 Store를 대신하는 권위 있는 기록이 아니라, 이미
+검증된 `Ready` route를 application message admission에서 사용하는 local view다.
+
+따라서 순서는 다음과 같다.
+
+1. 대상 node가 `Ready` authority를 Location Store에 commit한다.
+2. commit이 성공한 같은 동기 continuation에서 대상 runtime이 `instance intent`를
+   등록한다.
+3. 그 뒤에 activation continuation이 첫 application message를 대기열에 넣는다.
+
+2번이 뒤로 밀리면 Store에는 `Ready`가 있지만 target runtime에는 route가 없어 첫
+application message가 `NotFound` 또는 stale route 오류로 끝날 수 있다. 뒤따르는
+continuation에서 같은 route를 다시 등록하는 동작은 누락을 복구하는 안전장치이며,
+첫 admission보다 먼저 수행되어야 한다. 같은 route의 재등록은 중복 실행을 만들지
+않도록 멱등적으로 처리한다.
+
 진 쪽이 **"만드는 중"을 캐시하면** 이 그림의 마지막 두 줄이 캐시 수명만큼 늦어진다.
 
 ### 만들다 실패하면

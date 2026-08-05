@@ -2,8 +2,9 @@
 import { randomUUID } from 'node:crypto';
 import { PubSubNames, type EvidenceWaitReq } from '../../Shared/messages';
 import { commonContiguousSequence } from '../Support/evidence';
-import { postJson } from '../../../http-client';
+import { postJson, postJsonWithin, postStatus } from '../../../http-client';
 import { delay, ensure } from '../Support/scenario-assert';
+import { waitForEvent } from '../Support/subscriber-observation';
 
 export async function runPsA1(publisher: string, subscribers: readonly string[]): Promise<void> {
   const runId = randomUUID().replaceAll('-', '');
@@ -46,6 +47,60 @@ export async function publishEvent(publisher: string, topic: string, runId: stri
   await postJson(publisher, '/publish/event', { topic, runId, sequence, value });
 }
 
+export async function publishUntilDelivered(
+  publisher: string,
+  subscriber: string,
+  topic: string,
+  sequence: number,
+  value: string,
+  timeoutMilliseconds = 20_000
+): Promise<string> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    const runId = randomUUID().replaceAll('-', '');
+    await publishEvent(publisher, topic, runId, sequence, value);
+    try {
+      await waitForEvent(subscriber, runId, sequence, value, 750);
+      return runId;
+    } catch {
+      await delay(100);
+    }
+  }
+  throw new Error(`Timed out waiting for fanout delivery of value '${value}'.`);
+}
+
+export async function publishUntilAllDelivered(
+  publisher: string,
+  subscribers: readonly string[],
+  topic: string,
+  sequence: number,
+  value: string,
+  timeoutMilliseconds = 20_000
+): Promise<string> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    const runId = randomUUID().replaceAll('-', '');
+    await Promise.all(subscribers.map((subscriber) => postStatus(`${subscriber}/evidence/clear`)));
+    await publishEvent(publisher, topic, runId, sequence, value);
+    try {
+      await waitForAll(subscribers, {
+        containsAll: ['event|', `run=${runId}`, `topic=${topic}`],
+        timeoutMilliseconds: 750
+      });
+      return runId;
+    } catch {
+      await delay(100);
+    }
+  }
+  throw new Error(`Timed out waiting for all fanout subscribers to receive value '${value}'.`);
+}
+
 export async function waitForAll(subscribers: readonly string[], request: EvidenceWaitReq): Promise<readonly (readonly string[])[]> {
-  return await Promise.all(subscribers.map((subscriber) => postJson<readonly string[]>(subscriber, '/evidence/wait', request)));
+  const timeoutMilliseconds = request.timeoutMilliseconds ?? 10_000;
+  return await Promise.all(subscribers.map((subscriber) => postJsonWithin<readonly string[]>(
+    subscriber,
+    '/evidence/wait',
+    request,
+    timeoutMilliseconds + 1_000
+  )));
 }

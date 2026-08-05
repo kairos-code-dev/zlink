@@ -7,9 +7,9 @@ namespace RegistrationCodec.Client.Scenarios;
 // RC-B1 verifies JSON codec round trip.
 internal static class RcB1JsonCodecScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient server)
+    public static async Task RunAsync(ZLinkHttpClient requester)
     {
-        var result = (await server.Post("/codec/roundtrip").Async<CodecScenarioRes>()).Body;
+        var result = (await requester.Post("/codec/roundtrip").Async<CodecScenarioRes>()).Body;
         ZlinkStreamAssert.Ensure(result.Json.Value == "echo:rc-b1", "RC-B1 JSON reply mismatch.");
         ZlinkStreamAssert.Ensure(result.Json.ContentType == "application/json", "RC-B1 JSON content type mismatch.");
 

@@ -1,5 +1,6 @@
 export interface ClientOptions {
   readonly publisherUrl: string;
+  readonly secondaryPublisherUrl?: string;
   readonly lateSubscriberUrl: string;
   readonly publisherEndpoint: string;
   readonly publisherMain: string;
@@ -7,6 +8,11 @@ export interface ClientOptions {
   readonly logDir: string;
   readonly scenario: string;
   readonly subscriberUrls: readonly string[];
+  readonly redisEndpoint?: string;
+  readonly redisKeyPrefix?: string;
+  readonly publisherIdentityMissingEndpoint?: string;
+  readonly publisherIdentityBothEndpoint?: string;
+  readonly publisherProxyPort?: number;
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
@@ -14,13 +20,19 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
 
   return {
     publisherUrl: required(values, 'publisherUrl'),
+    secondaryPublisherUrl: optionalValue(values, 'secondaryPublisherUrl'),
     lateSubscriberUrl: required(values, 'lateSubscriberUrl'),
     publisherEndpoint: required(values, 'publisherEndpoint'),
     publisherMain: required(values, 'publisherMain'),
     subscriberMain: required(values, 'subscriberMain'),
     logDir: required(values, 'logDir'),
     scenario: optional(values, 'scenario', 'all'),
-    subscriberUrls: many(values, 'subscriberUrls')
+    subscriberUrls: many(values, 'subscriberUrls'),
+    redisEndpoint: optionalValue(values, 'redisEndpoint'),
+    redisKeyPrefix: optionalValue(values, 'redisKeyPrefix'),
+    publisherIdentityMissingEndpoint: optionalValue(values, 'publisherIdentityMissingEndpoint'),
+    publisherIdentityBothEndpoint: optionalValue(values, 'publisherIdentityBothEndpoint'),
+    publisherProxyPort: optionalNumber(values, 'publisherProxyPort')
   };
 }
 
@@ -46,5 +58,18 @@ function many(values: Record<string, unknown>, name: string): readonly string[] 
   const value = values[name];
   if (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== 'string')) throw new Error(`Configuration value 'e2e.${name}' must be a string array.`);
   return value as string[];
+}
+
+function optionalValue(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function optionalNumber(values: Record<string, unknown>, name: string): number | undefined {
+  const value = values[name];
+  if (value === undefined) return undefined;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`Configuration value 'e2e.${name}' must be a positive integer.`);
+  return parsed;
 }
 import fs from 'node:fs';

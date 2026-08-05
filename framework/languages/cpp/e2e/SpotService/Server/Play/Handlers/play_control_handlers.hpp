@@ -66,8 +66,8 @@ class ensure_actor_handler_t
       const zlink::framework::route_handler_context_t &)
     {
         auto current = _spots.current_actor_ref (zlink::framework::actor_ref_t (
-          zlink::framework::node_rid_t::from_string (_state.node_rid), e2e::actor_type,
-          request.actor_id, 0));
+          zlink::framework::actor_id_t (request.actor_id), 1, e2e::spot_mesh,
+          zlink::framework::node_rid_t::from_string (_state.node_rid)));
         if (current) {
             _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
             return {.actor = from_actor_ref (*current)};

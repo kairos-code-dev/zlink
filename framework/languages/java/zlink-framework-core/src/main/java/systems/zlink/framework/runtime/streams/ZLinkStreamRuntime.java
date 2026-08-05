@@ -93,9 +93,12 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final Map<String, ZLinkInternalSpotNode> streamSessionRelaySpotNodes = new HashMap<>();
     private final Map<String, SessionState> sessions = new HashMap<>();
     private final ScheduledExecutorService livenessExecutor;
+    private final ScheduledExecutorService replyRetryExecutor;
     private final ExecutorService receiveExecutor;
     private final ZLinkInboundDispatchBudget inboundDispatchBudget;
     private final List<StreamReceiveLoop> receiveLoops = new ArrayList<>();
+    private final Set<ZLinkStreamSessionContextState> sessionContexts =
+        ConcurrentHashMap.newKeySet();
     private volatile boolean draining;
     private final ZLinkOneWayCalls oneWayCalls;
 
@@ -227,6 +230,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         this.inboundDispatchBudget = registration.inboundDispatchBudget();
         this.livenessExecutor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "zlink-stream-liveness");
+            thread.setDaemon(true);
+            return thread;
+        });
+        this.replyRetryExecutor = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "zlink-stream-reply-retry");
             thread.setDaemon(true);
             return thread;
         });
@@ -440,12 +448,12 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     if (!dispatchBatch.canReceiveNext()) {
                         continue;
                     }
-                    if (!inboundDispatchBudget.canStartApplicationReceive()) {
-                        if (!awaitCapacity()) {
-                            return;
-                        }
-                        continue;
-                    }
+                    // The receive path cannot classify a complete multiplexed
+                    // message before recv(). The inner loop grants one fixed
+                    // raw classification slot when the application HWM is
+                    // full; a received application frame then becomes the
+                    // pending frame that makes the next iteration wait for
+                    // terminal completion.
                     if (!stream.waitForReadable(RECEIVE_POLL_TIMEOUT)) {
                         continue;
                     }
@@ -454,9 +462,16 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     }
                     ZLinkReceiveBatchBudget transportBatch =
                         new ZLinkReceiveBatchBudget();
+                    boolean rawClassificationReservationAvailable = true;
                     while (transportBatch.canReceiveNext()
                         && dispatchBatch.canReceiveNext()
-                        && inboundDispatchBudget.canStartApplicationReceive()) {
+                        && (inboundDispatchBudget.canStartApplicationReceive()
+                            || rawClassificationReservationAvailable)) {
+                        boolean startedAtApplicationHwm =
+                            !inboundDispatchBudget.canStartApplicationReceive();
+                        if (startedAtApplicationHwm) {
+                            rawClassificationReservationAvailable = false;
+                        }
                         if (transportBatch.messageCount() > 0
                             && !stream.waitForReadable(Duration.ZERO)) {
                             break;
@@ -471,6 +486,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                             processReceived(received, dispatchBatch);
                         } finally {
                             received.close();
+                        }
+                        if (startedAtApplicationHwm) {
+                            break;
                         }
                     }
                 } catch (RuntimeException | Error failure) {
@@ -1029,7 +1047,9 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                 sendSessionClosing(stream, routingId);
                 return CompletableFuture.completedFuture(null);
             },
-            oneWayCalls);
+            oneWayCalls,
+            replyRetryExecutor);
+        sessionContexts.add(context);
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),
@@ -1079,8 +1099,10 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         synchronized (sessions) {
             activeSessions = List.copyOf(sessions.values());
         }
+        sessionContexts.forEach(ZLinkStreamSessionContextState::closeReplyRetries);
         return CompletableFuture.allOf(activeSessions.stream()
-            .map(state -> state.queue().enqueue(() -> executeHandler(() -> disconnectSessionStage(state)))
+            .map(state -> state.queue().enqueue(
+                () -> executeHandler(() -> disconnectSessionStage(state)))
                 .toCompletableFuture())
             .toArray(CompletableFuture[]::new))
             .handle((ignored, failure) -> {
@@ -1093,29 +1115,59 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         synchronized (sessions) {
             sessions.clear();
         }
+        sessionContexts.forEach(ZLinkStreamSessionContextState::closeReplyRetries);
         String closeReason = draining ? "server_drain" : "transport_error";
         for (int index = 0; index < activeSessions.size(); index++) {
             recordSessionClosed(closeReason);
         }
+        replyRetryExecutor.shutdownNow();
+        boolean replyRetriesStopped = awaitExecutorTermination(
+            replyRetryExecutor,
+            "STREAM error reply retry executor");
+        livenessExecutor.shutdownNow();
+        boolean livenessStopped = awaitExecutorTermination(
+            livenessExecutor,
+            "STREAM liveness executor");
         receiveLoops.forEach(StreamReceiveLoop::close);
         receiveExecutor.shutdownNow();
-        try {
-            if (!receiveExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                LOGGER.warning("STREAM receive loops did not terminate before socket close");
-            }
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            LOGGER.log(Level.FINE,
-                "Interrupted while waiting for STREAM receive loops to terminate",
-                interrupted);
+        boolean receiveStopped = awaitExecutorTermination(
+            receiveExecutor,
+            "STREAM receive executor");
+        if (!replyRetriesStopped || !livenessStopped || !receiveStopped) {
+            LOGGER.severe(
+                "STREAM runtime resources did not quiesce; native stream and context remain open");
+            return;
         }
         for (ZLinkBackendStreamSocket stream : streams) {
             stream.close();
         }
-        livenessExecutor.shutdownNow();
         if (ownsContext) {
             context.close();
         }
+    }
+
+    private static boolean awaitExecutorTermination(
+        ExecutorService executor,
+        String description) {
+        boolean interrupted = false;
+        for (int attempt = 0; attempt < 2 && !executor.isTerminated(); attempt++) {
+            try {
+                if (executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    break;
+                }
+            } catch (InterruptedException interruption) {
+                interrupted = true;
+                executor.shutdownNow();
+            }
+            executor.shutdownNow();
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        if (!executor.isTerminated()) {
+            LOGGER.warning(description + " did not terminate within the close deadline");
+        }
+        return executor.isTerminated();
     }
 
     public void beginDrain() {
@@ -1244,28 +1296,30 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         } catch (RuntimeException ex) {
             entered.completeExceptionally(ex);
         }
-        // The serial queue releases an automatic turn as soon as this method returns.
-        // Wait only until the configured handler executor has entered the handler and
-        // obtained its stage; the stage itself remains incomplete and does not hold the turn.
-        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
-            .deferCurrentReleaseUntil(entered)
-            .thenCompose(java.util.function.Function.identity());
+        // The session queue owns callback ordering. Keep its turn until the
+        // handler stage reaches its terminal result so callbacks from one
+        // STREAM session cannot overlap.
+        return entered.thenCompose(java.util.function.Function.identity());
     }
 
     private CompletionStage<Void> disconnectSessionStage(SessionState state) {
+        state.context().closeReplyRetries();
         return notifyBoundActorsDisconnectedBestEffort(state)
-            .thenCompose(ignored -> ZLinkHandlerStages.fromStageSupplier(state.session()::onDisconnected));
+            .thenCompose(ignored -> ZLinkHandlerStages.fromStageSupplier(state.session()::onDisconnected))
+            .whenComplete((ignored, failure) -> sessionContexts.remove(state.context()));
     }
 
     private CompletionStage<Void> transportErrorDisconnectSessionStage(
         SessionState state,
         int nativeCode,
         String message) {
+        state.context().closeReplyRetries();
         return ZLinkHandlerStages.fromStageSupplier(() -> state.session().onError(new ZLinkStreamError(
-                ZLinkStreamSessionError.TRANSPORT_ERROR,
-                message)))
+            ZLinkStreamSessionError.TRANSPORT_ERROR,
+            message)))
             .thenCompose(ignored -> notifyBoundActorsDisconnectedBestEffort(state))
-            .thenCompose(ignored -> ZLinkHandlerStages.fromStageSupplier(state.session()::onDisconnected));
+            .thenCompose(ignored -> ZLinkHandlerStages.fromStageSupplier(state.session()::onDisconnected))
+            .whenComplete((ignored, failure) -> sessionContexts.remove(state.context()));
     }
 
     private CompletionStage<Void> notifyBoundActorsDisconnectedBestEffort(SessionState state) {

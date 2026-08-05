@@ -14,6 +14,7 @@ import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec.SessionRelocationRoute;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec.SessionRelocationRouteAction;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec.SessionRelocationRouted;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec.SessionRelocationRouteIntent;
 
 final class ZLinkServiceM6BSessionRelocationWireCodecTest {
     private static final RoutingId SOURCE = RoutingId.from("source");
@@ -44,6 +45,31 @@ final class ZLinkServiceM6BSessionRelocationWireCodecTest {
     }
 
     @Test
+    void directJoinRouteIntentMaterializesWithTheCommittedOwnerGeneration() {
+        SessionRelocationRoute route = commit();
+        SessionRelocationRouteIntent intent = new SessionRelocationRouteIntent(
+            route.relocation(),
+            route.coordinator(),
+            route.senderRole(),
+            route.actor(),
+            route.session(),
+            route.action(),
+            route.previousAuthorityOwnerGeneration(),
+            route.targetNodeRid(),
+            route.targetNodeGeneration(),
+            route.lastAcceptedSessionSequence());
+
+        SessionRelocationRoute decoded = codec
+            .decodeSessionRelocationRouteIntent(
+                codec.encodeSessionRelocationRouteIntent(intent))
+            .materialize(17);
+
+        assertEquals(11, decoded.previousAuthorityOwnerGeneration());
+        assertEquals(17, decoded.currentAuthorityOwnerGeneration());
+        assertEquals(TARGET, decoded.targetNodeRid());
+    }
+
+    @Test
     void command44RejectsTrailingBytesAndNonMonotonicOwnerGeneration() {
         byte[] valid = codec.encodeSessionRelocationRoute(commit());
         assertThrows(ZLinkServiceWireException.class,
@@ -53,7 +79,7 @@ final class ZLinkServiceM6BSessionRelocationWireCodecTest {
             () -> new SessionRelocationRoute(
                 relocation(), coordinator(), RelocationRole.TARGET,
                 actor(), session(), SessionRelocationRouteAction.COMMIT,
-                11, 13, TARGET, 4, 29));
+                11, 11, TARGET, 4, 29));
     }
 
     private static SessionRelocationRoute commit() {

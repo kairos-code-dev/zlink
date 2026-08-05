@@ -106,7 +106,10 @@ final class ZLinkSpotRouterNodeDispatcher {
                         targetSpotId,
                         targetSpotGeneration,
                         requestParts,
-                        reply -> completeReply(reply, result, requestStartedNanos),
+                        reply -> completeReply(
+                            reply,
+                            result,
+                            requestStartedNanos),
                         SendFlags.NONE,
                         timeout);
                     ZLinkChannelRuntime.trace("spot-route node-submit router=" + routerChannelId
@@ -156,10 +159,11 @@ final class ZLinkSpotRouterNodeDispatcher {
                 + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
                 + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
             if (reply.result() != ZLinkBackendRequestResult.OK) {
-                ZLinkFrameworkErrorKind errorKind = reply.result()
-                    == ZLinkBackendRequestResult.NOT_FOUND
-                    ? ZLinkFrameworkErrorKind.NOT_FOUND
-                    : ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
+                ZLinkFrameworkErrorKind errorKind = switch (reply.result()) {
+                    case NOT_FOUND -> ZLinkFrameworkErrorKind.NOT_FOUND;
+                    case NOT_CONNECTED -> ZLinkFrameworkErrorKind.UNAVAILABLE;
+                    default -> ZLinkFrameworkErrorKind.INTERNAL_FAILURE;
+                };
                 result.completeExceptionally(new ZLinkFrameworkException(
                     errorKind,
                     "SPOT route request failed: " + reply.result()));
@@ -180,4 +184,5 @@ final class ZLinkSpotRouterNodeDispatcher {
             reply.close();
         }
     }
+
 }

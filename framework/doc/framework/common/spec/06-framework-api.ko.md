@@ -4,7 +4,7 @@ title: "ZLink Framework API"
 
 # ZLink Framework API
 
-[스펙 목차](README.ko.md) · [이전: 비동기 실행과 handler turn](05-async-execution-policy.md) · [다음: RouteMesh topology](07-channel-topology.ko.md)
+[스펙 목차](README.ko.md) · [이전: 비동기 실행과 handler turn](05-async-execution-policy.ko.md) · [다음: RouteMesh topology](07-channel-topology.ko.md)
 
 > **이 장이 정의하는 것** — 언어 중립 public API family와 등록 규칙.
 
@@ -294,7 +294,7 @@ Operation별 call object는 해당 기능에 유효한 설정만 제공한다.
 - STREAM 호출은 session identity와 packet correlation을 보존한다.
 
 Server package의 one-way send·publish·명시적 STREAM reply는
-[비동기 실행 정책](05-async-execution-policy.md)의 async-only admission 계약을 따른다. Public call은
+[비동기 실행 정책](05-async-execution-policy.ko.md)의 async-only admission 계약을 따른다. Public call은
 즉시 한 번만 시도하는 동기 terminator를 함께 제공하지 않는다. 별도 stream connector package의 send
 builder는 connector package 계약을 따른다. Request timeout은 reply 대기에만 적용하고 send timeout은
 transport admission 대기에 적용한다.

@@ -17,7 +17,10 @@ inline void tictactoe_game_spot_t::leave_game (const player_actor_t &actor,
     std::cout << "actor: LeaveGameMsg received. actor=" << actor.actor_id
               << ", roomId=" << request.room_id << std::endl;
     actor.mark_for_destroy_after_room_leave ();
-    (void) _context.leave_actor (actor_ref_for (actor), const_cast<player_actor_t &> (actor));
+    /* The actor context carries the runtime-owned ActorRef, including the
+     * private placement type required by the framework's leave operation. */
+    (void) _context.leave_actor (actor.context ().actor_ref (),
+                                 const_cast<player_actor_t &> (actor));
     std::cout << "actor: LeaveGameMsg completed. actor=" << actor.actor_id
               << ", roomId=" << request.room_id << std::endl;
 }

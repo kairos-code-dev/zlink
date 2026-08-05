@@ -440,21 +440,28 @@ framework 내부의 기본 직렬화 연결이 끊긴 지점을 고친다. 정�
 
 ---
 
-## POSD 설계 원칙
+## POSDDD 설계 원칙
 
-이 저장소의 코드 설계 판단 기준은 John Ousterhout의
-*A Philosophy of Software Design* (이하 **POSD**)에서 도출한 원칙을 따른다.
+이 저장소의 코드 설계 판단 기준은 John Ousterhout의 *A Philosophy of Software Design*
+(**POSD**)과 Eric Evans의 *Domain-Driven Design* (**DDD**)을 하나로 통합한 **POSDDD**
+원칙을 따른다. 두 책은 "경계를 어디에 긋고, 그 경계 뒤에 무엇을 숨길 것인가"라는 같은
+문제를 다른 고도에서 다루므로, DDD는 별도 부록이 아니라 해당하는 POSD 원칙 안에 엮여
+있다.
 
 원칙 전문은 아래 문서에 있다:
 
-**[`doc/principal/software-design-principles.md`](./doc/principal/software-design-principles.md)**
+- **[`doc/principal/dev/posddd.ko.md`](./doc/principal/dev/posddd.ko.md)** — 프로젝트에
+  무관하게 적용하는 범용 원칙(영문판: `posddd.md`).
+- **[`doc/principal/dev/zlink-system-design-principles.ko.md`](./doc/principal/dev/zlink-system-design-principles.ko.md)**
+  — ZLink 프로젝트 전체가 공통으로 따르는 고유 원칙(아키텍처 구조, 도메인 어휘, 코드·테스트
+  규칙). POSDDD와 충돌하지 않고 그 위에 선다(영문판: `zlink-system-design-principles.md`).
 
-에이전트는 코드 작성·수정·리뷰 시 이 문서를 판단 기준으로 사용한다.
+에이전트는 코드 작성·수정·리뷰 시 이 문서들을 판단 기준으로 사용한다.
 단순히 "동작하는 코드"를 만드는 것이 목표가 아니라, **복잡성을 줄이는 설계**가 목표임을 항상 염두에 둔다.
 
-### "POSD 기반으로 해줘" / "POSD 원칙 적용해줘"의 의미
+### "POSD 기반으로 해줘" / "POSDDD 원칙 적용해줘"의 의미
 
-사용자가 **POSD**, **POSD 기반**, **POSD 원칙**을 언급하면,
+사용자가 **POSD**, **POSDDD**, **POSD 기반**, **POSDDD 원칙**을 언급하면,
 아래 설계 기준을 코드에 명시적으로 적용하라는 요청이다.
 
 1. **깊은 모듈** — 인터페이스를 단순하게, 구현은 내부에서 흡수한다.
@@ -479,7 +486,12 @@ framework 내부의 기본 직렬화 연결이 끊긴 지점을 고친다. 정�
    - 특수·범용 코드 혼합
    - 코드를 반복하는 주석
 
-### POSD 리팩토링 수행 절차
+7. **경계는 도메인 의미로도 잡는다** — bounded context(같은 단어가 같은 모델을 가리키는
+   경계), ubiquitous language(같은 개념은 코드·문서·리뷰 전체에서 같은 이름), aggregate
+   (불변 조건을 함께 지키는 경계)로 이름과 경계를 점검한다. 전체 목록은 `posddd.ko.md`
+   1부를 참고한다.
+
+### POSDDD 리팩토링 수행 절차
 
 "POSD 기반 리팩토링"을 요청받으면 아래 순서로 진행한다:
 

@@ -13,7 +13,7 @@ public final class ScenarioStage {
     public Contracts.StateRes apply(Contracts.StageProbeReq request) {
         String value = spot.apply(request.marker() + "-" + request.delta());
         spot.record("StageRequest", request.marker() + "|" + request.delta());
-        return new Contracts.StateRes(spot.spotId(), spot.nodeRid(), value);
+        return new Contracts.StateRes(spot.spotRid(), spot.nodeRid(), value);
     }
 
     public Contracts.StageTimerStartRes startTimer(Contracts.StageTimerStartReq request) {
@@ -25,7 +25,7 @@ public final class ScenarioStage {
                     null)
                 .toCompletableFuture()
                 .get(5, TimeUnit.SECONDS);
-            return new Contracts.StageTimerStartRes(spot.spotId(), request.name(), true);
+            return new Contracts.StageTimerStartRes(spot.spotRid(), request.name(), true);
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("stage timer start interrupted", error);

@@ -322,6 +322,12 @@ export class RawServiceMeshRuntime {
     this.advanceEndpointUpgrades(Date.now());
     let accepted = 0;
     for (const nodeRoutingId of this.expectedPeers.keys()) {
+      // Admission is a one-time fence for the current physical connection.
+      // Re-sending Hello after the peer is admitted would re-run admission on
+      // every poll and reset the liveness record before application traffic
+      // can use the route. A disconnected peer is removed by monitor handling
+      // and remains eligible for the next admission attempt.
+      if (this.topology.peer(nodeRoutingId) !== undefined) continue;
       if (this.announcePeer(nodeRoutingId)) accepted++;
     }
     return accepted;
@@ -657,13 +663,11 @@ export class RawServiceMeshRuntime {
             peer.connectionId,
             record.probeId
           );
-          if (
-            ack === undefined
-            || !this.trySend(received.sourceRid, [livenessCodec.encodeLivenessRecord({
+          const sent = ack !== undefined && this.trySend(received.sourceRid, [livenessCodec.encodeLivenessRecord({
               command: M6aServiceWireCommand.livenessAck,
               probeId: record.probeId
-            })])
-          ) {
+            })]);
+          if (!sent) {
             return 'protocolError';
           }
         } else {
@@ -879,6 +883,9 @@ export class RawServiceMeshRuntime {
           if (parts.length < 1 || parts.length > 2) throw new ServiceWireProtocolError('Invalid reply parts.');
           const reply = decodeReplyHeader(parts[0]!);
           if (reply.correlation !== correlation) throw new ServiceWireProtocolError('Reply correlation mismatch.');
+          if (reply.tail.byteLength !== 0) {
+            throw new ServiceWireProtocolError('Generic node/channel reply carries an operation-specific tail.');
+          }
           if (reply.terminalResult === 0 && parts.length !== 2) {
             throw new ServiceWireProtocolError('Successful reply omits its payload.');
           }

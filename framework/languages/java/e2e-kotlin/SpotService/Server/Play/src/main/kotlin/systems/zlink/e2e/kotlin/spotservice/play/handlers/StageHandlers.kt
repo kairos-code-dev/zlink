@@ -10,7 +10,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick
 
 class StageProbeHandler {
     @ZLinkSpotRequest
-    fun handle(
+    suspend fun handle(
         spot: UserSpot,
         request: Contracts.StageProbeReq,
     ): Contracts.StateRes =

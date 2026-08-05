@@ -321,6 +321,8 @@ cat >"$CONSUMER_DIR/Consumer.csproj" <<EOF
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The verifier pins each package to its isolated contract version below. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
@@ -343,6 +345,8 @@ cat >"$HTTP_CONSUMER_DIR/HttpConsumer.csproj" <<EOF
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Keep the standalone package probe independent of the repository's central pins. -->
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Zlink.HttpClient" Version="$VERSION" />

@@ -184,6 +184,18 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     "SpotHandle route is stale or unavailable"))));
     }
 
+    private void invalidate(String spotId) {
+        SpotTransportAddressResolver resolver;
+        try {
+            resolver = spotAddressResolver == null ? null : spotAddressResolver.get();
+        } catch (RuntimeException ignored) {
+            resolver = null;
+        }
+        if (resolver != null) {
+            resolver.invalidate(spotId);
+        }
+    }
+
     private final class DeferredSpotSendCall
         implements systems.zlink.framework.spots.ZLinkSpotSendCall {
         private final java.util.concurrent.atomic.AtomicBoolean submitGate =
@@ -346,6 +358,9 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     return CompletableFuture.<Void>completedFuture(null);
                 }
                 RuntimeException error = unwrap(failure);
+                if (isStaleRoute(error)) {
+                    invalidate(target);
+                }
                 return shouldReactivate(address).thenCompose(reactivate -> {
                     if (reactivate) {
                         return instanceSpots.send(
@@ -509,6 +524,9 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
                     return CompletableFuture.completedFuture(reply);
                 }
                 RuntimeException error = unwrap(failure);
+                if (isStaleRoute(error)) {
+                    invalidate(target);
+                }
                 return shouldReactivate(address, error).thenCompose(reactivate ->
                     reactivate
                         ? activateRequest(replyType)

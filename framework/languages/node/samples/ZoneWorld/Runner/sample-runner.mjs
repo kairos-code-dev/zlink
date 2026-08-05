@@ -13,12 +13,14 @@ export async function runSample(ctx) {
     logDirectory: ctx.logDir
   };
   const botStartSignalPath = path.join(ctx.logDir, 'bots.start');
+  const faultTickSignalPath = path.join(ctx.logDir, 'timer-failure.start');
   const east = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east', {
     botStartSignalPath
   });
   const west = await zoneNodeConfig(ctx, shared, 'zone-node-1', 'west', {
     botStartSignalPath,
     faultTickZone: 'zone-nw',
+    faultTickSignalPath,
     placementWeightAfterZoneCreation: 0
   });
   const ops = {
@@ -55,6 +57,11 @@ export async function runSample(ctx) {
   await ctx.waitLog('zone-node-2', 'zone spot create zone=zone-se state=created');
   await ctx.waitLog('zone-node-1', 'bot-start=ready');
   await ctx.waitLog('zone-node-2', 'bot-start=ready');
+  // Arm the injected timer failure only after the report RouteMesh is ready.
+  // The sample must exercise timer monitoring, not the expected Unavailable
+  // result for a send submitted before its selected route is connected.
+  await ctx.waitLog('zone-node-1', 'mesh status node=zone-node-1 state=1');
+  fs.writeFileSync(faultTickSignalPath, 'start\n', { mode: 0o600 });
   console.log('ZW-G1 generated-routing-id=ready node=zone-node-2');
 
   await timerFailure.waitFor('scenario ZW-C4 passed');

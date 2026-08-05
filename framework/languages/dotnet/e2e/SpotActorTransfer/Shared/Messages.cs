@@ -230,6 +230,11 @@ public sealed record RelocationWorkloadReply(
     bool WithinDeadline,
     long HandledUnixTimeMilliseconds);
 
+public sealed record RelocationWorkloadProbeRes(
+    bool Succeeded,
+    RelocationWorkloadReply? Reply,
+    string? ErrorKind);
+
 public sealed record RelocationWorkloadPacket(
     string Scenario,
     long Sequence,

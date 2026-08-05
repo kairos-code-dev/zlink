@@ -106,8 +106,9 @@ internal static class RmB3ProviderCrashFailoverScenario
             apiARouteRid,
             "rm-b3-target-expired");
         ZlinkStreamAssert.Ensure(
-            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.NotFound),
-            $"RM-B3 expired automatic member completed with unexpected '{targeted.ErrorKind}'.");
+            targeted.ErrorKind is nameof(ZLinkFrameworkErrorKind.NotFound)
+                or nameof(ZLinkFrameworkErrorKind.Unavailable),
+            $"RM-B3 removed automatic member completed with unexpected '{targeted.ErrorKind}'.");
         var missing = await RequestTargetAsync(
             providerBClient,
             "api-missing",

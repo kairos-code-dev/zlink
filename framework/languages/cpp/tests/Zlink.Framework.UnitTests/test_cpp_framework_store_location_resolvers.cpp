@@ -1727,7 +1727,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorAddress)
       zlink::framework::authority_snapshot_t{
         .store_version = "1",
         .payload = zlink::framework::runtime::encode_actor_authority_payload (
-          zlink::framework::actor_ref_t (
+          zlink::framework::detail::actor_ref_access_t::make (
             zlink::framework::node_rid_t::from_string ("node-a"),
             "player", "actor-b", 1),
           "spot-b", 1),
@@ -1806,7 +1806,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsMalformedActorAuthorityPayloa
     store.set_authority ("zla1:a:14:actor-observed", authority);
     EXPECT_FALSE (resolvers.resolve_actor_address ("actor-observed").result ().value ());
     authority.payload = zlink::framework::runtime::encode_actor_authority_payload (
-      zlink::framework::actor_ref_t (
+      zlink::framework::detail::actor_ref_access_t::make (
         zlink::framework::node_rid_t::from_string ("node"),
         "player", "actor-observed", 3),
       "spot-observed", 2);

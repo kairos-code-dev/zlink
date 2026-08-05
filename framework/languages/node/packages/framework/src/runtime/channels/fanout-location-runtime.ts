@@ -230,6 +230,9 @@ export class ZLinkFanoutLocationRuntime {
           continue;
         }
         current.descriptor = descriptor;
+        if (current.state === 'ready') {
+          this.sockets.admitFanoutPublisher(descriptor, connectionId);
+        }
       }
       for (const [connectionId, current] of [...this.connections]) {
         if (current.descriptor.channelName === channelName
@@ -254,6 +257,7 @@ export class ZLinkFanoutLocationRuntime {
           const current = this.connections.get(connectionId);
           if (target !== undefined && current === target) {
             current.state = 'ready';
+            this.sockets.admitFanoutPublisher(descriptor, connectionId);
           }
         },
         onTerminated: () => {
@@ -261,6 +265,7 @@ export class ZLinkFanoutLocationRuntime {
           if (target !== undefined
             && current === target
             && current.reconnectEligible) {
+            this.sockets.removeFanoutPublisher(descriptor, connectionId);
             current.state = 'connecting';
             setImmediate(() => {
               void this.replaceConnection(current)
@@ -292,6 +297,7 @@ export class ZLinkFanoutLocationRuntime {
     if (current === undefined) return;
     current.reconnectEligible = false;
     this.connections.delete(connectionId);
+    this.sockets.removeFanoutPublisher(current.descriptor, connectionId);
     await current.stopReceiver();
     await this.sockets.closeFanoutSubscriberConnection(connectionId);
   }

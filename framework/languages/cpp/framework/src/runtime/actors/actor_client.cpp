@@ -44,7 +44,7 @@ class actor_create_call_state_t
   public:
     std::shared_ptr<actor_manager_state_t> manager;
     bool exclusive = false;
-    actor_id_t actor_id;
+    std::optional<actor_id_t> actor_id;
     std::string stable_type;
     std::optional<std::string> mesh_name;
     std::optional<message_t> request;
@@ -131,7 +131,7 @@ task_t<actor_create_result_t> actor_create_call_t::submit ()
           _state->manager.get ())),
       sequence};
     return _state->manager->create_actor (
-      _state->exclusive, _state->actor_id, _state->stable_type,
+      _state->exclusive, *_state->actor_id, _state->stable_type,
       _state->mesh_name, _state->request,
       _state->timeout, operation);
 }
@@ -554,7 +554,7 @@ class actor_client_impl_t final : public actor_client_t
           : std::nullopt;
         if (!snapshot || snapshot->allocation.state != placement_allocation_state_t::active
             || snapshot->allocation.object_kind != placement_object_kind_t::actor
-            || !projection || projection->actor.actor_id () != actor_id) {
+            || !projection || projection->actor.actor_id ().value () != actor_id) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::not_found
@@ -721,7 +721,7 @@ class actor_client_impl_t final : public actor_client_t
                   reply,
                   std::string ("actor request completion failed for node/generation '")
                     + std::string (actor.native_ref.node_rid ().value ()) + "/"
-                    + std::to_string (actor.native_ref.generation ()) + "'");
+                    + std::to_string (actor.native_ref.object_generation ()) + "'");
             }
             runtime::messaging::envelope_codec_t reply_codec;
             auto reply_header = reply_codec.decode_header (reply.value ());
@@ -763,7 +763,8 @@ class actor_client_impl_t final : public actor_client_t
             return;
         }
         std::lock_guard lock (_route_cache_gate);
-        _route_cache.erase (std::string (actor.framework_ref.actor_id ()));
+        _route_cache.erase (
+          std::string (actor.framework_ref.actor_id ().value ()));
     }
 
     void invalidate_cached_route_on_message_follow (
@@ -782,7 +783,7 @@ class actor_client_impl_t final : public actor_client_t
         if (found == _route_cache.end ())
             return;
         const auto &cached = found->second.actor;
-        if (cached.framework_ref.generation () != source->object_generation
+        if (cached.framework_ref.object_generation () != source->object_generation
             || cached.authority_owner_generation
                  != source->authority_owner_generation
             || cached.owner_lease_generation

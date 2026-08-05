@@ -433,6 +433,10 @@ public final class ZLinkStoreLocationResolvers
             return routes.resolveSpot(spotId);
         }
 
+        public void invalidateSpotRoute(String spotId) {
+            routes.invalidateSpotRoute(spotId);
+        }
+
         public String routerChannelId(String meshName) {
             return meshName;
         }

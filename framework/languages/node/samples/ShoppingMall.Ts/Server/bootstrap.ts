@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import http from 'node:http';
 import { URL } from 'node:url';
 import { NestFactory } from '@nestjs/core';
-import type { ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
-import { ZLINK_LOCATION_RUNTIME_QUERY } from '@zlink-systems/nestjs';
+import type { ZLinkLocationRuntimeQuery, ZLinkRouteMeshRuntime } from '@zlink-systems/framework';
+import { ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_ROUTE_MESH_RUNTIME } from '@zlink-systems/nestjs';
 import { SHOPPINGMALL_SAMPLE_CONFIG } from './Configuration/sample-config';
 import { createCommerceApiServer } from './CommerceApi/commerce-api-server';
 import { createShoppingMallCommerceApiModule } from './CommerceApi/commerce-api-module';
@@ -27,17 +27,20 @@ async function bootstrapShoppingMall(role: ShoppingMallRole): Promise<void> {
   });
   const config = app.get<ShoppingMallServerConfig>(SHOPPINGMALL_SAMPLE_CONFIG);
   const endpoint = endpointForRole(role, config);
+  const routeMeshRuntime = app.get<ZLinkRouteMeshRuntime>(ZLINK_ROUTE_MESH_RUNTIME, { strict: false });
   const listenUrl = new URL(endpoint);
   const server = workflow
     ? createHealthServer(role, endpoint, {
-        locations: app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false })
+        locations: app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }),
+        routeMeshRuntime
       })
     : createCommerceApiServer(
       endpoint,
       role,
       app.get(OrderStore, { strict: false }),
       app.get(StartOrderUseCase, { strict: false }),
-      app.get(OrderWorkflowRouterPort, { strict: false })
+      app.get(OrderWorkflowRouterPort, { strict: false }),
+      routeMeshRuntime
     );
 
   await new Promise<void>((resolve, reject) => {
@@ -55,15 +58,25 @@ async function bootstrapShoppingMall(role: ShoppingMallRole): Promise<void> {
 
 function createHealthServer(roleName: string, baseEndpoint: string, dependencies: {
   locations: ZLinkLocationRuntimeQuery;
+  routeMeshRuntime: ZLinkRouteMeshRuntime;
 }): http.Server {
   return http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', baseEndpoint);
     if (request.method === 'GET' && url.pathname === '/health') {
       try {
         const status = await dependencies.locations.getStatus();
-        const ready = status.storeHealthy;
+        const mesh = dependencies.routeMeshRuntime.snapshot(SampleNames.orderWorkflowSpotMesh);
+        const ready = status.storeHealthy && mesh.isReady && mesh.placement.isAvailable;
         response.writeHead(ready ? 200 : 503, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ ok: ready, role: roleName }));
+        response.end(JSON.stringify({
+          ok: ready,
+          role: roleName,
+          routeMesh: {
+            isReady: mesh.isReady,
+            placementAvailable: mesh.placement.isAvailable,
+            readyPeerCount: mesh.readyPeerCount
+          }
+        }));
       } catch (error) {
         console.error(`shoppingmall ${roleName} health probe failed: ${error instanceof Error ? error.message : String(error)}`);
         response.writeHead(503, { 'content-type': 'application/json' });

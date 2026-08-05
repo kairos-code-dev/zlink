@@ -106,7 +106,7 @@ final class ConnectorCodecContractTest {
                 3,
                 1,
                 request.requestSeq(),
-                "String",
+                "",
                 "\"reply\"".getBytes(StandardCharsets.UTF_8)));
 
             ZLinkStreamEncodedPayload reply = replyFuture.join();

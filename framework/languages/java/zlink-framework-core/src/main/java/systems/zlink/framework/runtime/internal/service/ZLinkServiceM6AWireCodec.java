@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.protocol.ServiceWireConstants;
 
 /** Closed M6A codec for admission, Node/Channel messaging and reply records. */
@@ -263,16 +264,93 @@ public final class ZLinkServiceM6AWireCodec {
 
     public byte[] encodeApplicationPayload(ApplicationPayload payload) {
         Objects.requireNonNull(payload, "payload");
+        byte[] payloadBytes = payload.payloadForCodec();
         Writer body = new Writer();
         body.text8(payload.packetName(), "packetName");
         body.text8(payload.contentType(), "contentType");
-        body.u32(payload.payload().length);
-        body.raw(payload.payload());
+        body.u32(payloadBytes.length);
+        body.raw(payloadBytes);
         Writer result = new Writer();
         result.u8(1);
         result.u32(body.size());
         result.raw(body.toByteArray());
         return result.toByteArray();
+    }
+
+    /**
+     * Encodes the opaque framework message parts used by cross-node
+     * application delivery. The outer packet and content type are fixed by
+     * the generated service-wire profile; application packet metadata stays
+     * in the message parts themselves.
+     */
+    public static ApplicationPayload encodeFrameworkMultipart(
+        List<Message> parts) {
+        Objects.requireNonNull(parts, "parts");
+        if (parts.isEmpty()) {
+            throw protocol("framework multipart requires at least one part");
+        }
+        long encodedSize = Integer.BYTES;
+        for (Message part : parts) {
+            int partSize = Objects.requireNonNull(part, "part").size();
+            try {
+                encodedSize = Math.addExact(
+                    encodedSize,
+                    Math.addExact(Integer.BYTES, partSize));
+            } catch (ArithmeticException overflow) {
+                throw protocol("framework multipart payload is too large");
+            }
+        }
+        if (encodedSize > Integer.MAX_VALUE) {
+            throw protocol("framework multipart payload is too large");
+        }
+
+        Writer multipart = new Writer((int) encodedSize);
+        multipart.u32(parts.size());
+        for (Message part : parts) {
+            byte[] bytes = Objects.requireNonNull(part, "part").toByteArray();
+            multipart.u32(bytes.length);
+            multipart.raw(bytes);
+        }
+        return new ApplicationPayload(
+            ServiceWireConstants.FRAMEWORK_MULTIPART_PACKET_NAME,
+            ServiceWireConstants.FRAMEWORK_MULTIPART_CONTENT_TYPE,
+            multipart.toByteArray());
+    }
+
+    /**
+     * Decodes the generated framework multipart profile. The part-count
+     * bound is checked against the remaining byte length before allocating
+     * the result list, and malformed inputs close parts already created.
+     */
+    public static List<Message> decodeFrameworkMultipart(
+        ApplicationPayload payload) {
+        Objects.requireNonNull(payload, "payload");
+        if (!ServiceWireConstants.FRAMEWORK_MULTIPART_PACKET_NAME.equals(
+                payload.packetName())
+            || !ServiceWireConstants.FRAMEWORK_MULTIPART_CONTENT_TYPE.equals(
+                payload.contentType())) {
+            throw protocol("framework application payload profile is unsupported");
+        }
+
+        Reader reader = new Reader(payload.payloadForCodec());
+        long count = reader.u32("frameworkMultipartPartCount");
+        if (count == 0
+            || count > reader.remaining() / (long) Integer.BYTES) {
+            throw protocol("framework multipart part count is invalid");
+        }
+        List<Message> parts = new ArrayList<>((int) count);
+        try {
+            for (long index = 0; index < count; index++) {
+                int size = reader.intU32("frameworkMultipartPartLength");
+                parts.add(Message.from(
+                    reader.bytes(size, "frameworkMultipartPart")));
+            }
+            reader.end();
+            return List.copyOf(parts);
+        } catch (RuntimeException failure) {
+            parts.forEach(Message::close);
+            throw failure;
+        }
     }
 
     public ApplicationPayload decodeApplicationPayload(byte[] frame) {
@@ -439,10 +517,22 @@ public final class ZLinkServiceM6AWireCodec {
         public byte[] payload() {
             return payload.clone();
         }
+
+        private byte[] payloadForCodec() {
+            return payload;
+        }
     }
 
     private static final class Writer {
-        private final ByteArrayOutputStream output = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream output;
+
+        Writer() {
+            this(32);
+        }
+
+        Writer(int initialCapacity) {
+            output = new ByteArrayOutputStream(initialCapacity);
+        }
 
         static byte[] bytes(Consumer consumer) {
             Writer writer = new Writer();

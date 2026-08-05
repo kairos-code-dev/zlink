@@ -257,7 +257,7 @@ handler가 원격 응답을 기다리는 동안 실행 권한을 계속 쥐면, 
 시간만큼 막힌다. 그래서 반납하고 기다리는 방법이 있다.
 
 **반납한 뒤 재개할 때는 새 작업으로 재개한다.** 하나의 작업이 대기 구간을 가로질러
-유지되지 않는다([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.md#11-submit-async와-yield)).
+유지되지 않는다([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.ko.md#11-submit-async와-yield)).
 
 ```mermaid
 sequenceDiagram
@@ -295,7 +295,7 @@ sequenceDiagram
 
 반납은 `SpotWide` User Spot과 Instance Spot에서만 쓸 수 있다. 그 밖의 자리에서 호출하면
 **원격 요청을 보내기 전에, queue를 바꾸기 전에** 실패로 끝낸다
-([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.md#11-submit-async와-yield)). 요청이 나간 뒤에
+([비동기 실행 정책 「1.1 Submit, Async와 Yield」](../spec/05-async-execution-policy.ko.md#11-submit-async와-yield)). 요청이 나간 뒤에
 실패하면 원격에 부작용만 남기고 caller는 실패를 받는다.
 
 ## 7. 확인할 결과

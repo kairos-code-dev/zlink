@@ -92,15 +92,17 @@ test('deadline uses the closed snake_case force reason and terminal event exactl
     }
   });
   runtime.markServing();
-  const events = [];
-  const observed = (async () => {
-    for await (const event of runtime.observe('game', 4)) events.push(event.status);
-  })();
+  const observed = runtime.observe('game', 4)[Symbol.asyncIterator]();
   assert.deepEqual(await runtime.drain('game', 10), {
     kind: 'forceStopped',
     reason: 'deadline_exceeded'
   });
-  await observed;
+  const first = await observed.next();
+  const second = await observed.next();
+  assert.equal(first.done, false);
+  assert.equal(second.done, false);
+  await observed.return();
+  const events = [first.value.status, second.value.status];
   assert.deepEqual(events.map((event) => event.state), [
     framework.ZLinkTopologyState.Stopping,
     framework.ZLinkTopologyState.Failed

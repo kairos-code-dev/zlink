@@ -44,11 +44,11 @@ public final class SmD15Scenario extends SpotServiceScenarioContext {
             Contracts.ActorPushNotify notify = pushed.toCompletableFuture().join().payload();
 
             ensure(actorId.equals(reply.actorId()), "SM-D15 actor client reply actor mismatch");
-            ensure("entry".equals(reply.spotId()), "SM-D15 actor client reply spot mismatch");
+            ensure("entry".equals(reply.spotRid()), "SM-D15 actor client reply spot mismatch");
             ensure("play-a".equals(reply.nodeRid()), "SM-D15 actor client reply node mismatch");
             ensure(marker.equals(reply.value()), "SM-D15 actor client reply marker mismatch");
             ensure(actorId.equals(notify.actorId()), "SM-D15 push actor mismatch");
-            ensure("entry".equals(notify.spotId()), "SM-D15 push spot mismatch");
+            ensure("entry".equals(notify.spotRid()), "SM-D15 push spot mismatch");
             ensure(marker.equals(notify.value()), "SM-D15 push marker mismatch");
 
             waitForPlayAEvidence(List.of(

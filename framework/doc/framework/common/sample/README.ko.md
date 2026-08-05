@@ -243,7 +243,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 
 ## Spot 실행 turn과 terminator 샘플 기준
 
-**모든 샘플은 세 terminator를 같은 기준으로 고른다**([04 §1.1](../spec/05-async-execution-policy.md)).
+**모든 샘플은 세 terminator를 같은 기준으로 고른다**([04 §1.1](../spec/05-async-execution-policy.ko.md)).
 
 | terminator | 실행 줄 | 언제 |
 |---|---|---|
@@ -267,7 +267,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | Entry Spot이 전달받은 새 Actor의 application 상태를 초기화한다 | `async` |
 | TicTacToe | game join이 게임 상태 흐름으로 바로 이어진다 | `async` |
 
-**worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/05-async-execution-policy.md),
+**worker와 HTTP client도 같은 축이다**([04 §1.2](../spec/05-async-execution-policy.ko.md),
 [12 §3](../spec/http-client/12-http-client.ko.md)). 외부 HTTP·레거시 API는 HTTP client의 terminator를 직접 쓰고,
 DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기는 `RunIoWorker(...)`로 감싼다. CPU
 작업은 `RunCpuWorker(...)`로 넘긴다.

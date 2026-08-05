@@ -38,11 +38,13 @@ CHANNEL_PORT="$(pick_port)"
 JSON_ONLY_HTTP_PORT="$(pick_port)"
 JSON_ONLY_CHANNEL_PORT="$(pick_port)"
 CODEC_REQUESTER_HTTP_PORT="$(pick_port)"
+SCENARIO_REQUESTER_HTTP_PORT="$(pick_port)"
 SERVER_URL="http://127.0.0.1:$SERVER_HTTP_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
 JSON_ONLY_URL="http://127.0.0.1:$JSON_ONLY_HTTP_PORT"
 JSON_ONLY_CHANNEL_ENDPOINT="tcp://127.0.0.1:$JSON_ONLY_CHANNEL_PORT"
 CODEC_REQUESTER_URL="http://127.0.0.1:$CODEC_REQUESTER_HTTP_PORT"
+SCENARIO_REQUESTER_URL="http://127.0.0.1:$SCENARIO_REQUESTER_HTTP_PORT"
 
 pids=()
 cleanup() {
@@ -195,12 +197,21 @@ start_server codec-mismatch-requester "$CODEC_REQUESTER_PROJECT" \
   --log-dir "$LOG_DIR"
 wait_health "$CODEC_REQUESTER_URL" codec-mismatch-requester
 
+start_server scenario-requester "$CODEC_REQUESTER_PROJECT" \
+  --rid codec-scenario-requester \
+  --http-url "$SCENARIO_REQUESTER_URL" \
+  --channel-endpoint "$CHANNEL_ENDPOINT" \
+  --log-dir "$LOG_DIR"
+wait_health "$SCENARIO_REQUESTER_URL" scenario-requester
+
 wait_route_ready "$CODEC_REQUESTER_URL" codec-mismatch-requester
+wait_route_ready "$SCENARIO_REQUESTER_URL" scenario-requester
 
 python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
     --config-dir "$CONFIG_DIR" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --server-url "$SERVER_URL" \
+  --scenario-requester-url "$SCENARIO_REQUESTER_URL" \
   --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-server-project "$INVALID_SERVER_PROJECT" \
   --scenario "$SCENARIO" \

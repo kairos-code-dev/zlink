@@ -158,7 +158,7 @@ ledger에 남긴 뒤에만 반영한다. 기존 working tree의 변경은 조사
 ## 1.1 POSD·DDD 독립 review 운영
 
 이 ledger의 review는 기능이 동작하는지만 확인하는 절차가 아니다. DDD로 상태와 책임의 의미를 먼저
-정리한 뒤, [`software-design-principles.md`](../../../../doc/principal/software-design-principles.md)의
+정리한 뒤, [`posddd.md`](../../../../doc/principal/dev/posddd.md)의
 POSD 기준으로 그 구조가 호출자에게 전달하는 복잡성과 변경 증폭을 줄이는지 확인한다. 구현자 자신의
 설명이나 좁은 test pass를 독립 review로 대체하지 않는다.
 

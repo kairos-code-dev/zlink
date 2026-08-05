@@ -33,7 +33,7 @@ struct player_actor_factory_t final
             std::stop_token) override
     {
         auto actor = std::make_shared<player_actor_t> (
-          create (std::string (context.actor_ref ().actor_id ()), {}));
+          create (std::string (context.actor_ref ().actor_id ().value ()), {}));
         actor->set_actor_context (std::move (context));
         co_return actor;
     }

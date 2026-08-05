@@ -1,6 +1,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const framework = require('../../packages/framework/dist');
 const internal = require('../../packages/framework/dist/internal');
+const { ZLinkConfigurationException } = require(
+  '../../packages/framework/dist/contracts/Configuration/ConfigurationException'
+);
 const {
   ZLinkChannelSocketRegistry
 } = require(
@@ -102,6 +106,27 @@ test('fanout publishers use dedicated SUB sockets and isolate readiness, protoco
   ), true);
   assert.equal(sockets.isFanoutConnectionReady('publisher-b:7'), true);
 
+  let topologyNotifications = 0;
+  const topologySource = sockets.fanoutTopologyMonitoringSource('events');
+  topologySource.onChange(() => { topologyNotifications += 1; });
+  const publisherDescriptor = {
+    channelName: 'events',
+    publisherRid: 'publisher-b',
+    lifecycleGeneration: 7n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://10.0.0.2:9501',
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'default',
+    ownerId: 'owner-b',
+    leaseGeneration: 1n,
+    updatedAt: new Date()
+  };
+  sockets.admitFanoutPublisher(publisherDescriptor, 'publisher-b:7');
+  assert.equal(topologyNotifications, 1);
+  sockets.removeFanoutPublisher(publisherDescriptor, 'publisher-b:7');
+  assert.equal(topologyNotifications, 2);
+  await topologySource.dispose();
+
   sockets.handleFanoutInbound(
     'publisher-a:7',
     {
@@ -123,7 +148,7 @@ test('fanout publishers use dedicated SUB sockets and isolate readiness, protoco
 test('fanout publisher sends the exact reserved beacon every five seconds and public use is rejected', async () => {
   const registration = internal.createFrameworkRegistration({
     channels: {
-      events: { publisher: { bind: 'tcp://127.0.0.1:9501' } }
+      events: { routingId: 'publisher', publisher: { bind: 'tcp://127.0.0.1:9501' } }
     },
     locations: { useInMemoryStores: true }
   });
@@ -160,7 +185,8 @@ test('fanout publisher sends the exact reserved beacon every five seconds and pu
     () => fanoutWire.requirePublicFanoutTopic(
       fanoutWire.FANOUT_LIVENESS_TOPIC
     ),
-    /reserved/
+    (error) => error instanceof ZLinkConfigurationException
+      && /reserved/.test(error.message)
   );
   assert.doesNotThrow(
     () => fanoutWire.requirePublicFanoutTopic(
@@ -184,7 +210,7 @@ test('fanout publisher descriptor combines advertise host with the actual bound 
       advertiseHost: 'events.internal'
     },
     channels: {
-      events: { publisher: {} }
+      events: { routingId: 'publisher', publisher: {} }
     },
     locations: { useInMemoryStores: true }
   });
@@ -286,6 +312,7 @@ test('automatic fanout reconciles dedicated descriptors by publisher RID and lif
     parts: [{ data: () => fanoutWire.FANOUT_LIVENESS_PAYLOAD }]
   }, subscribers[0]);
   assert.equal(runtime.activeTargets('events').length, 1);
+  assert.equal(sockets.fanoutActiveTargets('events').length, 1);
 
   sockets.handleFanoutInbound(connectionId, {
     topic: fanoutWire.FANOUT_LIVENESS_TOPIC,
@@ -294,21 +321,25 @@ test('automatic fanout reconciles dedicated descriptors by publisher RID and lif
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(subscribers.length, 2);
   assert.equal(runtime.activeTargets('events').length, 0);
+  assert.equal(sockets.fanoutActiveTargets('events').length, 0);
   sockets.handleFanoutInbound(connectionId, {
     topic: fanoutWire.FANOUT_LIVENESS_TOPIC,
     parts: [{ data: () => fanoutWire.FANOUT_LIVENESS_PAYLOAD }]
   }, subscribers[0]);
   assert.equal(runtime.activeTargets('events').length, 0);
+  assert.equal(sockets.fanoutActiveTargets('events').length, 0);
   const deadlineBase = performance.now();
   sockets.handleFanoutInbound(connectionId, {
     topic: fanoutWire.FANOUT_LIVENESS_TOPIC,
     parts: [{ data: () => fanoutWire.FANOUT_LIVENESS_PAYLOAD }]
   }, subscribers[1], deadlineBase);
   assert.equal(runtime.activeTargets('events').length, 1);
+  assert.equal(sockets.fanoutActiveTargets('events').length, 1);
   sockets.tickClientServerLiveness(deadlineBase + 15_001);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(subscribers.length, 3);
   assert.equal(runtime.activeTargets('events').length, 0);
+  assert.equal(sockets.fanoutActiveTargets('events').length, 0);
 
   await store.updateFanoutPublisher({
     ...descriptor,
@@ -348,6 +379,7 @@ test('automatic fanout ignores stale termination callbacks and never reopens a r
   });
   const attempts = [];
   const closed = [];
+  const admitted = new Set();
   const sockets = {
     openFanoutSubscriberConnection(channelName, connectionId, endpoint, callbacks) {
       const subscriber = fakeSubscriber(`attempt-${attempts.length}`);
@@ -359,6 +391,14 @@ test('automatic fanout ignores stale termination callbacks and never reopens a r
         subscriber
       });
       return subscriber;
+    },
+    admitFanoutPublisher(_descriptor, connectionId) {
+      admitted.add(connectionId);
+      return true;
+    },
+    removeFanoutPublisher(_descriptor, connectionId) {
+      admitted.delete(connectionId);
+      return true;
     },
     async closeFanoutSubscriberConnection(connectionId) {
       closed.push(connectionId);
@@ -378,11 +418,13 @@ test('automatic fanout ignores stale termination callbacks and never reopens a r
   });
   await runtime.start();
   assert.equal(attempts.length, 1);
+  assert.equal(admitted.size, 0);
 
   attempts[0].callbacks.onTerminated('deadline');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(attempts.length, 2);
   assert.equal(closed.length, 1);
+  assert.equal(admitted.size, 0);
 
   // A delayed callback from the replaced physical socket cannot close its successor.
   attempts[0].callbacks.onTerminated('deadline');
@@ -396,6 +438,7 @@ test('automatic fanout ignores stale termination callbacks and never reopens a r
   }, remote.token);
   await runtime.tick();
   assert.equal(closed.length, 2);
+  assert.equal(admitted.size, 0);
 
   // Once reconciliation removes the desired target, its last callback cannot reopen it.
   attempts[1].callbacks.onTerminated('deadline');

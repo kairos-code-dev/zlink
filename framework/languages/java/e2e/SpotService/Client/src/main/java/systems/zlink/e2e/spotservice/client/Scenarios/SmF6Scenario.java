@@ -27,7 +27,7 @@ public final class SmF6Scenario extends SpotServiceScenarioContext {
             "/spot/create-user-local",
             new Contracts.CreateSpotReq(targetSpot),
             Contracts.CreateSpotRes.class);
-        ensure(targetSpot.equals(target.spotId()), "SM-F6 target spot create mismatch");
+        ensure(targetSpot.equals(target.spotRid()), "SM-F6 target spot create mismatch");
         ensure("multi-node-b".equals(target.nodeRid()), "SM-F6 target node mismatch");
 
         Contracts.SpotOnlyMeshRes mesh = postJson(

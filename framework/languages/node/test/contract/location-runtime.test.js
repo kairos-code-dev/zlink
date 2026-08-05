@@ -810,6 +810,65 @@ test('location lifecycle durably closes an exact Ready Instance before deleting 
   assert.equal(current.kind, 'missing');
 });
 
+test('location lifecycle ignores an old Instance generation release after authority replacement', async () => {
+  const locationStore = new internal.ZLinkInMemoryLocationStore();
+  const runtime = runtimeFor(locationStore, { ownerId: 'owner-a' });
+  let deletes = 0;
+  const authorityStore = {
+    async readAuthority() {
+      return {
+        kind: 'snapshot',
+        storeVersion: { value: 'authority-v2' },
+        payload: Buffer.alloc(0),
+        objectGeneration: 8n,
+        authorityOwnerGeneration: 12n,
+        ownerId: 'owner-b',
+        ownerLeaseGeneration: 6n,
+        allocation: {
+          state: 'active',
+          objectKind: 'instance_spot',
+          stableType: 'Room',
+          descriptor: { meshName: 'play', rid: rid('node-b') },
+          descriptorLifecycleGeneration: 4n,
+          capacity: { actors: 0, spots: 1 }
+        },
+        storeNow: new Date(0)
+      };
+    },
+    async compareExchangeAuthority(_key, _expectedVersion, mutation) {
+      if (mutation.kind === 'delete') {
+        return {
+          kind: 'conflict',
+          current: await this.readAuthority(),
+          storeNow: new Date(0)
+        };
+      }
+      return { kind: 'stored', storeVersion: { value: 'authority-v3' }, storeNow: new Date(0) };
+    }
+  };
+  const lifecycle = new internal.ZLinkLocationLifecycle(
+    runtime,
+    locationStore,
+    'play',
+    authorityStore
+  );
+  lifecycle.trackInstanceSpot({
+    meshName: 'play',
+    spotId: 'room-1',
+    stableType: 'Room',
+    nodeRid: rid('node-a'),
+    nodeGeneration: 3n,
+    objectGeneration: 7n,
+    authorityOwnerGeneration: 11n,
+    ownerId: 'owner-a',
+    ownerLeaseGeneration: 5n,
+    storeVersion: 'authority-v1'
+  });
+
+  await lifecycle.releaseSpot('play', 'room-1', 7n);
+  assert.equal(deletes, 0);
+});
+
 test('location lifecycle claims spots and binds actor session routes with takeover', async () => {
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const nodeA = await lifecycleNode(store, 'owner-a', 'node-a');

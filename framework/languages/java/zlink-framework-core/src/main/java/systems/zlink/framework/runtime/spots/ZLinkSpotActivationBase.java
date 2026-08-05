@@ -136,7 +136,12 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             if (host.dispatchActorControlPacket(packetHeader, headerPart, actor, pendingHeader)) {
                 continue;
             }
-            dispatches.add(dispatchResolvedActorPacket(actor, packetHeader, read));
+            // Admit every Actor packet to its own Actor queue before waiting
+            // for any handler stage. The Spot-wide execution gate is acquired
+            // by the queued turn, so a yielded Actor does not block admission
+            // of another Actor's turn.
+            dispatches.add(dispatchResolvedActorPacket(
+                actor, packetHeader, read));
         }
         return CompletableFuture.allOf(
             dispatches.stream()

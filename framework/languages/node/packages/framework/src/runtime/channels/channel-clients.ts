@@ -109,20 +109,38 @@ export class DefaultZLinkFanoutClient implements ZLinkFanoutClient {
     private readonly transport?: ZLinkChannelClientTransport
   ) {}
 
-  publish(channelName: string, event: unknown): ZLinkFanoutPublishCall {
-    const topic = resolveFrameworkPacketName(event, undefined, 'Fanout');
+  publish(channelName: string, event: unknown): ZLinkFanoutPublishCall;
+  publish(channelName: string, topic: string, event: unknown): ZLinkFanoutPublishCall;
+  publish(channelName: string, topicOrEvent: string | unknown, explicitEvent?: unknown): ZLinkFanoutPublishCall {
+    const hasExplicitTopic = arguments.length === 3;
+    const event = hasExplicitTopic ? explicitEvent : topicOrEvent;
+    const topic = hasExplicitTopic
+      ? topicOrEvent as string
+      : resolveFrameworkPacketName(event, undefined, 'Fanout');
+    const packetName = resolveFrameworkPacketName(event, undefined, 'Fanout');
     return new DefaultZLinkFanoutPublishCall(
       () => this.requirePublisherChannel(channelName),
       async (signal) => ({
         status: (await this.requireTransport().publish(
           channelName,
           topic,
-          topic,
+          packetName,
           event,
           signal
         )).status
       })
     );
+  }
+
+  getListenerStatus(channelName: string): import('../../contracts').ZLinkFanoutListenerStatus {
+    this.requirePublisherChannel(channelName);
+    const status = this.requireTransport().getFanoutListenerStatus?.(channelName);
+    if (status === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout publisher '${channelName}' has not reported a bound listener.`
+      );
+    }
+    return status;
   }
 
   private requirePublisherChannel(channelName: string): void {

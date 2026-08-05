@@ -43,7 +43,6 @@ import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
-import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.runtime.internal.monitoring.ZLinkRuntimeEventDispatcher;
@@ -103,7 +102,6 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 final class SpotActivation
     extends SpotActivationBase<DefaultSpotContext> {
     private final ZLinkSpot<?> spot;
-    private final ZLinkAsyncSerialQueue membershipLifecycle;
 
     SpotActivation(
         ZLinkSpotRuntime host,
@@ -113,8 +111,6 @@ final class SpotActivation
         DefaultSpotContext context) {
         super(host, spotHandlerInvoker, spot, backendSpot, context);
         this.spot = spot;
-        this.membershipLifecycle = new ZLinkAsyncSerialQueue(
-            host.serialExecutor(), false);
     }
 
     ZLinkSpot<?> spot() {
@@ -135,7 +131,7 @@ final class SpotActivation
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor) {
         if (host.shouldRunActorLifecycleInSpotDispatch(event, actor)) {
-            return membershipLifecycle.enqueue(() -> {
+            return tail.thenCompose(ignored -> context.enqueueLifecycle(() -> {
                 if (host.isClosing()) {
                     return CompletableFuture.completedFuture(null);
                 }
@@ -149,7 +145,7 @@ final class SpotActivation
                 return transition == null
                     ? CompletableFuture.completedFuture(null)
                     : transition.get();
-            });
+            }));
         }
         return host.actorSessions().dispatch(actor, () ->
             context.enqueueActorDispatch(actor.context().actorId(), () -> {

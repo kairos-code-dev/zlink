@@ -4,9 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HexFormat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.runtime.protocol.ServiceWireConstants;
 
 final class ZLinkServiceM6AWireCodecTest {
@@ -69,6 +75,104 @@ final class ZLinkServiceM6AWireCodecTest {
         assertEquals(payload.packetName(), decoded.packetName());
         assertEquals(payload.contentType(), decoded.contentType());
         assertArrayEquals(payload.payload(), decoded.payload());
+    }
+
+    @Test
+    void frameworkMultipartMatchesCanonicalProfileFixture() {
+        try (Message first = Message.from(new byte[] {1, 2});
+             Message second = Message.from(new byte[] {(byte) 0xaa, (byte) 0xbb,
+                 (byte) 0xcc})) {
+            var payload = codec.encodeFrameworkMultipart(List.of(first, second));
+            assertEquals(
+                ServiceWireConstants.FRAMEWORK_MULTIPART_PACKET_NAME,
+                payload.packetName());
+            assertEquals(
+                ServiceWireConstants.FRAMEWORK_MULTIPART_CONTENT_TYPE,
+                payload.contentType());
+            assertArrayEquals(
+                hex("0000000200000002010200000003aabbcc"),
+                payload.payload());
+
+            List<Message> decoded = codec.decodeFrameworkMultipart(
+                codec.decodeApplicationPayload(
+                    codec.encodeApplicationPayload(payload)));
+            try {
+                assertEquals(2, decoded.size());
+                assertArrayEquals(
+                    new byte[] {1, 2}, decoded.get(0).toByteArray());
+                assertArrayEquals(
+                    new byte[] {(byte) 0xaa, (byte) 0xbb, (byte) 0xcc},
+                    decoded.get(1).toByteArray());
+            } finally {
+                decoded.forEach(Message::close);
+            }
+        }
+    }
+
+    @Test
+    void frameworkMultipartConsumesSharedGoldenFixture() throws Exception {
+        JsonNode fixture = new ObjectMapper().readTree(
+            Files.readString(sharedMultipartFixturePath()));
+        JsonNode canonical = fixture.path("valid").get(0);
+        var payload = codec.decodeApplicationPayload(
+            HexFormat.of().parseHex(canonical.path("encodedHex").asText()));
+        List<Message> decoded = codec.decodeFrameworkMultipart(payload);
+        try {
+            JsonNode expectedParts = canonical.path("partsHex");
+            assertEquals(expectedParts.size(), decoded.size());
+            for (int index = 0; index < decoded.size(); index++) {
+                assertArrayEquals(
+                    HexFormat.of().parseHex(
+                        expectedParts.get(index).asText()),
+                    decoded.get(index).toByteArray());
+            }
+        } finally {
+            decoded.forEach(Message::close);
+        }
+
+        for (JsonNode invalid : fixture.path("invalid")) {
+            byte[] encoded = HexFormat.of().parseHex(
+                invalid.path("encodedHex").asText());
+            assertThrows(
+                ZLinkServiceWireException.class,
+                () -> codec.decodeFrameworkMultipart(
+                    codec.decodeApplicationPayload(encoded)));
+        }
+    }
+
+    @Test
+    void frameworkMultipartRejectsMalformedProfilesBeforeUse() {
+        var profile = ServiceWireConstants.FRAMEWORK_MULTIPART_PACKET_NAME;
+        var contentType = ServiceWireConstants.FRAMEWORK_MULTIPART_CONTENT_TYPE;
+        assertThrows(
+            ZLinkServiceWireException.class,
+            () -> codec.decodeFrameworkMultipart(
+                new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    profile, contentType, new byte[] {0, 0, 0, 0})));
+        assertThrows(
+            ZLinkServiceWireException.class,
+            () -> codec.decodeFrameworkMultipart(
+                new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    profile,
+                    contentType,
+                    hex("000000010000000301"))));
+        assertThrows(
+            ZLinkServiceWireException.class,
+            () -> codec.decodeFrameworkMultipart(
+                new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    profile,
+                    contentType,
+                    hex("00000001000000000100"))));
+        assertThrows(
+            ZLinkServiceWireException.class,
+            () -> codec.decodeFrameworkMultipart(
+                new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    "event", contentType, new byte[] {1})));
+        assertThrows(
+            ZLinkServiceWireException.class,
+            () -> codec.decodeFrameworkMultipart(
+                new ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    profile, "application/octet-stream", new byte[] {1})));
     }
 
     @Test
@@ -151,5 +255,29 @@ final class ZLinkServiceM6AWireCodecTest {
 
     private static byte[] withTrailingByte(byte[] value) {
         return java.util.Arrays.copyOf(value, value.length + 1);
+    }
+
+    private static byte[] hex(String value) {
+        byte[] result = new byte[value.length() / 2];
+        for (int index = 0; index < result.length; index++) {
+            result[index] = (byte) Integer.parseInt(
+                value.substring(index * 2, index * 2 + 2), 16);
+        }
+        return result;
+    }
+
+    private static Path sharedMultipartFixturePath() {
+        Path current = Path.of(System.getProperty("user.dir"))
+            .toAbsolutePath();
+        while (current != null) {
+            Path candidate = current.resolve(
+                "runtime/protocol/golden/framework-multipart-v1.json");
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException(
+            "shared framework multipart fixture was not found");
     }
 }

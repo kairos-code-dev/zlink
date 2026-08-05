@@ -31,14 +31,16 @@ public final class DeliveryStatusChangedHandler
         Messages.DeliveryStatusChangedReq request,
         ZLinkMessageContext context) {
         evidenceStore.append(request);
-        return actorRefs.find(SAMPLE_CUSTOMER_ID).thenApply(found -> {
+        return actorRefs.find(SAMPLE_CUSTOMER_ID).thenCompose(found -> {
             var actor = found.orElseThrow(() -> new IllegalStateException(
                 "customer actor not found: " + SAMPLE_CUSTOMER_ID));
-            actors.sendToActor(actor.actorId(), new Messages.DeliveryStatusUpdatedMsg(
+            return actors.sendToActor(actor.actorId(), new Messages.DeliveryStatusUpdatedMsg(
                     request.deliveryId(), SAMPLE_CUSTOMER_ID, request.status(),
                     request.courierId(), request.occurredAt()))
-                .submit();
-            return new Messages.DeliveryStatusChangedRes(request.deliveryId(), request.status());
+                .submit()
+                .thenApply(ignored ->
+                    new Messages.DeliveryStatusChangedRes(
+                        request.deliveryId(), request.status()));
         });
     }
 }

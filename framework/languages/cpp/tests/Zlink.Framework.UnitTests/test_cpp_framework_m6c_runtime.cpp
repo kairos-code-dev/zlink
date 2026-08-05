@@ -699,13 +699,14 @@ void test_actor_leave_after_relocation_defer_runs_lifecycle_callbacks (
       entry_id, detail::spot_context_access_t::create (entry));
     auto context = detail::spot_context_access_t::create (source);
 
-    const auto actor_ref = actor_ref_t (
-      node_rid, "test_actor", "actor-1", 1);
+    const auto actor_ref =
+      ::zlink::framework::detail::actor_ref_access_t::make (
+        node_rid, "test_actor", "actor-1", 1);
     const std::string key = "test_actor:actor-1";
     {
         std::lock_guard<std::recursive_mutex> lock (node->mutex);
         node->actor_spot_ids.emplace (key, source_id);
-        node->actor_generations.emplace (key, actor_ref.generation ());
+        node->actor_generations.emplace (key, actor_ref.object_generation ());
         node->actor_created_keys.emplace (key);
         node->actor_instances.emplace (
           key, std::shared_ptr<void> (std::addressof (actor), [] (void *) {}));
@@ -745,6 +746,17 @@ void test_actor_leave_after_relocation_defer_runs_lifecycle_callbacks (
       submitted && completed && current_location == entry_id
         && source_actor_count == 0 && entry_actor_count == 1,
       "actor leave deferred by a relocation-ready handler must run source and entry lifecycle callbacks before the next relocation turn");
+    {
+        std::lock_guard<std::recursive_mutex> lock (node->mutex);
+        node->spot_contexts_by_id.clear ();
+        node->spot_ids_by_name.clear ();
+        node->spot_names_by_id.clear ();
+        node->actor_spot_ids.clear ();
+        node->actor_generations.clear ();
+        node->actor_created_keys.clear ();
+        node->actor_instances.clear ();
+        node->actor_instance_index.clear ();
+    }
 }
 
 void test_temporary_channel_request_yield_owns_call_state (
@@ -1872,6 +1884,10 @@ void test_spot_restore_stages_before_publication (
              == std::vector<std::byte>{
                std::byte{0xca}, std::byte{0xfe}},
       "restore retry must use a fresh instance and publish only after success");
+    runtime.request_stop ();
+    runtime.cancel_pending_dispatch ();
+    runtime.cancel_pending_work ();
+    runtime.release_native_handles ();
 }
 
 void test_concurrent_spot_restore_owns_one_reservation (
@@ -1969,6 +1985,10 @@ void test_concurrent_spot_restore_owns_one_reservation (
         && runtime.find_spot (
           zlink::framework::spot_id_t ("concurrent-id")),
       "one SpotId reservation must own materialization and publication");
+    runtime.request_stop ();
+    runtime.cancel_pending_dispatch ();
+    runtime.cancel_pending_work ();
+    runtime.release_native_handles ();
 }
 
 void test_restore_validates_generation_before_spot_publication (
@@ -2125,7 +2145,7 @@ void test_restore_validates_generation_before_spot_publication (
       "fresh aggregate retry must succeed without leaked state");
 }
 
-void test_pending_restore_rejects_ingress_before_rollback (
+void test_pending_restore_holds_ingress_before_rollback (
   test_context_t &test)
 {
     stateful_object_runtime_t target;
@@ -2185,10 +2205,10 @@ void test_pending_restore_rejects_ingress_before_rollback (
     callback_condition.notify_all ();
     restoring.join ();
     test.require (
-      ingress == stateful_error_t::backpressured
+      ingress == stateful_error_t::none
         && restore_result == stateful_error_t::conflict
         && target.inventory ().empty (),
-      "pending restore must not accept ingress that rollback would erase");
+      "pending restore must hold ingress until rollback discards it");
 
     target.configure_relocation_state (
       [] (const object_ref_t &, const std::string &,
@@ -2490,6 +2510,14 @@ void test_publication_and_handoff (test_context_t &test)
                          turn_domain_t::application)
                          == 2,
                   "frozen queue must precede held ingress after commit");
+    test.require (
+      result.authority
+        && source.pending_bytes (
+             result.authority->target, turn_domain_t::application)
+             == 2 * (zlink::framework::runtime::dispatch_limits::
+                       fixed_work_byte_cost
+                     + 1),
+      "frozen and held ingress must both remain in application byte accounting");
     test.require (result.authority
                     && source.pending (
                          result.authority->target,
@@ -3576,6 +3604,293 @@ void test_production_relocation_restore_and_replay_vertical (
     target_transport.close ();
 }
 
+void test_target_replay_limits_are_relocation_scoped (test_context_t &test)
+{
+    namespace mesh = zlink::framework::runtime::mesh;
+    namespace protocol = zlink::framework::runtime::protocol;
+
+    const auto bytes = [] (const std::string &value) {
+        return std::vector<std::uint8_t> (value.begin (), value.end ());
+    };
+    const auto descriptor = [&] (const std::string &rid) {
+        return mesh::service_node_descriptor_t{
+          "mesh", bytes (rid), 1, 1, "tcp://127.0.0.1:0", {},
+          mesh::service_node_state_t::preparing};
+    };
+    mesh::raw_mesh_node_owner_t transport ({descriptor ("target-limit")});
+    transport.start ();
+    const auto target_rid = transport.topology ().local_descriptor ()
+                              .node_routing_id;
+    const auto source_rid = bytes ("source-limit");
+    const protocol::relocation_id_t relocation{601, 602};
+    const protocol::relocation_coordinator_fence_t coordinator{
+      "coordinator-owner", 23, bytes ("coordinator-limit"), 29,
+      "authority-store-version"};
+    const protocol::request_source_fence_t source_fence{
+      "source-owner", 17, source_rid, 19};
+    const protocol::relocation_object_t target_object{
+      protocol::relocation_object_kind_t::actor,
+      "actor",
+      "target-record",
+      1,
+      2};
+    raw_relocation_replay_coordinator_t wire (transport);
+    std::size_t staged_records = 0;
+
+    const auto register_target = [&] (
+      std::uint64_t attempt,
+      std::uint64_t participant,
+      std::function<bool (const protocol::relocation_data_t &)> stage) {
+        raw_relocation_target_registration_t registration;
+        registration.relocation = relocation;
+        registration.target_attempt_generation = attempt;
+        registration.coordinator = coordinator;
+        registration.participant_id = participant;
+        registration.relocation_source_node_routing_id = source_rid;
+        registration.relocation_source_node_generation = 19;
+        registration.object = target_object;
+        registration.stage = std::move (stage);
+        return wire.register_target (std::move (registration));
+    };
+    const auto make_record = [&] (std::uint64_t attempt,
+                                  std::uint64_t participant,
+                                  std::uint64_t sequence,
+                                  std::size_t payload_size,
+                                  std::uint64_t operation_low) {
+        protocol::frozen_application_record_t application;
+        application.kind = protocol::frozen_record_kind_t::actor_request;
+        application.source_kind = protocol::frozen_source_kind_t::node;
+        application.source = source_fence;
+        application.operation = {0x1111, operation_low};
+        application.operation_kind = 4;
+        application.reply_route_id = sequence;
+        application.body = protocol::frozen_actor_application_body_t{
+          {target_object.object_id,
+           target_object.object_generation,
+           target_rid,
+           1,
+           target_object.expected_authority_owner_generation,
+           1},
+          {"ActorPacket", "application/json",
+           std::vector<std::uint8_t> (payload_size, 0x42)}};
+        const auto frozen =
+          protocol::encode_frozen_application_record (application);
+        protocol::relocation_data_t data;
+        data.relocation = relocation;
+        data.target_attempt_generation = attempt;
+        data.coordinator = coordinator;
+        data.sender_role = protocol::relocation_role_t::source;
+        data.participant_id = participant;
+        data.sequence = sequence;
+        data.source = source_fence;
+        data.object = target_object;
+        data.phase = protocol::relocation_phase_t::prepared;
+        data.frozen_record = frozen;
+        mesh::service_mailbox_record_t record;
+        record.owner = "target-limit";
+        record.domain = mesh::service_mailbox_domain_t::infrastructure;
+        record.parts.push_back (
+          protocol::encode_relocation_control (data));
+        record.source_routing_id = source_rid;
+        record.source_node_generation = source_fence.node_generation;
+        return record;
+    };
+
+    const auto counting_stage = [&] (const protocol::relocation_data_t &) {
+        ++staged_records;
+        return true;
+    };
+    test.require (
+      register_target (1, 1, counting_stage),
+      "target replay limit test must register its target participant");
+    bool count_records_accepted = true;
+    for (std::uint64_t sequence = 1; sequence <= 1024; ++sequence) {
+        const auto result = wire.process (
+          make_record (1, 1, sequence, 0, sequence));
+        count_records_accepted =
+          (result == raw_relocation_replay_result_t::applied
+           || result == raw_relocation_replay_result_t::transport_failed)
+          && count_records_accepted;
+    }
+    const auto count_overflow = wire.process (
+      make_record (1, 1, 1025, 0, 1025));
+    test.require (
+      count_records_accepted
+        && count_overflow == raw_relocation_replay_result_t::restore_failed
+        && staged_records == 1024
+        && wire.target_high_water (relocation, 1, 1) == 1024,
+      "one target participant must reject its 1,025th temporary record");
+    test.require (
+      wire.unregister_target (relocation, 1, 1),
+      "target replay limit test must release the count-limited target");
+
+    staged_records = 0;
+    test.require (
+      register_target (2, 1, counting_stage),
+      "target replay byte test must register its target participant");
+    const auto byte_overflow = wire.process (
+      make_record (2, 1, 1, 16u * 1024u * 1024u, 1));
+    test.require (
+      byte_overflow == raw_relocation_replay_result_t::restore_failed
+        && staged_records == 0
+        && wire.target_high_water (relocation, 2, 1) == 0,
+      "one target participant must reject a temporary record over 16 MiB");
+    (void) wire.unregister_target (relocation, 2, 1);
+
+    staged_records = 0;
+    test.require (
+      register_target (3, 1, counting_stage)
+        && register_target (3, 2, counting_stage),
+      "target replay group test must register both participants");
+    bool shared_records_accepted = true;
+    for (std::uint64_t sequence = 1; sequence <= 512; ++sequence) {
+        const auto first = wire.process (
+          make_record (3, 1, sequence, 0, 1000 + sequence));
+        const auto second = wire.process (
+          make_record (3, 2, sequence, 0, 2000 + sequence));
+        shared_records_accepted =
+          (first == raw_relocation_replay_result_t::applied
+           || first == raw_relocation_replay_result_t::transport_failed)
+          && (second == raw_relocation_replay_result_t::applied
+              || second
+                   == raw_relocation_replay_result_t::transport_failed)
+          && shared_records_accepted;
+    }
+    const auto shared_overflow = wire.process (
+      make_record (3, 1, 513, 0, 1513));
+    test.require (
+      shared_records_accepted
+        && shared_overflow == raw_relocation_replay_result_t::restore_failed
+        && staged_records == 1024,
+      "target replay limits must be shared across relocation participants");
+    test.require (
+      wire.unregister_target (relocation, 3, 2),
+      "target replay group test must unregister one participant");
+    const auto after_unregister = wire.process (
+      make_record (3, 1, 513, 0, 1513));
+    test.require (
+      (after_unregister == raw_relocation_replay_result_t::applied
+       || after_unregister
+            == raw_relocation_replay_result_t::transport_failed),
+      "target replay accounting must release one participant's retained records");
+    (void) wire.unregister_target (relocation, 3, 1);
+
+    std::mutex concurrent_mutex;
+    std::condition_variable concurrent_condition;
+    std::size_t concurrent_stage_calls = 0;
+    std::size_t concurrent_finished = 0;
+    bool release_concurrent_stage = false;
+    const auto concurrent_stage = [&] (
+      const protocol::relocation_data_t &) {
+        std::unique_lock lock (concurrent_mutex);
+        ++concurrent_stage_calls;
+        concurrent_condition.notify_all ();
+        concurrent_condition.wait (
+          lock, [&] { return release_concurrent_stage; });
+        return true;
+    };
+    test.require (
+      register_target (4, 1, concurrent_stage)
+        && register_target (4, 2, concurrent_stage),
+      "target replay identity test must register both participants");
+    raw_relocation_replay_result_t concurrent_first =
+      raw_relocation_replay_result_t::invalid;
+    raw_relocation_replay_result_t concurrent_second =
+      raw_relocation_replay_result_t::invalid;
+    std::thread first_replay ([&] {
+        const auto result = wire.process (
+          make_record (4, 1, 1, 0, 777));
+        std::lock_guard lock (concurrent_mutex);
+        concurrent_first = result;
+        ++concurrent_finished;
+        concurrent_condition.notify_all ();
+    });
+    std::thread second_replay ([&] {
+        const auto result = wire.process (
+          make_record (4, 2, 1, 0, 777));
+        std::lock_guard lock (concurrent_mutex);
+        concurrent_second = result;
+        ++concurrent_finished;
+        concurrent_condition.notify_all ();
+    });
+    {
+        std::unique_lock lock (concurrent_mutex);
+        concurrent_condition.wait_for (
+          lock, std::chrono::seconds (5), [&] {
+              return concurrent_stage_calls >= 2
+                     || concurrent_finished != 0;
+          });
+        release_concurrent_stage = true;
+    }
+    concurrent_condition.notify_all ();
+    first_replay.join ();
+    second_replay.join ();
+    const auto accepted_result = [] (raw_relocation_replay_result_t result) {
+        return result == raw_relocation_replay_result_t::applied
+               || result == raw_relocation_replay_result_t::transport_failed;
+    };
+    test.require (
+      concurrent_stage_calls == 1
+        && ((concurrent_first
+               == raw_relocation_replay_result_t::conflicting_duplicate
+             && accepted_result (concurrent_second))
+            || (concurrent_second
+                  == raw_relocation_replay_result_t::conflicting_duplicate
+                && accepted_result (concurrent_first))),
+      "target replay must reserve operation identity across participants before staging");
+    (void) wire.unregister_target (relocation, 4, 1);
+    (void) wire.unregister_target (relocation, 4, 2);
+
+    std::mutex closing_mutex;
+    std::condition_variable closing_condition;
+    std::size_t closing_stage_calls = 0;
+    bool release_closing_stage = false;
+    const auto closing_stage = [&] (
+      const protocol::relocation_data_t &) {
+        std::unique_lock lock (closing_mutex);
+        ++closing_stage_calls;
+        closing_condition.notify_all ();
+        closing_condition.wait (
+          lock, [&] { return release_closing_stage; });
+        return true;
+    };
+    test.require (
+      register_target (5, 1, closing_stage),
+      "target replay close test must register its target participant");
+    raw_relocation_replay_result_t closing_result =
+      raw_relocation_replay_result_t::invalid;
+    std::thread closing_replay ([&] {
+        closing_result = wire.process (
+          make_record (5, 1, 1, 0, 888));
+    });
+    {
+        std::unique_lock lock (closing_mutex);
+        test.require (
+          closing_condition.wait_for (
+            lock, std::chrono::seconds (5), [&] {
+                return closing_stage_calls == 1;
+            }),
+          "target replay close test must enter staging before sealing");
+    }
+    test.require (
+      wire.seal_target (relocation, 5, 1),
+      "target replay close test must seal admission before cleanup");
+    {
+        std::lock_guard lock (closing_mutex);
+        release_closing_stage = true;
+    }
+    closing_condition.notify_all ();
+    closing_replay.join ();
+    test.require (
+      closing_result == raw_relocation_replay_result_t::restore_failed
+        && wire.target_high_water (relocation, 5, 1) == 0,
+      "sealed target staging must not advance high-water or emit an ACK");
+    test.require (
+      wire.unregister_target (relocation, 5, 1),
+      "target replay close test must unregister the sealed participant");
+    transport.close ();
+}
+
 void test_application_relocation_uses_maintenance_and_fails_closed (
   test_context_t &test)
 {
@@ -3613,7 +3928,7 @@ void test_application_relocation_uses_maintenance_and_fails_closed (
     framework::authority_snapshot_t snapshot{
       .store_version = "authority-v1",
       .payload = {},
-      .object_generation = actor.generation (),
+      .object_generation = actor.object_generation (),
       .authority_owner_generation = 1,
       .owner = {"source-owner", 1},
       .store_now = std::chrono::system_clock::now (),
@@ -3747,7 +4062,7 @@ void test_application_relocation_remote_production_path (
     framework::authority_snapshot_t snapshot{
       .store_version = "authority-remote-v1",
       .payload = {},
-      .object_generation = actor.generation (),
+      .object_generation = actor.object_generation (),
       .authority_owner_generation = 1,
       .owner = {"source-owner", 1},
       .store_now = std::chrono::system_clock::now (),
@@ -3862,14 +4177,14 @@ void test_application_relocation_remote_production_path (
 
     object_ref_t expected_target{
       object_kind_t::actor,
-      std::string (actor.actor_id ()),
-      actor.generation (),
+      std::string (actor.actor_id ().value ()),
+      actor.object_generation (),
       2,
       "production-relocation-mesh",
       target.status ().routing_id ().to_string ()};
     const auto restored_target =
       target.native_node ().objects ().find (
-        object_kind_t::actor, std::string (actor.actor_id ()));
+        object_kind_t::actor, std::string (actor.actor_id ().value ()));
     if (result.terminal != relocation_terminal_t::completed
         || !result.authority
         || result.authority->target != expected_target
@@ -4203,6 +4518,409 @@ void test_application_user_spot_aggregate_remote_production_path (
     target.stop ();
 }
 
+void test_stateful_application_reservation_includes_active_work (
+  test_context_t &test)
+{
+    namespace limits = zlink::framework::runtime::dispatch_limits;
+    const auto fixed = limits::fixed_work_byte_cost;
+    stateful_object_runtime_t count_limited (
+      1, 1, 1024 * 1024, limits::control_mailbox_bytes);
+    const auto count_actor =
+      create_actor (count_limited, "active-count-actor");
+    test.require (
+      count_limited.enqueue (
+        count_actor, turn_domain_t::application, {1, {1}})
+        == stateful_error_t::none,
+      "active reservation test must enqueue its first application turn");
+    const auto [count_claim_error, count_claim] =
+      count_limited.try_claim (
+        count_actor, turn_domain_t::application);
+    test.require (
+      count_claim_error == stateful_error_t::none && count_claim,
+      "active reservation test must claim the first application turn");
+    test.require (
+      count_limited.enqueue (
+        count_actor, turn_domain_t::application, {2, {2}})
+        == stateful_error_t::backpressured,
+      "application count budget must include the active turn");
+    if (count_claim) {
+        test.require (
+          count_limited.complete_claim (
+            count_actor, turn_domain_t::application)
+            == stateful_error_t::none,
+          "active count reservation must release at handler completion");
+    }
+    test.require (
+      count_limited.enqueue (
+        count_actor, turn_domain_t::application, {2, {2}})
+        == stateful_error_t::none,
+      "application count budget must admit work after terminal completion");
+
+    stateful_object_runtime_t byte_limited (
+      2, 1, fixed + 4, limits::control_mailbox_bytes);
+    const auto byte_actor = create_actor (
+      byte_limited, "active-byte-actor");
+    test.require (
+      byte_limited.enqueue (
+        byte_actor, turn_domain_t::application,
+        {1, std::vector<std::uint8_t> (4, 0x41)})
+        == stateful_error_t::none,
+      "active byte reservation test must enqueue its first turn");
+    const auto [byte_claim_error, byte_claim] =
+      byte_limited.try_claim (
+        byte_actor, turn_domain_t::application);
+    test.require (
+      byte_claim_error == stateful_error_t::none && byte_claim,
+      "active byte reservation test must claim the first turn");
+    test.require (
+      byte_limited.enqueue (
+        byte_actor, turn_domain_t::application, {2, {}})
+        == stateful_error_t::backpressured,
+      "application byte budget must include the active turn");
+    if (byte_claim) {
+        test.require (
+          byte_limited.complete_claim (
+            byte_actor, turn_domain_t::application)
+            == stateful_error_t::none,
+          "active byte reservation must release at handler completion");
+    }
+    test.require (
+      byte_limited.enqueue (
+        byte_actor, turn_domain_t::application, {2, {}})
+        == stateful_error_t::none,
+      "application byte budget must admit work after terminal completion");
+
+    stateful_object_runtime_t restore_limited (
+      2, 1, fixed + 4, limits::control_mailbox_bytes);
+    const auto restore_source =
+      create_actor (restore_limited, "restore-byte-actor");
+    auto restore_target = restore_source;
+    restore_target.node_id = "node-b";
+    ++restore_target.authority_owner_generation;
+    frozen_object_state_t frozen{
+      .owner = restore_source,
+      .stable_type = "actor",
+      .application_state = {},
+      .pending_application = {
+        {1, std::vector<std::uint8_t> (4, 0x42)},
+        {2, {}}},
+      .timers = {}};
+    test.require (
+      restore_limited.restore_relocation (
+        std::move (frozen), restore_target,
+        {"restore-byte-root", 1, digest_with (0x61)})
+        == stateful_error_t::backpressured,
+      "relocation restore must enforce the configured application byte budget");
+}
+
+void test_aggregate_seal_failure_preserves_earlier_application_work (
+  test_context_t &test)
+{
+    stateful_object_runtime_t objects;
+    const auto first = create_spot (
+      objects, object_kind_t::user_spot, "seal-failure-first");
+    const auto second = create_spot (
+      objects, object_kind_t::user_spot, "seal-failure-second");
+    test.require (
+      objects.enqueue (first, turn_domain_t::application, {1, {1, 2}})
+          == stateful_error_t::none
+        && objects.enqueue (first, turn_domain_t::application, {2, {3}})
+             == stateful_error_t::none
+        && objects.enqueue (second, turn_domain_t::application, {1, {4}})
+             == stateful_error_t::none,
+      "aggregate seal failure setup must retain application records");
+    const auto first_bytes = objects.pending_bytes (
+      first, turn_domain_t::application);
+    const auto second_bytes = objects.pending_bytes (
+      second, turn_domain_t::application);
+    objects.configure_relocation_state (
+      [&] (const object_ref_t &owner, const std::string &, std::stop_token) {
+          if (owner == second)
+              throw std::runtime_error ("capture failed for second participant");
+          return std::vector<std::uint8_t>{0x41};
+      },
+      [] (const frozen_object_state_t &, const object_ref_t &, std::stop_token) {
+          return true;
+      });
+
+    const auto [error, seal] = objects.try_seal_relocation_aggregate (
+      {first, second});
+    test.require (
+      error == stateful_error_t::conflict && seal.participants.empty (),
+      "aggregate capture failure must return conflict without a seal");
+    test.require (
+      objects.pending (first, turn_domain_t::application) == 2
+        && objects.pending_bytes (first, turn_domain_t::application)
+             == first_bytes,
+      "aggregate capture failure must preserve the earlier participant queue");
+    test.require (
+      objects.pending (second, turn_domain_t::application) == 1
+        && objects.pending_bytes (second, turn_domain_t::application)
+             == second_bytes,
+      "aggregate capture failure must preserve the failing participant queue");
+}
+
+void test_relocation_hold_restores_and_enforces_limits (
+  test_context_t &test)
+{
+    namespace limits = zlink::framework::runtime::dispatch_limits;
+    stateful_object_runtime_t failed_capture (
+      2048, 8, 64u * 1024u * 1024u, limits::control_mailbox_bytes);
+    const auto failed_spot = create_spot (
+      failed_capture, object_kind_t::user_spot, "held-capture-failure");
+    test.require (
+      failed_capture.enqueue (
+        failed_spot, turn_domain_t::application, {1, {1}})
+          == stateful_error_t::none
+        && failed_capture.enqueue (
+             failed_spot, turn_domain_t::application, {2, {2}})
+             == stateful_error_t::none,
+      "held capture failure setup must retain the initial FIFO records");
+    const auto [active_error, active] =
+      failed_capture.try_claim (
+        failed_spot, turn_domain_t::application);
+    test.require (
+      active_error == stateful_error_t::none && active
+        && active->sequence == 1,
+      "held capture failure setup must keep the first record active");
+    failed_capture.configure_relocation_state (
+      [] (const object_ref_t &, const std::string &, std::stop_token)
+          -> std::vector<std::uint8_t> {
+          throw std::runtime_error ("held capture failure");
+      },
+      [] (const frozen_object_state_t &, const object_ref_t &, std::stop_token) {
+          return true;
+      });
+
+    std::atomic<bool> capture_done = false;
+    stateful_error_t capture_error = stateful_error_t::none;
+    aggregate_relocation_seal_t capture_seal;
+    std::thread capture ([&] {
+        auto result = failed_capture.try_seal_relocation_aggregate (
+          {failed_spot});
+        capture_error = result.first;
+        capture_seal = std::move (result.second);
+        capture_done.store (true, std::memory_order_release);
+    });
+    const bool moving = wait_until_bounded (
+      [&] {
+          return failed_capture.register_timer (
+                   failed_spot, {91, 1000, 1000, 1})
+                 == stateful_error_t::moving;
+      },
+      std::chrono::seconds (5));
+    test.require (
+      moving && !capture_done.load (std::memory_order_acquire),
+      "capture failure test must enqueue while the source is moving");
+    test.require (
+      failed_capture.enqueue (
+        failed_spot, turn_domain_t::application, {3, {3}})
+        == stateful_error_t::none,
+      "application ingress must enter the relocation hold before capture");
+    if (active) {
+        test.require (
+          failed_capture.complete_claim (
+            failed_spot, turn_domain_t::application)
+            == stateful_error_t::none,
+          "capture failure test must release the active turn");
+    }
+    capture.join ();
+    test.require (
+      capture_error == stateful_error_t::conflict
+        && capture_seal.participants.empty (),
+      "capture failure must return conflict without a relocation seal");
+    const auto [first_error, first] =
+      failed_capture.try_claim (
+        failed_spot, turn_domain_t::application);
+    test.require (
+      first_error == stateful_error_t::none && first
+        && first->sequence == 2,
+      "capture failure must merge held work behind the captured queue");
+    (void) failed_capture.complete_claim (
+      failed_spot, turn_domain_t::application);
+    const auto [second_error, second] =
+      failed_capture.try_claim (
+        failed_spot, turn_domain_t::application);
+    test.require (
+      second_error == stateful_error_t::none && second
+        && second->sequence == 3,
+      "capture failure must not strand or reorder held work");
+    (void) failed_capture.complete_claim (
+      failed_spot, turn_domain_t::application);
+
+    stateful_object_runtime_t count_limited (
+      2048, 8, 64u * 1024u * 1024u, limits::control_mailbox_bytes);
+    const auto count_first = create_spot (
+      count_limited, object_kind_t::user_spot, "held-count-first");
+    const auto count_second = create_spot (
+      count_limited, object_kind_t::user_spot, "held-count-second");
+    test.require (
+      count_limited.enqueue (
+        count_first, turn_domain_t::application, {0, {}})
+        == stateful_error_t::none,
+      "aggregate hold count setup must reserve an active turn");
+    const auto [count_claim_error, count_claim] =
+      count_limited.try_claim (
+        count_first, turn_domain_t::application);
+    test.require (
+      count_claim_error == stateful_error_t::none && count_claim,
+      "aggregate hold count test must activate the source lane");
+    std::atomic<bool> count_done = false;
+    stateful_error_t count_error = stateful_error_t::conflict;
+    aggregate_relocation_seal_t count_seal;
+    std::thread count_sealing ([&] {
+        auto result = count_limited.try_seal_relocation_aggregate (
+          {count_first, count_second});
+        count_error = result.first;
+        count_seal = std::move (result.second);
+        count_done.store (true, std::memory_order_release);
+    });
+    const bool count_moving = wait_until_bounded (
+      [&] {
+          return count_limited.register_timer (
+                   count_first, {92, 1000, 1000, 1})
+                 == stateful_error_t::moving;
+      },
+      std::chrono::seconds (5));
+    test.require (
+      count_moving && !count_done.load (std::memory_order_acquire),
+      "aggregate hold count test must observe the moving barrier");
+    const auto membership_actor = create_actor (
+      count_limited, "membership-only-hold-actor");
+    const object_ref_t membership_target{
+      object_kind_t::user_spot,
+      "membership-only-target",
+      1,
+      1,
+      "mesh",
+      "node-b"};
+    const auto [membership_error, membership_move] =
+      count_limited.begin_remote_membership_move (
+        membership_actor, membership_target);
+    test.require (
+      membership_error == stateful_error_t::none
+        && count_limited.enqueue (
+             membership_actor, turn_domain_t::application, {1, {7}})
+             == stateful_error_t::none,
+      "membership-only movement must retain ingress without relocation accounting");
+    bool count_records_accepted = true;
+    for (std::uint64_t sequence = 1; sequence <= 512; ++sequence) {
+        count_records_accepted =
+          count_limited.enqueue (
+            count_first, turn_domain_t::application, {sequence, {}})
+          == stateful_error_t::none
+          && count_records_accepted;
+        count_records_accepted =
+          count_limited.enqueue (
+            count_second, turn_domain_t::application,
+            {1000 + sequence, {}})
+          == stateful_error_t::none
+          && count_records_accepted;
+    }
+    test.require (
+      count_records_accepted
+        && count_limited.pending (
+             count_first, turn_domain_t::application)
+             + count_limited.pending (
+                 count_second, turn_domain_t::application)
+             == 1024,
+      "relocation hold must accept up to the aggregate 1,024 record limit");
+    test.require (
+      count_limited.enqueue (
+        count_first, turn_domain_t::application, {2000, {}})
+        == stateful_error_t::backpressured,
+      "relocation hold must reject the 1,025th aggregate record");
+    if (membership_error == stateful_error_t::none) {
+        test.require (
+          count_limited.abort_membership_move (membership_move)
+            == stateful_error_t::none,
+          "membership-only movement must release its independent hold");
+    }
+    if (count_claim) {
+        test.require (
+          count_limited.complete_claim (
+            count_first, turn_domain_t::application)
+            == stateful_error_t::none,
+          "aggregate hold count test must release its active turn");
+    }
+    count_sealing.join ();
+    test.require (
+      count_error == stateful_error_t::none
+        && count_limited.abort_relocation (count_seal.token)
+             == stateful_error_t::none,
+      "aggregate hold count test must close its relocation generation");
+
+    stateful_object_runtime_t byte_limited (
+      4096, 8, 64u * 1024u * 1024u, limits::control_mailbox_bytes);
+    const auto byte_first = create_spot (
+      byte_limited, object_kind_t::user_spot, "held-byte-first");
+    const auto byte_second = create_spot (
+      byte_limited, object_kind_t::user_spot, "held-byte-second");
+    test.require (
+      byte_limited.enqueue (
+        byte_first, turn_domain_t::application, {0, {}})
+        == stateful_error_t::none,
+      "aggregate hold byte setup must reserve an active turn");
+    const auto [byte_claim_error, byte_claim] =
+      byte_limited.try_claim (
+        byte_first, turn_domain_t::application);
+    test.require (
+      byte_claim_error == stateful_error_t::none && byte_claim,
+      "aggregate hold byte test must activate the source lane");
+    std::atomic<bool> byte_done = false;
+    stateful_error_t byte_error = stateful_error_t::conflict;
+    aggregate_relocation_seal_t byte_seal;
+    std::thread byte_sealing ([&] {
+        auto result = byte_limited.try_seal_relocation_aggregate (
+          {byte_first, byte_second});
+        byte_error = result.first;
+        byte_seal = std::move (result.second);
+        byte_done.store (true, std::memory_order_release);
+    });
+    const bool byte_moving = wait_until_bounded (
+      [&] {
+          return byte_limited.register_timer (
+                   byte_first, {93, 1000, 1000, 1})
+                 == stateful_error_t::moving;
+      },
+      std::chrono::seconds (5));
+    test.require (
+      byte_moving && !byte_done.load (std::memory_order_acquire),
+      "aggregate hold byte test must observe the moving barrier");
+    const auto held_payload_bytes =
+      8u * 1024u * 1024u - limits::fixed_work_byte_cost;
+    test.require (
+      byte_limited.enqueue (
+        byte_first,
+        turn_domain_t::application,
+        {1, std::vector<std::uint8_t> (held_payload_bytes, 0x41)})
+        == stateful_error_t::none
+        && byte_limited.enqueue (
+             byte_second,
+             turn_domain_t::application,
+             {1, std::vector<std::uint8_t> (held_payload_bytes, 0x42)})
+             == stateful_error_t::none,
+      "relocation hold must accept bytes up to the aggregate 16 MiB limit");
+    test.require (
+      byte_limited.enqueue (
+        byte_first, turn_domain_t::application, {2, {}})
+        == stateful_error_t::backpressured,
+      "relocation hold must reject bytes beyond the aggregate 16 MiB limit");
+    if (byte_claim) {
+        test.require (
+          byte_limited.complete_claim (
+            byte_first, turn_domain_t::application)
+            == stateful_error_t::none,
+          "aggregate hold byte test must release its active turn");
+    }
+    byte_sealing.join ();
+    test.require (
+      byte_error == stateful_error_t::none
+        && byte_limited.abort_relocation (byte_seal.token)
+             == stateful_error_t::none,
+      "aggregate hold byte test must close its relocation generation");
+}
+
 int main ()
 {
     test_context_t test;
@@ -4215,7 +4933,7 @@ int main ()
     test_spot_restore_stages_before_publication (test);
     test_concurrent_spot_restore_owns_one_reservation (test);
     test_restore_validates_generation_before_spot_publication (test);
-    test_pending_restore_rejects_ingress_before_rollback (test);
+    test_pending_restore_holds_ingress_before_rollback (test);
     test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);
     test_conflict_aborts_without_losing_ingress (test);
@@ -4230,9 +4948,13 @@ int main ()
     test_public_authority_store_adapter (test);
     test_durable_join_completion_replacement_and_ordering (test);
     test_production_relocation_restore_and_replay_vertical (test);
+    test_target_replay_limits_are_relocation_scoped (test);
     test_application_relocation_uses_maintenance_and_fails_closed (test);
     test_application_relocation_remote_production_path (test);
     test_application_user_spot_aggregate_remote_production_path (
       test);
+    test_aggregate_seal_failure_preserves_earlier_application_work (test);
+    test_relocation_hold_restores_and_enforces_limits (test);
+    test_stateful_application_reservation_includes_active_work (test);
     return test.failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

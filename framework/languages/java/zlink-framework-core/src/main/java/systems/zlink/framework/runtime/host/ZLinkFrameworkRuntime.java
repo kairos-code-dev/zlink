@@ -39,6 +39,7 @@ import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.locations.ZLinkLocationRuntimeQuery;
 import systems.zlink.framework.streams.ZLinkStreamCodec;
+import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.contracts.core.RoutingId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +71,7 @@ public final class ZLinkFrameworkRuntime
         authorityRouteRuntime;
     private final systems.zlink.framework.runtime.internal.locations
         .ZLinkObjectServerDescriptorPublisher objectDescriptors;
+    private volatile ZLinkRouteMeshRuntimeOptions routeMeshRuntimeOptions;
     private final systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver
         spotTransportAddressResolver;
     private final ZLinkStoreLocationResolvers storeLocationResolvers;
@@ -283,8 +285,7 @@ public final class ZLinkFrameworkRuntime
                         this.registration,
                         this.meshNodes.nodesByName())
                 : null;
-        runtimeHandlers.add(
-            systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions.class,
+        this.routeMeshRuntimeOptions =
             new systems.zlink.framework.runtime.channels
                 .ZLinkRouteMeshRuntimeOptionsRuntime(
                     this.meshNodes.nodesByName(),
@@ -295,7 +296,10 @@ public final class ZLinkFrameworkRuntime
                                 .toCompletableFuture()
                                 .join();
                         }
-                    }));
+                    });
+        runtimeHandlers.add(
+            ZLinkRouteMeshRuntimeOptions.class,
+            this.routeMeshRuntimeOptions);
 
         ZLinkFrameworkSpotSubsystem spotSubsystem = ZLinkFrameworkSpotSubsystem.create(
             options,
@@ -455,6 +459,9 @@ public final class ZLinkFrameworkRuntime
                     ready.set(true);
                     startupReady.complete(null);
                     publishRuntimeState(ZLinkFrameworkRuntimeState.SERVING);
+                    java.util.logging.Logger.getLogger(
+                        ZLinkFrameworkRuntime.class.getName())
+                        .info("ZLINK_FRAMEWORK_READY");
                 } else if (failure != null) {
                     startupReady.completeExceptionally(
                         unwrapCompletionFailure(failure));
@@ -589,6 +596,15 @@ public final class ZLinkFrameworkRuntime
     public systems.zlink.framework.monitoring.ZLinkRouteMeshRuntime
         routeMeshRuntime() {
         return routeMeshRuntime;
+    }
+
+    ZLinkRouteMeshRuntimeOptions routeMeshRuntimeOptionsInternal() {
+        ZLinkRouteMeshRuntimeOptions options = routeMeshRuntimeOptions;
+        if (options == null) {
+            throw new ZLinkConfigurationException(
+                "RouteMesh runtime options are not configured");
+        }
+        return options;
     }
 
     public systems.zlink.framework.monitoring.ZLinkClientServerRuntime

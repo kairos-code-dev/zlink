@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   Message,
   RoutingId as BindingRoutingId,
@@ -33,6 +34,10 @@ import {
   decodeApplicationPayloadView,
   ServiceWireProtocolError
 } from '../../foundation/service-wire-m6a-codec';
+import {
+  SERVICE_FRAMEWORK_MULTIPART_CONTENT_TYPE,
+  SERVICE_FRAMEWORK_MULTIPART_PACKET_NAME
+} from '../../foundation/service-wire-constants.generated';
 import {
   ServiceStatefulRuntime,
   statefulMailboxData,
@@ -79,8 +84,9 @@ import type {
   ZLinkBackendMeshNode
 } from '../contracts';
 
-const MULTIPART_PACKET_NAME = 'ZLinkFrameworkMultipart';
-const MULTIPART_CONTENT_TYPE = 'application/x-zlink-multipart';
+const MULTIPART_PACKET_NAME = SERVICE_FRAMEWORK_MULTIPART_PACKET_NAME;
+const MULTIPART_CONTENT_TYPE = SERVICE_FRAMEWORK_MULTIPART_CONTENT_TYPE;
+const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true });
 const MAX_DRAIN_RECORDS = 64;
 
 /**
@@ -101,6 +107,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   private completionHead = 0;
   private completionCount = 0;
   private readonly routingId: string;
+  private readonly lifecycleGeneration: bigint;
   private bindEndpoint?: string;
   private runtime?: RawServiceMeshRuntime;
   private stateful?: ServiceStatefulRuntime;
@@ -131,6 +138,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       throw new TypeError('M6A raw MeshNode requires a routing id.');
     }
     this.routingId = routingId;
+    this.lifecycleGeneration = createLifecycleGeneration();
   }
 
   configureObjectPlacement(options: {
@@ -776,8 +784,12 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     );
   }
 
-  registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void {
-    this.requireStateful().registerInstanceIntent(instanceType, route);
+  registerInstanceIntent(
+    instanceType: string,
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): void {
+    this.requireStateful().registerInstanceIntent(instanceType, route, expectedCurrentRoute);
   }
 
   registerAsyncInstanceActivationAuthority(
@@ -822,39 +834,47 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
 
   recoverInstanceActivation(
     envelope: ServiceInstanceActivationRecoveryEnvelope,
-    route: ServiceInstanceRouteFence
-  ): Promise<void> {
-    return this.requireStateful().recoverInstanceActivation(envelope, route);
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<boolean> {
+    return this.requireStateful().recoverInstanceActivation(envelope, route, expectedCurrentRoute);
   }
 
   recoverPendingInstanceActivation(
     envelope: ServiceInstanceActivationRecoveryEnvelope,
-    pending: ServicePendingInstanceActivation
-  ): Promise<void> {
-    return this.requireStateful().recoverPendingInstanceActivation(envelope, pending);
+    pending: ServicePendingInstanceActivation,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<boolean> {
+    return this.requireStateful().recoverPendingInstanceActivation(envelope, pending, expectedCurrentRoute);
   }
 
   completeRecoveredInstanceActivation(
     target: ServiceInstanceActivationTarget,
-    route: ServiceInstanceRouteFence
-  ): Promise<ServiceInstanceRouteFence> {
-    return this.requireStateful().completeRecoveredInstanceActivation(target, route);
+    route: ServiceInstanceRouteFence,
+    expectedCurrentRoute?: ServiceInstanceRouteFence | null
+  ): Promise<ServiceInstanceRouteFence | undefined> {
+    return this.requireStateful().completeRecoveredInstanceActivation(target, route, expectedCurrentRoute);
   }
 
   forgetInstanceIntent(
     spotId: string,
+    objectGeneration: bigint,
     authorityOwnerGeneration: bigint,
     storeVersion?: string
   ): void {
     this.requireStateful().forgetInstanceIntent(
       spotId,
+      objectGeneration,
       authorityOwnerGeneration,
       storeVersion
     );
   }
 
-  rememberSpotRoute(route: ServiceDirectSpotRouteFence): void {
-    this.requireStateful().rememberSpotRoute(route);
+  rememberSpotRoute(
+    route: ServiceDirectSpotRouteFence,
+    expectedCurrentRoute?: ServiceDirectSpotRouteFence | null
+  ): void {
+    this.requireStateful().rememberSpotRoute(route, expectedCurrentRoute);
   }
 
   entrySpotRouteFence(
@@ -1189,11 +1209,12 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return {
       meshName: this.meshName,
       nodeRoutingId: this.routingId,
-      lifecycleGeneration: 1n,
+      lifecycleGeneration: this.lifecycleGeneration,
       descriptorRevision: 1n,
       advertisedEndpoint: this.bindEndpoint ?? 'inproc://not-started',
       channels,
       state: 'preparing',
+      // Plaintext RouteMesh peers use the shared default admission identity.
       securityIdentity: 'default',
       effectiveMaxMessageBytes: 4 * 1024 * 1024,
       applicationVersion: 0n,
@@ -2046,7 +2067,7 @@ function encodeMultipart(parts: MessageLike | readonly MessageLike[]) {
 
 function decodeApplicationEnvelope(frame: Uint8Array) {
   const bytes = Buffer.from(frame.buffer, frame.byteOffset, frame.byteLength);
-  if (bytes.length < 5 || bytes[0] !== 1) {
+  if (bytes.length < 11 || bytes[0] !== 1) {
     throw new ServiceWireProtocolError('Invalid application envelope.');
   }
   const bodyLength = bytes.readUInt32BE(1);
@@ -2055,10 +2076,26 @@ function decodeApplicationEnvelope(frame: Uint8Array) {
   }
   let offset = 5;
   const packetLength = bytes[offset++]!;
-  const packetName = bytes.subarray(offset, offset + packetLength).toString();
+  if (packetLength === 0 || bytes.length - offset < packetLength + 1) {
+    throw new ServiceWireProtocolError('Invalid application envelope packet name.');
+  }
+  let packetName: string;
+  try {
+    packetName = FATAL_UTF8.decode(bytes.subarray(offset, offset + packetLength));
+  } catch {
+    throw new ServiceWireProtocolError('Invalid application envelope packet name.');
+  }
   offset += packetLength;
   const contentLength = bytes[offset++]!;
-  const contentType = bytes.subarray(offset, offset + contentLength).toString();
+  if (contentLength === 0 || bytes.length - offset < contentLength + 4) {
+    throw new ServiceWireProtocolError('Invalid application envelope content type.');
+  }
+  let contentType: string;
+  try {
+    contentType = FATAL_UTF8.decode(bytes.subarray(offset, offset + contentLength));
+  } catch {
+    throw new ServiceWireProtocolError('Invalid application envelope content type.');
+  }
   offset += contentLength;
   const payloadLength = bytes.readUInt32BE(offset);
   offset += 4;
@@ -2081,7 +2118,10 @@ function decodeMultipartBuffers(payload: Uint8Array): Buffer[] {
   const bytes = Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
   if (bytes.length < 4) throw new ServiceWireProtocolError('Truncated multipart payload.');
   const count = bytes.readUInt32BE(0);
-  const result: Buffer[] = [];
+  if (count === 0 || count > Math.floor((bytes.length - 4) / 4)) {
+    throw new ServiceWireProtocolError('Invalid multipart part count.');
+  }
+  const result = new Array<Buffer>(count);
   let offset = 4;
   for (let index = 0; index < count; index++) {
     if (bytes.length - offset < 4) {
@@ -2092,7 +2132,7 @@ function decodeMultipartBuffers(payload: Uint8Array): Buffer[] {
     if (bytes.length - offset < length) {
       throw new ServiceWireProtocolError('Truncated multipart part.');
     }
-    result.push(bytes.subarray(offset, offset + length));
+    result[index] = bytes.subarray(offset, offset + length);
     offset += length;
   }
   if (offset !== bytes.length) {
@@ -2126,6 +2166,15 @@ function peerStateCode(state: ServiceNodeDescriptor['state']): number {
     case 'stopped':
     case 'error': return 5;
   }
+}
+
+function createLifecycleGeneration(): bigint {
+  // Node's public Spot context exposes this lifecycle token as a number. Keep
+  // the opaque equality token within the exact range that surface can carry;
+  // lifecycle ordering is never inferred from its numeric value.
+  const generation = randomBytes(8).readBigUInt64BE()
+    & BigInt(Number.MAX_SAFE_INTEGER);
+  return generation === 0n ? 1n : generation;
 }
 
 function requirePositivePlacementValue(value: number, name: string): number {

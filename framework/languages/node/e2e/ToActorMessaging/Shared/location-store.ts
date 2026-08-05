@@ -1,3 +1,4 @@
+import type { ZLinkLocationOptions } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 
 export interface RedisLocationOptions {
@@ -12,10 +13,11 @@ export function createRedisLocationStore(options: RedisLocationOptions): ZLinkRe
   });
 }
 
-export function locationMessagingOptions(): { pollingIntervalMs: number; ownerLeaseRenewIntervalMs: number; ownerLeaseTtlMs: number } {
-  return {
-    pollingIntervalMs: 100,
-    ownerLeaseRenewIntervalMs: 1000,
-    ownerLeaseTtlMs: 5000
-  };
+export function locationMessagingOptions(options: ZLinkLocationOptions): void {
+  options
+    .pollingIntervalMs(100)
+    .ownerLeaseRenewIntervalMs(1000)
+    .ownerLeaseTtlMs(5000)
+    .ownerLeaseFencingMarginMs(500)
+    .ownerLeaseRenewTimeoutMs(500);
 }

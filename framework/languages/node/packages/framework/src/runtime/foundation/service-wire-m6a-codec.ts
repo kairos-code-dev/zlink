@@ -34,6 +34,7 @@ export interface ServiceReplyHeader {
   readonly correlation: bigint;
   readonly terminalResult: number;
   readonly failureCode: number;
+  readonly tail: Buffer;
 }
 
 export class ServiceWireProtocolError extends Error {
@@ -98,27 +99,36 @@ export function decodeChannelRequestHeader(
 export function encodeReplyHeader(
   correlation: bigint,
   terminalResult = 0,
-  failureCode = 0
+  failureCode = 0,
+  tail: Uint8Array = Buffer.alloc(0)
 ): Buffer {
   validateReplyFields(correlation, terminalResult, failureCode);
-  const result = Buffer.alloc(PREFIX_SIZE + 16);
+  if (tail.byteLength > 0xffff) fail('Reply tail exceeds u16.');
+  const result = Buffer.alloc(PREFIX_SIZE + 18 + tail.byteLength);
   prefix(M6aServiceWireCommand.reply).copy(result);
   result.writeBigUInt64BE(correlation, PREFIX_SIZE);
   result.writeUInt32BE(terminalResult, PREFIX_SIZE + 8);
   result.writeUInt32BE(failureCode, PREFIX_SIZE + 12);
+  result.writeUInt16BE(tail.byteLength, PREFIX_SIZE + 16);
+  Buffer.from(tail).copy(result, PREFIX_SIZE + 18);
   return result;
 }
 
 export function decodeReplyHeader(frame: Uint8Array): ServiceReplyHeader {
   const header = decodeHeader(frame);
-  if (header.command !== M6aServiceWireCommand.reply || header.flags !== 0 || frame.byteLength !== 21) {
+  if (header.command !== M6aServiceWireCommand.reply || header.flags !== 0 || frame.byteLength < 23) {
     fail('Invalid reply header.');
   }
   const bytes = asBuffer(frame);
+  const tailLength = bytes.readUInt16BE(PREFIX_SIZE + 16);
+  if (frame.byteLength !== PREFIX_SIZE + 18 + tailLength) {
+    fail('Invalid reply tail.');
+  }
   const result = {
     correlation: bytes.readBigUInt64BE(PREFIX_SIZE),
     terminalResult: bytes.readUInt32BE(PREFIX_SIZE + 8),
-    failureCode: bytes.readUInt32BE(PREFIX_SIZE + 12)
+    failureCode: bytes.readUInt32BE(PREFIX_SIZE + 12),
+    tail: Buffer.from(bytes.subarray(PREFIX_SIZE + 18))
   };
   validateReplyFields(result.correlation, result.terminalResult, result.failureCode);
   return result;
@@ -451,12 +461,28 @@ function validateReplyFields(correlation: bigint, terminal: number, failure: num
 }
 
 function stateToWire(value: ServiceNodeState): number {
-  return ['preparing', 'serving', 'retiring', 'draining', 'stopped', 'error'].indexOf(value) + 1;
+  // The service descriptor uses the shared framework state values. `retiring`
+  // is a host-internal transition and has the same remote admission meaning
+  // as `draining`; the service wire does not expose a separate retiring value.
+  switch (value) {
+    case 'preparing': return 0;
+    case 'serving': return 1;
+    case 'retiring':
+    case 'draining': return 2;
+    case 'stopped': return 3;
+    case 'error': return 4;
+  }
 }
 
 function stateFromWire(value: number): ServiceNodeState {
-  if (!Number.isInteger(value) || value < 1 || value > 6) fail('Invalid runtime state.');
-  return ['preparing', 'serving', 'retiring', 'draining', 'stopped', 'error'][value - 1] as ServiceNodeState;
+  switch (value) {
+    case 0: return 'preparing';
+    case 1: return 'serving';
+    case 2: return 'draining';
+    case 3: return 'stopped';
+    case 4: return 'error';
+    default: fail('Invalid runtime state.');
+  }
 }
 
 function roleToWire(value: ServiceObjectRole): number {

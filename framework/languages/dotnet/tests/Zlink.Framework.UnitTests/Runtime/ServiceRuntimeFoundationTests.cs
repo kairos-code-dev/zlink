@@ -12,6 +12,40 @@ namespace Zlink.Framework.UnitTests;
 
 public sealed class ServiceRuntimeFoundationTests
 {
+    [Theory]
+    [InlineData(1024)]
+    [InlineData(17 * 1024 * 1024)]
+    public void FrameworkMultipart_ComputesCompleteEnvelopeLengthBeforeAllocation(
+        int partLength)
+    {
+        var parts = new ReadOnlyMemory<byte>[] { new byte[partLength] };
+
+        var expectedLength =
+            ZLinkApplicationPayloadEnvelopeCodec.GetFrameworkMultipartEncodedLength(
+                parts);
+        var encoded = ZLinkApplicationPayloadEnvelopeCodec
+            .EncodeFrameworkMultipart(parts, expectedLength);
+
+        Assert.Equal(expectedLength, encoded.LongLength);
+        Assert.True(
+            ZLinkApplicationPayloadEnvelopeCodec.TryDecodeFrameworkMultipart(
+                encoded,
+                out var decoded));
+        try
+        {
+            Assert.Equal(partLength, Assert.Single(decoded).Size);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(decoded);
+        }
+
+        Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkApplicationPayloadEnvelopeCodec.EncodeFrameworkMultipart(
+                parts,
+                expectedLength - 1));
+    }
+
     [Fact]
     public void MessageFollow_RoundTripsVersionedInfrastructureRecord()
     {
@@ -180,11 +214,72 @@ public sealed class ServiceRuntimeFoundationTests
 
         using var applicationReply = Message.From(
             ZLinkServiceWireCodec.EncodeReply(1, 0, 0));
+        using var replyPayload = Message.From(
+            ZLinkApplicationPayloadEnvelopeCodec.EncodeFrameworkMultipart(
+                new ReadOnlyMemory<byte>[] { new byte[] { 1, 2, 3 } }));
+        Assert.True(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [applicationReply, replyPayload],
+            out command));
+        Assert.Equal(ServiceWireConstants.Command.Reply, command);
+
+        using var largeReplyPayload = Message.From(
+            ZLinkApplicationPayloadEnvelopeCodec.EncodeFrameworkMultipart(
+                new ReadOnlyMemory<byte>[]
+                {
+                    new byte[(256 * 1024) + 1]
+                }));
+        Assert.True(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [applicationReply, largeReplyPayload],
+            out command));
+        Assert.Equal(ServiceWireConstants.Command.Reply, command);
+
+        using var invalidReplyPayload = Message.From(new byte[] { 1, 2, 3 });
         Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
-            [applicationReply],
+            [applicationReply, invalidReplyPayload],
             out _));
 
-        using var oversized = Message.From(new byte[(256 * 1024) + 1]);
+        using var extraReplyPayload = Message.From(
+            ZLinkApplicationPayloadEnvelopeCodec.EncodeFrameworkMultipart(
+                new ReadOnlyMemory<byte>[] { new byte[] { 4 } }));
+        using var extraReplyPart = Message.From(new byte[] { 5 });
+        Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [applicationReply, extraReplyPayload, extraReplyPart],
+            out _));
+
+        using var relocationData = Message.From(new byte[]
+        {
+            ServiceWireConstants.Magic0,
+            ServiceWireConstants.Magic1,
+            ServiceWireConstants.WireMajor,
+            (byte)ServiceWireConstants.Command.RelocationData,
+            0
+        });
+        Assert.True(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [relocationData],
+            out command));
+        Assert.Equal(ServiceWireConstants.Command.RelocationData, command);
+
+        var largeRelocationData = new byte[(256 * 1024) + 1];
+        largeRelocationData[0] = ServiceWireConstants.Magic0;
+        largeRelocationData[1] = ServiceWireConstants.Magic1;
+        largeRelocationData[2] = ServiceWireConstants.WireMajor;
+        largeRelocationData[3] = (byte)ServiceWireConstants.Command.RelocationData;
+        using var largeRelocation = Message.From(largeRelocationData);
+        Assert.True(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [largeRelocation],
+            out command));
+        Assert.Equal(ServiceWireConstants.Command.RelocationData, command);
+
+        Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
+            [relocationData, extraReplyPayload],
+            out _));
+
+        var oversizedBytes = new byte[(256 * 1024) + 1];
+        oversizedBytes[0] = ServiceWireConstants.Magic0;
+        oversizedBytes[1] = ServiceWireConstants.Magic1;
+        oversizedBytes[2] = ServiceWireConstants.WireMajor;
+        oversizedBytes[3] = (byte)ServiceWireConstants.Command.Hello;
+        using var oversized = Message.From(oversizedBytes);
         Assert.False(ZLinkManagedMeshNode.IsAllowedCompletionControl(
             [oversized],
             out _));
@@ -236,7 +331,7 @@ public sealed class ServiceRuntimeFoundationTests
         Assert.Equal(0U, admission.Channels["admin"]);
         Assert.Equal(75U, admission.Channels["worker"]);
         Assert.Equal("none", admission.SecurityIdentity);
-        Assert.Equal((uint)int.MaxValue, admission.EffectiveMaxMessageBytes);
+        Assert.Equal(uint.MaxValue, admission.EffectiveMaxMessageBytes);
         Assert.Equal(1, admission.RuntimeState);
         Assert.Equal(0, admission.ApplicationVersion);
         Assert.Equal(0, admission.ObjectRole);
@@ -387,6 +482,18 @@ public sealed class ServiceRuntimeFoundationTests
             "none",
             current.LifecycleGeneration + 1,
             current));
+        Assert.True(ZLinkServiceAdmissionGuard.MatchesExpectedTransportRoute(
+            "tcp://127.0.0.1:7070",
+            "none",
+            "none",
+            current.LifecycleGeneration,
+            current));
+        Assert.False(ZLinkServiceAdmissionGuard.MatchesExpectedTransportRoute(
+            "tcp://127.0.0.1:7070",
+            "tls:configured",
+            "none",
+            current.LifecycleGeneration,
+            current with { SecurityIdentity = "tls:configured" }));
 
         Assert.Equal(
             ZLinkServiceAdmissionDecision.Reject,

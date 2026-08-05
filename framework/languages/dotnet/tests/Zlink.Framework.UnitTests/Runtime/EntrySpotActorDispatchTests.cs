@@ -1573,6 +1573,162 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task RemoteActorFrame_StaleBoundSession_AnswersRequestsAndDropsOneWayFrames()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            var relayNode = RoutingId.From("session-node");
+            var sessionRid = RoutingId.From("session-rid");
+            node.AdmittedMeshPeers.Add(new MeshNodePeer(
+                1,
+                MeshPeerSource.Discovery,
+                MeshPeerState.Admitted,
+                relayNode,
+                1,
+                1,
+                "inproc://session-node",
+                1,
+                0,
+                1));
+            RegisterProbeActor(runtime, actorRef);
+            runtime.BindActorSession(
+                actorRef.ActorId,
+                relayNode,
+                sessionRid,
+                "live-binding",
+                bindingGeneration: 2,
+                objectGeneration: actorRef.Generation,
+                authorityOwnerGeneration: 3,
+                meshName: "entry",
+                targetNodeGeneration: 1,
+                ownerLeaseGeneration: 4,
+                sessionOwnerNodeGeneration: 1,
+                acceptedHighWater: 1);
+
+            var staleMetadata = ZLinkActorBoundSessionHandoffMetadata.Encode(
+                new ZLinkActorBoundSessionHandoffFence(
+                    actorRef.ActorId,
+                    actorRef.Generation,
+                    sessionRid,
+                    "replaced-binding",
+                    BindingGeneration: 2,
+                    SessionSequence: 1));
+            var requestSource = new ZLinkServiceWireCodec.RequestSourceFence(
+                "session-owner",
+                1,
+                relayNode,
+                NodeGeneration: 1);
+            var requestHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Request,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.HasRequestSeq,
+                new ZlinkStreamRequestSeq(7),
+                "stale-bound-request",
+                ZlinkStreamMetadata.Empty);
+            var encodedRequestHeader = ZLinkStreamProtocolDefaults.EncodeHeader(requestHeader).ToArray();
+            var decodedRequestHeader = ZLinkStreamProtocolDefaults.DecodeHeader(encodedRequestHeader);
+            Assert.Equal(ZlinkStreamMessageKind.Request, decodedRequestHeader.Kind);
+            Assert.NotNull(decodedRequestHeader.RequestSeq);
+
+            var directReplies = new List<byte[]>();
+            await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
+                runtime,
+                actorRef,
+                relayNode,
+                sessionRid,
+                requestId: 7,
+                flags: ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                replyCapability: "stale-reply",
+                decodedRequestHeader,
+                new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.NotFound,
+                    "session relay authority identity is stale."),
+                CancellationToken.None,
+                directReply: (parts, _) =>
+                {
+                    directReplies.Add(
+                        parts.Single().AsReadOnlySpan().ToArray());
+                    return SubmitResult.Ok;
+                });
+
+            var directReply = Assert.Single(directReplies);
+            var directReplyPayload = DecodeReplyFrame<ZLinkStreamWireError>(directReply);
+            Assert.Equal(
+                ZLinkFrameworkErrorKind.NotFound.ToString(),
+                directReplyPayload.Payload.Code);
+
+            await runtime.DispatchRemoteActorFrameAsync(
+                actorRef.ActorId,
+                actorRef.Generation,
+                actorRef.NodeRid,
+                targetNodeGeneration: 1,
+                authorityOwnerGeneration: 3,
+                ownerLeaseGeneration: 4,
+                authenticatedRelayNodeRid: relayNode,
+                relayNodeRid: relayNode,
+                relayNodeGeneration: 1,
+                sourceNodeRid: relayNode,
+                sourceNodeGeneration: 1,
+                sourceSessionRid: sessionRid,
+                requestSource,
+                staleMetadata,
+                new MeshOperationId(81, 82),
+                messageFollowHopCount: 0,
+                replyRequestId: 7,
+                replyFlags: ZLinkActorBoundSessionRelay.ActorRecvInfoNoBind,
+                replyCapability: "stale-reply",
+                deadlineUnixMs: ulong.MaxValue,
+                encodedRequestHeader,
+                Encoding.UTF8.GetBytes("request-body"),
+                CancellationToken.None);
+
+            Assert.Empty(node.NoBindReplies);
+            Assert.Empty(node.BoundSessionReplies);
+
+            var oneWayHeader = new ZlinkStreamHeader(
+                ZlinkStreamMessageKind.Send,
+                ZlinkStreamCodec.Raw,
+                ZlinkStreamHeaderFlags.None,
+                null,
+                "stale-bound-send",
+                ZlinkStreamMetadata.Empty);
+            await runtime.DispatchRemoteActorFrameAsync(
+                actorRef.ActorId,
+                actorRef.Generation,
+                actorRef.NodeRid,
+                targetNodeGeneration: 1,
+                authorityOwnerGeneration: 3,
+                ownerLeaseGeneration: 4,
+                authenticatedRelayNodeRid: relayNode,
+                relayNodeRid: relayNode,
+                relayNodeGeneration: 1,
+                sourceNodeRid: relayNode,
+                sourceNodeGeneration: 1,
+                sourceSessionRid: sessionRid,
+                requestSource,
+                staleMetadata,
+                new MeshOperationId(81, 83),
+                messageFollowHopCount: 0,
+                replyRequestId: 0,
+                replyFlags: 0,
+                replyCapability: null,
+                deadlineUnixMs: ulong.MaxValue,
+                ZLinkStreamProtocolDefaults.EncodeHeader(oneWayHeader).ToArray(),
+                Encoding.UTF8.GetBytes("send-body"),
+                CancellationToken.None);
+
+            Assert.Empty(node.NoBindReplies);
+            Assert.Empty(node.ActorSends);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public void BoundSessionRelay_RequiresAnExactRequestSourceFence()
     {
         var missing = Assert.Throws<ZLinkFrameworkException>(() =>

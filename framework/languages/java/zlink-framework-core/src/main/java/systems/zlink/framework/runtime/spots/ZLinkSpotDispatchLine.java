@@ -8,6 +8,11 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerInstanceOwn
 interface SpotDispatchLine {
     CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation);
 
+    /** Returns whether all application sources share this Spot's gate. */
+    default boolean usesSharedExecutionGate() {
+        return false;
+    }
+
     /** Runtime control work is independent from the application dispatch lane. */
     default CompletionStage<Void> enqueueInfrastructureDispatch(
         Supplier<CompletionStage<Void>> operation) {

@@ -120,6 +120,20 @@ export class ZLinkChannelRuntimeManager {
     return { descriptors: this.sockets.fanoutActiveTargets(channelName) };
   }
 
+  getFanoutListenerStatus(channelName: string) {
+    const endpoint = this.sockets.fanoutPublisherEndpoint(channelName);
+    if (endpoint === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout publisher '${channelName}' has not reported a bound listener.`
+      );
+    }
+    return {
+      channelName,
+      endpoint,
+      observedAt: new Date()
+    };
+  }
+
   observeClientServerTopology(channelName: string, changed: () => void): () => void {
     const monitor = this.sockets.clientServerMonitoringSource(channelName);
     monitor.onEvent(changed);
@@ -127,9 +141,9 @@ export class ZLinkChannelRuntimeManager {
   }
 
   observeFanoutTopology(channelName: string, changed: () => void): () => void {
-    const monitor = this.sockets.fanoutMonitoringSource(channelName);
-    monitor.onEvent(changed);
-    return () => { void monitor.dispose(); };
+    const source = this.sockets.fanoutTopologyMonitoringSource(channelName);
+    source.onChange(changed);
+    return () => { void source.dispose(); };
   }
 
   configureLocationAutoConnect(

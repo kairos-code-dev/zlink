@@ -2,7 +2,6 @@ package systems.zlink.e2e.spotservice.shared;
 
 import java.time.Duration;
 import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResult;
@@ -11,16 +10,13 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
     private final ZLinkSpotContext context;
     private final ScenarioState evidence;
-    private final SpotHandleResolver spotHandles;
     private int value;
 
     public MultiNodeSpot(
         ZLinkSpotContext context,
-        ScenarioState evidence,
-        SpotHandleResolver spotHandles) {
+        ScenarioState evidence) {
         this.context = context;
         this.evidence = evidence;
-        this.spotHandles = spotHandles;
     }
 
     @Override
@@ -39,21 +35,17 @@ public final class MultiNodeSpot implements ZLinkSpot<ScenarioActor> {
         evidence.record("MultiNodeSpotCreated", context.spotId(), request.isEmpty() ? "" : "request");
         if (!request.isEmpty()) {
             Contracts.SpotOnlyMeshReq command = request.decode(Contracts.SpotOnlyMeshReq.class);
-            var targetRid = systems.zlink.contracts.core.RoutingId.from(command.targetSpotRid());
-            return spotHandles.resolveSpotHandle(targetRid)
-                .thenApply(found -> found.orElseThrow(() ->
-                    new IllegalStateException("target spot has no live address: " + command.targetSpotRid())))
-                .thenCompose(target -> context.outbound()
-                    .requestToSpot(target, new Contracts.MultiNodeStateReq(7))
+            return context.outbound()
+                    .requestToSpot(command.targetSpotRid(), new Contracts.MultiNodeStateReq(7))
                     .timeout(Duration.ofSeconds(5))
                     .submit(Contracts.MultiNodeStateRes.class)
                     .thenApply(reply -> {
-                        context.outbound().sendToSpot(target,
+                        context.outbound().sendToSpot(command.targetSpotRid(),
                             new Contracts.MultiNodeStateMsg("sm-f6-send-" + command.marker())).submit();
                         evidence.record("SpotOnlyRequest", context.spotId(),
                             command.targetSpotRid() + "/" + reply.value() + "/" + command.marker());
                         return ZLinkSpotCreateResponse.accept();
-                    }));
+                    });
         }
         return java.util.concurrent.CompletableFuture.completedFuture(ZLinkSpotCreateResponse.accept());
     }

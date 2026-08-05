@@ -1,4 +1,5 @@
 import type { Message } from '../../contracts/Common/Message';
+import { ZLinkConfigurationException } from '../configuration';
 import { tryDecodeChannelHeader } from './channel-envelope-inspection';
 import type { ZLinkChannelEnvelopeHeader } from './channel-envelope';
 
@@ -37,6 +38,6 @@ export function inspectFanoutInbound(
 
 export function requirePublicFanoutTopic(topic: string): void {
   if (topic === FANOUT_LIVENESS_TOPIC) {
-    throw new TypeError('Fanout topic is reserved for framework liveness.');
+    throw new ZLinkConfigurationException('Fanout topic is reserved for framework liveness.');
   }
 }

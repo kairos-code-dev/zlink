@@ -62,7 +62,7 @@ struct user_spot_stage_timer_handler_t
 struct scenario_actor_t : zlink::framework::actor_t
 {
     explicit scenario_actor_t (zlink::framework::actor_context_t value) :
-        actor_id (value.actor_ref ().actor_id ()),
+        actor_id (value.actor_ref ().actor_id ().value ()),
         actor_ref (value.actor_ref ()),
         _actor_context (std::move (value))
     {
@@ -943,9 +943,9 @@ class entry_spot_t
 
             auto reply = accepted->reply;
             reply.actor = {.node_rid = std::string (accepted->actor.node_rid ().value ()),
-                           .actor_type = std::string (accepted->actor.actor_type ()),
-                           .actor_id = std::string (accepted->actor.actor_id ()),
-                           .generation = accepted->actor.generation ()};
+                           .actor_type = std::string (e2e::actor_type),
+                           .actor_id = std::string (accepted->actor.actor_id ().value ()),
+                           .generation = accepted->actor.object_generation ()};
             co_return reply;
         }
         catch (const zlink::framework::framework_exception_t &error) {
@@ -988,9 +988,9 @@ class entry_spot_t
         }
         co_return e2e::join_admitted_user_spot_actor_res_t{
           .spot_id = request.spot_id,
-          .actor_id = std::string (joined_accepted->actor.actor_id ()),
+          .actor_id = std::string (joined_accepted->actor.actor_id ().value ()),
           .accepted = true,
-          .generation = joined_accepted->actor.generation (),
+          .generation = joined_accepted->actor.object_generation (),
           .error_kind = ""};
     }
 

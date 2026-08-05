@@ -59,7 +59,7 @@ builder.Services.AddZLinkFramework(options =>
     locations.OwnerLeaseRenewTimeout = TimeSpan.FromMilliseconds(500);
 
     options.ConfigureDispatch()
-        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Errors);
+        .Diagnostics.SetLevel(ZLinkDiagnosticsLevel.Normal);
     options.AddHandlersFromAssemblyOf(typeof(OpsConsoleSession));
 
     options.AddStreamNode(ZoneWorldNames.OpsStreamNode)

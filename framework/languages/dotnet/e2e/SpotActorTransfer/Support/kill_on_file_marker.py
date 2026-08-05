@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import errno
 import os
 import select
 import signal
@@ -14,6 +15,40 @@ import time
 
 IN_MODIFY = 0x00000002
 EVENT_HEADER = struct.Struct("iIII")
+
+
+def kill_process_group(pid: int) -> None:
+    os.killpg(os.getpgid(pid), signal.SIGKILL)
+
+
+def read_from_offset(path: str, offset: int) -> tuple[int, str]:
+    with open(path, "r", encoding="utf-8") as stream:
+        stream.seek(0, os.SEEK_END)
+        length = stream.tell()
+        if length < offset:
+            offset = 0
+        stream.seek(offset)
+        return stream.tell(), stream.read()
+
+
+def poll_for_marker(
+    pid: int,
+    path: str,
+    marker: str,
+    offset: int,
+    deadline: float,
+) -> None:
+    while time.monotonic() < deadline:
+        try:
+            offset, appended = read_from_offset(path, offset)
+        except FileNotFoundError:
+            time.sleep(0.01)
+            continue
+        if marker in appended:
+            kill_process_group(pid)
+            return
+        time.sleep(0.01)
+    raise SystemExit(f"marker was not observed: {marker}")
 
 
 def main() -> None:
@@ -36,15 +71,37 @@ def main() -> None:
         raise OSError(ctypes.get_errno(), "inotify_init1 failed")
     try:
         path = os.fsencode(args.path)
-        if libc.inotify_add_watch(descriptor, path, IN_MODIFY) < 0:
-            raise OSError(ctypes.get_errno(), "inotify_add_watch failed")
+        watch = libc.inotify_add_watch(descriptor, path, IN_MODIFY)
+        if watch < 0:
+            error = ctypes.get_errno()
+            if error not in (errno.ENOSPC, errno.EMFILE, errno.ENOSYS):
+                raise OSError(error, "inotify_add_watch failed")
+            # Editors can consume the process-wide inotify watch budget. The
+            # marker is still a regular file, so bounded polling preserves
+            # the process-level fault injection without requiring a private
+            # runtime hook or a system-wide watch-limit change.
+            os.close(descriptor)
+            descriptor = -1
+            with open(args.path, "r", encoding="utf-8") as stream:
+                existing = stream.read()
+                offset = stream.tell()
+            if args.marker in existing:
+                kill_process_group(args.pid)
+                return
+            poll_for_marker(
+                args.pid,
+                args.path,
+                args.marker,
+                offset,
+                deadline)
+            return
         # Install the watch before reading existing content. This covers both
         # a marker written before startup and one appended during the read.
         with open(args.path, "r", encoding="utf-8") as stream:
             existing = stream.read()
             offset = stream.tell()
         if args.marker in existing:
-            os.killpg(os.getpgid(args.pid), signal.SIGKILL)
+            kill_process_group(args.pid)
             return
         while time.monotonic() < deadline:
             timeout = max(0, deadline - time.monotonic())
@@ -63,10 +120,11 @@ def main() -> None:
                 offset = stream.tell()
             if args.marker not in appended:
                 continue
-            os.killpg(os.getpgid(args.pid), signal.SIGKILL)
+            kill_process_group(args.pid)
             return
     finally:
-        os.close(descriptor)
+        if descriptor >= 0:
+            os.close(descriptor)
     raise SystemExit(f"marker was not observed: {args.marker}")
 
 

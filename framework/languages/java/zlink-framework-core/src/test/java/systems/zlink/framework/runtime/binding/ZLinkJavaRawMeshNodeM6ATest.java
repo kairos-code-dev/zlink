@@ -15,28 +15,103 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.core.Zlink;
+import systems.zlink.contracts.eventing.MonitorEvent;
+import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.errors.ZlinkRequestException;
 import systems.zlink.framework.runtime.internal.binding.spot.RecordKind;
 import systems.zlink.contracts.sockets.SendFlags;
+import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendReceived;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.internal.backend.ZLinkBackendTopicMessage;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6AWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceM6BWireCodec;
 import systems.zlink.framework.runtime.internal.service.ZLinkServiceMessageFollowWireCodec;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceAdmissionGuard;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceNodeDescriptor;
+import systems.zlink.framework.runtime.internal.service.ZLinkServiceTopologyRegistry;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.runtime.internal.binding.spot.MeshPeerState;
 import systems.zlink.framework.runtime.internal.dispatch.ZLinkInboundDispatchBudget;
 import systems.zlink.framework.runtime.internal.calls.ZLinkOneWayCalls;
 
 final class ZLinkJavaRawMeshNodeM6ATest {
+    @Test
+    void monitorConnectionKeyIgnoresEventSpecificValue() {
+        var ready = new MonitorEvent(
+            MonitorEventType.CONNECTION_READY,
+            1,
+            Optional.of(RoutingId.from("peer")),
+            "tcp://127.0.0.1:4000",
+            "tcp://127.0.0.1:5000");
+        var disconnected = new MonitorEvent(
+            MonitorEventType.DISCONNECTED,
+            4,
+            Optional.of(RoutingId.from("peer")),
+            "tcp://127.0.0.1:4000",
+            "tcp://127.0.0.1:5000");
+
+        assertEquals(
+            ZLinkJavaRawMeshNode.transportEventKey(ready),
+            ZLinkJavaRawMeshNode.transportEventKey(disconnected));
+    }
+
+    @Test
+    void sourceWideAdmissionReadySelectsOnlyReadyPeers() {
+        RoutingId readyRid = RoutingId.from("ready-peer");
+        RoutingId pendingRid = RoutingId.from("pending-peer");
+        var ready = new ZLinkServiceTopologyRegistry.Peer(
+            descriptor(readyRid),
+            new ZLinkServiceTopologyRegistry.Connection(
+                "ready-connection",
+                ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND,
+                "ready-discriminator"));
+        var pending = new ZLinkServiceTopologyRegistry.Peer(
+            descriptor(pendingRid),
+            new ZLinkServiceTopologyRegistry.Connection(
+                "pending-connection",
+                ZLinkServiceAdmissionGuard.ConnectionDirection.OUTBOUND,
+                "pending-discriminator"));
+
+        assertEquals(
+            List.of(readyRid),
+            ZLinkJavaRawMeshNode.readyAdmissionPeerIds(
+                List.of(ready, pending),
+                peer -> peer.connectionId().equals("ready-connection")));
+    }
+
+    private static ZLinkServiceNodeDescriptor descriptor(RoutingId rid) {
+        return new ZLinkServiceNodeDescriptor(
+            "mesh",
+            rid,
+            1,
+            1,
+            "inproc://" + rid,
+            List.of(),
+            ZLinkServiceNodeDescriptor.State.SERVING,
+            "test-security",
+            1024,
+            1,
+            List.of(ZLinkServiceNodeDescriptor.REQUIRED_CAPABILITY),
+            ZLinkServiceNodeDescriptor.ObjectRole.NONE,
+            1,
+            1,
+            0,
+            0,
+            0);
+    }
+
     @Test
     void ephemeralBindPublishesTheActualListenerEndpoint() {
         try (var context = Zlink.createContext();
@@ -606,6 +681,7 @@ final class ZLinkJavaRawMeshNodeM6ATest {
                 received.get(2, TimeUnit.SECONDS)) {
                 assertEquals(RecordKind.NODE_SEND, record.receive().kind());
                 assertEquals(rightRid, record.receive().sourceNodeRid());
+                assertEquals("application/json", record.receive().contentType());
                 assertEquals("packet", record.parts().getFirst().toUtf8String());
                 assertArrayEquals(
                     new byte[] {1, 2, 3},
@@ -779,11 +855,64 @@ final class ZLinkJavaRawMeshNodeM6ATest {
             try (ZLinkBackendReceived reply =
                 completed.get(2, TimeUnit.SECONDS)) {
                 assertEquals(ZLinkBackendRequestResult.OK, reply.result());
-                assertEquals(1, reply.parts().size());
+                assertEquals(2, reply.parts().size());
+                assertEquals("reply", reply.parts().getFirst().toUtf8String());
                 assertArrayEquals(
                     new byte[] {9, 8, 7},
-                    reply.parts().getFirst().toByteArray());
+                    reply.parts().get(1).toByteArray());
             }
+        }
+    }
+
+    @Test
+    void boundActorRequestDecodesOneFrameTerminalError() throws Exception {
+        String endpoint = "inproc://jvm-m6a-bound-error-"
+            + System.nanoTime();
+        RoutingId sourceRid = RoutingId.from("jvm-m6a-bound-error-source");
+        RoutingId targetRid = RoutingId.from("jvm-m6a-bound-error-target");
+        try (var context = Zlink.createContext();
+             var source = new ZLinkJavaRawMeshNode(context, "mesh");
+             var target = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            source.setRoutingId(sourceRid);
+            source.setBind(
+                "inproc://jvm-m6a-bound-error-source-" + System.nanoTime());
+            target.setRoutingId(targetRid);
+            target.setBind(endpoint);
+            target.setPeerAuthorityResolver(
+                (meshName, candidateRid, candidateGeneration) ->
+                    CompletableFuture.completedFuture(
+                        Optional.of(new ZLinkInternalMeshNode.PeerAuthorityFence(
+                            candidateRid,
+                            candidateGeneration,
+                            "test-owner",
+                            1))));
+            source.start();
+            target.start();
+            source.connectPeer(endpoint, targetRid);
+            awaitAdmitted(source);
+
+            var actor = new ZLinkBackendActorRef(
+                targetRid, "missing-bound-actor", 1);
+            source.spotNode().rememberActorAuthority(actor, 1, 1);
+            CompletionStage<List<Message>> request;
+            try (Message payload = Message.from("bound-request")) {
+                request = source.requestBoundActorAsync(
+                    actor,
+                    RoutingId.from("bound-session"),
+                    1,
+                    1,
+                    1,
+                    List.of(payload),
+                    Duration.ofSeconds(2));
+            }
+
+            var failure = assertThrows(
+                java.util.concurrent.ExecutionException.class,
+                () -> request.toCompletableFuture().get(2, TimeUnit.SECONDS));
+            assertTrue(failure.getCause() instanceof ZlinkRequestException);
+            assertEquals(
+                RequestResult.NOT_FOUND,
+                ((ZlinkRequestException) failure.getCause()).getResult());
         }
     }
 

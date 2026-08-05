@@ -723,6 +723,8 @@ export class ZLinkLocationSpotRouteResolver implements ZLinkSpotRouteResolver {
 
 export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
   private readonly cache = new Map<string, CachedReadyRoute<ZLinkSpotRouteTarget>>();
+  private readonly routeEpochs = new Map<string, number>();
+  private readonly activeResolutions = new Map<string, number>();
 
   constructor(
     private readonly store: ZLinkAuthorityStore,
@@ -741,82 +743,117 @@ export class ZLinkAuthoritySpotRouteResolver implements ZLinkSpotRouteResolver {
 
   async resolve(spotId: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotRouteTarget> {
     const key = String(spotId);
-    const cached = this.cache.get(key);
-    if (cached !== undefined) {
-      if (this.monotonicNowMs() < cached.expiresAtMs) {
-        return cached.row;
-      }
-      this.cache.delete(key);
-    }
-    const current = await this.store.readAuthority(
-      encodeAuthorityKey('user_spot', key),
-      signal
-    );
-    if (current.kind === 'snapshot' && current.allocation.state === 'active') {
-      const decoded = decodeServiceReadySpotAuthority(current.payload);
-      if (
-        decoded !== undefined
-        && decoded.spotId === String(spotId)
-        && decoded.ownerId === current.ownerId
-        && decoded.ownerLeaseGeneration === current.ownerLeaseGeneration
-      ) {
-        const target: ZLinkSpotRouteTarget = {
-          routerChannelId: this.routerChannelIdForMesh(decoded.ownerMeshName),
-          targetNodeRid: decoded.ownerNodeRid,
-          spotId,
-          spotKind: decoded.kind === 'instance_spot'
-            ? ZLinkSpotKind.Instance
-            : ZLinkSpotKind.User,
-          stableType: decoded.stableType,
-          targetSpotGeneration: current.objectGeneration,
-          targetNodeGeneration: current.allocation.descriptorLifecycleGeneration,
-          authorityOwnerGeneration: current.authorityOwnerGeneration,
-          targetOwnerId: current.ownerId,
-          ownerLeaseGeneration: current.ownerLeaseGeneration,
-          authorityStoreVersion: current.storeVersion.value,
-          targetNodeState: await this.targetNodeStateResolver?.(
-            decoded.ownerMeshName,
-            decoded.ownerNodeRid,
-            current.allocation.descriptorLifecycleGeneration,
-            signal
-          )
-        };
-        if (this.routeCacheMaxAgeMs > 0) {
-          const remainingLeaseMs = this.leaseTracker === undefined
-            ? 0
-            : await this.leaseTracker.remainingOwnerTokenLeaseMs({
-                ownerId: current.ownerId,
-                leaseGeneration: current.ownerLeaseGeneration
-              }, signal);
-          const lifetimeMs = Math.min(this.routeCacheMaxAgeMs, remainingLeaseMs);
-          if (lifetimeMs > 0) {
-            this.cache.set(key, {
-              row: target,
-              expiresAtMs: this.monotonicNowMs() + lifetimeMs
-            });
-          }
+    const epoch = this.beginResolution(key);
+    try {
+      const cached = this.cache.get(key);
+      if (cached !== undefined) {
+        if (this.monotonicNowMs() < cached.expiresAtMs) {
+          return cached.row;
         }
-        return target;
+        this.cache.delete(key);
       }
-    }
-    if (current.kind === 'snapshot') {
+
+      const current = await this.store.readAuthority(
+        encodeAuthorityKey('user_spot', key),
+        signal
+      );
+      if (current.kind === 'snapshot' && current.allocation.state === 'active') {
+        const decoded = decodeServiceReadySpotAuthority(current.payload);
+        if (
+          decoded !== undefined
+          && decoded.spotId === String(spotId)
+          && decoded.ownerId === current.ownerId
+          && decoded.ownerLeaseGeneration === current.ownerLeaseGeneration
+        ) {
+          const target: ZLinkSpotRouteTarget = {
+            routerChannelId: this.routerChannelIdForMesh(decoded.ownerMeshName),
+            targetNodeRid: decoded.ownerNodeRid,
+            spotId,
+            spotKind: decoded.kind === 'instance_spot'
+              ? ZLinkSpotKind.Instance
+              : ZLinkSpotKind.User,
+            stableType: decoded.stableType,
+            targetSpotGeneration: current.objectGeneration,
+            targetNodeGeneration: current.allocation.descriptorLifecycleGeneration,
+            authorityOwnerGeneration: current.authorityOwnerGeneration,
+            targetOwnerId: current.ownerId,
+            ownerLeaseGeneration: current.ownerLeaseGeneration,
+            authorityStoreVersion: current.storeVersion.value,
+            targetNodeState: await this.targetNodeStateResolver?.(
+              decoded.ownerMeshName,
+              decoded.ownerNodeRid,
+              current.allocation.descriptorLifecycleGeneration,
+              signal
+            )
+          };
+          if (this.routeCacheMaxAgeMs > 0 && this.currentEpoch(key) === epoch) {
+            const remainingLeaseMs = this.leaseTracker === undefined
+              ? 0
+              : await this.leaseTracker.remainingOwnerTokenLeaseMs({
+                  ownerId: current.ownerId,
+                  leaseGeneration: current.ownerLeaseGeneration
+                }, signal);
+            const lifetimeMs = Math.min(this.routeCacheMaxAgeMs, remainingLeaseMs);
+            if (lifetimeMs > 0 && this.currentEpoch(key) === epoch) {
+              this.cache.set(key, {
+                row: target,
+                expiresAtMs: this.monotonicNowMs() + lifetimeMs,
+                storeVersion: current.storeVersion.value
+              });
+            }
+          }
+          return target;
+        }
+      }
+
+      if (current.kind === 'snapshot') {
+        throw createInternalFrameworkException(
+          ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
+          `SPOT '${spotId}' authority has not crossed the Ready barrier.`
+        );
+      }
+      if (this.fallback !== undefined) {
+        return await this.fallback.resolve(spotId, signal);
+      }
       throw createInternalFrameworkException(
         ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
-        `SPOT '${spotId}' authority has not crossed the Ready barrier.`
+        `SPOT '${spotId}' has no Ready authority.`
       );
+    } finally {
+      this.finishResolution(key);
     }
-    if (this.fallback !== undefined) {
-      return await this.fallback.resolve(spotId, signal);
-    }
-    throw createInternalFrameworkException(
-      ZLinkFrameworkInternalErrorKind.SpotRouteNotFound,
-      `SPOT '${spotId}' has no Ready authority.`
-    );
   }
 
   invalidate(spotId: RoutingId): void {
-    this.cache.delete(String(spotId));
+    const key = String(spotId);
+    this.cache.delete(key);
+    if (this.activeResolutions.has(key)) {
+      this.routeEpochs.set(key, this.currentEpoch(key) + 1);
+    } else {
+      this.routeEpochs.delete(key);
+    }
     this.fallback?.invalidate?.(spotId);
+  }
+
+  private beginResolution(key: string): number {
+    const epoch = this.currentEpoch(key);
+    this.routeEpochs.set(key, epoch);
+    this.activeResolutions.set(key, (this.activeResolutions.get(key) ?? 0) + 1);
+    return epoch;
+  }
+
+  private finishResolution(key: string): void {
+    const active = this.activeResolutions.get(key);
+    if (active === undefined || active <= 1) {
+      this.activeResolutions.delete(key);
+      if (!this.cache.has(key)) this.routeEpochs.delete(key);
+      return;
+    }
+    this.activeResolutions.set(key, active - 1);
+  }
+
+  private currentEpoch(key: string): number {
+    return this.routeEpochs.get(key) ?? 0;
   }
 }
 

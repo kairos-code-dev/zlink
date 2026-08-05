@@ -299,6 +299,41 @@ public sealed class ActorHandlerActivationTests
         Assert.Throws<InvalidOperationException>(() => state.HandlerInstances);
     }
 
+    [Fact]
+    public async Task Deferred_Join_Ownership_Marks_Teardown_For_Post_Callback_Release()
+    {
+        var probe = new LifetimeProbe();
+        await using var services = new ServiceCollection()
+            .AddSingleton(probe)
+            .AddScoped<ScopedDependency>()
+            .BuildServiceProvider();
+        var state = new ZLinkActorRuntimeState("actor-deferred-join", services: services);
+        var handler = state.HandlerInstances.Resolve<ProbeHandler>();
+        Task<bool> cleanup;
+
+        using (state.EnterDeferredJoinExecution())
+        {
+            state.BeginTeardown();
+            var terminal = state.BeginHandlerActivationCompletion(
+                () =>
+                {
+                    state.ClearAfterDestroy();
+                    return true;
+                });
+
+            // A relocated Entry Spot joined callback executes outside the
+            // actor mailbox. DestroyActorAsync must therefore release the
+            // terminal cleanup only after that callback returns.
+            Assert.True(terminal.RequiresDispatchRelease);
+            cleanup = terminal.Completion;
+        }
+
+        Assert.True(await cleanup.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, handler.DisposeCount);
+        Assert.Equal(1, handler.Dependency.DisposeCount);
+        Assert.Throws<InvalidOperationException>(() => state.HandlerInstances);
+    }
+
     private sealed class LifetimeProbe
     {
         public int DisposedDependencies;

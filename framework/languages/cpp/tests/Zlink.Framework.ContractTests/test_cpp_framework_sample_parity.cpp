@@ -1674,17 +1674,17 @@ TEST (CppFrameworkSampleParity, SupportChatConversationJoinIsDeferred)
     EXPECT_NE (scenario.find ("expect (!rejoined_first.scheduled"), std::string::npos);
 }
 
-TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
+TEST (CppFrameworkSampleParity, SupportChatUsesLocalActorLocationDto)
 {
     const auto contracts = read_file (
       cpp_language_root () / "samples/SupportChat/Shared/Contracts/messages.hpp");
     const auto support = read_file (
       cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
-    EXPECT_EQ (contracts.find ("support_actor_ref_snapshot_t"), std::string::npos);
-    EXPECT_NE (contracts.find ("actor_ref_snapshot_t actor;"), std::string::npos);
-    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor->actor)"),
+    EXPECT_EQ (contracts.find ("actor_ref_snapshot_t"), std::string::npos);
+    EXPECT_NE (contracts.find ("actor_location_t actor;"), std::string::npos);
+    EXPECT_NE (support.find ("actor_location_t::from (actor->actor)"),
                std::string::npos);
-    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor)"),
+    EXPECT_NE (support.find ("actor_location_t::from (*actor)"),
                std::string::npos);
 }
 

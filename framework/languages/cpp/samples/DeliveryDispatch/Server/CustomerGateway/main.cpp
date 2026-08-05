@@ -72,7 +72,7 @@ class customer_actor_t : public actor_t
 {
   public:
     explicit customer_actor_t (actor_context_t context) :
-        actor_id (context.actor_ref ().actor_id ()),
+        actor_id (context.actor_ref ().actor_id ().value ()),
         _context (std::move (context))
     {
     }

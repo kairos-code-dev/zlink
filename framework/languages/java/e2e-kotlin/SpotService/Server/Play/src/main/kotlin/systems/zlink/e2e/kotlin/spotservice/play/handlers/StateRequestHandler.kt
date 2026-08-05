@@ -7,7 +7,7 @@ import systems.zlink.framework.handlers.ZLinkSpotRequest
 
 class StateRequestHandler {
     @ZLinkSpotRequest
-    fun handle(
+    suspend fun handle(
         spot: UserSpot,
         request: Contracts.StateReq,
     ): Contracts.StateRes {
@@ -17,7 +17,7 @@ class StateRequestHandler {
             spot.apply(request.op)
         }
         return Contracts.StateRes(
-            spot.context().spotRid().toString(),
+            spot.context().spotId(),
             spot.context().nodeRid().toString(),
             value,
         )

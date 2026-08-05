@@ -32,17 +32,23 @@ final class ZLinkSpotRouteMessagesTest {
 
     @Test
     void decodesReplyAndFrameworkError() {
-        assertEquals(
-            "reply",
-            messages.decodeReply(List.of(message("reply")), String.class));
+        List<Message> reply = List.of(message("reply"));
+        try {
+            assertEquals("reply", messages.decodeReply(reply, String.class));
+        } finally {
+            Message.closeAll(reply);
+        }
 
-        assertThrows(
-            ZLinkFrameworkException.class,
-            () -> messages.decodeReply(
-                List.of(
-                    message("ZLinkFrameworkError"),
-                    message("failed")),
-                String.class));
+        List<Message> error = List.of(
+            message("ZLinkFrameworkError"),
+            message("failed"));
+        try {
+            assertThrows(
+                ZLinkFrameworkException.class,
+                () -> messages.decodeReply(error, String.class));
+        } finally {
+            Message.closeAll(error);
+        }
     }
 
     @Test

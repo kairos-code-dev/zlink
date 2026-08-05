@@ -338,7 +338,7 @@ public:
 ```
 
 **worker는 spot·session 실행 문맥 밖에서 실행하는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
-규칙은 [비동기 실행 정책](../../../../05-async-execution-policy.md)이 소유한다. Worker function에는 timeout,
+규칙은 [비동기 실행 정책](../../../../05-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
 host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
 않는 terminal이고 `submit()`은 현재 turn을 유지하며 결과를 기다린다. `yield()`는 `SpotWide` User Spot
 또는 Instance Spot의 shared turn에서만 그 turn을 반환하고 결과를 기다린다. 다른 실행 문맥에서는
@@ -355,7 +355,7 @@ worker를 제출하거나 turn을 반환하지 않고 `invalid_operation`으로 
 
 같은 Spot의 dispatch 직렬화와 `yield()` 허용 범위는
 [stage-wrapper §3](../../../../17-stage-wrapper-on-spot.ko.md)과
-[비동기 실행 정책](../../../../05-async-execution-policy.md)이 소유한다.
+[비동기 실행 정책](../../../../05-async-execution-policy.ko.md)이 소유한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

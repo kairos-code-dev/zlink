@@ -27,6 +27,12 @@ public final class RequestProgressPump {
         new ConcurrentHashMap<>();
     private static final ConcurrentMap<Long, AtomicInteger> EXTERNAL_PROGRESS =
         new ConcurrentHashMap<>();
+    /**
+     * Completes when the fallback owner has released its native poller.
+     * Waiting for this future always happens outside the ownership lock.
+     */
+    private static final ConcurrentMap<Long, CompletableFuture<Void>> PUMP_STOPS =
+        new ConcurrentHashMap<>();
     private static final Object PROGRESS_OWNER_LOCK = new Object();
 
     private RequestProgressPump() {
@@ -47,22 +53,46 @@ public final class RequestProgressPump {
         if (socketHandle == null || socketHandle.address() == 0) {
             return;
         }
-        synchronized (PROGRESS_OWNER_LOCK) {
-            long key = socketHandle.address();
-            Pump pump = PUMPS.remove(key);
-            if (pump != null) {
-                // The caller registers the public completion poller only after
-                // this method returns. Stop the fallback owner first so the
-                // socket never has two completion consumers at once.
-                pump.stopAndWait();
-            }
-            EXTERNAL_PROGRESS.compute(key, (ignored, current) -> {
-                if (current == null) {
-                    return new AtomicInteger(1);
+        long key = socketHandle.address();
+        for (;;) {
+            Pump pump;
+            CompletableFuture<Void> stop;
+            synchronized (PROGRESS_OWNER_LOCK) {
+                stop = PUMP_STOPS.get(key);
+                if (stop != null) {
+                    pump = null;
+                } else {
+                    pump = PUMPS.remove(key);
+                    EXTERNAL_PROGRESS.compute(key, (ignored, current) -> {
+                        if (current == null) {
+                            return new AtomicInteger(1);
+                        }
+                        current.incrementAndGet();
+                        return current;
+                    });
+                    if (pump == null) {
+                        return;
+                    }
+                    stop = new CompletableFuture<>();
+                    PUMP_STOPS.put(key, stop);
                 }
-                current.incrementAndGet();
-                return current;
-            });
+            }
+            if (pump == null) {
+                // Another ownership transfer is stopping the old pump. Wait
+                // without holding PROGRESS_OWNER_LOCK, then retry so this
+                // caller does not register a public poller too early.
+                stop.join();
+                continue;
+            }
+            // The fallback thread can enter a socket callback. Do not wait for
+            // it while holding the ownership lock, or that callback can deadlock
+            // with a request that is still holding the socket wrapper monitor.
+            try {
+                pump.stopAndWait();
+            } finally {
+                finishPumpStop(key, stop);
+            }
+            return;
         }
     }
 
@@ -87,7 +117,8 @@ public final class RequestProgressPump {
         }
         long key = handle.address();
         synchronized (PROGRESS_OWNER_LOCK) {
-            if (EXTERNAL_PROGRESS.containsKey(key)) {
+            if (EXTERNAL_PROGRESS.containsKey(key)
+                || PUMP_STOPS.containsKey(key)) {
                 return;
             }
             Pump pump = PUMPS.computeIfAbsent(key,
@@ -101,12 +132,40 @@ public final class RequestProgressPump {
         if (socketHandle.address() == 0)
             return;
         long key = socketHandle.address();
+        Pump pump;
+        CompletableFuture<Void> stop;
         synchronized (PROGRESS_OWNER_LOCK) {
-            Pump pump = PUMPS.remove(key);
-            if (pump != null) {
-                pump.stopAndWait();
+            stop = PUMP_STOPS.get(key);
+            if (stop != null) {
+                pump = null;
+            } else {
+                pump = PUMPS.remove(key);
+                if (pump == null) {
+                    return;
+                }
+                stop = new CompletableFuture<>();
+                PUMP_STOPS.put(key, stop);
             }
         }
+        if (pump == null) {
+            // A concurrent public poller registration already took ownership;
+            // wait until its old fallback owner is gone before closing.
+            stop.join();
+            return;
+        }
+        try {
+            pump.stopAndWait();
+        } finally {
+            finishPumpStop(key, stop);
+        }
+    }
+
+    private static void finishPumpStop(long key,
+                                       CompletableFuture<Void> stop) {
+        synchronized (PROGRESS_OWNER_LOCK) {
+            PUMP_STOPS.remove(key, stop);
+        }
+        stop.complete(null);
     }
 
     private static final class Pump {

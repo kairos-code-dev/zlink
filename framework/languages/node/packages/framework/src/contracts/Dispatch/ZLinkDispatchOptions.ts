@@ -65,8 +65,8 @@ export interface ZLinkMessageFlowEvent {
   readonly reason?: ZLinkDispatchErrorReason;
   readonly action?: ZLinkDispatchErrorAction;
   readonly packetName?: string;
-  readonly meshName?: string;
   readonly channelName?: string;
+  readonly meshName?: string;
   readonly topic?: string;
   readonly correlationId?: string;
   readonly sourceRid?: RoutingId;
@@ -74,6 +74,8 @@ export interface ZLinkMessageFlowEvent {
   readonly flowId?: string;
   readonly flowOrigin?: ZLinkFlowOrigin;
   readonly spotId?: SpotId;
+  readonly instanceSpotType?: string;
+  readonly activationState?: 'activating' | 'ready' | 'closing';
   readonly actorId?: string;
   readonly messageSizeBytes?: number;
   readonly durationSeconds?: number;
@@ -102,15 +104,19 @@ export interface ZLinkRuntimeMessageFlowEvent {
   readonly messageKind: ZLinkDispatchMessageKind;
   readonly packetName?: string;
   readonly channelName?: string;
+  readonly meshName?: string;
   readonly topic?: string;
   readonly correlationId?: string;
   readonly sourceRid?: string;
+  readonly targetRid?: string;
   readonly peerRid?: string;
   readonly socketRole?: string;
   readonly effectiveMode: ZLinkMessageFlowLogMode;
   readonly flowId: string;
   readonly flowOrigin: ZLinkFlowOrigin;
   readonly spotId?: string;
+  readonly instanceSpotType?: string;
+  readonly activationState?: 'activating' | 'ready' | 'closing';
   readonly actorId?: string;
   readonly messageSize?: number;
   readonly errorReason?: ZLinkDispatchErrorReason;
@@ -139,10 +145,14 @@ export interface ZLinkDispatchFailure {
   readonly action: ZLinkDispatchErrorAction;
   readonly packetName?: string;
   readonly channelName?: string;
+  readonly meshName?: string;
   readonly topic?: string;
   readonly spotId?: string;
+  readonly instanceSpotType?: string;
+  readonly activationState?: 'activating' | 'ready' | 'closing';
   readonly actorId?: string;
   readonly sourceRid?: string;
+  readonly targetRid?: string;
   readonly correlationId?: string;
   readonly flowId?: string;
   readonly flowOrigin?: ZLinkFlowOrigin;
@@ -192,6 +202,7 @@ export enum ZLinkDispatchErrorSurface {
   Channel = 'channel',
   RouteMeshChannel = 'routeMeshChannel',
   SpotRoute = 'spotRoute',
+  InstanceSpot = 'instance_spot',
   SpotSubscription = 'spotSubscription',
   SpotActor = 'spotActor',
   StreamSession = 'streamSession'

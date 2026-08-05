@@ -329,8 +329,8 @@ class transfer_actor_t final : public fw::actor_t
 
     void set_actor_ref (const fw::actor_ref_t &actor_ref)
     {
-        actor_id = std::string (actor_ref.actor_id ());
-        actor_type = std::string (actor_ref.actor_type ());
+        actor_id = std::string (actor_ref.actor_id ().value ());
+        actor_type = e2e::actor_type_stateful;
     }
 
     fw::actor_context_t &context () noexcept override
@@ -407,7 +407,7 @@ class transfer_actor_factory_t final :
       std::stop_token) override
     {
         const auto actor_id =
-          std::string (context.actor_ref ().actor_id ());
+          std::string (context.actor_ref ().actor_id ().value ());
         if (g_evidence != nullptr && g_evidence->node_rid () == "actor-b"
             && actor_id.rfind ("actor-no-adapter-", 0) == 0) {
             g_evidence->add ("transfer", actor_id, "transfer_in_empty_default", "actor-factory");
@@ -812,11 +812,12 @@ class transfer_session_t final : public fw::packet_stream_session_t
         if (dispatch.packet_name == e2e::bind_actor_session_req_t::packet_name) {
             const auto request = payload.parse_json<e2e::bind_actor_session_req_t> ();
             auto actor_ref = co_await _directory.find (request.actor_id);
-            fw::actor_ref_t resolved;
+            std::optional<fw::actor_ref_t> resolved;
             if (!request.node_rid.empty () && request.generation) {
-                resolved = fw::actor_ref_t (fw::node_rid_t::from_string (request.node_rid),
-                                            e2e::actor_type_stateful, request.actor_id,
-                                            static_cast<std::uint64_t> (*request.generation));
+                resolved.emplace (
+                  fw::actor_id_t (request.actor_id),
+                  static_cast<std::uint64_t> (*request.generation), e2e::mesh_name,
+                  fw::node_rid_t::from_string (request.node_rid));
             } else if (actor_ref) {
                 resolved = *actor_ref;
             } else {
@@ -824,14 +825,14 @@ class transfer_session_t final : public fw::packet_stream_session_t
                   fw::framework_error_kind_t::not_found,
                   "actor '" + request.actor_id + "' was not found");
             }
-            auto bound = co_await _actors.bind_or_get (resolved).submit ();
+            auto bound = co_await _actors.bind_or_get (*resolved).submit ();
             _bound_actor_id = std::string (bound.actor_id ());
             g_evidence->add (request.scenario, request.actor_id, "session_bound", "stream");
             stream
               .reply_packet (zlink::message_t::from_json (e2e::bind_actor_session_res_t{
-                request.scenario, std::string (resolved.actor_id ()),
-                std::string (resolved.node_rid ().value ()),
-                static_cast<std::int64_t> (resolved.generation ())}))
+                request.scenario, std::string (resolved->actor_id ().value ()),
+                std::string (resolved->node_rid ().value ()),
+                static_cast<std::int64_t> (resolved->object_generation ())}))
               .submit ();
             co_return;
         }
@@ -1040,11 +1041,15 @@ class create_actor_handler_t
               }
           },
           created);
-        fw::session_actor_t bound;
         try {
-            bound = co_await _session_actors
+            auto bound = co_await _session_actors
               .bind_or_get (ref)
               .submit ();
+            const auto &bound_ref = bound.context ().actor_ref ();
+            co_return json_response (nlohmann::json (e2e::actor_create_res_t{
+              request.actor_id, request.actor_type,
+              std::string (bound_ref.node_rid ().value ()),
+              static_cast<std::int64_t> (bound_ref.object_generation ())}));
         }
         catch (const std::exception &error) {
             _evidence.add (
@@ -1053,11 +1058,6 @@ class create_actor_handler_t
               error.what ());
             throw;
         }
-        const auto &bound_ref = bound.context ().actor_ref ();
-        co_return json_response (nlohmann::json (e2e::actor_create_res_t{
-          request.actor_id, request.actor_type,
-          std::string (bound_ref.node_rid ().value ()),
-          static_cast<std::int64_t> (bound_ref.generation ())}));
     }
 
   private:
@@ -1089,7 +1089,7 @@ class actor_ref_handler_t
         const auto ref = require_actor_ref (_directory, actor_id);
         return json_response (nlohmann::json (e2e::actor_ref_snapshot_res_t{
           actor_id, std::string (ref.node_rid ().value ()),
-          static_cast<std::int64_t> (ref.generation ())}));
+          static_cast<std::int64_t> (ref.object_generation ())}));
     }
 
   private:

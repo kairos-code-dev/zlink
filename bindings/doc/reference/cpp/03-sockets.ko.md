@@ -35,13 +35,16 @@ socket.close ();
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `valid()` / `close()` | — | — |
-| `bind(const std::string&)` / `connect(const std::string&)` / `unbind(const std::string&)` / `disconnect(const std::string&)` / `disconnect_rid(const routing_id_t&)` | — | — |
+| `valid()` | — | 이 socket이 아직 사용 가능한지 |
+| `close()` | — | native socket을 즉시 해제 |
+| `bind(const std::string&)` / `unbind(const std::string&)` | — | 주소에서 수신 시작/중지 |
+| `connect(const std::string&)` / `disconnect(const std::string&)` | — | peer 주소로 connect/disconnect |
+| `disconnect_rid(const routing_id_t&)` | — | 그 routing id로 식별되는 peer의 connection을 끊음 |
 | `monitor_open(monitor_event events_) const` | `monitor_event::all` | `socket_monitor_t` 반환(Eventing category) |
 | `options()` | — | `common_socket_options_t`(아래) 반환 |
 | `set_tls_server(cert, key, require_client_cert)` | `require_client_cert = false` | `bind` 전에 적용 |
 | `set_tls_client(ca_cert, hostname, trust_system)` | `trust_system = false` | `connect` 전에 적용 |
-| `set_send_ready_handler(std::function<void()>)` | — | — |
+| `set_send_ready_handler(std::function<void()>)` | — | back-pressure 해소 콜백 등록 |
 
 **완료 결과.** `valid()`/`monitor_open()`/`options()`를 제외한 모든 member는
 반환값 없이 동기다. `socket_t`는 move-only다(복사는 delete) — 소멸자는 암묵적으로
@@ -65,21 +68,23 @@ socket.options ().submit_retry_mode (zlink::submit_retry_mode_t::local_failure);
 
 **옵션.** `common_socket_options_t`:
 
-| Member | 타입 |
-| --- | --- |
-| `linger()` | `std::chrono::milliseconds` |
-| `send_hwm()` / `recv_hwm()` | `byte_count_t`, accounted-byte 제한 |
-| `send_timeout()` / `recv_timeout()` / `connect_timeout()` | `std::chrono::milliseconds` |
-| `immediate()` / `ipv6()` / `tcp_no_delay()` | `bool` |
-| `tcp_keepalive()` | `tcp_keepalive_mode_t` |
-| `rid_duplicate_policy()` | `rid_duplicate_policy_t` |
-| `max_message_size()` | `byte_size_t` |
-| `backlog()` | `socket_backlog_t` |
-| `reconnect_interval()` / `reconnect_interval_max()` | `std::chrono::milliseconds` |
-| `submit_retry_mode()` | `submit_retry_mode_t` |
-| `submit_retry_timeout()` | `std::chrono::milliseconds` |
-| `submit_retry_attempts()` | `int` |
-| `last_endpoint()` | `std::string`, 읽기 전용 |
+| Member | 타입 | 의미 |
+| --- | --- | --- |
+| `linger()` | `std::chrono::milliseconds` | `close()`가 대기 중인 send가 flush될 때까지 기다리는 상한 |
+| `send_hwm()` / `recv_hwm()` | `byte_count_t`, accounted-byte 제한 | send/receive queue 제한 — Core category의 byte-HWM 참고 |
+| `send_timeout()` / `recv_timeout()` / `connect_timeout()` | `std::chrono::milliseconds` | 대응하는 blocking operation이 기다리는 상한 |
+| `immediate()` | `bool` | send가 지금 살아있는 connection을 요구할지, 아니면 생길 때까지 대기열에 쌓을지 |
+| `ipv6()` | `bool` | socket이 IPv6 connection을 받을지 |
+| `tcp_no_delay()` | `bool` | `true`면 Nagle 알고리즘을 끔 |
+| `tcp_keepalive()` | `tcp_keepalive_mode_t` | OS TCP keepalive 모드 |
+| `rid_duplicate_policy()` | `rid_duplicate_policy_t` | peer가 기존 routing id를 재사용하면 어떻게 되는지 |
+| `max_message_size()` | `byte_size_t` | 단일 수신 메시지의 최대 바이트 크기 |
+| `backlog()` | `socket_backlog_t` | listening socket의 대기 connection queue 길이 |
+| `reconnect_interval()` / `reconnect_interval_max()` | `std::chrono::milliseconds` | 재연결 시도 사이 간격, 그리고 그 상한 |
+| `submit_retry_mode()` | `submit_retry_mode_t` | local back-pressure에서 실패한 submit을 자동 재시도할지 |
+| `submit_retry_timeout()` | `std::chrono::milliseconds` | `submit_retry_mode()`가 `local_failure`일 때의 재시도 timeout |
+| `submit_retry_attempts()` | `int` | `submit_retry_mode()`가 `local_failure`일 때의 재시도 횟수 상한 |
+| `last_endpoint()` | `std::string`, 읽기 전용 | 실제로 resolve된 bind 주소 |
 
 타입별 서브클래스(각각 대응하는 socket type의 참조로 생성):
 
@@ -113,10 +118,10 @@ if (pair.recv (received) == 0) { /* ... */ }
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit pair_socket_t(context_t&)` | — | — |
+| `explicit pair_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
 | `send()` | — | 공유 `send_operation_t` builder 시작 |
 | `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | 뒤는 single-part shortcut |
-| `set_send_ready_handler(std::function<void()>)` | — | — |
+| `set_send_ready_handler(std::function<void()>)` | — | back-pressure 해소 콜백 등록 |
 
 **완료 결과.** `recv`는 `int`를 직접 반환한다 — 성공하면 `0`, receive 실패나
 no data면 `recv_result_t` 값, binding-local 실패에서만 `errno`가 설정된 채
@@ -142,11 +147,11 @@ auto reply = std::move (dealer.request ()).message (payload).async ().get ();
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit dealer_socket_t(context_t&)` | — | — |
-| `send()` / `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | — |
-| `set_send_ready_handler(...)` | — | — |
+| `explicit dealer_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
+| `send()` / `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | `pair_socket_t`와 같은 형태 |
+| `set_send_ready_handler(...)` | — | back-pressure 해소 콜백 등록 |
 | `request()` | — | 공유 `request_operation_t` 시작; target 인자 없음 — DEALER는 API 레벨 peer routing id가 없음 |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | 이 socket 자신의 routing id를 지정/읽음, peer가 connect 시 관찰 |
 | `options()` | — | `dealer_socket_options_t` 반환 |
 
 **완료 결과.** `recv`는 `pair_socket_t`와 같은 `int` 관례를 따른다.
@@ -172,16 +177,16 @@ router.set_completion_control_handler ([] (auto &rid, auto parts) { /* ... */ })
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit router_socket_t(context_t&)` | — | — |
-| `send(const routing_id_t&)` | — | — |
-| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | — |
-| `recv(routing_id_t& source_rid_out_, message_t& part_out_, recv_flags_t)` | `recv_flags_t::none` | caller가 오래 사는 `received_t`를 유지해 storage를 재할당 없이 재사용 가능 |
-| `set_send_ready_handler(...)` | — | — |
+| `explicit router_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
+| `send(const routing_id_t&)` | — | 그 peer로 향하는 공유 `send_operation_t` 시작 |
+| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | 다음 메시지로 envelope을 채움 |
+| `recv(routing_id_t& source_rid_out_, message_t& part_out_, recv_flags_t)` | `recv_flags_t::none` | pull 기반 single-part receive; caller가 오래 사는 `received_t`를 유지해 storage를 재할당 없이 재사용 가능 |
+| `set_send_ready_handler(...)` | — | back-pressure 해소 콜백 등록 |
 | `request(const routing_id_t&)` | — | Messaging category의 `request_operation_t`, 특정 peer로 향함 |
-| `reply(const routing_id_t&, uint64_t request_seq_)` | — | Messaging category의 `reply_operation_t` |
-| `try_send_completion_control(const routing_id_t& peer_rid_, const std::vector<message_t>& parts_)` | — | `parts_`를 소비하지 않음 |
-| `set_completion_control_handler(completion_control_handler_t)` | — | `using completion_control_handler_t = std::function<void(const routing_id_t&, std::vector<message_t>)>` — 콜백이 수신 벡터를 소유 |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `reply(const routing_id_t&, uint64_t request_seq_)` | — | Messaging category의 `reply_operation_t`, 그 peer의 request에 응답 |
+| `try_send_completion_control(const routing_id_t& peer_rid_, const std::vector<message_t>& parts_)` | — | `parts_`를 소비하지 않고 peer의 기존 connection으로 opaque control record 전송 |
+| `set_completion_control_handler(completion_control_handler_t)` | — | 수신되는 completion-control record를 받는 콜백 등록; `using completion_control_handler_t = std::function<void(const routing_id_t&, std::vector<message_t>)>` — 콜백이 수신 벡터를 소유 |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | 이 socket 자신의 routing id를 지정/읽음, peer가 connect 시 관찰 |
 | `options()` | — | `router_socket_options_t` 반환 |
 
 **완료 결과.** `try_send_completion_control`은 `bool`을 반환한다 — completion
@@ -213,10 +218,11 @@ if (xpub.receive_subscription_event (evt) == 0) { /* ... */ }
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit pub_socket_t(context_t&)` | — | — |
+| `explicit pub_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
 | `publish(const std::string& topic_id_)` | — | 공유 `send_operation_t` 시작 |
-| `set_send_ready_handler(...)` / `options()` | — | `pub_socket_options_t` |
-| `receive_subscription_event(subscription_event_t&, recv_flags_t)` | `recv_flags_t::none` | `xpub_socket_t`만 |
+| `set_send_ready_handler(...)` | — | back-pressure 해소 콜백 등록 |
+| `options()` | — | `pub_socket_options_t` 반환 |
+| `receive_subscription_event(subscription_event_t&, recv_flags_t)` | `recv_flags_t::none` | 다음 subscribe·unsubscribe로 event를 채움; `xpub_socket_t`만 |
 
 `pub_socket_t`는 이 투영에서 `set_routing_id`/`get_routing_id`가 없다(둘 다
 있는 dotnet의 `IPubSocket`과 다르다) — `xpub_socket_t`도 마찬가지다.
@@ -249,12 +255,12 @@ if (sub.subscribe (msg) == 0) { /* ... */ }
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit sub_socket_t(context_t&)` | — | — |
-| `set_subscription(const std::string&)` / `unset_subscription(const std::string&)` | — | `void`, base의 `[[nodiscard]] int`와 다름 |
-| `subscription_at(size_t, std::string&, bool* = nullptr)` | — | — |
+| `explicit sub_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
+| `set_subscription(const std::string&)` / `unset_subscription(const std::string&)` | — | topic filter를 추가/제거; 구독은 누적된다; `void` 반환, base의 `[[nodiscard]] int`와 다름 |
+| `subscription_at(size_t, std::string&, bool* = nullptr)` | — | 해당 index의 filter를 출력 인자에 씀 |
 | `subscription_at(size_t)` | — | 값 반환 overload, `subscription_filter_t` 반환 |
-| `subscribe(topic_message_t&, recv_flags_t)` | `recv_flags_t::none` | `int` 반환, base의 예외를 던지는 값 반환 형태가 아님 |
-| `subscribe_part(std::optional<routing_id_t>& source_rid_out_, std::string& topic_out_, message_t& part_out_, bool& has_more_out_, recv_flags_t)` | `recv_flags_t::none` | — |
+| `subscribe(topic_message_t&, recv_flags_t)` | `recv_flags_t::none` | 다음 매칭 publish로 envelope을 채움; `int` 반환, base의 예외를 던지는 값 반환 형태가 아님 |
+| `subscribe_part(std::optional<routing_id_t>& source_rid_out_, std::string& topic_out_, message_t& part_out_, bool& has_more_out_, recv_flags_t)` | `recv_flags_t::none` | pull 기반 single-part subscribe receive |
 | `options()` | — | `sub_socket_options_t` 반환 |
 
 `xsub_socket_t`는 `sub_socket_t`와 member 집합이 동일하다 — 모든 method가 변경
@@ -283,12 +289,12 @@ stream.set_packet_handler ([] (auto &rid, auto &&header, auto &&body) { /* heade
 
 | Member | 기본값 | 의미 |
 | --- | --- | --- |
-| `explicit stream_socket_t(context_t&)` | — | — |
-| `send(const routing_id_t&)` | — | — |
-| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | dotnet의 `IStreamSocket`(raw part와 routing id/`hasMore`를 반환하는 `RecvPart`가 있음)과 달리, 여기 public으로 선언된 별도 raw-part receive overload는 없음 |
-| `set_packet_handler(std::function<void(const routing_id_t&, message_t&&, message_t&&)>)` | — | — |
-| `set_send_ready_handler(...)` | — | — |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `explicit stream_socket_t(context_t&)` | — | 그 context에 묶인 socket을 생성 |
+| `send(const routing_id_t&)` | — | 그 peer로 향하는 공유 `send_operation_t` 시작 |
+| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | 다음 packet으로 envelope을 채움; dotnet의 `IStreamSocket`(raw part와 routing id/`hasMore`를 반환하는 `RecvPart`가 있음)과 달리, 여기 public으로 선언된 별도 raw-part receive overload는 없음 |
+| `set_packet_handler(std::function<void(const routing_id_t&, message_t&&, message_t&&)>)` | — | callback 기반 packet loop 등록 |
+| `set_send_ready_handler(...)` | — | back-pressure 해소 콜백 등록 |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | 이 socket 자신의 routing id를 지정/읽음, peer가 connect 시 관찰 |
 | `options()` | — | `stream_socket_options_t` 반환 |
 
 **완료 결과.** `recv`는 위 `int` 관례를 따른다. packet handler는 rvalue 참조를
@@ -315,9 +321,9 @@ zlink::proxy_steerable (frontend, backend, capture, control);
 
 | Member | 의미 |
 | --- | --- |
-| `proxy(socket_t& frontend_, socket_t& backend_)` | — |
-| `proxy(socket_t&, socket_t&, socket_t& capture_)` | — |
-| `proxy_steerable(socket_t&, socket_t&, socket_t& capture_, socket_t& control_)` | — |
+| `proxy(socket_t& frontend_, socket_t& backend_)` | context가 종료될 때까지 두 socket 사이에 메시지를 전달 |
+| `proxy(socket_t&, socket_t&, socket_t& capture_)` | 같지만, 전달되는 모든 메시지의 복사본을 `capture_`로도 보냄 |
+| `proxy_steerable(socket_t&, socket_t&, socket_t& capture_, socket_t& control_)` | 같지만, `control_`의 명령으로 일시정지/재개/종료 가능 |
 
 **완료 결과.** 둘 다 context가 종료될 때까지(또는 `proxy_steerable`의 경우
 control 명령이나 에러가 loop을 끝낼 때까지) 호출 스레드를 block한다 — 둘 중

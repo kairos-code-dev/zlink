@@ -33,13 +33,16 @@ socket.close ();
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `valid()` / `close()` | — | — |
-| `bind(const std::string&)` / `connect(const std::string&)` / `unbind(const std::string&)` / `disconnect(const std::string&)` / `disconnect_rid(const routing_id_t&)` | — | — |
+| `valid()` | — | whether this socket is still usable |
+| `close()` | — | releases the native socket immediately |
+| `bind(const std::string&)` / `unbind(const std::string&)` | — | starts/stops listening on an address |
+| `connect(const std::string&)` / `disconnect(const std::string&)` | — | connects/disconnects to a peer address |
+| `disconnect_rid(const routing_id_t&)` | — | disconnects the peer identified by that routing id |
 | `monitor_open(monitor_event events_) const` | `monitor_event::all` | returns `socket_monitor_t` (Eventing category) |
 | `options()` | — | returns `common_socket_options_t`, below |
 | `set_tls_server(cert, key, require_client_cert)` | `require_client_cert = false` | apply before `bind` |
 | `set_tls_client(ca_cert, hostname, trust_system)` | `trust_system = false` | apply before `connect` |
-| `set_send_ready_handler(std::function<void()>)` | — | — |
+| `set_send_ready_handler(std::function<void()>)` | — | registers a back-pressure-cleared callback |
 
 **Completion result.** All synchronous, no return value except `valid()`/`monitor_open()`/
 `options()`. `socket_t` is move-only (copy deleted); its destructor does not implicitly close.
@@ -61,21 +64,23 @@ socket.options ().submit_retry_mode (zlink::submit_retry_mode_t::local_failure);
 
 **Options.** `common_socket_options_t`:
 
-| Member | Type |
-| --- | --- |
-| `linger()` | `std::chrono::milliseconds` |
-| `send_hwm()` / `recv_hwm()` | `byte_count_t`, accounted-byte limits |
-| `send_timeout()` / `recv_timeout()` / `connect_timeout()` | `std::chrono::milliseconds` |
-| `immediate()` / `ipv6()` / `tcp_no_delay()` | `bool` |
-| `tcp_keepalive()` | `tcp_keepalive_mode_t` |
-| `rid_duplicate_policy()` | `rid_duplicate_policy_t` |
-| `max_message_size()` | `byte_size_t` |
-| `backlog()` | `socket_backlog_t` |
-| `reconnect_interval()` / `reconnect_interval_max()` | `std::chrono::milliseconds` |
-| `submit_retry_mode()` | `submit_retry_mode_t` |
-| `submit_retry_timeout()` | `std::chrono::milliseconds` |
-| `submit_retry_attempts()` | `int` |
-| `last_endpoint()` | `std::string`, read-only |
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `linger()` | `std::chrono::milliseconds` | upper bound on how long `close()` waits for pending sends to flush |
+| `send_hwm()` / `recv_hwm()` | `byte_count_t`, accounted-byte limits | send/receive queue limit — see Core category's byte-HWM note |
+| `send_timeout()` / `recv_timeout()` / `connect_timeout()` | `std::chrono::milliseconds` | upper bound on how long the matching blocking operation waits |
+| `immediate()` | `bool` | whether a send requires a live connection now, instead of queueing until one exists |
+| `ipv6()` | `bool` | whether the socket accepts IPv6 connections |
+| `tcp_no_delay()` | `bool` | disables Nagle's algorithm when `true` |
+| `tcp_keepalive()` | `tcp_keepalive_mode_t` | OS TCP keepalive mode |
+| `rid_duplicate_policy()` | `rid_duplicate_policy_t` | what happens when a peer reuses an existing routing id |
+| `max_message_size()` | `byte_size_t` | maximum size in bytes of a single accepted message |
+| `backlog()` | `socket_backlog_t` | pending-connection queue length for a listening socket |
+| `reconnect_interval()` / `reconnect_interval_max()` | `std::chrono::milliseconds` | delay between reconnect attempts, and its cap |
+| `submit_retry_mode()` | `submit_retry_mode_t` | whether a failed submit retries automatically on local back-pressure |
+| `submit_retry_timeout()` | `std::chrono::milliseconds` | retry timeout when `submit_retry_mode()` is `local_failure` |
+| `submit_retry_attempts()` | `int` | retry attempt cap when `submit_retry_mode()` is `local_failure` |
+| `last_endpoint()` | `std::string`, read-only | the concrete resolved bind address |
 
 Per-type subclasses (each constructed from a reference to their matching socket type):
 
@@ -109,10 +114,10 @@ if (pair.recv (received) == 0) { /* ... */ }
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit pair_socket_t(context_t&)` | — | — |
+| `explicit pair_socket_t(context_t&)` | — | constructs the socket, bound to that context |
 | `send()` | — | starts the shared `send_operation_t` builder |
 | `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | latter is a single-part shortcut |
-| `set_send_ready_handler(std::function<void()>)` | — | — |
+| `set_send_ready_handler(std::function<void()>)` | — | registers a back-pressure-cleared callback |
 
 **Completion result.** `recv` returns `int` directly — `0` on success, a `recv_result_t` value on
 receive failure or no data, `-1` only for a binding-local failure with `errno` set (this
@@ -138,11 +143,11 @@ auto reply = std::move (dealer.request ()).message (payload).async ().get ();
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit dealer_socket_t(context_t&)` | — | — |
-| `send()` / `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | — |
-| `set_send_ready_handler(...)` | — | — |
+| `explicit dealer_socket_t(context_t&)` | — | constructs the socket, bound to that context |
+| `send()` / `recv(received_t&, recv_flags_t)` / `recv(message_t&, recv_flags_t)` | `recv_flags_t::none` | same shape as `pair_socket_t` |
+| `set_send_ready_handler(...)` | — | registers a back-pressure-cleared callback |
 | `request()` | — | starts the shared `request_operation_t`; no target parameter — DEALER has no API-level peer routing id |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | assigns/reads this socket's own routing id, observed by peers on connect |
 | `options()` | — | returns `dealer_socket_options_t` |
 
 **Completion result.** `recv` follows the same `int` convention as `pair_socket_t`.
@@ -167,16 +172,16 @@ router.set_completion_control_handler ([] (auto &rid, auto parts) { /* ... */ })
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit router_socket_t(context_t&)` | — | — |
-| `send(const routing_id_t&)` | — | — |
-| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | — |
-| `recv(routing_id_t& source_rid_out_, message_t& part_out_, recv_flags_t)` | `recv_flags_t::none` | caller may keep a long-lived `received_t` across calls to reuse storage without reallocation |
-| `set_send_ready_handler(...)` | — | — |
+| `explicit router_socket_t(context_t&)` | — | constructs the socket, bound to that context |
+| `send(const routing_id_t&)` | — | starts the shared `send_operation_t`, addressed to that peer |
+| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | populates the envelope with the next message |
+| `recv(routing_id_t& source_rid_out_, message_t& part_out_, recv_flags_t)` | `recv_flags_t::none` | pull-based single-part receive; caller may keep a long-lived `received_t` across calls to reuse storage without reallocation |
+| `set_send_ready_handler(...)` | — | registers a back-pressure-cleared callback |
 | `request(const routing_id_t&)` | — | Messaging category's `request_operation_t`, addressed to a specific peer |
-| `reply(const routing_id_t&, uint64_t request_seq_)` | — | Messaging category's `reply_operation_t` |
-| `try_send_completion_control(const routing_id_t& peer_rid_, const std::vector<message_t>& parts_)` | — | does not consume `parts_` |
-| `set_completion_control_handler(completion_control_handler_t)` | — | `using completion_control_handler_t = std::function<void(const routing_id_t&, std::vector<message_t>)>` — callback owns the received vector |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `reply(const routing_id_t&, uint64_t request_seq_)` | — | Messaging category's `reply_operation_t`, answering that peer's request |
+| `try_send_completion_control(const routing_id_t& peer_rid_, const std::vector<message_t>& parts_)` | — | sends an opaque control record to a peer over its existing connection, without consuming `parts_` |
+| `set_completion_control_handler(completion_control_handler_t)` | — | registers the callback that receives incoming completion-control records; `using completion_control_handler_t = std::function<void(const routing_id_t&, std::vector<message_t>)>` — callback owns the received vector |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | assigns/reads this socket's own routing id, observed by peers on connect |
 | `options()` | — | returns `router_socket_options_t` |
 
 **Completion result.** `try_send_completion_control` returns `bool` — `false` only when the
@@ -208,10 +213,11 @@ if (xpub.receive_subscription_event (evt) == 0) { /* ... */ }
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit pub_socket_t(context_t&)` | — | — |
+| `explicit pub_socket_t(context_t&)` | — | constructs the socket, bound to that context |
 | `publish(const std::string& topic_id_)` | — | starts the shared `send_operation_t` |
-| `set_send_ready_handler(...)` / `options()` | — | `pub_socket_options_t` |
-| `receive_subscription_event(subscription_event_t&, recv_flags_t)` | `recv_flags_t::none` | `xpub_socket_t` only |
+| `set_send_ready_handler(...)` | — | registers a back-pressure-cleared callback |
+| `options()` | — | returns `pub_socket_options_t` |
+| `receive_subscription_event(subscription_event_t&, recv_flags_t)` | `recv_flags_t::none` | populates the event with the next subscribe/unsubscribe; `xpub_socket_t` only |
 
 `pub_socket_t` has no `set_routing_id`/`get_routing_id` in this projection (unlike dotnet's
 `IPubSocket`, which has both) — neither does `xpub_socket_t`.
@@ -243,12 +249,12 @@ if (sub.subscribe (msg) == 0) { /* ... */ }
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit sub_socket_t(context_t&)` | — | — |
-| `set_subscription(const std::string&)` / `unset_subscription(const std::string&)` | — | `void`, not `[[nodiscard]] int` like the base |
-| `subscription_at(size_t, std::string&, bool* = nullptr)` | — | — |
+| `explicit sub_socket_t(context_t&)` | — | constructs the socket, bound to that context |
+| `set_subscription(const std::string&)` / `unset_subscription(const std::string&)` | — | adds/removes a topic filter; subscriptions accumulate; returns `void`, not `[[nodiscard]] int` like the base |
+| `subscription_at(size_t, std::string&, bool* = nullptr)` | — | writes the filter at that index into the output parameters |
 | `subscription_at(size_t)` | — | value-returning overload, returns `subscription_filter_t` |
-| `subscribe(topic_message_t&, recv_flags_t)` | `recv_flags_t::none` | returns `int`, not the base's throwing value-return form |
-| `subscribe_part(std::optional<routing_id_t>& source_rid_out_, std::string& topic_out_, message_t& part_out_, bool& has_more_out_, recv_flags_t)` | `recv_flags_t::none` | — |
+| `subscribe(topic_message_t&, recv_flags_t)` | `recv_flags_t::none` | populates the envelope with the next matching publish; returns `int`, not the base's throwing value-return form |
+| `subscribe_part(std::optional<routing_id_t>& source_rid_out_, std::string& topic_out_, message_t& part_out_, bool& has_more_out_, recv_flags_t)` | `recv_flags_t::none` | pull-based single-part subscribe receive |
 | `options()` | — | returns `sub_socket_options_t` |
 
 `xsub_socket_t` has the identical member set to `sub_socket_t` — every method is separately
@@ -277,12 +283,12 @@ stream.set_packet_handler ([] (auto &rid, auto &&header, auto &&body) { /* owns 
 
 | Member | Default | Meaning |
 | --- | --- | --- |
-| `explicit stream_socket_t(context_t&)` | — | — |
-| `send(const routing_id_t&)` | — | — |
-| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | unlike dotnet's `IStreamSocket` (which has a `RecvPart` returning raw parts plus routing id/`hasMore`), no separate raw-part receive overload is public here |
-| `set_packet_handler(std::function<void(const routing_id_t&, message_t&&, message_t&&)>)` | — | — |
-| `set_send_ready_handler(...)` | — | — |
-| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | — |
+| `explicit stream_socket_t(context_t&)` | — | constructs the socket, bound to that context |
+| `send(const routing_id_t&)` | — | starts the shared `send_operation_t`, addressed to that peer |
+| `recv(received_t&, recv_flags_t)` | `recv_flags_t::none` | populates the envelope with the next packet; unlike dotnet's `IStreamSocket` (which has a `RecvPart` returning raw parts plus routing id/`hasMore`), no separate raw-part receive overload is public here |
+| `set_packet_handler(std::function<void(const routing_id_t&, message_t&&, message_t&&)>)` | — | registers a callback-driven packet loop |
+| `set_send_ready_handler(...)` | — | registers a back-pressure-cleared callback |
+| `set_routing_id(const routing_id_t&)` / `get_routing_id(routing_id_t&) const` | — | assigns/reads this socket's own routing id, observed by peers on connect |
 | `options()` | — | returns `stream_socket_options_t` |
 
 **Completion result.** `recv` follows the `int` convention above. The packet handler transfers
@@ -308,9 +314,9 @@ zlink::proxy_steerable (frontend, backend, capture, control);
 
 | Member | Meaning |
 | --- | --- |
-| `proxy(socket_t& frontend_, socket_t& backend_)` | — |
-| `proxy(socket_t&, socket_t&, socket_t& capture_)` | — |
-| `proxy_steerable(socket_t&, socket_t&, socket_t& capture_, socket_t& control_)` | — |
+| `proxy(socket_t& frontend_, socket_t& backend_)` | forwards messages between the two sockets until the context terminates |
+| `proxy(socket_t&, socket_t&, socket_t& capture_)` | same, plus a copy of every forwarded message sent to `capture_` |
+| `proxy_steerable(socket_t&, socket_t&, socket_t& capture_, socket_t& control_)` | same, pausable/resumable/terminable via commands on `control_` |
 
 **Completion result.** Both block the calling thread until the context is terminated (or, for
 `proxy_steerable`, until a control command or error ends the loop) — run either on a dedicated

@@ -39,7 +39,7 @@ framework's interface-catalog convention). This reference tree follows the same 
 | [Core](01-core.en.md) | Drafted | `src/index.ts` (factory functions + `version`/`has`/`proxy`/`sleep`/`multipartClose`); `contracts/core/`: `context.ts`, `routing_id.ts`, `buffer_like.ts` |
 | [Messaging](02-messaging.en.md) | Drafted | `contracts/messaging/`: `message.ts`, `received.ts`, `topic_message.ts`, `subscription_event.ts`, `operations.ts`, `handlers.ts`, `message_parts_envelope.ts` |
 | [Sockets](03-sockets.en.md) | Drafted | `contracts/sockets/`: `socket.ts`, `pair_socket.ts`, `dealer_socket.ts`, `router_socket.ts`, `pubsub_sockets.ts`, `stream_socket.ts`, `socket_options.ts`, `socket_constants.ts` |
-| Eventing | Not started | `contracts/eventing/`: `monitor.ts`, `poller.ts`, `timer.ts` |
+| [Eventing](04-eventing.en.md) | Drafted | `contracts/eventing/`: `monitor.ts`, `poller.ts`, `timer.ts` |
 | Errors | Not started | `contracts/errors/`: `errors.ts`, `results.ts` |
 
 This document tree is not yet listed in the `mkdocs.yml` nav.

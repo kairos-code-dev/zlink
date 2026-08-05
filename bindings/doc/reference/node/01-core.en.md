@@ -102,6 +102,27 @@ capability roles — this entry only covers how each is created.
 
 ---
 
+## `createPoller()` / `createTimer()` / `createPollEvents(capacity)`
+
+Creates a reusable poller, a standalone timer, or a poll-result buffer.
+
+```ts
+const poller = createPoller();
+const timer = createTimer();
+const events = createPollEvents(8);
+```
+
+**Options.** `createPoller()`/`createTimer()` take no parameters. `createPollEvents(capacity:
+number)` takes the buffer's fixed result capacity.
+
+**Completion result.** All three return their resource synchronously; the caller owns and must
+`close()` each.
+
+**When to use.** See the Eventing category for `Poller`'s, `Timer`'s, and `PollEvents`'s own
+operations — this entry only covers creation.
+
+---
+
 ## `RoutingId`
 
 A binary-safe value type identifying a messaging peer or route, 1 to 255 bytes.

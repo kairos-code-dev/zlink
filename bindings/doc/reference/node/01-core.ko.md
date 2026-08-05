@@ -108,6 +108,27 @@ category를 참고한다 — 이 항목은 각각이 어떻게 생성되는지�
 
 ---
 
+## `createPoller()` / `createTimer()` / `createPollEvents(capacity)`
+
+재사용 가능한 poller, standalone timer, poll-result buffer를 생성한다.
+
+```ts
+const poller = createPoller();
+const timer = createTimer();
+const events = createPollEvents(8);
+```
+
+**Options.** `createPoller()`/`createTimer()`는 인자 없음.
+`createPollEvents(capacity: number)`는 buffer의 고정 결과 용량을 받는다.
+
+**Completion result.** 셋 다 자신의 resource를 동기로 반환한다. caller가
+소유하며 각각 반드시 `close()`해야 한다.
+
+**선택 기준.** `Poller`, `Timer`, `PollEvents` 자신의 operation은 Eventing
+category를 참고한다 — 이 항목은 생성만 다룬다.
+
+---
+
 ## `RoutingId`
 
 메시징 peer나 route를 식별하는 1~255바이트의 binary-safe value type.

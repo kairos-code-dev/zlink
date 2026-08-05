@@ -7,8 +7,8 @@ are provided per feature in the
 - [Channel Messaging](interfaces/channel-messaging.ko.md)
 - [Spot](interfaces/spots.ko.md)
 - [Actor](interfaces/actors.ko.md)
-- [STREAM Session](interfaces/stream-session.ko.md)
-- [Monitoring](interfaces/monitoring.ko.md)
+- [STREAM Session](interfaces/stream-session.en.md)
+- [Monitoring](interfaces/monitoring.en.md)
 
 Kotlin reuses the relocation behavior wired to the Java factory
 configure callback, and doesn't add a separate relocation registry.

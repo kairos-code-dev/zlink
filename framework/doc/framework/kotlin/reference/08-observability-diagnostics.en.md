@@ -9,7 +9,7 @@ correspondence table are exactly the same as
 and adds no separate enum or exception hierarchy. The only thing Kotlin adds is a single
 extension function wrapping message-flow observer registration in a receiver lambda. The exact
 signature is owned by the
-[Kotlin monitoring exact interface](../../common/spec/server/languages/kotlin/interfaces/monitoring.ko.md)
+[Kotlin monitoring exact interface](../../common/spec/server/languages/kotlin/interfaces/monitoring.en.md)
 (Korean-only).
 
 ---
@@ -50,7 +50,7 @@ class or enum is added. See
 ---
 
 See the
-[Kotlin monitoring exact interface](../../common/spec/server/languages/kotlin/interfaces/monitoring.ko.md)
+[Kotlin monitoring exact interface](../../common/spec/server/languages/kotlin/interfaces/monitoring.en.md)
 and
 [Java reference 08. Observability diagnostics](../../java/reference/08-observability-diagnostics.ko.md)
 (Korean-only) for the full rationale.

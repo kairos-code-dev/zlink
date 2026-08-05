@@ -10,7 +10,7 @@ follow
 projections over the operational query (`ZLinkLocationRuntimeQuery`). Even when implementing a
 provider directly, it implements the Java `CompletionStage` SPI as-is — there is no separately
 duplicated `suspend` Store interface. The exact signatures are owned by the
-[Kotlin Location/Relocation exact interface](../../common/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md)
+[Kotlin Location/Relocation exact interface](../../common/spec/server/languages/kotlin/interfaces/location-maintenance.en.md)
 (Korean-only).
 
 ---
@@ -62,7 +62,7 @@ no raw Spot/Actor authority row, Store key, provider version, or scan cursor.
 ---
 
 See the
-[Kotlin Location/Relocation exact interface](../../common/spec/server/languages/kotlin/interfaces/location-maintenance.ko.md)
+[Kotlin Location/Relocation exact interface](../../common/spec/server/languages/kotlin/interfaces/location-maintenance.en.md)
 and
 [Java reference 07. Location authority](../../java/reference/07-location-authority.ko.md)
 (Korean-only) for the full rationale.

@@ -101,5 +101,5 @@ options.configureDispatch {
 
 - The full observation surface: [Java 11. Monitoring](../../../java/guide/server/11-monitoring.en.md)
 - What the Kotlin layer adds: [1. Overview](01-overview.en.md) §2
-- The Kotlin-specific contract: [Kotlin monitoring public contract](../../../common/spec/server/languages/kotlin/interfaces/monitoring.ko.md)
+- The Kotlin-specific contract: [Kotlin monitoring public contract](../../../common/spec/server/languages/kotlin/interfaces/monitoring.en.md)
 - Diagnostics option list: [Java 16. Options](../../../java/guide/server/16-options.en.md) §4

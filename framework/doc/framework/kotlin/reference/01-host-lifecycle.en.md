@@ -8,7 +8,7 @@ exact signature and options table follow
 [Java reference 01. Host lifecycle](../../java/reference/01-host-lifecycle.ko.md) (Korean-only)
 directly. The only thing Kotlin adds is a single bridge connecting `CompletionStage<T>` to
 coroutines. The exact signature is owned by the
-[Kotlin common runtime exact interface](../../common/spec/server/languages/kotlin/interfaces/common-runtime.ko.md)
+[Kotlin common runtime exact interface](../../common/spec/server/languages/kotlin/interfaces/common-runtime.en.md)
 (Korean-only).
 
 ---
@@ -71,7 +71,7 @@ conversion to use it naturally from coroutine code.
 ---
 
 See the
-[Kotlin common runtime exact interface](../../common/spec/server/languages/kotlin/interfaces/common-runtime.ko.md)
+[Kotlin common runtime exact interface](../../common/spec/server/languages/kotlin/interfaces/common-runtime.en.md)
 and
 [Java reference 01. Host lifecycle](../../java/reference/01-host-lifecycle.ko.md) (Korean-only)
 for the full rationale.

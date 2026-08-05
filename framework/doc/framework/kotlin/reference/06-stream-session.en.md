@@ -7,7 +7,7 @@ exactly the same as
 [Java reference 06. Stream session](../../java/reference/06-stream-session.ko.md) (Korean-only).
 What Kotlin adds is a suspending session base class and Kotlin-only wrappers around one-way
 calls. The exact signatures are owned by the
-[Kotlin STREAM session exact interface](../../common/spec/server/languages/kotlin/interfaces/stream-session.ko.md)
+[Kotlin STREAM session exact interface](../../common/spec/server/languages/kotlin/interfaces/stream-session.en.md)
 (Korean-only).
 
 ---
@@ -128,7 +128,7 @@ completion rules are the same as the
 ---
 
 See the
-[Kotlin STREAM session exact interface](../../common/spec/server/languages/kotlin/interfaces/stream-session.ko.md)
+[Kotlin STREAM session exact interface](../../common/spec/server/languages/kotlin/interfaces/stream-session.en.md)
 and
 [Java reference 06. Stream session](../../java/reference/06-stream-session.ko.md) (Korean-only)
 for the full rationale.

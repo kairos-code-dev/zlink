@@ -29,19 +29,15 @@ monitor.OnEvent(func(event *contracts.MonitorEvent) {
 status, err := monitor.Status()
 ```
 
-**Options.** `OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor,
-error)` — **variadic이고 실제로 필터링한다**: `events`를 넘기지 않으면
-`MonitorEventAll`을 구독하지만, 넘긴 mask는 OR로 합쳐져 실제로
-반영된다, `SocketMonitor::open`이 그런 파라미터를 전혀 받지 않고
-구성한 어떤 mask 값과도 무관하게 항상 모든 이벤트를 구독하는 rust와
-다르다. `Recv(flags RecvFlags) (*MonitorEvent, error)`(blocking과
-non-blocking 둘 다를 위한 단일 진입점; non-blocking 형태엔
-`RecvFlagsDontWait`를 넘긴다 — **여기서 no-data 시 값-반환 형태는
-문서화된 예외다**, 자신의 doc comment에 따르면: "Value-return form is
-allowed for monitor/timer control-plane APIs by
-doc/spec/bindings/go/README.md §Receive And Subscribe Shape"),
-`Status() (*MonitorStatus, error)`, `OnEvent(handler
-func(*MonitorEvent)) error`, `Close() error`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)` | monitor를 연다; **variadic이고 실제로 필터링한다** — `events`를 넘기지 않으면 `MonitorEventAll`을 구독하지만, 넘긴 mask는 OR로 합쳐져 실제로 반영된다, `SocketMonitor::open`이 그런 파라미터를 전혀 받지 않고 구성한 어떤 mask 값과도 무관하게 항상 모든 이벤트를 구독하는 rust와 다르다 |
+| `Recv(flags RecvFlags) (*MonitorEvent, error)` | blocking과 non-blocking 둘 다를 위한 단일 진입점; non-blocking 형태엔 `RecvFlagsDontWait`를 넘긴다 — **여기서 no-data 시 값-반환 형태는 문서화된 예외다**, 자신의 doc comment에 따르면: "Value-return form is allowed for monitor/timer control-plane APIs by doc/spec/bindings/go/README.md §Receive And Subscribe Shape" |
+| `Status() (*MonitorStatus, error)` | 시점 스냅샷을 반환 |
+| `OnEvent(handler func(*MonitorEvent)) error` | 수동적 lifecycle-event 콜백을 등록 |
+| `Close() error` | monitor를 닫음 |
 
 **Completion result.** 모든 member는 동기다. `SocketTarget`(Core
 category)은 모든 내장 socket type이 구현하는 공유 interface다 —
@@ -65,19 +61,13 @@ binding의 mask 인자는 실제로 효과가 있다.
 비교하려는 caller는 둘 사이를 명시적으로 변환해야 한다; 같은 비트를
 가졌다 해도 cast 없이는 서로 바꿔 쓸 수 없다.
 
-**Options.** `MonitorEventMask` 상수: `MonitorEventConnected`,
-`MonitorEventConnectDelayed`, `MonitorEventConnectRetried`,
-`MonitorEventListening`, `MonitorEventBindFailed`,
-`MonitorEventAccepted`, `MonitorEventAcceptFailed`,
-`MonitorEventClosed`, `MonitorEventCloseFailed`,
-`MonitorEventDisconnected`, `MonitorEventMonitorStopped`,
-`MonitorEventHandshakeFailedNoDetail`, `MonitorEventConnectionReady`,
-`MonitorEventHandshakeFailedProtocol`,
-`MonitorEventHandshakeFailedAuth`, `MonitorEventPeerWeightChanged`,
-`MonitorEventAll`. `MonitorEventType`는 이 전부를
-`MonitorEventType`-접두 이름으로 미러링한다(`MonitorEventTypeConnected`,
-...). `MonitorSourceKind`(`uint32`): `MonitorSourceSocket` — 유일한
-값.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `MonitorEventMask` 상수 | `MonitorEventConnected`, `MonitorEventConnectDelayed`, `MonitorEventConnectRetried`, `MonitorEventListening`, `MonitorEventBindFailed`, `MonitorEventAccepted`, `MonitorEventAcceptFailed`, `MonitorEventClosed`, `MonitorEventCloseFailed`, `MonitorEventDisconnected`, `MonitorEventMonitorStopped`, `MonitorEventHandshakeFailedNoDetail`, `MonitorEventConnectionReady`, `MonitorEventHandshakeFailedProtocol`, `MonitorEventHandshakeFailedAuth`, `MonitorEventPeerWeightChanged`, `MonitorEventAll` |
+| `MonitorEventType` 상수 | 위 모든 `MonitorEventMask` 값을 `MonitorEventType`-접두 이름으로 미러링(`MonitorEventTypeConnected`, ...) |
+| `MonitorSourceKind`(`uint32`) | `MonitorSourceSocket` — 유일한 값 |
 
 **Completion result.** N/A — 순전히 구독/비교에만 쓰이는 평범한 bitmask
 value type.
@@ -99,18 +89,21 @@ if event.IsConnected() {
 }
 ```
 
-**Options.** Field: `Event`(`MonitorEventType`), `Value`(`uint32`,
-event별로 다름), `RoutingID`(`RoutingID`, 없으면 zero-value),
-`LocalAddr`/`RemoteAddr`(`string`). 전체 lifecycle event 집합 중
-일부만 다루는 편의 predicate 메서드: `HasRoutingID()`,
-`IsConnected()`, `IsDisconnected()`, `IsListening()`, `IsAccepted()`,
-`IsConnectionReady()`. **`ConnectDelayed`, `ConnectRetried`,
-`BindFailed`, `AcceptFailed`, `Closed`, `CloseFailed`,
-`MonitorStopped`, `HandshakeFailedNoDetail`,
-`HandshakeFailedProtocol`, `HandshakeFailedAuth`,
-`PeerWeightChanged`엔 predicate가 없다** — caller가 직접
-`event.Event&MonitorEventTypeX`로 비트 검사해야 한다, 다른 모든
-언어의 `MonitorEvent` predicate 집합과 같은 공백이다.
+**Options.** 편의 predicate 메서드는 전체 lifecycle event 집합 중
+일부만 다룬다 — **`ConnectDelayed`, `ConnectRetried`, `BindFailed`,
+`AcceptFailed`, `Closed`, `CloseFailed`, `MonitorStopped`,
+`HandshakeFailedNoDetail`, `HandshakeFailedProtocol`,
+`HandshakeFailedAuth`, `PeerWeightChanged`엔 predicate가 없다** —
+caller가 직접 `event.Event&MonitorEventTypeX`로 비트 검사해야 한다,
+다른 모든 언어의 `MonitorEvent` predicate 집합과 같은 공백이다.
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `Event` | `MonitorEventType` | lifecycle event의 종류 |
+| `Value` | `uint32` | event별 값 |
+| `RoutingID` | `RoutingID`, 없으면 zero-value | event가 제공할 때만 존재하는 peer routing id |
+| `LocalAddr` / `RemoteAddr` | `string` | event에 결부된 local/remote 주소 |
+| `HasRoutingID()` / `IsConnected()` / `IsDisconnected()` / `IsListening()` / `IsAccepted()` / `IsConnectionReady()` | `bool` | 해당 event 종류에 대한 predicate |
 
 **Completion result.** N/A — monitor가 전달하는 불변 값.
 
@@ -164,20 +157,18 @@ events := make([]contracts.PollEvent, 8)
 ready, err := poller.Wait(events, time.Second)
 ```
 
-**Options.** `NewPoller() (*Poller, error)`. `AddSocket(socket
-SocketTarget, events PollEventFlag, slot uintptr) error`,
-`ModifySocket(socket, events) error`(여기서 특히
-`PollCompletion` flag 변경을 거부한다 — 그 등록 모드는
-`RemoveSocket` + `AddSocket`으로만 바꿔야 한다, completion 처리가
-Core에서 별도 소유권을 갖기 때문), `RemoveSocket(socket) error`,
-`AddFd(fd int, events PollEventFlag, slot uintptr) error`,
-`ModifyFd(fd, events) error`, `RemoveFd(fd int) error`,
-`AddTimer(timer *Timer, slot uintptr) error`, `RemoveTimer(timer
-*Timer) error`, `Wait(events []PollEvent, timeout time.Duration)
-(int, error)`(**`time.Duration`을 받는다**, rust의 raw millisecond
-`i64`와 다름 — `len(events)`까지 결과를 그 자리에 써 넣고, native
-wait이 인터럽트되면(`EINTR`) error가 아니라 `(0, nil)`로 처리한다),
-`Size() int`(내부 error가 나면 전파하는 대신 `0`을 반환).
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `NewPoller() (*Poller, error)` | poller를 생성 |
+| `AddSocket(socket SocketTarget, events PollEventFlag, slot uintptr) error` | socket을 등록; `slot`은 대응하는 결과로 그대로 되돌아오는 caller token |
+| `AddFd(fd int, events PollEventFlag, slot uintptr) error` | raw file descriptor를 등록, 같은 형태 |
+| `AddTimer(timer *Timer, slot uintptr) error` | timer를 socket/fd와 함께 multiplex하도록 등록 |
+| `ModifySocket(socket, events) error` / `ModifyFd(fd, events) error` | 이미 등록된 socket/fd의 감시 event를 교체; `ModifySocket`은 특히 `PollCompletion` flag 변경을 거부한다 — 그 등록 모드는 `RemoveSocket` + `AddSocket`으로만 바꿔야 한다, completion 처리가 Core에서 별도 소유권을 갖기 때문 |
+| `RemoveSocket(socket) error` / `RemoveFd(fd int) error` / `RemoveTimer(timer *Timer) error` | source 등록을 해제 |
+| `Wait(events []PollEvent, timeout time.Duration) (int, error)` | `timeout`까지 block하며 `len(events)`까지 결과를 그 자리에 써 넣음; **`time.Duration`을 받는다**, rust의 raw millisecond `i64`와 다름; native wait이 인터럽트되면(`EINTR`) error가 아니라 `(0, nil)`로 처리한다 |
+| `Size() int` | 현재 등록된 source 개수; 내부 error가 나면 전파하는 대신 `0`을 반환 |
 
 **Completion result.** 등록/제거 member는 `error`를 반환한다.
 `Wait`는 `(int, error)`를 반환한다 — ready count.
@@ -199,18 +190,31 @@ ready, err := contracts.Poll(items, 500*time.Millisecond)
 if items[0].REvents&contracts.PollIn != 0 { /* ... */ }
 ```
 
-**Options.** `PollItem`(모든 field 공개): `Socket`(`SocketTarget`,
-일반 fd 항목이면 `nil` 가능), `Fd int`, `Events`/`REvents`
-(`PollEventFlag`). `Poller.Wait`가 반환하는 `PollEvent`: `SourceKind`
-(`PollSourceKind`: `PollSourceSocket`/`PollSourceFD`/`PollSourceTimer`),
-`Fd int`, `Slot uintptr`(등록 시 넘긴 caller token), `Revents`
-(`PollEventFlag`). **`PollEvent`의 밑바탕 socket/timer 참조는
-export되지 않는다** — 공개 field인 `PollItem.Socket`과 달리, `Wait`가
-반환한 `PollEvent`는 원래 socket이나 `*Timer`를 직접 복원할 방법이
-없다; caller는 등록할 때 쓴 것을 `Slot`으로 되짚어야 한다. Standalone
-`Poll(items []PollItem, timeout time.Duration) (int, error)`은 어떤
-`Poller` 인스턴스와도 무관하게 `PollItem` 배치를 한 번 poll하고,
-`REvents`를 각 item에 그 자리에서 다시 써 넣는다.
+**Options — `PollItem`**(모든 field 공개).
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `Socket` | `SocketTarget`, 일반 fd 항목이면 `nil` 가능 | 이 item이 감시하는 socket |
+| `Fd` | `int` | 이 item이 감시하는 file descriptor |
+| `Events` / `REvents` | `PollEventFlag` | 감시할/반환된 poll-event bitmask |
+
+**Options — `PollEvent`**, `Poller.Wait`가 반환. **`PollEvent`의
+밑바탕 socket/timer 참조는 export되지 않는다** — 공개 field인
+`PollItem.Socket`과 달리, `Wait`가 반환한 `PollEvent`는 원래 socket이나
+`*Timer`를 직접 복원할 방법이 없다; caller는 등록할 때 쓴 것을 `Slot`
+으로 되짚어야 한다.
+
+| Field | 타입 | 의미 |
+| --- | --- | --- |
+| `SourceKind` | `PollSourceKind`: `PollSourceSocket`/`PollSourceFD`/`PollSourceTimer` | source가 socket·file descriptor·timer 중 무엇인지 |
+| `Fd` | `int` | file descriptor, FD kind source에서만 채워짐 |
+| `Slot` | `uintptr` | 등록 시 넘긴 caller token |
+| `Revents` | `PollEventFlag` | raw poll-event bitmask |
+
+**Options — `Poll(...)`.** `Poll(items []PollItem, timeout
+time.Duration) (int, error)`은 어떤 `Poller` 인스턴스와도 무관하게
+`PollItem` 배치를 한 번 poll하고, `REvents`를 각 item에 그 자리에서
+다시 써 넣는다.
 
 **Completion result.** `PollItem`/`PollEvent`는 평범한 value type이다.
 `Poll`은 `(int, error)`를 반환한다 — ready count, `items`를 그
@@ -236,17 +240,16 @@ timer.OnFire(func(t *contracts.Timer, fireCount uint64) {
 timer.Start(1_000_000_000, 0) // 나노초 단위 interval, time.Duration 아님
 ```
 
-**Options.** `NewTimer() (*Timer, error)`. `Start(intervalNs,
-repeatCount uint64) error` — **interval은 raw 나노초 `uint64`다,
-`time.Duration`이 아니다** — 이 binding의 다른 곳(Core/Sockets
-category)에 있는 duration-typed option 관례를 깬다; `repeatCount`가
-`0`이면 무한 반복. `Stop() error`, `Recv() (uint64, bool, error)`
-(누적 fire count; 대기 중인 게 없으면 error가 아니라 `bool`이
-`false` — **`SocketMonitor.Recv`와 같은 문서화된 no-data 시
-값-반환 예외**, doc/spec/bindings/go/README.md §Receive And
-Subscribe Shape를 인용하는 자신의 doc comment에 따르면),
-`OnFire(handler func(timer *Timer, fireCount uint64)) error`,
-`Close() error`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `NewTimer() (*Timer, error)` | timer를 생성 |
+| `Start(intervalNs, repeatCount uint64) error` | `intervalNs`마다 fire를 시작; **interval은 raw 나노초 `uint64`다, `time.Duration`이 아니다** — 이 binding의 다른 곳(Core/Sockets category)에 있는 duration-typed option 관례를 깬다; `repeatCount`가 `0`이면 무한 반복 |
+| `Stop() error` | fire를 멈춤; `Start`로 재시작 가능 |
+| `Recv() (uint64, bool, error)` | 누적 fire count; 대기 중인 게 없으면 error가 아니라 `bool`이 `false` — **`SocketMonitor.Recv`와 같은 문서화된 no-data 시 값-반환 예외**, doc/spec/bindings/go/README.md §Receive And Subscribe Shape를 인용하는 자신의 doc comment에 따르면 |
+| `OnFire(handler func(timer *Timer, fireCount uint64)) error` | 수동적 interval 콜백을 등록 |
+| `Close() error` | timer를 닫음 |
 
 **Completion result.** 모든 member는 동기다.
 

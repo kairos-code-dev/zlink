@@ -27,16 +27,15 @@ monitor.OnEvent(func(event *contracts.MonitorEvent) {
 status, err := monitor.Status()
 ```
 
-**Options.** `OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor,
-error)` — **variadic and genuinely filtering**: passing no `events` subscribes to
-`MonitorEventAll`, but any masks supplied are OR-combined and actually honored, unlike rust's
-`SocketMonitor::open`, which accepts no such parameter and always subscribes to every event
-regardless of any mask value constructed. `Recv(flags RecvFlags) (*MonitorEvent, error)` (single
-entry point for both blocking and non-blocking; pass `RecvFlagsDontWait` for the non-blocking form
-— **the value-return-on-no-data shape here is a documented exception**, per its own doc comment:
-"Value-return form is allowed for monitor/timer control-plane APIs by doc/spec/bindings/go/README.md
-§Receive And Subscribe Shape"), `Status() (*MonitorStatus, error)`, `OnEvent(handler
-func(*MonitorEvent)) error`, `Close() error`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `OpenSocketMonitor(socket SocketTarget, events ...MonitorEventMask) (*SocketMonitor, error)` | opens the monitor; **variadic and genuinely filtering** — passing no `events` subscribes to `MonitorEventAll`, but any masks supplied are OR-combined and actually honored, unlike rust's `SocketMonitor::open`, which accepts no such parameter and always subscribes to every event regardless of any mask value constructed |
+| `Recv(flags RecvFlags) (*MonitorEvent, error)` | single entry point for both blocking and non-blocking; pass `RecvFlagsDontWait` for the non-blocking form — **the value-return-on-no-data shape here is a documented exception**, per its own doc comment: "Value-return form is allowed for monitor/timer control-plane APIs by doc/spec/bindings/go/README.md §Receive And Subscribe Shape" |
+| `Status() (*MonitorStatus, error)` | returns a point-in-time snapshot |
+| `OnEvent(handler func(*MonitorEvent)) error` | registers a passive lifecycle-event callback |
+| `Close() error` | closes the monitor |
 
 **Completion result.** All members are synchronous. `SocketTarget` (Core category) is the shared
 interface every built-in socket type implements — the same interface `Proxy`/`Poller` registration
@@ -57,15 +56,13 @@ with matching names and numeric values (`MonitorEventConnected` / `MonitorEventT
 ...) — a caller comparing a subscribed mask against a received event's type must convert between
 the two explicitly; they are not interchangeable without a cast, despite carrying the same bits.
 
-**Options.** `MonitorEventMask` constants: `MonitorEventConnected`, `MonitorEventConnectDelayed`,
-`MonitorEventConnectRetried`, `MonitorEventListening`, `MonitorEventBindFailed`,
-`MonitorEventAccepted`, `MonitorEventAcceptFailed`, `MonitorEventClosed`,
-`MonitorEventCloseFailed`, `MonitorEventDisconnected`, `MonitorEventMonitorStopped`,
-`MonitorEventHandshakeFailedNoDetail`, `MonitorEventConnectionReady`,
-`MonitorEventHandshakeFailedProtocol`, `MonitorEventHandshakeFailedAuth`,
-`MonitorEventPeerWeightChanged`, `MonitorEventAll`. `MonitorEventType` mirrors every one of these
-with a `MonitorEventType`-prefixed name (`MonitorEventTypeConnected`, ...).
-`MonitorSourceKind` (`uint32`): `MonitorSourceSocket` — the only value.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `MonitorEventMask` constants | `MonitorEventConnected`, `MonitorEventConnectDelayed`, `MonitorEventConnectRetried`, `MonitorEventListening`, `MonitorEventBindFailed`, `MonitorEventAccepted`, `MonitorEventAcceptFailed`, `MonitorEventClosed`, `MonitorEventCloseFailed`, `MonitorEventDisconnected`, `MonitorEventMonitorStopped`, `MonitorEventHandshakeFailedNoDetail`, `MonitorEventConnectionReady`, `MonitorEventHandshakeFailedProtocol`, `MonitorEventHandshakeFailedAuth`, `MonitorEventPeerWeightChanged`, `MonitorEventAll` |
+| `MonitorEventType` constants | mirrors every `MonitorEventMask` value above with a `MonitorEventType`-prefixed name (`MonitorEventTypeConnected`, ...) |
+| `MonitorSourceKind` (`uint32`) | `MonitorSourceSocket` — the only value |
 
 **Completion result.** N/A — plain bitmask value types, both used purely for subscription/
 comparison.
@@ -86,14 +83,20 @@ if event.IsConnected() {
 }
 ```
 
-**Options.** Fields: `Event` (`MonitorEventType`), `Value` (`uint32`, event-specific), `RoutingID`
-(`RoutingID`, zero-value when absent), `LocalAddr`/`RemoteAddr` (`string`). Convenience predicate
-methods, covering only a subset of the full lifecycle event set: `HasRoutingID()`, `IsConnected()`,
-`IsDisconnected()`, `IsListening()`, `IsAccepted()`, `IsConnectionReady()`. **No predicate exists
-for `ConnectDelayed`, `ConnectRetried`, `BindFailed`, `AcceptFailed`, `Closed`, `CloseFailed`,
-`MonitorStopped`, `HandshakeFailedNoDetail`, `HandshakeFailedProtocol`, `HandshakeFailedAuth`, or
-`PeerWeightChanged`** — a caller must bit-test `event.Event&MonitorEventTypeX` directly for any of
-those, the same gap as every other language's `MonitorEvent` predicate set.
+**Options.** Convenience predicate methods cover only a subset of the full lifecycle event set —
+**no predicate exists for `ConnectDelayed`, `ConnectRetried`, `BindFailed`, `AcceptFailed`,
+`Closed`, `CloseFailed`, `MonitorStopped`, `HandshakeFailedNoDetail`, `HandshakeFailedProtocol`,
+`HandshakeFailedAuth`, or `PeerWeightChanged`** — a caller must bit-test
+`event.Event&MonitorEventTypeX` directly for any of those, the same gap as every other language's
+`MonitorEvent` predicate set.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `Event` | `MonitorEventType` | the kind of lifecycle event |
+| `Value` | `uint32` | an event-specific value |
+| `RoutingID` | `RoutingID`, zero-value when absent | the peer routing id, present when the event provides one |
+| `LocalAddr` / `RemoteAddr` | `string` | the local/remote address associated with the event |
+| `HasRoutingID()` / `IsConnected()` / `IsDisconnected()` / `IsListening()` / `IsAccepted()` / `IsConnectionReady()` | `bool` | predicate for that specific event kind |
 
 **Completion result.** N/A — an immutable value delivered by the monitor.
 
@@ -143,16 +146,18 @@ events := make([]contracts.PollEvent, 8)
 ready, err := poller.Wait(events, time.Second)
 ```
 
-**Options.** `NewPoller() (*Poller, error)`. `AddSocket(socket SocketTarget, events
-PollEventFlag, slot uintptr) error`, `ModifySocket(socket, events) error` (rejects a
-`PollCompletion` flag change here specifically — that registration mode must be changed via
-`RemoveSocket` + `AddSocket` instead, since completion processing has separate ownership in Core),
-`RemoveSocket(socket) error`, `AddFd(fd int, events PollEventFlag, slot uintptr) error`,
-`ModifyFd(fd, events) error`, `RemoveFd(fd int) error`, `AddTimer(timer *Timer, slot uintptr)
-error`, `RemoveTimer(timer *Timer) error`, `Wait(events []PollEvent, timeout time.Duration) (int,
-error)` (**takes `time.Duration`**, unlike rust's raw millisecond `i64` — writes up to
-`len(events)` results in place, treating an interrupted native wait (`EINTR`) as `(0, nil)` rather
-than an error), `Size() int` (returns `0` on any internal error rather than propagating one).
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `NewPoller() (*Poller, error)` | creates the poller |
+| `AddSocket(socket SocketTarget, events PollEventFlag, slot uintptr) error` | registers a socket; `slot` is a caller token echoed back in the matching result |
+| `AddFd(fd int, events PollEventFlag, slot uintptr) error` | registers a raw file descriptor, same shape |
+| `AddTimer(timer *Timer, slot uintptr) error` | registers a timer to be multiplexed alongside sockets/fds |
+| `ModifySocket(socket, events) error` / `ModifyFd(fd, events) error` | replaces the watched events for an already-registered socket/fd; `ModifySocket` rejects a `PollCompletion` flag change specifically — that registration mode must be changed via `RemoveSocket` + `AddSocket` instead, since completion processing has separate ownership in Core |
+| `RemoveSocket(socket) error` / `RemoveFd(fd int) error` / `RemoveTimer(timer *Timer) error` | unregisters the source |
+| `Wait(events []PollEvent, timeout time.Duration) (int, error)` | blocks up to `timeout`, writing up to `len(events)` results in place; **takes `time.Duration`**, unlike rust's raw millisecond `i64`; treats an interrupted native wait (`EINTR`) as `(0, nil)` rather than an error |
+| `Size() int` | the number of currently registered sources; returns `0` on any internal error rather than propagating one |
 
 **Completion result.** Registration/removal members return `error`. `Wait` returns `(int, error)`
 — the ready count.
@@ -173,15 +178,29 @@ ready, err := contracts.Poll(items, 500*time.Millisecond)
 if items[0].REvents&contracts.PollIn != 0 { /* ... */ }
 ```
 
-**Options.** `PollItem` (all fields public): `Socket` (`SocketTarget`, may be `nil` for a plain fd
-entry), `Fd int`, `Events`/`REvents` (`PollEventFlag`). `PollEvent`, as returned by `Poller.Wait`:
-`SourceKind` (`PollSourceKind`: `PollSourceSocket`/`PollSourceFD`/`PollSourceTimer`), `Fd int`,
-`Slot uintptr` (the caller token supplied at registration), `Revents` (`PollEventFlag`). **The
-underlying socket/timer reference on a `PollEvent` is unexported** — unlike `PollItem.Socket`,
-which is a public field, a `PollEvent` from `Wait` exposes no way to recover the original socket or
-`*Timer` directly; a caller must correlate through `Slot` back to whatever it registered. Standalone
-`Poll(items []PollItem, timeout time.Duration) (int, error)` polls a batch of `PollItem`s once,
-independent of any `Poller` instance, writing `REvents` back into each item in place.
+**Options — `PollItem`** (all fields public).
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `Socket` | `SocketTarget`, may be `nil` for a plain fd entry | the socket this item watches |
+| `Fd` | `int` | the file descriptor this item watches |
+| `Events` / `REvents` | `PollEventFlag` | watched / returned poll-event bitmask |
+
+**Options — `PollEvent`**, as returned by `Poller.Wait`. **The underlying socket/timer reference on
+a `PollEvent` is unexported** — unlike `PollItem.Socket`, which is a public field, a `PollEvent`
+from `Wait` exposes no way to recover the original socket or `*Timer` directly; a caller must
+correlate through `Slot` back to whatever it registered.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `SourceKind` | `PollSourceKind`: `PollSourceSocket`/`PollSourceFD`/`PollSourceTimer` | whether the source is a socket, file descriptor, or timer |
+| `Fd` | `int` | the file descriptor, populated for FD-kind sources |
+| `Slot` | `uintptr` | the caller token supplied at registration |
+| `Revents` | `PollEventFlag` | raw poll-event bitmask |
+
+**Options — `Poll(...)`.** `Poll(items []PollItem, timeout time.Duration) (int, error)` polls a
+batch of `PollItem`s once, independent of any `Poller` instance, writing `REvents` back into each
+item in place.
 
 **Completion result.** `PollItem`/`PollEvent` are plain value types. `Poll` returns `(int, error)`
 — the ready count, mutating `items` in place.
@@ -205,14 +224,16 @@ timer.OnFire(func(t *contracts.Timer, fireCount uint64) {
 timer.Start(1_000_000_000, 0) // interval in nanoseconds, not time.Duration
 ```
 
-**Options.** `NewTimer() (*Timer, error)`. `Start(intervalNs, repeatCount uint64) error` — **the
-interval is a raw nanosecond `uint64`, not `time.Duration`**, breaking from every duration-typed
-option elsewhere in this binding (Core/Sockets categories); `repeatCount` of `0` means repeat
-indefinitely. `Stop() error`, `Recv() (uint64, bool, error)` (the cumulative fire count; the `bool`
-is `false` when nothing is pending rather than an error — **the same documented
-value-return-on-no-data exception as `SocketMonitor.Recv`**, per its own doc comment citing
-doc/spec/bindings/go/README.md §Receive And Subscribe Shape), `OnFire(handler func(timer *Timer,
-fireCount uint64)) error`, `Close() error`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `NewTimer() (*Timer, error)` | creates the timer |
+| `Start(intervalNs, repeatCount uint64) error` | starts firing on `intervalNs`; **the interval is a raw nanosecond `uint64`, not `time.Duration`**, breaking from every duration-typed option elsewhere in this binding (Core/Sockets categories); `repeatCount` of `0` means repeat indefinitely |
+| `Stop() error` | stops firing; restartable via `Start` |
+| `Recv() (uint64, bool, error)` | the cumulative fire count; the `bool` is `false` when nothing is pending rather than an error — **the same documented value-return-on-no-data exception as `SocketMonitor.Recv`**, per its own doc comment citing doc/spec/bindings/go/README.md §Receive And Subscribe Shape |
+| `OnFire(handler func(timer *Timer, fireCount uint64)) error` | registers a passive interval callback |
+| `Close() error` | closes the timer |
 
 **Completion result.** All members are synchronous.
 

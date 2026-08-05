@@ -36,11 +36,11 @@ services.AddZLinkFramework(options =>
 각 modifier는 `IZLinkDiagnosticsOptions`를 반환하는 동기 fluent 호출이다 — 반환값 없는 등록이
 아니다.
 
-**완료 의미.** Trace는 `ActivitySource`, metric은 이름
+**완료 결과.** Trace는 `ActivitySource`, metric은 이름
 `zlink.framework`의 `Meter`, log는 `ILogger` category로 노출한다 — exporter와 원격 backend는
 application이 구성한다.
 
-**언제 쓰나.** Startup 시점에 기본 기록 수준을 정할 때 쓴다. 실행 중 level만 바꾸려면
+**선택 기준.** Startup 시점에 기본 기록 수준을 정할 때 쓴다. 실행 중 level만 바꾸려면
 `IZLinkDiagnosticsRuntime`을 쓴다.
 
 ---
@@ -60,10 +60,10 @@ diagnosticsRuntime.Level = ZLinkDiagnosticsLevel.Detailed; // 장애 진단 동�
 | --- | --- | --- |
 | `Level` | `ConfigureDispatch().Diagnostics.SetLevel(...)`로 등록한 값 | 현재 적용 중인 level |
 
-**완료 의미.** 동기 get/set이다. 값을 바꾸면 이후 시작하는 message 처리부터 새 level을 적용하는
+**완료 결과.** 동기 get/set이다. 값을 바꾸면 이후 시작하는 message 처리부터 새 level을 적용하는
 원자적 상태 변경이며, 이미 telemetry queue에 들어간 기록에는 영향을 주지 않는다.
 
-**언제 쓰나.** 배포를 다시 하지 않고 특정 시점에만 상세 기록으로 올리거나 내릴 때 쓴다.
+**선택 기준.** 배포를 다시 하지 않고 특정 시점에만 상세 기록으로 올리거나 내릴 때 쓴다.
 
 ---
 
@@ -88,13 +88,13 @@ Framework operation이 실패하면 `ZLinkFrameworkException.Kind`로 원인 계
 | `DataLost` | 공개된 relocation payload를 찾을 수 없거나 검증에 실패했다. 이전 owner로 임의 rollback하지 않는다 |
 | `InternalFailure` | 위 분류로 표현할 수 없는 Framework 실패다. Log와 trace의 correlation 정보로 원인을 확인한다 |
 
-**완료 의미.** `ZLinkFrameworkException`은 Framework만 생성하며 `Message`는 사람이 진단하기 위한
+**완료 결과.** `ZLinkFrameworkException`은 Framework만 생성하며 `Message`는 사람이 진단하기 위한
 설명이지 programmatic 분기 대상이 아니다. `ZLinkConfigurationException`(startup 검증 실패)과
 `ArgumentException` 계열(잘못된 인자)은 이 kind 분류와 다른 층이다. 재시도 여부는 이 kind가
 알려주지 않는다 — operation의 완료 조건, idempotency와 업무 상태를 확인해 application이 직접
 판단한다.
 
-**언제 쓰나.** 각 category 항목의 "완료 의미"에 나온 kind를 이 표로 되짚어 대응 방법을 정할 때
+**선택 기준.** 각 category 항목의 "완료 결과"에 나온 kind를 이 표로 되짚어 대응 방법을 정할 때
 쓴다.
 
 ---

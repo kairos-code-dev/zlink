@@ -32,12 +32,12 @@ ZLinkActorCreateResult created = await actorManager
 | `.Async(ct)` | terminal(택 1, single-use) | 생성 완료까지 기다린다 |
 | `.Yield(ct)` | terminal(택 1, single-use) | `SpotWide` handler 안에서만 유효 |
 
-**완료 의미.** `ZLinkActorCreateResult`는 `Created`(새로 생성) 또는 `Rejected`(factory가 거부) 중
+**완료 결과.** `ZLinkActorCreateResult`는 `Created`(새로 생성) 또는 `Rejected`(factory가 거부) 중
 하나로 완료한다. 같은 ActorId의 Ready incarnation이 이미 있으면 `Created`/`Rejected`가 아니라
 `AlreadyExists` 오류로 완료한다 — `Existing` 결과는 `GetOrCreate`에만 있다. Ready incarnation이
 있는데 stable type이 다르면 `TypeMismatch`다.
 
-**언제 쓰나.** 항상 새 Actor가 필요할 때 쓴다. 있으면 재사용하고 없을 때만 만들려면
+**선택 기준.** 항상 새 Actor가 필요할 때 쓴다. 있으면 재사용하고 없을 때만 만들려면
 `GetOrCreate`를 쓴다.
 
 ---
@@ -57,11 +57,11 @@ ZLinkActorCreateResult existingOrCreated = await actorManager
 **옵션.** `Create`와 동일하다 — `.InMesh(...)`, `.Request(...)`, `.Timeout(...)`, terminal
 `.Async(ct)` 또는 `.Yield(ct)`.
 
-**완료 의미.** `Existing`이면 이미 있던 Actor를 반환하고 `Request`는 무시한다. Creating attempt와
+**완료 결과.** `Existing`이면 이미 있던 Actor를 반환하고 `Request`는 무시한다. Creating attempt와
 경합하면 그 결과를 기다렸다가 합류하며, 서로 다른 operation은 Ready 뒤 `Existing`을 받고 이전
 reply를 공유하지 않는다.
 
-**언제 쓰나.** ActorId로 멱등하게 "있으면 쓰고 없으면 만들기"가 필요할 때 쓴다.
+**선택 기준.** ActorId로 멱등하게 "있으면 쓰고 없으면 만들기"가 필요할 때 쓴다.
 
 ---
 
@@ -81,11 +81,11 @@ if (actor is { } found)
 
 **옵션.** 세 호출 모두 modifier가 없다 — 대상 식별자와 `CancellationToken`만 받는다.
 
-**완료 의미.** `FindAsync`는 Ready Actor가 없으면 `null`을 반환한다. `FindSpotAsync`는 current
+**완료 결과.** `FindAsync`는 Ready Actor가 없으면 `null`을 반환한다. `FindSpotAsync`는 current
 User Spot membership이 없으면 `null`을 반환한다. `DestroyAsync`는 해당 incarnation이 없으면
 `false`, generation이 다르면 `InvalidOperation`, pre-commit seal 중이면 `Unavailable`이다.
 
-**언제 쓰나.** 지금 시점의 존재·소속 확인이나 명시적 종료가 필요할 때 쓴다.
+**선택 기준.** 지금 시점의 존재·소속 확인이나 명시적 종료가 필요할 때 쓴다.
 
 ---
 
@@ -114,10 +114,10 @@ var reply = await actorClient
 | `.Async<TResponse>(ct)` | terminal(택 1) | reply 수신까지 기다린다 |
 | `.Yield<TResponse>(ct)` | terminal(택 1) | `SpotWide` handler 안에서만 유효 |
 
-**완료 의미.** ActorId가 없으면 `NotFound`. 나머지 완료 kind는 messaging-execution category의
+**완료 결과.** ActorId가 없으면 `NotFound`. 나머지 완료 kind는 messaging-execution category의
 공통 규칙과 같다.
 
-**언제 쓰나.** Reply가 필요 없으면 `SendToActor`, 필요하면 `RequestToActor`를 쓴다.
+**선택 기준.** Reply가 필요 없으면 `SendToActor`, 필요하면 `RequestToActor`를 쓴다.
 
 ---
 
@@ -140,12 +140,12 @@ Context
 | `.Timeout(TimeSpan)` | 5초 | monotonic absolute deadline |
 | `.Defer()` | 필수 terminal | 결과 없는 동기 호출. Join intent와 비활성 barrier만 등록하고 target 조회를 바로 시작하지 않는다 |
 
-**완료 의미.** `Defer()` 자체는 반환값이 없다. 현재 handler가 정상적으로 끝나면 barrier가
+**완료 결과.** `Defer()` 자체는 반환값이 없다. 현재 handler가 정상적으로 끝나면 barrier가
 활성화되어 Join을 실행하고, handler가 실패하면 barrier를 폐기한다. 실제 결과(수락·거부·실패)는
 같은 `ZLinkActorJoinOperationId`를 담은 `OnJoinCompletedAsync(ZLinkActorJoinCompletion, ct)`
 callback으로 비동기 전달된다 — `Accepted`/`Rejected`/`Failed` 중 하나다.
 
-**언제 쓰나.** Actor를 다른 Spot으로 옮기거나 Entry Spot으로 되돌릴 때 쓴다. Entry Spot과
+**선택 기준.** Actor를 다른 Spot으로 옮기거나 Entry Spot으로 되돌릴 때 쓴다. Entry Spot과
 `PerActor` User Spot의 Actor에서 호출하면 `InvalidOperation`으로 완료한다.
 
 ---
@@ -155,17 +155,17 @@ callback으로 비동기 전달된다 — `Accepted`/`Rejected`/`Failed` 중 하
 `AddActorFactory<TActor, TFactory>(...)`(topology-discovery category)의 `configure` callback에서
 정확히 하나를 선택한다.
 
-| 정책 | cross-node 이동 시 동작 | 언제 쓰나 |
+| 정책 | cross-node 이동 시 동작 | 선택 기준 |
 | --- | --- | --- |
 | `DisableRelocation()` | Capture 전에 이동 자체를 거부한다 | 이 Actor가 다른 node로 옮겨지면 안 될 때 |
 | `RecreateOnRelocation()` | Target factory로 같은 logical identity를 다시 만든다. Application state는 복구하지 않는다 | State 없이 다시 만들어도 되는 Actor일 때 |
 | `PreserveStateWith<TAdapter>()` | `IZLinkActorRelocationAdapter<TActor>.CaptureAsync`/`RestoreAsync`로 opaque byte 배열을 옮긴다 | State를 유지한 채 옮겨야 할 때 |
 
-**완료 의미.** `PreserveStateWith`의 `CaptureAsync` 결과는 최대 64 MiB다. Capture·Restore는
+**완료 결과.** `PreserveStateWith`의 `CaptureAsync` 결과는 최대 64 MiB다. Capture·Restore는
 같은 relocation에서 여러 번 호출될 수 있으므로 두 callback 모두 retry-safe해야 한다 — 외부 side
 effect의 exactly-once 실행에 의존하면 안 된다.
 
-**언제 쓰나.** 세 정책 중 무엇을 고르느냐가 이 Actor 타입의 relocation 동작 전체를 결정한다 —
+**선택 기준.** 세 정책 중 무엇을 고르느냐가 이 Actor 타입의 relocation 동작 전체를 결정한다 —
 factory 등록 시점에 한 번만 정하고 나중에 호출별로 바꿀 수 없다.
 
 ---

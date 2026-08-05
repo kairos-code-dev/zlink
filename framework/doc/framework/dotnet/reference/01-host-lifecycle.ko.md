@@ -35,11 +35,11 @@ services.AddHealthChecks()
 | `configure: Action<IZLinkFrameworkOptions>` | 필수 | topology, handler, Location Store 등 모든 등록의 진입점이다 |
 | `services.AddHealthChecks().AddZLinkDrainHealthCheck()` | 별도 등록 | `IHealthChecksBuilder` extension이다. `AddZLinkFramework`가 아니라 `AddHealthChecks()`가 반환한 builder에 붙여 host readiness probe를 추가한다 |
 
-**완료 의미.** 반환값 없이 동기로 등록된다. Host startup 시점에 network bind 전 구성을 검증하고,
+**완료 결과.** 반환값 없이 동기로 등록된다. Host startup 시점에 network bind 전 구성을 검증하고,
 실패하면 `ZLinkConfigurationException`으로 startup 자체를 실패시킨다 — 잘못된 구성이 message 처리
 중에 처음 나타나지 않는다.
 
-**언제 쓰나.** 모든 host가 정확히 한 번 호출한다. `IZLinkFrameworkOptions`의 topology·handler 등록
+**선택 기준.** 모든 host가 정확히 한 번 호출한다. `IZLinkFrameworkOptions`의 topology·handler 등록
 세부는 topology-discovery category를 참고한다.
 
 같은 exact interface가 선언하는 `services.AddZLinkHttpClient(name, configure)`는 이 host가 다른
@@ -77,12 +77,12 @@ if (result.Outcome == ZLinkFrameworkRelocationOutcome.Relocated)
 | `TargetApplicationVersion` | `PlannedMaintenance`에서는 생략(source로 고정), `RollingUpdate`에서는 필수 | 목표 application version이다. 조합이 맞지 않으면 시작 전 `ArgumentException`으로 완료한다 |
 | `Deadline` | 없음(무기한 대기) | eligible target 수렴을 기다리는 상한이다 |
 
-**완료 의미.** `ZLinkFrameworkRelocationResult.Outcome`이 `Relocated`면 모든 object 이전이 끝나고
+**완료 결과.** `ZLinkFrameworkRelocationResult.Outcome`이 `Relocated`면 모든 object 이전이 끝나고
 host는 `Relocated` 상태가 된다(새 operation은 받지 않지만 infrastructure는 유지한다). `Blocked`면
 `Reason`에 `TargetUnavailable`·`StoreUnavailable`·`DeadlineExceeded` 등이 담기고, host는 처리
 중이던 local object가 남아 있으면 `Serving`으로 복귀한다.
 
-**언제 쓰나.** 배포 전 무중단 이전이 필요할 때 쓴다. 이전 없이 바로 종료하려면 `ShutdownAsync`를
+**선택 기준.** 배포 전 무중단 이전이 필요할 때 쓴다. 이전 없이 바로 종료하려면 `ShutdownAsync`를
 직접 호출한다. 같은 `Mode`와 목표 version으로 중복 호출하면 진행 중인 operation에 합류하고, 다른
 값으로 호출하면 `Blocked/OperationInProgress`로 완료한다.
 
@@ -104,12 +104,12 @@ ZLinkFrameworkTerminationResult result = await frameworkRuntime.ShutdownAsync(
 | --- | --- | --- |
 | `deadline` | 30초 | 종료 정리 상한이다. 초과하면 `ForceStopped`로 완료한다 |
 
-**완료 의미.** `ZLinkFrameworkTerminationResult.Outcome`이 `Stopped`(정상 정리) 또는
+**완료 결과.** `ZLinkFrameworkTerminationResult.Outcome`이 `Stopped`(정상 정리) 또는
 `ForceStopped`(deadline 초과·정리 실패)다. `Serving`에서 호출하면 남은 application 처리와
 resource를 정리하고, `Relocated`에서 호출하면 infrastructure 연결만 정리한다. 두 경우 모두 끝나면
 `Stopped` 상태가 된다.
 
-**언제 쓰나.** Host를 종료할 때 항상 호출한다. `Relocating` 도중 호출하면 진행 중인 atomic
+**선택 기준.** Host를 종료할 때 항상 호출한다. `Relocating` 도중 호출하면 진행 중인 atomic
 relocation unit의 결과만 확정하고 나머지는 시작하지 않는다 — 그 relocation을 기다리던 호출자는
 `Blocked/ShutdownRequested`를 받는다.
 
@@ -131,11 +131,11 @@ await foreach (var observed in frameworkRuntime.ObserveAsync(ct))
 
 **옵션.** 이 진입점에는 modifier가 없다 — `CancellationToken`만 받는다.
 
-**완료 의미.** Terminal 완료 없이 `IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>`를
+**완료 결과.** Terminal 완료 없이 `IAsyncEnumerable<ZLinkObservedStatus<ZLinkFrameworkRuntimeStatus>>`를
 스트리밍한다. `ZLinkObservedStatus.Loss`는 소비가 느려 coalesce되거나 버려진 상태 개수를 알려준다 —
 관찰 유실 여부는 이 필드로만 판단한다.
 
-**언제 쓰나.** Host state를 push 기반으로 관찰하고 싶을 때 쓴다. 지금 시점 값만 필요하면 스트림
+**선택 기준.** Host state를 push 기반으로 관찰하고 싶을 때 쓴다. 지금 시점 값만 필요하면 스트림
 대신 `Status` 항목을 쓴다.
 
 ---
@@ -149,11 +149,11 @@ ZLinkFrameworkRuntimeStatus status = frameworkRuntime.Status;
 bool canAcceptNewOperations = status.IsReady && status.AcceptingWork;
 ```
 
-**완료 의미.** 동기 property다. `IsReady`는 `State == Serving`일 때만 true이고,
+**완료 결과.** 동기 property다. `IsReady`는 `State == Serving`일 때만 true이고,
 `AcceptingWork`는 새 application operation 수락 여부를 나타낸다 — 두 값이 다를 수 있으므로 둘 다
 확인한다.
 
-**언제 쓰나.** 지금 이 순간의 상태 한 번만 필요할 때 쓴다. 상태 전이를 놓치지 않고 계속 받으려면
+**선택 기준.** 지금 이 순간의 상태 한 번만 필요할 때 쓴다. 상태 전이를 놓치지 않고 계속 받으려면
 `ObserveAsync`를 쓴다.
 
 ---

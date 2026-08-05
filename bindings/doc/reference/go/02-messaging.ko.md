@@ -32,19 +32,23 @@ fromBytes, err := contracts.NewMessage(payload)
 fromString, err := contracts.NewMessageString("payload")
 ```
 
-**Options.** 생성자, 전부 `(*Message, error)` 반환: `NewMessage(data
-[]byte)`(`data`를 복사; `nil`/빈 슬라이스는 길이 0 메시지를 만든다),
-`NewMessageWithSize(size int)`(쓰기 가능한, 0으로 초기화된 storage),
-`NewMessageString(value string)`(UTF-8 인코딩 후 복사). Instance member:
-`Data() []byte`(`Close`까지만 유효한 view — 여러 goroutine에 걸쳐 또는
-메시지 수명을 넘어 보관하지 **말 것**, 그럴 땐 `Bytes()`를 쓴다),
-`Bytes() []byte`(스냅샷 복사), `Size()`, `IsEmpty()`, `Text()`/
-`String()`(둘 다 `Data()`를 UTF-8로 디코딩), `CopyTo(destination
-[]byte) (int, error)`(`destination`이 너무 작으면 error),
-`TryCopyTo(destination []byte) bool`(error를 버리는 non-erroring 버전),
-`RefCount() int`(진단 전용; 실패 시 error를 전파하는 대신 0을 반환),
-`Clone()`/`Copy()`(동등 — 둘 다 `(*Message, error)`, 독립된 payload
-복사본), `Close() error`.
+**Options.**
+
+| Member | 의미 |
+| --- | --- |
+| `NewMessage(data []byte)` | `data`를 복사; `nil`/빈 슬라이스는 길이 0 메시지를 만든다 |
+| `NewMessageWithSize(size int)` | 쓰기 가능한, 0으로 초기화된 storage |
+| `NewMessageString(value string)` | UTF-8 인코딩 후 복사 |
+| `Data() []byte` | `Close`까지만 유효한 view — 여러 goroutine에 걸쳐 또는 메시지 수명을 넘어 보관하지 **말 것**, 그럴 땐 `Bytes()`를 쓴다 |
+| `Bytes() []byte` | payload의 스냅샷 복사 |
+| `Size()` | payload 바이트 길이 |
+| `IsEmpty()` | `Size()`가 0인지 |
+| `Text()` / `String()` | 둘 다 `Data()`를 UTF-8로 디코딩 |
+| `CopyTo(destination []byte) (int, error)` | payload를 caller가 제공한 slice로 복사; `destination`이 너무 작으면 error |
+| `TryCopyTo(destination []byte) bool` | error를 버리는 `CopyTo`의 non-erroring 버전 |
+| `RefCount() int` | 진단 전용; 실패 시 error를 전파하는 대신 `0`을 반환 |
+| `Clone()` / `Copy()` | 동등 — 둘 다 `(*Message, error)`, 독립된 payload 복사본 |
+| `Close() error` | message를 해제 |
 
 **Completion result.** 모든 member는 동기다. `Close()`는 멱등이다(`nil`
 receiver나 이미 닫힌 메시지는 `nil`을 반환); finalizer가 없으므로
@@ -79,15 +83,18 @@ if ok && received.HasRequestSeq() {
 
 **Options.** 공개 생성자 없음 — caller가 zero-value `Received{}`를
 선언하고 그 주소를 socket의 receive 메서드(Sockets category)에
-넘기면 그것이 채운다. Instance member: `RoutingID() RoutingID`,
-`HasRoutingID() bool`, `RequestSeq() uint64`, `HasRequestSeq() bool`,
-`IsSinglePart() bool`, `Parts() []*Message`, `FirstPart() (*Message,
-error)`(소유권 이전 없음 — part는 여전히 `Received`가 소유),
-`Reply() ReplyOp`(공유 reply builder 시작; `HasRequestSeq()`가
-true일 때만 유효 — 아니면 결과 builder의 `Submit`이
-`*SubmitError`를 반환), `Send() SendOp`(공유 send builder 시작, 이
-envelope이 캡처한 source route로 향함), `Close() error`(보관 중인
-모든 part를 닫음; `nil` receiver에서 호출해도 안전).
+넘기면 그것이 채운다.
+
+| Member | 의미 |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | peer routing id와 존재 여부 |
+| `RequestSeq() uint64` / `HasRequestSeq() bool` | request sequence와 존재 여부 |
+| `IsSinglePart() bool` | `Parts()`가 정확히 하나인지 |
+| `Parts() []*Message` | 이 envelope이 담은 모든 message part |
+| `FirstPart() (*Message, error)` | 소유권 이전 없이 첫 part — part는 여전히 `Received`가 소유 |
+| `Reply() ReplyOp` | 공유 reply builder를 시작; `HasRequestSeq()`가 true일 때만 유효 — 아니면 결과 builder의 `Submit`이 `*SubmitError`를 반환 |
+| `Send() SendOp` | 공유 send builder를 시작, 이 envelope이 캡처한 source route로 향함 |
+| `Close() error` | 보관 중인 모든 part를 닫음; `nil` receiver에서 호출해도 안전 |
 
 **Completion result.** 모든 member는 동기다. `Close()`(그리고 receive
 메서드 자신의 reset 단계)는 이전에 보관 중이던 모든 part를 버리기
@@ -112,11 +119,13 @@ ok, err := sub.Subscribe(&published, contracts.RecvFlagsNone)
 topic := published.Topic()
 ```
 
-**Options.** 공개 생성자 없음 — zero-value `TopicMessage{}`를
-선언한다. Instance member는 `Received`의 request-reply 아닌 부분과
-동일한 형태를 미러링한다: `RoutingID() RoutingID`, `HasRoutingID()
-bool`, `Topic() string`, `IsSinglePart() bool`, `Parts() []*Message`,
-`FirstPart() (*Message, error)`, `Close() error`.
+**Options.** 공개 생성자 없음 — zero-value `TopicMessage{}`를 선언한다.
+
+| Member | 의미 |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | publisher의 routing id와 존재 여부 |
+| `Topic() string` | 이 publish가 전송된 topic |
+| `IsSinglePart() bool` / `Parts() []*Message` / `FirstPart() (*Message, error)` / `Close() error` | `Received`와 같은 형태 |
 
 **Completion result.** 동기다; `Received`와 동일한 close-후-재사용
 계약.
@@ -137,9 +146,13 @@ ok, err := xpub.ReceiveSubscriptionEvent(&evt, contracts.RecvFlagsNone)
 ```
 
 **Options.** 공개 생성자 없음 — zero-value `SubscriptionEvent{}`를
-선언한다. Instance member(전부 value receiver, pointer 아님):
-`RoutingID() RoutingID`, `HasRoutingID() bool`, `Subscribed() bool`,
-`Topic() string`.
+선언한다. 모든 member는 value receiver다, pointer가 아니다.
+
+| Member | 의미 |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | 구독자의 routing id와 존재 여부 |
+| `Subscribed() bool` | subscribe면 `true`, unsubscribe면 `false` |
+| `Topic() string` | subscribe/unsubscribe된 topic |
 
 **Completion result.** 동기다; `Close()` 없음 — 이 타입은 자신만의
 native resource를 소유하지 않는다(message part를 소유하는
@@ -178,28 +191,22 @@ ok, err := dealer.Request().
 err := received.Reply().Message(reply).Submit(ctx)
 ```
 
-**Options.** `SendOp.Message(*Message) SendSubmitOp` /
-`.MoveMessage(*Message) SendSubmitOp`(submit이 성공하면 메시지 소유권이
-socket으로 이전) / `.Bytes([]byte) SendSubmitOp`가 chain을 시작한다;
-`SendSubmitOp`는 이 셋을 반복하고 `.Flags(SendFlags) SendSubmitOp`와
-terminal `.Submit(ctx context.Context) (bool, error)`을 추가한다.
-`RequestOp.Message`/`.Bytes`가 request chain을 시작한다;
-`RequestSubmitOp`는 `.Timeout(time.Duration) RequestSubmitOp`,
-`.Flags(SendFlags) RequestCallbackSubmitOp`(callback 전용 단계로
-좁힘), 그리고 **동시에 두 terminal 메서드**를 추가한다:
-`.SubmitAsync(ctx context.Context) (<-chan RequestReplyCompletion,
-error)`(Go-channel 비동기)와 `.Submit(ctx context.Context, callback
-RequestReplyCallback) (bool, error)`(callback 기반) — 지금까지 다룬
-다른 어떤 언어도 같은 builder 단계에 async-channel과 callback
-terminal을 동시에 노출하지 않는다. `RequestCallbackSubmitOp`는
-`Message`/`Bytes`/`Timeout`/`Flags`를 반복하고 callback `Submit`만
-가진다. `ReplyOp.Message(*Message) ReplySubmitOp`가 reply chain을
-시작한다; `ReplySubmitOp`는 `.Flags(SendFlags) ReplySubmitOp`와
-`.Submit(ctx context.Context) error`를 추가한다. **모든 terminal
-`Submit`/`SubmitAsync`는 첫 인자로 `context.Context`를 받는다** —
-취소되거나 deadline이 지난 context는 native submit이 실행되기 전에
-그 context의 `Err()`로 호출을 즉시 중단시킨다, 다른 어떤 언어의
-operation builder도 이러지 않는다.
+**Options.** **모든 terminal `Submit`/`SubmitAsync`는 첫 인자로
+`context.Context`를 받는다** — 취소되거나 deadline이 지난 context는
+native submit이 실행되기 전에 그 context의 `Err()`로 호출을 즉시
+중단시킨다, 다른 어떤 언어의 operation builder도 이러지 않는다.
+
+| Stage | Member | 의미 |
+| --- | --- | --- |
+| `SendOp` | `.Message(*Message)` / `.MoveMessage(*Message)` / `.Bytes([]byte)` → `SendSubmitOp` | chain을 시작; `MoveMessage`는 submit이 성공하면 메시지 소유권을 socket으로 이전 |
+| `SendSubmitOp` | 같은 세 추가 메서드 + `.Flags(SendFlags)` / `.Submit(ctx context.Context) (bool, error)` | part 추가, flag 설정, terminal |
+| `RequestOp` | `.Message` / `.Bytes` → `RequestSubmitOp` | request chain을 시작 |
+| `RequestSubmitOp` | `.Timeout(time.Duration)` | reply-wait timeout을 더함 |
+| `RequestSubmitOp.Flags(SendFlags)` | `RequestCallbackSubmitOp`로 좁혀짐 | callback 전용 단계 |
+| `RequestSubmitOp` terminal | `.SubmitAsync(ctx) (<-chan RequestReplyCompletion, error)`와 `.Submit(ctx, callback RequestReplyCallback) (bool, error)` | **동시에 둘 다 노출** — 지금까지 다룬 다른 어떤 언어도 같은 builder 단계에 async-channel과 callback terminal을 동시에 노출하지 않는다 |
+| `RequestCallbackSubmitOp` | `Message`/`Bytes`/`Timeout`/`Flags`를 반복 + callback `Submit`만 | 좁혀지면 `SubmitAsync` channel 경로는 사라진다 |
+| `ReplyOp` | `.Message(*Message)` → `ReplySubmitOp` | reply chain을 시작 |
+| `ReplySubmitOp` | `.Flags(SendFlags)` / `.Submit(ctx context.Context) error` | flag 설정, terminal |
 
 **Completion result.** `SendSubmitOp.Submit`은 `(bool, error)`를
 반환한다 — `bool`은 `SendFlagsDontWait`가 설정됐고 send가 block됐을

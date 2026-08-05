@@ -29,16 +29,23 @@ fromBytes, err := contracts.NewMessage(payload)
 fromString, err := contracts.NewMessageString("payload")
 ```
 
-**Options.** Constructors, all returning `(*Message, error)`: `NewMessage(data []byte)` (copies
-`data`; `nil`/empty produces a zero-length message), `NewMessageWithSize(size int)` (writable,
-zero-initialized storage), `NewMessageString(value string)` (UTF-8 encode then copy). Instance
-members: `Data() []byte` (a view valid only until `Close`; **do not** retain across goroutines or
-past the message's lifetime — use `Bytes()` for that), `Bytes() []byte` (snapshot copy), `Size()`,
-`IsEmpty()`, `Text()`/`String()` (both decode `Data()` as UTF-8), `CopyTo(destination []byte) (int,
-error)` (errors if `destination` is too small), `TryCopyTo(destination []byte) bool` (non-erroring
-variant, discards the error), `RefCount() int` (diagnostic only; returns 0 on failure rather than
-propagating an error), `Clone()`/`Copy()` (equivalent — both return `(*Message, error)`, an
-independent payload copy), `Close() error`.
+**Options.**
+
+| Member | Meaning |
+| --- | --- |
+| `NewMessage(data []byte)` | copies `data`; `nil`/empty produces a zero-length message |
+| `NewMessageWithSize(size int)` | writable, zero-initialized storage |
+| `NewMessageString(value string)` | UTF-8 encode then copy |
+| `Data() []byte` | a view valid only until `Close`; **do not** retain across goroutines or past the message's lifetime — use `Bytes()` for that |
+| `Bytes() []byte` | snapshot copy of the payload |
+| `Size()` | payload length in bytes |
+| `IsEmpty()` | whether `Size()` is zero |
+| `Text()` / `String()` | both decode `Data()` as UTF-8 |
+| `CopyTo(destination []byte) (int, error)` | copies the payload into a caller-provided slice; errors if `destination` is too small |
+| `TryCopyTo(destination []byte) bool` | non-erroring variant of `CopyTo`, discards the error |
+| `RefCount() int` | diagnostic only; returns `0` on failure rather than propagating an error |
+| `Clone()` / `Copy()` | equivalent — both return `(*Message, error)`, an independent payload copy |
+| `Close() error` | releases the message |
 
 **Completion result.** Every member is synchronous. `Close()` is idempotent (a `nil` receiver or
 already-closed message returns `nil`); the caller must call it explicitly — there is no finalizer.
@@ -68,14 +75,18 @@ if ok && received.HasRequestSeq() {
 ```
 
 **Options.** No public constructor — callers declare a zero-value `Received{}` and pass its
-address to a socket's receive method (Sockets category), which populates it. Instance members:
-`RoutingID() RoutingID`, `HasRoutingID() bool`, `RequestSeq() uint64`, `HasRequestSeq() bool`,
-`IsSinglePart() bool`, `Parts() []*Message`, `FirstPart() (*Message, error)` (no ownership
-transfer — the part remains owned by `Received`), `Reply() ReplyOp` (starts the shared reply
-builder; only valid when `HasRequestSeq()` is true — `Submit` on the resulting builder returns
-`*SubmitError` otherwise), `Send() SendOp` (starts the shared send builder, addressed back to this
-envelope's captured source route), `Close() error` (closes every retained part; safe to call on a
-`nil` receiver).
+address to a socket's receive method (Sockets category), which populates it.
+
+| Member | Meaning |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | the peer routing id and whether it's present |
+| `RequestSeq() uint64` / `HasRequestSeq() bool` | the request sequence and whether it's present |
+| `IsSinglePart() bool` | whether `Parts()` has exactly one element |
+| `Parts() []*Message` | every message part this envelope holds |
+| `FirstPart() (*Message, error)` | the first part, without ownership transfer — the part remains owned by `Received` |
+| `Reply() ReplyOp` | starts the shared reply builder; only valid when `HasRequestSeq()` is true — `Submit` on the resulting builder returns `*SubmitError` otherwise |
+| `Send() SendOp` | starts the shared send builder, addressed back to this envelope's captured source route |
+| `Close() error` | closes every retained part; safe to call on a `nil` receiver |
 
 **Completion result.** All members are synchronous. `Close()` (and the receive method's own reset
 step) closes every previously retained part before discarding them — reusing a `Received` without
@@ -98,10 +109,13 @@ ok, err := sub.Subscribe(&published, contracts.RecvFlagsNone)
 topic := published.Topic()
 ```
 
-**Options.** No public constructor — declare a zero-value `TopicMessage{}`. Instance members
-mirror `Received`'s non-request-reply shape: `RoutingID() RoutingID`, `HasRoutingID() bool`,
-`Topic() string`, `IsSinglePart() bool`, `Parts() []*Message`, `FirstPart() (*Message, error)`,
-`Close() error`.
+**Options.** No public constructor — declare a zero-value `TopicMessage{}`.
+
+| Member | Meaning |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | the publisher's routing id and whether it's present |
+| `Topic() string` | the topic this publish was sent on |
+| `IsSinglePart() bool` / `Parts() []*Message` / `FirstPart() (*Message, error)` / `Close() error` | same shape as `Received` |
 
 **Completion result.** Synchronous; same close-then-reuse contract as `Received`.
 
@@ -118,9 +132,14 @@ var evt contracts.SubscriptionEvent
 ok, err := xpub.ReceiveSubscriptionEvent(&evt, contracts.RecvFlagsNone)
 ```
 
-**Options.** No public constructor — declare a zero-value `SubscriptionEvent{}`. Instance members
-(all value receivers, not pointer): `RoutingID() RoutingID`, `HasRoutingID() bool`, `Subscribed()
-bool`, `Topic() string`.
+**Options.** No public constructor — declare a zero-value `SubscriptionEvent{}`. All members are
+value receivers, not pointer.
+
+| Member | Meaning |
+| --- | --- |
+| `RoutingID() RoutingID` / `HasRoutingID() bool` | the subscriber's routing id and whether it's present |
+| `Subscribed() bool` | `true` for a subscribe, `false` for an unsubscribe |
+| `Topic() string` | the topic that was subscribed or unsubscribed |
 
 **Completion result.** Synchronous; no `Close()` — this type owns no native resources of its own
 (unlike `Received`/`TopicMessage`, which own message parts).
@@ -157,22 +176,21 @@ ok, err := dealer.Request().
 err := received.Reply().Message(reply).Submit(ctx)
 ```
 
-**Options.** `SendOp.Message(*Message) SendSubmitOp` / `.MoveMessage(*Message) SendSubmitOp` (the
-message's ownership transfers to the socket on a successful submit) / `.Bytes([]byte)
-SendSubmitOp` start the chain; `SendSubmitOp` repeats all three plus `.Flags(SendFlags)
-SendSubmitOp` and the terminal `.Submit(ctx context.Context) (bool, error)`. `RequestOp.Message`/
-`.Bytes` start the request chain; `RequestSubmitOp` adds `.Timeout(time.Duration)
-RequestSubmitOp`, `.Flags(SendFlags) RequestCallbackSubmitOp` (narrows to the callback-only
-stage), and **both terminal methods at once**: `.SubmitAsync(ctx context.Context)
-(<-chan RequestReplyCompletion, error)` (Go-channel async) and `.Submit(ctx context.Context,
-callback RequestReplyCallback) (bool, error)` (callback-based) — no other language covered so far
-exposes both an async-channel and a callback terminal on the same builder stage.
-`RequestCallbackSubmitOp` repeats `Message`/`Bytes`/`Timeout`/`Flags` and only the callback
-`Submit`. `ReplyOp.Message(*Message) ReplySubmitOp` starts the reply chain; `ReplySubmitOp` adds
-`.Flags(SendFlags) ReplySubmitOp` and `.Submit(ctx context.Context) error`. **Every terminal
-`Submit`/`SubmitAsync` takes a `context.Context` as its first argument** — a cancelled or
-deadline-exceeded context short-circuits the call with that context's `Err()` before the native
-submit runs, which no other language's operation builder does.
+**Options.** **Every terminal `Submit`/`SubmitAsync` takes a `context.Context` as its first
+argument** — a cancelled or deadline-exceeded context short-circuits the call with that context's
+`Err()` before the native submit runs, which no other language's operation builder does.
+
+| Stage | Member | Meaning |
+| --- | --- | --- |
+| `SendOp` | `.Message(*Message)` / `.MoveMessage(*Message)` / `.Bytes([]byte)` → `SendSubmitOp` | start the chain; `MoveMessage` transfers the message's ownership to the socket on a successful submit |
+| `SendSubmitOp` | same three add methods + `.Flags(SendFlags)` / `.Submit(ctx context.Context) (bool, error)` | add parts, set flags, terminal |
+| `RequestOp` | `.Message` / `.Bytes` → `RequestSubmitOp` | start the request chain |
+| `RequestSubmitOp` | `.Timeout(time.Duration)` | adds a reply-wait timeout |
+| `RequestSubmitOp.Flags(SendFlags)` | narrows to `RequestCallbackSubmitOp` | callback-only stage |
+| `RequestSubmitOp` terminals | `.SubmitAsync(ctx) (<-chan RequestReplyCompletion, error)` and `.Submit(ctx, callback RequestReplyCallback) (bool, error)` | **both exposed at once** — no other language covered so far exposes both an async-channel and a callback terminal on the same builder stage |
+| `RequestCallbackSubmitOp` | repeats `Message`/`Bytes`/`Timeout`/`Flags` + only the callback `Submit` | the `SubmitAsync` channel path is gone once narrowed |
+| `ReplyOp` | `.Message(*Message)` → `ReplySubmitOp` | starts the reply chain |
+| `ReplySubmitOp` | `.Flags(SendFlags)` / `.Submit(ctx context.Context) error` | set flags, terminal |
 
 **Completion result.** `SendSubmitOp.Submit` returns `(bool, error)` — the `bool` is `false` only
 when `SendFlagsDontWait` was set and the send would have blocked (back-pressure); any other

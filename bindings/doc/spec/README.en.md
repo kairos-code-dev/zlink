@@ -2499,50 +2499,57 @@ violation. When a per-language spec is found missing one, fill it in
 against the canonical baseline, and remove any added non-standard
 method.
 
-## 소켓 타입 능력 정책
-- 소켓 타입별 능력은 타입 자체에만 노출한다.
-- 관련 없는 소켓은 관련 없는 함수에 접근할 수 없어야 한다.
-  - 예: `PairSocket`에 publish/subscribe/xpub control surface 금지
-  - 예: `StreamSocket`에 일반 connect surface 금지
-- 소켓 타입별 option도 타입별 역할 facade로만 노출한다.
+## Socket Type Capability Policy
+- Expose a per-socket-type capability only on that type itself.
+- An unrelated socket must not have access to an unrelated function.
+  - example: no publish/subscribe/xpub control surface on `PairSocket`
+  - example: no general connect surface on `StreamSocket`
+- Also expose a per-socket-type option only through that type's own role
+  facade.
 
-### 소켓 클래스 네이밍/구조 규칙 (중요)
-- **소켓 클래스 이름은 core C API 의 socket 타입 이름을 그대로 따른다**:
-  `PairSocket`, `PubSocket`, `SubSocket`, `XPubSocket`, `XSubSocket`,
-  `DealerSocket`, `RouterSocket`, `StreamSocket`. 바인딩이 임의로 이름을
-  바꾸거나 동의어(`ClientSocket`, `BrokerSocket` 등)를 추가하면 안 된다.
-- **소켓의 기능 함수(`send`, `recv`, `request`, `reply`, `publish`,
-  `subscribe`, `on*` 핸들러 등)는 소켓 클래스의 메서드로 직접 노출한다**.
-  단일 함수 또는 좁은 역할(예: request-reply) 만을 위한 별도 wrapper/
-  "helper" 클래스(`RequestDealer`, `RequestRouter`, `DealerClient`,
-  `RouterRequester` 등) 를 만들지 않는다.
-  - 이유 1: C API 는 `zlink_dealer_request_part()` /
-    `zlink_router_request_part()` / `zlink_router_reply_part()` 를 raw socket
-    handle 위에 직접 두는 계약이다.
-    바인딩 표면이 이 구조를 유지해야 core ↔ 바인딩 대응이 1:1 로 유지된다.
-  - 이유 2: wrapper 클래스는 "래핑된 소켓을 또 하나 들고 다녀야 하는"
-    중복 lifecycle 을 만든다.
-  - 이유 3: 이름에서 역할이 반전돼 읽히기 쉬움 (`RequestDealer` →
-    "requests 를 dealing" 으로 오독).
-- Future/Promise 완료 연결 같은 구현 상태(pending map 등)는 소켓 클래스
-  내부에 두고, 외부로는 메서드만 노출한다.
-- 예외는 **서로 다른 소켓 타입을 조합**하는 service-layer surface 뿐이다
-  이들은 단일 소켓 함수 wrapper 가 아니라 독립된 service 계약이다.
-- 이 규칙은 전 바인딩(C++/Java/.NET/Node/Python/Go/Rust) 에 동일하게
-  적용되며, spec 파일에서 위반이 발견되면 **즉시 수정 대상**이다.
+### Socket Class Naming/Structure Rule (Important)
+- **A socket class name follows the core C API's socket-type name
+  as-is**: `PairSocket`, `PubSocket`, `SubSocket`, `XPubSocket`,
+  `XSubSocket`, `DealerSocket`, `RouterSocket`, `StreamSocket`. A binding
+  must not rename it arbitrarily or add a synonym (`ClientSocket`,
+  `BrokerSocket`, and so on).
+- **A socket's capability functions (`send`, `recv`, `request`, `reply`,
+  `publish`, `subscribe`, `on*` handlers, and so on) are exposed directly
+  as methods on the socket class.** Do not create a separate wrapper/
+  "helper" class for a single function or a narrow role such as
+  request-reply (`RequestDealer`, `RequestRouter`, `DealerClient`,
+  `RouterRequester`, and so on).
+  - Reason 1: the C API's contract places
+    `zlink_dealer_request_part()`/`zlink_router_request_part()`/
+    `zlink_router_reply_part()` directly on the raw socket handle. The
+    binding surface must preserve this structure to keep the core ↔
+    binding mapping 1:1.
+  - Reason 2: a wrapper class creates a duplicate lifecycle — "having to
+    carry around another wrapped socket."
+  - Reason 3: the role is easy to misread as inverted from the name
+    (`RequestDealer` can be misread as "dealing requests").
+- Keep implementation state such as a future/promise completion
+  linkage (a pending map, and so on) inside the socket class, and expose
+  only methods externally.
+- The only exception is a service-layer surface that **combines
+  different socket types** — these are independent service contracts,
+  not a single-socket-function wrapper.
+- This rule applies identically across every binding
+  (C++/Java/.NET/Node/Python/Go/Rust), and a violation found in a spec
+  file is **fixed immediately**.
 
 ### Socket Capability Matrix
-- 이 표는 `core/include/zlink.h` C API를 기준으로 각 소켓 타입이 가져야 할
-  능력을 정의한다.
-- 이 표는 모든 언어 바인딩에 공통으로 적용되는 공개 기능 계약이다.
-  바인딩마다 기능성이 달라지면 안 된다.
-- 언어별 차이는 케이싱, overload, nullable, exception/error 표현처럼
-  같은 기능을 해당 언어 관례에 맞게 드러내는 방식에만 허용된다.
-- 각 바인딩은 이 표를 정답으로 삼아 surface test를 작성한다.
-- `Y`는 모든 바인딩이 해당 능력을 반드시 public API로 노출해야 함을
-  의미한다.
-- `—`는 어떤 바인딩도 해당 능력을 public API로 노출하면 안 됨을
-  의미한다.
+- This table defines the capability each socket type must have, based on
+  the `core/include/zlink.h` C API.
+- This table is a public capability contract shared across every
+  language binding. Functionality must not differ between bindings.
+- A per-language difference is allowed only in how the same capability is
+  expressed for that language's convention — casing, overloads,
+  nullable, exception/error representation.
+- Every binding treats this table as the answer key when writing surface
+  tests.
+- `Y` means every binding must expose that capability as public API.
+- `—` means no binding may expose that capability as public API.
 
 #### Connection Capabilities
 
@@ -2554,11 +2561,11 @@ method.
 | `disconnect` | Y | Y | Y | Y | Y | Y | Y | — |
 | `disconnectRid` | Y | Y | Y | Y | Y | Y | Y | — |
 
-`disconnectRid` 는 connectable raw socket 의 peer-rid disconnect 표면이다.
-`STREAM` 은 bind-only socket 이며 `connect`, `disconnect`, `disconnectRid`
-를 public API 로 노출하지 않는다. `Spot` 도 raw peer-rid disconnect 를
-노출하지 않고, SPOT node peer 연결 해제는 `SpotNode.disconnectPeerRid`
-계열이 담당한다.
+`disconnectRid` is the peer-rid disconnect surface of a connectable raw
+socket. `STREAM` is a bind-only socket and does not expose `connect`,
+`disconnect`, or `disconnectRid` as public API. `Spot` also does not
+expose a raw peer-rid disconnect — disconnecting a SPOT node peer is
+handled by the `SpotNode.disconnectPeerRid` family.
 
 #### Send Capabilities
 
@@ -2592,89 +2599,97 @@ method.
 | `onSubscribe` | — | — | — | — | — | — | — | — |
 | `setSendReadyHandler` | Y | Y | Y | Y | — | Y | — | Y |
 
-`STREAM` public surface 는 `recv` 와 `setPacketHandler` 를 제공해야 한다.
-raw direct callback `onReceive` 는 canonical public binding API 가 아니다.
-이미 한 수신 모드가 걸려 있는 상태에서 다른 모드 attach 를 시도하면
-`HandlerResult::BUSY` (또는 동등한 `EBUSY`) 를 반환한다. public
-`detachStream` / `streamDetach` 류 해제 API 는 제공하지 않는다.
+The `STREAM` public surface must provide `recv` and `setPacketHandler`.
+The raw direct callback `onReceive` is not canonical public binding API.
+Attempting to attach a different receive mode while one is already
+active returns `HandlerResult::BUSY` (or the equivalent `EBUSY`). A
+public `detachStream`/`streamDetach`-family release API is not provided.
 
 #### Typed Option Capabilities
 
-| Option Facade | 적용 소켓 |
+| Option Facade | Applies to |
 |---|---|
-| Common options (linger, HWM, timeout 등) | 전체 |
+| Common options (linger, HWM, timeout, and so on) | All |
 | Router options (mandatory, handover, probe, connectRoutingId) | Router |
 | Dealer options (probe) | Dealer |
 | Stream options (notify) | Stream |
-| Pub options (verbose, verboser, noDrop, manual 등) | Pub, XPub |
+| Pub options (verbose, verboser, noDrop, manual, and so on) | Pub, XPub |
 | Sub options (topicsCount) | Sub, XSub |
 | RoutingId (set/get) | Dealer, Router, Stream |
 
-  `disconnectRid`, `unbind`, `close`는 차단된다.
+  `disconnectRid`, `unbind`, and `close` are blocked.
 
-## 언어별 스펙 파일 준수 규칙
+## Per-Language Spec File Compliance Rule
 
-각 언어별 스펙 파일(`doc/spec/bindings/{lang}/README.md`)은 아래 규칙을
-반드시 준수해야 한다. 스펙 파일 작성이나 리뷰 시 이 체크리스트를 적용한다.
+Each per-language spec file (`doc/spec/bindings/{lang}/README.md`) must
+follow the rules below. Apply this checklist when writing or reviewing a
+spec file.
 
-### Capability Matrix 정합성
-- 각 언어별 스펙은 위 Socket Capability Matrix의 기능성을 빠뜨리거나
-  추가하면 안 된다.
-- 각 소켓 타입 클래스는 위 Socket Capability Matrix에서 `Y`인 능력을
-  해당 언어 관례에 맞는 public surface로 반드시 제공해야 한다.
-- `—`인 능력은 어떤 언어 바인딩에서도 해당 소켓 타입 클래스에 존재하면
-  안 된다.
-- Socket Capability Matrix가 다루지 않는 service layer 기능은 별도
-  역할 matrix 또는 정책 섹션에 명시된 경우에만 public API로 노출할
-  수 있다.
-- 특히 다음 위반이 자주 발생하므로 주의한다:
-  - `RouterSocket` / `StreamSocket`에 plain `send` (routingId 없는 send) 금지 —
-    반드시 `send(routingId, ...)` 형태여야 한다.
-  - `StreamSocket`에 `connect`, `disconnect`, `disconnectRid` 노출 금지 —
-    `STREAM`은 bind-only socket이다.
-    Dealer, Router, Pub, Sub에만 허용된다.
-  - `XPubSocket`에 `onSubscribe` 콜백 금지 —
-    XPub는 `receiveSubscriptionEvent`만 허용된다.
-  - `STREAM` raw direct callback `onReceive` 및 `detachStream` 류 해제 API 금지 —
-    canonical surface 는 `recv` / `setPacketHandler` / `close` 조합이다.
-  - socket 공통 TLS helper(`setTlsServer`, `setTlsClient` 또는 동등한 이름) 누락
-    금지 — TLS 설정은 transport 공통 기능이므로 모든 raw socket 타입에서 같은
-    위치에 있어야 한다.
+### Capability Matrix Consistency
+- A per-language spec must not omit or add to the functionality in the
+  Socket Capability Matrix above.
+- Each socket-type class must provide every capability marked `Y` in the
+  Socket Capability Matrix above, as a public surface that fits that
+  language's convention.
+- A capability marked `—` must not exist on that socket-type class in any
+  language binding.
+- Service-layer functionality the Socket Capability Matrix doesn't cover
+  may be exposed as public API only when it's specified in a separate
+  role matrix or policy section.
+- Watch especially for these frequent violations:
+  - No plain `send` (a send without routingId) on `RouterSocket`/
+    `StreamSocket` — it must be `send(routingId, ...)`.
+  - No `connect`, `disconnect`, or `disconnectRid` on `StreamSocket` —
+    `STREAM` is a bind-only socket. Allowed only on Dealer, Router, Pub,
+    Sub.
+  - No `onSubscribe` callback on `XPubSocket` — only
+    `receiveSubscriptionEvent` is allowed on XPub.
+  - No `STREAM` raw direct callback `onReceive`, and no
+    `detachStream`-family release API — the canonical surface is the
+    `recv`/`setPacketHandler`/`close` combination.
+  - Do not omit the shared socket TLS helper (`setTlsServer`,
+    `setTlsClient`, or an equivalent name) — TLS configuration is
+    shared transport functionality, so it must sit at the same location
+    on every raw socket type.
 
-### Routed Send 필수 인자
-- `RouterSocket`과 `StreamSocket`의 send는 routingId를 **필수** 인자로 받아야 한다.
-- routingId를 optional/default 파라미터로 만들면 plain send가 가능해지므로 금지한다.
+### Required Argument For Routed Send
+- `RouterSocket`'s and `StreamSocket`'s send must take routingId as a
+  **required** argument.
+- Making routingId an optional/default parameter is forbidden, because it
+  would allow a plain send.
 
-### Send / Publish 반환값
-- `.NET` / `Java` / `Node` / `Python` / `C++` 에서는 blocking
-  `send` / `publish` / callback `request` submit 성공 시 항상 `true` 를
-  반환한다.
-- 위 언어의 non-blocking submit 에서는 temporary backpressure 일 때만
-  `false` 를 반환한다.
-- temporary backpressure 가 아닌 submit 실패는 예외로 전달해야 한다.
-- 상태 코드(int, number 등)를 반환하는 방식은 금지한다.
+### Send/Publish Return Value
+- On `.NET`/`Java`/`Node`/`Python`/`C++`, a blocking `send`/`publish`/
+  callback `request` submit always returns `true` on success.
+- On a non-blocking submit in those languages, it returns `false` only
+  on temporary backpressure.
+- A submit failure that is not temporary backpressure must be delivered
+  as an exception.
+- Returning a status code (`int`, `number`, and so on) is forbidden.
 
-### 언어별 네이밍 일관성
-- 한 바인딩 내에서 네이밍 컨벤션이 혼재되면 안 된다.
-  - Python: 모든 public API는 `snake_case`. (프로퍼티 포함)
-  - Java: `camelCase` 메서드, `PascalCase` 클래스.
-  - C#: `PascalCase` 전체.
-  - Go: `PascalCase` exported.
-  - Rust: `snake_case` 메서드, `PascalCase` 타입.
-  - C++: `snake_case` 메서드. 타입명은 한 바인딩 안에서 일관되게
-    유지한다. `_t` 접미사는 핸들/값 래퍼 타입이나 타입명과 메서드명이
-    충돌하기 쉬운 경우에 사용할 수 있지만, 모든 enum/class에 강제하지
-    않는다. 접미사 규칙을 맞추기 위해 같은 타입에 별도 alias만 추가하지
-    않는다.
-  - Node/TypeScript: `camelCase` 메서드, `PascalCase` 클래스.
+### Per-Language Naming Consistency
+- A naming convention must not be mixed within one binding.
+  - Python: every public API uses `snake_case` (including properties).
+  - Java: `camelCase` methods, `PascalCase` classes.
+  - C#: `PascalCase` throughout.
+  - Go: `PascalCase` exported identifiers.
+  - Rust: `snake_case` methods, `PascalCase` types.
+  - C++: `snake_case` methods. Keep type naming consistent within one
+    binding. A `_t` suffix can be used for a handle/value wrapper type,
+    or where a type name would otherwise collide with a method name, but
+    it is not forced onto every enum/class. Do not add a separate alias
+    to the same type just to match a suffix rule.
+  - Node/TypeScript: `camelCase` methods, `PascalCase` classes.
 
-### C API 전수 커버리지
-- 각 언어별 스펙 파일은 `core/include/zlink.h`와 `core/include/zlink/**`
-  하위 public header의 모든 ZLINK_EXPORT 함수에
-  대응하는 바인딩 인터페이스를 빠짐없이 기술해야 한다.
-- 대응은 1:1이 아닐 수 있다 (옵션 함수 그룹이 하나의 typed facade로 통합되는 등).
-- 그러나 C API의 어떤 기능도 바인딩 스펙에서 누락되면 안 된다.
-- 새로운 C API가 public header에 추가되면 모든 언어 스펙 파일도 함께 갱신해야 한다.
+### Full C API Coverage
+- Each per-language spec file must describe a binding interface that
+  covers every `ZLINK_EXPORT` function in `core/include/zlink.h` and the
+  public headers under `core/include/zlink/**`, without omission.
+- The mapping does not have to be 1:1 (for example, a group of option
+  functions can consolidate into a single typed facade).
+- But no C API capability may be missing from a binding spec.
+- When a new C API is added to a public header, every per-language spec
+  file must be updated together.
 ## 서비스 계층 정책
 - 이 섹션은 소켓 레이어 위에 올라가는 서비스 계층(Spot, Actor)의 public API
   정책을 정의한다.

@@ -5321,44 +5321,54 @@ following criteria.
   ignoring a send failure, and avoiding a legacy-surface bypass are
   verified in the Review Checklist. These are not automated test items.
 
-## 샘플 정책
-- 샘플 제작 규칙은 [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/en/spec/sample/SAMPLE_POLICY/)
-  를 단일 기준 문서로 사용한다.
-- 이 문서는 `core/samples/`와 `bindings/*/samples/`를 함께 포괄한다.
-- 바인딩 샘플을 추가, 수정, 리뷰할 때는 위 문서를 기준으로 판단한다.
+## Sample Policy
+- Sample-authoring rules use
+  [`doc/spec/sample/SAMPLE_POLICY.md`](https://kairos-code-dev.github.io/zlink/en/spec/sample/SAMPLE_POLICY/)
+  as the single baseline document.
+- This document covers `core/samples/` and `bindings/*/samples/`
+  together.
+- Adding, changing, or reviewing a binding sample is judged against
+  that document.
 
-## Perf 정책
+## Perf Policy
 
-perf 코드는 데모가 아니라 바인딩 라이브러리의 성능을 측정하고 개선하기 위한
-코드다. perf 의 1차 목적은 바인딩 레이어의 비용을 드러내고, 병목과 회귀를
-식별하고, 개선 작업의 전후 차이를 측정하는 것이다.
+Perf code is not a demo — it's code for measuring and improving the
+binding library's performance. Perf's primary purpose is to reveal the
+binding layer's cost, identify bottlenecks and regressions, and measure
+before/after differences from improvement work.
 
-**perf 정책의 단일 기준은 `doc/perf/` 정책 문서다.** CLI 옵션, 기본값, 출력
-포맷, RESULT line 형식, 패턴/transport matrix, phase 규칙, 결과 저장, 실패
-처리, 환경 변수 등 모든 세부 규격은 아래 문서를 따른다. 본 섹션에서 중복
-정의하지 않는다.
+**The single baseline for perf policy is the `doc/perf/` policy
+documents.** Every detailed specification — CLI options, defaults,
+output format, RESULT line format, the pattern/transport matrix, phase
+rules, result storage, failure handling, environment variables — follows
+the documents below. This section does not redefine them.
 
-- [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md) — 공통 perf 정책
-  (공통 원칙, 디렉터리 구조, RESULT 형식, 결과 저장, 출력 형식, 실패 처리,
-  환경 변수, 리팩토링 원칙, 언어별 적용 범위)
-- [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../../../doc/perf/PERF_SINGLE_TEST_POLICY.md) — single suite 정책
-- [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../../../doc/perf/PERF_MULTI_TEST_POLICY.md) — multi suite 정책
+- [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md) — the
+  shared perf policy (shared principles, directory structure, RESULT
+  format, result storage, output format, failure handling, environment
+  variables, refactoring principles, per-language scope)
+- [`doc/perf/PERF_SINGLE_TEST_POLICY.md`](../../../doc/perf/PERF_SINGLE_TEST_POLICY.md) — the single-suite policy
+- [`doc/perf/PERF_MULTI_TEST_POLICY.md`](../../../doc/perf/PERF_MULTI_TEST_POLICY.md) — the multi-suite policy
 
-### 바인딩 perf 원칙
+### Binding Perf Principles
 
-- perf 코드는 `doc/perf` 정책을 준수한다.
-- `core/perf` 에서 제공하는 패턴과 시나리오를 기준으로 한다.
-- core perf와 비교 가능한 시나리오를 유지하면서, 각 언어 스타일에 맞게 작성한다.
-- 측정 anchor point, phase 의미, metric 집합, RESULT line 의미를 바꾸지 않는다.
-- perf 정책은 성능 측정 surface를 공식 제공하는 바인딩에서는 `Required`다.
-  perf 코드를 아직 제공하지 않는 바인딩에는 `Target`으로 본다.
+- Perf code follows the `doc/perf` policy.
+- It's based on the patterns and scenarios `core/perf` provides.
+- It keeps a scenario comparable to core perf, while writing it to fit
+  each language's style.
+- The measurement anchor point, phase meaning, metric set, and RESULT
+  line meaning do not change.
+- The perf policy is `Required` for a binding that officially provides a
+  performance-measurement surface. A binding that doesn't yet provide
+  perf code treats it as `Target`.
 
-### 바인딩 API Spec 문서
+### Binding API Spec Documents
 
-각 바인딩의 API surface는 아래 문서를 참조한다.
-perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에서 전 언어 공통으로 관리한다.
+Each binding's API surface is documented in the file below.
+The perf policy is managed across every language in a shared way, in
+[`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md).
 
-| 바인딩 | API Spec |
+| Binding | API Spec |
 |--------|----------|
 | C | [`c/README.md`](c/README.en.md) |
 | C++ | [`cpp/README.md`](cpp/README.en.md) |
@@ -5369,245 +5379,298 @@ perf 정책은 [`doc/perf/PERF_POLICY.md`](../../../doc/perf/PERF_POLICY.md)에�
 | Go | [`go/README.md`](go/README.en.md) |
 | Rust | [`rust/README.md`](rust/README.en.md) |
 
-### Perf 리뷰 체크리스트
+### Perf Review Checklist
 
-- 이 perf 가 바인딩 라이브러리 비용을 측정하고 있는가
-- 핵심 send/recv/callback 경로가 perf 파일 본문에서 직접 읽히는가
-- 각 패턴이 별도 파일로 분리되어 있는가
-- `core/perf` 패턴과 정렬되어 있는가
-- `doc/perf` 정책을 준수하는가
+- Does this perf measure the binding library's cost?
+- Can the core send/recv/callback path be read directly in the perf
+  file body?
+- Is each pattern split into its own file?
+- Is it aligned with `core/perf` patterns?
+- Does it follow the `doc/perf` policy?
 
-## 스크립트 위치 정책
-- 실행 스크립트는 실행 대상과 같은 디렉토리에 위치한다.
-- 바인딩 루트가 아니라 각 하위 디렉토리에 둔다.
+## Script Location Policy
+- A run script lives in the same directory as its target.
+- It goes in each subdirectory, not the binding root.
 
-| 용도 | 위치 | 스크립트 예시 |
+| Purpose | Location | Example script |
 |------|------|---------------|
-| 테스트 | `bindings/<언어>/tests/` | `run_tests.sh` |
-| 샘플 | `bindings/<언어>/samples/` | `run_samples.sh` |
-| perf | `bindings/<언어>/perf/` | `run_benchmarks.sh`, `run_benchmarks_multi.sh` |
+| Tests | `bindings/<language>/tests/` | `run_tests.sh` |
+| Samples | `bindings/<language>/samples/` | `run_samples.sh` |
+| Perf | `bindings/<language>/perf/` | `run_benchmarks.sh`, `run_benchmarks_multi.sh` |
 
-- Windows 지원이 필요한 경우 `.ps1` 도 함께 제공한다.
-- 바인딩 루트(`bindings/<언어>/`)에 `run_samples.sh` 같은 wrapper를
-  두지 않는다. 이 위치의 wrapper는 `samples/run_samples.sh`와 중복되고,
-  어느 것이 정답인지 혼선을 만든다.
-- CI나 전체 검증을 위해 테스트+샘플+perf를 한번에 실행하는 orchestration
-  스크립트가 필요하면 `bindings/<언어>/run_all.sh` 같은 이름으로 둘 수 있다.
-  이 스크립트는 개별 `tests/run_tests.sh`, `samples/run_samples.sh` 등을
-  호출하는 진입점이며, 개별 스크립트를 대체하지 않는다.
+- When Windows support is needed, also provide a `.ps1`.
+- Do not put a wrapper such as `run_samples.sh` at the binding root
+  (`bindings/<language>/`). A wrapper at that location duplicates
+  `samples/run_samples.sh` and creates confusion about which one is
+  authoritative.
+- If an orchestration script is needed to run tests+samples+perf
+  together for CI or full verification, it can be placed under a name
+  such as `bindings/<language>/run_all.sh`. This script is an entrypoint
+  that calls the individual `tests/run_tests.sh`, `samples/run_samples.sh`,
+  and so on — it does not replace the individual scripts.
 
-## 리뷰 체크리스트
-- public API가 multipart-only인가
-- blocking/non-blocking이 별도 이름으로 분리되지 않았는가
-- 언어별 `Flags Policy`에 없는 public flag type 또는 중복 flag 경로가
-  남아 있지 않은가
-- raw option bag이 public에 남아 있지 않은가
-- option 값이 enum/boolean/value object로 승격되었는가
-- 타입별 역할이 제대로 닫혀 있는가
-- blocking send 실패가 예외 또는 오류 경로로 반드시 caller에 전달되는가
-- `send` 실패가 backpressure/not-ready를 포함해 모든 오류를 예외로 전달하는가
-- binding이 truncation/overflow를 선검증하는가
-- native 상태 오류를 바인딩이 임의로 추론하지 않는가
-- public surface test와 behavior test가 같이 있는가
-- 값 객체 검증과 호출 직전 검증의 책임 위치가 설명 가능한가
-- 언어별 `Flags Policy`에 없는 legacy flag 타입이 public contract에서 제거되었는가
-- sample code가 canonical API만 사용하는가
-- helper가 blocking send 실패를 무시하지 않는가
-- helper가 deprecated/legacy surface를 우회 호출하지 않는가
+## Review Checklist
+- Is the public API multipart-only?
+- Are blocking/non-blocking not split into separate names?
+- Is there no remaining public flag type or duplicate flag path that
+  isn't in the per-language `Flags Policy`?
+- Does no raw option bag remain public?
+- Have option values been promoted to enum/boolean/value objects?
+- Are per-type roles properly closed off?
+- Is a blocking send failure always delivered to the caller through an
+  exception or error path?
+- Does a `send` failure deliver every error, including backpressure/
+  not-ready, as an exception?
+- Does the binding pre-validate truncation/overflow?
+- Does the binding avoid arbitrarily inferring a native state error?
+- Are the public surface test and behavior test present together?
+- Is the division of responsibility between value-object validation and
+  pre-call validation explainable?
+- Has a legacy flag type not in the per-language `Flags Policy` been
+  removed from the public contract?
+- Does sample code use only the canonical API?
+- Does the helper avoid ignoring a blocking send failure?
+- Does the helper avoid bypassing through a deprecated/legacy surface?
 
-## POSD 기반 구현 완성 정책
-- 이 섹션은 바인딩 구현을 완성하고 리팩터링할 때 적용하는 POSD 기반 절차를
-  정의한다.
-- 바인딩은 기능 나열이 아니라 구조적 정확성을 기준으로 완성한다.
-- 완성 기준은 Socket Capability Matrix, Callback API Policy, Option Policy,
-  Test Matrix, Sample Policy다.
-- 리팩터링은 코드를 이동하는 것이 아니라 시스템 복잡도를 줄이는 것이다.
+## POSD-Based Implementation Completeness Policy
+- This section defines the POSD-based procedure applied when completing
+  or refactoring a binding implementation.
+- A binding is completed against structural correctness, not a feature
+  checklist.
+- The completion criteria are the Socket Capability Matrix, Callback API
+  Policy, Option Policy, Test Matrix, and Sample Policy.
+- Refactoring is reducing system complexity, not moving code around.
 
-### 완성 순서
-- 바인딩 구현은 아래 순서를 따른다.
-- 각 단계는 이전 단계의 결과에 의존한다.
-- 한 단계를 건너뛰고 다음 단계를 진행하지 않는다.
+### Completion Order
+- A binding implementation follows the order below.
+- Each step depends on the previous step's result.
+- Do not skip a step and move to the next.
 
-#### 1단계: Capability Matrix 정렬
-- Socket Capability Matrix를 기준으로 각 소켓 타입의 public API를 검토한다.
-- 있어야 하는데 없는 API를 추가한다.
-- 있으면 안 되는데 노출된 API를 제거하거나 internal로 이동한다.
-- 검증: surface test가 matrix와 일치해야 한다.
-- 대표 위반 예:
-  - StreamSocket에 `connect()` 노출 → 제거
-  - StreamSocket에 `disconnectRid()` 노출 → 제거
-  - StreamSocket에 `detachStream()` 노출 → 제거
-  - Node에 `setSendReadyHandler` 없음 → 추가
-  - 잘못된 소켓에 publish/subscribe 노출 → 제거
+#### Step 1: Align The Capability Matrix
+- Review each socket type's public API against the Socket Capability
+  Matrix.
+- Add an API that should exist but doesn't.
+- Remove, or move to internal, an API that's exposed but shouldn't be.
+- Verification: the surface test must match the matrix.
+- Representative violation examples:
+  - `connect()` exposed on StreamSocket → remove
+  - `disconnectRid()` exposed on StreamSocket → remove
+  - `detachStream()` exposed on StreamSocket → remove
+  - `setSendReadyHandler` missing on Node → add
+  - publish/subscribe exposed on the wrong socket → remove
 
-#### 2단계: 이름 정규화
-- Naming Policy와 Callback API Policy 기준으로 canonical 이름을 맞춘다.
-- 이름만 다르고 의미가 같은 API는 canonical 이름으로 통일한다.
-- deprecated alias는 제거한다.
-- 검증: surface test에서 canonical 이름 존재를 확인한다.
-- 대표 위반 예:
-  - public `recvHandler` / `onReceive` → 제거하거나 internal raw STREAM bridge로 이동
+#### Step 2: Normalize Names
+- Align to the canonical name per the Naming Policy and Callback API
+  Policy.
+- Unify an API that differs only in name but means the same thing under
+  the canonical name.
+- Remove a deprecated alias.
+- Verification: confirm the canonical name exists in the surface test.
+- Representative violation examples:
+  - a public `recvHandler`/`onReceive` → remove, or move to the
+    internal raw STREAM bridge
   - `spotDispatchHandler` → `setDispatchHandler`
   - `on_topic_message` → `subscribe`
 
-#### 3단계: 깊은 모듈 구조
-- POSD deep module 원칙에 따라 public 타입의 깊이를 확보한다.
-- 각 public 타입이 단순 pass-through가 아니라 내부에서 검증, ownership,
-  shape 규칙을 캡슐화하는지 확인한다.
-- 얕은 래퍼 판별 기준:
-  - native 함수를 1:1로 감싸기만 하고 새 의미를 추가하지 않는가
-  - 호출자가 native 계약(시퀀스, 크기, 인코딩)을 알아야 사용할 수 있는가
-  - 동일 규칙이 여러 소켓 타입에 중복 구현되어 있는가
-- 얕은 래퍼를 발견하면:
-  - 검증을 값 객체 또는 facade 내부로 이동한다
-  - 중복 규칙을 한 모듈에 모은다
-  - pass-through만 하는 public 타입은 제거하거나 internal에 병합한다
-- 대표 위반 예:
-  - RoutingId 길이 검증이 각 소켓 타입마다 중복 → RoutingId 값 객체 하나로 모은다
-  - monitor event가 raw int → typed event surface로 승격한다
-  - option value가 raw int → enum/boolean/Duration으로 승격한다
+#### Step 3: Deep Module Structure
+- Secure depth for public types, per the POSD deep-module principle.
+- Confirm each public type isn't a simple pass-through — that it
+  encapsulates validation, ownership, or shape rules internally.
+- Criteria for identifying a shallow wrapper:
+  - Does it only wrap a native function 1:1 without adding new meaning?
+  - Can the caller use it only by knowing the native contract
+    (sequence, size, encoding)?
+  - Is the same rule redundantly implemented across multiple socket
+    types?
+- Once a shallow wrapper is found:
+  - Move validation inside a value object or facade.
+  - Gather the duplicated rule into one module.
+  - Remove, or merge into internal, a public type that only does
+    pass-through.
+- Representative violation examples:
+  - RoutingId length validation duplicated per socket type → gather
+    into one RoutingId value object
+  - a monitor event as raw int → promote to a typed event surface
+  - an option value as raw int → promote to enum/boolean/Duration
 
-#### 4단계: 변경 파급 제거
-- 같은 규칙이 여러 곳에 흩어진 지점을 찾아서 한 모듈에 모은다.
-- 판별 기준:
-  - 정책 하나가 바뀌면 2개 이상의 파일을 고쳐야 하는가
-  - 새 소켓 타입을 추가할 때 기존 코드를 N곳 수정해야 하는가
-- 대표 위반 예:
-  - send failure contract 규칙이 소켓 타입마다 별도 구현
-  - blocking/non-blocking 분기가 소켓 타입마다 별도 구현
-  - option validation이 각 option setter마다 별도 구현
+#### Step 4: Eliminate Change Amplification
+- Find where the same rule is scattered across multiple places and
+  gather it into one module.
+- Criteria for identifying it:
+  - Does changing one policy require fixing 2 or more files?
+  - Does adding a new socket type require modifying existing code in N
+    places?
+- Representative violation examples:
+  - the send-failure contract rule implemented separately per socket
+    type
+  - blocking/non-blocking branching implemented separately per socket
+    type
+  - option validation implemented separately per option setter
 
-#### 5단계: 정보 은닉 강화
-- public API가 native 세부사항을 노출하는 지점을 찾아서 facade 뒤로 숨긴다.
-- 판별 기준:
-  - 사용자가 errno, flag 상수, native struct 크기를 알아야 하는가
-  - 사용자가 internal sequencing(호출 순서)을 기억해야 하는가
-  - public API에 native handle, raw pointer, raw buffer가 노출되는가
-- 대표 위반 예:
-  - raw `setSockOptRaw` / `setOption(int, byte[])` 가 public
-  - monitor event에 raw int mask가 그대로 노출
-  - 언어별 `Flags Policy`에 없는 legacy flag 타입이 public 타입으로 남아 있음
+#### Step 5: Strengthen Information Hiding
+- Find where the public API exposes native detail and hide it behind a
+  facade.
+- Criteria for identifying it:
+  - Does the user need to know errno, flag constants, or a native
+    struct size?
+  - Does the user need to remember internal sequencing (call order)?
+  - Is a native handle, raw pointer, or raw buffer exposed in the public
+    API?
+- Representative violation examples:
+  - a raw `setSockOptRaw`/`setOption(int, byte[])` is public
+  - a raw int mask is exposed as-is in a monitor event
+  - a legacy flag type not in the per-language `Flags Policy` remains a
+    public type
 
-#### 6단계: 테스트 Matrix 완성
-- Test Matrix의 `Required` 카테고리는 모든 바인딩에서 작성하거나 보강한다.
-- 해당 public API, extension package, sample suite를 제공하는 바인딩은 관련
-  `Conditional` 카테고리도 작성하거나 보강한다.
-- 언어 런타임의 수명, 예외, native loader 위험이 있는 바인딩은 관련
-  `Language-specific` 카테고리를 작성하거나 보강한다.
-- 완성 기준:
-  - Surface test가 Socket Capability Matrix를 검증한다
-  - Contract test가 FFI 매핑과 lifecycle을 검증한다
-  - Behavior test가 blocking/non-blocking 경로를 검증한다
-  - Helper/Facade test가 바인딩 제공 helper의 의미 계약을 검증한다
-  - Optimization Guard test가 hot path 최적화 불변식을 검증한다
-  - Failure Contract test가 send/receive 오류 계약을 검증한다
-  - Boundary test가 값 경계를 검증한다
-  - Option test가 typed surface를 검증한다
-  - Ownership test가 send/recv ownership을 검증한다
-  - 해당 public API가 있으면 Callback, Monitor, Poller, Service, Codec test가
-    public contract를 검증한다
-  - sample suite가 있으면 Sample Smoke test가 canonical API 실행을 검증한다
+#### Step 6: Complete The Test Matrix
+- Write or strengthen the Test Matrix's `Required` category in every
+  binding.
+- A binding that provides the matching public API, extension package, or
+  sample suite also writes or strengthens the matching `Conditional`
+  category.
+- A binding with a language-runtime lifetime, exception, or native-
+  loader risk also writes or strengthens the matching
+  `Language-specific` category.
+- Completion criteria:
+  - a Surface test verifies the Socket Capability Matrix
+  - a Contract test verifies FFI mapping and lifecycle
+  - a Behavior test verifies the blocking/non-blocking paths
+  - a Helper/Facade test verifies the semantic contract of a
+    binding-provided helper
+  - an Optimization Guard test verifies the hot-path optimization
+    invariant
+  - a Failure Contract test verifies the send/receive error contract
+  - a Boundary test verifies value boundaries
+  - an Option test verifies the typed surface
+  - an Ownership test verifies send/recv ownership
+  - where the matching public API exists, a Callback, Monitor, Poller,
+    Service, or Codec test verifies the public contract
+  - where a sample suite exists, a Sample Smoke test verifies running
+    the canonical API
 
-#### 7단계: 샘플 정렬
-- Canonical Sample Set 기준으로 샘플을 완성한다.
-- 각 샘플이 canonical API만 사용하는지 확인한다.
-- 1-5단계에서 이름이나 API가 바뀌었다면 샘플도 같이 갱신한다.
+#### Step 7: Align Samples
+- Complete samples against the Canonical Sample Set.
+- Confirm each sample uses only the canonical API.
+- If a name or API changed in steps 1–5, update the samples too.
 
-### 리팩터링 판단 기준
-- 다음 질문에 "예"이면 리팩터링이 필요한 지점이다.
-  - 이 public 타입을 제거하면 사용자가 잃는 것이 없는가 → 얕은 래퍼
-  - 이 규칙을 고치면 3개 이상의 파일을 건드려야 하는가 → 변경 파급
-  - 사용자가 이 API를 쓰려면 다른 API의 내부 동작을 알아야 하는가 → 정보 누출
-  - 같은 능력이 2개 이상의 이름으로 노출되는가 → 중복 surface
-  - 사용자가 호출 순서를 기억해야 올바르게 동작하는가 → 시간 순서 의존
+### Refactoring Judgment Criteria
+- If the answer to the following question is "yes," that's a point that
+  needs refactoring.
+  - Would the user lose nothing if this public type were removed? →
+    shallow wrapper
+  - Would fixing this rule require touching 3 or more files? → change
+    amplification
+  - Does the user need to know another API's internal behavior to use
+    this one? → information leak
+  - Is the same capability exposed under 2 or more names? → duplicate
+    surface
+  - Does correct behavior require the user to remember a call order? →
+    temporal decomposition dependency
 
-### 리팩터링 종료 조건
-- 리팩터링은 아래 조건이 모두 충족될 때까지 반복한다.
-- 하나라도 남아 있으면 완료가 아니다.
-- 판단은 POSD 관점에서 수행한다.
-- 종료 조건의 범위는 해당 바인딩이 구현하기로 한 scope에 한정한다.
-  - `Required` 항목: 모든 바인딩에 적용
-  - `Conditional` 항목: 해당 public API, extension package, sample suite를
-    제공하는 바인딩에 적용
-  - `Language-specific` 항목: 해당 런타임 위험이 있는 바인딩에 적용
-  - `Recommended` 항목(예: 샘플): 공개 배포 바인딩에 적용
+### Refactoring Exit Conditions
+- Refactoring repeats until every condition below is satisfied.
+- If even one remains, it isn't done.
+- The judgment is made from a POSD perspective.
+- The exit-condition scope is limited to what that binding has decided
+  to implement.
+  - a `Required` item: applies to every binding
+  - a `Conditional` item: applies to a binding that provides the
+    matching public API, extension package, or sample suite
+  - a `Language-specific` item: applies to a binding with that runtime
+    risk
+  - a `Recommended` item (for example, samples): applies to a publicly
+    distributed binding
 
-1. **Capability Matrix 완전 정렬**
-   - Socket Capability Matrix의 모든 `Y` 항목이 public API에 존재한다.
-   - Socket Capability Matrix의 모든 `—` 항목이 public API에 노출되지 않는다.
-   - 해당 바인딩이 구현하는 서비스 계층 컴포넌트의 Capability Matrix도
-     동일하게 정렬한다.
-     바인딩이 구현하지 않으면 종료 조건에서 제외한다.
-   - Surface test가 이를 검증하고 통과한다.
+1. **Full Capability Matrix Alignment**
+   - Every `Y` item in the Socket Capability Matrix exists in the
+     public API.
+   - Every `—` item in the Socket Capability Matrix is not exposed in
+     the public API.
+   - The Capability Matrix of any service-layer component that binding
+     implements is aligned the same way. If a binding doesn't implement
+     it, exclude it from the exit condition.
+   - The surface test verifies this and passes.
 
-2. **이름 정규화 완료**
-   - 모든 public API가 Naming Policy의 canonical 이름을 사용한다.
-   - deprecated alias가 남아 있지 않다.
-   - Callback API Policy의 canonical 이름(`setPacketHandler`,
-     `setDispatchHandler`, `setSendReadyHandler`)이
-     해당 역할에 맞게 존재한다.
+2. **Name Normalization Complete**
+   - Every public API uses the Naming Policy's canonical name.
+   - No deprecated alias remains.
+   - The Callback API Policy's canonical names (`setPacketHandler`,
+     `setDispatchHandler`, `setSendReadyHandler`) exist matching their
+     roles.
 
-3. **얕은 래퍼 제거**
-   - native 함수를 1:1로 감싸기만 하는 public 타입이 없다.
-   - 모든 public 타입이 검증, ownership, shape 규칙 중 하나 이상을 캡슐화한다.
-   - `RecvPart`, `RecvRoutedPart`, `SubscribePart` 또는 언어별 동등 이름이
-     public API에 없다. part 단위 수신은 runtime/internal substrate로만 존재한다.
-   - `requestFrame(...)`처럼 protocol envelope을 그대로 드러내는 helper가 public
-     표면에 없다.
-   - `dealer.reply(requestToken, parts)`처럼 DEALER의 송신 능력과 맞지 않는 reply
-     helper가 public 표면에 없다.
+3. **Shallow Wrappers Removed**
+   - No public type merely wraps a native function 1:1.
+   - Every public type encapsulates at least one of validation,
+     ownership, or shape rules.
+   - `RecvPart`, `RecvRoutedPart`, `SubscribePart`, or a per-language
+     equivalent name, does not exist in the public API. Part-by-part
+     receive exists only as a runtime/internal substrate.
+   - A helper that exposes the protocol envelope as-is, such as
+     `requestFrame(...)`, does not exist on the public surface.
+   - A reply helper that doesn't fit DEALER's send capability, such as
+     `dealer.reply(requestToken, parts)`, does not exist on the public
+     surface.
 
-4. **변경 파급 해소**
-   - 동일 규칙이 2개 이상의 모듈에 중복 구현되어 있지 않다.
-   - 정책 변경 시 수정해야 할 파일이 1개다.
+4. **Change Amplification Resolved**
+   - The same rule is not redundantly implemented in 2 or more modules.
+   - Only 1 file needs to change on a policy change.
 
-5. **정보 은닉 확보**
-   - public API에 raw option bag, 정책 밖 legacy/raw flag, raw native struct,
-     raw errno가 노출되지 않는다.
-   - 사용자가 internal sequencing을 알지 않아도 API를 올바르게 사용할 수 있다.
+5. **Information Hiding Secured**
+   - The public API does not expose a raw option bag, a legacy/raw flag
+     outside the policy, a raw native struct, or a raw errno.
+   - A user can use the API correctly without knowing internal
+     sequencing.
 
-6. **Test Matrix 완성**
-   - 모든 `Required` 테스트가 존재하고 통과한다.
-   - 해당 바인딩의 scope에 포함되는 `Conditional` 테스트가 존재하고 통과한다.
-   - 해당 런타임 위험에 필요한 `Language-specific` 테스트가 존재하고 통과한다.
+6. **Test Matrix Complete**
+   - Every `Required` test exists and passes.
+   - Every `Conditional` test within that binding's scope exists and
+     passes.
+   - Every `Language-specific` test needed for that runtime risk exists
+     and passes.
 
-7. **Sample 정렬 완료**
-   - Canonical Sample Set의 모든 샘플이 존재한다.
-   - 해당 바인딩이 구현하는 서비스 계층 샘플도 포함한다.
-   - 구현하지 않는 `Target` 컴포넌트의 샘플은 제외한다.
-   - 모든 샘플이 canonical API만 사용한다.
-   - deprecated/legacy 경로를 사용하는 샘플이 없다.
+7. **Sample Alignment Complete**
+   - Every sample in the Canonical Sample Set exists.
+   - This includes a sample for any service-layer component that
+     binding implements.
+   - A sample for an unimplemented `Target` component is excluded.
+   - Every sample uses only the canonical API.
+   - No sample uses a deprecated/legacy path.
 
-8. **Dead code 제거 완료**
-   - 리팩터링 과정에서 발생한 모든 불필요한 코드가 제거되었다.
-   - deprecated alias, legacy wrapper, 사용되지 않는 import/using/require가
-     남아 있지 않다.
-   - Capability Matrix에서 `—`로 표시된 API의 구현 코드가 internal에도 불필요하게
-     남아 있지 않다.
-   - 이름 정규화로 교체된 옛 이름의 함수/메서드/타입이 남아 있지 않다.
-   - 호출되지 않는 private/internal helper가 남아 있지 않다.
-   - 참조되지 않는 상수, enum 값, 타입 alias가 남아 있지 않다.
-   - 주석으로 처리된 코드 블록(`// removed`, `// deprecated`, `// remove later`)이
-     남아 있지 않다.
-   - 빈 파일, 빈 클래스, 빈 모듈이 남아 있지 않다.
-   - dead code는 "나중에 쓸 수 있으니까" 남겨 두지 않는다. 필요하면 git
-     history에서 복원한다.
+8. **Dead Code Removal Complete**
+   - Every unnecessary piece of code produced during refactoring has
+     been removed.
+   - No deprecated alias, legacy wrapper, or unused import/using/
+     require remains.
+   - Implementation code for an API marked `—` in the Capability Matrix
+     doesn't needlessly remain in internal either.
+   - No function/method/type under an old name replaced by name
+     normalization remains.
+   - No uncalled private/internal helper remains.
+   - No unreferenced constant, enum value, or type alias remains.
+   - No commented-out code block (`// removed`, `// deprecated`,
+     `// remove later`) remains.
+   - No empty file, empty class, or empty module remains.
+   - Dead code is not kept "in case it's needed later." Restore it from
+     git history if needed.
 
-### 리팩터링 반복 규칙
-- 1-7단계를 한 번 수행한 뒤, 종료 조건을 다시 점검한다.
-- 앞 단계의 변경이 뒤 단계에 영향을 줄 수 있으므로, 종료 조건이 하나라도
-  미충족이면 해당 단계부터 다시 수행한다.
-- 종료 조건 8개가 모두 충족될 때까지 반복한다.
-- "더 고칠 곳이 보이지 않는다"가 아니라 "종료 조건 8개가 모두 통과한다"가
-  완료 기준이다.
+### Refactoring Iteration Rule
+- After running through steps 1–7 once, recheck the exit conditions.
+- Because an earlier step's change can affect a later step, if even one
+  exit condition is unmet, redo starting from that step.
+- Repeat until all 8 exit conditions are satisfied.
+- The completion criterion is not "no more spots visibly need fixing" —
+  it's "all 8 exit conditions pass."
 
-### 리팩터링 금지 사항
-- 구조 개선을 이유로 의미 계약을 바꾸면 안 된다.
-- 내부 리팩터링으로 public API의 시그니처가 달라지면 안 된다.
-  - 시그니처가 달라져야 하면 그것은 API 변경이지 리팩터링이 아니다.
-- 성능 개선을 이유로 correctness를 타협하면 안 된다.
-- "나중에 쓸 수 있으니까" 미리 추상화를 만들면 안 된다.
-- 한 번만 쓰이는 코드를 utility/helper로 빼면 안 된다.
+### Refactoring Prohibitions
+- Do not change the semantic contract in the name of structural
+  improvement.
+- An internal refactor must not change the public API's signature.
+  - If the signature must change, that's an API change, not a
+    refactor.
+- Do not compromise correctness in the name of a performance
+  improvement.
+- Do not pre-build an abstraction "in case it's needed later."
+- Do not pull code used only once out into a utility/helper.
 
 ## 구현 리뷰 체크리스트
 - 이 섹션은 public API 정책을 구현에 반영했는지 확인하는 리뷰 체크리스트다.
